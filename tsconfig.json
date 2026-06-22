@@ -14,9 +14,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Path aliases */
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] },
+    /* Path aliases — baseUrl-less: with bundler resolution, paths resolve
+       relative to this file (works in TS 6 and is ready for TS 7). */
+    "paths": { "@/*": ["./src/*"] },
 
     /* Linting */
     "strict": true,
