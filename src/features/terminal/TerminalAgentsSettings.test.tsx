@@ -1,0 +1,206 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+
+import type { TerminalAgent } from "@/lib/api";
+import { useTerminalAgents } from "@/store/terminalAgents";
+import { useUi } from "@/store/ui";
+import { TerminalAgentsSettings } from "./TerminalAgentsSettings";
+
+const agent = (over: Partial<TerminalAgent> = {}): TerminalAgent => ({
+  id: "claude",
+  name: "Claude",
+  command: "claude",
+  description: "Claude Code",
+  enabled: true,
+  available: true,
+  ...over,
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+/** Default backend: terminal_agents_get returns the seeded list; set/reset echo. */
+function stubBackend(get: TerminalAgent[] = [agent()]) {
+  invokeMock.mockImplementation((command: string) => {
+    if (command === "terminal_agents_get") return Promise.resolve(get);
+    if (command === "terminal_agents_set") return Promise.resolve();
+    if (command === "terminal_agents_reset") return Promise.resolve(get);
+    if (command === "terminal_agent_probe") return Promise.resolve(true);
+    return Promise.resolve();
+  });
+}
+
+beforeEach(() => {
+  invokeMock.mockReset();
+  useTerminalAgents.setState({ agents: [agent()], loading: false, error: null });
+  useUi.setState({ toast: null, confirm: null });
+});
+
+describe("TerminalAgentsSettings", () => {
+  it("keeps Save visible but disabled until the draft changes", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    const save = await screen.findByRole("button", { name: "Save agents" });
+    expect(save).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
+
+    expect(save).not.toBeDisabled();
+  });
+
+  it("ignores a Check result after the command changes", async () => {
+    const probe = deferred<boolean>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
+      if (command === "terminal_agent_probe") return probe.promise;
+      return Promise.resolve();
+    });
+
+    render(<TerminalAgentsSettings />);
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    fireEvent.change(screen.getByPlaceholderText("command --flags"), {
+      target: { value: "different-agent" },
+    });
+
+    await act(async () => {
+      probe.resolve(true);
+      await probe.promise;
+    });
+
+    expect(screen.queryByText("on PATH")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Check different-agent to verify PATH availability")).toBeInTheDocument();
+  });
+
+  it("adopts a background agent-list change while the draft is pristine", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    await screen.findByDisplayValue("Claude");
+
+    // A background source (e.g. the toolbar re-probing) updates the shared store.
+    act(() => {
+      useTerminalAgents.setState({
+        agents: [agent({ id: "codex", name: "Codex", command: "codex" })],
+      });
+    });
+
+    expect(await screen.findByDisplayValue("Codex")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Claude")).not.toBeInTheDocument();
+  });
+
+  it("preserves a dirty draft against a background change", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    await screen.findByDisplayValue("Claude");
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "My Edit" } });
+
+    act(() => {
+      useTerminalAgents.setState({
+        agents: [agent({ id: "codex", name: "Codex", command: "codex" })],
+      });
+    });
+
+    expect(screen.getByDisplayValue("My Edit")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Codex")).not.toBeInTheDocument();
+  });
+
+  it("saves the edited draft and toasts success", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
+
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe("Saved terminal agents"));
+    expect(invokeMock).toHaveBeenCalledWith("terminal_agents_set", expect.anything());
+  });
+
+  it("surfaces a save failure as an error toast", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
+      if (command === "terminal_agents_set") return Promise.reject(new Error("disk full"));
+      return Promise.resolve();
+    });
+    render(<TerminalAgentsSettings />);
+
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Edited" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
+
+    await waitFor(() => {
+      expect(useUi.getState().toast?.tone).toBe("error");
+      expect(useUi.getState().toast?.message).toContain("disk full");
+    });
+  });
+
+  it("reset asks for confirmation, then reloads defaults on confirm", async () => {
+    stubBackend([agent({ id: "default", name: "Default", command: "default" })]);
+    render(<TerminalAgentsSettings />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.title).toBe("Reset terminal agents to defaults?");
+
+    await act(async () => {
+      confirm!.onConfirm();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(useUi.getState().toast?.message).toBe("Reset to default agents"));
+    expect(invokeMock).toHaveBeenCalledWith("terminal_agents_reset");
+  });
+
+  it("duplicate inserts a second editable row and marks the draft dirty", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    expect(screen.getAllByLabelText("Agent name")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate Claude" }));
+
+    expect(screen.getAllByLabelText("Agent name")).toHaveLength(2);
+    expect(screen.getByDisplayValue("Claude copy")).toBeInTheDocument();
+    // A new draft entry enables the always-visible Save button.
+    expect(await screen.findByRole("button", { name: "Save agents" })).toBeInTheDocument();
+  });
+
+  it("reset replaces a dirty draft with the defaults", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
+      if (command === "terminal_agents_reset")
+        return Promise.resolve([agent({ id: "default", name: "Default", command: "default" })]);
+      return Promise.resolve();
+    });
+    render(<TerminalAgentsSettings />);
+
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Edited Claude" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
+
+    await act(async () => {
+      useUi.getState().confirm!.onConfirm();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByDisplayValue("Default")).toBeInTheDocument());
+    expect(screen.queryByDisplayValue("Edited Claude")).not.toBeInTheDocument();
+  });
+
+  it("delete asks for confirmation before dropping the row from the draft", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete Claude" }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.title).toBe("Delete agent?");
+
+    act(() => confirm!.onConfirm());
+
+    expect(screen.queryByDisplayValue("Claude")).not.toBeInTheDocument();
+  });
+});

@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v0.1.0. Defaults to the app version."
+        required: false
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      release_tag: ${{ steps.release-tag.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install Linux Tauri dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve release tag
+        id: release-tag
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_TAG" ]]; then
+            RELEASE_TAG="$DISPATCH_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            APP_VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+            RELEASE_TAG="v${APP_VERSION}"
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release tag
+        run: |
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo "Missing release tag."
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+
+      - name: Validate app version matches tag
+        run: |
+          TAG_VERSION="${RELEASE_TAG#v}"
+          TAURI_CONF_VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          CARGO_VERSION=$(awk -F'"' '/^version =/ { print $2; exit }' ./src-tauri/Cargo.toml)
+          PKG_VERSION=$(node -p 'require("./package.json").version')
+          if [[ "$TAURI_CONF_VERSION" != "$TAG_VERSION" ]]; then
+            echo "src-tauri/tauri.conf.json version ($TAURI_CONF_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          if [[ "$CARGO_VERSION" != "$TAG_VERSION" ]]; then
+            echo "src-tauri/Cargo.toml version ($CARGO_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
+            echo "package.json version ($PKG_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build frontend
+        run: bun run build
+
+      - name: Frontend tests
+        run: bun run test -- --run
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+  release-app:
+    name: Release app (${{ matrix.name }})
+    needs: preflight
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            runner: ubuntu-24.04
+            args: ""
+          - name: macos-arm64
+            runner: macos-latest
+            args: "--target aarch64-apple-darwin"
+          - name: macos-x86_64
+            runner: macos-latest
+            args: "--target x86_64-apple-darwin"
+          - name: windows
+            runner: windows-latest
+            args: ""
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build and publish release artifact
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code-signing + notarization. Inert until these repo secrets exist
+          # (all empty => unsigned build, the current behavior). Ignored on the
+          # Linux/Windows matrix legs. See the PR/commit notes for how to populate them.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tauriScript: bun tauri
+          args: ${{ matrix.args }}
+          tagName: ${{ needs.preflight.outputs.release_tag }}
+          releaseName: GitLane ${{ needs.preflight.outputs.release_tag }}
+          releaseBody: "Desktop builds for GitLane."
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]

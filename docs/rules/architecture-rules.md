@@ -1,0 +1,135 @@
+# Architecture Rules
+
+The rules to follow when adding functionality to GitLane, so the codebase stays
+consistent and avoids architecture drift. `CLAUDE.md` explains *how the system is
+shaped*; these rules are the *checklist you apply while coding*.
+
+This file holds the **cross-cutting contract both processes must honor**. The
+side-specific rules live in two siblings — read the one(s) your change touches:
+
+- **[architecture-rules-rust.md](architecture-rules-rust.md)** — the Rust core
+  (`src-tauri/`): commands, the read/write/`gh` engines, threading, errors, secrets.
+- **[architecture-rules-react.md](architecture-rules-react.md)** — the React frontend
+  (`src/`): Zustand stores, components, styling, and **SOLID / module decomposition**.
+
+> **Golden rule:** every change must look like it was written by the person who wrote
+> the surrounding code. Match the existing module's structure, naming, comment density,
+> and error style before you add anything new. When in doubt, copy the nearest existing
+> example rather than inventing a new pattern.
+
+---
+
+## 1. The IPC contract is sacred — change all four layers together
+
+Adding or changing a command means editing **all four**, in this order, and verifying
+they agree:
+
+1. **Impl** — the real work in the right module under `src-tauri/src/git/`
+   (`read.rs` / `status.rs` / `graph.rs` for reads, `write.rs` for writes, the
+   `github/` directory for `gh`). Free functions that take a `path: &str` and return
+   `Result<_, String>`.
+2. **Command + registration** — `src-tauri/src/lib.rs`: the `#[tauri::command]` fn **and**
+   its line in `tauri::generate_handler![…]`. Forgetting the handler entry is the #1
+   "command not found" bug.
+3. **Types** — `src-tauri/src/git/types.rs`: any struct returned to the frontend, with
+   `#[derive(Debug, Clone, Serialize)]` + `#[serde(rename_all = "camelCase")]`. IPC input
+   structs also derive `Deserialize` and use the same casing.
+4. **TS wrapper + interface** — `src/lib/api/{git,github,terminal}.ts`: a typed
+   `invoke<T>("command_name", { … })` wrapper on the matching `*Api` object, plus the
+   `interface` mirroring the Rust struct.
+
+**Rules:**
+- Rust params are `snake_case`; the JS call passes `camelCase`; Tauri converts. The
+  `api/*.ts` wrapper is the **only** place that mapping is spelled out (e.g. `authorName`
+  → `{ name: authorName }`), never elsewhere.
+- A new TS interface field **must** have a matching `serde` field, and vice versa. Nothing
+  but you checks this — keep them in lockstep.
+- Never call `invoke()` from a component. Always go through an `api/*.ts` wrapper.
+
+---
+
+## 2. Read/write split — pick the right engine, never mix
+
+The central design decision. Before writing a backend function, decide which it is:
+
+| Operation | Engine | Module | Sync/async |
+|-----------|--------|--------|-----------|
+| Read repo state (summary, branches, status, diffs) | **libgit2** (`git2`) | `read.rs` / `status.rs` | **sync** command |
+| Build the potentially large commit graph | **libgit2** (`git2`) | `graph.rs` | **async** + `blocking()` |
+| Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write.rs` | **async** + `blocking()` |
+| GitHub (accounts, PRs, checks) | **GithubService → GithubProvider → `GhProvider` → `gh`** | `github/` | **async** + `blocking()` |
+
+The split is "can libgit2 do it?", not literally "read vs write". A few **read-shaped**
+commands still shell out to `git` because libgit2 doesn't cover them well — `list_worktrees`
+and `list_stashes` live in `write.rs` and are therefore `async` + `blocking()`, returning
+structs like any read. The engine dictates sync-vs-async, not the read/write label.
+
+- **Do not reimplement write operations with libgit2.** The CLI honours hooks, credential
+  helpers, `.gitconfig`, signing, and conflict machinery; libgit2 reimplements those only
+  partially. `git2` is built `default-features = false` — clone/fetch/push aren't even
+  available there.
+- Most reads remain synchronous. `commit_graph` is the measured exception: it opens the
+  non-`Send` repository inside `blocking()` so ref collection/revwalk/layout cannot freeze
+  the webview on large histories.
+- Reads return rich serializable structs; writes return the raw combined stdout/stderr
+  `String` so the UI can surface git's own message verbatim.
+- GitHub commands must enter through `GithubService`. The optional account argument is a
+  frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. The
+  provider resolves tokens immediately before use and validates repository/account host
+  compatibility before writes.
+- Use `git/forge.rs` for remote forge detection. Do not infer Bitbucket/GitLab/Azure/Gitea
+  support from the GitHub provider boundary; unsupported forges should fail explicitly until
+  their own provider contract is implemented.
+- Non-GitHub provider auth status lives in `auth_providers.rs` and Settings only. It must not
+  return tokens or enable PR operations; each forge needs its own provider implementation before
+  it appears in PR workflows.
+
+The how (the `run_git`/`run_gh` helpers, threading, `Repository`-is-not-`Send`) is in
+[architecture-rules-rust.md](architecture-rules-rust.md).
+
+---
+
+## 3. Definition of done — run before every commit
+
+A change isn't finished until:
+
+```bash
+bunx tsc --noEmit                 # frontend typechecks
+(cd src-tauri && cargo check)     # Rust compiles (cargo build for a real binary)
+bun run build                     # tsc --noEmit + vite build passes
+```
+
+- For an IPC change, re-verify all four layers of Rule 1 agree (Rust fn ↔ handler entry ↔
+  types ↔ TS wrapper/interface).
+- **The typechecks do not catch IPC wiring.** The command name is a string on both sides,
+  so a forgotten `generate_handler!` entry or a name mismatch between `invoke("…")` and the
+  Rust fn compiles clean and fails only at runtime. After any IPC change, **launch the app
+  (`bun run tauri dev`) and actually exercise the new command** — green typechecks alone
+  don't prove the wire is connected.
+- There is **no automated test suite** — so the cost of these mismatches is a runtime
+  failure a user hits, not a red build. The typechecks are the static safety net; the
+  manual in-app check is the rest of it. Don't skip either.
+- Commits are GPG-signed with the repo's pinned identity (see `CLAUDE.local.md`). Reference
+  the Jira key (`GP-xx`) in the branch and commit message.
+
+---
+
+## 4. Anti-patterns — do not do these
+
+**Cross-process / Rust**
+- ❌ `invoke()` inside a React component, or `fetch`/git logic in a component.
+- ❌ Reimplementing a write with libgit2, or spawning `git`/`gh` outside the `run_*` helpers.
+- ❌ Calling `gh` module internals directly from Tauri commands instead of going through `GithubService`.
+- ❌ A sync Tauri command that shells out (freezes the UI).
+- ❌ Caching/threading a `git2::Repository` across calls.
+- ❌ Returning a token (or any secret) across the IPC boundary.
+- ❌ Adding a TS interface field with no matching `serde` field (or vice versa).
+- ❌ Layout/positioning math in the frontend instead of `graph.rs`.
+
+**Frontend**
+- ❌ Cross-store reactive subscriptions; dumping unrelated state into a store.
+- ❌ Domain-aware components under `components/ui/`; hardcoded colors instead of tokens/`cn()`.
+- ❌ Splitting a file to hit a line count, or extracting a one-off into a "reusable" abstraction.
+
+**Always**
+- ❌ Committing without `tsc --noEmit` + `cargo check` green (and an in-app check for IPC changes).

@@ -1,0 +1,84 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+
+import { useUi } from "@/store/ui";
+import { SettingsModal } from "./SettingsModal";
+
+beforeEach(() => {
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue([]); // terminal_agents_get etc.
+  useUi.setState({ settingsOpen: true, settingsTab: "general", confirm: null, prompt: null });
+});
+
+describe("SettingsModal", () => {
+  it("renders nothing while closed", () => {
+    useUi.setState({ settingsOpen: false });
+    const { container } = render(<SettingsModal />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("exposes accessible dialog semantics", () => {
+    render(<SettingsModal />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    // The dialog is labelled by the visible "Settings" title.
+    const labelId = dialog.getAttribute("aria-labelledby");
+    expect(labelId && document.getElementById(labelId)?.textContent).toBe("Settings");
+  });
+
+  it("routes nav clicks to the matching panel and marks the active tab", () => {
+    render(<SettingsModal />);
+    expect(screen.getByText("Appearance and layout preferences.")).toBeInTheDocument();
+
+    const accountsNav = screen.getByRole("button", { name: "Accounts" });
+    fireEvent.click(accountsNav);
+    expect(useUi.getState().settingsTab).toBe("accounts");
+    expect(accountsNav).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    expect(useUi.getState().settingsTab).toBe("repo");
+    expect(
+      screen.getByText("Open a repository to choose the account it commits, fetches, and pushes as."),
+    ).toBeInTheDocument();
+  });
+
+  it("closes on the close button", () => {
+    render(<SettingsModal />);
+    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(useUi.getState().settingsOpen).toBe(false);
+  });
+
+  it("closes on Escape", () => {
+    render(<SettingsModal />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(useUi.getState().settingsOpen).toBe(false);
+  });
+
+  it("closes on an outside (backdrop) mousedown", () => {
+    render(<SettingsModal />);
+    // A mousedown outside the dialog element dismisses the modal.
+    fireEvent.mouseDown(document.body);
+    expect(useUi.getState().settingsOpen).toBe(false);
+  });
+
+  it("keeps the modal open on a mousedown inside the dialog", () => {
+    render(<SettingsModal />);
+    fireEvent.mouseDown(screen.getByRole("dialog"));
+    expect(useUi.getState().settingsOpen).toBe(true);
+  });
+
+  it("does not self-dismiss while a confirm overlay is open", () => {
+    // A delete/reset confirm renders as an App-level sibling; its Escape and
+    // backdrop clicks must not also tear down Settings.
+    useUi.setState({ confirm: { title: "Delete agent?", onConfirm: () => {} } });
+    render(<SettingsModal />);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(document.body);
+    expect(useUi.getState().settingsOpen).toBe(true);
+  });
+});

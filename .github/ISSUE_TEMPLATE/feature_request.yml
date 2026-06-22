@@ -1,0 +1,49 @@
+name: Feature Request
+description: Suggest a GitLane feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before requesting a feature, check existing issues to avoid duplicates.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? What is frustrating or missing?
+      placeholder: I want to ...
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this work in GitLane?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Graph
+        - Changes
+        - Pull requests
+        - Review notes
+        - Terminal agents
+        - Settings
+        - Git provider integration
+        - CI/release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered other approaches? Why is this one better?
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, mockups, links, or anything else that helps explain.
