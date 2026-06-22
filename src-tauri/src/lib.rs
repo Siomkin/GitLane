@@ -1,0 +1,691 @@
+//! GitLane Tauri commands — the IPC boundary the React frontend calls into.
+//!
+//! Read commands return rich serializable structs (see `git::types`); write
+//! commands return the raw `git` CLI output so the UI can surface it.
+
+mod auth_providers;
+mod git;
+mod shell;
+mod terminal;
+mod terminal_agents;
+mod watcher;
+
+use terminal::TerminalState;
+use terminal_agents::TerminalAgent;
+use watcher::WatcherState;
+
+use git::types::{
+    BranchInfo, FileChange, FileDiff, ForgeAuthStatus, GithubAccount, GithubAccountRef, PrCheck,
+    PrCommitSignature, PullRequestDetail, PullRequestSummary, RepoGraph, RepoIdentity, RepoSummary,
+    ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
+};
+
+/// Initial graph window. The frontend explicitly increases this in 2,000-commit
+/// pages while virtualized rows/canvas keep rendering memory bounded.
+const DEFAULT_GRAPH_LIMIT: usize = 2000;
+
+/// Run blocking work (a `git`/`gh` subprocess) off the webview's main thread.
+/// Synchronous Tauri commands execute on the main thread, so a blocking
+/// subprocess there freezes the whole UI (no repaint) until it returns; wrapping
+/// the work in `spawn_blocking` keeps the UI responsive. In-process libgit2
+/// reads stay synchronous — they're fast and don't shell out.
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("git task failed: {e:?}"))?
+}
+
+#[tauri::command]
+fn open_repo(path: String) -> Result<RepoSummary, String> {
+    git::read::summary(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn commit_graph(path: String, limit: Option<usize>) -> Result<RepoGraph, String> {
+    let limit = limit.unwrap_or(DEFAULT_GRAPH_LIMIT);
+    // Large histories can spend hundreds of milliseconds in ref collection,
+    // revwalk, lane layout, and serialization. Open the non-Send Repository
+    // inside the worker closure so none of that blocks the webview thread.
+    blocking(move || git::read::commit_graph(&path, limit).map_err(|e| e.to_string())).await
+}
+
+#[tauri::command]
+fn list_branches(path: String) -> Result<Vec<BranchInfo>, String> {
+    git::read::branches(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
+    blocking(move || git::write::worktrees(&path)).await
+}
+
+#[tauri::command]
+async fn add_worktree(
+    path: String,
+    worktree_path: String,
+    reference: Option<String>,
+) -> Result<String, String> {
+    blocking(move || git::write::add_worktree(&path, &worktree_path, reference.as_deref())).await
+}
+
+#[tauri::command]
+async fn checkout(path: String, target: String) -> Result<String, String> {
+    blocking(move || git::write::checkout(&path, &target)).await
+}
+
+#[tauri::command]
+async fn create_branch(
+    path: String,
+    name: String,
+    start_point: Option<String>,
+) -> Result<String, String> {
+    blocking(move || git::write::create_branch(&path, &name, start_point.as_deref())).await
+}
+
+#[tauri::command]
+async fn delete_branch(path: String, name: String, force: bool) -> Result<String, String> {
+    blocking(move || git::write::delete_branch(&path, &name, force)).await
+}
+
+#[tauri::command]
+async fn rename_branch(path: String, old: String, new: String) -> Result<String, String> {
+    blocking(move || git::write::rename_branch(&path, &old, &new)).await
+}
+
+#[tauri::command]
+async fn set_upstream(path: String, branch: String, upstream: String) -> Result<String, String> {
+    blocking(move || git::write::set_upstream(&path, &branch, &upstream)).await
+}
+
+#[tauri::command]
+async fn merge_branch(path: String, branch: String) -> Result<String, String> {
+    blocking(move || git::write::merge(&path, &branch)).await
+}
+
+#[tauri::command]
+fn can_fast_forward(path: String, from: String, to: String) -> Result<bool, String> {
+    git::read::can_fast_forward(&path, &from, &to).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn fast_forward(path: String, target: String) -> Result<String, String> {
+    blocking(move || git::write::fast_forward(&path, &target)).await
+}
+
+#[tauri::command]
+async fn fast_forward_branch(
+    path: String,
+    branch: String,
+    target: String,
+) -> Result<String, String> {
+    blocking(move || git::write::fast_forward_branch(&path, &branch, &target)).await
+}
+
+#[tauri::command]
+async fn rebase_onto(path: String, onto: String) -> Result<String, String> {
+    blocking(move || git::write::rebase(&path, &onto)).await
+}
+
+#[tauri::command]
+async fn reset_to(path: String, target: String, mode: String) -> Result<String, String> {
+    blocking(move || git::write::reset(&path, &target, &mode)).await
+}
+
+#[tauri::command]
+async fn cherry_pick(path: String, commit: String) -> Result<String, String> {
+    blocking(move || git::write::cherry_pick(&path, &commit)).await
+}
+
+#[tauri::command]
+async fn cherry_pick_many(path: String, commits: Vec<String>) -> Result<String, String> {
+    blocking(move || git::write::cherry_pick_many(&path, &commits)).await
+}
+
+#[tauri::command]
+async fn revert_commit(path: String, commit: String) -> Result<String, String> {
+    blocking(move || git::write::revert(&path, &commit)).await
+}
+
+#[tauri::command]
+async fn revert_many(path: String, commits: Vec<String>) -> Result<String, String> {
+    blocking(move || git::write::revert_many(&path, &commits)).await
+}
+
+#[tauri::command]
+async fn create_tag(path: String, name: String, sha: Option<String>) -> Result<String, String> {
+    blocking(move || git::write::create_tag(&path, &name, sha.as_deref())).await
+}
+
+#[tauri::command]
+async fn create_annotated_tag(
+    path: String,
+    name: String,
+    message: String,
+    sha: Option<String>,
+) -> Result<String, String> {
+    blocking(move || git::write::create_annotated_tag(&path, &name, &message, sha.as_deref())).await
+}
+
+#[tauri::command]
+async fn create_patch(path: String, sha: String) -> Result<String, String> {
+    blocking(move || git::write::create_patch(&path, &sha)).await
+}
+
+// ---- working tree / staging ----
+
+#[tauri::command]
+fn working_changes(path: String) -> Result<WorkingChanges, String> {
+    git::status::working_changes(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn file_diff(
+    path: String,
+    file: String,
+    staged: bool,
+    full: Option<bool>,
+) -> Result<FileDiff, String> {
+    git::status::file_diff(&path, &file, staged, full.unwrap_or(false)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, String> {
+    git::status::commit_files(&path, &oid).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn commit_file_diff(
+    path: String,
+    oid: String,
+    file: String,
+    full: Option<bool>,
+) -> Result<FileDiff, String> {
+    git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn diff_range(path: String, base: String, head: String) -> Result<Vec<FileChange>, String> {
+    git::status::diff_range(&path, &base, &head).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn diff_range_file(
+    path: String,
+    base: String,
+    head: String,
+    file: String,
+    full: Option<bool>,
+) -> Result<FileDiff, String> {
+    git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn stage_file(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::stage_file(&path, &file)).await
+}
+
+#[tauri::command]
+async fn unstage_file(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::unstage_file(&path, &file)).await
+}
+
+#[tauri::command]
+async fn discard_file(path: String, file: String, staged: bool) -> Result<String, String> {
+    blocking(move || git::write::discard_file(&path, &file, staged)).await
+}
+
+#[tauri::command]
+async fn stage_all(path: String) -> Result<String, String> {
+    blocking(move || git::write::stage_all(&path)).await
+}
+
+#[tauri::command]
+async fn unstage_all(path: String) -> Result<String, String> {
+    blocking(move || git::write::unstage_all(&path)).await
+}
+
+#[tauri::command]
+async fn commit(
+    path: String,
+    summary: String,
+    description: String,
+    amend: bool,
+    name: Option<String>,
+    email: Option<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::commit(
+            &path,
+            &summary,
+            &description,
+            amend,
+            name.as_deref(),
+            email.as_deref(),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+async fn stash(path: String) -> Result<String, String> {
+    blocking(move || git::write::stash(&path)).await
+}
+
+#[tauri::command]
+async fn list_stashes(path: String) -> Result<Vec<StashEntry>, String> {
+    blocking(move || git::write::stash_list(&path)).await
+}
+
+#[tauri::command]
+async fn stash_apply(path: String, index: usize) -> Result<String, String> {
+    blocking(move || git::write::stash_apply(&path, index)).await
+}
+
+#[tauri::command]
+async fn stash_apply_index(path: String, index: usize) -> Result<String, String> {
+    blocking(move || git::write::stash_apply_index(&path, index)).await
+}
+
+#[tauri::command]
+async fn stash_branch(path: String, branch: String, index: usize) -> Result<String, String> {
+    blocking(move || git::write::stash_branch(&path, &branch, index)).await
+}
+
+#[tauri::command]
+async fn stash_pop(path: String, index: usize) -> Result<String, String> {
+    blocking(move || git::write::stash_pop(&path, index)).await
+}
+
+#[tauri::command]
+async fn stash_drop(path: String, index: usize) -> Result<String, String> {
+    blocking(move || git::write::stash_drop(&path, index)).await
+}
+
+#[tauri::command]
+async fn pull(path: String) -> Result<String, String> {
+    blocking(move || git::write::pull(&path)).await
+}
+
+/// Fetch + prune, optionally pinned to the repo's bound GitHub account.
+/// The token is resolved server-side via the provider, never passed in from the frontend.
+#[tauri::command]
+async fn fetch(path: String, account: Option<GithubAccountRef>) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::fetch(&path, auth_ref)
+    })
+    .await
+}
+
+/// Push, optionally pinned to the repo's bound GitHub account. The token
+/// is resolved server-side via the provider, never passed in from the frontend.
+#[tauri::command]
+async fn push(path: String, account: Option<GithubAccountRef>) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::push(&path, auth_ref)
+    })
+    .await
+}
+
+/// Push a specific `branch` (used when it isn't the checked-out branch) to its
+/// configured remote, falling back to origin. Token resolved server-side from
+/// the bound `account`, like [`push`].
+#[tauri::command]
+async fn push_branch(
+    path: String,
+    branch: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::push_branch(&path, &branch, auth_ref)
+    })
+    .await
+}
+
+// ---- GitHub (gh CLI) ----
+
+#[tauri::command]
+async fn github_accounts() -> Result<Vec<GithubAccount>, String> {
+    blocking(git::github::accounts).await
+}
+
+#[tauri::command]
+async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
+    blocking(|| Ok(auth_providers::statuses())).await
+}
+
+// These shell out to the `gh` CLI (token resolution + the API call), which
+// blocks for ~1s+. They are `async` and run the blocking work on the blocking
+// thread pool so the webview's main thread stays free — a synchronous command
+// runs on the main thread and freezes the whole UI (no repaint, no spinner)
+// for the duration of the subprocess.
+#[tauri::command]
+async fn list_pull_requests(
+    path: String,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<PullRequestSummary>, String> {
+    blocking(move || git::github::list_prs(&path, account.as_ref())).await
+}
+
+#[tauri::command]
+async fn pull_request_detail(
+    path: String,
+    number: u64,
+    account: Option<GithubAccountRef>,
+) -> Result<PullRequestDetail, String> {
+    blocking(move || git::github::pr_detail(&path, number, account.as_ref())).await
+}
+
+#[tauri::command]
+async fn pull_request_checks(
+    path: String,
+    number: u64,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<PrCheck>, String> {
+    blocking(move || git::github::pr_checks(&path, number, account.as_ref())).await
+}
+
+/// Per-commit signature verification for a PR (GraphQL), loaded lazily when the
+/// Commits tab is opened so `pull_request_detail` stays a single fast call.
+#[tauri::command]
+async fn pull_request_commit_signatures(
+    path: String,
+    number: u64,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<PrCommitSignature>, String> {
+    blocking(move || git::github::commit_signatures(&path, number, account.as_ref())).await
+}
+
+/// Inline review threads for a PR (file/line-anchored comments + resolve state).
+#[tauri::command]
+async fn pull_request_review_threads(
+    path: String,
+    number: u64,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<ReviewThread>, String> {
+    blocking(move || git::github::review_threads(&path, number, account.as_ref())).await
+}
+
+/// Resolve or unresolve a review thread by its GraphQL node id.
+#[tauri::command]
+async fn resolve_review_thread(
+    path: String,
+    thread_id: String,
+    resolved: bool,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::github::set_thread_resolved(&path, &thread_id, resolved, account.as_ref())
+    })
+    .await
+}
+
+/// Full unified diff of a PR, parsed server-side into `FileDiff`s for the viewer.
+#[tauri::command]
+async fn pull_request_diff(
+    path: String,
+    number: u64,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<FileDiff>, String> {
+    blocking(move || git::github::pr_diff(&path, number, account.as_ref())).await
+}
+
+/// Merge a PR. `method` is "merge" | "squash" | "rebase".
+#[tauri::command]
+async fn merge_pull_request(
+    path: String,
+    number: u64,
+    method: String,
+    delete_branch: bool,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::merge_pr(&path, number, &method, delete_branch, account.as_ref()))
+        .await
+}
+
+/// Post a discussion comment on a PR.
+#[tauri::command]
+async fn comment_pull_request(
+    path: String,
+    number: u64,
+    body: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::comment_pr(&path, number, &body, account.as_ref())).await
+}
+
+/// Submit a review. `action` is "approve" | "request-changes" | "comment".
+#[tauri::command]
+async fn review_pull_request(
+    path: String,
+    number: u64,
+    action: String,
+    body: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::review_pr(&path, number, &action, &body, account.as_ref())).await
+}
+
+/// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready".
+#[tauri::command]
+async fn set_pull_request_state(
+    path: String,
+    number: u64,
+    action: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::set_pr_state(&path, number, &action, account.as_ref())).await
+}
+
+/// Open a new PR from `head` into `base`. Returns the new PR URL.
+#[tauri::command]
+async fn create_pull_request(
+    path: String,
+    base: String,
+    head: String,
+    title: String,
+    body: String,
+    draft: bool,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::github::create_pr(&path, &base, &head, &title, &body, draft, account.as_ref())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_repo_identity(path: String, name: String, email: String) -> Result<String, String> {
+    blocking(move || git::write::set_repo_identity(&path, &name, &email)).await
+}
+
+#[tauri::command]
+fn repo_identity(path: String) -> Result<Option<RepoIdentity>, String> {
+    git::read::repo_identity(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn clear_repo_identity(path: String) -> Result<String, String> {
+    blocking(move || git::write::clear_repo_identity(&path)).await
+}
+
+// ---- terminal ----
+
+/// All configured terminal agents (enabled + disabled), each with its command's
+/// availability probed via PATH. Probing can touch the filesystem for each
+/// agent, so it runs off the main thread. The config file is the source of
+/// truth; the frontend edits it through [`terminal_agents_set`].
+#[tauri::command]
+async fn terminal_agents_get(app: tauri::AppHandle) -> Result<Vec<TerminalAgent>, String> {
+    blocking(move || Ok(terminal_agents::load(&app))).await
+}
+
+/// Persist the full agent list (replaces the config). `available` is ignored —
+/// it's recomputed on the next [`terminal_agents_get`]. File I/O only, no
+/// subprocess, so a plain sync command is fine (see read/write split rules).
+#[tauri::command]
+fn terminal_agents_set(app: tauri::AppHandle, agents: Vec<TerminalAgent>) -> Result<(), String> {
+    terminal_agents::save(&app, &agents)
+}
+
+/// Reset the agent config to the shipped defaults and return them. Used by the
+/// Settings "Reset to defaults" action.
+#[tauri::command]
+async fn terminal_agents_reset(app: tauri::AppHandle) -> Result<Vec<TerminalAgent>, String> {
+    // Returns probed agents, so it touches PATH like terminal_agents_get — keep
+    // the same off-the-main-thread discipline.
+    blocking(move || terminal_agents::reset_to_defaults(&app)).await
+}
+
+/// Probe whether a single agent command's executable resolves on PATH. Backs
+/// the Settings "Check" button, which validates a command (possibly unsaved)
+/// live. It can touch the filesystem, so it runs off the main thread.
+#[tauri::command]
+async fn terminal_agent_probe(command: String) -> Result<bool, String> {
+    blocking(move || Ok(terminal_agents::probe(&command))).await
+}
+
+/// Spawn (or replace) the in-app terminal's PTY running the user's login shell
+/// in `path`. Output streams back as `pty-data` events; exit fires `pty-exit`.
+#[tauri::command]
+fn pty_spawn(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, TerminalState>,
+    path: String,
+    cols: u16,
+    rows: u16,
+) -> Result<terminal::PtySpawnResponse, String> {
+    terminal::spawn(&state, &app, &path, cols, rows)
+}
+
+/// Forward user keystrokes (from xterm.js) to the PTY's stdin.
+#[tauri::command]
+fn pty_write(state: tauri::State<'_, TerminalState>, data: Vec<u8>) -> Result<(), String> {
+    terminal::write(&state, &data)
+}
+
+/// Resize the PTY to match the xterm.js viewport.
+#[tauri::command]
+fn pty_resize(state: tauri::State<'_, TerminalState>, cols: u16, rows: u16) -> Result<(), String> {
+    terminal::resize(&state, cols, rows)
+}
+
+/// Kill the terminal's shell and clear state. Called on panel close / repo switch.
+#[tauri::command]
+fn pty_kill(state: tauri::State<'_, TerminalState>) -> Result<(), String> {
+    terminal::kill(&state)
+}
+
+/// Start (or replace) the filesystem watch for `path`, emitting `repo-changed`
+/// events when the worktree or `.git` changes.
+#[tauri::command]
+fn watch_repo(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, WatcherState>,
+    path: String,
+) -> Result<(), String> {
+    watcher::watch(&app, &state, &path)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .manage(WatcherState::default())
+        .manage(TerminalState::default())
+        .invoke_handler(tauri::generate_handler![
+            open_repo,
+            commit_graph,
+            list_branches,
+            list_worktrees,
+            add_worktree,
+            checkout,
+            create_branch,
+            delete_branch,
+            rename_branch,
+            set_upstream,
+            merge_branch,
+            can_fast_forward,
+            fast_forward,
+            fast_forward_branch,
+            rebase_onto,
+            reset_to,
+            cherry_pick,
+            cherry_pick_many,
+            revert_commit,
+            revert_many,
+            create_tag,
+            create_annotated_tag,
+            create_patch,
+            working_changes,
+            file_diff,
+            commit_files,
+            commit_file_diff,
+            diff_range,
+            diff_range_file,
+            stage_file,
+            unstage_file,
+            discard_file,
+            stage_all,
+            unstage_all,
+            commit,
+            stash,
+            list_stashes,
+            stash_apply,
+            stash_apply_index,
+            stash_branch,
+            stash_pop,
+            stash_drop,
+            pull,
+            fetch,
+            push,
+            push_branch,
+            github_accounts,
+            forge_auth_statuses,
+            list_pull_requests,
+            pull_request_detail,
+            pull_request_checks,
+            pull_request_commit_signatures,
+            pull_request_diff,
+            pull_request_review_threads,
+            resolve_review_thread,
+            merge_pull_request,
+            comment_pull_request,
+            review_pull_request,
+            set_pull_request_state,
+            create_pull_request,
+            set_repo_identity,
+            repo_identity,
+            clear_repo_identity,
+            terminal_agents_get,
+            terminal_agents_set,
+            terminal_agents_reset,
+            terminal_agent_probe,
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill,
+            watch_repo,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

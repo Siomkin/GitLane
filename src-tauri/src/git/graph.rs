@@ -1,0 +1,390 @@
+//! Commit-graph construction and lane (column) layout.
+//!
+//! This is the heart of the visual client: we walk the commit DAG and assign
+//! every commit a `lane` so the frontend can paint GitKraken-style swimlanes.
+//! The algorithm is the classic "reservation" approach — each lane holds the
+//! id of the parent commit it is currently waiting to render.
+
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+
+use git2::{Oid, Repository, Sort};
+
+use super::types::{CommitNode, GraphEdge, RefLabel, RepoGraph};
+
+/// Build the laid-out graph for `repo`, walking at most `limit` commits.
+pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> {
+    build_profiled(repo, limit).map(|(graph, _metrics)| graph)
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct GraphBuildMetrics {
+    pub refs: Duration,
+    pub revwalk: Duration,
+    pub layout: Duration,
+    pub edges: Duration,
+    pub total: Duration,
+}
+
+/// Build the graph while returning coarse phase timings for the repeatable
+/// release benchmark. Production callers use [`build`] and discard metrics.
+pub fn build_profiled(
+    repo: &Repository,
+    limit: usize,
+) -> Result<(RepoGraph, GraphBuildMetrics), git2::Error> {
+    let total_started = Instant::now();
+    // Walk in date order (libgit2's `TOPOLOGICAL | TIME`): children before
+    // parents, with commit time as the tie-breaker. In the common case this
+    // keeps a run of trunk merges grouped near the top and lets each merged
+    // topic branch cascade *below* them — the GitKraken-style swimlane shape.
+    // It's a heuristic, not a guarantee: the grouping rides on commit
+    // timestamps, so rebased or clock-skewed branches whose commits predate
+    // their own merge can interleave differently. Tips still surface first, so
+    // the newest commits land at the top.
+    //
+    // This pairs with the branch-root lane assignment below: each merge's second
+    // parent gets its own column held open until the branch renders, so the
+    // long merge connectors run down empty lanes instead of overlapping commits.
+    // (Pure `Sort::TOPOLOGICAL` would tend to interleave each merge directly
+    // above its own branch — a tidy staircase, but not the grouped look here.)
+    let revwalk_started = Instant::now();
+    let mut walk = repo.revwalk()?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+    // Seed from every branch tip so branches outside HEAD's history still show.
+    // Tolerate a failed seed (consistent with the remotes/HEAD seeds below); an
+    // empty walk simply yields an empty graph rather than aborting the read.
+    let _ = walk.push_glob("refs/heads/*");
+    let _ = walk.push_glob("refs/remotes/*");
+    let _ = walk.push_head();
+
+    // Collect one extra to detect truncation.
+    let mut oids: Vec<Oid> = Vec::new();
+    for oid in walk {
+        let oid = oid?;
+        oids.push(oid);
+        if oids.len() > limit {
+            break;
+        }
+    }
+    let truncated = oids.len() > limit;
+    if truncated {
+        oids.truncate(limit);
+    }
+    let revwalk_elapsed = revwalk_started.elapsed();
+    let refs_started = Instant::now();
+    let visible_oids: HashSet<Oid> = oids.iter().copied().collect();
+    let refs_map = collect_refs(repo, &visible_oids);
+    let refs_elapsed = refs_started.elapsed();
+
+    // `lanes[i]` holds the parent oid that lane `i` is reserved for (or None),
+    // plus whether that reservation is a *branch root* — i.e. opened because a
+    // merge pulled the parent in as a topic branch, rather than a plain
+    // first-parent continuation. The flag is what lets stacked branches keep
+    // their own columns instead of collapsing onto one lane.
+    let layout_started = Instant::now();
+    let mut lanes: Vec<Option<Lane>> = Vec::new();
+    let mut nodes: Vec<CommitNode> = Vec::with_capacity(oids.len());
+    let mut row_of: HashMap<Oid, usize> = HashMap::new();
+    let mut lane_of: HashMap<Oid, usize> = HashMap::new();
+    let mut lane_count = 0usize;
+
+    for (row, &oid) in oids.iter().enumerate() {
+        let commit = repo.find_commit(oid)?;
+        let parents: Vec<Oid> = commit.parent_ids().collect();
+
+        // Claim a lane for this commit. Several lanes may await it: a branch-root
+        // reservation (a merge introduced it as a topic branch) wins so the
+        // branch renders in its own column; otherwise the lowest first-parent
+        // continuation wins. Every other lane awaiting this oid is freed — those
+        // become connector edges resolved later from (row, lane).
+        let mut root_lane: Option<usize> = None;
+        let mut cont_lane: Option<usize> = None;
+        for slot in 0..lanes.len() {
+            if let Some(l) = &lanes[slot] {
+                if l.waiting == oid {
+                    if l.branch_root {
+                        root_lane.get_or_insert(slot);
+                    } else {
+                        cont_lane.get_or_insert(slot);
+                    }
+                }
+            }
+        }
+        let lane = root_lane
+            .or(cont_lane)
+            .unwrap_or_else(|| alloc_lane(&mut lanes));
+        for slot in 0..lanes.len() {
+            if slot != lane && matches!(&lanes[slot], Some(l) if l.waiting == oid) {
+                lanes[slot] = None;
+            }
+        }
+
+        // Reserve onward lanes for parents: the first parent continues this lane;
+        // each additional (merge) parent opens its own branch-root lane *iff* its
+        // commit isn't already spoken for. If some lane already awaits that parent,
+        // the branch it belongs to has finished rendering above and handed the
+        // lane off — so collapse into it instead of opening a redundant column.
+        // This is what keeps a branch merged more than once (and the shallow
+        // hand-off between sequential branches) in a single lane, while genuinely
+        // concurrent stacked branches — whose merges are reached before their
+        // commits render — still fan out into their own columns.
+        if parents.is_empty() {
+            lanes[lane] = None;
+        } else {
+            lanes[lane] = Some(Lane::cont(parents[0]));
+            for &p in &parents[1..] {
+                if lanes.iter().any(|s| matches!(s, Some(l) if l.waiting == p)) {
+                    continue; // already awaited → collapse, don't fan out
+                }
+                let l = alloc_lane(&mut lanes);
+                lanes[l] = Some(Lane::root(p));
+            }
+        }
+
+        lane_count = lane_count.max(lanes.len());
+        row_of.insert(oid, row);
+        lane_of.insert(oid, lane);
+
+        let author = commit.author();
+        nodes.push(CommitNode {
+            id: oid.to_string(),
+            short_id: oid.to_string().chars().take(7).collect(),
+            summary: commit.summary().unwrap_or("").to_string(),
+            body: commit.body().unwrap_or("").trim().to_string(),
+            author_name: author.name().unwrap_or("").to_string(),
+            author_email: author.email().unwrap_or("").to_string(),
+            timestamp: commit.time().seconds(),
+            parents: parents.iter().map(|p| p.to_string()).collect(),
+            lane,
+            row,
+            color: lane,
+            refs: refs_map.get(&oid).cloned().unwrap_or_default(),
+        });
+    }
+    let layout_elapsed = layout_started.elapsed();
+
+    // Resolve edges now that every visible commit has a (row, lane).
+    let edges_started = Instant::now();
+    let mut edges: Vec<GraphEdge> = Vec::new();
+    for node in &nodes {
+        for parent in &node.parents {
+            let poid = match Oid::from_str(parent) {
+                Ok(o) => o,
+                Err(_) => continue,
+            };
+            let (Some(&to_row), Some(&to_lane)) = (row_of.get(&poid), lane_of.get(&poid)) else {
+                continue; // parent beyond the truncation window
+            };
+            // Color diagonal (branch/merge) segments by their destination lane,
+            // keep straight first-parent segments on the child's color.
+            let color = if to_lane == node.lane {
+                node.lane
+            } else {
+                to_lane
+            };
+            edges.push(GraphEdge {
+                from_row: node.row,
+                from_lane: node.lane,
+                to_row,
+                to_lane,
+                color,
+            });
+        }
+    }
+
+    let (head, _detached) = head_oid(repo);
+    let edges_elapsed = edges_started.elapsed();
+
+    Ok((
+        RepoGraph {
+            commits: nodes,
+            edges,
+            lane_count,
+            head,
+            truncated,
+        },
+        GraphBuildMetrics {
+            refs: refs_elapsed,
+            revwalk: revwalk_elapsed,
+            layout: layout_elapsed,
+            edges: edges_elapsed,
+            total: total_started.elapsed(),
+        },
+    ))
+}
+
+/// A lane reservation: the parent oid this lane is waiting to render, and whether
+/// it was opened as a merge's topic branch (`branch_root`) rather than a plain
+/// first-parent continuation. When a commit is awaited by both a branch-root lane
+/// and a continuation, the branch-root lane wins — that's what gives a merged
+/// branch its own column rather than collapsing onto the first parent's lane.
+struct Lane {
+    waiting: Oid,
+    branch_root: bool,
+}
+
+impl Lane {
+    fn cont(waiting: Oid) -> Self {
+        Lane {
+            waiting,
+            branch_root: false,
+        }
+    }
+    fn root(waiting: Oid) -> Self {
+        Lane {
+            waiting,
+            branch_root: true,
+        }
+    }
+}
+
+/// Find a free lane slot, reusing the lowest gap if one exists, otherwise
+/// appending a new lane.
+fn alloc_lane(lanes: &mut Vec<Option<Lane>>) -> usize {
+    match lanes.iter().position(|s| s.is_none()) {
+        Some(i) => i,
+        None => {
+            lanes.push(None);
+            lanes.len() - 1
+        }
+    }
+}
+
+/// Map each commit oid to the refs (branches/remotes/tags/HEAD) pointing at it.
+fn collect_refs(repo: &Repository, visible_oids: &HashSet<Oid>) -> HashMap<Oid, Vec<RefLabel>> {
+    let mut map: HashMap<Oid, Vec<RefLabel>> = HashMap::new();
+
+    if let Ok(refs) = repo.references() {
+        for r in refs.flatten() {
+            let name = r.shorthand().unwrap_or("").to_string();
+            if name.is_empty() || name.ends_with("/HEAD") {
+                continue;
+            }
+            let (kind, oid) = if r.is_remote() {
+                ("remote", r.target())
+            } else if r.is_tag() {
+                // Lightweight tags have a direct commit target; annotated tags
+                // need one peel through the tag object.
+                let oid = r
+                    .target()
+                    .filter(|target| repo.find_commit(*target).is_ok())
+                    .or_else(|| r.peel_to_commit().ok().map(|commit| commit.id()));
+                ("tag", oid)
+            } else if r.is_branch() {
+                ("branch", r.target())
+            } else {
+                continue;
+            };
+            let Some(oid) = oid else { continue };
+            if !visible_oids.contains(&oid) {
+                continue;
+            }
+            map.entry(oid).or_default().push(RefLabel {
+                name,
+                kind: kind.to_string(),
+            });
+        }
+    }
+
+    // Mark HEAD so the renderer can highlight the checked-out tip.
+    if let (Some(oid_str), _) = head_oid(repo) {
+        if let Ok(oid) = Oid::from_str(&oid_str) {
+            if !visible_oids.contains(&oid) {
+                return map;
+            }
+            let label = repo
+                .head()
+                .ok()
+                .and_then(|h| h.shorthand().map(|s| s.to_string()))
+                .unwrap_or_else(|| "HEAD".to_string());
+            map.entry(oid).or_default().push(RefLabel {
+                name: label,
+                kind: "head".to_string(),
+            });
+        }
+    }
+
+    map
+}
+
+/// Resolve HEAD to a commit oid string and whether it is detached.
+fn head_oid(repo: &Repository) -> (Option<String>, bool) {
+    let detached = repo.head_detached().unwrap_or(false);
+    let oid = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_commit().ok())
+        .map(|c| c.id().to_string());
+    (oid, detached)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_profiled;
+    use git2::Repository;
+    use std::env;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    #[ignore = "run explicitly against a generated fixture in release mode"]
+    fn benchmark_fixture() {
+        let path = env::var("GITLANE_BENCH_REPO")
+            .expect("set GITLANE_BENCH_REPO to a generated benchmark repository");
+        let limit = env::var("GITLANE_BENCH_LIMIT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(10_000);
+        let iterations = env::var("GITLANE_BENCH_ITERATIONS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(5);
+        let repo = Repository::discover(&path).expect("open benchmark repository");
+
+        let mut refs = Duration::ZERO;
+        let mut revwalk = Duration::ZERO;
+        let mut layout = Duration::ZERO;
+        let mut edges = Duration::ZERO;
+        let mut total = Duration::ZERO;
+        let mut serialization = Duration::ZERO;
+        let mut payload_bytes = 0usize;
+        let mut commits = 0usize;
+        let mut lanes = 0usize;
+
+        for _ in 0..iterations {
+            let (graph, metrics) = build_profiled(&repo, limit).expect("build graph");
+            let serialize_started = Instant::now();
+            let payload = serde_json::to_vec(&graph).expect("serialize graph");
+            serialization += serialize_started.elapsed();
+            payload_bytes = payload.len();
+            commits = graph.commits.len();
+            lanes = graph.lane_count;
+            refs += metrics.refs;
+            revwalk += metrics.revwalk;
+            layout += metrics.layout;
+            edges += metrics.edges;
+            total += metrics.total;
+        }
+
+        let average_ms = |duration: Duration| duration.as_secs_f64() * 1_000.0 / iterations as f64;
+        println!(
+            "GITLANE_GRAPH_BENCH {}",
+            serde_json::json!({
+                "path": path,
+                "limit": limit,
+                "iterations": iterations,
+                "commits": commits,
+                "lanes": lanes,
+                "payloadBytes": payload_bytes,
+                "averageMs": {
+                    "refs": average_ms(refs),
+                    "revwalk": average_ms(revwalk),
+                    "layout": average_ms(layout),
+                    "edges": average_ms(edges),
+                    "graphTotal": average_ms(total),
+                    "serialization": average_ms(serialization),
+                }
+            })
+        );
+    }
+}

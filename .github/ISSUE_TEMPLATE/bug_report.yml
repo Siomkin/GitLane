@@ -1,0 +1,77 @@
+name: Bug Report
+description: Report a reproducible GitLane bug
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for someone else to reproduce it.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+      placeholder: A clear description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Open GitLane
+        2. Open repository ...
+        3. Click ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: GitLane Version
+      description: Which version, tag, or commit are you running?
+      placeholder: "e.g. 0.1.0 or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Error Output
+      description: Paste relevant terminal, console, or app error output.
+      render: shell
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Recording
+      description: If applicable, drag and drop screenshots or a short recording here.
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Repository type, git provider, branch state, or anything else that might help.

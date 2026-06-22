@@ -1,0 +1,233 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (the redesign toggles a `.dark` class on `.gp-root`
+   rather than relying on the OS `prefers-color-scheme`). Tailwind v4 defaults
+   the `dark:` variant to media queries, so we redefine it as a class variant. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #bdb8b0;
+}
+
+/* Accent — the single brand colour the redesign threads through every accent
+   surface (HEAD badge, primary buttons, active tabs, +adds). Green by default;
+   `--accent-soft` is the low-alpha wash used for selected rows / chips. */
+.gp-root {
+  --accent: #2e9e62;
+  --accent-soft: rgba(46, 158, 98, 0.13);
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+input,
+textarea {
+  outline: none;
+}
+
+/* Tailwind v4's Preflight no longer sets `cursor: pointer` on buttons (it now
+   matches the native browser default), so every <button> showed the default
+   arrow. Restore the pointer cursor on enabled buttons / button-role elements
+   app-wide; disabled controls keep the default arrow. Scoped to `@layer base`
+   so component-level cursor utilities (e.g. an enabled button's `cursor-wait`
+   loading state) still win — Tailwind's `utilities` layer outranks `base`. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+.gp-root {
+  --bg: #16181d;
+  --bg2: #181b21;
+  --bg3: #1b1e24;
+  --panel: #15171c;
+  --elev: #1d2128;
+  --soft: #1c1f26;
+  --muted: #6b7280;
+  --icon: #7e8696;
+  --menuHover: #2d3543;
+  --pill: #1f232b;
+  --code: #13151a;
+  --hunkBg: #1a1d26;
+  --hunkText: #6b8cc0;
+  --btnHover: #21252c;
+  --tabActive: #262c38;
+  --tabActiveBd: #3a4252;
+  --chip: #22262e;
+  --chipBd: #2f3540;
+  --border: #23272f;
+  --border2: #2a2f38;
+  --border3: #2e3440;
+  --skelBase: #2b313c;
+  --skelHi: #424b5c;
+  --sep: #20242c;
+  --text: #e6e9ef;
+  --textBright: #f0f2f6;
+  --text2: #9aa3b2;
+  --text3: #8a93a6;
+  --text4: #5a6273;
+  --leaf: #c4cbd6;
+  --numCol: #566073;
+  --signCtx: #3a4150;
+  --nodeStroke: #15171c;
+  --headRing: #e8ebf2;
+  --hover: rgba(255, 255, 255, 0.028);
+  --altRow: rgba(255, 255, 255, 0.012);
+  --overlay: rgba(8, 9, 12, 0.55);
+}
+
+.gp-root:not(.dark) {
+  --bg: #ffffff;
+  --bg2: #f4f5f8;
+  --bg3: #eceef2;
+  --panel: #f7f8fa;
+  --elev: #f0f2f6;
+  --soft: #eef0f4;
+  --muted: #79808c;
+  --icon: #8a93a6;
+  --menuHover: #dde4f1;
+  --pill: #f4f6f9;
+  --code: #ffffff;
+  --hunkBg: #eaf0fb;
+  --hunkText: #4663a8;
+  --btnHover: #e9ecf1;
+  --tabActive: #e4e9f3;
+  --tabActiveBd: #c4ccdb;
+  --chip: #eef0f5;
+  --chipBd: #d6dae1;
+  --border: #e5e8ed;
+  --border2: #d8dce3;
+  --border3: #cad0d9;
+  --skelBase: #dfe3ea;
+  --skelHi: #f3f5f8;
+  --sep: #e9ecf1;
+  --text: #222732;
+  --textBright: #0d1117;
+  --text2: #4a5260;
+  --text3: #69707c;
+  --text4: #8a94a2;
+  --leaf: #2f3540;
+  --numCol: #aab1bd;
+  --signCtx: #c4cbd6;
+  --nodeStroke: #ffffff;
+  --headRing: #0d1117;
+  --hover: rgba(0, 0, 0, 0.04);
+  --altRow: rgba(0, 0, 0, 0.018);
+  --overlay: rgba(20, 25, 35, 0.34);
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border: 3px solid var(--bg);
+  border-radius: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes gp-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Shared popover/dropdown/dialog entrance (the design's `gp-pop` class). Used by
+   the PR action menus, merge dropdown, and metadata pickers. */
+.gp-pop {
+  animation: gp-pop 0.16s cubic-bezier(0.16, 0.84, 0.44, 1);
+  transform-origin: top;
+}
+
+/* Attention pulse on the commit row the graph just jumped to (branch picked in
+   the navigator). Background + accent ring flash, then settles into the resting
+   selected tint (--accent-soft = rgba(46,158,98,0.13)) so there's no end flicker.
+   Layout-neutral (no transform) so it can't desync from the graph canvas. */
+@keyframes gp-reveal {
+  0% {
+    background-color: rgba(46, 158, 98, 0.34);
+    box-shadow: inset 0 0 0 2.5px rgba(46, 158, 98, 0.9);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2.5px rgba(46, 158, 98, 0);
+  }
+  100% {
+    background-color: rgba(46, 158, 98, 0.13);
+    box-shadow: inset 0 0 0 0 rgba(46, 158, 98, 0);
+  }
+}
+
+.gp-reveal-flash {
+  animation: gp-reveal 0.75s ease-out;
+}
+
+@keyframes gp-toast {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Loading placeholder: a clearly-visible shimmer sweep (a plain opacity pulse
+   was too subtle on the dark theme and read as "frozen"). */
+@keyframes gp-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.gp-skeleton {
+  background-color: var(--skelBase);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--skelHi) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: gp-shimmer 1.3s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+.graph-scroll {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.graph-scroll canvas {
+  display: block;
+}

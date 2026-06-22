@@ -1,0 +1,49 @@
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/**"
+          - "index.html"
+          - "vite.config.ts"
+          - "tsconfig*.json"
+
+rust:
+  - changed-files:
+      - any-glob-to-any-file: "src-tauri/**"
+
+terminal-agents:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/features/terminal/**"
+          - "src-tauri/src/terminal*.rs"
+
+github-integration:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src-tauri/src/git/github/**"
+          - "src-tauri/src/auth_providers.rs"
+          - "src/store/accounts.ts"
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "*.md"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/test/**"
+          - "src/**/*.test.ts"
+          - "src/**/*.test.tsx"
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "bun.lock"
+          - "package.json"
+          - "src-tauri/Cargo.lock"
+          - "src-tauri/Cargo.toml"
