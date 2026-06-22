@@ -427,7 +427,9 @@ export const useRepo = create<RepoState>((set, get) => ({
         const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
         set({
           changes,
-          loading: false,
+          // Only clear the spinner if this call owned it (non-quiet). The quiet
+          // watcher path never set it, so it must not clear a concurrent load's.
+          ...(opts?.quiet ? {} : { loading: false }),
           ...(selectedFileGone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
@@ -667,7 +669,13 @@ export const useRepo = create<RepoState>((set, get) => ({
 
   mergeInto: (from, to) =>
     runOp(get, async (summary) => {
-      if (summary.headBranch !== to) await api.checkout(summary.path, to);
+      if (summary.headBranch !== to) {
+        try {
+          await api.checkout(summary.path, to);
+        } catch (e) {
+          throw new Error(`Couldn't check out ${to} to merge into it: ${e}`);
+        }
+      }
       await api.mergeBranch(summary.path, from);
       return `Merged ${from} into ${to}`;
     }),
@@ -901,9 +909,9 @@ export const useRepo = create<RepoState>((set, get) => ({
     try {
       // Files unchecked in the modal are dropped from this commit by unstaging
       // them first; they stay in the working tree.
-      for (const file of excludePaths) {
-        await api.unstageFile(summary.path, file);
-      }
+      // Unstage the excluded set atomically so a partial failure can't leave
+      // some of them staged.
+      if (excludePaths.length > 0) await api.unstageFiles(summary.path, excludePaths);
       const { summary: subject, description } = splitCommitMessage(message);
       await api.commit(summary.path, subject, description, amend, identity?.name, identity?.email);
       await get().refresh();

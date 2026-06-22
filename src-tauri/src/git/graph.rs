@@ -150,8 +150,16 @@ pub fn build_profiled(
         nodes.push(CommitNode {
             id: oid.to_string(),
             short_id: oid.to_string().chars().take(7).collect(),
-            summary: commit.summary().unwrap_or("").to_string(),
-            body: commit.body().unwrap_or("").trim().to_string(),
+            // Lossy-decode so a non-UTF-8 commit message degrades to a readable
+            // approximation instead of rendering as an empty summary/body.
+            summary: commit
+                .summary_bytes()
+                .map(|b| String::from_utf8_lossy(b).into_owned())
+                .unwrap_or_default(),
+            body: commit
+                .body_bytes()
+                .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                .unwrap_or_default(),
             author_name: author.name().unwrap_or("").to_string(),
             author_email: author.email().unwrap_or("").to_string(),
             timestamp: commit.time().seconds(),

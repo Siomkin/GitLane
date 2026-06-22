@@ -236,6 +236,11 @@ async fn unstage_file(path: String, file: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn unstage_files(path: String, files: Vec<String>) -> Result<String, String> {
+    blocking(move || git::write::unstage_files(&path, &files)).await
+}
+
+#[tauri::command]
 async fn discard_file(path: String, file: String, staged: bool) -> Result<String, String> {
     blocking(move || git::write::discard_file(&path, &file, staged)).await
 }
@@ -644,6 +649,7 @@ pub fn run() {
             diff_range_file,
             stage_file,
             unstage_file,
+            unstage_files,
             discard_file,
             stage_all,
             unstage_all,

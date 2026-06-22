@@ -455,6 +455,18 @@ pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
     run_git(repo, &["restore", "--staged", "--", file])
 }
 
+/// Unstage several files in one atomic invocation (`git restore --staged -- A B…`)
+/// so a partial failure can't leave some of the set staged. Paths follow `--`, so
+/// a dash-prefixed path cannot be parsed as a flag.
+pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
+    if files.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["restore", "--staged", "--"];
+    args.extend(files.iter().map(String::as_str));
+    run_git(repo, &args)
+}
+
 /// Discard a single file's working-tree changes, reverting it to its HEAD/index
 /// state. When `staged` is set the file is unstaged first, then its worktree
 /// copy is restored — so "discard" works whether the change is staged or not.

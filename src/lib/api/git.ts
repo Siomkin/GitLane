@@ -244,6 +244,10 @@ export const gitApi = {
   unstageFile: (path: string, file: string) =>
     invoke<string>("unstage_file", { path, file }),
 
+  /** Unstage several files atomically (one `git restore --staged`). */
+  unstageFiles: (path: string, files: string[]) =>
+    invoke<string>("unstage_files", { path, files }),
+
   /** Discard a file's working-tree changes (reverting to HEAD). When `staged`,
    * the file is unstaged first; an untracked file is removed. */
   discardFile: (path: string, file: string, staged: boolean) =>

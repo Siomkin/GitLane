@@ -65,7 +65,9 @@ export function HistoryWorkspace() {
   const laneCount = graph?.laneCount ?? 1;
   const fallbackNodeX = graphLaneX(rowModel.fallbackMarkerLane);
   const lanesNeeded = Math.max(laneCount, rowModel.maxMarkerLane + 1);
-  const autoGraphW = Math.min(280, Math.max(56, GEOMETRY.padLeft + lanesNeeded * GEOMETRY.laneWidth + 22));
+  // Cap the auto width generously (480px) so wide lane/marker counts aren't
+  // clipped off-canvas; the user can still resize via graphWidthManual.
+  const autoGraphW = Math.min(480, Math.max(56, GEOMETRY.padLeft + lanesNeeded * GEOMETRY.laneWidth + 22));
   const graphColW = graphWidthManual ?? autoGraphW;
 
   const scrollRef = useRef<HTMLDivElement>(null);

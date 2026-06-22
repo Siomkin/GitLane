@@ -247,6 +247,8 @@ pub struct ForgeAuthStatus {
     pub auth_method: String,
     pub available: bool,
     /// None means GitLane cannot safely probe auth state for this provider.
+    /// For tea-backed providers (Gitea/Forgejo) `Some(true)` means tea has *any*
+    /// configured login, not necessarily one scoped to this repo's host.
     pub authenticated: Option<bool>,
     pub login_command: String,
     pub docs_url: String,
