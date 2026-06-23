@@ -1,10 +1,12 @@
 import { cn } from "../../lib/cn";
+import { isMac } from "../../lib/platform";
 import { repoLabel } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { FolderIcon, MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "../ui/icons";
 import { AccountChip } from "./AccountChip";
+import { WindowControls } from "./WindowControls";
 
 export function TitleBar() {
   const summary = useRepo((state) => state.summary);
@@ -23,8 +25,9 @@ export function TitleBar() {
       className="flex h-12 shrink-0 items-center gap-4 px-4"
     >
       {/* Reserve room for the native macOS traffic-light buttons, which overlay
-          the top-left corner (titleBarStyle: Overlay). */}
-      <div data-tauri-drag-region aria-hidden="true" className="w-[58px] shrink-0" />
+          the top-left corner (titleBarStyle: Overlay). Windows/Linux are
+          frameless with our own <WindowControls> at the right, so no spacer. */}
+      {isMac && <div data-tauri-drag-region aria-hidden="true" className="w-[58px] shrink-0" />}
 
       <div data-tauri-drag-region className="flex min-w-0 items-center gap-1 overflow-x-auto">
         {openPaths.map((path) => {
@@ -97,6 +100,9 @@ export function TitleBar() {
         <div className="mx-1.5 h-5 w-px bg-black/10 dark:bg-white/10" />
         <AccountChip />
       </div>
+
+      {/* Windows/Linux frameless caption controls; macOS uses native traffic lights. */}
+      {!isMac && <WindowControls />}
     </header>
   );
 }

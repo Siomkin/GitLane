@@ -16,6 +16,7 @@ import {
 import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { SettingsModal } from "./components/chrome/SettingsModal";
 import { TitleBar } from "./components/chrome/TitleBar";
+import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
 import { WelcomeScreen } from "./components/chrome/WelcomeScreen";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
@@ -30,6 +31,7 @@ import { RightPanel } from "./features/changes/RightPanel";
 import { cn } from "./lib/cn";
 import { accentVars } from "./lib/accent";
 import type { LeftTab } from "./lib/ui";
+import { isMac } from "./lib/platform";
 import { useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useAccounts } from "./store/accounts";
@@ -189,6 +191,9 @@ function App() {
       <PromptDialog />
       <Toast />
       <Tooltip />
+
+      {/* Frameless-window edge resize grips (Windows/Linux only). */}
+      {!isMac && <WindowResizeHandles />}
     </div>
   );
 }
