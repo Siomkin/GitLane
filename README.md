@@ -1,6 +1,6 @@
 # GitLane
 
-A visual git client for macOS — a lightweight, GitKraken-style commit tree with
+A visual git client for macOS — a lightweight, swimlane-style commit tree with
 drag-and-drop branch operations. Built on **Tauri 2** (Rust core) + **React/TypeScript**.
 
 ## Stack

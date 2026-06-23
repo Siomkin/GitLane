@@ -242,7 +242,7 @@ export function buildHistoryRows({
     // Keep the marker just right of the anchor's lane, clear of whatever crosses
     // the stash's own row(s). Deliberately *not* the full span down to the base
     // — measuring that would shove the marker past every branch the connector
-    // passes (e.g. a dependabot fan), where GitKraken keeps it tucked beside the
+    // passes (e.g. a dependabot fan), keeping it tucked beside the
     // mainline with the dashed line simply running through.
     const occupied = occupiedLanesInSpan(
       graph,

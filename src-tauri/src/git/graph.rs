@@ -1,7 +1,7 @@
 //! Commit-graph construction and lane (column) layout.
 //!
 //! This is the heart of the visual client: we walk the commit DAG and assign
-//! every commit a `lane` so the frontend can paint GitKraken-style swimlanes.
+//! every commit a `lane` so the frontend can paint the swimlane columns.
 //! The algorithm is the classic "reservation" approach — each lane holds the
 //! id of the parent commit it is currently waiting to render.
 
@@ -94,7 +94,7 @@ pub fn build_profiled(
     // Walk in date order (libgit2's `TOPOLOGICAL | TIME`): children before
     // parents, with commit time as the tie-breaker. In the common case this
     // keeps a run of trunk merges grouped near the top and lets each merged
-    // topic branch cascade *below* them — the GitKraken-style swimlane shape.
+    // topic branch cascade *below* them — the grouped swimlane shape.
     // It's a heuristic, not a guarantee: the grouping rides on commit
     // timestamps, so rebased or clock-skewed branches whose commits predate
     // their own merge can interleave differently. Tips still surface first, so

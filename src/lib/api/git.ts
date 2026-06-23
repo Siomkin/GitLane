@@ -112,7 +112,7 @@ export interface StashEntry {
   message: string;
   oid: string;
   /** Committer time of the stash commit itself — used to slot the stash into the
-   * date-ordered history where it was created (GitKraken-style placement). */
+   * date-ordered history where it was created (date-ordered placement). */
   timestamp: number;
   baseOid: string | null;
   baseTimestamp: number | null;

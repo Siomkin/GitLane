@@ -17,7 +17,7 @@ pub struct RefLabel {
 /// Marks a graph node that is actually a stash rather than a commit. In-window
 /// stashes (those whose base commit is inside the loaded history) are injected
 /// into the layout as synthetic single-parent nodes so the reservation algorithm
-/// gives each its own held-open lane — the GitKraken treatment where the fan
+/// gives each its own held-open lane — the reserved-lane treatment where the fan
 /// shifts right and the stash drops straight down to its base with nothing under
 /// it. The frontend renders these as the amber `stash@{index}` marker + a dashed
 /// edge to the base, instead of a commit dot.
@@ -147,8 +147,8 @@ pub struct StashEntry {
     /// The stash commit oid (diffable like a commit vs its first parent).
     pub oid: String,
     /// Committer timestamp of the stash commit itself, used to slot the stash
-    /// into the date-ordered history at the point it was created (GitKraken
-    /// places stashes by their own time, not next to their base commit).
+    /// into the date-ordered history at the point it was created (stashes sit at
+    /// their own time, not next to their base commit).
     pub timestamp: i64,
     /// First parent of the stash commit: the commit the stash was created from.
     pub base_oid: Option<String>,
