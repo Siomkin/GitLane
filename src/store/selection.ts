@@ -37,8 +37,16 @@ export interface SquashEligibility {
   parent?: string;
 }
 
+/** Real commit rows only — excludes the in-window stash nodes that now share
+ * `graph.commits` (the Rust layout injects them by time). Batch/squash use array
+ * *index* for contiguity, so an interleaved stash node would split an otherwise
+ * adjacent commit range; stashes must never take part in that index math. */
+function realCommits(graph: RepoGraph | null) {
+  return (graph?.commits ?? []).filter((commit) => !commit.stash);
+}
+
 export function isCommitReachableFromRemote(graph: RepoGraph | null, sha: string): boolean {
-  const rows = graph?.commits ?? [];
+  const rows = realCommits(graph);
   const parentById = new Map(rows.map((commit) => [commit.id, commit.parents]));
   const stack = rows
     .filter((commit) => commit.refs.some((ref) => ref.kind === "remote"))
@@ -122,7 +130,7 @@ export function buildCommitBatchPlan(
   graph: RepoGraph | null,
   selection: string[],
 ): CommitBatchPlan {
-  const rows = graph?.commits ?? [];
+  const rows = realCommits(graph);
   const selected = new Set(selection);
   const ordered = rows.length > 0
     ? rows.filter((commit) => selected.has(commit.id)).map((commit) => commit.id)
@@ -177,7 +185,7 @@ export function validateSquashRange(graph: RepoGraph | null, shas: string[]): st
  * squashing it would rewrite published history and require a force push. */
 export function getSquashEligibility(graph: RepoGraph | null, shas: string[]): SquashEligibility {
   if (shas.length < 2) return { ok: false, reason: "Select at least two commits to squash" };
-  const rows = graph?.commits ?? [];
+  const rows = realCommits(graph);
   const indexById = new Map(rows.map((c, i) => [c.id, i]));
   const present = shas.filter((id) => indexById.has(id));
   if (present.length !== shas.length) return { ok: false, reason: "Selected commits are not in the loaded graph" };

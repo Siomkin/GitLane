@@ -101,7 +101,7 @@ export function GraphLayer({
     // as an annotation tied to its origin rather than glued
     // beside it.
     if ((hasWip || stashConnectors.length > 0) && head) {
-      const headCommit = graph.commits.find((commit) => commit.id === head);
+      const headCommit = graph.commits.find((commit) => commit.id === head && !commit.stash);
       if (hasWip && headCommit) {
         const x = graphLaneX(headCommit.lane);
         const yHead = graphRowY(headCommit.row);

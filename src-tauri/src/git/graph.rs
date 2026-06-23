@@ -45,6 +45,12 @@ fn read_in_window_stashes(repo: &Repository, visible_oids: &HashSet<Oid>) -> Vec
     let mut metas = Vec::new();
     for (index, entry) in reflog.iter().enumerate() {
         let oid = entry.id_new();
+        // If the stash commit itself is already in the revwalk (e.g. HEAD detached
+        // at it, or otherwise reachable from a tip), it's laid out as a normal
+        // commit — injecting it too would emit a duplicate node with the same id.
+        if visible_oids.contains(&oid) {
+            continue;
+        }
         let Ok(commit) = repo.find_commit(oid) else {
             continue;
         };
@@ -150,16 +156,17 @@ pub fn build_profiled(
         .collect::<Result<_, _>>()?;
 
     // Inject stashes whose base is in the window. Merge them into the date-ordered
-    // walk: emit each stash created strictly after a commit's time just before
-    // that commit, so it slots in where it was created — then the reservation
-    // algorithm below holds its lane open down to the base (fan shifts right).
-    // Tie-break: `>` (not `>=`) places a stash sharing a commit's exact second
-    // *below* that commit, matching the frontend interleave it replaces.
+    // walk: emit each stash created at-or-after a commit's time just before that
+    // commit, so it slots in where it was created — then the reservation algorithm
+    // below holds its lane open down to the base (fan shifts right).
+    // Tie-break: `>=` (not `>`). A stash's committer time is always >= its base's,
+    // so on a tie the stash must still emit *above* the base — a synthetic child
+    // has to render before its parent or the reserved lane/edge would invert.
     let stash_metas = read_in_window_stashes(repo, &visible_oids);
     let mut order: Vec<Entry> = Vec::with_capacity(commit_times.len() + stash_metas.len());
     let mut next_stash = 0usize;
     for &(oid, ct) in &commit_times {
-        while next_stash < stash_metas.len() && stash_metas[next_stash].timestamp > ct {
+        while next_stash < stash_metas.len() && stash_metas[next_stash].timestamp >= ct {
             order.push(Entry::Stash(&stash_metas[next_stash]));
             next_stash += 1;
         }
@@ -568,6 +575,68 @@ mod tests {
                 .iter()
                 .any(|edge| edge.from_row == stash_node.row && edge.to_row == base_node.row),
             "stash node has an edge to its base",
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A stash whose committer time equals its base's still renders *above* the
+    /// base (synthetic child before parent), so the reserved lane/edge don't invert.
+    #[test]
+    fn stash_sharing_its_base_timestamp_renders_above_the_base() {
+        let dir = std::env::temp_dir().join("gitlane-stash-eqts-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut repo = Repository::init(&dir).unwrap();
+
+        let c1 = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+        let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v2\n", &[c1], 200);
+        fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+        // Stash committer time == base committer time (200).
+        repo.stash_save2(&sig(200), Some("WIP same second"), None).unwrap();
+        let _c3 = commit_on(&repo, &dir, "HEAD", "a.txt", "v3\n", &[base], 300);
+
+        let graph = build(&repo, 100).unwrap();
+        let stash_node = graph.commits.iter().find(|n| n.stash.is_some()).expect("stash node");
+        let base_node = graph.commits.iter().find(|n| n.id == base.to_string()).expect("base node");
+
+        assert!(
+            stash_node.row < base_node.row,
+            "stash (row {}) must render above its base (row {})",
+            stash_node.row,
+            base_node.row,
+        );
+        assert!(
+            graph.edges.iter().any(|e| e.from_row == stash_node.row && e.to_row == base_node.row),
+            "stash edge runs down to the base",
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A stash commit that is itself reachable (HEAD detached at it) is laid out as
+    /// a normal commit and must NOT also be injected — no duplicate node id.
+    #[test]
+    fn stash_already_in_the_walk_is_not_injected_twice() {
+        let dir = std::env::temp_dir().join("gitlane-stash-dup-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut repo = Repository::init(&dir).unwrap();
+
+        let c1 = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+        let _base = commit_on(&repo, &dir, "HEAD", "a.txt", "v2\n", &[c1], 200);
+        fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+        repo.stash_save2(&sig(250), Some("WIP detached"), None).unwrap();
+        let stash_oid = repo.find_reference("refs/stash").unwrap().target().unwrap();
+        // Detach HEAD onto the stash commit so the revwalk sees it as a commit.
+        repo.set_head_detached(stash_oid).unwrap();
+
+        let graph = build(&repo, 100).unwrap();
+        let with_stash_id = graph.commits.iter().filter(|n| n.id == stash_oid.to_string()).count();
+        assert_eq!(with_stash_id, 1, "the stash commit appears exactly once, not duplicated");
+        assert!(
+            graph.commits.iter().all(|n| n.stash.is_none()),
+            "the reachable stash commit is laid out as a plain commit, not injected",
         );
 
         let _ = fs::remove_dir_all(&dir);

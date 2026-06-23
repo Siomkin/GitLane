@@ -86,4 +86,25 @@ describe("CommitInspector", () => {
     expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
   });
+
+  it("synthesises stash metadata from the graph node when the stash list hasn't loaded", () => {
+    // listStashes can lag the graph; the selected stash exists only as a node.
+    useRepo.setState({
+      stashes: [],
+      graph: {
+        ...graph,
+        commits: [
+          commit({ id: "stash-oid", summary: "stash-as-commit", authorName: "", parents: ["base-commit"], stash: { index: 2, message: "On feature: WIP stash" } }),
+          commit({ id: "c1", summary: "wrong fallback commit" }),
+        ],
+      },
+    });
+
+    render(<CommitInspector />);
+
+    expect(screen.getByText("stash@{2}")).toBeInTheDocument();
+    expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
+    expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
+    expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+  });
 });
