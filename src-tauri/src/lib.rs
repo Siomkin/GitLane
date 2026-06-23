@@ -16,8 +16,8 @@ use watcher::WatcherState;
 
 use git::types::{
     BranchInfo, FileChange, FileDiff, ForgeAuthStatus, GithubAccount, GithubAccountRef, PrCheck,
-    PrCommitSignature, PullRequestDetail, PullRequestSummary, RepoGraph, RepoIdentity, RepoSummary,
-    ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
+    PrCommitSignature, PullRequestDetail, PullRequestSummary, RepoForge, RepoGraph, RepoIdentity,
+    RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -451,6 +451,15 @@ async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
     blocking(|| Ok(auth_providers::statuses())).await
 }
 
+/// Detect the open repo's remote forge for the toolbar provider indicator.
+/// A cheap synchronous libgit2 read of the configured remotes (no network, no
+/// auth probing) — kept sync like the other `read.rs`-style reads; only
+/// shell-outs and the heavy `commit_graph` walk use `blocking()`.
+#[tauri::command]
+fn repo_forge(path: String) -> Result<RepoForge, String> {
+    Ok(git::forge::summary(&path))
+}
+
 // These shell out to the `gh` CLI (token resolution + the API call), which
 // blocks for ~1s+. They are `async` and run the blocking work on the blocking
 // thread pool so the webview's main thread stays free — a synchronous command
@@ -748,6 +757,7 @@ pub fn run() {
             push_branch,
             github_accounts,
             forge_auth_statuses,
+            repo_forge,
             list_pull_requests,
             pull_request_detail,
             pull_request_checks,

@@ -4,12 +4,15 @@
 
 import { cn } from "../../lib/cn";
 
-export function Spinner({ className }: { className?: string }) {
+export function Spinner({ className, accent = false }: { className?: string; accent?: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
-        "inline-block animate-spin rounded-full border-2 border-black/10 border-t-neutral-500 dark:border-white/10 dark:border-t-neutral-400",
+        "inline-block animate-spin rounded-full border-2",
+        accent
+          ? "border-[color:var(--accent-soft)] border-t-[color:var(--accent)]"
+          : "border-black/10 border-t-neutral-500 dark:border-white/10 dark:border-t-neutral-400",
         className ?? "h-4 w-4",
       )}
     />

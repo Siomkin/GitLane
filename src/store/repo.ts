@@ -8,6 +8,7 @@ import {
   type BranchInfo,
   type FileChange,
   type FileDiff,
+  type RepoForge,
   type RepoGraph,
   type RepoSummary,
   type StashEntry,
@@ -57,6 +58,9 @@ function persistSession(openPaths: string[], lastPath: string | null) {
 
 interface RepoState {
   summary: RepoSummary | null;
+  /** The open repo's remote forge — drives the provider indicator and gates the
+   * GitHub-only PR path (no `gh` resolution for non-GitHub remotes). */
+  forge: RepoForge | null;
   graph: RepoGraph | null;
   branches: BranchInfo[];
   worktrees: WorktreeInfo[];
@@ -246,6 +250,7 @@ async function runOp(
 
 export const useRepo = create<RepoState>((set, get) => ({
   summary: null,
+  forge: null,
   graph: null,
   branches: [],
   worktrees: [],
@@ -279,6 +284,7 @@ export const useRepo = create<RepoState>((set, get) => ({
     set({
       loading: true,
       error: null,
+      forge: null,
       selectedCommit: null,
       selectedCommits: [],
       selectionAnchor: null,
@@ -292,12 +298,13 @@ export const useRepo = create<RepoState>((set, get) => ({
     });
     try {
       const summary = await api.openRepo(path);
-      const [graph, branches, worktrees, stashes, changes] = await Promise.all([
+      const [graph, branches, worktrees, stashes, changes, forge] = await Promise.all([
         api.commitGraph(summary.path, INITIAL_GRAPH_LIMIT),
         api.listBranches(summary.path),
         api.listWorktrees(summary.path).catch(() => []),
         api.listStashes(summary.path).catch(() => []),
         api.workingChanges(summary.path),
+        api.repoForge(summary.path).catch(() => null),
       ]);
       if (generation !== graphRequestGeneration) return;
       const selectedCommit = graph.commits[0]?.id ?? null;
@@ -307,6 +314,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       persistSession(openPaths, summary.path);
       set({
         summary,
+        forge,
         graph,
         branches,
         worktrees,
@@ -366,6 +374,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       set({
         openPaths: [],
         summary: null,
+        forge: null,
         graph: null,
         branches: [],
         worktrees: [],
@@ -390,6 +399,7 @@ export const useRepo = create<RepoState>((set, get) => ({
     set({
       openPaths: remaining,
       summary: null,
+      forge: null,
       graph: null,
       branches: [],
       worktrees: [],
@@ -449,13 +459,14 @@ export const useRepo = create<RepoState>((set, get) => ({
         return;
       }
 
-      const [nextSummary, graph, branches, worktrees, stashes, changes] = await Promise.all([
+      const [nextSummary, graph, branches, worktrees, stashes, changes, forge] = await Promise.all([
         api.openRepo(summary.path),
         api.commitGraph(summary.path, graphLimit),
         api.listBranches(summary.path),
         api.listWorktrees(summary.path).catch(() => []),
         api.listStashes(summary.path).catch(() => []),
         api.workingChanges(summary.path),
+        api.repoForge(summary.path).catch(() => null),
       ]);
       if (generation === null || !graphRequestIsCurrent(generation, summary.path)) return;
       const currentSelection = get().selectedCommit;
@@ -492,6 +503,7 @@ export const useRepo = create<RepoState>((set, get) => ({
       const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
       set({
         summary: nextSummary,
+        forge,
         graph,
         branches,
         worktrees,

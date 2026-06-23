@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
-import type { RepoSummary } from "@/lib/api";
+import { ForgeKind, type RepoForge, type RepoSummary } from "@/lib/api";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -21,10 +21,19 @@ const SUMMARY: RepoSummary = {
   detached: false,
 };
 
+const forge = (over: Partial<RepoForge>): RepoForge => ({
+  hasRemote: true,
+  kind: ForgeKind.GitHub,
+  forge: "GitHub",
+  host: "github.com",
+  webUrl: "https://github.com/o/r",
+  ...over,
+});
+
 beforeEach(() => {
   invokeMock.mockReset();
   usePulls.getState().reset();
-  useRepo.setState({ summary: SUMMARY });
+  useRepo.setState({ summary: SUMMARY, forge: forge({}) });
   useAccounts.setState({ repoAccountId: null, repoAccountRef: null });
 });
 
@@ -76,5 +85,43 @@ describe("pulls lazy-load error isolation", () => {
     expect(s.prDiffError[7]).toBeDefined();
     expect(s.prDiffError[9]).toBeUndefined();
     expect(s.prDiffs[9]).toEqual([]);
+  });
+});
+
+// PRs are GitHub-only (they run through `gh`). The list load must NOT attempt
+// the `gh` resolution for a non-GitHub forge or a remote-less repo — that's the
+// "asks GitHub for a non-GitHub repo" bug.
+describe("pulls GitHub-only gating", () => {
+  it("skips the gh call for a non-GitHub forge and explains why", async () => {
+    useRepo.setState({ forge: forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" }) });
+
+    await usePulls.getState().loadPullRequests();
+
+    const s = usePulls.getState();
+    expect(invokeMock).not.toHaveBeenCalled(); // never resolved a GitHub repo
+    expect(s.pullRequests).toEqual([]);
+    expect(s.prsLoading).toBe(false);
+    expect(s.prError).toContain("GitHub");
+    expect(s.prError).toContain("GitLab");
+  });
+
+  it("skips the gh call for a repo with no remote", async () => {
+    useRepo.setState({
+      forge: forge({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null }),
+    });
+
+    await usePulls.getState().loadPullRequests();
+
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(usePulls.getState().prError).toContain("no remote");
+  });
+
+  it("still runs the gh load for a GitHub forge", async () => {
+    invokeMock.mockResolvedValueOnce([]);
+
+    await usePulls.getState().loadPullRequests();
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(usePulls.getState().prError).toBeNull();
   });
 });

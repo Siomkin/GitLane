@@ -73,6 +73,25 @@ pub struct RepoSummary {
     pub detached: bool,
 }
 
+/// Remote-forge summary for the toolbar provider indicator. Pure libgit2
+/// detection from the configured remote URLs — no network or auth probing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoForge {
+    /// True when the repo has at least one remote with a non-empty URL.
+    pub has_remote: bool,
+    /// Lowercase forge key ("github", "gitlab", …). None when there is no
+    /// remote or the host is not a recognised forge.
+    pub kind: Option<String>,
+    /// Human-readable forge label ("GitHub", "GitLab", …). None when unclassified.
+    pub forge: Option<String>,
+    /// Remote host (e.g. "github.com"). None when no remote URL is configured.
+    pub host: Option<String>,
+    /// Browser URL for the repo (`https://host/owner/repo`), derived from the
+    /// remote URL. None when no path can be parsed (e.g. no remote).
+    pub web_url: Option<String>,
+}
+
 /// The commit identity pinned in a repo's *local* git config (`user.name` /
 /// `user.email`). `None` from the read side means nothing is pinned locally and
 /// the repo defers to global git config.

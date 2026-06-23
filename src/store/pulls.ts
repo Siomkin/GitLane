@@ -7,6 +7,7 @@ import { create } from "zustand";
 
 import {
   api,
+  ForgeKind,
   type FileDiff,
   type GithubAccountRef,
   type MergeMethod,
@@ -147,9 +148,22 @@ export const usePulls = create<PullsState>((set, get) => ({
   // Failures (gh missing, no GitHub remote, not logged in) surface as `prError`
   // and leave the list empty — never throw into the UI.
   loadPullRequests: async (force, quiet) => {
-    const summary = useRepo.getState().summary;
+    const { summary, forge } = useRepo.getState();
     if (!summary) {
       set({ pullRequests: [], prError: null });
+      return;
+    }
+    // Pull requests are GitHub-only (they run through `gh`). For any other forge
+    // — or a repo with no remote — skip the `gh` resolution entirely instead of
+    // surfacing a confusing "couldn't resolve a GitHub repository" error.
+    if (forge && forge.kind !== ForgeKind.GitHub) {
+      set({
+        pullRequests: [],
+        prsLoading: false,
+        prError: forge.hasRemote
+          ? `Pull requests are only available for GitHub repositories. This repo's remote is ${forge.forge ?? forge.host ?? "not GitHub"}.`
+          : "This repository has no remote, so there are no pull requests.",
+      });
       return;
     }
     const account = useAccounts.getState().repoAccountRef;

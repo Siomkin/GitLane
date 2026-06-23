@@ -1,34 +1,42 @@
-import { useEffect, useRef } from "react";
-import { cn } from "../../lib/cn";
-import { useDismiss } from "../../hooks/useDismiss";
-import type { MouseEvent, ReactNode } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { focusRing } from "../../lib/ui";
-import type { LeftTab } from "../../lib/ui";
-import { useRepo } from "../../store/repo";
-import { usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
-import { BranchNavigator } from "../navigation/branch-navigator";
+import { useEffect, useRef, useState } from "react";
+import { cn } from "../../../lib/cn";
+import { useDismiss } from "../../../hooks/useDismiss";
+import { focusRing } from "../../../lib/ui";
+import type { LeftTab } from "../../../lib/ui";
+import { useRepo } from "../../../store/repo";
+import { usePulls } from "../../../store/pulls";
+import { useUi } from "../../../store/ui";
+import { useAccounts } from "../../../store/accounts";
+import { BranchNavigator } from "../../navigation/branch-navigator";
 import {
   BranchIcon,
   ClockIcon,
   FetchIcon,
-  GitHubIcon,
   PullIcon,
   PullRequestIcon,
   PushIcon,
   StashIcon,
   TerminalIcon,
-} from "../ui/icons";
+} from "../../ui/icons";
+import { SegTab } from "./SegTab";
+import { ToolbarAction } from "./ToolbarAction";
+import { Separator } from "./Separator";
+import { ProviderIndicator } from "./ProviderIndicator";
+import { deriveProviderState } from "./provider";
+import type { ProviderState } from "./provider";
 
-export function ActionBar({
+/** Network ops that surface a per-button spinner driven by their command promise. */
+type NetOp = "fetch" | "pull" | "push";
+
+export const ActionBar = ({
   activeTab,
   onTabChange,
 }: {
   activeTab: LeftTab;
   onTabChange: (tab: LeftTab) => void;
-}) {
+}) => {
   const summary = useRepo((state) => state.summary);
+  const forge = useRepo((state) => state.forge);
   const loading = useRepo((state) => state.loading);
   const fetch = useRepo((state) => state.fetch);
   const pull = useRepo((state) => state.pull);
@@ -43,6 +51,32 @@ export function ActionBar({
   const toggleNav = useUi((state) => state.toggleNav);
   const openNav = useUi((state) => state.openNav);
   const closeNav = useUi((state) => state.closeNav);
+  const selectPr = useUi((state) => state.selectPr);
+  const accounts = useAccounts((state) => state.accounts);
+  const accountsError = useAccounts((state) => state.accountsError);
+  const accountsLoading = useAccounts((state) => state.accountsLoading);
+  const repoAccountRef = useAccounts((state) => state.repoAccountRef);
+
+  // Per-button in-flight state for the network ops. The store's single global
+  // `loading` flag can't say which button is busy (and `pull`/`push` don't even
+  // toggle it), so we track each spinner against its own awaited command promise.
+  // `busyRef` is the synchronous re-entry guard — `busy` state lags a render, so
+  // a fast double-click (or starting a second op before the first resolves)
+  // would otherwise run twice and clear `busy` while the first is still in
+  // flight. Only one network op runs at a time.
+  const [busy, setBusy] = useState<NetOp | null>(null);
+  const busyRef = useRef(false);
+  const run = (key: NetOp, action: () => Promise<unknown>) => async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(key);
+    try {
+      await action();
+    } finally {
+      busyRef.current = false;
+      setBusy(null);
+    }
+  };
 
   const workCount = changes.staged.length + changes.unstaged.length;
   // Badge counts only open PRs — the list is fetched `--state all`, but a tab
@@ -57,6 +91,13 @@ export function ActionBar({
   const openPr = summary?.detached
     ? undefined
     : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
+
+  // Remote-provider status: forge detection (backend) combined with GitHub auth
+  // state (accounts store). Only GitHub supports PRs today; other forges are
+  // surfaced as "unsupported" with the forge named in the tooltip.
+  const providerState: ProviderState | null = forge
+    ? deriveProviderState(forge, { accounts, accountsError, accountsLoading, repoAccountRef })
+    : null;
 
   // ⌘ + Option + F opens the navigator and focuses its filter (the input
   // autofocuses on mount). `code === "KeyF"` since Option+F yields "ƒ" on macOS.
@@ -84,7 +125,7 @@ export function ActionBar({
   return (
     <div ref={wrapRef} className="relative flex-none">
       <div className="flex h-14 items-center gap-3 px-3.5">
-        <div className="flex flex-none rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
+        <div className="flex h-8 flex-none items-center rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
           <SegTab
             active={!showPulls}
             onClick={() => selectTab("history")}
@@ -107,7 +148,7 @@ export function ActionBar({
           <button
             onClick={toggleNav}
             title="Branches, worktrees & stashes"
-            className="flex h-10 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+            className="flex h-8 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
           >
             <BranchIcon className="h-4 w-4 shrink-0 text-[color:var(--accent)]" />
             <span className="truncate text-[14px] font-medium text-neutral-800 dark:text-neutral-100">
@@ -138,20 +179,52 @@ export function ActionBar({
 
         {openPr && (
           <button
-            onClick={() => void openUrl(openPr.url)}
-            title={`Open PR #${openPr.num} on GitHub — ${openPr.title}`}
-            className="flex h-10 flex-none items-center gap-1.5 rounded-lg border border-black/10 bg-white/40 px-2.5 text-[13px] font-medium hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+            onClick={() => {
+              // Select the PR first so the detail pane shows this one, not a
+              // stale selection, when the PRs view opens.
+              selectPr(openPr.num);
+              selectTab("pulls");
+            }}
+            title={`PR #${openPr.num} — ${openPr.title}`}
+            className={cn(
+              "flex h-8 flex-none items-center gap-1 rounded-lg border px-2 text-[12.5px] font-medium",
+              "border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/15",
+              focusRing,
+            )}
           >
-            <GitHubIcon className="h-3.5 w-3.5 text-neutral-500 dark:text-neutral-400" />
-            <span className="h-3.5 w-px bg-black/10 dark:bg-white/10" />
-            <span className="font-mono text-[12.5px] text-[color:var(--accent)]">#{openPr.num}</span>
+            <PullRequestIcon className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="font-mono text-emerald-600 dark:text-emerald-400">#{openPr.num}</span>
           </button>
         )}
 
         <div className="ml-auto flex items-center gap-0.5">
-          <ToolbarAction label="Fetch" icon={<FetchIcon />} onClick={fetch} disabled={loading || !summary} />
-          <ToolbarAction label="Pull" icon={<PullIcon />} onClick={pull} disabled={loading || !summary} />
-          <ToolbarAction label="Push" icon={<PushIcon />} onClick={push} disabled={loading || !summary} />
+          {forge && providerState && (
+            <>
+              <ProviderIndicator state={providerState} forge={forge} />
+              <Separator />
+            </>
+          )}
+          <ToolbarAction
+            label="Fetch"
+            icon={<FetchIcon />}
+            onClick={run("fetch", fetch)}
+            pending={busy === "fetch"}
+            disabled={(loading && busy !== "fetch") || !summary}
+          />
+          <ToolbarAction
+            label="Pull"
+            icon={<PullIcon />}
+            onClick={run("pull", pull)}
+            pending={busy === "pull"}
+            disabled={(loading && busy !== "pull") || !summary}
+          />
+          <ToolbarAction
+            label="Push"
+            icon={<PushIcon />}
+            onClick={run("push", push)}
+            pending={busy === "push"}
+            disabled={(loading && busy !== "push") || !summary}
+          />
           <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={() => openCreateBranch(true)} disabled={!summary} />
           <ToolbarAction
             label="Stash"
@@ -159,87 +232,17 @@ export function ActionBar({
             onClick={stash}
             disabled={loading || workCount === 0}
           />
+          <Separator />
           <ToolbarAction
             label="Terminal"
             icon={<TerminalIcon />}
             disabled={!summary}
             active={terminalVisible}
             onClick={toggleTerminal}
+            wide
           />
         </div>
       </div>
     </div>
   );
-}
-
-function SegTab({
-  active,
-  onClick,
-  icon,
-  label,
-  badge,
-  badgeTone,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: ReactNode;
-  label: string;
-  badge?: number;
-  badgeTone: "accent" | "purple";
-}) {
-  return (
-    <button
-      className={cn(
-        "flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition",
-        focusRing,
-        active
-          ? "bg-white text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-          : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
-      )}
-      onClick={onClick}
-    >
-      {icon}
-      {label}
-      {badge !== undefined && (
-        <span
-          className={cn(
-            "grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[10px] font-semibold text-white",
-            badgeTone === "accent" ? "bg-[var(--accent)]" : "bg-purple-500",
-          )}
-        >
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function ToolbarAction({
-  label,
-  icon,
-  onClick,
-  disabled = false,
-  active = false,
-}: {
-  label: string;
-  icon: ReactNode;
-  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
-  disabled?: boolean;
-  active?: boolean;
-}) {
-  return (
-    <button
-      className={cn(
-        "flex h-12 w-[54px] flex-col items-center justify-center gap-1 rounded-lg text-[11px] text-neutral-600 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-white/5",
-        focusRing,
-        active && "bg-black/5 text-[color:var(--accent)] dark:bg-white/5",
-      )}
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-    >
-      <span className="grid h-[18px] w-[18px] place-items-center leading-none">{icon}</span>
-      <span>{label}</span>
-    </button>
-  );
-}
+};

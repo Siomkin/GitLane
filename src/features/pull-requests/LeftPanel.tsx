@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { cn } from "../../lib/cn";
 import { PR_META, relativeSince, selectVisiblePrs, type PrState } from "../../lib/prs";
+import { ForgeKind } from "../../lib/api";
 import { usePulls } from "../../store/pulls";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
@@ -45,6 +46,14 @@ function PullRequestsPanel() {
   const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreatePr = useUi((state) => state.openCreatePr);
   const headBranch = useRepo((state) => state.summary?.headBranch ?? null);
+  // PRs run through `gh`, so creating one only makes sense on a GitHub remote.
+  // Treat an unknown forge (`null` — still loading, or detection failed) as
+  // capable, matching the store's load gate (`loadPullRequests` only blocks a
+  // *known* non-GitHub forge); otherwise a GitHub repo whose list still loads
+  // would have "New PR" wrongly disabled.
+  const prsUnsupported = useRepo(
+    (state) => state.forge != null && state.forge.kind !== ForgeKind.GitHub,
+  );
 
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
@@ -84,8 +93,14 @@ function PullRequestsPanel() {
           <div className="flex items-center gap-2">
             <button
               onClick={openCreatePr}
-              disabled={!headBranch}
-              title={headBranch ? "Open a new pull request" : "Check out a branch first"}
+              disabled={!headBranch || prsUnsupported}
+              title={
+                prsUnsupported
+                  ? "Pull requests are only available for GitHub repositories"
+                  : headBranch
+                    ? "Open a new pull request"
+                    : "Check out a branch first"
+              }
               className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-neutral-500 hover:bg-black/5 hover:text-neutral-800 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-neutral-100"
             >
               <PlusIcon className="h-3 w-3" />
