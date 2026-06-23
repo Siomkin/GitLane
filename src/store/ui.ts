@@ -56,6 +56,32 @@ export interface StashMenu {
   message: string;
 }
 
+/** Right-click menu on the synthetic "uncommitted changes" (WIP) row. Carries
+ * no payload — it acts on the whole working tree, read from the repo store. */
+export interface WipMenu {
+  x: number;
+  y: number;
+}
+
+/** Right-click menu on a tag ref (a pill in the graph or a navigator row).
+ * `sha` is the commit the tag points to, for checkout / branch / worktree. */
+export interface TagMenu {
+  x: number;
+  y: number;
+  name: string;
+  sha: string;
+}
+
+/** Right-click menu on a worktree row in the navigator. */
+export interface WorktreeMenu {
+  x: number;
+  y: number;
+  /** Absolute path of the linked worktree. */
+  path: string;
+  /** Display label (its branch, falling back to the worktree name). */
+  name: string;
+}
+
 /** Right-click menu on a file row — working-changes rows and a committed
  * commit's changed-file list. */
 export interface FileMenu {
@@ -154,6 +180,9 @@ interface UiState {
   commitMenu: CommitMenu | null;
   stashMenu: StashMenu | null;
   fileMenu: FileMenu | null;
+  wipMenu: WipMenu | null;
+  tagMenu: TagMenu | null;
+  worktreeMenu: WorktreeMenu | null;
   /** In-app terminal: floating panel that collapses to a status pill without
    * killing the PTY. `hidden` = no panel (PTY killed); `collapsed` = pill;
    * `open` = full floating panel. */
@@ -254,6 +283,9 @@ interface UiState {
   openCommitMenu: (menu: CommitMenu) => void;
   openStashMenu: (menu: StashMenu) => void;
   openFileMenu: (menu: FileMenu) => void;
+  openWipMenu: (menu: WipMenu) => void;
+  openTagMenu: (menu: TagMenu) => void;
+  openWorktreeMenu: (menu: WorktreeMenu) => void;
   toggleTerminal: () => void;
   collapseTerminal: () => void;
   expandTerminal: () => void;
@@ -327,6 +359,19 @@ interface UiState {
 let toastSeq = 0;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** Every transient context/action menu cleared at once. Spread into any `set`
+ * that opens a menu, modal, or review so exactly one menu is ever live. */
+const noMenus = {
+  actionMenu: null,
+  contextMenu: null,
+  commitMenu: null,
+  stashMenu: null,
+  fileMenu: null,
+  wipMenu: null,
+  tagMenu: null,
+  worktreeMenu: null,
+} satisfies Partial<UiState>;
+
 export const useUi = create<UiState>()(
   persist(
     (set, get) => ({
@@ -353,6 +398,9 @@ export const useUi = create<UiState>()(
   commitMenu: null,
   stashMenu: null,
   fileMenu: null,
+  wipMenu: null,
+  tagMenu: null,
+  worktreeMenu: null,
   terminalView: "hidden",
   terminalHeight: 480,
   terminalExpanded: false,
@@ -422,11 +470,16 @@ export const useUi = create<UiState>()(
   toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
   startDrag: (branch) => set({ draggingFrom: branch }),
   clearDrag: () => set({ draggingFrom: null }),
-  openActionMenu: (menu) => set({ actionMenu: menu, draggingFrom: null, contextMenu: null, commitMenu: null, stashMenu: null, fileMenu: null }),
-  openContextMenu: (menu) => set({ contextMenu: menu, actionMenu: null, commitMenu: null, stashMenu: null, fileMenu: null }),
-  openCommitMenu: (menu) => set({ commitMenu: menu, actionMenu: null, contextMenu: null, stashMenu: null, fileMenu: null }),
-  openStashMenu: (menu) => set({ stashMenu: menu, commitMenu: null, contextMenu: null, actionMenu: null, fileMenu: null }),
-  openFileMenu: (menu) => set({ fileMenu: menu, actionMenu: null, contextMenu: null, commitMenu: null, stashMenu: null }),
+  // Menus are mutually exclusive: opening one (or any modal/overlay) clears the
+  // rest. Spread `noMenus` so adding a menu type can't leave a stale sibling open.
+  openActionMenu: (menu) => set({ ...noMenus, actionMenu: menu, draggingFrom: null }),
+  openContextMenu: (menu) => set({ ...noMenus, contextMenu: menu }),
+  openCommitMenu: (menu) => set({ ...noMenus, commitMenu: menu }),
+  openStashMenu: (menu) => set({ ...noMenus, stashMenu: menu }),
+  openFileMenu: (menu) => set({ ...noMenus, fileMenu: menu }),
+  openWipMenu: (menu) => set({ ...noMenus, wipMenu: menu }),
+  openTagMenu: (menu) => set({ ...noMenus, tagMenu: menu }),
+  openWorktreeMenu: (menu) => set({ ...noMenus, worktreeMenu: menu }),
   // Toolbar button cycles the visible terminal chrome. Only the panel close
   // button kills the PTY and moves the view back to hidden.
   toggleTerminal: () =>
@@ -450,12 +503,12 @@ export const useUi = create<UiState>()(
   sendToTerminal: (text, command) =>
     set({ terminalView: "open", terminalInject: command ? { text, command } : { text } }),
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
-  closeOverlays: () => set({ actionMenu: null, contextMenu: null, commitMenu: null, stashMenu: null, fileMenu: null, draggingFrom: null }),
+  closeOverlays: () => set({ ...noMenus, draggingFrom: null }),
   setCreateBranchOpen: (open) => set({ createBranchOpen: open, createBranchStart: open ? get().createBranchStart : null }),
-  openCreateBranchFrom: (start) => set({ createBranchOpen: true, createBranchStart: start, commitMenu: null, contextMenu: null }),
-  openStackedReview: (oid, title) => set({ stackedReview: { oid, title }, commitMenu: null }),
+  openCreateBranchFrom: (start) => set({ ...noMenus, createBranchOpen: true, createBranchStart: start }),
+  openStackedReview: (oid, title) => set({ ...noMenus, stackedReview: { oid, title } }),
   openRangeReview: (base, head, title) =>
-    set({ stackedReview: { oid: head, title, range: { base, head } }, commitMenu: null }),
+    set({ ...noMenus, stackedReview: { oid: head, title, range: { base, head } } }),
   closeStackedReview: () => set({ stackedReview: null }),
 
   setPrFilter: (filter) => {
@@ -524,12 +577,10 @@ export const useUi = create<UiState>()(
   openAgentMessage: () => set({ agentMessageOpen: true }),
   closeAgentMessage: () => set({ agentMessageOpen: false }),
 
-  requestConfirm: (req) =>
-    set({ confirm: req, actionMenu: null, contextMenu: null, commitMenu: null, stashMenu: null, fileMenu: null }),
+  requestConfirm: (req) => set({ ...noMenus, confirm: req }),
   closeConfirm: () => set({ confirm: null }),
 
-  requestPrompt: (req) =>
-    set({ prompt: req, actionMenu: null, contextMenu: null, commitMenu: null, stashMenu: null, fileMenu: null }),
+  requestPrompt: (req) => set({ ...noMenus, prompt: req }),
   closePrompt: () => set({ prompt: null }),
 
   showToast: (message, tone = "ok") => {

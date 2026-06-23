@@ -679,6 +679,110 @@ export function FileContextMenu() {
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={220} />;
 }
 
+/** Right-click menu on the uncommitted "WIP" row. Acts on the whole working
+ * tree; the staged/unstaged split is read from the repo store so stage/unstage
+ * only appear when there's actually something in that bucket. */
+export function WipContextMenu() {
+  const menu = useUi((s) => s.wipMenu);
+  const close = useUi((s) => s.closeOverlays);
+  const openCommit = useUi((s) => s.openCommit);
+  const changes = useRepo((s) => s.changes);
+  const stageAll = useRepo((s) => s.stageAll);
+  const unstageAll = useRepo((s) => s.unstageAll);
+  const stash = useRepo((s) => s.stash);
+  if (!menu) return null;
+
+  const hasStaged = changes.staged.length > 0;
+  const hasUnstaged = changes.unstaged.length > 0;
+
+  const items: MenuItem[] = [
+    { label: "Commit…", onClick: () => { close(); openCommit(); } },
+  ];
+  if (hasUnstaged) {
+    items.push({ label: "Stage all changes", sep: true, onClick: () => { close(); void stageAll(); } });
+  }
+  if (hasStaged) {
+    items.push({ label: "Unstage all changes", sep: !hasUnstaged, onClick: () => { close(); void unstageAll(); } });
+  }
+  items.push({ label: "Stash all changes", sep: true, onClick: () => { close(); void stash(); } });
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={208} />;
+}
+
+/** Right-click menu on a tag ref (graph pill or navigator row). Tags are
+ * immutable pointers, so the menu reads the tagged commit and offers the same
+ * "go to / branch from this point" actions as a commit, plus a copy. Tag
+ * deletion / pushing need backend commands and are intentionally absent here. */
+export function TagContextMenu() {
+  const menu = useUi((s) => s.tagMenu);
+  const close = useUi((s) => s.closeOverlays);
+  const requestPrompt = useUi((s) => s.requestPrompt);
+  const showToast = useUi((s) => s.showToast);
+  const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
+  const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
+  const checkoutDetached = useRepo((s) => s.checkoutDetached);
+  const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
+  const run = useBranchOp();
+  if (!menu) return null;
+
+  const { name, sha } = menu;
+
+  const items: MenuItem[] = [
+    { label: "Checkout tag (detached)", onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
+    { label: "Create branch from here…", onClick: () => openCreateBranchFrom(name) },
+    {
+      label: "Create worktree from tag…",
+      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, name, workdir, name),
+    },
+    {
+      label: "Copy tag name",
+      sep: true,
+      onClick: () => {
+        close();
+        void navigator.clipboard?.writeText(name);
+        showToast(`Copied ${name}`);
+      },
+    },
+  ];
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
+}
+
+/** Right-click menu on a navigator worktree row. Opening it switches the app to
+ * that worktree (loads it as a repo tab) — distinct from the row's plain click,
+ * which only scrolls the current graph to the worktree's tip. Removing a
+ * worktree needs a backend command and is intentionally absent here. */
+export function WorktreeContextMenu() {
+  const menu = useUi((s) => s.worktreeMenu);
+  const close = useUi((s) => s.closeOverlays);
+  const showToast = useUi((s) => s.showToast);
+  const openWorktree = useRepo((s) => s.openWorktree);
+  if (!menu) return null;
+
+  const { path } = menu;
+
+  const items: MenuItem[] = [
+    {
+      label: "Open worktree",
+      onClick: () => {
+        close();
+        void openWorktree(path).catch((e) => showToast(String(e), "error"));
+      },
+    },
+    {
+      label: "Copy path",
+      sep: true,
+      onClick: () => {
+        close();
+        void navigator.clipboard?.writeText(path);
+        showToast("Copied path");
+      },
+    },
+  ];
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={200} />;
+}
+
 export function StashContextMenu() {
   const menu = useUi((s) => s.stashMenu);
   const close = useUi((s) => s.closeOverlays);

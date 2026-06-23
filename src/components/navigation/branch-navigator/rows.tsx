@@ -31,8 +31,8 @@ const DIM_CLASS = "opacity-25 hover:opacity-100";
 
 /** A branch / remote / tag row. Click jumps the graph to its tip and closes the
  * popup; checkout lives on the right-click context menu (single-click closes the
- * popup, so a double-click gesture here can't land reliably). Tags are
- * navigate-only — never a drag source or context-menu target. */
+ * popup, so a double-click gesture here can't land reliably). Tags aren't drag
+ * sources, but they do get a tag-specific right-click menu. */
 export function BranchRow({
   name,
   kind,
@@ -51,6 +51,7 @@ export function BranchRow({
 }) {
   const navigate = useRevealNavigate();
   const openContextMenu = useUi((s) => s.openContextMenu);
+  const openTagMenu = useUi((s) => s.openTagMenu);
   const tip = useTruncatedTooltip(name);
   const draggable = kind !== "tag";
   const { isDropTarget, dndProps } = useBranchRefDrag(
@@ -76,8 +77,13 @@ export function BranchRow({
       style={{ boxShadow: isDropTarget ? "inset 0 0 0 1.5px rgba(46,158,98,0.7)" : undefined }}
       onClick={() => navigate(oid)}
       onContextMenu={(e) => {
-        if (!draggable) return;
         e.preventDefault();
+        // Tags are immutable pointers — they get their own menu (checkout /
+        // branch / worktree / copy) keyed off the tagged commit oid.
+        if (kind === "tag") {
+          if (oid) openTagMenu({ x: e.clientX, y: e.clientY, name, sha: oid });
+          return;
+        }
         openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent });
       }}
     >
@@ -89,7 +95,8 @@ export function BranchRow({
   );
 }
 
-/** A worktree row — navigate to its branch tip when that tip is in the graph. */
+/** A worktree row — navigate to its branch tip when that tip is in the graph;
+ * right-click to open the worktree as a tab or copy its path. */
 export function WorktreeRow({
   wt,
   oid,
@@ -97,10 +104,19 @@ export function WorktreeRow({
   query = "",
 }: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
   const navigate = useRevealNavigate();
+  const openWorktreeMenu = useUi((s) => s.openWorktreeMenu);
   const label = wt.branch ?? wt.name;
   const tip = useTruncatedTooltip(label);
   return (
-    <div {...tip} className={cn(ROW_CLASS, dimmed && DIM_CLASS)} onClick={() => navigate(oid)}>
+    <div
+      {...tip}
+      className={cn(ROW_CLASS, dimmed && DIM_CLASS)}
+      onClick={() => navigate(oid)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        openWorktreeMenu({ x: e.clientX, y: e.clientY, path: wt.path, name: label });
+      }}
+    >
       <TreeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
       <span data-truncate className="min-w-0 flex-1 truncate">
         <HighlightMatch text={label} query={query} />
