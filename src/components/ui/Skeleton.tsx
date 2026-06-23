@@ -2,11 +2,13 @@
 // a couple seconds; mirroring the content's shape while it loads reads as
 // "loading" instead of a frozen or empty panel (a bare centered spinner did).
 
+import type { CSSProperties } from "react";
+
 import { cn } from "../../lib/cn";
 
 /** A single shimmering placeholder bar. Compose these to mimic real content. */
-export function Skeleton({ className }: { className?: string }) {
-  return <span aria-hidden className={cn("gp-skeleton block", className)} />;
+export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {
+  return <span aria-hidden style={style} className={cn("gp-skeleton block", className)} />;
 }
 
 /** Sidebar PR list placeholder: a few card-shaped rows. */

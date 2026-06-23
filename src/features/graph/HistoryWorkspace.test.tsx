@@ -119,6 +119,7 @@ beforeEach(() => {
   useRepo.setState({
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
     graph,
+    graphLoading: false,
     changes: { staged: [], unstaged: [] },
     stashes: [],
     commitFiles: [],
@@ -241,6 +242,48 @@ describe("HistoryWorkspace — search highlight/dim", () => {
 
     expect(screen.getByText("my stash")).toBeInTheDocument();
     expect(screen.getByTestId("stash-graph-marker")).toHaveClass("border-dashed");
+  });
+});
+
+describe("HistoryWorkspace — graph loading skeleton", () => {
+  it("renders the history skeleton instead of commits while the graph loads", () => {
+    // Mirrors the open flow: summary is committed (shell visible) but the heavy
+    // graph payload hasn't landed yet (GL-20).
+    useRepo.setState({ graph: null, graphLoading: true });
+    render(<HistoryWorkspace />);
+    expect(screen.getByLabelText("Loading history")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByText("alpha fix")).not.toBeInTheDocument();
+  });
+
+  it("drops the skeleton and paints commits once the graph lands", () => {
+    // beforeEach already provides a non-null graph with graphLoading false.
+    render(<HistoryWorkspace />);
+    expect(screen.queryByLabelText("Loading history")).not.toBeInTheDocument();
+    expect(screen.getByText("3 commits")).toBeInTheDocument();
+    expect(screen.getByText("alpha fix")).toBeInTheDocument();
+  });
+
+  it("signals a load failure instead of reading as an empty repo when the graph fails", () => {
+    // commitGraph threw after the summary published: skeleton gone, graph null.
+    useRepo.setState({ graph: null, graphLoading: false, error: "fatal: bad object" });
+    render(<HistoryWorkspace />);
+    // Not "0 commits" (which would look like an empty repository).
+    expect(screen.queryByText(/\bcommits\b/)).not.toBeInTheDocument();
+    expect(screen.getByText("History unavailable")).toBeInTheDocument();
+    expect(screen.getByText("fatal: bad object")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("keeps the failure state after the global error is dismissed", () => {
+    // Dismissing the global banner clears `error`, but a settled-but-null graph
+    // for an open repo is still a failure — the retry path must survive the
+    // dismiss instead of falling through to an empty "0 commits" render (GL-20).
+    useRepo.setState({ graph: null, graphLoading: false, error: null });
+    render(<HistoryWorkspace />);
+    expect(screen.queryByText(/\bcommits\b/)).not.toBeInTheDocument();
+    expect(screen.getByText("History unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
 

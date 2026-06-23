@@ -142,7 +142,7 @@ responsibilities, not lines:
 
 | File | Lines | Verdict | Why |
 |------|-------|---------|-----|
-| `store/repo.ts` | large | **Keep one store, extract helpers** | It is the git-domain owner, so do not split it by line count into reactive micro-stores. But new graph request guards, selection math, persistence helpers, operation labels, or batch-action rules should move to pure/helper modules with tests instead of making the store body absorb every concept. |
+| `store/repo.ts` | thin composer + slices | **Keep one git-domain store; split by responsibility, never by line count** | `repo.ts` is a thin `create()` composing typed action slices (`repoLifecycleActions`/`repoSelectionActions`/`repoWriteActions` over `repoTypes`) plus pure `selection.ts`-style siblings — `repoSession.ts` (localStorage tab persistence) and `repoRequests.ts` (graph-generation/open-intent tokens + the deferred-refresh queue). These are same-domain slices, **not** reactive micro-stores, so cross-store `getState()` chatter is still avoided. New graph-request guards, selection math, persistence helpers, operation labels, or batch-action rules move to such modules with tests instead of making the store body absorb every concept. |
 | `features/changes/RightPanel.tsx` | ~380 | **Should split** | Holds *two* unrelated inspectors (`WorkingInspector` staging + `CommitInspector` commit-review) under a layout-slot name → two axes of change. Internal sub-components are clean; the file isn't. Contrast `PullRequestDetail` (below). |
 | `components/ui/icons.tsx` | ~460 | **Fine — it's data** | 22 prop-only SVG icon exports. No logic, one axis of change. |
 | `features/pull-requests/PullRequestDetail.tsx` | ~110 | **Fine — thin container** | Selects the active PR, drives the detail fetch, gates the body on load state. Each tab body is its *own* fetch/render responsibility, so they live in sibling files (`PrHeader`, `PrInfoTab`, `PrDiffTab`, `PrChecksTab`, `PrCommitsTab`) — once a tab grew its own `useEffect` + store slice, co-location would have been four axes of change in one file. |
@@ -216,9 +216,12 @@ preference — instead of leaving a god-component or inventing a new abstraction
 
 ### Don't cargo-cult it
 
-- **Don't split a file to hit a line count.** Split because concepts are mixed. A per-menu
+- **Don't split a file to hit a line count.** Split because concepts are mixed. `repo.ts`'s
+  uniform `runOp` write wrappers stay together (splitting them buys nothing), and a per-menu
   split of `menus.tsx` is justified only when each menu gets its own behavior, helpers, or
-  tests; a speculative `src/types/` folder is still abstraction-for-its-own-sake.
+  tests; a speculative `src/types/` folder is still abstraction-for-its-own-sake. Extracting a
+  genuinely separate concern *by responsibility* — e.g. `repoSession.ts` / `repoRequests.ts`
+  out of `repo.ts` — is the opposite move and is encouraged.
 - **Don't extract a one-off** into a "reusable" hook/component used once — that's
   abstraction-for-its-own-sake. Extract on the **second** real use, or immediately when it
   creates a pure/testable boundary or removes a genuine multi-responsibility tangle.
