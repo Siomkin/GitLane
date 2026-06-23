@@ -248,6 +248,8 @@ export function BranchContextMenu() {
   const pushBranch = useRepo((s) => s.pushBranch);
   const pull = useRepo((s) => s.pull);
   const push = useRepo((s) => s.push);
+  const forcePush = useRepo((s) => s.forcePush);
+  const deleteRemoteBranch = useRepo((s) => s.deleteRemoteBranch);
   const mergeInto = useRepo((s) => s.mergeInto);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
   const fastForwardTo = useRepo((s) => s.fastForwardTo);
@@ -313,6 +315,18 @@ export function BranchContextMenu() {
     if (isCurrent) {
       add({ label: "Pull (fast-forward only)", onClick: () => { close(); void pull(); } }, true);
       add({ label: "Push", onClick: () => { close(); void push(); } });
+      add({
+        label: "Force push (with lease)…",
+        onClick: () =>
+          requestConfirm({
+            title: `Force-push ${b}?`,
+            message:
+              "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since your last fetch). Use after amending or rebasing pushed commits.",
+            confirmLabel: "Force push",
+            danger: true,
+            onConfirm: () => void run(() => forcePush()),
+          }),
+      });
     } else {
       add({ label: `Push ${b}`, onClick: () => act(() => pushBranch(b)) }, true);
     }
@@ -395,6 +409,29 @@ export function BranchContextMenu() {
             onConfirm: () => void run(() => removeBranch(b, false)),
           }),
       });
+    }
+  }
+
+  // ---- delete on the remote (remote-tracking refs only) ----
+  // Split the ref name into remote + branch on the first slash: `origin/feat/x`
+  // → remote `origin`, branch `feat/x`. Deletes the branch on the server.
+  if (isRemote) {
+    const slash = b.indexOf("/");
+    if (slash > 0) {
+      const remote = b.slice(0, slash);
+      const remoteBranch = b.slice(slash + 1);
+      add({
+        label: `Delete ${b} on remote`,
+        danger: true,
+        onClick: () =>
+          requestConfirm({
+            title: `Delete ${remoteBranch} on ${remote}?`,
+            message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`,
+            confirmLabel: "Delete on remote",
+            danger: true,
+            onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)),
+          }),
+      }, true);
     }
   }
 
@@ -685,11 +722,14 @@ export function FileContextMenu() {
 export function WipContextMenu() {
   const menu = useUi((s) => s.wipMenu);
   const close = useUi((s) => s.closeOverlays);
+  const requestConfirm = useUi((s) => s.requestConfirm);
   const openCommit = useUi((s) => s.openCommit);
   const changes = useRepo((s) => s.changes);
   const stageAll = useRepo((s) => s.stageAll);
   const unstageAll = useRepo((s) => s.unstageAll);
   const stash = useRepo((s) => s.stash);
+  const discardAll = useRepo((s) => s.discardAll);
+  const run = useBranchOp();
   if (!menu) return null;
 
   const hasStaged = changes.staged.length > 0;
@@ -705,6 +745,20 @@ export function WipContextMenu() {
     items.push({ label: "Unstage all changes", sep: !hasUnstaged, onClick: () => { close(); void unstageAll(); } });
   }
   items.push({ label: "Stash all changes", sep: true, onClick: () => { close(); void stash(); } });
+  items.push({
+    label: "Discard all changes",
+    danger: true,
+    sep: true,
+    onClick: () =>
+      requestConfirm({
+        title: "Discard all changes?",
+        message:
+          "Every uncommitted change — staged, unstaged, and untracked files — will be permanently discarded. This can't be undone.",
+        confirmLabel: "Discard all",
+        danger: true,
+        onConfirm: () => void run(() => discardAll()),
+      }),
+  });
 
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={208} />;
 }
@@ -716,23 +770,42 @@ export function WipContextMenu() {
 export function TagContextMenu() {
   const menu = useUi((s) => s.tagMenu);
   const close = useUi((s) => s.closeOverlays);
+  const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const checkoutDetached = useRepo((s) => s.checkoutDetached);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
+  const pushTag = useRepo((s) => s.pushTag);
+  const deleteTag = useRepo((s) => s.deleteTag);
   const run = useBranchOp();
   if (!menu) return null;
 
   const { name, sha } = menu;
 
   const items: MenuItem[] = [
+    // Operate on the peeled commit `sha`, never the tag name: a branch and tag
+    // can share a short name, and `git branch new <name>` then fails as
+    // ambiguous. `name` stays only for labels and the default worktree path.
     { label: "Checkout tag (detached)", onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
-    { label: "Create branch from here…", onClick: () => openCreateBranchFrom(name) },
+    { label: "Create branch from here…", onClick: () => openCreateBranchFrom(sha) },
     {
       label: "Create worktree from tag…",
-      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, name, workdir, name),
+      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name),
+    },
+    { label: "Push tag to origin", sep: true, onClick: () => { close(); void run(() => pushTag(name)); } },
+    {
+      label: "Delete tag",
+      danger: true,
+      onClick: () =>
+        requestConfirm({
+          title: `Delete tag ${name}?`,
+          message: "The local tag ref will be removed. Any pushed copy on a remote is left untouched.",
+          confirmLabel: "Delete tag",
+          danger: true,
+          onConfirm: () => void run(() => deleteTag(name)),
+        }),
     },
     {
       label: "Copy tag name",
@@ -755,11 +828,14 @@ export function TagContextMenu() {
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
+  const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);
   const openWorktree = useRepo((s) => s.openWorktree);
+  const removeWorktree = useRepo((s) => s.removeWorktree);
+  const run = useBranchOp();
   if (!menu) return null;
 
-  const { path } = menu;
+  const { path, name, isMain } = menu;
 
   const items: MenuItem[] = [
     {
@@ -779,6 +855,22 @@ export function WorktreeContextMenu() {
       },
     },
   ];
+  // The primary worktree can't be removed — git refuses, so don't offer it.
+  if (!isMain) {
+    items.push({
+      label: "Remove worktree",
+      danger: true,
+      sep: true,
+      onClick: () =>
+        requestConfirm({
+          title: `Remove worktree ${name}?`,
+          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.`,
+          confirmLabel: "Remove worktree",
+          danger: true,
+          onConfirm: () => void run(() => removeWorktree(path)),
+        }),
+    });
+  }
 
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={200} />;
 }

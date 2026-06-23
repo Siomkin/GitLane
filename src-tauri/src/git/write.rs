@@ -623,6 +623,101 @@ pub fn fetch(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
     }
 }
 
+/// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally
+/// only; the remote copy (if any) is untouched — use [`push_tag`] semantics in
+/// reverse via the CLI for that.
+pub fn delete_tag(repo: &str, name: &str) -> Result<String, String> {
+    ensure_operand(name)?;
+    run_git(repo, &["tag", "-d", name])?;
+    Ok(format!("Deleted tag {name}"))
+}
+
+/// Push a tag to `remote` (`git push <remote> refs/tags/<name>`). The explicit
+/// `refs/tags/` refspec avoids any ambiguity with a same-named branch. `auth` is
+/// wired in exactly as [`push`] does, so it authenticates as the bound account.
+pub fn push_tag(
+    repo: &str,
+    name: &str,
+    remote: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(name)?;
+    ensure_operand(remote)?;
+    let refspec = format!("refs/tags/{name}");
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", remote, &refspec]),
+    }
+}
+
+/// Remove a linked worktree (`git worktree remove <path>`). `force` adds
+/// `--force`, dropping git's dirty/locked safety check. Git refuses to remove the
+/// main worktree, surfacing its own error; the frontend also hides the action there.
+pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<String, String> {
+    ensure_operand(worktree_path)?;
+    let mut args = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.push(worktree_path);
+    run_git(repo, &args)?;
+    Ok(format!("Removed worktree {worktree_path}"))
+}
+
+/// Delete a branch on `remote` (`git push <remote> --delete <branch>`). `branch`
+/// is the short name on the remote (e.g. `feature/x`, not `origin/feature/x`).
+/// `auth` authenticates as the bound account, like [`push`].
+pub fn delete_remote_branch(
+    repo: &str,
+    remote: &str,
+    branch: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(remote)?;
+    ensure_operand(branch)?;
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", remote, "--delete", branch]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", remote, "--delete", branch]),
+    }
+}
+
+/// Force-push the current branch with `--force-with-lease` — the *safe* force:
+/// git refuses if the remote advanced since our last fetch, so a teammate's push
+/// is never silently clobbered. Used after history is rewritten (amend, reset,
+/// rebase) on an already-pushed branch. `auth` is wired in as [`push`] does.
+pub fn force_push(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", "--force-with-lease"]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", "--force-with-lease"]),
+    }
+}
+
+/// Discard *all* uncommitted changes: reset tracked files to HEAD and remove
+/// untracked files/directories (`git reset --hard HEAD` + `git clean -fd`).
+/// Irreversible — the frontend gates this behind a confirmation. The reset is
+/// skipped in an unborn repo (no HEAD) so its staged/untracked files still get
+/// cleaned rather than erroring out.
+pub fn discard_all(repo: &str) -> Result<String, String> {
+    let has_head = run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok();
+    if has_head {
+        run_git(repo, &["reset", "--hard", "HEAD"])?;
+    }
+    run_git(repo, &["clean", "-f", "-d"])?;
+    Ok("Discarded all changes".to_string())
+}
+
 fn credential_args(host: &str, command: &[&str]) -> Vec<String> {
     let mut args = vec![
         "-c".to_string(),

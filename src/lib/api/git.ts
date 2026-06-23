@@ -209,6 +209,36 @@ export const gitApi = {
   createPatch: (path: string, sha: string) =>
     invoke<string>("create_patch", { path, sha }),
 
+  /** Delete a local tag. */
+  deleteTag: (path: string, name: string) =>
+    invoke<string>("delete_tag", { path, name }),
+
+  /** Push a tag to `origin`, optionally as the repo's bound `account`. */
+  pushTag: (path: string, name: string, account?: GithubAccountRef | null) =>
+    invoke<string>("push_tag", { path, name, account: account ?? null }),
+
+  /** Remove a linked worktree. `force` drops git's dirty/locked safety check. */
+  removeWorktree: (path: string, worktreePath: string, force = false) =>
+    invoke<string>("remove_worktree", { path, worktreePath, force }),
+
+  /** Delete `branch` on `remote` (`git push <remote> --delete`), optionally as
+   * the repo's bound `account`. `branch` is the short name (no `remote/` prefix). */
+  deleteRemoteBranch: (
+    path: string,
+    remote: string,
+    branch: string,
+    account?: GithubAccountRef | null,
+  ) => invoke<string>("delete_remote_branch", { path, remote, branch, account: account ?? null }),
+
+  /** Force-push the current branch with `--force-with-lease`, optionally as the
+   * repo's bound `account`. */
+  forcePush: (path: string, account?: GithubAccountRef | null) =>
+    invoke<string>("force_push", { path, account: account ?? null }),
+
+  /** Discard every uncommitted change: reset tracked files to HEAD and remove
+   * untracked files/dirs. Irreversible. */
+  discardAll: (path: string) => invoke<string>("discard_all", { path }),
+
   // ---- working tree / staging ----
 
   workingChanges: (path: string) =>

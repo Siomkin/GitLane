@@ -114,7 +114,7 @@ export function WorktreeRow({
       onClick={() => navigate(oid)}
       onContextMenu={(e) => {
         e.preventDefault();
-        openWorktreeMenu({ x: e.clientX, y: e.clientY, path: wt.path, name: label });
+        openWorktreeMenu({ x: e.clientX, y: e.clientY, path: wt.path, name: label, isMain: wt.isMain });
       }}
     >
       <TreeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />

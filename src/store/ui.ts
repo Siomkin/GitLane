@@ -80,6 +80,8 @@ export interface WorktreeMenu {
   path: string;
   /** Display label (its branch, falling back to the worktree name). */
   name: string;
+  /** The primary worktree can't be removed — hide that action for it. */
+  isMain: boolean;
 }
 
 /** Right-click menu on a file row — working-changes rows and a committed
