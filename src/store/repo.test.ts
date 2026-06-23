@@ -6,7 +6,8 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
-import type { RepoGraph, RepoSummary } from "../lib/api";
+import { ForgeKind } from "../lib/api";
+import type { RepoForge, RepoGraph, RepoSummary } from "../lib/api";
 
 // A minimal summary so actions that require an open repo proceed.
 const summary: RepoSummary = {
@@ -289,5 +290,26 @@ describe("repo store — fastForwardTo", () => {
       target: "origin/main",
     });
     expect(invokeMock).not.toHaveBeenCalledWith("fast_forward_branch", expect.anything());
+  });
+});
+
+describe("repo store — closeRepo clears forge", () => {
+  it("drops the stale forge when the last repo closes", async () => {
+    // `forge` keys the provider indicator independently of `summary`, so a leak
+    // here would render a stale indicator on the welcome screen.
+    const forge: RepoForge = {
+      hasRemote: true,
+      kind: ForgeKind.GitHub,
+      forge: "GitHub",
+      host: "github.com",
+      webUrl: "https://github.com/o/r",
+    };
+    useRepo.setState({ openPaths: ["/repo"], summary, forge });
+
+    await useRepo.getState().closeRepo("/repo");
+
+    const s = useRepo.getState();
+    expect(s.summary).toBeNull();
+    expect(s.forge).toBeNull();
   });
 });

@@ -7,6 +7,8 @@
 
 use git2::Repository;
 
+use crate::git::types::RepoForge;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteForge {
     pub kind: ForgeKind,
@@ -33,6 +35,94 @@ impl ForgeKind {
             Self::Gitea => "Gitea",
             Self::Forgejo => "Forgejo",
         }
+    }
+
+    /// Stable lowercase key for the frontend to switch on.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Self::GitHub => "github",
+            Self::GitLab => "gitlab",
+            Self::Bitbucket => "bitbucket",
+            Self::AzureDevOps => "azure-devops",
+            Self::Gitea => "gitea",
+            Self::Forgejo => "forgejo",
+        }
+    }
+}
+
+/// Forge summary for the toolbar provider indicator: whether the repo has a
+/// remote at all and, if its host is recognised, which forge family it belongs
+/// to. Pure libgit2 read — no network or auth probing. `has_remote: false`
+/// means no remote URL is configured (the "missing" state); a remote with an
+/// unrecognised host yields `has_remote: true` with `kind: None`.
+pub fn summary(path: &str) -> RepoForge {
+    let mut has_remote = false;
+    let mut first_host: Option<String> = None;
+    let mut first_web: Option<String> = None;
+    if let Ok(repo) = Repository::discover(path) {
+        if let Ok(remotes) = repo.remotes() {
+            for name in remotes.iter().flatten() {
+                let Ok(remote) = repo.find_remote(name) else {
+                    continue;
+                };
+                for url in [remote.url(), remote.pushurl()].into_iter().flatten() {
+                    if url.trim().is_empty() {
+                        continue;
+                    }
+                    has_remote = true;
+                    let Some(host) = remote_host(url) else {
+                        continue;
+                    };
+                    let web = remote_path(url).map(|p| format!("https://{host}/{p}"));
+                    if first_host.is_none() {
+                        first_host = Some(host.clone());
+                        first_web = web.clone();
+                    }
+                    if let Some(kind) = classify_host(&host) {
+                        return RepoForge {
+                            has_remote: true,
+                            kind: Some(kind.key().to_string()),
+                            forge: Some(kind.label().to_string()),
+                            host: Some(host),
+                            web_url: web,
+                        };
+                    }
+                }
+            }
+        }
+    }
+    RepoForge {
+        has_remote,
+        kind: None,
+        forge: None,
+        host: first_host,
+        web_url: first_web,
+    }
+}
+
+/// Extract the `owner/repo` path from a remote URL (scheme/host stripped,
+/// trailing `.git` removed). Returns None when no path component is present.
+fn remote_path(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    let rest = if let Some(after) = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .or_else(|| trimmed.strip_prefix("ssh://"))
+        .or_else(|| trimmed.strip_prefix("git://"))
+    {
+        // authority/path — drop the authority up to the first slash.
+        let slash = after.find('/')?;
+        &after[slash + 1..]
+    } else {
+        // scp-like form: git@host:owner/repo.git
+        trimmed.split_once(':')?.1
+    };
+    let path = rest.trim_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
     }
 }
 
@@ -130,5 +220,31 @@ mod tests {
         assert_eq!(classify_host("dev.azure.com"), Some(ForgeKind::AzureDevOps));
         assert_eq!(classify_host("codeberg.org"), Some(ForgeKind::Forgejo));
         assert_eq!(classify_host("gitea.company.test"), Some(ForgeKind::Gitea));
+    }
+
+    #[test]
+    fn parses_owner_repo_path_from_remote_urls() {
+        assert_eq!(
+            remote_path("https://github.com/owner/repo.git").as_deref(),
+            Some("owner/repo")
+        );
+        assert_eq!(
+            remote_path("git@bitbucket.org:team/repo.git").as_deref(),
+            Some("team/repo")
+        );
+        assert_eq!(
+            remote_path("ssh://git@gitlab.example.com/group/sub/repo.git").as_deref(),
+            Some("group/sub/repo")
+        );
+    }
+
+    #[test]
+    fn exposes_stable_lowercase_keys() {
+        assert_eq!(ForgeKind::GitHub.key(), "github");
+        assert_eq!(ForgeKind::GitLab.key(), "gitlab");
+        assert_eq!(ForgeKind::Bitbucket.key(), "bitbucket");
+        assert_eq!(ForgeKind::AzureDevOps.key(), "azure-devops");
+        assert_eq!(ForgeKind::Gitea.key(), "gitea");
+        assert_eq!(ForgeKind::Forgejo.key(), "forgejo");
     }
 }

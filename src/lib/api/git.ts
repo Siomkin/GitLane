@@ -53,6 +53,35 @@ export interface RepoIdentity {
   email: string;
 }
 
+/** Remote forge keys emitted by the backend's `ForgeKind::key()`
+ * (`src-tauri/src/git/forge.rs`). This is the single source of truth on the TS
+ * side — compare against `ForgeKind.GitHub` rather than a bare `"github"`
+ * literal, so a typo fails to compile and a rename is one edit. Keep in sync
+ * with the Rust enum across the IPC boundary. */
+export const ForgeKind = {
+  GitHub: "github",
+  GitLab: "gitlab",
+  Bitbucket: "bitbucket",
+  AzureDevOps: "azure-devops",
+  Gitea: "gitea",
+  Forgejo: "forgejo",
+} as const;
+export type ForgeKind = (typeof ForgeKind)[keyof typeof ForgeKind];
+
+/** Remote-forge summary driving the toolbar provider indicator. */
+export interface RepoForge {
+  /** True when the repo has at least one remote with a URL. */
+  hasRemote: boolean;
+  /** Forge key (see {@link ForgeKind}), or null when the host is unrecognised. */
+  kind: ForgeKind | null;
+  /** Human forge label ("GitHub", "GitLab", …), or null when unrecognised. */
+  forge: string | null;
+  /** Remote host (e.g. "github.com"), or null when no remote is configured. */
+  host: string | null;
+  /** Browser URL for the repo (`https://host/owner/repo`), or null when none. */
+  webUrl: string | null;
+}
+
 export interface BranchInfo {
   name: string;
   kind: "local" | "remote";
@@ -128,6 +157,9 @@ export interface FileDiff {
 
 export const gitApi = {
   openRepo: (path: string) => invoke<RepoSummary>("open_repo", { path }),
+
+  /** Detect the open repo's remote forge for the toolbar provider indicator. */
+  repoForge: (path: string) => invoke<RepoForge>("repo_forge", { path }),
 
   commitGraph: (path: string, limit?: number) =>
     invoke<RepoGraph>("commit_graph", { path, limit: limit ?? null }),

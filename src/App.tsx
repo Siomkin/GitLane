@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActionBar } from "./components/chrome/ActionBar";
+import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import {
   ActionMenu,
