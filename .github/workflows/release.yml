@@ -157,15 +157,18 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS code-signing + notarization. Inert until these repo secrets exist
-          # (all empty => unsigned build, the current behavior). Ignored on the
-          # Linux/Windows matrix legs. See the PR/commit notes for how to populate them.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS code-signing + notarization are intentionally NOT wired here yet.
+          # Gotcha: passing `APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}`
+          # when the secret is unset yields an *empty* (but present) env var, which
+          # Tauri's bundler treats as "sign me" — it then runs `security import` on
+          # empty cert data and the macOS leg fails. So we omit the vars entirely
+          # and ship unsigned (ad-hoc) macOS builds for the alpha phase.
+          #
+          # To enable real signing later, set APPLE_CERTIFICATE / *_PASSWORD /
+          # APPLE_SIGNING_IDENTITY (+ APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID for
+          # notarization) as repo secrets, and add them back here ONLY guarded so an
+          # unset secret never produces an empty value (e.g. set them in a prior
+          # `if: secrets.APPLE_CERTIFICATE != ''` step via $GITHUB_ENV).
         with:
           tauriScript: bun tauri
           args: ${{ matrix.args }}
