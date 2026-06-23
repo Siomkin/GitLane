@@ -95,6 +95,7 @@ export function createRepoLifecycleActions(
       set({
         summary,
         openPaths,
+        forge: null,
         graph: null,
         branches: [],
         worktrees: [],
@@ -126,11 +127,9 @@ export function createRepoLifecycleActions(
       // pair the new repo's summary with the previous repo's PRs during a slow graph
       // load, and a graph failure can't strand stale PR state (GL-20 review).
       usePulls.getState().reset();
-      // Resolve this repo's bound account, then fetch its PRs as that account.
+      // Resolve this repo's bound account so the PR badge load (fired once the
+      // forge is known, below) fetches as that account.
       useAccounts.getState().syncRepoAccount(summary.path);
-      // Quiet: just to populate the PRs badge; the panel isn't shown yet, and
-      // opening it does its own foreground (spinner-visible) load.
-      void usePulls.getState().loadPullRequests(false, true);
 
       // Secondary reads don't gate the first paint, so fan them out independently
       // — each fills its slice as it lands rather than waiting behind the graph in
@@ -163,6 +162,26 @@ export function createRepoLifecycleActions(
           if (repoStillDisplayed(summary.path)) set({ stashes });
         })
         .catch(() => {});
+      // The forge drives the toolbar provider indicator (which paints early), so
+      // load it alongside the other secondary reads rather than behind the graph.
+      // Best-effort: a detection failure degrades to "no forge", never the error bar.
+      void api
+        .repoForge(summary.path)
+        .then((forge) => {
+          if (repoStillDisplayed(summary.path)) set({ forge });
+        })
+        .catch(() => {})
+        .finally(() => {
+          // Fire the quiet PR-badge load only once the forge is known, so the
+          // GitHub-only gate in `loadPullRequests` applies on first paint — a
+          // non-GitHub / no-remote repo then skips `gh` instead of surfacing a
+          // confusing "couldn't resolve a GitHub repository" error. forge is a
+          // cheap libgit2 read and PRs don't gate first paint, so the wait is free.
+          // The panel isn't shown yet; opening it does its own foreground load.
+          if (repoStillDisplayed(summary.path)) {
+            void usePulls.getState().loadPullRequests(false, true);
+          }
+        });
       void api
         .workingChanges(summary.path)
         .then((changes) => {
@@ -244,6 +263,9 @@ export function createRepoLifecycleActions(
         set({
           openPaths: [],
           summary: null,
+          // `forge` keys the provider indicator independently of `summary`, so a
+          // leak here would render a stale indicator on the welcome screen.
+          forge: null,
           graph: null,
           branches: [],
           worktrees: [],
@@ -273,6 +295,7 @@ export function createRepoLifecycleActions(
       set({
         openPaths: remaining,
         summary: null,
+        forge: null,
         graph: null,
         branches: [],
         worktrees: [],
@@ -342,13 +365,14 @@ export function createRepoLifecycleActions(
           return;
         }
 
-        const [nextSummary, graph, branches, worktrees, stashes, changes] = await Promise.all([
+        const [nextSummary, graph, branches, worktrees, stashes, changes, forge] = await Promise.all([
           api.openRepo(summary.path),
           api.commitGraph(summary.path, graphLimit),
           api.listBranches(summary.path),
           api.listWorktrees(summary.path).catch(() => []),
           api.listStashes(summary.path).catch(() => []),
           api.workingChanges(summary.path),
+          api.repoForge(summary.path).catch(() => null),
         ]);
         if (generation === null || !graphRequestIsCurrent(generation, summary.path)) {
           // Superseded mid-flight: replay any sync deferred during this refresh's
@@ -393,6 +417,7 @@ export function createRepoLifecycleActions(
         const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
         set({
           summary: nextSummary,
+          forge,
           graph,
           branches,
           worktrees,

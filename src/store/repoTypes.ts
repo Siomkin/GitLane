@@ -3,6 +3,7 @@ import type {
   BranchInfo,
   FileChange,
   FileDiff,
+  RepoForge,
   RepoGraph,
   RepoSummary,
   StashEntry,
@@ -22,6 +23,9 @@ export const GRAPH_PAGE_SIZE = 2_000;
 
 export interface RepoState {
   summary: RepoSummary | null;
+  /** The open repo's remote forge — drives the provider indicator and gates the
+   * GitHub-only PR path (no `gh` resolution for non-GitHub remotes). */
+  forge: RepoForge | null;
   graph: RepoGraph | null;
   branches: BranchInfo[];
   worktrees: WorktreeInfo[];
@@ -198,6 +202,7 @@ export type RepoGet = StoreApi<RepoState>["getState"];
 export type RepoDataState = Pick<
   RepoState,
   | "summary"
+  | "forge"
   | "graph"
   | "branches"
   | "worktrees"
@@ -225,6 +230,7 @@ export const emptyChanges: WorkingChanges = { staged: [], unstaged: [] };
 export function createInitialRepoData(openPaths: string[]): RepoDataState {
   return {
     summary: null,
+    forge: null,
     graph: null,
     branches: [],
     worktrees: [],
