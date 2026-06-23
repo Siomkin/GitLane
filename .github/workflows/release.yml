@@ -154,7 +154,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build and publish release artifact
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS code-signing + notarization. Inert until these repo secrets exist
