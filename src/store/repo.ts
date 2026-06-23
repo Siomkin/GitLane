@@ -187,8 +187,8 @@ interface RepoState {
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
   deleteRemoteBranch: (remote: string, branch: string) => Promise<string>;
-  /** Force-push the current branch with `--force-with-lease`. */
-  forcePush: () => Promise<string>;
+  /** Force-push `branch` with `--force-with-lease` (only that branch). */
+  forcePush: (branch: string) => Promise<string>;
   /** Discard every uncommitted working-tree change (reset --hard + clean). */
   discardAll: () => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */
@@ -826,10 +826,10 @@ export const useRepo = create<RepoState>((set, get) => ({
       return `Deleted ${remote}/${branch}`;
     }),
 
-  forcePush: () =>
+  forcePush: (branch) =>
     runOp(get, async (summary) => {
-      await api.forcePush(summary.path, useAccounts.getState().repoAccountRef);
-      return "Force-pushed (with lease)";
+      await api.forcePush(summary.path, branch, useAccounts.getState().repoAccountRef);
+      return `Force-pushed ${branch} (with lease)`;
     }),
 
   discardAll: () => runOp(get, async (summary) => api.discardAll(summary.path)),

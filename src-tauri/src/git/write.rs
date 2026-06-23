@@ -585,8 +585,24 @@ pub fn push_branch(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Resu
     // `branch` becomes a positional refspec in `git push <remote> <refspec>`, so
     // guard it against option injection (e.g. --receive-pack=…) like the others.
     ensure_operand(branch)?;
-    // Both config reads exit non-zero when unset, which `.ok()` turns into the
-    // fallback (origin remote / plain `<branch>` refspec).
+    let (remote, refspec) = push_target(repo, branch);
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", &remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", &remote, &refspec]),
+    }
+}
+
+/// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
+/// falling back to `origin`) and refspec (honouring a divergent upstream branch
+/// name via `branch.<name>.merge`, else a plain `<branch>`). Shared by
+/// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
+/// deferring to `push.default`. Both config reads exit non-zero when unset, which
+/// `.ok()` turns into the fallback.
+fn push_target(repo: &str, branch: &str) -> (String, String) {
     let remote = run_git(repo, &["config", &format!("branch.{branch}.remote")])
         .ok()
         .map(|s| s.trim().to_string())
@@ -598,14 +614,7 @@ pub fn push_branch(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Resu
         .filter(|s| !s.is_empty())
         .map(|merge| format!("{branch}:{merge}"))
         .unwrap_or_else(|| branch.to_string());
-    match auth {
-        Some((host, token)) => {
-            let args = credential_args(host, &["push", &remote, &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
-        }
-        None => run_git(repo, &["push", &remote, &refspec]),
-    }
+    (remote, refspec)
 }
 
 /// Fetch from all remotes and prune deleted upstream refs (shells out — libgit2
@@ -689,18 +698,26 @@ pub fn delete_remote_branch(
     }
 }
 
-/// Force-push the current branch with `--force-with-lease` — the *safe* force:
+/// Force-push a single `branch` with `--force-with-lease` — the *safe* force:
 /// git refuses if the remote advanced since our last fetch, so a teammate's push
 /// is never silently clobbered. Used after history is rewritten (amend, reset,
-/// rebase) on an already-pushed branch. `auth` is wired in as [`push`] does.
-pub fn force_push(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
+/// rebase) on an already-pushed branch.
+///
+/// An explicit `<remote> <refspec>` is always supplied (via [`push_target`]) so
+/// the force applies to **only** the selected branch. A bare `git push
+/// --force-with-lease` would defer to `push.default`/configured refspecs and
+/// could rewrite several remote branches at once. `auth` is wired in as
+/// [`push`] does.
+pub fn force_push(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
+    ensure_operand(branch)?;
+    let (remote, refspec) = push_target(repo, branch);
     match auth {
         Some((host, token)) => {
-            let args = credential_args(host, &["push", "--force-with-lease"]);
+            let args = credential_args(host, &["push", "--force-with-lease", &remote, &refspec]);
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
         }
-        None => run_git(repo, &["push", "--force-with-lease"]),
+        None => run_git(repo, &["push", "--force-with-lease", &remote, &refspec]),
     }
 }
 

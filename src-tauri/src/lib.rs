@@ -227,16 +227,20 @@ async fn delete_remote_branch(
     .await
 }
 
-/// Force-push the current branch with `--force-with-lease`, optionally pinned to
+/// Force-push a specific `branch` with `--force-with-lease`, optionally pinned to
 /// the repo's bound GitHub account. Token resolved server-side, like [`push`].
 #[tauri::command]
-async fn force_push(path: String, account: Option<GithubAccountRef>) -> Result<String, String> {
+async fn force_push(
+    path: String,
+    branch: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
     blocking(move || {
         let auth = git::github::git_auth(&path, account.as_ref())?;
         let auth_ref = auth
             .as_ref()
             .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::force_push(&path, auth_ref)
+        git::write::force_push(&path, &branch, auth_ref)
     })
     .await
 }

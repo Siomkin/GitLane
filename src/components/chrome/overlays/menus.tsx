@@ -324,7 +324,7 @@ export function BranchContextMenu() {
               "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since your last fetch). Use after amending or rebasing pushed commits.",
             confirmLabel: "Force push",
             danger: true,
-            onConfirm: () => void run(() => forcePush()),
+            onConfirm: () => void run(() => forcePush(b)),
           }),
       });
     } else {
@@ -830,12 +830,21 @@ export function WorktreeContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);
+  const workdir = useRepo((s) => s.summary?.workdir ?? null);
+  const repoPath = useRepo((s) => s.summary?.path ?? null);
   const openWorktree = useRepo((s) => s.openWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
+  // Removing the worktree backing the open tab would delete its directory out
+  // from under the app, leaving the refresh pointing at a gone path. `isMain`
+  // only flags the *primary* worktree, so when the app is opened on a linked
+  // worktree it isn't enough — also match the open repo's own path/workdir.
+  const trim = (p: string) => p.replace(/\/+$/, "");
+  const isActiveWorktree =
+    (!!workdir && trim(path) === trim(workdir)) || (!!repoPath && trim(path) === trim(repoPath));
 
   const items: MenuItem[] = [
     {
@@ -855,8 +864,9 @@ export function WorktreeContextMenu() {
       },
     },
   ];
-  // The primary worktree can't be removed — git refuses, so don't offer it.
-  if (!isMain) {
+  // Don't offer removal of the primary worktree (git refuses) or the one
+  // currently open in the app (it'd delete the active tab's directory).
+  if (!isMain && !isActiveWorktree) {
     items.push({
       label: "Remove worktree",
       danger: true,

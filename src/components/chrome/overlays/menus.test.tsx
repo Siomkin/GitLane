@@ -6,7 +6,7 @@ import { BranchRow } from "../../navigation/branch-navigator/rows";
 import { TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
 beforeEach(() => {
-  useRepo.setState({ changes: { staged: [], unstaged: [] } });
+  useRepo.setState({ changes: { staged: [], unstaged: [] }, summary: null });
   useUi.setState({
     wipMenu: null,
     tagMenu: null,
@@ -112,6 +112,24 @@ describe("WorktreeContextMenu", () => {
 
   it("hides Remove for the main worktree", () => {
     useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo", name: "main", isMain: true } });
+    render(<WorktreeContextMenu />);
+    expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
+  });
+
+  it("hides Remove for the linked worktree backing the open repo", () => {
+    // App opened on a linked worktree: isMain is false, but removing it would
+    // delete the active tab's directory, so the path match must suppress it.
+    useRepo.setState({
+      summary: {
+        path: "/work/repo-wt",
+        workdir: "/work/repo-wt",
+        headBranch: "feature",
+        headOid: null,
+        detached: false,
+      },
+    });
+    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo-wt/", name: "feature", isMain: false } });
     render(<WorktreeContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();

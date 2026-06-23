@@ -230,10 +230,10 @@ export const gitApi = {
     account?: GithubAccountRef | null,
   ) => invoke<string>("delete_remote_branch", { path, remote, branch, account: account ?? null }),
 
-  /** Force-push the current branch with `--force-with-lease`, optionally as the
-   * repo's bound `account`. */
-  forcePush: (path: string, account?: GithubAccountRef | null) =>
-    invoke<string>("force_push", { path, account: account ?? null }),
+  /** Force-push a specific `branch` with `--force-with-lease` (targets only that
+   * branch, never the whole push.default set), optionally as the bound `account`. */
+  forcePush: (path: string, branch: string, account?: GithubAccountRef | null) =>
+    invoke<string>("force_push", { path, branch, account: account ?? null }),
 
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */
