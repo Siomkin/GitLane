@@ -276,7 +276,7 @@ describe("repo store — loadRepo failed open", () => {
       { name: "old", path: "/old", branch: "main", isMain: true },
     ];
     const prevStashes: StashEntry[] = [
-      { index: 0, message: "wip", oid: "s1", baseOid: "abc1234", baseTimestamp: 0, context: [] },
+      { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "abc1234", baseTimestamp: 0, context: [] },
     ];
     const prevChanges: WorkingChanges = {
       staged: [{ path: "a.ts", status: "M", add: 1, del: 0 }],

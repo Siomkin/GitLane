@@ -22,6 +22,7 @@ const stash = (over: Partial<StashEntry>): StashEntry => ({
   index: 0,
   message: "stash",
   oid: "s1",
+  timestamp: 400,
   baseOid: "c1",
   baseTimestamp: 300,
   context: [],
@@ -40,25 +41,40 @@ const graph: RepoGraph = {
 };
 
 describe("buildHistoryRows", () => {
-  it("inserts anchored stashes immediately after their base commit", () => {
+  it("places a stash by its own time and connects down to its base commit", () => {
+    // Recent stash (t=250) on an old base (c3): it floats up between c1 and c2
+    // by its own time, with a connector running down to c3.
     const model = buildHistoryRows({
       graph,
-      stashes: [stash({ index: 0, oid: "s0", baseOid: "c2" })],
+      stashes: [stash({ index: 0, oid: "s0", timestamp: 250, baseOid: "c3", baseTimestamp: 100 })],
       hasWip: false,
     });
 
-    expect(model.rows.map((row) => row.kind)).toEqual(["commit", "commit", "stash", "commit"]);
-    expect(model.rows.map((row) => row.key)).toEqual(["c1", "c2", "stash:0:s0", "c3"]);
+    expect(model.rows.map((row) => row.kind)).toEqual(["commit", "stash", "commit", "commit"]);
+    expect(model.rows.map((row) => row.key)).toEqual(["c1", "stash:0:s0", "c2", "c3"]);
     expect(model.commitRowIndexById.get("c3")).toBe(3);
-    expect(model.visualRowByGraphRow).toEqual([0, 1, 3]);
+    expect(model.visualRowByGraphRow).toEqual([0, 2, 3]);
     expect(model.stashConnectors).toMatchObject([
-      { key: "stash:0:s0", stashRow: 2, anchorRow: 1, anchorLane: 0, stashLane: 1 },
+      { key: "stash:0:s0", stashRow: 1, anchorRow: 3, anchorLane: 0, stashLane: 1 },
     ]);
-    expect(model.rows[2]).toMatchObject({ kind: "stash", markerLane: 1 });
-    expect(model.revealRowIndexById.get("s0")).toBe(2);
+    expect(model.rows[1]).toMatchObject({ kind: "stash", markerLane: 1 });
+    expect(model.revealRowIndexById.get("s0")).toBe(1);
   });
 
-  it("keeps unanchored stashes out of the first graph rows", () => {
+  it("floats a stash newer than every commit to the top of history", () => {
+    const model = buildHistoryRows({
+      graph,
+      stashes: [stash({ index: 0, oid: "s0", timestamp: 500, baseOid: "c2", baseTimestamp: 200 })],
+      hasWip: false,
+    });
+
+    expect(model.rows.map((row) => row.key)).toEqual(["stash:0:s0", "c1", "c2", "c3"]);
+    expect(model.stashConnectors).toMatchObject([
+      { key: "stash:0:s0", stashRow: 0, anchorRow: 2, anchorLane: 0, stashLane: 1 },
+    ]);
+  });
+
+  it("keeps unanchored stashes out of the graph rows", () => {
     const model = buildHistoryRows({
       graph,
       stashes: [
@@ -82,26 +98,26 @@ describe("buildHistoryRows", () => {
     expect(model.stashConnectors).toEqual([]);
   });
 
-  it("preserves multiple stash actions on one base commit", () => {
+  it("orders multiple stashes by their own time, newest first", () => {
     const model = buildHistoryRows({
       graph,
       stashes: [
-        stash({ index: 0, oid: "s0", message: "newer", baseOid: "c1" }),
-        stash({ index: 3, oid: "s3", message: "older", baseOid: "c1" }),
+        stash({ index: 0, oid: "s0", message: "newer", timestamp: 400, baseOid: "c1" }),
+        stash({ index: 3, oid: "s3", message: "older", timestamp: 350, baseOid: "c1" }),
       ],
       hasWip: false,
     });
 
     const stashRows = model.rows.filter((row) => row.kind === "stash");
     expect(stashRows.map((row) => row.stash.index)).toEqual([0, 3]);
-    expect(stashRows.map((row) => row.rowIndex)).toEqual([1, 2]);
-    expect(model.rows.map((row) => row.key)).toEqual(["c1", "stash:0:s0", "stash:3:s3", "c2", "c3"]);
+    expect(stashRows.map((row) => row.rowIndex)).toEqual([0, 1]);
+    expect(model.rows.map((row) => row.key)).toEqual(["stash:0:s0", "stash:3:s3", "c1", "c2", "c3"]);
   });
 
-  it("places dangling-base stashes by base timestamp inside the loaded graph window", () => {
+  it("places dangling-base stashes by their own time inside the loaded window", () => {
     const model = buildHistoryRows({
       graph,
-      stashes: [stash({ index: 1, oid: "s1", baseOid: "missing", baseTimestamp: 250 })],
+      stashes: [stash({ index: 1, oid: "s1", timestamp: 250, baseOid: "missing", baseTimestamp: 250 })],
       hasWip: false,
     });
 
@@ -113,13 +129,31 @@ describe("buildHistoryRows", () => {
     expect(model.rows[1]).toMatchObject({ kind: "stash", markerLane: 1 });
   });
 
-  it("inserts bounded dangling stash context before the visible rejoin commit", () => {
+  it("floats a recent stash whose base is older than the loaded window", () => {
+    // Base time (50) sits below the oldest loaded commit (100), but the stash
+    // itself was created recently (500) — it belongs at the top, anchored to the
+    // nearest loaded commit, not banished to the fallback row.
+    const model = buildHistoryRows({
+      graph,
+      stashes: [stash({ index: 1, oid: "s1", timestamp: 500, baseOid: "missing", baseTimestamp: 50 })],
+      hasWip: false,
+    });
+
+    expect(model.rows.map((row) => row.key)).toEqual(["stash:1:s1", "c1", "c2", "c3"]);
+    expect(model.unanchoredStashes).toEqual([]);
+    expect(model.stashConnectors).toMatchObject([
+      { key: "stash:1:s1", stashRow: 0, anchorRow: 1, anchorLane: 0, stashLane: 1 },
+    ]);
+  });
+
+  it("inserts bounded dangling stash context after the stash row", () => {
     const model = buildHistoryRows({
       graph,
       stashes: [
         stash({
           index: 1,
           oid: "s1",
+          timestamp: 250,
           baseOid: "missing",
           baseTimestamp: 250,
           context: [
@@ -163,7 +197,7 @@ describe("buildHistoryRows", () => {
     expect(model.rows[3]).toMatchObject({ kind: "stash-context", markerLane: 1 });
   });
 
-  it("places stash context to the right of lanes occupied through the context span", () => {
+  it("places stash context to the right of lanes occupied across the stash rows", () => {
     const model = buildHistoryRows({
       graph: {
         ...graph,
@@ -174,6 +208,7 @@ describe("buildHistoryRows", () => {
         stash({
           index: 1,
           oid: "s1",
+          timestamp: 250,
           baseOid: "missing",
           baseTimestamp: 250,
           context: [
@@ -199,10 +234,51 @@ describe("buildHistoryRows", () => {
     expect(model.rows[2]).toMatchObject({ kind: "stash-context", markerLane: 2 });
   });
 
-  it("keeps timestamp-only stashes outside the loaded time window in fallback", () => {
+  it("anchors a rejoin stash's context at the rejoin commit, not the stash's own time", () => {
+    // The stash was created recently (500), but its context is an *ancestor*
+    // commit (250). Floating the block to the stash's time would hoist that old
+    // commit above c1 (300); it must stay beside the rejoin commit c2 instead.
     const model = buildHistoryRows({
       graph,
-      stashes: [stash({ index: 1, oid: "s1", baseOid: "missing", baseTimestamp: 50 })],
+      stashes: [
+        stash({
+          index: 1,
+          oid: "s1",
+          timestamp: 500,
+          baseOid: "missing",
+          baseTimestamp: 250,
+          context: [
+            {
+              id: "x1",
+              shortId: "x1",
+              summary: "stash base",
+              authorName: "",
+              authorEmail: "",
+              timestamp: 250,
+              parents: ["c2"],
+            },
+          ],
+        }),
+      ],
+      hasWip: false,
+    });
+
+    expect(model.rows.map((row) => row.key)).toEqual([
+      "c1",
+      "stash:1:s1",
+      "stash-context:1:x1",
+      "c2",
+      "c3",
+    ]);
+    expect(model.stashConnectors).toMatchObject([
+      { key: "stash:1:s1", stashRow: 1, anchorRow: 3, anchorLane: 0, stashLane: 1 },
+    ]);
+  });
+
+  it("keeps stashes outside the loaded time window in fallback", () => {
+    const model = buildHistoryRows({
+      graph,
+      stashes: [stash({ index: 1, oid: "s1", timestamp: 50, baseOid: "missing", baseTimestamp: 50 })],
       hasWip: false,
     });
 

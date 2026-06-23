@@ -95,9 +95,11 @@ export function GraphLayer({
     const graphRowY = (graphRow: number) =>
       rowY(visualRowByGraphRow[graphRow] ?? graphRow + (hasWip ? 1 : 0), rowHeight);
 
-    // Synthetic connectors. The WIP node hangs off HEAD; stash rows attach to
-    // the stash commit's first parent/base commit, so they read as annotations
-    // near the commit they came from instead of as a block above history.
+    // Synthetic connectors. The WIP node hangs off HEAD; each stash row sits at
+    // its own creation time in the date-ordered list, with a dashed connector
+    // reaching down to its base commit wherever that lands — so the stash reads
+    // as an annotation tied to its origin (GitKraken-style) rather than glued
+    // beside it.
     if ((hasWip || stashConnectors.length > 0) && head) {
       const headCommit = graph.commits.find((commit) => commit.id === head);
       if (hasWip && headCommit) {
