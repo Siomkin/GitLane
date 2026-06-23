@@ -237,7 +237,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
 
         // Prefer head-to-index path for staged, index-to-workdir for unstaged;
         // fall back to the plain entry path.
-        let entry_path = entry.path().unwrap_or("").to_string();
+        let entry_path = entry.path().ok().unwrap_or("").to_string();
 
         // ---- staged bucket (index vs HEAD) ----
         let staged_status = if s.contains(Status::INDEX_NEW) {

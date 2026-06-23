@@ -179,11 +179,11 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
     let mut entries = Vec::new();
     if let Ok(references) = repo.references() {
         for reference in references.flatten() {
-            let name = reference.name().unwrap_or("");
+            let name = reference.name().ok().unwrap_or("");
             let target = reference
                 .target()
                 .map(|oid| oid.to_string())
-                .or_else(|| reference.symbolic_target().map(str::to_string))
+                .or_else(|| reference.symbolic_target().ok().flatten().map(str::to_string))
                 .unwrap_or_default();
             entries.push((name.to_string(), target));
         }
@@ -193,9 +193,9 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
     let mut hasher = DefaultHasher::new();
     entries.hash(&mut hasher);
     if let Ok(head) = repo.head() {
-        head.name().hash(&mut hasher);
+        head.name().ok().hash(&mut hasher);
         head.target().hash(&mut hasher);
-        head.symbolic_target().hash(&mut hasher);
+        head.symbolic_target().ok().flatten().hash(&mut hasher);
     }
     Some(hasher.finish())
 }

@@ -24,7 +24,7 @@ pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
         None
     } else {
         head.as_ref()
-            .and_then(|h| h.shorthand())
+            .and_then(|h| h.shorthand().ok())
             .map(|s| s.to_string())
     };
     let head_oid = head
