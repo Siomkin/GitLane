@@ -19,6 +19,15 @@ import { useUi } from "./ui";
 import { useAccounts } from "./accounts";
 import { usePulls } from "./pulls";
 import { computeSelection, validateSquashRange } from "./selection";
+import { persistSession, readLastPath, readOpenPaths } from "./repoSession";
+import {
+  beginGraphRequest,
+  claimOpenIntent,
+  deferRefresh,
+  graphGenerationIsCurrent,
+  openIntentIsCurrent,
+  takePendingRefresh,
+} from "./repoRequests";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
 
@@ -29,31 +38,6 @@ export interface SelectedFile {
 
 export const INITIAL_GRAPH_LIMIT = 2_000;
 export const GRAPH_PAGE_SIZE = 2_000;
-
-// Persisted across launches so the app reopens the last repo and its tabs.
-const LS_OPEN = "gitlane.openPaths";
-const LS_LAST = "gitlane.lastPath";
-
-function readPersisted(key: string): string[] {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistSession(openPaths: string[], lastPath: string | null) {
-  try {
-    localStorage.setItem(LS_OPEN, JSON.stringify(openPaths));
-    if (lastPath) localStorage.setItem(LS_LAST, lastPath);
-    else localStorage.removeItem(LS_LAST);
-  } catch {
-    /* ignore quota / unavailable */
-  }
-}
 
 interface RepoState {
   summary: RepoSummary | null;
@@ -229,33 +213,16 @@ interface RepoState {
 
 const emptyChanges: WorkingChanges = { staged: [], unstaged: [] };
 
-// Graph-bearing requests can overlap (watcher refresh, explicit refresh, load
-// more, repo switch). Only the newest request may publish graph-derived state.
-let graphRequestGeneration = 0;
-const beginGraphRequest = () => ++graphRequestGeneration;
+// Store-side glue over the pure request-coordination primitives in
+// `repoRequests.ts`: a graph response is "current" only if it owns both the
+// latest graph generation AND the displayed repo path.
 const graphRequestIsCurrent = (generation: number, path: string) =>
-  generation === graphRequestGeneration && useRepo.getState().summary?.path === path;
+  graphGenerationIsCurrent(generation) && useRepo.getState().summary?.path === path;
 
-// Ordering token taken at the very START of every loadRepo, before the (possibly
-// slow) open. A newer pick increments it, so a slower earlier open that resolves
-// later loses the race — it can neither publish its summary over, nor surface an
-// error on, the repo the user actually landed on. Distinct from the graph
-// generation: a failed open must NOT bump that (it would orphan an unrelated
-// in-flight graph), but it still has to lose this ordering race (GL-20 review).
-let openIntentGeneration = 0;
-
-// A passive re-sync (filesystem watcher / focus) requested while `loading` was
-// held by an in-flight load or a manual refresh. Coalesced to the most permissive
-// scope and replayed once the blocker clears — so external commits/checkouts/
-// staging during a slow graph load aren't silently dropped (GL-20 review).
-// Deferring (rather than running inline) also avoids racing the load's own
-// working-changes read. `null` means nothing is pending.
-let pendingRefresh: "all" | "worktree" | null = null;
+// Replay a re-sync deferred while `loading` was held (no-op when none queued).
 const flushPendingRefresh = () => {
-  const scope = pendingRefresh;
-  if (!scope) return;
-  pendingRefresh = null;
-  void useRepo.getState().refresh({ prs: false, quiet: true, scope });
+  const scope = takePendingRefresh();
+  if (scope) void useRepo.getState().refresh({ prs: false, quiet: true, scope });
 };
 
 // Shared body for the branch/history write ops: require an open repo, run the
@@ -278,7 +245,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   branches: [],
   worktrees: [],
   stashes: [],
-  openPaths: readPersisted(LS_OPEN),
+  openPaths: readOpenPaths(),
   changes: emptyChanges,
   commitFiles: [],
   selectedFile: null,
@@ -306,7 +273,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   loadRepo: async (path: string) => {
     // Claim the latest open intent before doing anything that can await. A newer
     // pick supersedes this one even if our open resolves later (GL-20 review).
-    const intent = ++openIntentGeneration;
+    const intent = claimOpenIntent();
 
     // Phase 1 — open the repo. This is a cheap libgit2 metadata read and the only
     // step that can fail "this isn't a repo". Crucially it touches NO shared
@@ -321,12 +288,12 @@ export const useRepo = create<RepoState>((set, get) => ({
     } catch (e) {
       // Only surface the error if this is still the latest pick — a slow failed
       // open must not error over a repo the user has since switched to.
-      if (intent === openIntentGeneration) set({ error: String(e) });
+      if (openIntentIsCurrent(intent)) set({ error: String(e) });
       return;
     }
     // A newer pick superseded us while we were opening → drop this stale open so
     // it can't publish over the repo the user landed on.
-    if (intent !== openIntentGeneration) return;
+    if (!openIntentIsCurrent(intent)) return;
 
     // Phase 2 — commit to the switch. Bump the generation (superseding any
     // in-flight graph request) and, in one atomic commit, publish the new summary,
@@ -542,12 +509,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   // On launch, reopen the last active repository (tabs are restored from
   // localStorage in the initial state).
   restoreSession: async () => {
-    let last: string | null = null;
-    try {
-      last = localStorage.getItem(LS_LAST);
-    } catch {
-      last = null;
-    }
+    const last = readLastPath();
     if (last) await get().loadRepo(last);
   },
 
@@ -560,8 +522,7 @@ export const useRepo = create<RepoState>((set, get) => ({
     // (GL-20 review). A full re-sync also can't run concurrently here: it would
     // race the in-flight graph fetch and could livelock a slow initial open.
     if (loading) {
-      const wantsFull = opts?.scope !== "worktree";
-      pendingRefresh = wantsFull || pendingRefresh === "all" ? "all" : "worktree";
+      deferRefresh(opts?.scope === "worktree" ? "worktree" : "all");
       return;
     }
     const generation = opts?.scope === "worktree" ? null : beginGraphRequest();
