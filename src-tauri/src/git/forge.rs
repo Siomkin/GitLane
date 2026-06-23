@@ -61,11 +61,14 @@ pub fn summary(path: &str) -> RepoForge {
     let mut first_web: Option<String> = None;
     if let Ok(repo) = Repository::discover(path) {
         if let Ok(remotes) = repo.remotes() {
-            for name in remotes.iter().flatten() {
+            for name in remotes.iter().filter_map(|entry| entry.ok().flatten()) {
                 let Ok(remote) = repo.find_remote(name) else {
                     continue;
                 };
-                for url in [remote.url(), remote.pushurl()].into_iter().flatten() {
+                for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+                    .into_iter()
+                    .flatten()
+                {
                     if url.trim().is_empty() {
                         continue;
                     }
@@ -129,11 +132,14 @@ fn remote_path(url: &str) -> Option<String> {
 pub fn detect(path: &str) -> Option<RemoteForge> {
     let repo = Repository::discover(path).ok()?;
     let remotes = repo.remotes().ok()?;
-    for name in remotes.iter().flatten() {
+    for name in remotes.iter().filter_map(|entry| entry.ok().flatten()) {
         let Ok(remote) = repo.find_remote(name) else {
             continue;
         };
-        for url in [remote.url(), remote.pushurl()].into_iter().flatten() {
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
             let Some(host) = remote_host(url) else {
                 continue;
             };

@@ -272,8 +272,8 @@ pub fn build_profiled(
                         .body_bytes()
                         .map(|b| String::from_utf8_lossy(b).trim().to_string())
                         .unwrap_or_default(),
-                    author_name: author.name().unwrap_or("").to_string(),
-                    author_email: author.email().unwrap_or("").to_string(),
+                    author_name: author.name().ok().unwrap_or("").to_string(),
+                    author_email: author.email().ok().unwrap_or("").to_string(),
                     timestamp: commit.time().seconds(),
                     parents: parents.iter().map(|p| p.to_string()).collect(),
                     lane,
@@ -399,7 +399,7 @@ fn collect_refs(repo: &Repository, visible_oids: &HashSet<Oid>) -> HashMap<Oid, 
 
     if let Ok(refs) = repo.references() {
         for r in refs.flatten() {
-            let name = r.shorthand().unwrap_or("").to_string();
+            let name = r.shorthand().ok().unwrap_or("").to_string();
             if name.is_empty() || name.ends_with("/HEAD") {
                 continue;
             }
@@ -438,7 +438,7 @@ fn collect_refs(repo: &Repository, visible_oids: &HashSet<Oid>) -> HashMap<Oid, 
             let label = repo
                 .head()
                 .ok()
-                .and_then(|h| h.shorthand().map(|s| s.to_string()))
+                .and_then(|h| h.shorthand().ok().map(|s| s.to_string()))
                 .unwrap_or_else(|| "HEAD".to_string());
             map.entry(oid).or_default().push(RefLabel {
                 name: label,
