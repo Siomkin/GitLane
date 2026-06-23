@@ -68,10 +68,13 @@ export function HistoryWorkspace() {
   // briefly between the summary committing and the graph arriving.
   const showSkeleton = graphLoading && !graph;
   // The graph load failed after the summary published (commitGraph threw): the
-  // skeleton is gone but there's no graph. Signal the failure instead of letting
-  // the header read "0 commits" and the surface render empty — which looks like an
-  // empty repository rather than a load error (GL-20 review).
-  const graphFailed = !graphLoading && !graph && error != null;
+  // skeleton is gone but there's no graph. Derive this from the repo/graph state
+  // rather than the global `error` — an open repo with a settled-but-null graph is
+  // a failure even after the user dismisses the global banner (which clears
+  // `error`), so the retry path survives the dismiss instead of falling through to
+  // an empty "0 commits" render (GL-20 review). An empty repository keeps a
+  // non-null graph (zero commits), so it never trips this.
+  const graphFailed = summary != null && !graphLoading && !graph;
   const countLabel = showSkeleton
     ? "Loading…"
     : graphFailed

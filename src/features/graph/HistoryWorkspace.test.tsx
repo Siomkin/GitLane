@@ -274,6 +274,17 @@ describe("HistoryWorkspace — graph loading skeleton", () => {
     expect(screen.getByText("fatal: bad object")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
+
+  it("keeps the failure state after the global error is dismissed", () => {
+    // Dismissing the global banner clears `error`, but a settled-but-null graph
+    // for an open repo is still a failure — the retry path must survive the
+    // dismiss instead of falling through to an empty "0 commits" render (GL-20).
+    useRepo.setState({ graph: null, graphLoading: false, error: null });
+    render(<HistoryWorkspace />);
+    expect(screen.queryByText(/\bcommits\b/)).not.toBeInTheDocument();
+    expect(screen.getByText("History unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
 });
 
 describe("HistoryWorkspace — virtualized history", () => {

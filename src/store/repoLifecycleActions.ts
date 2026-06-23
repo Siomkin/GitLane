@@ -34,6 +34,14 @@ export function createRepoLifecycleActions(
   const graphRequestIsCurrent = (generation: number, path: string) =>
     graphGenerationIsCurrent(generation) && get().summary?.path === path;
 
+  // Secondary (non-graph) reads must land on whichever repo is *currently
+  // displayed*, not on a specific graph generation. An unrelated "load more" or
+  // refresh bumps the graph generation while these are still in flight; tying
+  // them to it would silently drop branches/worktrees/stashes/changes for the
+  // repo that's still on screen (GL-20 review). Repo identity (the published
+  // summary path) is the right guard — a newer open or a close changes it.
+  const repoStillDisplayed = (path: string) => get().summary?.path === path;
+
   // Replay a re-sync deferred while `loading` was held (no-op when none queued).
   const flushPendingRefresh = () => {
     const scope = takePendingRefresh();
@@ -126,8 +134,9 @@ export function createRepoLifecycleActions(
 
       // Secondary reads don't gate the first paint, so fan them out independently
       // — each fills its slice as it lands rather than waiting behind the graph in
-      // one Promise.all. The generation + path guard drops responses from a
-      // superseded or closed repo.
+      // one Promise.all. They're guarded by repo identity (not the graph
+      // generation) so an unrelated "load more"/refresh can't drop them while
+      // they're still in flight; only a superseded or closed repo does.
       //
       // Branches and working changes are *required* state: an empty navigator or a
       // falsely-clean worktree would be wrong, not merely incomplete, so a failure
@@ -137,30 +146,30 @@ export function createRepoLifecycleActions(
       void api
         .listBranches(summary.path)
         .then((branches) => {
-          if (graphRequestIsCurrent(generation, summary.path)) set({ branches });
+          if (repoStillDisplayed(summary.path)) set({ branches });
         })
         .catch((e) => {
-          if (graphRequestIsCurrent(generation, summary.path)) set({ error: String(e) });
+          if (repoStillDisplayed(summary.path)) set({ error: String(e) });
         });
       void api
         .listWorktrees(summary.path)
         .then((worktrees) => {
-          if (graphRequestIsCurrent(generation, summary.path)) set({ worktrees });
+          if (repoStillDisplayed(summary.path)) set({ worktrees });
         })
         .catch(() => {});
       void api
         .listStashes(summary.path)
         .then((stashes) => {
-          if (graphRequestIsCurrent(generation, summary.path)) set({ stashes });
+          if (repoStillDisplayed(summary.path)) set({ stashes });
         })
         .catch(() => {});
       void api
         .workingChanges(summary.path)
         .then((changes) => {
-          if (graphRequestIsCurrent(generation, summary.path)) set({ changes });
+          if (repoStillDisplayed(summary.path)) set({ changes });
         })
         .catch((e) => {
-          if (graphRequestIsCurrent(generation, summary.path)) set({ error: String(e) });
+          if (repoStillDisplayed(summary.path)) set({ error: String(e) });
         });
 
       // The graph is the heavy one — await it, then paint and pick the initial
@@ -175,14 +184,21 @@ export function createRepoLifecycleActions(
         // the tip would scroll the graph to their branch while the inspector still
         // showed HEAD (GL-20 review). Its files were already fetched by the pick.
         const priorSelection = get().selectedCommit;
-        const honorPrior = priorSelection != null;
+        // Only honor a during-load pick if its commit is actually in the loaded
+        // graph window. A branch tip beyond the initial limit isn't in
+        // `graph.commits`, so the graph couldn't scroll to it and the inspector
+        // would fall back to the tip while `commitFiles` still belonged to the
+        // picked SHA — mismatched metadata. Fall back to the tip (and drop the now
+        // unreachable reveal) in that case (GL-20 review).
+        const honorPrior =
+          priorSelection != null && graph.commits.some((c) => c.id === priorSelection);
         const selectedCommit = honorPrior ? priorSelection : graph.commits[0]?.id ?? null;
         set({
           graph,
           selectedCommit,
           selectedCommits: honorPrior ? get().selectedCommits : selectedCommit ? [selectedCommit] : [],
           selectionAnchor: honorPrior ? get().selectionAnchor : selectedCommit,
-          ...(honorPrior ? {} : { commitFiles: [] }),
+          ...(honorPrior ? {} : { commitFiles: [], revealTarget: null }),
           graphLimit: INITIAL_GRAPH_LIMIT,
           graphLoading: false,
           loading: false,
@@ -195,10 +211,7 @@ export function createRepoLifecycleActions(
           void api
             .commitFiles(summary.path, selectedCommit)
             .then((commitFiles) => {
-              if (
-                graphRequestIsCurrent(generation, summary.path) &&
-                get().selectedCommit === selectedCommit
-              ) {
+              if (repoStillDisplayed(summary.path) && get().selectedCommit === selectedCommit) {
                 set({ commitFiles });
               }
             })
@@ -390,6 +403,11 @@ export function createRepoLifecycleActions(
           selectionAnchor,
           commitFiles,
           loading: false,
+          // A refresh can supersede the initial open's graph request (e.g. a
+          // checkout from the navigator while the skeleton is still up). When it
+          // does, that orphaned load returns without clearing graphLoading, so
+          // this owning refresh must clear it or the skeleton sticks (GL-20 review).
+          graphLoading: false,
           ...(gone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
@@ -401,7 +419,10 @@ export function createRepoLifecycleActions(
           flushPendingRefresh();
           return;
         }
-        set({ loading: false, error: String(e) });
+        // When this refresh owns the graph request (generation !== null), clear
+        // graphLoading too: it may have superseded the initial open, whose
+        // orphaned load can't clear the skeleton itself (GL-20 review).
+        set({ loading: false, error: String(e), ...(generation !== null ? { graphLoading: false } : {}) });
         flushPendingRefresh();
       }
     },

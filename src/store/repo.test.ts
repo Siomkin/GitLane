@@ -581,6 +581,106 @@ describe("repo store — loadRepo progressive open", () => {
     expect(useRepo.getState().revealTarget).toBe("tip");
   });
 
+  it("falls back to the tip when a during-load pick is outside the loaded graph window", async () => {
+    // The loaded window holds only head/tip; the user picks an old branch tip
+    // beyond the initial limit, so it isn't in `graph.commits`.
+    const loadedGraph: RepoGraph = {
+      commits: [
+        { id: "head", shortId: "head", summary: "head", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: [], lane: 0, row: 0, color: 0, refs: [] },
+        { id: "tip", shortId: "tip", summary: "feat", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["head"], lane: 0, row: 1, color: 0, refs: [] },
+      ],
+      edges: [],
+      laneCount: 1,
+      head: "head",
+      truncated: true,
+    };
+    const graphDeferred = deferred<RepoGraph>();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return graphDeferred.promise;
+      if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0 }]);
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+      return Promise.resolve([]);
+    });
+    useRepo.setState({ openPaths: ["/repo"] });
+
+    const open = useRepo.getState().loadRepo("/repo");
+    await new Promise((resolve) => setTimeout(resolve));
+    // Pick a commit that the loaded window will not contain.
+    await useRepo.getState().revealCommit("old-out-of-window");
+    expect(useRepo.getState().selectedCommit).toBe("old-out-of-window");
+
+    graphDeferred.resolve(loadedGraph);
+    await open;
+    await new Promise((resolve) => setTimeout(resolve));
+
+    // The unreachable pick is dropped: selection snaps to the tip and the stale
+    // reveal is cleared so the inspector + graph can't disagree (GL-20 review).
+    expect(useRepo.getState().selectedCommit).toBe("head");
+    expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("applies a slow secondary read even after a load-more bumps the graph generation", async () => {
+    const branchesDeferred = deferred<BranchInfo[]>();
+    const truncatedGraph: RepoGraph = { ...emptyGraph, truncated: true };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(truncatedGraph);
+      if (cmd === "list_branches") return branchesDeferred.promise;
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+      return Promise.resolve([]);
+    });
+    useRepo.setState({ openPaths: ["/repo"], branches: [] });
+
+    // Open completes (graph lands) while the branches read is still in flight.
+    await useRepo.getState().loadRepo("/repo");
+    // An unrelated "load more" bumps the graph generation mid-flight.
+    await useRepo.getState().loadMoreHistory();
+
+    const picked: BranchInfo[] = [
+      { name: "main", kind: "local", target: "head", isHead: true, upstream: null },
+    ];
+    branchesDeferred.resolve(picked);
+    await new Promise((resolve) => setTimeout(resolve));
+
+    // Guarded by repo identity, not the bumped generation, so it still lands
+    // instead of being silently dropped (GL-20 review).
+    expect(useRepo.getState().branches).toHaveLength(1);
+  });
+
+  it("replays a deferred watcher sync after a failed checkout", async () => {
+    const checkoutDeferred = deferred<void>();
+    let graphCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "checkout") return checkoutDeferred.promise;
+      if (cmd === "commit_graph") {
+        graphCalls += 1;
+        return Promise.resolve(emptyGraph);
+      }
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+      return Promise.resolve([]);
+    });
+    useRepo.setState({ summary, graph: emptyGraph, loading: false });
+
+    const checkout = useRepo.getState().checkoutBranch("feature").catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(useRepo.getState().loading).toBe(true);
+
+    // A watcher event lands while the checkout holds `loading` → deferred, not run.
+    await useRepo.getState().refresh({ prs: false, quiet: true, scope: "all" });
+    expect(graphCalls).toBe(0);
+
+    // The checkout fails; its catch must still replay the deferred sync (GL-20 review).
+    checkoutDeferred.reject(new Error("conflict"));
+    await checkout;
+    await new Promise((resolve) => setTimeout(resolve));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(useRepo.getState().loading).toBe(false);
+    expect(graphCalls).toBeGreaterThanOrEqual(1);
+  });
+
   it("does not drop a deferred watcher sync when a manual refresh is superseded", async () => {
     const slowGraph = deferred<RepoGraph>();
     let graphCallsB = 0;

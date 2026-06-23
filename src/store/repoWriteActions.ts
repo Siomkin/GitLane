@@ -1,6 +1,7 @@
 import { api, type RepoSummary } from "../lib/api";
 import { splitCommitMessage } from "../lib/commitMessage";
 import { useAccounts } from "./accounts";
+import { takePendingRefresh } from "./repoRequests";
 import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
@@ -17,6 +18,16 @@ async function runOp(
   const message = await body(summary);
   await get().refresh();
   return message;
+}
+
+// Replay a watcher/focus re-sync that `refresh` deferred while a `loading`-holding
+// write op (checkout/fetch) was in flight. `refresh` already flushes on its own
+// success/failure, but a write op's failure path clears `loading` without going
+// through `refresh`, so the queued re-sync would otherwise be stranded until the
+// next external event (GL-20 review). Mirrors the lifecycle slice's flush.
+function flushPendingRefresh(get: RepoGet) {
+  const scope = takePendingRefresh();
+  if (scope) void get().refresh({ prs: false, quiet: true, scope });
 }
 
 export function createRepoWriteActions(
@@ -79,8 +90,10 @@ export function createRepoWriteActions(
         return `Checked out ${name}`;
       } catch (e) {
         // Reset the spinner but let the caller present the failure (toast), so a
-        // failed checkout never leaves a stale success message behind.
+        // failed checkout never leaves a stale success message behind. Replay any
+        // re-sync deferred while this op held `loading` (GL-20 review).
         set({ loading: false });
+        flushPendingRefresh(get);
         throw e;
       }
     },
@@ -416,7 +429,9 @@ export function createRepoWriteActions(
         set({ loading: false });
         await get().refresh();
       } catch (e) {
+        // Replay any re-sync deferred while this fetch held `loading` (GL-20 review).
         set({ loading: false });
+        flushPendingRefresh(get);
         useUi.getState().showToast(String(e), "error");
       }
     },
