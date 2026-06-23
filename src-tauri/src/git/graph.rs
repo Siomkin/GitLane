@@ -10,7 +10,64 @@ use std::time::{Duration, Instant};
 
 use git2::{Oid, Repository, Sort};
 
-use super::types::{CommitNode, GraphEdge, RefLabel, RepoGraph};
+use super::types::{CommitNode, GraphEdge, RefLabel, RepoGraph, StashRef};
+
+/// A stash whose base commit is inside the loaded window, ready to be injected
+/// into the layout as a synthetic single-parent node (`oid` waiting on `base`).
+struct StashMeta {
+    oid: Oid,
+    base: Oid,
+    timestamp: i64,
+    index: usize,
+    message: String,
+}
+
+/// One node in the merged, date-ordered layout sequence: either a real commit
+/// (handle reused from the revwalk pass) or an injected in-window stash.
+enum Entry<'a> {
+    Commit(&'a git2::Commit<'a>),
+    Stash(&'a StashMeta),
+}
+
+/// Read the stash reflog (`refs/stash`) via libgit2 and keep only the stashes
+/// whose base (first parent) is inside `visible_oids`, so they can be laid out
+/// inline. Out-of-window stashes are left to the frontend, which floats them by
+/// time or rejoins them through a bounded context chain. Reading here (read side,
+/// git2) keeps the graph self-contained and avoids coupling the skeleton to the
+/// slower `git stash list` subprocess. Returns newest-first with the reflog index
+/// preserved as the `stash@{index}` number.
+fn read_in_window_stashes(repo: &Repository, visible_oids: &HashSet<Oid>) -> Vec<StashMeta> {
+    let Ok(reflog) = repo.reflog("refs/stash") else {
+        return Vec::new();
+    };
+    let mut metas = Vec::new();
+    for (index, entry) in reflog.iter().enumerate() {
+        let oid = entry.id_new();
+        let Ok(commit) = repo.find_commit(oid) else {
+            continue;
+        };
+        let Some(base) = commit.parent_ids().next() else {
+            continue;
+        };
+        if !visible_oids.contains(&base) {
+            continue;
+        }
+        metas.push(StashMeta {
+            oid,
+            base,
+            timestamp: commit.time().seconds(),
+            index,
+            message: commit
+                .summary_bytes()
+                .map(|b| String::from_utf8_lossy(b).into_owned())
+                .unwrap_or_default(),
+        });
+    }
+    // Date-descending so the merge-interleave below can slot each stash in with a
+    // single forward scan; the reflog index travels along as `stash@{index}`.
+    metas.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    metas
+}
 
 /// Build the laid-out graph for `repo`, walking at most `limit` commits.
 pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> {
@@ -82,16 +139,48 @@ pub fn build_profiled(
     // merge pulled the parent in as a topic branch, rather than a plain
     // first-parent continuation. The flag is what lets stacked branches keep
     // their own columns instead of collapsing onto one lane.
+    // Pre-load every commit handle so we can (a) interleave stashes by time and
+    // (b) reuse the handle in the layout loop instead of re-opening it.
+    let commits_vec: Vec<git2::Commit> = oids
+        .iter()
+        .map(|oid| repo.find_commit(*oid))
+        .collect::<Result<_, _>>()?;
+
+    // Inject stashes whose base is in the window. Merge them into the date-ordered
+    // walk: emit each stash created strictly after a commit's time just before
+    // that commit, so it slots in where it was created — then the reservation
+    // algorithm below holds its lane open down to the base (fan shifts right).
+    let stash_metas = read_in_window_stashes(repo, &visible_oids);
+    let mut order: Vec<Entry> = Vec::with_capacity(commits_vec.len() + stash_metas.len());
+    let mut next_stash = 0usize;
+    for commit in &commits_vec {
+        let ct = commit.time().seconds();
+        while next_stash < stash_metas.len() && stash_metas[next_stash].timestamp > ct {
+            order.push(Entry::Stash(&stash_metas[next_stash]));
+            next_stash += 1;
+        }
+        order.push(Entry::Commit(commit));
+    }
+    while next_stash < stash_metas.len() {
+        order.push(Entry::Stash(&stash_metas[next_stash]));
+        next_stash += 1;
+    }
+
     let layout_started = Instant::now();
     let mut lanes: Vec<Option<Lane>> = Vec::new();
-    let mut nodes: Vec<CommitNode> = Vec::with_capacity(oids.len());
+    let mut nodes: Vec<CommitNode> = Vec::with_capacity(order.len());
     let mut row_of: HashMap<Oid, usize> = HashMap::new();
     let mut lane_of: HashMap<Oid, usize> = HashMap::new();
     let mut lane_count = 0usize;
 
-    for (row, &oid) in oids.iter().enumerate() {
-        let commit = repo.find_commit(oid)?;
-        let parents: Vec<Oid> = commit.parent_ids().collect();
+    for (row, entry) in order.iter().enumerate() {
+        // A stash node carries just its base as a single (synthetic) parent, so it
+        // reserves one lane held open to the base — never fanning out to the
+        // stash's index/untracked parents, which aren't real history.
+        let (oid, parents): (Oid, Vec<Oid>) = match entry {
+            Entry::Commit(commit) => (commit.id(), commit.parent_ids().collect()),
+            Entry::Stash(stash) => (stash.oid, vec![stash.base]),
+        };
 
         // Claim a lane for this commit. Several lanes may await it: a branch-root
         // reservation (a merge introduced it as a topic branch) wins so the
@@ -146,29 +235,53 @@ pub fn build_profiled(
         row_of.insert(oid, row);
         lane_of.insert(oid, lane);
 
-        let author = commit.author();
-        nodes.push(CommitNode {
-            id: oid.to_string(),
-            short_id: oid.to_string().chars().take(7).collect(),
-            // Lossy-decode so a non-UTF-8 commit message degrades to a readable
-            // approximation instead of rendering as an empty summary/body.
-            summary: commit
-                .summary_bytes()
-                .map(|b| String::from_utf8_lossy(b).into_owned())
-                .unwrap_or_default(),
-            body: commit
-                .body_bytes()
-                .map(|b| String::from_utf8_lossy(b).trim().to_string())
-                .unwrap_or_default(),
-            author_name: author.name().unwrap_or("").to_string(),
-            author_email: author.email().unwrap_or("").to_string(),
-            timestamp: commit.time().seconds(),
-            parents: parents.iter().map(|p| p.to_string()).collect(),
-            lane,
-            row,
-            color: lane,
-            refs: refs_map.get(&oid).cloned().unwrap_or_default(),
-        });
+        let node = match entry {
+            Entry::Commit(commit) => {
+                let author = commit.author();
+                CommitNode {
+                    id: oid.to_string(),
+                    short_id: oid.to_string().chars().take(7).collect(),
+                    // Lossy-decode so a non-UTF-8 commit message degrades to a
+                    // readable approximation instead of an empty summary/body.
+                    summary: commit
+                        .summary_bytes()
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_default(),
+                    body: commit
+                        .body_bytes()
+                        .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                        .unwrap_or_default(),
+                    author_name: author.name().unwrap_or("").to_string(),
+                    author_email: author.email().unwrap_or("").to_string(),
+                    timestamp: commit.time().seconds(),
+                    parents: parents.iter().map(|p| p.to_string()).collect(),
+                    lane,
+                    row,
+                    color: lane,
+                    refs: refs_map.get(&oid).cloned().unwrap_or_default(),
+                    stash: None,
+                }
+            }
+            Entry::Stash(stash) => CommitNode {
+                id: oid.to_string(),
+                short_id: oid.to_string().chars().take(7).collect(),
+                summary: stash.message.clone(),
+                body: String::new(),
+                author_name: String::new(),
+                author_email: String::new(),
+                timestamp: stash.timestamp,
+                parents: parents.iter().map(|p| p.to_string()).collect(),
+                lane,
+                row,
+                color: lane,
+                refs: Vec::new(),
+                stash: Some(StashRef {
+                    index: stash.index,
+                    message: stash.message.clone(),
+                }),
+            },
+        };
+        nodes.push(node);
     }
     let layout_elapsed = layout_started.elapsed();
 
@@ -329,10 +442,122 @@ fn head_oid(repo: &Repository) -> (Option<String>, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::build_profiled;
-    use git2::Repository;
+    use super::{build, build_profiled};
+    use git2::{Oid, Repository, Signature, Time};
     use std::env;
+    use std::fs;
+    use std::path::Path;
     use std::time::{Duration, Instant};
+
+    fn sig(seconds: i64) -> Signature<'static> {
+        Signature::new("Bench", "bench@example.test", &Time::new(seconds, 0)).unwrap()
+    }
+
+    fn commit_on(
+        repo: &Repository,
+        dir: &Path,
+        reference: &str,
+        name: &str,
+        content: &str,
+        parents: &[Oid],
+        seconds: i64,
+    ) -> Oid {
+        fs::write(dir.join(name), content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(name)).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let parent_commits: Vec<git2::Commit> =
+            parents.iter().map(|p| repo.find_commit(*p).unwrap()).collect();
+        let parent_refs: Vec<&git2::Commit> = parent_commits.iter().collect();
+        let signature = sig(seconds);
+        repo.commit(
+            Some(reference),
+            &signature,
+            &signature,
+            name,
+            &tree,
+            &parent_refs,
+        )
+        .unwrap()
+    }
+
+    /// An in-window stash is injected as a node that reserves its own lane: a
+    /// concurrent branch commit rendered between the stash and its base is pushed
+    /// off the stash's lane, and the stash carries a dashed edge to the base.
+    #[test]
+    fn in_window_stash_reserves_a_lane_to_its_base() {
+        let dir = std::env::temp_dir().join("gitlane-stash-lane-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let mut repo = Repository::init(&dir).unwrap();
+
+        let c1 = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+        let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v2\n", &[c1], 200);
+        // A concurrent branch tip whose time (220) lands between the base (200)
+        // and the stash (250), so it shares the stash's vertical span.
+        let b1 = commit_on(&repo, &dir, "refs/heads/b", "a.txt", "vb\n", &[base], 220);
+
+        // Dirty the worktree (HEAD is still `base`) and stash at t=250.
+        fs::write(dir.join("a.txt"), "dirty\n").unwrap();
+        repo.stash_save2(&sig(250), Some("WIP on master"), None)
+            .unwrap();
+        // A newer commit on top so history extends above the stash too.
+        let _c3 = commit_on(&repo, &dir, "HEAD", "a.txt", "v3\n", &[base], 300);
+
+        let graph = build(&repo, 100).unwrap();
+
+        let stash_node = graph
+            .commits
+            .iter()
+            .find(|node| node.stash.is_some())
+            .expect("stash injected as a graph node");
+        let stash_ref = stash_node.stash.as_ref().unwrap();
+        assert_eq!(stash_ref.index, 0, "most-recent stash is stash@{{0}}");
+        assert_eq!(
+            stash_node.parents,
+            vec![base.to_string()],
+            "stash's only layout parent is its base",
+        );
+
+        let base_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == base.to_string())
+            .expect("base commit is in the window");
+        let b1_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == b1.to_string())
+            .expect("concurrent branch tip is in the window");
+
+        // The reserved lane is held from the stash down to its base: no other node
+        // in that span reuses it — in particular the concurrent branch is shoved off.
+        assert_ne!(
+            b1_node.lane, stash_node.lane,
+            "concurrent branch is pushed off the stash's reserved lane",
+        );
+        for node in &graph.commits {
+            if node.row > stash_node.row && node.row < base_node.row {
+                assert_ne!(
+                    node.lane, stash_node.lane,
+                    "node {} reused the held stash lane",
+                    node.id,
+                );
+            }
+        }
+
+        // The dashed connector to the base exists as a real edge from the stash row.
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.from_row == stash_node.row && edge.to_row == base_node.row),
+            "stash node has an edge to its base",
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     #[ignore = "run explicitly against a generated fixture in release mode"]

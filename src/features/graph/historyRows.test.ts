@@ -275,6 +275,54 @@ describe("buildHistoryRows", () => {
     ]);
   });
 
+  it("renders an in-window stash injected as a graph node and dedupes the stash list", () => {
+    // The Rust layout placed the stash as a graph node (its lane is reserved and
+    // its dashed edge to the base is a real graph edge). The frontend maps it to a
+    // stash row in place and must NOT also place the same stash from the list.
+    const stashNode = commit({
+      id: "s0",
+      summary: "WIP on master",
+      timestamp: 250,
+      row: 1,
+      lane: 1,
+      parents: ["c1"],
+      stash: { index: 0, message: "WIP on master" },
+    });
+    const nodeGraph: RepoGraph = {
+      commits: [
+        commit({ id: "c1", summary: "base", timestamp: 300, row: 0, lane: 0 }),
+        stashNode,
+        commit({ id: "c2", summary: "tip", timestamp: 200, row: 2, lane: 0, parents: ["c1"] }),
+      ],
+      edges: [{ fromRow: 1, fromLane: 1, toRow: 0, toLane: 0, color: 0 }],
+      laneCount: 2,
+      head: "c2",
+      truncated: false,
+    };
+    const model = buildHistoryRows({
+      graph: nodeGraph,
+      // list_stashes also returns the in-window stash; it must be deduped by oid.
+      stashes: [stash({ index: 0, oid: "s0", timestamp: 250, baseOid: "c1", baseTimestamp: 300 })],
+      hasWip: false,
+    });
+
+    expect(model.rows.map((row) => row.kind)).toEqual(["commit", "stash", "commit"]);
+    expect(model.rows.map((row) => row.key)).toEqual(["c1", "stash:0:s0", "c2"]);
+    // Marker sits in the Rust-reserved lane; no frontend connector — the dashed
+    // edge to the base is the real graph edge.
+    expect(model.rows[1]).toMatchObject({ kind: "stash", markerLane: 1 });
+    expect(model.stashConnectors).toEqual([]);
+    // The stash node is a graph row but not a commit (count/search exclude it).
+    expect(model.commits.map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(model.revealRowIndexById.get("s0")).toBe(1);
+    expect(model.visualRowByGraphRow).toEqual([0, 1, 2]);
+
+    // It still renders if the stash list hasn't loaded yet (synthesised from the node).
+    const synth = buildHistoryRows({ graph: nodeGraph, stashes: [], hasWip: false });
+    expect(synth.rows.map((row) => row.key)).toEqual(["c1", "stash:0:s0", "c2"]);
+    expect(synth.rows[1]).toMatchObject({ kind: "stash", markerLane: 1 });
+  });
+
   it("keeps stashes outside the loaded time window in fallback", () => {
     const model = buildHistoryRows({
       graph,

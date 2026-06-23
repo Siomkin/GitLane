@@ -56,9 +56,24 @@ export function buildHistoryRows({
   const revealRowIndexById = new Map<string, number>();
   const visualRowByGraphRow: number[] = [];
   const stashConnectors: StashConnector[] = [];
-  const commitIds = new Set(commits.map((commit) => commit.id));
-  const commitById = new Map(commits.map((commit) => [commit.id, commit]));
-  const oldestTimestamp = commits.length > 0 ? commits[commits.length - 1].timestamp : null;
+  // Only true commits anchor connectors / count toward "in window". Stash nodes
+  // injected by the Rust layout are positioned + lane-reserved already, so they
+  // ride along as graph rows; the timestamp-interleave below is left to handle
+  // *only* stashes the backend couldn't place (base outside the loaded window).
+  const commitIds = new Set(
+    commits.filter((commit) => !commit.stash).map((commit) => commit.id),
+  );
+  const commitById = new Map(
+    commits.filter((commit) => !commit.stash).map((commit) => [commit.id, commit]),
+  );
+  // Stashes already laid out as graph nodes (matched by oid = node id) — skip
+  // them in the out-of-window classification so they aren't placed twice.
+  const inGraphStashOids = new Set(
+    commits.filter((commit) => commit.stash).map((commit) => commit.id),
+  );
+  const stashByOid = new Map(stashes.map((stash) => [stash.oid, stash]));
+  const lastCommitNode = [...commits].reverse().find((commit) => !commit.stash) ?? null;
+  const oldestTimestamp = lastCommitNode ? lastCommitNode.timestamp : null;
 
   // Classify each stash by how the connector should attach. A base commit inside
   // the loaded window or a time-only placement both let the stash float to its
@@ -79,6 +94,11 @@ export function buildHistoryRows({
   const unanchoredStashes: StashEntry[] = [];
 
   for (const stash of stashes) {
+    // Already a graph node (the backend reserved its lane) — rendered in the
+    // commit walk below, not here.
+    if (inGraphStashOids.has(stash.oid)) {
+      continue;
+    }
     if (stash.baseOid && commitIds.has(stash.baseOid)) {
       placeable.push({ stash, baseOid: stash.baseOid });
       continue;
@@ -170,7 +190,34 @@ export function buildHistoryRows({
   };
 
   for (const commit of commits) {
-    flushStashesNewerThan(commit.timestamp, commit.id);
+    // Out-of-window stashes interleave by their own time around every graph node
+    // (commit or injected stash), so a floating stash still slots in chronologically.
+    flushStashesNewerThan(commit.timestamp, commit.stash ? null : commit.id);
+    if (commit.stash) {
+      // An in-window stash placed by the Rust layout: render it as a stash row at
+      // the node's reserved lane. Its dashed edge to the base is a real graph edge
+      // (drawn by the canvas), so no frontend connector is needed.
+      const stashRow = rows.length;
+      const entry = stashByOid.get(commit.id) ?? {
+        index: commit.stash.index,
+        message: commit.stash.message,
+        oid: commit.id,
+        timestamp: commit.timestamp,
+        baseOid: commit.parents[0] ?? null,
+        baseTimestamp: null,
+        context: [],
+      };
+      rows.push({
+        kind: "stash",
+        key: `stash:${commit.stash.index}:${commit.id}`,
+        stash: entry,
+        rowIndex: stashRow,
+        markerLane: commit.lane,
+      });
+      revealRowIndexById.set(commit.id, stashRow);
+      visualRowByGraphRow[commit.row] = stashRow;
+      continue;
+    }
     emitRejoinStashesAt(commit.id);
     const commitRow = rows.length;
     rows.push({ kind: "commit", key: commit.id, commit });
@@ -180,8 +227,7 @@ export function buildHistoryRows({
   }
   // Stashes older than every loaded commit settle at the bottom, anchored to the
   // last (oldest) loaded commit above them.
-  const lastCommit = commits[commits.length - 1] ?? null;
-  flushStashesNewerThan(null, lastCommit ? lastCommit.id : null);
+  flushStashesNewerThan(null, lastCommitNode ? lastCommitNode.id : null);
 
   // Resolve connectors + marker lanes once the full row layout is known: a
   // stash's base commit can sit far below it, so its row index (and the lanes
@@ -240,7 +286,9 @@ export function buildHistoryRows({
 
   return {
     rows,
-    commits,
+    // Real commits only — stash nodes are graph rows but shouldn't count toward
+    // the commit total or be matched by the commit search.
+    commits: commits.filter((commit) => !commit.stash),
     commitRowIndexById,
     revealRowIndexById,
     visualRowByGraphRow,

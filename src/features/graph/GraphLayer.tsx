@@ -124,6 +124,15 @@ export function GraphLayer({
       }
     }
 
+    // Graph rows that are injected stash nodes: their single edge to the base is
+    // drawn dashed + amber (the GitKraken stash connector) instead of a solid
+    // lane line, and their node is the amber marker (painted by the HTML row), so
+    // the canvas skips the commit dot for them.
+    const stashNodeRows = new Set<number>();
+    for (const commit of graph.commits) {
+      if (commit.stash) stashNodeRows.add(commit.row);
+    }
+
     const clampY = (value: number) =>
       Math.max(-rowHeight, Math.min(canvasHeight + rowHeight, value));
     for (const edge of graph.edges) {
@@ -134,8 +143,10 @@ export function GraphLayer({
       if (!segmentIntersectsViewport(y1, y2, viewportTop, canvasHeight, rowHeight)) {
         continue;
       }
-      ctx.strokeStyle = laneColor(edge.color);
+      const isStashEdge = stashNodeRows.has(edge.fromRow);
+      ctx.strokeStyle = isStashEdge ? STASH_CONNECTOR : laneColor(edge.color);
       ctx.lineWidth = 2.4;
+      ctx.setLineDash(isStashEdge ? [3, 4] : []);
       ctx.beginPath();
       const localY1 = clampY(y1 - viewportTop);
       const localY2 = clampY(y2 - viewportTop);
@@ -156,6 +167,7 @@ export function GraphLayer({
       }
       ctx.stroke();
     }
+    ctx.setLineDash([]);
 
     if (stashConnectors.length > 0) {
       ctx.lineWidth = 2.4;
@@ -190,6 +202,9 @@ export function GraphLayer({
     const selectedSet = new Set(selectedCommits);
 
     for (const commit of graph.commits) {
+      // Stash nodes render as the amber dashed marker in their HTML row, not a
+      // canvas dot — their edge to the base is already drawn dashed above.
+      if (commit.stash) continue;
       const x = graphLaneX(commit.lane);
       const globalY = graphRowY(commit.row);
       if (!segmentIntersectsViewport(globalY, globalY, viewportTop, canvasHeight, rowHeight)) {

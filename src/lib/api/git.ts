@@ -8,6 +8,14 @@ export interface RefLabel {
   kind: RefKind;
 }
 
+/** Marks a graph node that is an in-window stash rather than a commit (see the
+ * Rust `StashRef`). The node's single parent is the stash base; the frontend
+ * paints it as the amber `stash@{index}` marker with a dashed edge to the base. */
+export interface StashRef {
+  index: number;
+  message: string;
+}
+
 export interface CommitNode {
   id: string;
   shortId: string;
@@ -21,6 +29,8 @@ export interface CommitNode {
   row: number;
   color: number;
   refs: RefLabel[];
+  /** Present (and non-null) only when this node is an injected in-window stash. */
+  stash?: StashRef | null;
 }
 
 export interface GraphEdge {
