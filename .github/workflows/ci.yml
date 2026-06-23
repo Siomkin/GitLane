@@ -12,11 +12,11 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  # Frontend-only gate for this phase: typecheck + build + unit/render tests.
-  # The Rust/Tauri compile and the desktop bundle build are intentionally left
-  # out of PR/develop CI (too slow, not needed yet) — release.yml still builds
-  # the full desktop bundle on v* tags.
+  # Always (PRs + every branch): fast frontend gate — typecheck + build + tests.
   frontend:
     name: Frontend (typecheck + build + tests)
     runs-on: ubuntu-24.04
@@ -34,3 +34,76 @@ jobs:
 
       - name: Frontend tests
         run: bun run test -- --run
+
+  # staging/latest only: the full Rust/Tauri test suite. Skipped on develop and
+  # ordinary PRs (too slow for this phase); the frontend job covers those.
+  rust-tests:
+    name: Rust tests
+    if: github.ref == 'refs/heads/staging' || github.base_ref == 'staging' || github.ref == 'refs/heads/latest' || github.base_ref == 'latest'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install Linux Tauri dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+  # staging/latest only: build the desktop bundle as a promotion sanity check.
+  desktop-app-build:
+    name: Desktop app build (${{ matrix.name }})
+    if: github.ref == 'refs/heads/staging' || github.base_ref == 'staging' || github.ref == 'refs/heads/latest' || github.base_ref == 'latest'
+    needs: [frontend, rust-tests]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            runner: ubuntu-24.04
+            args: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install Linux Tauri dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build app artifact
+        uses: tauri-apps/tauri-action@v0
+        with:
+          tauriScript: bun tauri
+          args: ${{ matrix.args }}
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: GitLane-${{ matrix.name }}-[bundle]
