@@ -95,11 +95,13 @@ export function GraphLayer({
     const graphRowY = (graphRow: number) =>
       rowY(visualRowByGraphRow[graphRow] ?? graphRow + (hasWip ? 1 : 0), rowHeight);
 
-    // Synthetic connectors. The WIP node hangs off HEAD; stash rows attach to
-    // the stash commit's first parent/base commit, so they read as annotations
-    // near the commit they came from instead of as a block above history.
+    // Synthetic connectors. The WIP node hangs off HEAD; each stash row sits at
+    // its own creation time in the date-ordered list, with a dashed connector
+    // reaching down to its base commit wherever that lands — so the stash reads
+    // as an annotation tied to its origin rather than glued
+    // beside it.
     if ((hasWip || stashConnectors.length > 0) && head) {
-      const headCommit = graph.commits.find((commit) => commit.id === head);
+      const headCommit = graph.commits.find((commit) => commit.id === head && !commit.stash);
       if (hasWip && headCommit) {
         const x = graphLaneX(headCommit.lane);
         const yHead = graphRowY(headCommit.row);
@@ -122,6 +124,15 @@ export function GraphLayer({
       }
     }
 
+    // Graph rows that are injected stash nodes: their single edge to the base is
+    // drawn dashed + amber (the reserved-lane stash connector) instead of a solid
+    // lane line, and their node is the amber marker (painted by the HTML row), so
+    // the canvas skips the commit dot for them.
+    const stashNodeRows = new Set<number>();
+    for (const commit of graph.commits) {
+      if (commit.stash) stashNodeRows.add(commit.row);
+    }
+
     const clampY = (value: number) =>
       Math.max(-rowHeight, Math.min(canvasHeight + rowHeight, value));
     for (const edge of graph.edges) {
@@ -132,8 +143,10 @@ export function GraphLayer({
       if (!segmentIntersectsViewport(y1, y2, viewportTop, canvasHeight, rowHeight)) {
         continue;
       }
-      ctx.strokeStyle = laneColor(edge.color);
+      const isStashEdge = stashNodeRows.has(edge.fromRow);
+      ctx.strokeStyle = isStashEdge ? STASH_CONNECTOR : laneColor(edge.color);
       ctx.lineWidth = 2.4;
+      ctx.setLineDash(isStashEdge ? [3, 4] : []);
       ctx.beginPath();
       const localY1 = clampY(y1 - viewportTop);
       const localY2 = clampY(y2 - viewportTop);
@@ -154,6 +167,7 @@ export function GraphLayer({
       }
       ctx.stroke();
     }
+    ctx.setLineDash([]);
 
     if (stashConnectors.length > 0) {
       ctx.lineWidth = 2.4;
@@ -188,6 +202,9 @@ export function GraphLayer({
     const selectedSet = new Set(selectedCommits);
 
     for (const commit of graph.commits) {
+      // Stash nodes render as the amber dashed marker in their HTML row, not a
+      // canvas dot — their edge to the base is already drawn dashed above.
+      if (commit.stash) continue;
       const x = graphLaneX(commit.lane);
       const globalY = graphRowY(commit.row);
       if (!segmentIntersectsViewport(globalY, globalY, viewportTop, canvasHeight, rowHeight)) {

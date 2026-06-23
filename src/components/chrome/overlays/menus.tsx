@@ -580,7 +580,7 @@ export function CommitContextMenu() {
   // ---- Single-commit menu ----
   // The commit's summary/body come from the loaded graph (no standalone
   // commit-detail command exists). Falls back to the short sha when truncated.
-  const commit = graph?.commits.find((c) => c.id === sha);
+  const commit = graph?.commits.find((c) => c.id === sha && !c.stash);
   const subject = commit?.summary ?? shortSha;
   const body = commit?.body ?? "";
   const canRewordHead =

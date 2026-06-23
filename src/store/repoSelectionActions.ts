@@ -40,7 +40,9 @@ export function createRepoSelectionActions(
 
     selectCommitMulti: async (id, mods, orderedIds) => {
       const { summary, graph } = get();
-      const ids = orderedIds ?? graph?.commits.map((c) => c.id) ?? [];
+      // Shift-range order excludes interleaved stash nodes — a range spanning a
+      // stash must not pull its oid into the commit multi-selection.
+      const ids = orderedIds ?? graph?.commits.filter((c) => !c.stash).map((c) => c.id) ?? [];
       const { selected: selectedCommits, anchor, focus } = computeSelection(
         { ids, selected: get().selectedCommits, anchor: get().selectionAnchor },
         id,

@@ -33,6 +33,7 @@ const stash: StashEntry = {
   index: 2,
   message: "On feature: WIP stash",
   oid: "stash-oid",
+  timestamp: 2,
   baseOid: "base-commit",
   baseTimestamp: 1,
   context: [],
@@ -61,6 +62,49 @@ describe("CommitInspector", () => {
     expect(screen.getByText("stash@{2}")).toBeInTheDocument();
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.getByText("stashed.ts")).toBeInTheDocument();
+    expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+  });
+
+  it("treats an in-window stash that is also a graph node as a stash, not a commit", () => {
+    // In-window stashes are injected into graph.commits as nodes (with a `stash`
+    // marker). Selecting one must still render StashMeta — not a commit row with
+    // blank author — even though it now matches a node in graph.commits.
+    useRepo.setState({
+      graph: {
+        ...graph,
+        commits: [
+          commit({ id: "stash-oid", summary: "stash-as-commit", authorName: "", stash: { index: 2, message: "On feature: WIP stash" } }),
+          commit({ id: "c1", summary: "wrong fallback commit" }),
+        ],
+      },
+    });
+
+    render(<CommitInspector />);
+
+    expect(screen.getByText("stash@{2}")).toBeInTheDocument();
+    expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
+    expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
+    expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+  });
+
+  it("synthesises stash metadata from the graph node when the stash list hasn't loaded", () => {
+    // listStashes can lag the graph; the selected stash exists only as a node.
+    useRepo.setState({
+      stashes: [],
+      graph: {
+        ...graph,
+        commits: [
+          commit({ id: "stash-oid", summary: "stash-as-commit", authorName: "", parents: ["base-commit"], stash: { index: 2, message: "On feature: WIP stash" } }),
+          commit({ id: "c1", summary: "wrong fallback commit" }),
+        ],
+      },
+    });
+
+    render(<CommitInspector />);
+
+    expect(screen.getByText("stash@{2}")).toBeInTheDocument();
+    expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
+    expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
   });
 });

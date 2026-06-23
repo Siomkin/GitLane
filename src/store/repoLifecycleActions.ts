@@ -211,7 +211,13 @@ export function createRepoLifecycleActions(
         // unreachable reveal) in that case (GL-20 review).
         const honorPrior =
           priorSelection != null && graph.commits.some((c) => c.id === priorSelection);
-        const selectedCommit = honorPrior ? priorSelection : graph.commits[0]?.id ?? null;
+        // Default to the newest real commit, never a stash node: in-window stashes
+        // are interleaved into `graph.commits` by time and a fresh stash sorts above
+        // HEAD, so `commits[0]` is often the stash — selecting it would load its
+        // files as a commit and mis-render the inspector.
+        const selectedCommit = honorPrior
+          ? priorSelection
+          : graph.commits.find((c) => !c.stash)?.id ?? null;
         set({
           graph,
           selectedCommit,
@@ -381,10 +387,12 @@ export function createRepoLifecycleActions(
           return;
         }
         const currentSelection = get().selectedCommit;
+        // Default to the newest real commit, skipping interleaved stash nodes (see
+        // loadRepo above).
         const selectedCommit =
           currentSelection && graph.commits.some((commit) => commit.id === currentSelection)
             ? currentSelection
-            : graph.commits[0]?.id ?? null;
+            : graph.commits.find((commit) => !commit.stash)?.id ?? null;
         const commitFiles = selectedCommit ? await api.commitFiles(nextSummary.path, selectedCommit) : [];
         if (!graphRequestIsCurrent(generation, summary.path)) {
           flushPendingRefresh();

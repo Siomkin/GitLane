@@ -58,7 +58,28 @@ const graph = (ids: string[], remoteTips: string[] = []): RepoGraph => ({
   truncated: false,
 });
 
+// Two first-parent commits (A → B) with an in-window stash node interleaved
+// between them — the shape the Rust layout now produces (commit, stash, commit).
+const graphWithInterleavedStash = (): RepoGraph => ({
+  commits: [
+    { id: "A", shortId: "A", summary: "A", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["B"], lane: 0, row: 0, color: 0, refs: [] },
+    { id: "s0", shortId: "s0", summary: "WIP", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["A"], lane: 1, row: 1, color: 1, refs: [], stash: { index: 0, message: "WIP" } },
+    { id: "B", shortId: "B", summary: "B", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["parent-of-B"], lane: 0, row: 2, color: 0, refs: [] },
+  ],
+  edges: [],
+  laneCount: 2,
+  head: "A",
+  truncated: false,
+});
+
 describe("buildCommitBatchPlan", () => {
+  it("treats commits straddling an injected stash node as one contiguous range", () => {
+    // A and B are first-parent adjacent but a stash node sits between them in
+    // graph.commits; contiguity must ignore the stash node, not split the range.
+    const plan = buildCommitBatchPlan(graphWithInterleavedStash(), ["A", "B"]);
+    expect(plan.compareRange).toEqual({ base: "parent-of-B", head: "A" });
+  });
+
   it("cherry-picks oldest-first, reverts newest-first, and includes the oldest change", () => {
     const plan = buildCommitBatchPlan(graph(["newest", "middle", "oldest"]), [
       "newest",
@@ -95,6 +116,13 @@ describe("selectionForContextMenu", () => {
 });
 
 describe("getSquashEligibility", () => {
+  it("squashes a contiguous range that straddles an injected stash node", () => {
+    expect(getSquashEligibility(graphWithInterleavedStash(), ["A", "B"])).toEqual({
+      ok: true,
+      parent: "parent-of-B",
+    });
+  });
+
   it("allows a contiguous unpublished range ending at HEAD", () => {
     const g = graph(["newest", "middle", "oldest", "base"]);
     expect(getSquashEligibility(g, ["newest", "middle"])).toEqual({

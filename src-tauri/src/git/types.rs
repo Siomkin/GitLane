@@ -14,6 +14,22 @@ pub struct RefLabel {
     pub kind: String,
 }
 
+/// Marks a graph node that is actually a stash rather than a commit. In-window
+/// stashes (those whose base commit is inside the loaded history) are injected
+/// into the layout as synthetic single-parent nodes so the reservation algorithm
+/// gives each its own held-open lane — the reserved-lane treatment where the fan
+/// shifts right and the stash drops straight down to its base with nothing under
+/// it. The frontend renders these as the amber `stash@{index}` marker + a dashed
+/// edge to the base, instead of a commit dot.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashRef {
+    /// Stash index `N` in `stash@{N}` (0 = most recent).
+    pub index: usize,
+    /// The stash subject line.
+    pub message: String,
+}
+
 /// A single commit, already positioned for the graph (`lane` = column,
 /// `row` = vertical index). `color` indexes into the frontend palette.
 #[derive(Debug, Clone, Serialize)]
@@ -33,6 +49,10 @@ pub struct CommitNode {
     pub row: usize,
     pub color: usize,
     pub refs: Vec<RefLabel>,
+    /// `Some` when this node is an in-window stash injected into the layout (its
+    /// single parent is the stash base). `None` for ordinary commits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stash: Option<StashRef>,
 }
 
 /// A connection drawn between a commit and one of its parents. Positions are
@@ -126,6 +146,10 @@ pub struct StashEntry {
     pub message: String,
     /// The stash commit oid (diffable like a commit vs its first parent).
     pub oid: String,
+    /// Committer timestamp of the stash commit itself, used to slot the stash
+    /// into the date-ordered history at the point it was created (stashes sit at
+    /// their own time, not next to their base commit).
+    pub timestamp: i64,
     /// First parent of the stash commit: the commit the stash was created from.
     pub base_oid: Option<String>,
     /// Author timestamp of `base_oid`, used to place dangling-base stashes near

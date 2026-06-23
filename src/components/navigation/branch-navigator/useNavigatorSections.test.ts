@@ -30,7 +30,7 @@ const commit = (over: Partial<CommitNode>): CommitNode => ({
 const tagged = commit({ id: "c1", refs: [{ name: "v1.0.0", kind: "tag" }] });
 const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, head: "c1", truncated: false };
 const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature/search", isMain: false };
-const stash: StashEntry = { index: 0, message: "wip on main", oid: "s1", baseOid: "c1", baseTimestamp: 0, context: [] };
+const stash: StashEntry = { index: 0, message: "wip on main", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] };
 
 function seed(over: Partial<Parameters<typeof useRepo.setState>[0]> = {}) {
   useRepo.setState({

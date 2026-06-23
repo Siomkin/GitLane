@@ -292,25 +292,29 @@ pub fn add_worktree(
 }
 
 /// List stashes via `git stash list`. Each line is
-/// `<oid>\x1f<parents>\x1f<subject>`; the line index is the stash index
-/// (0 = most recent). A stash commit's first parent is the base commit.
+/// `<oid>\x1f<parents>\x1f<committer-time>\x1f<subject>`; the line index is the
+/// stash index (0 = most recent). A stash commit's first parent is the base commit.
 pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
-    let raw = run_git(repo, &["stash", "list", "--format=%H%x1f%P%x1f%s"])?;
+    let raw = run_git(repo, &["stash", "list", "--format=%H%x1f%P%x1f%ct%x1f%s"])?;
     let mut parsed = Vec::new();
     let mut base_oids = Vec::new();
     for (index, line) in raw.lines().enumerate() {
         if line.is_empty() {
             continue;
         }
-        let mut parts = line.splitn(3, '\u{1f}');
+        let mut parts = line.splitn(4, '\u{1f}');
         let oid = parts.next().unwrap_or("").to_string();
         let parents = parts.next().unwrap_or("");
         let base_oid = parents.split_whitespace().next().map(str::to_string);
+        // Keep this `None` on a malformed `%ct` so the mapping below can fall
+        // back to the base commit's time rather than 0 (which would sort a real
+        // stash below every commit and risk pushing it to the fallback row).
+        let timestamp = parts.next().and_then(|value| value.parse::<i64>().ok());
         let message = parts.next().unwrap_or("").to_string();
         if let Some(base) = &base_oid {
             base_oids.push(base.clone());
         }
-        parsed.push((index, message, oid, base_oid));
+        parsed.push((index, message, oid, timestamp, base_oid));
     }
 
     let base_timestamps = stash_base_timestamps(repo, &base_oids);
@@ -322,7 +326,7 @@ pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
     }
     Ok(parsed
         .into_iter()
-        .map(|(index, message, oid, base_oid)| {
+        .map(|(index, message, oid, timestamp, base_oid)| {
             let base_timestamp = base_oid
                 .as_ref()
                 .and_then(|base| base_timestamps.get(base).copied());
@@ -335,6 +339,9 @@ pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
                 index,
                 message,
                 oid,
+                // A stash commit is always created on top of its base, so the
+                // base time is the safest stand-in if `%ct` somehow didn't parse.
+                timestamp: timestamp.or(base_timestamp).unwrap_or(0),
                 base_oid,
                 base_timestamp,
                 context,

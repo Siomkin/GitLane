@@ -34,7 +34,7 @@ export function CommitModal() {
   const commitSelected = useRepo((s) => s.commitSelected);
   const [amend, setAmend] = useState(false);
 
-  const headCommit = graph?.commits.find((commit) => commit.id === graph.head) ?? null;
+  const headCommit = graph?.commits.find((commit) => commit.id === graph.head && !commit.stash) ?? null;
   const canAmend =
     !!summary?.headBranch &&
     !!headCommit &&

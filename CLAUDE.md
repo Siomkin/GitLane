@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-GitLane is a Tauri 2 desktop git client for macOS: a GitKraken-style visual commit
+GitLane is a Tauri 2 desktop git client for macOS: a swimlane-style visual commit
 tree with drag-and-drop branch operations, working-tree staging/commit, stash and
 worktree management, and GitHub pull-request browsing across multiple `gh` accounts.
 Rust core + React/TypeScript frontend.

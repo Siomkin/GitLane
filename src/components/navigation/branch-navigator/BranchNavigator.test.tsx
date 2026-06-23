@@ -31,6 +31,7 @@ const stash: StashEntry = {
   index: 0,
   message: "On feature: WIP stash",
   oid: "stash-oid",
+  timestamp: 0,
   baseOid: "c1",
   baseTimestamp: 0,
   context: [],
