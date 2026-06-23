@@ -13,12 +13,17 @@ import { StashRow, StashFallbackRow, StashContextRow } from "./StashRows";
 import { WipRow } from "./WipRow";
 import { LoadMoreRow } from "./LoadMoreRow";
 import { ColumnHandle } from "./ColumnHandle";
+import { HistorySkeleton } from "./HistorySkeleton";
+import { LoadError } from "../../components/ui/Loading";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 
 export function HistoryWorkspace() {
   const summary = useRepo((state) => state.summary);
   const graph = useRepo((state) => state.graph);
+  const graphLoading = useRepo((state) => state.graphLoading);
+  const error = useRepo((state) => state.error);
+  const refresh = useRepo((state) => state.refresh);
   const changes = useRepo((state) => state.changes);
   const stashes = useRepo((state) => state.stashes);
   const selectedCommit = useRepo((state) => state.selectedCommit);
@@ -58,9 +63,22 @@ export function HistoryWorkspace() {
     [commits, histQuery, histFilter],
   );
   const matchCount = matchedIds?.size ?? 0;
-  const countLabel = filtering
-    ? `${matchCount} ${matchCount === 1 ? "match" : "matches"}`
-    : `${commits.length} commits`;
+  // The graph is the heavy part of opening a repo; show its skeleton until it
+  // lands rather than gating the whole shell on it (GL-20). `graph` may be null
+  // briefly between the summary committing and the graph arriving.
+  const showSkeleton = graphLoading && !graph;
+  // The graph load failed after the summary published (commitGraph threw): the
+  // skeleton is gone but there's no graph. Signal the failure instead of letting
+  // the header read "0 commits" and the surface render empty — which looks like an
+  // empty repository rather than a load error (GL-20 review).
+  const graphFailed = !graphLoading && !graph && error != null;
+  const countLabel = showSkeleton
+    ? "Loading…"
+    : graphFailed
+      ? "History unavailable"
+      : filtering
+        ? `${matchCount} ${matchCount === 1 ? "match" : "matches"}`
+        : `${commits.length} commits`;
   const rowCount = rowModel.rows.length;
   const laneCount = graph?.laneCount ?? 1;
   const fallbackNodeX = graphLaneX(rowModel.fallbackMarkerLane);
@@ -118,6 +136,14 @@ export function HistoryWorkspace() {
         data-testid="history-scroll"
         className="min-h-0 flex-1 overflow-auto"
       >
+        {showSkeleton ? (
+          <HistorySkeleton />
+        ) : graphFailed ? (
+          <LoadError
+            message={error ?? "Couldn't load commit history."}
+            onRetry={() => void refresh()}
+          />
+        ) : (
         <div className="relative" style={{ height: surfaceHeight, minWidth: graphColW + 320 }}>
           {graph && (
             <GraphLayer
@@ -229,6 +255,7 @@ export function HistoryWorkspace() {
             ) : null;
           })}
         </div>
+        )}
       </div>
     </section>
   );

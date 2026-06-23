@@ -8,7 +8,6 @@ import {
   type BranchInfo,
   type FileChange,
   type FileDiff,
-  type RepoForge,
   type RepoGraph,
   type RepoSummary,
   type StashEntry,
@@ -58,9 +57,6 @@ function persistSession(openPaths: string[], lastPath: string | null) {
 
 interface RepoState {
   summary: RepoSummary | null;
-  /** The open repo's remote forge — drives the provider indicator and gates the
-   * GitHub-only PR path (no `gh` resolution for non-GitHub remotes). */
-  forge: RepoForge | null;
   graph: RepoGraph | null;
   branches: BranchInfo[];
   worktrees: WorktreeInfo[];
@@ -91,6 +87,12 @@ interface RepoState {
    * refreshes so loading more history is not undone by the next watcher event. */
   graphLimit: number;
   loading: boolean;
+  /** True while the initial commit graph for a freshly opened repo is still in
+   * flight. Decoupled from [`loading`] so the app shell + history skeleton can
+   * paint as soon as the (cheap) summary lands, without waiting on the heavy
+   * graph payload. Only set during [`loadRepo`]; a [`refresh`] keeps the old
+   * graph visible, so it never flips this. */
+  graphLoading: boolean;
   loadingMoreHistory: boolean;
   diffLoading: boolean;
   error: string | null;
@@ -234,6 +236,28 @@ const beginGraphRequest = () => ++graphRequestGeneration;
 const graphRequestIsCurrent = (generation: number, path: string) =>
   generation === graphRequestGeneration && useRepo.getState().summary?.path === path;
 
+// Ordering token taken at the very START of every loadRepo, before the (possibly
+// slow) open. A newer pick increments it, so a slower earlier open that resolves
+// later loses the race — it can neither publish its summary over, nor surface an
+// error on, the repo the user actually landed on. Distinct from the graph
+// generation: a failed open must NOT bump that (it would orphan an unrelated
+// in-flight graph), but it still has to lose this ordering race (GL-20 review).
+let openIntentGeneration = 0;
+
+// A passive re-sync (filesystem watcher / focus) requested while `loading` was
+// held by an in-flight load or a manual refresh. Coalesced to the most permissive
+// scope and replayed once the blocker clears — so external commits/checkouts/
+// staging during a slow graph load aren't silently dropped (GL-20 review).
+// Deferring (rather than running inline) also avoids racing the load's own
+// working-changes read. `null` means nothing is pending.
+let pendingRefresh: "all" | "worktree" | null = null;
+const flushPendingRefresh = () => {
+  const scope = pendingRefresh;
+  if (!scope) return;
+  pendingRefresh = null;
+  void useRepo.getState().refresh({ prs: false, quiet: true, scope });
+};
+
 // Shared body for the branch/history write ops: require an open repo, run the
 // op, refresh the graph, and return its toast message. Rejects (for the caller
 // to toast) when there's no repo or the git op throws.
@@ -250,7 +274,6 @@ async function runOp(
 
 export const useRepo = create<RepoState>((set, get) => ({
   summary: null,
-  forge: null,
   graph: null,
   branches: [],
   worktrees: [],
@@ -267,6 +290,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   revealTarget: null,
   graphLimit: INITIAL_GRAPH_LIMIT,
   loading: false,
+  graphLoading: false,
   loadingMoreHistory: false,
   diffLoading: false,
   error: null,
@@ -280,11 +304,51 @@ export const useRepo = create<RepoState>((set, get) => ({
   },
 
   loadRepo: async (path: string) => {
+    // Claim the latest open intent before doing anything that can await. A newer
+    // pick supersedes this one even if our open resolves later (GL-20 review).
+    const intent = ++openIntentGeneration;
+
+    // Phase 1 — open the repo. This is a cheap libgit2 metadata read and the only
+    // step that can fail "this isn't a repo". Crucially it touches NO shared
+    // state: it doesn't bump the graph generation or raise the loading flags. So
+    // a failed pick (invalid folder) can't supersede an in-flight load for the
+    // repo that's still on screen, nor strand its summary over an empty graph —
+    // it only surfaces the error, leaving the current repo (and any pending graph
+    // request) untouched. See GL-20.
+    let summary: RepoSummary;
+    try {
+      summary = await api.openRepo(path);
+    } catch (e) {
+      // Only surface the error if this is still the latest pick — a slow failed
+      // open must not error over a repo the user has since switched to.
+      if (intent === openIntentGeneration) set({ error: String(e) });
+      return;
+    }
+    // A newer pick superseded us while we were opening → drop this stale open so
+    // it can't publish over the repo the user landed on.
+    if (intent !== openIntentGeneration) return;
+
+    // Phase 2 — commit to the switch. Bump the generation (superseding any
+    // in-flight graph request) and, in one atomic commit, publish the new summary,
+    // drop the previous repo's graph/refs/changes, and raise the loading +
+    // skeleton flags. The bump and this set share a synchronous tick, so no other
+    // load can interleave between them.
     const generation = beginGraphRequest();
+    const openPaths = get().openPaths.includes(summary.path)
+      ? get().openPaths
+      : [...get().openPaths, summary.path];
+    persistSession(openPaths, summary.path);
     set({
+      summary,
+      openPaths,
+      graph: null,
+      branches: [],
+      worktrees: [],
+      stashes: [],
+      changes: emptyChanges,
       loading: true,
+      graphLoading: true,
       error: null,
-      forge: null,
       selectedCommit: null,
       selectedCommits: [],
       selectionAnchor: null,
@@ -296,47 +360,97 @@ export const useRepo = create<RepoState>((set, get) => ({
       graphLimit: INITIAL_GRAPH_LIMIT,
       loadingMoreHistory: false,
     });
+
+    // Watch the new worktree as soon as the shell swaps — before the graph — so a
+    // commit/checkout during the (slow) graph load still triggers a refresh, the
+    // watcher never lingers on the previous repo after a switch, and a graph
+    // failure below can't leave the now-active repo unwatched (GL-20 review).
+    void api.watchRepo(summary.workdir ?? summary.path).catch(() => {});
+
+    // Reset PR state and resolve the new repo's account binding the moment the
+    // summary is published — before awaiting the graph — so the ActionBar can't
+    // pair the new repo's summary with the previous repo's PRs during a slow graph
+    // load, and a graph failure can't strand stale PR state (GL-20 review).
+    usePulls.getState().reset();
+    // Resolve this repo's bound account, then fetch its PRs as that account.
+    useAccounts.getState().syncRepoAccount(summary.path);
+    // Quiet: just to populate the PRs badge; the panel isn't shown yet, and
+    // opening it does its own foreground (spinner-visible) load.
+    void usePulls.getState().loadPullRequests(false, true);
+
+    // Secondary reads don't gate the first paint, so fan them out independently
+    // — each fills its slice as it lands rather than waiting behind the graph in
+    // one Promise.all. The generation + path guard drops responses from a
+    // superseded or closed repo.
+    //
+    // Branches and working changes are *required* state: an empty navigator or a
+    // falsely-clean worktree would be wrong, not merely incomplete, so a failure
+    // surfaces on the global error bar (matching the pre-fan-out Promise.all,
+    // whose rejection aborted the open). Worktrees and stashes stay best-effort —
+    // a missing one degrades gracefully to an empty list.
+    void api
+      .listBranches(summary.path)
+      .then((branches) => {
+        if (graphRequestIsCurrent(generation, summary.path)) set({ branches });
+      })
+      .catch((e) => {
+        if (graphRequestIsCurrent(generation, summary.path)) set({ error: String(e) });
+      });
+    void api
+      .listWorktrees(summary.path)
+      .then((worktrees) => {
+        if (graphRequestIsCurrent(generation, summary.path)) set({ worktrees });
+      })
+      .catch(() => {});
+    void api
+      .listStashes(summary.path)
+      .then((stashes) => {
+        if (graphRequestIsCurrent(generation, summary.path)) set({ stashes });
+      })
+      .catch(() => {});
+    void api
+      .workingChanges(summary.path)
+      .then((changes) => {
+        if (graphRequestIsCurrent(generation, summary.path)) set({ changes });
+      })
+      .catch((e) => {
+        if (graphRequestIsCurrent(generation, summary.path)) set({ error: String(e) });
+      });
+
+    // The graph is the heavy one — await it, then paint and pick the initial
+    // selection once it lands, clearing the history skeleton.
     try {
-      const summary = await api.openRepo(path);
-      const [graph, branches, worktrees, stashes, changes, forge] = await Promise.all([
-        api.commitGraph(summary.path, INITIAL_GRAPH_LIMIT),
-        api.listBranches(summary.path),
-        api.listWorktrees(summary.path).catch(() => []),
-        api.listStashes(summary.path).catch(() => []),
-        api.workingChanges(summary.path),
-        api.repoForge(summary.path).catch(() => null),
-      ]);
-      if (generation !== graphRequestGeneration) return;
-      const selectedCommit = graph.commits[0]?.id ?? null;
-      const openPaths = get().openPaths.includes(summary.path)
-        ? get().openPaths
-        : [...get().openPaths, summary.path];
-      persistSession(openPaths, summary.path);
+      const graph = await api.commitGraph(summary.path, INITIAL_GRAPH_LIMIT);
+      if (!graphRequestIsCurrent(generation, summary.path)) return;
+      // Honor a selection the user made while the skeleton was up — the branch
+      // navigator stays usable during the load, and picking a branch sets the
+      // selection + revealTarget to its tip. Phase 2 cleared the selection, so a
+      // non-null one here is a deliberate during-load pick; snapping it back to
+      // the tip would scroll the graph to their branch while the inspector still
+      // showed HEAD (GL-20 review). Its files were already fetched by the pick.
+      const priorSelection = get().selectedCommit;
+      const honorPrior = priorSelection != null;
+      const selectedCommit = honorPrior ? priorSelection : graph.commits[0]?.id ?? null;
       set({
-        summary,
-        forge,
         graph,
-        branches,
-        worktrees,
-        stashes,
-        openPaths,
-        changes,
         selectedCommit,
-        selectedCommits: selectedCommit ? [selectedCommit] : [],
-        selectionAnchor: selectedCommit,
-        commitFiles: [],
+        selectedCommits: honorPrior ? get().selectedCommits : selectedCommit ? [selectedCommit] : [],
+        selectionAnchor: honorPrior ? get().selectionAnchor : selectedCommit,
+        ...(honorPrior ? {} : { commitFiles: [] }),
         graphLimit: INITIAL_GRAPH_LIMIT,
+        graphLoading: false,
         loading: false,
       });
       // Commit-file loading is secondary to showing a usable history. Populate
-      // the inspector after the graph is visible, and ignore a stale response
-      // if the user switches repository/selection in the meantime.
-      if (selectedCommit) {
+      // the inspector after the graph is visible (only when we defaulted to the
+      // tip — a during-load pick fetched its own files), and ignore a stale
+      // response if the user switches repository/selection in the meantime.
+      if (selectedCommit && !honorPrior) {
         void api
           .commitFiles(summary.path, selectedCommit)
           .then((commitFiles) => {
             if (
-              get().summary?.path === summary.path &&
+              graphRequestIsCurrent(generation, summary.path) &&
               get().selectedCommit === selectedCommit
             ) {
               set({ commitFiles });
@@ -344,17 +458,14 @@ export const useRepo = create<RepoState>((set, get) => ({
           })
           .catch(() => {});
       }
-      usePulls.getState().reset();
-      // Resolve this repo's bound account, then fetch its PRs as that account.
-      useAccounts.getState().syncRepoAccount(summary.path);
-      // Quiet: just to populate the PRs badge; the panel isn't shown yet, and
-      // opening it does its own foreground (spinner-visible) load.
-      void usePulls.getState().loadPullRequests(false, true);
-      // Watch the worktree so external git changes auto-refresh the UI.
-      void api.watchRepo(summary.workdir ?? summary.path).catch(() => {});
+      // Replay any watcher/focus re-sync that arrived while this load held `loading`.
+      flushPendingRefresh();
     } catch (e) {
-      if (generation !== graphRequestGeneration) return;
-      set({ loading: false, error: String(e) });
+      // Only clear the loading flags if this request still owns the active repo —
+      // a newer load may have superseded us while the graph was in flight.
+      if (!graphRequestIsCurrent(generation, summary.path)) return;
+      set({ loading: false, graphLoading: false, error: String(e) });
+      flushPendingRefresh();
     }
   },
 
@@ -374,7 +485,6 @@ export const useRepo = create<RepoState>((set, get) => ({
       set({
         openPaths: [],
         summary: null,
-        forge: null,
         graph: null,
         branches: [],
         worktrees: [],
@@ -385,6 +495,11 @@ export const useRepo = create<RepoState>((set, get) => ({
         selectionAnchor: null,
         revealTarget: null,
         graphLimit: INITIAL_GRAPH_LIMIT,
+        // Clear the loading flags: closing the tab orphans any in-flight graph
+        // request (its summary-path guard now fails), so it can't clear them
+        // itself and `loading` would otherwise stick true (GL-20 review).
+        loading: false,
+        graphLoading: false,
         loadingMoreHistory: false,
         selectedFile: null,
         fileDiff: null,
@@ -399,7 +514,6 @@ export const useRepo = create<RepoState>((set, get) => ({
     set({
       openPaths: remaining,
       summary: null,
-      forge: null,
       graph: null,
       branches: [],
       worktrees: [],
@@ -411,6 +525,12 @@ export const useRepo = create<RepoState>((set, get) => ({
       selectionAnchor: null,
       revealTarget: null,
       graphLimit: INITIAL_GRAPH_LIMIT,
+      // Reset the loading flags before the replacement load: the closing tab's
+      // in-flight graph request is now orphaned, and if loadRepo(next) fails at
+      // open_repo its phase-1 catch only sets `error`, so these would otherwise
+      // stay stuck from the closed tab (GL-20 review).
+      loading: false,
+      graphLoading: false,
       loadingMoreHistory: false,
       selectedFile: null,
       fileDiff: null,
@@ -433,7 +553,17 @@ export const useRepo = create<RepoState>((set, get) => ({
 
   refresh: async (opts) => {
     const { summary, graphLimit, loading } = get();
-    if (!summary || loading) return;
+    if (!summary) return;
+    // A load (or a manual refresh) holds `loading` while a graph is in flight.
+    // Don't drop a watcher/focus re-sync that lands in that window — defer it,
+    // keeping the most permissive scope, and replay once the blocker clears
+    // (GL-20 review). A full re-sync also can't run concurrently here: it would
+    // race the in-flight graph fetch and could livelock a slow initial open.
+    if (loading) {
+      const wantsFull = opts?.scope !== "worktree";
+      pendingRefresh = wantsFull || pendingRefresh === "all" ? "all" : "worktree";
+      return;
+    }
     const generation = opts?.scope === "worktree" ? null : beginGraphRequest();
     if (generation !== null) set({ loadingMoreHistory: false });
     if (!opts?.quiet) set({ loading: true, error: null });
@@ -459,23 +589,30 @@ export const useRepo = create<RepoState>((set, get) => ({
         return;
       }
 
-      const [nextSummary, graph, branches, worktrees, stashes, changes, forge] = await Promise.all([
+      const [nextSummary, graph, branches, worktrees, stashes, changes] = await Promise.all([
         api.openRepo(summary.path),
         api.commitGraph(summary.path, graphLimit),
         api.listBranches(summary.path),
         api.listWorktrees(summary.path).catch(() => []),
         api.listStashes(summary.path).catch(() => []),
         api.workingChanges(summary.path),
-        api.repoForge(summary.path).catch(() => null),
       ]);
-      if (generation === null || !graphRequestIsCurrent(generation, summary.path)) return;
+      if (generation === null || !graphRequestIsCurrent(generation, summary.path)) {
+        // Superseded mid-flight: replay any sync deferred during this refresh's
+        // loading window so the coalesced event isn't lost on this bail (GL-20).
+        flushPendingRefresh();
+        return;
+      }
       const currentSelection = get().selectedCommit;
       const selectedCommit =
         currentSelection && graph.commits.some((commit) => commit.id === currentSelection)
           ? currentSelection
           : graph.commits[0]?.id ?? null;
       const commitFiles = selectedCommit ? await api.commitFiles(nextSummary.path, selectedCommit) : [];
-      if (!graphRequestIsCurrent(generation, summary.path)) return;
+      if (!graphRequestIsCurrent(generation, summary.path)) {
+        flushPendingRefresh();
+        return;
+      }
       // Trim the multi-selection to ids that still exist after the refresh —
       // e.g. a reset/rebase can drop the selected commits. Anchor stays if it
       // survives; otherwise it tracks the new focus commit.
@@ -503,7 +640,6 @@ export const useRepo = create<RepoState>((set, get) => ({
       const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
       set({
         summary: nextSummary,
-        forge,
         graph,
         branches,
         worktrees,
@@ -518,9 +654,15 @@ export const useRepo = create<RepoState>((set, get) => ({
         ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
       });
       if (opts?.prs !== false) void usePulls.getState().loadPullRequests(false, true);
+      // A non-quiet refresh held `loading`; replay anything deferred during it.
+      flushPendingRefresh();
     } catch (e) {
-      if (generation !== null && !graphRequestIsCurrent(generation, summary.path)) return;
+      if (generation !== null && !graphRequestIsCurrent(generation, summary.path)) {
+        flushPendingRefresh();
+        return;
+      }
       set({ loading: false, error: String(e) });
+      flushPendingRefresh();
     }
   },
 
