@@ -33,3 +33,7 @@ AGENTS.local.md
 *.njsproj
 *.sln
 *.sw?
+# /design-sync build tooling + state (not tracked)
+.ds-sync/
+ds-bundle/
+.design-sync/

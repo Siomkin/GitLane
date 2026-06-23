@@ -46,6 +46,51 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
+// Windows/Linux caption controls. Drawn on a 10×10 grid with a thin even stroke
+// to match the OS-native min/restore/close glyphs (which our frameless window
+// replaces). `fill="none"` keeps them outline-only.
+function CaptionIcon({ children, ...props }: IconProps) {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1"
+      aria-hidden="true"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+}
+
+export function WindowMinimizeIcon(props: IconProps) {
+  return (
+    <CaptionIcon {...props}>
+      <line x1="1" y1="5" x2="9" y2="5" />
+    </CaptionIcon>
+  );
+}
+
+export function WindowMaximizeIcon(props: IconProps) {
+  return (
+    <CaptionIcon {...props}>
+      <rect x="1" y="1" width="8" height="8" />
+    </CaptionIcon>
+  );
+}
+
+export function WindowRestoreIcon(props: IconProps) {
+  return (
+    <CaptionIcon {...props}>
+      <rect x="1" y="3" width="6" height="6" />
+      <path d="M3 3V1h6v6H7" />
+    </CaptionIcon>
+  );
+}
+
 export function SettingsIcon(props: IconProps) {
   return (
     <IconBase {...props}>

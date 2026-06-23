@@ -7,10 +7,12 @@ import { memo, useMemo, useState } from "react";
 import type { DiffHunk, DiffLine } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { highlight } from "../../lib/highlight";
+import { modEnter } from "../../lib/platform";
+import { MONO_FONT } from "../../lib/ui";
 import { useUi } from "../../store/ui";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 
-export const MONO = "ui-monospace, 'SF Mono', Menlo, monospace";
+export const MONO = MONO_FONT;
 
 export const numCell =
   "w-[42px] flex-none px-2 text-right text-neutral-400 dark:text-neutral-500 tabular-nums select-none";
@@ -210,7 +212,7 @@ function LineNotes({
                 save();
               }
             }}
-            placeholder={`Note for line ${lineRef}… (⌘↵ to save)`}
+            placeholder={`Note for line ${lineRef}… (${modEnter} to save)`}
             rows={2}
             className="w-full resize-y bg-transparent text-[13px] text-neutral-700 dark:text-neutral-200 outline-none placeholder:text-neutral-400 font-sans"
           />

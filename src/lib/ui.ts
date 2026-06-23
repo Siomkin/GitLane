@@ -1,5 +1,12 @@
 export type LeftTab = "history" | "changes" | "pulls";
 
+/** Shared monospace stack for diffs and the terminal. Lists a preferred face per
+ *  platform so each OS renders its native programming font before the generic
+ *  fallback: SF Mono/Menlo (macOS), Cascadia Code/Segoe UI Mono/Consolas
+ *  (Windows), DejaVu/Liberation (Linux). */
+export const MONO_FONT =
+  "ui-monospace, 'SF Mono', 'Cascadia Code', 'Segoe UI Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace";
+
 /** Keyboard-only focus ring (focus-visible, so mouse clicks show nothing).
  * Inset so it stays visible inside overflow-hidden rows and menus. */
 export const focusRing =

@@ -16,10 +16,9 @@ import { useTerminalAgents } from "@/store/terminalAgents";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { xtermTheme } from "@/features/terminal/xtermTheme";
 import { selectEnabledAgents } from "@/features/terminal/agents";
-
-// Match the rest of the app's monospace (DiffBody's MONO constant) so xterm
-// doesn't fall back to its default renderer font.
-const MONO_FONT = "ui-monospace, 'SF Mono', Menlo, monospace";
+// Shared cross-platform mono stack so xterm matches the diff view rather than
+// falling back to its default renderer font.
+import { MONO_FONT } from "@/lib/ui";
 
 export interface TerminalSession {
   /** Attach to the xterm mount element. */
