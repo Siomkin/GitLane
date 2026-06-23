@@ -178,6 +178,19 @@ interface RepoState {
   createTagAt: (name: string, sha?: string) => Promise<string>;
   /** Create an annotated tag (with `message`) at `sha` (defaults to HEAD). */
   createAnnotatedTagAt: (name: string, message: string, sha?: string) => Promise<string>;
+  /** Delete a local tag. */
+  deleteTag: (name: string) => Promise<string>;
+  /** Push a tag to origin as the repo's bound account. */
+  pushTag: (name: string) => Promise<string>;
+  /** Remove a linked worktree (`force` drops the dirty/locked check). */
+  removeWorktree: (worktreePath: string, force?: boolean) => Promise<string>;
+  /** Delete a branch on its remote. `remote`/`branch` are split from the
+   * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
+  deleteRemoteBranch: (remote: string, branch: string) => Promise<string>;
+  /** Force-push `branch` with `--force-with-lease` (only that branch). */
+  forcePush: (branch: string) => Promise<string>;
+  /** Discard every uncommitted working-tree change (reset --hard + clean). */
+  discardAll: () => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */
   createPatchAt: (sha: string) => Promise<string>;
   /** Create a worktree at `worktreePath` checked out to `reference`, then open
@@ -794,6 +807,32 @@ export const useRepo = create<RepoState>((set, get) => ({
       const file = await api.createPatch(summary.path, sha);
       return `Created patch ${file}`;
     }),
+
+  deleteTag: (name) =>
+    runOp(get, async (summary) => api.deleteTag(summary.path, name)),
+
+  pushTag: (name) =>
+    runOp(get, async (summary) => {
+      await api.pushTag(summary.path, name, useAccounts.getState().repoAccountRef);
+      return `Pushed tag ${name}`;
+    }),
+
+  removeWorktree: (worktreePath, force = false) =>
+    runOp(get, async (summary) => api.removeWorktree(summary.path, worktreePath, force)),
+
+  deleteRemoteBranch: (remote, branch) =>
+    runOp(get, async (summary) => {
+      await api.deleteRemoteBranch(summary.path, remote, branch, useAccounts.getState().repoAccountRef);
+      return `Deleted ${remote}/${branch}`;
+    }),
+
+  forcePush: (branch) =>
+    runOp(get, async (summary) => {
+      await api.forcePush(summary.path, branch, useAccounts.getState().repoAccountRef);
+      return `Force-pushed ${branch} (with lease)`;
+    }),
+
+  discardAll: () => runOp(get, async (summary) => api.discardAll(summary.path)),
 
   createWorktreeAt: async (worktreePath, reference) => {
     const { summary } = get();

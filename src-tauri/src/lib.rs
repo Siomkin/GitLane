@@ -175,6 +175,81 @@ async fn create_patch(path: String, sha: String) -> Result<String, String> {
     blocking(move || git::write::create_patch(&path, &sha)).await
 }
 
+#[tauri::command]
+async fn delete_tag(path: String, name: String) -> Result<String, String> {
+    blocking(move || git::write::delete_tag(&path, &name)).await
+}
+
+/// Push a tag to `origin`, optionally pinned to the repo's bound GitHub account.
+/// The token is resolved server-side via the provider, never passed in from the
+/// frontend (same as [`push`]).
+#[tauri::command]
+async fn push_tag(
+    path: String,
+    name: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::push_tag(&path, &name, "origin", auth_ref)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn remove_worktree(
+    path: String,
+    worktree_path: String,
+    force: bool,
+) -> Result<String, String> {
+    blocking(move || git::write::remove_worktree(&path, &worktree_path, force)).await
+}
+
+/// Delete `branch` on `remote`, optionally pinned to the repo's bound GitHub
+/// account. Token resolved server-side, like [`push`].
+#[tauri::command]
+async fn delete_remote_branch(
+    path: String,
+    remote: String,
+    branch: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::delete_remote_branch(&path, &remote, &branch, auth_ref)
+    })
+    .await
+}
+
+/// Force-push a specific `branch` with `--force-with-lease`, optionally pinned to
+/// the repo's bound GitHub account. Token resolved server-side, like [`push`].
+#[tauri::command]
+async fn force_push(
+    path: String,
+    branch: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::force_push(&path, &branch, auth_ref)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn discard_all(path: String) -> Result<String, String> {
+    blocking(move || git::write::discard_all(&path)).await
+}
+
 // ---- working tree / staging ----
 
 #[tauri::command]
@@ -641,6 +716,12 @@ pub fn run() {
             create_tag,
             create_annotated_tag,
             create_patch,
+            delete_tag,
+            push_tag,
+            remove_worktree,
+            delete_remote_branch,
+            force_push,
+            discard_all,
             working_changes,
             file_diff,
             commit_files,

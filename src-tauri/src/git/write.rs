@@ -585,8 +585,24 @@ pub fn push_branch(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Resu
     // `branch` becomes a positional refspec in `git push <remote> <refspec>`, so
     // guard it against option injection (e.g. --receive-pack=…) like the others.
     ensure_operand(branch)?;
-    // Both config reads exit non-zero when unset, which `.ok()` turns into the
-    // fallback (origin remote / plain `<branch>` refspec).
+    let (remote, refspec) = push_target(repo, branch);
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", &remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", &remote, &refspec]),
+    }
+}
+
+/// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
+/// falling back to `origin`) and refspec (honouring a divergent upstream branch
+/// name via `branch.<name>.merge`, else a plain `<branch>`). Shared by
+/// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
+/// deferring to `push.default`. Both config reads exit non-zero when unset, which
+/// `.ok()` turns into the fallback.
+fn push_target(repo: &str, branch: &str) -> (String, String) {
     let remote = run_git(repo, &["config", &format!("branch.{branch}.remote")])
         .ok()
         .map(|s| s.trim().to_string())
@@ -598,14 +614,7 @@ pub fn push_branch(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Resu
         .filter(|s| !s.is_empty())
         .map(|merge| format!("{branch}:{merge}"))
         .unwrap_or_else(|| branch.to_string());
-    match auth {
-        Some((host, token)) => {
-            let args = credential_args(host, &["push", &remote, &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
-        }
-        None => run_git(repo, &["push", &remote, &refspec]),
-    }
+    (remote, refspec)
 }
 
 /// Fetch from all remotes and prune deleted upstream refs (shells out — libgit2
@@ -621,6 +630,114 @@ pub fn fetch(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
         }
         None => run_git(repo, &["fetch", "--all", "--prune"]),
     }
+}
+
+/// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally
+/// only; the remote copy (if any) is untouched — use [`push_tag`] semantics in
+/// reverse via the CLI for that.
+pub fn delete_tag(repo: &str, name: &str) -> Result<String, String> {
+    ensure_operand(name)?;
+    run_git(repo, &["tag", "-d", name])?;
+    Ok(format!("Deleted tag {name}"))
+}
+
+/// Push a tag to `remote` (`git push <remote> refs/tags/<name>`). The explicit
+/// `refs/tags/` refspec avoids any ambiguity with a same-named branch. `auth` is
+/// wired in exactly as [`push`] does, so it authenticates as the bound account.
+pub fn push_tag(
+    repo: &str,
+    name: &str,
+    remote: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(name)?;
+    ensure_operand(remote)?;
+    let refspec = format!("refs/tags/{name}");
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", remote, &refspec]),
+    }
+}
+
+/// Remove a linked worktree (`git worktree remove <path>`). `force` adds
+/// `--force`, dropping git's dirty/locked safety check. Git refuses to remove the
+/// main worktree, surfacing its own error; the frontend also hides the action there.
+pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<String, String> {
+    ensure_operand(worktree_path)?;
+    let mut args = vec!["worktree", "remove"];
+    if force {
+        args.push("--force");
+    }
+    args.push(worktree_path);
+    run_git(repo, &args)?;
+    Ok(format!("Removed worktree {worktree_path}"))
+}
+
+/// Delete a branch on `remote` (`git push <remote> --delete <branch>`). `branch`
+/// is the short name on the remote (e.g. `feature/x`, not `origin/feature/x`).
+/// `auth` authenticates as the bound account, like [`push`].
+pub fn delete_remote_branch(
+    repo: &str,
+    remote: &str,
+    branch: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(remote)?;
+    ensure_operand(branch)?;
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", remote, "--delete", branch]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", remote, "--delete", branch]),
+    }
+}
+
+/// Force-push a single `branch` with `--force-with-lease` — the *safe* force:
+/// git refuses if the remote advanced since our last fetch, so a teammate's push
+/// is never silently clobbered. Used after history is rewritten (amend, reset,
+/// rebase) on an already-pushed branch.
+///
+/// An explicit `<remote> <refspec>` is always supplied (via [`push_target`]) so
+/// the force applies to **only** the selected branch. A bare `git push
+/// --force-with-lease` would defer to `push.default`/configured refspecs and
+/// could rewrite several remote branches at once. `auth` is wired in as
+/// [`push`] does.
+pub fn force_push(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
+    ensure_operand(branch)?;
+    let (remote, refspec) = push_target(repo, branch);
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", "--force-with-lease", &remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", "--force-with-lease", &remote, &refspec]),
+    }
+}
+
+/// Discard *all* uncommitted changes: reset tracked files to HEAD and remove
+/// untracked files/directories (`git reset --hard HEAD` + `git clean -fd`).
+/// Irreversible — the frontend gates this behind a confirmation.
+///
+/// An unborn repo (no HEAD yet) has no commit to reset to, but staged "added"
+/// files are tracked in the *index*, so `git clean` alone would leave them
+/// behind. Empty the index first (`git read-tree --empty`) so those files become
+/// untracked and get cleaned with everything else.
+pub fn discard_all(repo: &str) -> Result<String, String> {
+    let has_head = run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok();
+    if has_head {
+        run_git(repo, &["reset", "--hard", "HEAD"])?;
+    } else {
+        run_git(repo, &["read-tree", "--empty"])?;
+    }
+    run_git(repo, &["clean", "-f", "-d"])?;
+    Ok("Discarded all changes".to_string())
 }
 
 fn credential_args(host: &str, command: &[&str]) -> Vec<String> {
@@ -654,7 +771,10 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_operand;
+    use super::{discard_all, ensure_operand};
+    use std::path::PathBuf;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[test]
     fn rejects_dash_prefixed_operands() {
@@ -669,5 +789,54 @@ mod tests {
         for ok in ["main", "feature/GP-3-foo", "origin/main", "2fe77a5abf25", "v1.2.3"] {
             assert!(ensure_operand(ok).is_ok(), "{ok} should be allowed");
         }
+    }
+
+    /// A throwaway temp directory that cleans itself up on drop — keeps the test
+    /// dependency-free (no `tempfile` dev-dep) while never leaking dirs.
+    struct TempRepo(PathBuf);
+    impl TempRepo {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU32 = AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("gitlane-{tag}-{}-{n}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            TempRepo(dir)
+        }
+        fn path(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+        fn git(&self, args: &[&str]) -> std::process::Output {
+            Command::new("git")
+                .arg("-C")
+                .arg(&self.0)
+                .args(args)
+                .output()
+                .expect("git launches in tests")
+        }
+    }
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn discard_all_clears_staged_files_in_unborn_repo() {
+        let repo = TempRepo::new("discard");
+        repo.git(&["init", "-q"]);
+        // Stage a file *before any commit* — the regression case: with no HEAD,
+        // `reset --hard` is skipped, and the file is tracked in the index so a
+        // plain `git clean` would leave it behind.
+        std::fs::write(repo.0.join("staged.txt"), b"hello").unwrap();
+        repo.git(&["add", "staged.txt"]);
+
+        let result = discard_all(repo.path());
+        assert!(result.is_ok(), "discard_all failed: {result:?}");
+
+        // Both the worktree copy and the index entry must be gone.
+        assert!(!repo.0.join("staged.txt").exists(), "worktree file survived discard");
+        let status = repo.git(&["status", "--porcelain"]);
+        let out = String::from_utf8_lossy(&status.stdout);
+        assert!(out.trim().is_empty(), "repo not clean after discard: {out:?}");
     }
 }

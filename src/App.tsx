@@ -10,8 +10,11 @@ import {
   FileContextMenu,
   PromptDialog,
   StashContextMenu,
+  TagContextMenu,
   Toast,
   Tooltip,
+  WipContextMenu,
+  WorktreeContextMenu,
 } from "./components/chrome/overlays";
 import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { SettingsModal } from "./components/chrome/SettingsModal";
@@ -181,6 +184,9 @@ function App() {
       <CommitContextMenu />
       <StashContextMenu />
       <FileContextMenu />
+      <WipContextMenu />
+      <TagContextMenu />
+      <WorktreeContextMenu />
       <CreateBranchDialog />
       <CreatePrDialog />
       <AgentMessageDialog />

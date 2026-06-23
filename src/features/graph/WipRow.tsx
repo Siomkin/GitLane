@@ -1,9 +1,10 @@
 import { cn } from "../../lib/cn";
 import { focusRing } from "@/lib/ui";
+import { useUi } from "../../store/ui";
 
 /** The synthetic "uncommitted changes" row pinned to the top of history when
  * the working tree is dirty. Clicking it selects the WIP (the right inspector
- * shows the staged/unstaged diff). */
+ * shows the staged/unstaged diff); right-click opens stage/unstage/commit/stash. */
 export function WipRow({
   top,
   rowHeight,
@@ -22,6 +23,7 @@ export function WipRow({
   changeCount: number;
   onSelect: () => void;
 }) {
+  const openWipMenu = useUi((s) => s.openWipMenu);
   return (
     <button
       className={cn(
@@ -32,6 +34,10 @@ export function WipRow({
       )}
       style={{ top, height: rowHeight }}
       onClick={onSelect}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        openWipMenu({ x: e.clientX, y: e.clientY });
+      }}
     >
       <div className={cn("absolute bottom-0 left-0 top-0 w-[3px]", selected && "bg-[var(--accent)]")} />
       <div className="shrink-0" style={{ width: graphColW }} />

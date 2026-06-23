@@ -112,7 +112,7 @@ export const CommitRow = memo(function CommitRow({
       />
       <div className="shrink-0" style={{ width: graphColW }} />
       <div className="z-10 flex min-w-0 flex-1 items-center gap-1.5 px-3.5">
-        <RefCluster refs={commit.refs} currentBranch={currentBranch} />
+        <RefCluster refs={commit.refs} currentBranch={currentBranch} commitId={commit.id} />
         <span className="min-w-0 truncate text-[13px] text-neutral-700 dark:text-neutral-200">
           <HighlightMatch text={commit.summary} query={query} />
         </span>
@@ -128,7 +128,17 @@ export const CommitRow = memo(function CommitRow({
  * and the remote-tracking ref(s) of the same name collapse into one pill (saved
  * width for the common in-sync case); clicking it splits them back into the
  * individual RefPills so a specific ref can be dragged / right-clicked. */
-function RefCluster({ refs, currentBranch }: { refs: RefLabel[]; currentBranch: string | null }) {
+function RefCluster({
+  refs,
+  currentBranch,
+  commitId,
+}: {
+  refs: RefLabel[];
+  currentBranch: string | null;
+  /** The commit this row renders — i.e. the oid every ref here points to, used
+   * as a tag's checkout/branch target. */
+  commitId: string;
+}) {
   const [expandedBase, setExpandedBase] = useState<string | null>(null);
   const items = useMemo(() => buildClusterItems(refs, currentBranch), [refs, currentBranch]);
   if (items.length === 0) return null;
@@ -144,12 +154,14 @@ function RefCluster({ refs, currentBranch }: { refs: RefLabel[]; currentBranch: 
             current={it.base === currentBranch}
             expanded={expandedBase === it.base}
             onToggle={() => setExpandedBase((cur) => (cur === it.base ? null : it.base))}
+            targetSha={commitId}
           />
         ) : (
           <RefPill
             key={`${it.ref.kind}:${it.ref.name}`}
             refLabel={it.ref}
             current={it.ref.name === currentBranch}
+            targetSha={commitId}
           />
         ),
       )}
@@ -157,8 +169,9 @@ function RefCluster({ refs, currentBranch }: { refs: RefLabel[]; currentBranch: 
   );
 }
 
-function RefPill({ refLabel, current }: { refLabel: RefLabel; current: boolean }) {
+function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current: boolean; targetSha: string }) {
   const openContextMenu = useUi((state) => state.openContextMenu);
+  const openTagMenu = useUi((state) => state.openTagMenu);
   const checkoutBranch = useRepo((state) => state.checkoutBranch);
   const draggable = refLabel.kind === "branch" || refLabel.kind === "remote";
   const name = refLabel.name;
@@ -223,9 +236,13 @@ function RefPill({ refLabel, current }: { refLabel: RefLabel; current: boolean }
         );
       }}
       onContextMenu={(e) => {
-        if (!draggable) return;
         e.preventDefault();
         e.stopPropagation();
+        if (refLabel.kind === "tag") {
+          openTagMenu({ x: e.clientX, y: e.clientY, name, sha: targetSha });
+          return;
+        }
+        if (!draggable) return;
         openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent: current });
       }}
     >
@@ -246,6 +263,7 @@ function CombinedRefPill({
   current,
   expanded,
   onToggle,
+  targetSha,
 }: {
   base: string;
   local: RefLabel;
@@ -253,6 +271,8 @@ function CombinedRefPill({
   current: boolean;
   expanded: boolean;
   onToggle: () => void;
+  /** The commit this pill sits on — threaded to the split-out RefPills. */
+  targetSha: string;
 }) {
   const openContextMenu = useUi((state) => state.openContextMenu);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
@@ -279,9 +299,9 @@ function CombinedRefPill({
             <path d="m15 18-6-6 6-6" />
           </svg>
         </button>
-        <RefPill refLabel={local} current={current} />
+        <RefPill refLabel={local} current={current} targetSha={targetSha} />
         {remotes.map((r) => (
-          <RefPill key={r.name} refLabel={r} current={false} />
+          <RefPill key={r.name} refLabel={r} current={false} targetSha={targetSha} />
         ))}
       </>
     );

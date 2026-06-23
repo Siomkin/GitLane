@@ -248,6 +248,8 @@ export function BranchContextMenu() {
   const pushBranch = useRepo((s) => s.pushBranch);
   const pull = useRepo((s) => s.pull);
   const push = useRepo((s) => s.push);
+  const forcePush = useRepo((s) => s.forcePush);
+  const deleteRemoteBranch = useRepo((s) => s.deleteRemoteBranch);
   const mergeInto = useRepo((s) => s.mergeInto);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
   const fastForwardTo = useRepo((s) => s.fastForwardTo);
@@ -313,6 +315,18 @@ export function BranchContextMenu() {
     if (isCurrent) {
       add({ label: "Pull (fast-forward only)", onClick: () => { close(); void pull(); } }, true);
       add({ label: "Push", onClick: () => { close(); void push(); } });
+      add({
+        label: "Force push (with lease)…",
+        onClick: () =>
+          requestConfirm({
+            title: `Force-push ${b}?`,
+            message:
+              "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since your last fetch). Use after amending or rebasing pushed commits.",
+            confirmLabel: "Force push",
+            danger: true,
+            onConfirm: () => void run(() => forcePush(b)),
+          }),
+      });
     } else {
       add({ label: `Push ${b}`, onClick: () => act(() => pushBranch(b)) }, true);
     }
@@ -395,6 +409,29 @@ export function BranchContextMenu() {
             onConfirm: () => void run(() => removeBranch(b, false)),
           }),
       });
+    }
+  }
+
+  // ---- delete on the remote (remote-tracking refs only) ----
+  // Split the ref name into remote + branch on the first slash: `origin/feat/x`
+  // → remote `origin`, branch `feat/x`. Deletes the branch on the server.
+  if (isRemote) {
+    const slash = b.indexOf("/");
+    if (slash > 0) {
+      const remote = b.slice(0, slash);
+      const remoteBranch = b.slice(slash + 1);
+      add({
+        label: `Delete ${b} on remote`,
+        danger: true,
+        onClick: () =>
+          requestConfirm({
+            title: `Delete ${remoteBranch} on ${remote}?`,
+            message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`,
+            confirmLabel: "Delete on remote",
+            danger: true,
+            onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)),
+          }),
+      }, true);
     }
   }
 
@@ -677,6 +714,175 @@ export function FileContextMenu() {
   }
 
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={220} />;
+}
+
+/** Right-click menu on the uncommitted "WIP" row. Acts on the whole working
+ * tree; the staged/unstaged split is read from the repo store so stage/unstage
+ * only appear when there's actually something in that bucket. */
+export function WipContextMenu() {
+  const menu = useUi((s) => s.wipMenu);
+  const close = useUi((s) => s.closeOverlays);
+  const requestConfirm = useUi((s) => s.requestConfirm);
+  const openCommit = useUi((s) => s.openCommit);
+  const changes = useRepo((s) => s.changes);
+  const stageAll = useRepo((s) => s.stageAll);
+  const unstageAll = useRepo((s) => s.unstageAll);
+  const stash = useRepo((s) => s.stash);
+  const discardAll = useRepo((s) => s.discardAll);
+  const run = useBranchOp();
+  if (!menu) return null;
+
+  const hasStaged = changes.staged.length > 0;
+  const hasUnstaged = changes.unstaged.length > 0;
+
+  const items: MenuItem[] = [
+    { label: "Commit…", onClick: () => { close(); openCommit(); } },
+  ];
+  if (hasUnstaged) {
+    items.push({ label: "Stage all changes", sep: true, onClick: () => { close(); void stageAll(); } });
+  }
+  if (hasStaged) {
+    items.push({ label: "Unstage all changes", sep: !hasUnstaged, onClick: () => { close(); void unstageAll(); } });
+  }
+  items.push({ label: "Stash all changes", sep: true, onClick: () => { close(); void stash(); } });
+  items.push({
+    label: "Discard all changes",
+    danger: true,
+    sep: true,
+    onClick: () =>
+      requestConfirm({
+        title: "Discard all changes?",
+        message:
+          "Every uncommitted change — staged, unstaged, and untracked files — will be permanently discarded. This can't be undone.",
+        confirmLabel: "Discard all",
+        danger: true,
+        onConfirm: () => void run(() => discardAll()),
+      }),
+  });
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={208} />;
+}
+
+/** Right-click menu on a tag ref (graph pill or navigator row). Tags are
+ * immutable pointers, so the menu reads the tagged commit and offers the same
+ * "go to / branch from this point" actions as a commit, plus a copy. Tag
+ * deletion / pushing need backend commands and are intentionally absent here. */
+export function TagContextMenu() {
+  const menu = useUi((s) => s.tagMenu);
+  const close = useUi((s) => s.closeOverlays);
+  const requestConfirm = useUi((s) => s.requestConfirm);
+  const requestPrompt = useUi((s) => s.requestPrompt);
+  const showToast = useUi((s) => s.showToast);
+  const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
+  const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
+  const checkoutDetached = useRepo((s) => s.checkoutDetached);
+  const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
+  const pushTag = useRepo((s) => s.pushTag);
+  const deleteTag = useRepo((s) => s.deleteTag);
+  const run = useBranchOp();
+  if (!menu) return null;
+
+  const { name, sha } = menu;
+
+  const items: MenuItem[] = [
+    // Operate on the peeled commit `sha`, never the tag name: a branch and tag
+    // can share a short name, and `git branch new <name>` then fails as
+    // ambiguous. `name` stays only for labels and the default worktree path.
+    { label: "Checkout tag (detached)", onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
+    { label: "Create branch from here…", onClick: () => openCreateBranchFrom(sha) },
+    {
+      label: "Create worktree from tag…",
+      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name),
+    },
+    { label: "Push tag to origin", sep: true, onClick: () => { close(); void run(() => pushTag(name)); } },
+    {
+      label: "Delete tag",
+      danger: true,
+      onClick: () =>
+        requestConfirm({
+          title: `Delete tag ${name}?`,
+          message: "The local tag ref will be removed. Any pushed copy on a remote is left untouched.",
+          confirmLabel: "Delete tag",
+          danger: true,
+          onConfirm: () => void run(() => deleteTag(name)),
+        }),
+    },
+    {
+      label: "Copy tag name",
+      sep: true,
+      onClick: () => {
+        close();
+        void navigator.clipboard?.writeText(name);
+        showToast(`Copied ${name}`);
+      },
+    },
+  ];
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
+}
+
+/** Right-click menu on a navigator worktree row. Opening it switches the app to
+ * that worktree (loads it as a repo tab) — distinct from the row's plain click,
+ * which only scrolls the current graph to the worktree's tip. Removing a
+ * worktree needs a backend command and is intentionally absent here. */
+export function WorktreeContextMenu() {
+  const menu = useUi((s) => s.worktreeMenu);
+  const close = useUi((s) => s.closeOverlays);
+  const requestConfirm = useUi((s) => s.requestConfirm);
+  const showToast = useUi((s) => s.showToast);
+  const workdir = useRepo((s) => s.summary?.workdir ?? null);
+  const repoPath = useRepo((s) => s.summary?.path ?? null);
+  const openWorktree = useRepo((s) => s.openWorktree);
+  const removeWorktree = useRepo((s) => s.removeWorktree);
+  const run = useBranchOp();
+  if (!menu) return null;
+
+  const { path, name, isMain } = menu;
+  // Removing the worktree backing the open tab would delete its directory out
+  // from under the app, leaving the refresh pointing at a gone path. `isMain`
+  // only flags the *primary* worktree, so when the app is opened on a linked
+  // worktree it isn't enough — also match the open repo's own path/workdir.
+  const trim = (p: string) => p.replace(/\/+$/, "");
+  const isActiveWorktree =
+    (!!workdir && trim(path) === trim(workdir)) || (!!repoPath && trim(path) === trim(repoPath));
+
+  const items: MenuItem[] = [
+    {
+      label: "Open worktree",
+      onClick: () => {
+        close();
+        void openWorktree(path).catch((e) => showToast(String(e), "error"));
+      },
+    },
+    {
+      label: "Copy path",
+      sep: true,
+      onClick: () => {
+        close();
+        void navigator.clipboard?.writeText(path);
+        showToast("Copied path");
+      },
+    },
+  ];
+  // Don't offer removal of the primary worktree (git refuses) or the one
+  // currently open in the app (it'd delete the active tab's directory).
+  if (!isMain && !isActiveWorktree) {
+    items.push({
+      label: "Remove worktree",
+      danger: true,
+      sep: true,
+      onClick: () =>
+        requestConfirm({
+          title: `Remove worktree ${name}?`,
+          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.`,
+          confirmLabel: "Remove worktree",
+          danger: true,
+          onConfirm: () => void run(() => removeWorktree(path)),
+        }),
+    });
+  }
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={200} />;
 }
 
 export function StashContextMenu() {
