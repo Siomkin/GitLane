@@ -366,6 +366,36 @@ describe("repo store — loadRepo progressive open", () => {
     await open;
   });
 
+  it("defaults the selection to the newest real commit, skipping an interleaved stash node", async () => {
+    // A fresh stash sorts above HEAD, so the Rust layout puts it at commits[0].
+    // The default selection must skip it and land on the newest real commit, or
+    // the inspector would load a stash oid as a commit.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      head: "real-tip",
+      commits: [
+        { id: "s0", stash: { index: 0, message: "WIP" } },
+        { id: "real-tip" },
+      ] as unknown as RepoGraph["commits"],
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(summary);
+        case "commit_graph":
+          return Promise.resolve(graph);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [] });
+        default:
+          return Promise.resolve([]);
+      }
+    });
+
+    await useRepo.getState().loadRepo("/repo");
+
+    expect(useRepo.getState().selectedCommit).toBe("real-tip");
+  });
+
   it("surfaces an error when the required list_branches read fails", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       switch (cmd) {

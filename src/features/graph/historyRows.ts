@@ -189,10 +189,14 @@ export function buildHistoryRows({
     }
   };
 
+  // The nearest real commit emitted so far — the connector target for an
+  // out-of-window floating stash flushed while the current node is itself an
+  // injected stash (which has no commit to anchor to).
+  let lastRealCommitId: string | null = null;
   for (const commit of commits) {
     // Out-of-window stashes interleave by their own time around every graph node
     // (commit or injected stash), so a floating stash still slots in chronologically.
-    flushStashesNewerThan(commit.timestamp, commit.stash ? null : commit.id);
+    flushStashesNewerThan(commit.timestamp, commit.stash ? lastRealCommitId : commit.id);
     if (commit.stash) {
       // An in-window stash placed by the Rust layout: render it as a stash row at
       // the node's reserved lane. Its dashed edge to the base is a real graph edge
@@ -224,6 +228,7 @@ export function buildHistoryRows({
     commitRowIndexById.set(commit.id, commitRow);
     revealRowIndexById.set(commit.id, commitRow);
     visualRowByGraphRow[commit.row] = commitRow;
+    lastRealCommitId = commit.id;
   }
   // Stashes older than every loaded commit settle at the bottom, anchored to the
   // last (oldest) loaded commit above them.

@@ -25,9 +25,15 @@ export function CommitInspector() {
   const requestPrompt = useUi((state) => state.requestPrompt);
   const fileMenu = useUi((state) => state.fileMenu);
   const showToast = useUi((state) => state.showToast);
-  const selectedGraphCommit = graph?.commits.find((commit) => commit.id === selectedCommit);
+  // Exclude in-window stash nodes (now part of `graph.commits`): a selected stash
+  // must fall through to the `selectedStash` → StashMeta path, not render as a
+  // commit with empty author. The default fallback likewise skips stash nodes.
+  const selectedGraphCommit = graph?.commits.find(
+    (commit) => commit.id === selectedCommit && !commit.stash,
+  );
   const selectedStash = stashes.find((stash) => stash.oid === selectedCommit);
-  const selected = selectedGraphCommit ?? (selectedStash ? null : graph?.commits[0]);
+  const selected =
+    selectedGraphCommit ?? (selectedStash ? null : graph?.commits.find((commit) => !commit.stash));
   const selectedOid = selected?.id ?? selectedStash?.oid;
   const selectedShortLabel = selected?.shortId ?? (selectedStash ? `stash@{${selectedStash.index}}` : "");
   const selectedTitle = selected?.summary ?? selectedStash?.message ?? "";

@@ -23,9 +23,11 @@ struct StashMeta {
 }
 
 /// One node in the merged, date-ordered layout sequence: either a real commit
-/// (handle reused from the revwalk pass) or an injected in-window stash.
+/// (by oid — the handle is re-opened once in the layout loop, a cheap ODB-cache
+/// hit, so we don't retain every `git2::Commit` for the whole window) or an
+/// injected in-window stash.
 enum Entry<'a> {
-    Commit(&'a git2::Commit<'a>),
+    Commit(Oid),
     Stash(&'a StashMeta),
 }
 
@@ -139,27 +141,29 @@ pub fn build_profiled(
     // merge pulled the parent in as a topic branch, rather than a plain
     // first-parent continuation. The flag is what lets stacked branches keep
     // their own columns instead of collapsing onto one lane.
-    // Pre-load every commit handle so we can (a) interleave stashes by time and
-    // (b) reuse the handle in the layout loop instead of re-opening it.
-    let commits_vec: Vec<git2::Commit> = oids
+    // Collect just (oid, committer time) so we can interleave stashes by time
+    // without holding every commit handle alive for the whole layout pass; the
+    // full handle is re-opened once per commit in the loop below.
+    let commit_times: Vec<(Oid, i64)> = oids
         .iter()
-        .map(|oid| repo.find_commit(*oid))
+        .map(|oid| repo.find_commit(*oid).map(|c| (*oid, c.time().seconds())))
         .collect::<Result<_, _>>()?;
 
     // Inject stashes whose base is in the window. Merge them into the date-ordered
     // walk: emit each stash created strictly after a commit's time just before
     // that commit, so it slots in where it was created — then the reservation
     // algorithm below holds its lane open down to the base (fan shifts right).
+    // Tie-break: `>` (not `>=`) places a stash sharing a commit's exact second
+    // *below* that commit, matching the frontend interleave it replaces.
     let stash_metas = read_in_window_stashes(repo, &visible_oids);
-    let mut order: Vec<Entry> = Vec::with_capacity(commits_vec.len() + stash_metas.len());
+    let mut order: Vec<Entry> = Vec::with_capacity(commit_times.len() + stash_metas.len());
     let mut next_stash = 0usize;
-    for commit in &commits_vec {
-        let ct = commit.time().seconds();
+    for &(oid, ct) in &commit_times {
         while next_stash < stash_metas.len() && stash_metas[next_stash].timestamp > ct {
             order.push(Entry::Stash(&stash_metas[next_stash]));
             next_stash += 1;
         }
-        order.push(Entry::Commit(commit));
+        order.push(Entry::Commit(oid));
     }
     while next_stash < stash_metas.len() {
         order.push(Entry::Stash(&stash_metas[next_stash]));
@@ -174,11 +178,20 @@ pub fn build_profiled(
     let mut lane_count = 0usize;
 
     for (row, entry) in order.iter().enumerate() {
+        // Re-open the commit handle once here (ODB-cache hit) and reuse it for both
+        // the parent walk and node construction below.
+        let commit = match entry {
+            Entry::Commit(oid) => Some(repo.find_commit(*oid)?),
+            Entry::Stash(_) => None,
+        };
         // A stash node carries just its base as a single (synthetic) parent, so it
         // reserves one lane held open to the base — never fanning out to the
         // stash's index/untracked parents, which aren't real history.
         let (oid, parents): (Oid, Vec<Oid>) = match entry {
-            Entry::Commit(commit) => (commit.id(), commit.parent_ids().collect()),
+            Entry::Commit(oid) => {
+                let commit = commit.as_ref().unwrap();
+                (*oid, commit.parent_ids().collect())
+            }
             Entry::Stash(stash) => (stash.oid, vec![stash.base]),
         };
 
@@ -236,7 +249,8 @@ pub fn build_profiled(
         lane_of.insert(oid, lane);
 
         let node = match entry {
-            Entry::Commit(commit) => {
+            Entry::Commit(_) => {
+                let commit = commit.as_ref().unwrap();
                 let author = commit.author();
                 CommitNode {
                     id: oid.to_string(),
