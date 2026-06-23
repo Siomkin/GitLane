@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { PointerEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -13,6 +13,16 @@ type ResizeDirection =
   | "NorthWest"
   | "SouthEast"
   | "SouthWest";
+
+// getCurrentWindow() reads window.__TAURI_INTERNALS__ and throws synchronously
+// when it's absent (browser dev / jsdom). Guard so a stray mount is a no-op.
+function win() {
+  try {
+    return getCurrentWindow();
+  } catch {
+    return null;
+  }
+}
 
 // On Windows/Linux we drop the native window frame (see the mount effect) to
 // avoid a doubled title bar over our custom header. A frameless window also
@@ -37,31 +47,43 @@ const HANDLES: Handle[] = [
 ];
 
 export function WindowResizeHandles() {
-  // Strip the native frame once on mount. If the permission/IPC is unavailable
-  // the window simply keeps its native decorations — a safe visual fallback.
+  const [maximized, setMaximized] = useState(false);
+
+  // Strip the native frame once on mount, then track the maximized state. If the
+  // permission/IPC is unavailable the window simply keeps its native decorations
+  // — a safe visual fallback.
   useEffect(() => {
-    getCurrentWindow()
-      .setDecorations(false)
+    const w = win();
+    if (!w) return;
+    w.setDecorations(false).catch(() => {});
+    let unlisten: (() => void) | undefined;
+    const sync = () => void w.isMaximized().then(setMaximized).catch(() => {});
+    sync();
+    w.onResized(sync)
+      .then((u) => {
+        unlisten = u;
+      })
       .catch(() => {});
+    return () => unlisten?.();
   }, []);
 
   const onDown = (dir: ResizeDirection) => (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    getCurrentWindow()
-      .startResizeDragging(dir)
+    win()
+      ?.startResizeDragging(dir)
       .catch(() => {});
   };
+
+  // A maximized window can't be edge-resized, and the grips would otherwise sit
+  // over the screen corners — intercepting the click users aim at the close
+  // button. Drop them entirely until the window is restored.
+  if (maximized) return null;
 
   return (
     <>
       {HANDLES.map((h) => (
-        <div
-          key={h.dir}
-          className={`fixed z-[100] ${h.cursor}`}
-          style={h.style}
-          onPointerDown={onDown(h.dir)}
-        />
+        <div key={h.dir} className={`fixed z-[100] ${h.cursor}`} style={h.style} onPointerDown={onDown(h.dir)} />
       ))}
     </>
   );

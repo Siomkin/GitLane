@@ -10,6 +10,11 @@ export const isMac = /Mac/i.test(ua);
 export const isWindows = /Win/i.test(ua);
 export const isLinux = !isMac && /Linux|X11/i.test(ua);
 
+/** Whether we're running inside the Tauri webview (vs. `bun run dev` in a plain
+ *  browser or a jsdom test). The window APIs throw synchronously when the Tauri
+ *  internals are absent, so custom window chrome must be gated on this. */
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
 /** The primary modifier key label for shortcut hints: ⌘ on macOS, Ctrl elsewhere. */
 export const modKey = isMac ? "⌘" : "Ctrl";
 

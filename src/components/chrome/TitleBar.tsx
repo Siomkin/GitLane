@@ -1,5 +1,5 @@
 import { cn } from "../../lib/cn";
-import { isMac } from "../../lib/platform";
+import { isMac, isTauri } from "../../lib/platform";
 import { repoLabel } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
@@ -102,7 +102,7 @@ export function TitleBar() {
       </div>
 
       {/* Windows/Linux frameless caption controls; macOS uses native traffic lights. */}
-      {!isMac && <WindowControls />}
+      {!isMac && isTauri && <WindowControls />}
     </header>
   );
 }

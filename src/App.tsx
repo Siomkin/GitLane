@@ -31,7 +31,7 @@ import { RightPanel } from "./features/changes/RightPanel";
 import { cn } from "./lib/cn";
 import { accentVars } from "./lib/accent";
 import type { LeftTab } from "./lib/ui";
-import { isMac } from "./lib/platform";
+import { isMac, isTauri } from "./lib/platform";
 import { useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useAccounts } from "./store/accounts";
@@ -192,8 +192,8 @@ function App() {
       <Toast />
       <Tooltip />
 
-      {/* Frameless-window edge resize grips (Windows/Linux only). */}
-      {!isMac && <WindowResizeHandles />}
+      {/* Frameless-window edge resize grips (Windows/Linux only, inside Tauri). */}
+      {!isMac && isTauri && <WindowResizeHandles />}
     </div>
   );
 }
