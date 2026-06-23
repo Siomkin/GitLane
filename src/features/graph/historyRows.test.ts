@@ -323,6 +323,40 @@ describe("buildHistoryRows", () => {
     expect(synth.rows[1]).toMatchObject({ kind: "stash", markerLane: 1 });
   });
 
+  it("does not render a list stash whose oid is already a plain commit in the graph", () => {
+    // HEAD detached at a stash commit: the backend skips injection (no `stash`
+    // marker) and lays the oid out as a plain commit. The list entry for the same
+    // oid must not add a second (stash) row.
+    const model = buildHistoryRows({
+      graph: {
+        ...graph,
+        commits: [
+          commit({ id: "c1", summary: "base", timestamp: 300, row: 0 }),
+          commit({ id: "s0", summary: "WIP (checked out)", timestamp: 250, row: 1, parents: ["c1"] }),
+          commit({ id: "c2", summary: "mid", timestamp: 200, row: 2, parents: ["c1"] }),
+          commit({ id: "c3", summary: "tip", timestamp: 100, row: 3, parents: ["c2"] }),
+        ],
+      },
+      stashes: [stash({ index: 0, oid: "s0", timestamp: 250, baseOid: "c1", baseTimestamp: 300 })],
+      hasWip: false,
+    });
+
+    expect(model.rows.filter((row) => row.kind === "stash")).toEqual([]);
+    expect(model.rows.map((row) => row.key)).toEqual(["c1", "s0", "c2", "c3"]);
+  });
+
+  it("slots an out-of-window stash sharing a commit's timestamp above that commit", () => {
+    // `>=` mirrors the Rust interleave: a floating stash with the same second as a
+    // loaded commit lands just above it, not at the bottom/fallback.
+    const model = buildHistoryRows({
+      graph,
+      stashes: [stash({ index: 0, oid: "s0", timestamp: 200, baseOid: "missing", baseTimestamp: 200 })],
+      hasWip: false,
+    });
+
+    expect(model.rows.map((row) => row.key)).toEqual(["c1", "stash:0:s0", "c2", "c3"]);
+  });
+
   it("keeps stashes outside the loaded time window in fallback", () => {
     const model = buildHistoryRows({
       graph,

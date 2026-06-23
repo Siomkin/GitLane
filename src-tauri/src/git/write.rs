@@ -292,8 +292,8 @@ pub fn add_worktree(
 }
 
 /// List stashes via `git stash list`. Each line is
-/// `<oid>\x1f<parents>\x1f<subject>`; the line index is the stash index
-/// (0 = most recent). A stash commit's first parent is the base commit.
+/// `<oid>\x1f<parents>\x1f<committer-time>\x1f<subject>`; the line index is the
+/// stash index (0 = most recent). A stash commit's first parent is the base commit.
 pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
     let raw = run_git(repo, &["stash", "list", "--format=%H%x1f%P%x1f%ct%x1f%s"])?;
     let mut parsed = Vec::new();

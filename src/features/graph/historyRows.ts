@@ -94,9 +94,11 @@ export function buildHistoryRows({
   const unanchoredStashes: StashEntry[] = [];
 
   for (const stash of stashes) {
-    // Already a graph node (the backend reserved its lane) — rendered in the
-    // commit walk below, not here.
-    if (inGraphStashOids.has(stash.oid)) {
+    // Already present in the graph — skip placing a second row. Either the backend
+    // injected it as a stash node (reserved its lane) OR the stash commit is itself
+    // reachable (e.g. HEAD detached at it), so the backend laid it out as a plain
+    // commit and skipped injection; rendering the list entry too would duplicate it.
+    if (inGraphStashOids.has(stash.oid) || commitIds.has(stash.oid)) {
       continue;
     }
     if (stash.baseOid && commitIds.has(stash.baseOid)) {
@@ -141,13 +143,15 @@ export function buildHistoryRows({
   }
 
   let nextStash = 0;
-  // Emit every time-placed stash created after `timestamp` (i.e. that sorts above
-  // the commit about to be pushed). `belowCommitId` is that commit — the fallback
-  // connector target for floating stashes whose real base is outside the window.
+  // Emit every time-placed stash created at-or-after `timestamp` (i.e. that sorts
+  // above the commit about to be pushed). `belowCommitId` is that commit — the
+  // fallback connector target for floating stashes whose real base is outside the
+  // window. `>=` mirrors the Rust in-window interleave so an out-of-window stash
+  // sharing a commit's exact second still slots above it, not into the fallback.
   const flushStashesNewerThan = (timestamp: number | null, belowCommitId: string | null) => {
     while (
       nextStash < placeable.length &&
-      (timestamp === null || placeable[nextStash].stash.timestamp > timestamp)
+      (timestamp === null || placeable[nextStash].stash.timestamp >= timestamp)
     ) {
       const { stash, baseOid } = placeable[nextStash++];
       const stashRow = rows.length;
