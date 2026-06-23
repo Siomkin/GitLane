@@ -706,13 +706,18 @@ pub fn force_push(repo: &str, auth: Option<(&str, &str)>) -> Result<String, Stri
 
 /// Discard *all* uncommitted changes: reset tracked files to HEAD and remove
 /// untracked files/directories (`git reset --hard HEAD` + `git clean -fd`).
-/// Irreversible — the frontend gates this behind a confirmation. The reset is
-/// skipped in an unborn repo (no HEAD) so its staged/untracked files still get
-/// cleaned rather than erroring out.
+/// Irreversible — the frontend gates this behind a confirmation.
+///
+/// An unborn repo (no HEAD yet) has no commit to reset to, but staged "added"
+/// files are tracked in the *index*, so `git clean` alone would leave them
+/// behind. Empty the index first (`git read-tree --empty`) so those files become
+/// untracked and get cleaned with everything else.
 pub fn discard_all(repo: &str) -> Result<String, String> {
     let has_head = run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok();
     if has_head {
         run_git(repo, &["reset", "--hard", "HEAD"])?;
+    } else {
+        run_git(repo, &["read-tree", "--empty"])?;
     }
     run_git(repo, &["clean", "-f", "-d"])?;
     Ok("Discarded all changes".to_string())
@@ -749,7 +754,10 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_operand;
+    use super::{discard_all, ensure_operand};
+    use std::path::PathBuf;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     #[test]
     fn rejects_dash_prefixed_operands() {
@@ -764,5 +772,54 @@ mod tests {
         for ok in ["main", "feature/GP-3-foo", "origin/main", "2fe77a5abf25", "v1.2.3"] {
             assert!(ensure_operand(ok).is_ok(), "{ok} should be allowed");
         }
+    }
+
+    /// A throwaway temp directory that cleans itself up on drop — keeps the test
+    /// dependency-free (no `tempfile` dev-dep) while never leaking dirs.
+    struct TempRepo(PathBuf);
+    impl TempRepo {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU32 = AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("gitlane-{tag}-{}-{n}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            TempRepo(dir)
+        }
+        fn path(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+        fn git(&self, args: &[&str]) -> std::process::Output {
+            Command::new("git")
+                .arg("-C")
+                .arg(&self.0)
+                .args(args)
+                .output()
+                .expect("git launches in tests")
+        }
+    }
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn discard_all_clears_staged_files_in_unborn_repo() {
+        let repo = TempRepo::new("discard");
+        repo.git(&["init", "-q"]);
+        // Stage a file *before any commit* — the regression case: with no HEAD,
+        // `reset --hard` is skipped, and the file is tracked in the index so a
+        // plain `git clean` would leave it behind.
+        std::fs::write(repo.0.join("staged.txt"), b"hello").unwrap();
+        repo.git(&["add", "staged.txt"]);
+
+        let result = discard_all(repo.path());
+        assert!(result.is_ok(), "discard_all failed: {result:?}");
+
+        // Both the worktree copy and the index entry must be gone.
+        assert!(!repo.0.join("staged.txt").exists(), "worktree file survived discard");
+        let status = repo.git(&["status", "--porcelain"]);
+        let out = String::from_utf8_lossy(&status.stdout);
+        assert!(out.trim().is_empty(), "repo not clean after discard: {out:?}");
     }
 }
