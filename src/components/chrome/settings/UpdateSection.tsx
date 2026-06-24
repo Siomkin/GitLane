@@ -91,7 +91,9 @@ export const UpdateSection = () => {
   const progressLabel =
     contentLength != null
       ? `${pct}% — ${formatBytes(downloaded)} of ${formatBytes(contentLength)}`
-      : formatBytes(downloaded);
+      : downloaded > 0
+        ? formatBytes(downloaded)
+        : "Starting download…";
 
   return (
     <div className="rounded-2xl border border-black/[0.07] bg-white p-5 shadow-sm dark:border-white/[0.08] dark:bg-neutral-800/60">
@@ -121,10 +123,15 @@ export const UpdateSection = () => {
       {status === "downloading" && (
         <div className="mt-4">
           <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/10">
-            <div
-              className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-linear"
-              style={{ width: pct === null ? "33%" : `${pct}%` }}
-            />
+            {pct === null ? (
+              // Unknown size / pre-Started: a moving segment, not a frozen fill.
+              <div className="gp-indeterminate-bar h-full rounded-full bg-[var(--accent)]" />
+            ) : (
+              <div
+                className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-linear"
+                style={{ width: `${pct}%` }}
+              />
+            )}
           </div>
           <div className="mt-1.5 font-mono text-[11.5px] text-neutral-400 dark:text-neutral-500">{progressLabel}</div>
         </div>
