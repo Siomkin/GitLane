@@ -6,24 +6,32 @@ import { BranchRow } from "../../navigation/branch-navigator/rows";
 import { BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
 // BranchContextMenu probes `api.canFastForward` (→ invoke) from an effect when a
-// branch other than HEAD is selected, so the IPC boundary must be mocked.
+// branch other than HEAD is selected, so the IPC boundary must be mocked. Reject
+// any other command so a stray invoke fails loudly instead of silently resolving.
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 // Captured before any test mutates store actions, so beforeEach can restore the
-// real `removeBranch` after a test swaps in a spy (Zustand setState merges, so a
-// mocked action would otherwise leak into later tests).
+// real actions after a test swaps in a spy (Zustand setState merges, so a mocked
+// action would otherwise leak into later tests — and into later test files, since
+// the store is a shared singleton with no global reset).
 const realRemoveBranch = useRepo.getState().removeBranch;
+const realCreateWorktreeAt = useRepo.getState().createWorktreeAt;
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue(false);
+  invokeMock.mockImplementation((cmd: string) =>
+    cmd === "can_fast_forward"
+      ? Promise.resolve(false)
+      : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+  );
   useRepo.setState({
     changes: { staged: [], unstaged: [] },
     summary: null,
     branches: [],
     worktrees: [],
     removeBranch: realRemoveBranch,
+    createWorktreeAt: realCreateWorktreeAt,
   });
   useUi.setState({
     wipMenu: null,
@@ -172,6 +180,10 @@ describe("BranchContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Checkout feature" })).not.toBeInTheDocument();
     // ...but the worktree's own "Open worktree" entry is still offered.
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
+    // Rename stays available on purpose: `git branch -m` renames a branch checked
+    // out in another worktree fine (it updates that worktree's HEAD); only `-D` is
+    // refused. So the Delete/Rename gating asymmetry is intentional, not a bug.
+    expect(screen.getByRole("menuitem", { name: "Rename feature…" })).toBeInTheDocument();
   });
 
   // Remote-tracking refs reach the same menu; local-only mutations like Delete
@@ -181,6 +193,8 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
     render(<BranchContextMenu />);
     expect(screen.queryByRole("menuitem", { name: "Delete origin/feature" })).not.toBeInTheDocument();
+    // The remote-delete item is a different action and must remain available.
+    expect(screen.getByRole("menuitem", { name: "Delete origin/feature on remote" })).toBeInTheDocument();
   });
 
   // The bug this fixed (GL-33): the confirm must force-delete (`-D`) so unmerged
