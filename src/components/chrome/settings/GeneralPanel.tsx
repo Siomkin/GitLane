@@ -1,12 +1,14 @@
-// General settings: appearance (theme), accent colour, and graph density. All
-// state lives in the UI store; the segmented + swatch controls are one-offs used
-// only here, so they stay co-located.
+// General settings: appearance (theme), accent colour, graph density, and the
+// software-update section. Theme/accent/density live in the UI store; the update
+// section reads its own `useUpdates` store. The segmented + swatch controls are
+// one-offs used only here, so they stay co-located.
 
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
 import { useUi, type Density, type Theme } from "../../../store/ui";
 import { ACCENTS, type AccentColor } from "../../../lib/accent";
 import { SectionLabel } from "./controls";
+import { UpdateSection } from "./UpdateSection";
 
 function Segmented<T extends string>({
   value,
@@ -116,6 +118,7 @@ export function GeneralPanel() {
           ariaLabel="Graph density"
         />
       </div>
+      <UpdateSection />
     </>
   );
 }

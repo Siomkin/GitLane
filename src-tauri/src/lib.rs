@@ -699,8 +699,19 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // The process plugin (cross-platform) is how the updater relaunches the app.
+        .plugin(tauri_plugin_process::init())
         .manage(WatcherState::default())
         .manage(TerminalState::default())
+        .setup(|app| {
+            // The updater is desktop-only; registering it here (rather than in the
+            // builder chain) keeps a future mobile build compiling without it. The
+            // frontend drives it via @tauri-apps/plugin-updater.
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             open_repo,
             commit_graph,

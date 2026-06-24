@@ -38,6 +38,7 @@ import { isMac, isTauri } from "./lib/platform";
 import { useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useAccounts } from "./store/accounts";
+import { useUpdates } from "./store/updates";
 import { useRepoWatcher } from "./hooks/useRepoWatcher";
 import { useResolvedTheme } from "./hooks/useResolvedTheme";
 import "./App.css";
@@ -72,6 +73,17 @@ function App() {
     void loadAccounts();
     void restoreSession();
   }, [loadAccounts, restoreSession]);
+
+  // One quiet update check per launch — populates the version and lights the
+  // titlebar indicator if a newer build exists. Silent on "up to date"/errors
+  // (e.g. offline); the manual flow in Settings → General surfaces those. Gated
+  // on isTauri so `bun run dev` (plain browser) doesn't show a bogus state.
+  useEffect(() => {
+    if (!isTauri) return;
+    const { loadVersion, check } = useUpdates.getState();
+    void loadVersion();
+    void check({ quiet: true });
+  }, []);
 
   // Keep the repo in sync with on-disk changes (focus/visibility + the backend
   // `repo-changed` filesystem event, debounced). See useRepoWatcher.

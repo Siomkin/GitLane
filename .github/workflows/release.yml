@@ -96,6 +96,19 @@ jobs:
             exit 1
           fi
 
+      # Fail fast with a clear message instead of letting the bundle step die
+      # opaquely: createUpdaterArtifacts is always on, so a missing/empty signing
+      # secret would otherwise surface as a confusing minisign error per platform.
+      - name: Validate updater signing secret
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            echo "createUpdaterArtifacts is enabled but TAURI_SIGNING_PRIVATE_KEY is not set."
+            echo "Add TAURI_SIGNING_PRIVATE_KEY (+ TAURI_SIGNING_PRIVATE_KEY_PASSWORD) as repo secrets — see GL-24."
+            exit 1
+          fi
+
       - name: Build frontend
         run: bun run build
 
@@ -157,6 +170,13 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Updater signing (minisign — separate from Apple code signing). With
+          # bundle.createUpdaterArtifacts=true the bundler signs the update package
+          # with this key and tauri-action publishes the matching latest.json.
+          # Both secrets MUST be set on the repo or the macOS/Windows/Linux bundle
+          # step fails — see GL-24 for the key (~/.gitlane/updater.key) and password.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS code-signing + notarization are intentionally NOT wired here yet.
           # Gotcha: passing `APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}`
           # when the secret is unset yields an *empty* (but present) env var, which

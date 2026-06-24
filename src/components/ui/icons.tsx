@@ -117,6 +117,17 @@ export function SunIcon(props: IconProps) {
   );
 }
 
+/** Software-update glyph: an arrow dropping into a tray line. Shown in the
+ * titlebar (accent-tinted) when an update is available — see UpdateIndicator. */
+export function UpdateIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
+      <path d="M5 18.5h14" />
+    </IconBase>
+  );
+}
+
 export function FolderIcon(props: IconProps) {
   return (
     <IconBase {...props}>

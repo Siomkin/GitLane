@@ -8,6 +8,7 @@ import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "../ui/icons";
 import { AccountChip } from "./AccountChip";
 import { ProjectTab } from "./ProjectTab";
+import { UpdateIndicator } from "./UpdateIndicator";
 import { WindowControls } from "./WindowControls";
 
 export const TitleBar = () => {
@@ -90,6 +91,7 @@ export const TitleBar = () => {
         >
           {theme === "dark" ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
         </button>
+        <UpdateIndicator />
         <div className="mx-1.5 h-5 w-px bg-black/10 dark:bg-white/10" />
         <AccountChip />
       </div>
