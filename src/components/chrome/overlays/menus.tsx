@@ -406,7 +406,7 @@ export function BranchContextMenu() {
             message: "The branch ref will be removed. Unmerged commits may be lost.",
             confirmLabel: "Delete branch",
             danger: true,
-            onConfirm: () => void run(() => removeBranch(b, false)),
+            onConfirm: () => void run(() => removeBranch(b, true)),
           }),
       });
     }
