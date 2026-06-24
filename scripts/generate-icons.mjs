@@ -1,12 +1,11 @@
-// Generates the GitLane app-icon set from the approved design SVGs in
+// Generates the GitLane app-icon set from the approved design SVG in
 // src-tauri/icons/source/ (exported from Claude Design project a65ff56d,
 // "App Icon · Corner Tag", Aurora palette).
 //
-// Two source variants, picked per output size:
-//   app-icon-gl.svg    — branch mark + GL wordmark   → large sizes (>=128px)
-//   app-icon-mark.svg  — clean branch mark only      → small sizes (<128px)
-// The GL wordmark uses Outfit ExtraBold; the vendored "Outfit[wght].ttf" is
-// loaded so it renders exactly (falls back to system fonts if absent).
+// One source variant at every size — the clean, letterless branch mark:
+//   app-icon-mark.svg  — branch glyph only, no "GL" wordmark
+// (The mark reads clearer than the wordmark variant at small sizes, and is
+// consistent across the whole set.) It contains no text, so no font is needed.
 //
 // Outputs into src-tauri/icons/: the standalone PNGs tauri.conf references, the
 // Windows Store logos, a multi-size icon.icns (iconutil) and icon.ico (png-to-ico).
@@ -15,7 +14,7 @@
 
 import { Resvg } from "@resvg/resvg-js";
 import pngToIco from "png-to-ico";
-import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -23,21 +22,11 @@ import { join } from "node:path";
 const ICONS = fileURLToPath(new URL("../src-tauri/icons/", import.meta.url));
 const SRC = join(ICONS, "source");
 
-const SVG = {
-  gl: readFileSync(join(SRC, "app-icon-gl.svg"), "utf8"),
-  mark: readFileSync(join(SRC, "app-icon-mark.svg"), "utf8"),
-};
-// Static ExtraBold instance (resvg doesn't apply the wght axis of the variable
-// "Outfit[wght].ttf", so a baked 800 instance is loaded instead). Re-create with:
-//   fonttools varLib.instancer "Outfit[wght].ttf" wght=800 -o Outfit-ExtraBold.ttf
-const FONT = join(SRC, "Outfit-ExtraBold.ttf");
-const fontFiles = existsSync(FONT) ? [FONT] : [];
-if (!fontFiles.length) console.warn("Outfit-ExtraBold.ttf not found — GL wordmark will use a system fallback.");
+const MARK = readFileSync(join(SRC, "app-icon-mark.svg"), "utf8");
 
-// >=128px gets the wordmark variant; smaller is mark-only.
 function png(px) {
-  const r = new Resvg(px >= 128 ? SVG.gl : SVG.mark, {
-    font: { loadSystemFonts: true, fontFiles, defaultFontFamily: "Outfit" },
+  const r = new Resvg(MARK, {
+    font: { loadSystemFonts: false }, // mark has no text — skip the font scan
     fitTo: { mode: "width", value: px },
   });
   return r.render().asPng();
