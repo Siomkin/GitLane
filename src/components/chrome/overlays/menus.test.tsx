@@ -5,8 +5,26 @@ import { useUi } from "../../../store/ui";
 import { BranchRow } from "../../navigation/branch-navigator/rows";
 import { BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
+// BranchContextMenu probes `api.canFastForward` (→ invoke) from an effect when a
+// branch other than HEAD is selected, so the IPC boundary must be mocked.
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+
+// Captured before any test mutates store actions, so beforeEach can restore the
+// real `removeBranch` after a test swaps in a spy (Zustand setState merges, so a
+// mocked action would otherwise leak into later tests).
+const realRemoveBranch = useRepo.getState().removeBranch;
+
 beforeEach(() => {
-  useRepo.setState({ changes: { staged: [], unstaged: [] }, summary: null, branches: [], worktrees: [] });
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue(false);
+  useRepo.setState({
+    changes: { staged: [], unstaged: [] },
+    summary: null,
+    branches: [],
+    worktrees: [],
+    removeBranch: realRemoveBranch,
+  });
   useUi.setState({
     wipMenu: null,
     tagMenu: null,
@@ -22,6 +40,14 @@ beforeEach(() => {
 const localBranch = (name: string) => ({
   name,
   kind: "local" as const,
+  target: "abc1234",
+  isHead: false,
+  upstream: null,
+});
+
+const remoteBranch = (name: string) => ({
+  name,
+  kind: "remote" as const,
   target: "abc1234",
   isHead: false,
   upstream: null,
@@ -142,8 +168,19 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
     expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
+    // Checkout is gated the same way — proves Delete now has parity with it.
+    expect(screen.queryByRole("menuitem", { name: "Checkout feature" })).not.toBeInTheDocument();
     // ...but the worktree's own "Open worktree" entry is still offered.
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
+  });
+
+  // Remote-tracking refs reach the same menu; local-only mutations like Delete
+  // are gated on `isLocal` and must not appear.
+  it("hides the local Delete for a remote-tracking ref", () => {
+    useRepo.setState({ branches: [remoteBranch("origin/feature")] });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: "Delete origin/feature" })).not.toBeInTheDocument();
   });
 
   // The bug this fixed (GL-33): the confirm must force-delete (`-D`) so unmerged
