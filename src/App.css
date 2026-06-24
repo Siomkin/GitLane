@@ -221,6 +221,23 @@ textarea {
   border-radius: 6px;
 }
 
+/* Updater download with unknown size (or before the first Progress event):
+   a sliding segment so the bar reads as "working" instead of a frozen partial
+   fill. Determinate progress (known contentLength) uses an inline width. */
+@keyframes gp-indeterminate {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(360%);
+  }
+}
+
+.gp-indeterminate-bar {
+  width: 28%;
+  animation: gp-indeterminate 1.15s ease-in-out infinite;
+}
+
 .graph-scroll {
   width: 100%;
   height: 100%;

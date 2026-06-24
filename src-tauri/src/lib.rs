@@ -699,8 +699,78 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // The process plugin (cross-platform) is how the updater relaunches the app.
+        .plugin(tauri_plugin_process::init())
         .manage(WatcherState::default())
         .manage(TerminalState::default())
+        .setup(|app| {
+            // The updater is desktop-only; registering it here (rather than in the
+            // builder chain) keeps a future mobile build compiling without it. The
+            // frontend drives it via @tauri-apps/plugin-updater.
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
+            // macOS app menu: replace the default with an enriched "About GitLane"
+            // panel (version/author/website/license) while keeping the standard
+            // Services/Hide/Quit, Edit (clipboard), and Window items. Windows/Linux
+            // use our frameless custom chrome, so no native menu there.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{AboutMetadataBuilder, MenuBuilder, SubmenuBuilder};
+
+                let about = AboutMetadataBuilder::new()
+                    .name(Some("GitLane"))
+                    // macOS renders "Version <version> (<short_version>)". Tauri sets
+                    // CFBundleVersion == CFBundleShortVersionString, so passing both
+                    // would read "0.1.0 (0.1.0)". Blank short_version to drop the
+                    // redundant parenthetical build and show "Version 0.1.0" once.
+                    .version(Some(env!("CARGO_PKG_VERSION")))
+                    .short_version(Some(""))
+                    .authors(Some(vec!["Alexander Siomkin".to_string()]))
+                    .comments(Some("Visual git client for macOS"))
+                    .copyright(Some("© 2026 Alexander Siomkin"))
+                    .website(Some("https://gitlane.space"))
+                    .website_label(Some("gitlane.space"))
+                    .license(Some("GPL-3.0-or-later"))
+                    .build();
+
+                let app_menu = SubmenuBuilder::new(app, "GitLane")
+                    .about(Some(about))
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+
+                let edit_menu = SubmenuBuilder::new(app, "Edit")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+
+                let window_menu = SubmenuBuilder::new(app, "Window")
+                    .minimize()
+                    .separator()
+                    .close_window()
+                    .build()?;
+
+                let menu = MenuBuilder::new(app)
+                    .items(&[&app_menu, &edit_menu, &window_menu])
+                    .build()?;
+                app.set_menu(menu)?;
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             open_repo,
             commit_graph,

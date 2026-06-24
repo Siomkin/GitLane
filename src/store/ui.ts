@@ -15,7 +15,7 @@ import { resolveTheme, systemPrefersDark } from "../lib/theme";
 export type { AccentColor };
 export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
-export type SettingsTab = "general" | "accounts" | "repo" | "terminal";
+export type SettingsTab = "general" | "accounts" | "repo" | "terminal" | "about";
 /** Commit-list kind filter in the History view: everything, regular (non-merge)
  * commits, merges, or commits carrying a tag. */
 export type HistFilter = "all" | "commits" | "merges" | "tags";
@@ -163,6 +163,12 @@ interface UiState {
   filter: string;
   collapsed: Record<string, boolean>;
 
+  /** When true, GitLane runs a quiet update check at most once a day on launch
+   * (the About panel's toggle). `lastUpdateCheckAt` is the epoch ms of the last
+   * attempt, used to throttle that daily check. Both persist. */
+  autoCheckUpdates: boolean;
+  lastUpdateCheckAt: number;
+
   leftWidth: number;
   rightWidth: number;
   /** Resizable history columns. `graphWidth` null = auto-fit to lane count. */
@@ -267,6 +273,9 @@ interface UiState {
   toggleTheme: () => void;
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
+  setAutoCheckUpdates: (on: boolean) => void;
+  /** Stamp the last update-check time (called by the updates store on any check). */
+  markUpdateChecked: () => void;
   setFilter: (filter: string) => void;
   toggleCollapse: (key: string) => void;
 
@@ -383,6 +392,9 @@ export const useUi = create<UiState>()(
   filter: "",
   collapsed: {},
 
+  autoCheckUpdates: true,
+  lastUpdateCheckAt: 0,
+
   leftWidth: 300,
   rightWidth: 374,
   branchWidth: 150,
@@ -458,6 +470,8 @@ export const useUi = create<UiState>()(
     })),
   setAccent: (accent) => set({ accent }),
   setDensity: (density) => set({ density }),
+  setAutoCheckUpdates: (on) => set({ autoCheckUpdates: on }),
+  markUpdateChecked: () => set({ lastUpdateCheckAt: Date.now() }),
   setFilter: (filter) => set({ filter }),
   toggleCollapse: (key) =>
     set((s) => ({ collapsed: { ...s.collapsed, [key]: !s.collapsed[key] } })),
@@ -603,6 +617,8 @@ export const useUi = create<UiState>()(
         theme: s.theme,
         accent: s.accent,
         density: s.density,
+        autoCheckUpdates: s.autoCheckUpdates,
+        lastUpdateCheckAt: s.lastUpdateCheckAt,
         leftWidth: s.leftWidth,
         rightWidth: s.rightWidth,
         branchWidth: s.branchWidth,

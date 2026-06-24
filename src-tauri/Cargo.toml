@@ -1,6 +1,6 @@
 [package]
 name = "gitlane"
-version = "0.1.0"
+version = "0.1.1"
 description = "GitLane — a visual git client"
 authors = ["Siomkin Alexander <siomkin.alexander@gmail.com>"]
 license = "GPL-3.0-or-later"
@@ -28,6 +28,11 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 # Persists the main window's size + position across launches.
 tauri-plugin-window-state = "2"
+# In-app updates: checks GitHub Releases for a newer signed build, downloads and
+# installs it, then relaunches via the process plugin. Updater artifacts are
+# signed with the Tauri updater (minisign) key — separate from Apple signing.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Local repo reads (log/refs/diff). Network features (ssh/https) are disabled —

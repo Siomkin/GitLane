@@ -1,6 +1,6 @@
 // General settings: appearance (theme), accent colour, and graph density. All
 // state lives in the UI store; the segmented + swatch controls are one-offs used
-// only here, so they stay co-located.
+// only here, so they stay co-located. (Software update lives in the About panel.)
 
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";

@@ -10,10 +10,13 @@ import { focusRing } from "../../lib/ui";
 import { useDismiss } from "../../hooks/useDismiss";
 import { useUi, type SettingsTab } from "../../store/ui";
 import { useTerminalAgents } from "../../store/terminalAgents";
+import { useUpdates } from "../../store/updates";
+import { GitLaneMarkIcon } from "../ui/icons";
 import { TerminalAgentsSettings } from "../../features/terminal/TerminalAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
 import { AccountsPanel } from "./settings/AccountsPanel";
 import { RepoIdentityPanel } from "./settings/RepoIdentityPanel";
+import { AboutPanel } from "./settings/AboutPanel";
 
 const TITLE_ID = "settings-modal-title";
 
@@ -21,6 +24,7 @@ const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "general", group: "GLOBAL", label: "Appearance" },
   { key: "accounts", group: "GLOBAL", label: "Accounts" },
   { key: "terminal", group: "GLOBAL", label: "Terminal Agents" },
+  { key: "about", group: "GLOBAL", label: "About" },
   { key: "repo", group: "THIS REPOSITORY", label: "Identity" },
 ];
 
@@ -30,6 +34,7 @@ export function SettingsModal() {
   const tab = useUi((s) => s.settingsTab);
   const setTab = useUi((s) => s.setSettingsTab);
   const enabledAgentCount = useTerminalAgents((s) => s.agents.filter((a) => a.enabled).length);
+  const version = useUpdates((s) => s.version);
   // A confirm/prompt dialog (e.g. delete-agent, reset) renders as an App-level
   // sibling at the same z-layer, outside our `dialogRef`. Suspend dismissal while
   // one is open so its Escape / backdrop click doesn't also tear down Settings
@@ -91,6 +96,17 @@ export function SettingsModal() {
               </div>
             ))}
           </div>
+          <button
+            onClick={() => setTab("about")}
+            title="About GitLane"
+            className={cn(
+              "mt-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
+              focusRing,
+            )}
+          >
+            <GitLaneMarkIcon className="h-3.5 w-3.5" />
+            <span>GitLane {version || "—"}</span>
+          </button>
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -115,6 +131,7 @@ export function SettingsModal() {
             {tab === "general" && <GeneralPanel />}
             {tab === "accounts" && <AccountsPanel />}
             {tab === "terminal" && <TerminalAgentsSettings />}
+            {tab === "about" && <AboutPanel />}
             {tab === "repo" && <RepoIdentityPanel />}
           </div>
         </div>

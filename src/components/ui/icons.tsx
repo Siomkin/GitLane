@@ -117,6 +117,32 @@ export function SunIcon(props: IconProps) {
   );
 }
 
+/** GitLane brand mark — the git-branch glyph (two hollow left nodes joined by a
+ * trunk; a branch tees off and rounds up into the filled top-right node), the
+ * same mark used on the app icon. Used on the About tile and settings footer. */
+export function GitLaneMarkIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M5.5 8.6V16.1" />
+      <path d="M5.5 14.4C5.5 12.5 6.9 11.9 8.4 11.9H16.4C17.6 11.9 18.2 11.1 18.2 9.9V8.6" />
+      <circle cx="5.5" cy="5.5" r="2.6" />
+      <circle cx="5.5" cy="18.7" r="2.6" />
+      <circle cx="18.2" cy="5.5" r="2.95" fill="currentColor" />
+    </IconBase>
+  );
+}
+
+/** Software-update glyph: an arrow dropping into a tray line. Shown in the
+ * titlebar (accent-tinted) when an update is available — see UpdateIndicator. */
+export function UpdateIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M12 3v11m0 0 4-4m-4 4-4-4" />
+      <path d="M5 18.5h14" />
+    </IconBase>
+  );
+}
+
 export function FolderIcon(props: IconProps) {
   return (
     <IconBase {...props}>
