@@ -1,4 +1,5 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { arrayMove } from "@dnd-kit/helpers";
 import { api, type RepoSummary } from "../lib/api";
 import { useAccounts } from "./accounts";
 import { usePulls } from "./pulls";
@@ -26,7 +27,13 @@ export function createRepoLifecycleActions(
   get: RepoGet,
 ): Pick<
   RepoState,
-  "pickAndOpen" | "loadRepo" | "closeRepo" | "restoreSession" | "refresh" | "loadMoreHistory"
+  | "pickAndOpen"
+  | "loadRepo"
+  | "closeRepo"
+  | "reorderOpenPaths"
+  | "restoreSession"
+  | "refresh"
+  | "loadMoreHistory"
 > {
   // Store-side glue over the pure request-coordination primitives in
   // `repoRequests.ts`: a graph response is "current" only if it owns both the
@@ -325,6 +332,23 @@ export function createRepoLifecycleActions(
       });
       persistSession(remaining, next);
       await get().loadRepo(next);
+    },
+
+    reorderOpenPaths: (fromIndex, toIndex) => {
+      const { openPaths, summary } = get();
+      if (
+        fromIndex === toIndex ||
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= openPaths.length ||
+        toIndex >= openPaths.length
+      ) {
+        return;
+      }
+
+      const next = arrayMove(openPaths, fromIndex, toIndex);
+      persistSession(next, summary?.path ?? readLastPath());
+      set({ openPaths: next });
     },
 
     // On launch, reopen the last active repository (tabs are restored from

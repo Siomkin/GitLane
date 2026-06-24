@@ -69,6 +69,8 @@ export interface RepoState {
   pickAndOpen: () => Promise<void>;
   loadRepo: (path: string) => Promise<void>;
   closeRepo: (path: string) => Promise<void>;
+  /** Reorder the open repository tabs without changing the active repository. */
+  reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
   restoreSession: () => Promise<void>;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working
    * changes, avoiding a graph rebuild for ordinary file/index watcher events. */
