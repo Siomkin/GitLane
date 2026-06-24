@@ -35,54 +35,26 @@ jobs:
       - name: Frontend tests
         run: bun run test -- --run
 
-  # staging/latest only: the full Rust/Tauri test suite. Skipped on develop and
-  # ordinary PRs (too slow for this phase); the frontend job covers those.
-  rust-tests:
-    name: Rust tests
+  # staging/latest only: ONE Linux job that compiles once (debug), runs the full
+  # Rust/Tauri test suite, then bundles the desktop app from the SAME target dir —
+  # so the bundle reuses the test compile instead of recompiling from scratch
+  # (cargo test and `tauri build --debug` share target/debug deps).
+  #
+  # The bundle is UNSIGNED here: tauri.ci.conf.json disables createUpdaterArtifacts,
+  # so no TAURI_SIGNING_* secrets are needed. That's deliberate — updater signing is
+  # a release concern (release.yml owns it), and it keeps this check building on
+  # fork PRs, where GitHub withholds repo secrets.
+  desktop-linux-check:
+    name: Desktop build + tests (linux)
     if: github.ref == 'refs/heads/staging' || github.base_ref == 'staging' || github.ref == 'refs/heads/latest' || github.base_ref == 'latest'
+    needs: frontend
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-
-      - name: Install Linux Tauri dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test
-
-  # staging/latest only: build the desktop bundle as a promotion sanity check.
-  desktop-app-build:
-    name: Desktop app build (${{ matrix.name }})
-    if: github.ref == 'refs/heads/staging' || github.base_ref == 'staging' || github.ref == 'refs/heads/latest' || github.base_ref == 'latest'
-    needs: [frontend, rust-tests]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 70
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux
-            runner: ubuntu-24.04
-            args: ""
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Cache Rust build
         uses: swatinem/rust-cache@v2
@@ -92,7 +64,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - name: Install Linux Tauri dependencies
-        if: matrix.name == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -100,30 +71,25 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Mirror release.yml's preflight: createUpdaterArtifacts signs the bundle, so
-      # a missing key/password (e.g. fork PRs, where GitHub withholds repo secrets)
-      # would otherwise fail deep in minisign instead of here with a clear message.
-      - name: Validate updater signing secrets
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" || -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]]; then
-            echo "This promotion build signs updater artifacts, but TAURI_SIGNING_PRIVATE_KEY / _PASSWORD are not set."
-            echo "Repository secrets are unavailable in this context (e.g. a fork PR). Run from a branch with secrets — see GL-24."
-            exit 1
-          fi
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
 
-      - name: Build app artifact
+      # Debug bundle, reusing the test compile (same target/debug). The CI config
+      # override disables updater-artifact signing, so no signing key is needed —
+      # real signed bundles + latest.json come from release.yml.
+      - name: Build app bundle (debug, unsigned)
         uses: tauri-apps/tauri-action@v0
-        env:
-          # bundle.createUpdaterArtifacts=true makes the bundler sign the update
-          # package, so this promotion sanity build needs the updater signing key
-          # too (same secrets as release.yml). Without them the bundle step fails.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: bun tauri
-          args: ${{ matrix.args }}
-          uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: GitLane-${{ matrix.name }}-[bundle]
+          args: --debug --config src-tauri/tauri.ci.conf.json
+
+      - name: Upload Linux bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitLane-linux-debug-bundle
+          path: |
+            src-tauri/target/debug/bundle/deb/*.deb
+            src-tauri/target/debug/bundle/appimage/*.AppImage
+            src-tauri/target/debug/bundle/rpm/*.rpm
+          if-no-files-found: error
