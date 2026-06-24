@@ -75,13 +75,14 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     set({ status: "checking", error: null });
     try {
       const update = await checkForUpdate();
-      // Stamp the once-a-day throttle (read in App.tsx) only after the network
-      // call SUCCEEDS. Stamping the attempt up-front would let a failed quiet
-      // launch check (offline, timeout, missing latest.json) suppress the next
-      // auto-retry for 24h — and since update state isn't persisted, a restart
-      // would reset the UI to idle while the throttle silently held.
-      useUi.getState().markUpdateChecked();
       if (!update) {
+        // Stamp the once-a-day throttle (read in App.tsx) ONLY when there is
+        // nothing to install. We deliberately do NOT stamp when an update IS
+        // available (below): the pending state isn't persisted, so if the user
+        // quits before installing, a relaunch must be free to re-check and
+        // re-surface it — otherwise the indicator/About card go dark for up to
+        // 24h. A failed check doesn't stamp either (it falls through to catch).
+        useUi.getState().markUpdateChecked();
         set({ status: "upToDate", update: null, newVersion: null, notes: null });
         if (!quiet) useUi.getState().showToast("GitLane is up to date");
         return;

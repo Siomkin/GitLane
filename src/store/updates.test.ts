@@ -63,8 +63,8 @@ describe("useUpdates", () => {
     expect(s.error).toBe("offline");
   });
 
-  it("stamps the daily throttle only after a check succeeds, never on failure", async () => {
-    // Success stamps lastUpdateCheckAt so App.tsx throttles the next auto-check…
+  it("stamps the daily throttle only on an up-to-date result, never on failure", async () => {
+    // An up-to-date result stamps lastUpdateCheckAt so App.tsx throttles the next check…
     mocks.checkForUpdate.mockResolvedValue(null);
     await INITIAL.check({ quiet: true });
     expect(useUi.getState().lastUpdateCheckAt).toBeGreaterThan(0);
@@ -75,6 +75,16 @@ describe("useUpdates", () => {
     useUpdates.setState({ status: "idle" });
     mocks.checkForUpdate.mockRejectedValue(new Error("offline"));
     await INITIAL.check({ quiet: true });
+    expect(useUi.getState().lastUpdateCheckAt).toBe(0);
+  });
+
+  it("does NOT stamp the throttle when an update is available (relaunch re-surfaces it)", async () => {
+    // The pending-update state isn't persisted, so the daily throttle must stay
+    // unstamped while an update is offered — otherwise a quit-before-install
+    // leaves the indicator dark for 24h (no auto re-check). codex P2.
+    mocks.checkForUpdate.mockResolvedValue({ version: "0.2.0", body: "x" });
+    await INITIAL.check({ quiet: true });
+    expect(useUpdates.getState().status).toBe("available");
     expect(useUi.getState().lastUpdateCheckAt).toBe(0);
   });
 
