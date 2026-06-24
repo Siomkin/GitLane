@@ -99,13 +99,22 @@ jobs:
       # Fail fast with a clear message instead of letting the bundle step die
       # opaquely: createUpdaterArtifacts is always on, so a missing/empty signing
       # secret would otherwise surface as a confusing minisign error per platform.
-      - name: Validate updater signing secret
+      - name: Validate updater signing secrets
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
             echo "createUpdaterArtifacts is enabled but TAURI_SIGNING_PRIVATE_KEY is not set."
             echo "Add TAURI_SIGNING_PRIVATE_KEY (+ TAURI_SIGNING_PRIVATE_KEY_PASSWORD) as repo secrets — see GL-24."
+            exit 1
+          fi
+          # The GL-24 key is password-encrypted, so the bundler needs the password too.
+          # Without it the minisign step still fails — just late and opaquely, per
+          # platform — which is exactly what this preflight exists to prevent.
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is set but TAURI_SIGNING_PRIVATE_KEY_PASSWORD is not."
+            echo "The updater key is encrypted — add TAURI_SIGNING_PRIVATE_KEY_PASSWORD as a repo secret (see GL-24)."
             exit 1
           fi
 

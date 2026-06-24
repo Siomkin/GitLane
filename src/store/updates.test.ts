@@ -23,7 +23,7 @@ beforeEach(() => {
   mocks.checkForUpdate.mockReset();
   mocks.currentVersion.mockReset();
   mocks.relaunchApp.mockReset();
-  useUi.setState({ toast: null });
+  useUi.setState({ toast: null, lastUpdateCheckAt: 0 });
   useUpdates.setState(
     { status: "idle", version: "", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
@@ -61,6 +61,33 @@ describe("useUpdates", () => {
     const s = useUpdates.getState();
     expect(s.status).toBe("error");
     expect(s.error).toBe("offline");
+  });
+
+  it("stamps the daily throttle only after a check succeeds, never on failure", async () => {
+    // Success stamps lastUpdateCheckAt so App.tsx throttles the next auto-check…
+    mocks.checkForUpdate.mockResolvedValue(null);
+    await INITIAL.check({ quiet: true });
+    expect(useUi.getState().lastUpdateCheckAt).toBeGreaterThan(0);
+
+    // …but a failed (e.g. offline) check must NOT stamp it, so the next launch
+    // retries instead of being suppressed for 24h.
+    useUi.setState({ lastUpdateCheckAt: 0 });
+    useUpdates.setState({ status: "idle" });
+    mocks.checkForUpdate.mockRejectedValue(new Error("offline"));
+    await INITIAL.check({ quiet: true });
+    expect(useUi.getState().lastUpdateCheckAt).toBe(0);
+  });
+
+  it("clears a previously-offered handle when a later check fails (no stale retry)", async () => {
+    // An update was offered, then a re-check fails: the dead handle must be
+    // dropped so the card doesn't offer "Retry download" on it.
+    useUpdates.setState({ status: "available", update: fakeUpdate(), newVersion: "0.2.0", notes: "x" });
+    mocks.checkForUpdate.mockRejectedValue(new Error("offline"));
+    await INITIAL.check({ quiet: true });
+    const s = useUpdates.getState();
+    expect(s.status).toBe("error");
+    expect(s.update).toBeNull();
+    expect(s.newVersion).toBeNull();
   });
 
   it("toasts on a non-quiet up-to-date check but stays silent when quiet", async () => {

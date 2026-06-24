@@ -1,5 +1,5 @@
 // In-app update state — the single flow behind the titlebar update indicator and
-// the Settings → General "Software update" section. Kept out of `useUi` so update
+// the Settings → About "Software update" section. Kept out of `useUi` so update
 // churn (download progress) never re-renders unrelated chrome, and isolated from
 // git/PR data. All plugin calls go through lib/updater so this stays mockable.
 
@@ -72,11 +72,15 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     // ("ready") update by resetting it to "checking".
     const status = get().status;
     if (status === "checking" || status === "downloading" || status === "ready") return;
-    // Stamp the attempt so the once-a-day auto-check throttle (in App.tsx) works.
-    useUi.getState().markUpdateChecked();
     set({ status: "checking", error: null });
     try {
       const update = await checkForUpdate();
+      // Stamp the once-a-day throttle (read in App.tsx) only after the network
+      // call SUCCEEDS. Stamping the attempt up-front would let a failed quiet
+      // launch check (offline, timeout, missing latest.json) suppress the next
+      // auto-retry for 24h — and since update state isn't persisted, a restart
+      // would reset the UI to idle while the throttle silently held.
+      useUi.getState().markUpdateChecked();
       if (!update) {
         set({ status: "upToDate", update: null, newVersion: null, notes: null });
         if (!quiet) useUi.getState().showToast("GitLane is up to date");
@@ -92,7 +96,19 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      set({ status: "error", error: message });
+      // Clear any previously-offered handle/metadata: a failed *check* must not
+      // leave a stale `update` behind, or the card's retry path (canRetry =
+      // error && update !== null) would offer "Retry download" on a dead handle.
+      // The download path keeps its handle for retry; the check path does not.
+      set({
+        status: "error",
+        error: message,
+        update: null,
+        newVersion: null,
+        notes: null,
+        downloaded: 0,
+        contentLength: null,
+      });
       if (!quiet) useUi.getState().showToast(`Update check failed: ${message}`, "error");
     }
   },

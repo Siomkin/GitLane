@@ -100,6 +100,20 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Mirror release.yml's preflight: createUpdaterArtifacts signs the bundle, so
+      # a missing key/password (e.g. fork PRs, where GitHub withholds repo secrets)
+      # would otherwise fail deep in minisign instead of here with a clear message.
+      - name: Validate updater signing secrets
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" || -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]]; then
+            echo "This promotion build signs updater artifacts, but TAURI_SIGNING_PRIVATE_KEY / _PASSWORD are not set."
+            echo "Repository secrets are unavailable in this context (e.g. a fork PR). Run from a branch with secrets — see GL-24."
+            exit 1
+          fi
+
       - name: Build app artifact
         uses: tauri-apps/tauri-action@v0
         env:
