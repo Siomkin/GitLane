@@ -256,6 +256,62 @@ describe("repo store — large history", () => {
   });
 });
 
+describe("repo store — reorderOpenPaths", () => {
+  it("reorders open repo tabs and keeps the active repo selected", () => {
+    localStorage.clear();
+    useRepo.setState({
+      summary: { ...summary, path: "/b" },
+      openPaths: ["/a", "/b", "/c"],
+    });
+
+    useRepo.getState().reorderOpenPaths(2, 0);
+
+    expect(useRepo.getState().openPaths).toEqual(["/c", "/a", "/b"]);
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual([
+      "/c",
+      "/a",
+      "/b",
+    ]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
+  });
+
+  it("keeps the active repo selected when its own tab is dragged", () => {
+    localStorage.clear();
+    useRepo.setState({
+      summary: { ...summary, path: "/a" },
+      openPaths: ["/a", "/b", "/c"],
+    });
+
+    // Drag the active tab (/a) from the front to the end.
+    useRepo.getState().reorderOpenPaths(0, 2);
+
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/c", "/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual([
+      "/b",
+      "/c",
+      "/a",
+    ]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
+  });
+
+  it("ignores invalid or same-index reorder requests", () => {
+    localStorage.clear();
+    useRepo.setState({
+      summary,
+      openPaths: ["/a", "/b"],
+    });
+
+    useRepo.getState().reorderOpenPaths(1, 1);
+    useRepo.getState().reorderOpenPaths(-1, 0);
+    useRepo.getState().reorderOpenPaths(0, 2);
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(localStorage.getItem("gitlane.openPaths")).toBeNull();
+  });
+});
+
 describe("repo store — loadRepo failed open", () => {
   it("keeps the previous repo's summary + graph/refs/changes intact when open_repo fails", async () => {
     // A fully-loaded previous repo. open_repo is the cheap first step of an open;
