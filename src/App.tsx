@@ -74,15 +74,19 @@ function App() {
     void restoreSession();
   }, [loadAccounts, restoreSession]);
 
-  // One quiet update check per launch — populates the version and lights the
-  // titlebar indicator if a newer build exists. Silent on "up to date"/errors
-  // (e.g. offline); the manual flow in Settings → General surfaces those. Gated
-  // on isTauri so `bun run dev` (plain browser) doesn't show a bogus state.
+  // Quiet update check on launch — populates the version and lights the titlebar
+  // indicator if a newer build exists. Honors the About panel's auto-check toggle
+  // and runs at most once a day. Silent on "up to date"/errors (e.g. offline); the
+  // manual flow in Settings → About surfaces those. Gated on isTauri so `bun run
+  // dev` (plain browser) doesn't show a bogus state.
   useEffect(() => {
     if (!isTauri) return;
-    const { loadVersion, check } = useUpdates.getState();
-    void loadVersion();
-    void check({ quiet: true });
+    void useUpdates.getState().loadVersion();
+    const { autoCheckUpdates, lastUpdateCheckAt } = useUi.getState();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    if (autoCheckUpdates && Date.now() - lastUpdateCheckAt >= DAY_MS) {
+      void useUpdates.getState().check({ quiet: true });
+    }
   }, []);
 
   // Keep the repo in sync with on-disk changes (focus/visibility + the backend

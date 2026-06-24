@@ -1,15 +1,15 @@
-// Software-update controls for the General settings panel: the running version,
-// a manual "Check for Updates" action, and the offered-update flow (notes,
-// download progress, restart, retry). All state + plugin calls live in the
+// The software-update card shown in the About panel: an icon reflecting state, a
+// title/subtitle, the primary action (check / install / relaunch / retry), a
+// download progress bar, and release notes. All state + plugin calls live in the
 // `useUpdates` store; this is just its view. The titlebar UpdateIndicator is the
 // other entry point into the same flow.
 
-import { useEffect } from "react";
+import { useEffect, type ComponentType } from "react";
 
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
-import { useUpdates } from "../../../store/updates";
-import { SectionLabel } from "./controls";
+import { useUpdates, type UpdateStatus } from "../../../store/updates";
+import { CheckIcon, RefreshIcon, UpdateIcon, WarningIcon } from "../../ui/icons";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -18,9 +18,49 @@ function formatBytes(n: number): string {
   return `${(n / 1024).toFixed(0)} KB`;
 }
 
-const primaryButton = cn(
-  "h-8 shrink-0 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-semibold text-white",
-  "hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50",
+type Tone = "accent" | "ok" | "danger";
+
+const toneWrap: Record<Tone, string> = {
+  accent: "bg-[var(--accent-soft)] text-[color:var(--accent)]",
+  ok: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+  danger: "bg-rose-500/12 text-rose-600 dark:text-rose-400",
+};
+
+/** Icon + headline copy for each store status. `newVersion`/`version` fill the
+ * subtitle; the action button is chosen separately below. */
+function presentation(
+  status: UpdateStatus,
+  canRetry: boolean,
+  version: string,
+  newVersion: string | null,
+  error: string | null,
+): { tone: Tone; Icon: ComponentType<{ className?: string }>; spin?: boolean; title: string; sub: string } {
+  switch (status) {
+    case "checking":
+      return { tone: "accent", Icon: RefreshIcon, spin: true, title: "Checking for updates…", sub: "Contacting the update server." };
+    case "available":
+      return { tone: "accent", Icon: UpdateIcon, title: "Update available", sub: `Version ${newVersion} is ready to install.` };
+    case "downloading":
+      return { tone: "accent", Icon: RefreshIcon, spin: true, title: "Downloading update…", sub: newVersion ? `Version ${newVersion}` : "Fetching the latest build." };
+    case "ready":
+      return { tone: "ok", Icon: CheckIcon, title: "Update installed", sub: `Restart to finish updating${newVersion ? ` to ${newVersion}` : ""}.` };
+    case "upToDate":
+      return { tone: "ok", Icon: CheckIcon, title: "You’re up to date", sub: `GitLane ${version || "—"} is the latest version.` };
+    case "error":
+      return { tone: "danger", Icon: WarningIcon, title: canRetry ? "Download failed" : "Update check failed", sub: error ?? "Something went wrong." };
+    default:
+      return { tone: "accent", Icon: RefreshIcon, title: "Check for updates", sub: version ? `You’re running GitLane ${version}.` : "See whether a newer version is available." };
+  }
+}
+
+const secondaryButton = cn(
+  "h-9 shrink-0 rounded-lg border border-black/[0.1] bg-black/[0.03] px-4 text-[13px] font-semibold text-neutral-700",
+  "hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-50",
+  "dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-neutral-200 dark:hover:bg-white/[0.1]",
+  focusRing,
+);
+const accentButton = cn(
+  "h-9 shrink-0 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-sm hover:brightness-110",
   focusRing,
 );
 
@@ -42,78 +82,58 @@ export const UpdateSection = () => {
     void loadVersion();
   }, [loadVersion]);
 
-  const busy = status === "checking" || status === "downloading";
-  // A failed download keeps the update handle, so offer a one-click retry.
   const canRetry = status === "error" && update !== null;
-  // Narrow on contentLength (not a `!` assertion) so the percent + label stay
-  // type-safe if this block is later refactored.
+  const { tone, Icon, spin, title, sub } = presentation(status, canRetry, version, newVersion, error);
+
+  // Narrow on contentLength (no `!`) so the percent stays type-safe.
   const pct =
     contentLength != null ? Math.min(100, Math.round((downloaded / contentLength) * 100)) : null;
   const progressLabel =
     contentLength != null
-      ? `Downloading… ${pct}% (${formatBytes(downloaded)} of ${formatBytes(contentLength)})`
-      : `Downloading… ${formatBytes(downloaded)}`;
-  const checkLabel =
-    status === "checking" ? "Checking…" : status === "downloading" ? "Downloading…" : "Check for Updates";
+      ? `${pct}% — ${formatBytes(downloaded)} of ${formatBytes(contentLength)}`
+      : formatBytes(downloaded);
 
   return (
-    <div className="mt-6">
-      <SectionLabel>SOFTWARE UPDATE</SectionLabel>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 text-[13px] text-neutral-600 dark:text-neutral-300">
-          GitLane <span className="font-semibold">{version || "—"}</span>
-          {status === "upToDate" && (
-            <span className="ml-2 text-neutral-500 dark:text-neutral-400">You’re on the latest version.</span>
-          )}
+    <div className="rounded-2xl border border-black/[0.07] bg-white p-5 shadow-sm dark:border-white/[0.08] dark:bg-neutral-800/60">
+      <div className="flex items-center gap-4">
+        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl", toneWrap[tone])}>
+          <Icon className={cn("h-5 w-5", spin && "animate-spin")} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14.5px] font-semibold text-neutral-900 dark:text-white">{title}</div>
+          <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">{sub}</div>
         </div>
         {status === "ready" ? (
-          <button className={primaryButton} onClick={() => void restart()}>
-            Restart now
+          <button className={accentButton} onClick={() => void restart()}>
+            Relaunch
           </button>
         ) : status === "available" || canRetry ? (
-          <button className={primaryButton} onClick={() => void downloadAndInstall()}>
-            {canRetry ? "Retry download" : "Download & Install"}
+          <button className={accentButton} onClick={() => void downloadAndInstall()}>
+            {canRetry ? "Retry download" : "Install update"}
           </button>
-        ) : (
-          <button className={primaryButton} disabled={busy} onClick={() => void check()}>
-            {checkLabel}
+        ) : status === "downloading" ? null : (
+          <button className={secondaryButton} disabled={status === "checking"} onClick={() => void check()}>
+            {status === "checking" ? "Checking…" : "Check for updates"}
           </button>
         )}
       </div>
 
-      {status === "available" && (
-        <div className="mt-3 rounded-lg bg-black/[0.04] p-3 dark:bg-white/[0.04]">
-          <div className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">
-            Version {newVersion} is available
-          </div>
-          {notes && (
-            <p className="mt-1.5 max-h-32 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
-              {notes}
-            </p>
-          )}
-        </div>
-      )}
-
       {status === "downloading" && (
-        <div className="mt-3">
-          <div className="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+        <div className="mt-4">
+          <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/10">
             <div
-              className="h-full rounded-full bg-[var(--accent)] transition-[width]"
+              className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-linear"
               style={{ width: pct === null ? "33%" : `${pct}%` }}
             />
           </div>
-          <div className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">{progressLabel}</div>
+          <div className="mt-1.5 font-mono text-[11.5px] text-neutral-400 dark:text-neutral-500">{progressLabel}</div>
         </div>
       )}
 
-      {status === "ready" && (
-        <div className="mt-3 text-[12px] text-neutral-500 dark:text-neutral-400">
-          Update installed. Restart GitLane to finish.
+      {status === "available" && notes && (
+        <div className="mt-4 flex items-start gap-2 border-t border-black/[0.06] pt-4 text-[12.5px] leading-relaxed text-neutral-500 dark:border-white/[0.07] dark:text-neutral-400">
+          <span className="max-h-32 flex-1 overflow-y-auto whitespace-pre-wrap">{notes}</span>
         </div>
-      )}
-
-      {status === "error" && error && (
-        <div className="mt-3 text-[12px] text-rose-600 dark:text-rose-400">{error}</div>
       )}
     </div>
   );

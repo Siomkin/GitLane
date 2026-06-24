@@ -117,6 +117,20 @@ export function SunIcon(props: IconProps) {
   );
 }
 
+/** GitLane brand mark — the swimlane graph node (two stacked nodes joined to a
+ * third). Used on the About tile and the settings version footer. */
+export function GitLaneMarkIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="6" cy="6" r="2" />
+      <circle cx="6" cy="18" r="2" />
+      <circle cx="18" cy="12" r="2" />
+      <path d="M6 8v8" />
+      <path d="M16 12h-4a4 4 0 0 1-4-4" />
+    </IconBase>
+  );
+}
+
 /** Software-update glyph: an arrow dropping into a tray line. Shown in the
  * titlebar (accent-tinted) when an update is available — see UpdateIndicator. */
 export function UpdateIcon(props: IconProps) {

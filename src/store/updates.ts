@@ -72,6 +72,8 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     // ("ready") update by resetting it to "checking".
     const status = get().status;
     if (status === "checking" || status === "downloading" || status === "ready") return;
+    // Stamp the attempt so the once-a-day auto-check throttle (in App.tsx) works.
+    useUi.getState().markUpdateChecked();
     set({ status: "checking", error: null });
     try {
       const update = await checkForUpdate();

@@ -31,15 +31,16 @@ const btn = () => screen.getByRole("button");
 describe("UpdateSection", () => {
   it("offers a check and shows the running version when idle", () => {
     render(<UpdateSection />);
-    expect(screen.getByText("0.1.0")).toBeInTheDocument();
-    expect(btn()).toHaveTextContent("Check for Updates");
+    expect(screen.getByText(/running GitLane 0\.1\.0/)).toBeInTheDocument();
+    expect(btn()).toHaveTextContent("Check for updates");
     expect(btn()).toBeEnabled();
   });
 
   it("confirms the latest version when up to date", () => {
     useUpdates.setState({ status: "upToDate" });
     render(<UpdateSection />);
-    expect(screen.getByText(/on the latest version/i)).toBeInTheDocument();
+    expect(screen.getByText(/up to date/i)).toBeInTheDocument();
+    expect(screen.getByText(/latest version/i)).toBeInTheDocument();
   });
 
   it("disables the button while checking", () => {
@@ -49,40 +50,42 @@ describe("UpdateSection", () => {
     expect(btn()).toBeDisabled();
   });
 
-  it("offers download with version + notes when an update is available", () => {
+  it("offers install with version + notes when an update is available", () => {
     useUpdates.setState({ status: "available", newVersion: "0.2.0", notes: "Bug fixes" });
     render(<UpdateSection />);
-    expect(btn()).toHaveTextContent("Download & Install");
-    expect(screen.getByText("Version 0.2.0 is available")).toBeInTheDocument();
+    expect(btn()).toHaveTextContent("Install update");
+    expect(screen.getByText(/Version 0\.2\.0 is ready to install/)).toBeInTheDocument();
     expect(screen.getByText("Bug fixes")).toBeInTheDocument();
   });
 
-  it("shows a percent progress label while downloading", () => {
-    useUpdates.setState({ status: "downloading", downloaded: 400, contentLength: 1000 });
+  it("shows a percent progress label and no button while downloading", () => {
+    useUpdates.setState({ status: "downloading", newVersion: "0.2.0", downloaded: 400, contentLength: 1000 });
     render(<UpdateSection />);
-    expect(btn()).toHaveTextContent("Downloading…");
-    expect(btn()).toBeDisabled();
+    expect(screen.getByText(/Downloading update/i)).toBeInTheDocument();
     expect(screen.getByText(/40%/)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
-  it("offers restart once the update is installed", () => {
-    useUpdates.setState({ status: "ready" });
+  it("offers relaunch once the update is installed", () => {
+    useUpdates.setState({ status: "ready", newVersion: "0.2.0" });
     render(<UpdateSection />);
-    expect(btn()).toHaveTextContent("Restart now");
-    expect(screen.getByText(/restart gitlane to finish/i)).toBeInTheDocument();
+    expect(btn()).toHaveTextContent("Relaunch");
+    expect(screen.getByText(/Restart to finish updating to 0\.2\.0/)).toBeInTheDocument();
   });
 
   it("offers a retry (keeping the handle) after a failed download", () => {
     useUpdates.setState({ status: "error", error: "network drop", update: handle });
     render(<UpdateSection />);
     expect(btn()).toHaveTextContent("Retry download");
+    expect(screen.getByText(/Download failed/)).toBeInTheDocument();
     expect(screen.getByText("network drop")).toBeInTheDocument();
   });
 
   it("falls back to a plain check when a check (not download) errored", () => {
     useUpdates.setState({ status: "error", error: "offline", update: null });
     render(<UpdateSection />);
-    expect(btn()).toHaveTextContent("Check for Updates");
+    expect(btn()).toHaveTextContent("Check for updates");
+    expect(screen.getByText(/Update check failed/)).toBeInTheDocument();
     expect(screen.getByText("offline")).toBeInTheDocument();
   });
 });

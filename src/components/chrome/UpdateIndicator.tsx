@@ -1,6 +1,6 @@
 // Titlebar update affordance — an accent-tinted download glyph with a dot badge,
 // shown only while an update is pending (offered / downloading / ready). Clicking
-// it opens Settings → General, where the full Software-update section lives. The
+// it opens Settings → About, where the full software-update card lives. The
 // look mirrors the Titlebar entry in the Claude Design project; state comes from
 // the `useUpdates` store.
 
@@ -25,7 +25,7 @@ export const UpdateIndicator = () => {
 
   return (
     <button
-      onClick={() => openSettings("general")}
+      onClick={() => openSettings("about")}
       title={title}
       aria-label={title}
       className="relative grid h-8 w-8 place-items-center rounded-lg text-[color:var(--accent)] hover:bg-[var(--accent-soft)]"
