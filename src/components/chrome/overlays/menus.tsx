@@ -396,7 +396,11 @@ export function BranchContextMenu() {
           },
         }),
     }, true);
-    if (!isCurrent) {
+    // Skip when the branch is checked out in another worktree: `git branch -D`
+    // refuses a worktree-checked-out branch (the force flag bypasses the
+    // merged-safety check, not the worktree lock), so offering Delete here only
+    // leads to a confusing git error. Mirrors the Checkout gating above.
+    if (!isCurrent && !existingWt) {
       add({
         label: `Delete ${b}`,
         danger: true,
@@ -406,7 +410,7 @@ export function BranchContextMenu() {
             message: "The branch ref will be removed. Unmerged commits may be lost.",
             confirmLabel: "Delete branch",
             danger: true,
-            onConfirm: () => void run(() => removeBranch(b, false)),
+            onConfirm: () => void run(() => removeBranch(b, true)),
           }),
       });
     }
