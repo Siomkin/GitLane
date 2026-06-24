@@ -34,7 +34,7 @@ function AppMark() {
   return (
     <span
       className="grid h-[68px] w-[68px] shrink-0 place-items-center rounded-[18px] text-white shadow-[0_12px_32px_-10px_rgba(0,0,0,0.45)]"
-      style={{ background: "linear-gradient(135deg,#5b8def,#2f9e7e,#e0843b)" }}
+      style={{ background: "linear-gradient(135deg,#27c0a6,#4f7fd6,#e2a266)" }}
     >
       <GitLaneMarkIcon className="h-9 w-9" strokeWidth={2.1} />
     </span>

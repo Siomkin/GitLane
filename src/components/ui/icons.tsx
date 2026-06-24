@@ -117,16 +117,17 @@ export function SunIcon(props: IconProps) {
   );
 }
 
-/** GitLane brand mark — the swimlane graph node (two stacked nodes joined to a
- * third). Used on the About tile and the settings version footer. */
+/** GitLane brand mark — the git-branch glyph (two hollow left nodes joined by a
+ * trunk; a branch tees off and rounds up into the filled top-right node), the
+ * same mark used on the app icon. Used on the About tile and settings footer. */
 export function GitLaneMarkIcon(props: IconProps) {
   return (
     <IconBase {...props}>
-      <circle cx="6" cy="6" r="2" />
-      <circle cx="6" cy="18" r="2" />
-      <circle cx="18" cy="12" r="2" />
-      <path d="M6 8v8" />
-      <path d="M16 12h-4a4 4 0 0 1-4-4" />
+      <path d="M5.5 8.6V16.1" />
+      <path d="M5.5 14.4C5.5 12.5 6.9 11.9 8.4 11.9H16.4C17.6 11.9 18.2 11.1 18.2 9.9V8.6" />
+      <circle cx="5.5" cy="5.5" r="2.6" />
+      <circle cx="5.5" cy="18.7" r="2.6" />
+      <circle cx="18.2" cy="5.5" r="2.95" fill="currentColor" />
     </IconBase>
   );
 }
