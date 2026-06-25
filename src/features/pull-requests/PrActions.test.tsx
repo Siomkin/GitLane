@@ -41,7 +41,7 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
 
 beforeEach(() => {
   useUi.setState({ confirm: null });
-  usePulls.setState({ prActionPending: false });
+  usePulls.setState({ prPendingAction: null });
   useRepo.setState({ checkoutBranch: vi.fn() });
 });
 
@@ -72,14 +72,27 @@ describe("PrHeaderActions merge", () => {
     expect(screen.getByText("Conflicts")).toBeInTheDocument();
   });
 
-  it("shows a busy merge label while a PR action is pending", () => {
-    usePulls.setState({ prActionPending: true });
+  it("shows a busy merge label while a merge is pending", () => {
+    usePulls.setState({ prPendingAction: "merge" });
 
     render(<PrHeaderActions pr={openPr()} />);
 
     const merge = screen.getByRole("button", { name: /Merging/ });
     expect(merge).toBeDisabled();
     expect(merge).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("does not show the merge button as busy during a non-merge PR action", () => {
+    // A close/comment/etc. is in flight, not a merge — the merge control must
+    // stay idle (no "Merging…", not disabled).
+    usePulls.setState({ prPendingAction: "state" });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    expect(screen.queryByRole("button", { name: /Merging/ })).not.toBeInTheDocument();
+    const merge = screen.getByRole("button", { name: /Merge/ });
+    expect(merge).not.toBeDisabled();
+    expect(merge).toHaveAttribute("aria-busy", "false");
   });
 
   it("keeps checkout in the overflow menu instead of the primary action row", async () => {

@@ -23,6 +23,9 @@ import { useAccounts } from "./accounts";
 let nextPrListRequestId = 1;
 let nextPrChecksRequestId = 1;
 
+/** Which PR write op is in flight, so each control shows only its own busy state. */
+export type PrPendingAction = "merge" | "comment" | "review" | "state" | "create";
+
 interface QueuedPrListLoad {
   force: boolean;
   quiet: boolean;
@@ -90,8 +93,12 @@ interface PullsState {
   prCommitSigsLoaded: Record<number, boolean>;
   /** Per-PR signature-load error (silent; badges just stay absent on failure). */
   prCommitSigsError: Record<number, string>;
-  /** True while a write op (merge/comment/review/state/create) is in flight. */
-  prActionPending: boolean;
+  /**
+   * Which PR write op is in flight (merge/comment/review/state/create), or null
+   * when idle. Discriminated rather than a single boolean so a control only shows
+   * its own busy state — e.g. the merge button isn't "Merging…" during a close.
+   */
+  prPendingAction: PrPendingAction | null;
 
   /** Clear the list + caches (on repo open / close / switch). */
   reset: () => void;
@@ -164,7 +171,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prThreadsError: {},
   prCommitSigsLoaded: {},
   prCommitSigsError: {},
-  prActionPending: false,
+  prPendingAction: null,
 
   reset: () => {
     cancelQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
@@ -475,8 +482,9 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   mergePr: async (num, method, deleteBranch) => {
-    const out = await runPrAction((path, account) =>
-      api.mergePullRequest(path, num, method, deleteBranch, account),
+    const out = await runPrAction(
+      (path, account) => api.mergePullRequest(path, num, method, deleteBranch, account),
+      { action: "merge" },
     );
     // State + checked-out branch can both change; reload the list and this PR.
     await get().loadPullRequests(true);
@@ -486,16 +494,18 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   commentPr: async (num, body) => {
-    const out = await runPrAction((path, account) =>
-      api.commentPullRequest(path, num, body, account),
+    const out = await runPrAction(
+      (path, account) => api.commentPullRequest(path, num, body, account),
+      { action: "comment" },
     );
     await get().loadPrDetail(num, true);
     return out;
   },
 
   reviewPr: async (num, action, body) => {
-    const out = await runPrAction((path, account) =>
-      api.reviewPullRequest(path, num, action, body, account),
+    const out = await runPrAction(
+      (path, account) => api.reviewPullRequest(path, num, action, body, account),
+      { action: "review" },
     );
     await get().loadPrDetail(num, true);
     void get().loadPrChecks(num, true);
@@ -503,8 +513,9 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   setPrState: async (num, action) => {
-    const out = await runPrAction((path, account) =>
-      api.setPullRequestState(path, num, action, account),
+    const out = await runPrAction(
+      (path, account) => api.setPullRequestState(path, num, action, account),
+      { action: "state" },
     );
     await get().loadPullRequests(true);
     await get().loadPrDetail(num, true);
@@ -512,8 +523,9 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   createPr: async (base, head, title, body, draft) => {
-    const out = await runPrAction((path, account) =>
-      api.createPullRequest(path, base, head, title, body, draft, account),
+    const out = await runPrAction(
+      (path, account) => api.createPullRequest(path, base, head, title, body, draft, account),
+      { action: "create" },
     );
     await get().loadPullRequests(true);
     return out;
@@ -587,18 +599,19 @@ function cancelQueuedPrListLoad(queued: QueuedPrListLoad | null, reason: unknown
 // and own their pending state locally (one busy thread must not disable the rest).
 async function runPrAction(
   body: (path: string, account: GithubAccountRef | null) => Promise<string>,
-  { trackPending = true }: { trackPending?: boolean } = {},
+  { action, trackPending = true }: { action?: PrPendingAction; trackPending?: boolean } = {},
 ): Promise<string> {
   const summary = useRepo.getState().summary;
   if (!summary) throw new Error("No repository");
   const account = useAccounts.getState().repoAccountRef;
   if (!trackPending) return await body(summary.path, account);
   // Write errors surface via the caller's toast, not `prError` (which is the
-  // list-load error and must not be cleared/clobbered by a write op).
-  usePulls.setState({ prActionPending: true });
+  // list-load error and must not be cleared/clobbered by a write op). Record the
+  // specific action so each control reflects only its own in-flight state.
+  usePulls.setState({ prPendingAction: action ?? null });
   try {
     return await body(summary.path, account);
   } finally {
-    usePulls.setState({ prActionPending: false });
+    usePulls.setState({ prPendingAction: null });
   }
 }

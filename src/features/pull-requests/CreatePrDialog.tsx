@@ -25,7 +25,7 @@ export function CreatePrDialog() {
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
   const createPr = usePulls((s) => s.createPr);
-  const pending = usePulls((s) => s.prActionPending);
+  const pending = usePulls((s) => s.prPendingAction !== null);
   const run = useRunPrAction();
 
   const head = summary?.headBranch ?? "";

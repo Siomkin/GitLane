@@ -162,11 +162,11 @@ describe("pulls lazy-load error isolation", () => {
 
     const pending = usePulls.getState().resolveThread(7, "thread-1", true);
 
-    expect(usePulls.getState().prActionPending).toBe(false);
+    expect(usePulls.getState().prPendingAction).toBeNull();
     finishResolve("ok");
     invokeMock.mockResolvedValueOnce([]);
     await pending;
-    expect(usePulls.getState().prActionPending).toBe(false);
+    expect(usePulls.getState().prPendingAction).toBeNull();
   });
 
   it("loads checks for a newly selected PR while another PR's checks are still pending", async () => {

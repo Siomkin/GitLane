@@ -54,7 +54,7 @@ export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
 /** Reopen (closed) / Ready (draft) state buttons. Close lives in MoreMenu. */
 const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
-  const pending = usePulls((s) => s.prActionPending);
+  const pending = usePulls((s) => s.prPendingAction !== null);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
 
@@ -106,7 +106,9 @@ const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
 /** Merge split-button (label + chevron) with the strategy/delete-branch dropdown. */
 const MergeMenu = ({ pr }: { pr: PullRequest }) => {
   const mergePr = usePulls((s) => s.mergePr);
-  const pending = usePulls((s) => s.prActionPending);
+  // Scoped to the merge action so a concurrent close/comment doesn't show
+  // "Merging…" or disable the merge control when no merge is running.
+  const pending = usePulls((s) => s.prPendingAction === "merge");
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);
