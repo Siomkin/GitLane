@@ -43,7 +43,7 @@ import { useRepoWatcher } from "./hooks/useRepoWatcher";
 import { useResolvedTheme } from "./hooks/useResolvedTheme";
 import "./App.css";
 
-function App() {
+const App = () => {
   const summary = useRepo((state) => state.summary);
   const error = useRepo((state) => state.error);
   const clearError = useRepo((state) => state.clearError);
@@ -140,10 +140,13 @@ function App() {
 
   // The PR view is two-pane (docked list + detail). History/changes have no left
   // panel anymore — the branch navigator floats from the toolbar — so the graph
-  // fills the width and keeps only the right inspector. Side panels are resizable.
+  // fills the width and keeps the right inspector. The inspector honors the user's
+  // manual width on roomy windows, then clamps with the viewport so narrow review
+  // layouts stay usable without reserving a hidden blank column.
+  const responsiveRightWidth = `clamp(280px, 34vw, ${rightWidth}px)`;
   const gridTemplateColumns = showPulls
     ? `${leftWidth}px 6px minmax(0,1fr)`
-    : `minmax(0,1fr) 6px ${rightWidth}px`;
+    : `minmax(0,1fr) 6px ${responsiveRightWidth}`;
 
   return (
     <div
@@ -218,6 +221,6 @@ function App() {
       {!isMac && isTauri && <WindowResizeHandles />}
     </div>
   );
-}
+};
 
 export default App;
