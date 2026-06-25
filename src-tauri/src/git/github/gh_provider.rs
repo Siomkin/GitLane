@@ -165,6 +165,19 @@ impl GithubProvider for GhProvider {
         )
     }
 
+    fn reply_thread(
+        &self,
+        ctx: &GithubContext,
+        thread_id: &str,
+        body: &str,
+    ) -> Result<String, GithubError> {
+        let token = self.token_for_context(ctx, "reply to review thread")?;
+        Self::map(
+            "reply to review thread",
+            threads::reply_thread(&ctx.workdir, thread_id, body, token.as_deref()),
+        )
+    }
+
     fn merge_pr(
         &self,
         ctx: &GithubContext,

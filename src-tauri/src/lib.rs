@@ -526,6 +526,17 @@ async fn resolve_review_thread(
     .await
 }
 
+/// Add a reply to an existing review thread by its GraphQL node id.
+#[tauri::command]
+async fn reply_review_thread(
+    path: String,
+    thread_id: String,
+    body: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::reply_thread(&path, &thread_id, &body, account.as_ref())).await
+}
+
 /// Full unified diff of a PR, parsed server-side into `FileDiff`s for the viewer.
 #[tauri::command]
 async fn pull_request_diff(
@@ -835,6 +846,7 @@ pub fn run() {
             pull_request_diff,
             pull_request_review_threads,
             resolve_review_thread,
+            reply_review_thread,
             merge_pull_request,
             comment_pull_request,
             review_pull_request,

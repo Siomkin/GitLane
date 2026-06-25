@@ -83,6 +83,8 @@ interface PullsState {
   loadPrThreads: (num: number, force?: boolean) => Promise<void>;
   /** Resolve / unresolve a review thread, then refresh that PR's threads. */
   resolveThread: (num: number, threadId: string, resolved: boolean) => Promise<string>;
+  /** Reply to a review thread, then refresh that PR's threads. */
+  replyThread: (num: number, threadId: string, body: string) => Promise<string>;
 
   // ---- Write actions. Each runs via the bound account, refreshes the affected
   // caches, and resolves with gh's output (or rejects so the caller can toast). ----
@@ -312,8 +314,18 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   resolveThread: async (num, threadId, resolved) => {
-    const out = await runPrAction((path, account) =>
-      api.resolveReviewThread(path, threadId, resolved, account),
+    const out = await runPrAction(
+      (path, account) => api.resolveReviewThread(path, threadId, resolved, account),
+      { trackPending: false },
+    );
+    await get().loadPrThreads(num, true);
+    return out;
+  },
+
+  replyThread: async (num, threadId, body) => {
+    const out = await runPrAction(
+      (path, account) => api.replyReviewThread(path, threadId, body, account),
+      { trackPending: false },
     );
     await get().loadPrThreads(num, true);
     return out;
@@ -374,15 +386,19 @@ function omit<V>(map: Record<number, V>, key: number): Record<number, V> {
   return next;
 }
 
-// Shared body for PR write ops: require an open repo, toggle the pending flag,
-// run the call pinned to the bound account, and surface gh's output. Rejects
-// (for the caller to toast) when there's no repo or gh errors.
+// Shared body for PR write ops: require an open repo, run the call pinned to the
+// bound account, and surface gh's output. Rejects (for the caller to toast) when
+// there's no repo or gh errors. `trackPending` toggles the global PR action flag;
+// review-thread actions pass `false` because they render inside independent cards
+// and own their pending state locally (one busy thread must not disable the rest).
 async function runPrAction(
   body: (path: string, account: GithubAccountRef | null) => Promise<string>,
+  { trackPending = true }: { trackPending?: boolean } = {},
 ): Promise<string> {
   const summary = useRepo.getState().summary;
   if (!summary) throw new Error("No repository");
   const account = useAccounts.getState().repoAccountRef;
+  if (!trackPending) return await body(summary.path, account);
   // Write errors surface via the caller's toast, not `prError` (which is the
   // list-load error and must not be cleared/clobbered by a write op).
   usePulls.setState({ prActionPending: true });

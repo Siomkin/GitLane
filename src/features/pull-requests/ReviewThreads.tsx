@@ -11,7 +11,7 @@ import { initials, relativeAge, type PullRequest } from "../../lib/prs";
 import type { PrComment, ReviewThread } from "../../lib/api";
 import { usePulls } from "../../store/pulls";
 import { Markdown } from "@/components/ui/Markdown";
-import { useRunPrAction } from "./usePrAction";
+import { ReviewThreadControls } from "./ReviewThreadControls";
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
@@ -102,16 +102,6 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
 }
 
 function ThreadCard({ pr, thread }: { pr: PullRequest; thread: ReviewThread }) {
-  const resolveThread = usePulls((s) => s.resolveThread);
-  const pending = usePulls((s) => s.prActionPending);
-  const run = useRunPrAction();
-
-  const toggle = () =>
-    void run(
-      () => resolveThread(pr.num, thread.id, !thread.isResolved),
-      thread.isResolved ? "Thread reopened" : "Thread resolved",
-    );
-
   return (
     <div
       className={cn(
@@ -123,9 +113,9 @@ function ThreadCard({ pr, thread }: { pr: PullRequest; thread: ReviewThread }) {
     >
       <div className="flex items-center gap-2 px-3.5 pb-2.5 pt-3">
         <span className="font-mono text-[11.5px] text-neutral-400">
-          {thread.line != null ? `Line ${thread.line}` : "Outdated"}
+          {thread.line != null ? `Line ${thread.line}` : "Original line"}
         </span>
-        {thread.isOutdated && thread.line != null && (
+        {thread.isOutdated && (
           <span className="grid h-5 place-items-center rounded bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-400/15 dark:text-amber-300">
             Outdated
           </span>
@@ -146,31 +136,7 @@ function ThreadCard({ pr, thread }: { pr: PullRequest; thread: ReviewThread }) {
         ))}
       </div>
 
-      {/* Reply affordance — a placeholder for now (replies are a planned follow-up). */}
-      <div className="flex items-center gap-2.5 px-3.5 py-3">
-        <span
-          className="grid h-6 w-6 flex-none place-items-center rounded-md text-[10px] font-semibold text-white"
-          style={{ background: "var(--accent)" }}
-        >
-          {pr.author.initials}
-        </span>
-        <div className="flex h-9 flex-1 items-center rounded-lg border border-black/10 px-3 text-[13px] text-neutral-400 dark:border-white/10">
-          Reply…
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 border-t border-black/5 bg-black/[0.015] px-3.5 py-2.5 dark:border-white/5 dark:bg-white/[0.02]">
-        <button
-          onClick={toggle}
-          disabled={pending}
-          className="rounded-md border border-black/10 px-2.5 py-1 text-[11.5px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-        >
-          {thread.isResolved ? "Unresolve conversation" : "Resolve conversation"}
-        </button>
-        {thread.isResolved && (
-          <span className="truncate text-[12px] text-neutral-400">This conversation is resolved.</span>
-        )}
-      </div>
+      <ReviewThreadControls prNum={pr.num} thread={thread} authorInitials={pr.author.initials} />
     </div>
   );
 }

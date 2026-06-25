@@ -183,6 +183,20 @@ export const githubApi = {
       account: account ?? null,
     }),
 
+  /** Add a reply to an existing review thread. */
+  replyReviewThread: (
+    path: string,
+    threadId: string,
+    body: string,
+    account?: GithubAccountRef | null,
+  ) =>
+    invoke<string>("reply_review_thread", {
+      path,
+      threadId,
+      body,
+      account: account ?? null,
+    }),
+
   /** Merge a PR via the bound account. Returns gh's confirmation output. */
   mergePullRequest: (
     path: string,
