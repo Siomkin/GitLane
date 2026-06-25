@@ -16,6 +16,8 @@ import { PrDiffTab } from "./PrDiffTab";
 import { PrChecksTab } from "./PrChecksTab";
 import { PrCommitsTab } from "./PrCommitsTab";
 
+const CHECK_REFRESH_MS = 30_000;
+
 export function PullRequestDetail() {
   const prFilter = useUi((s) => s.prFilter);
   const prSelected = useUi((s) => s.prSelected);
@@ -26,6 +28,7 @@ export function PullRequestDetail() {
   const prDetailLoading = usePulls((s) => s.prDetailLoading);
   const prDetailError = usePulls((s) => s.prDetailError);
   const loadPrDetail = usePulls((s) => s.loadPrDetail);
+  const loadPrChecks = usePulls((s) => s.loadPrChecks);
 
   const visible = selectVisiblePrs(pullRequests, prFilter);
   const summary = visible.find((p) => p.num === prSelected) ?? visible[0] ?? null;
@@ -36,6 +39,25 @@ export function PullRequestDetail() {
   useEffect(() => {
     if (activeNum != null) void loadPrDetail(activeNum);
   }, [activeNum, prsFetchedAt, loadPrDetail]);
+
+  // Checks drive the tab badge, so start loading them with the selected PR
+  // instead of waiting for the user to open the Checks tab.
+  useEffect(() => {
+    if (activeNum != null) void loadPrChecks(activeNum);
+  }, [activeNum, prsFetchedAt, loadPrChecks]);
+
+  // GitHub does not push check-state changes into the desktop app. Poll the
+  // selected open PR's checks while this view is open so CI progress updates
+  // without a manual refresh. Closed/merged PR checks are historical, so the
+  // one-time load above is enough for them.
+  useEffect(() => {
+    if (activeNum == null || summary?.state !== "open") return;
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void loadPrChecks(activeNum, true);
+    }, CHECK_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [activeNum, loadPrChecks, summary?.state]);
 
   if (!summary) {
     // The list is still being fetched from gh — show a skeleton, not "empty".

@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
+import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { PrHeaderActions } from "./PrActions";
 
@@ -41,6 +42,7 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
 beforeEach(() => {
   useUi.setState({ confirm: null });
   usePulls.setState({ prActionPending: false });
+  useRepo.setState({ checkoutBranch: vi.fn() });
 });
 
 describe("PrHeaderActions merge", () => {
@@ -68,5 +70,28 @@ describe("PrHeaderActions merge", () => {
     render(<PrHeaderActions pr={openPr({ mergeable: "CONFLICTING" })} />);
     expect(screen.queryByText("Merge")).not.toBeInTheDocument();
     expect(screen.getByText("Conflicts")).toBeInTheDocument();
+  });
+
+  it("shows a busy merge label while a PR action is pending", () => {
+    usePulls.setState({ prActionPending: true });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    const merge = screen.getByRole("button", { name: /Merging/ });
+    expect(merge).toBeDisabled();
+    expect(merge).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("keeps checkout in the overflow menu instead of the primary action row", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue("checked out");
+    useRepo.setState({ checkoutBranch });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    expect(screen.queryByText("Checkout branch")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("More actions"));
+    await userEvent.click(screen.getByText("Checkout branch"));
+
+    expect(checkoutBranch).toHaveBeenCalledWith("feat/thing");
   });
 });

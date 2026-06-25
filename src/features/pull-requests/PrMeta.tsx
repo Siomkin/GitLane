@@ -89,9 +89,9 @@ export function PrMeta({ pr }: { pr: PullRequest }) {
           {pr.labels.map((l) => (
             <span
               key={l.name}
-              className="flex h-7 items-center gap-1.5 rounded-full bg-black/[0.04] px-2.5 text-[12px] font-medium text-neutral-600 dark:bg-white/[0.06] dark:text-neutral-300"
+              className="flex h-7 items-center rounded-full border border-black/5 bg-black/[0.04] px-2.5 text-[12px] font-medium text-neutral-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-300"
+              style={{ borderColor: `#${l.color || "d4d4d4"}` }}
             >
-              <span className="h-2 w-2 rounded-full" style={{ background: `#${l.color || "888"}` }} />
               {l.name}
             </span>
           ))}

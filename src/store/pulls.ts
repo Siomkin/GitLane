@@ -20,6 +20,21 @@ import { applyCommitSignatures, detailToPr, summaryToPr, type PullRequest } from
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 
+let nextPrListRequestId = 1;
+let nextPrChecksRequestId = 1;
+
+interface QueuedPrListLoad {
+  force: boolean;
+  quiet: boolean;
+  key: string;
+  waiters: PrListQueueWaiter[];
+}
+
+interface PrListQueueWaiter {
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+}
+
 interface PullsState {
   /** Pull requests for the open repo (from `gh`, via the bound account). */
   pullRequests: PullRequest[];
@@ -32,6 +47,14 @@ interface PullsState {
   prError: string | null;
   /** Epoch ms when the PR list was last successfully fetched (for "updated …"). */
   prsFetchedAt: number | null;
+  /** Non-visual in-flight guard for foreground and quiet PR list refreshes. */
+  prsRefreshInFlight: boolean;
+  /** Monotonic id for the active PR-list fetch, so stale completions no-op. */
+  prsRefreshRequestId: number | null;
+  /** Repo/account identity for the active PR-list fetch. */
+  prsRefreshKey: string | null;
+  /** Foreground/force load requested while another PR-list fetch is in flight. */
+  prsRefreshQueued: QueuedPrListLoad | null;
   /** Detail cache by PR number (body, files) — re-opening a PR is instant. */
   prDetails: Record<number, PullRequest>;
   prDetailLoading: boolean;
@@ -40,6 +63,8 @@ interface PullsState {
   /** Lazily-loaded checks cache by PR number (the slow statusCheckRollup). */
   prChecks: Record<number, PrCheck[]>;
   prChecksLoading: boolean;
+  /** Checks currently loading by PR number; the global flag is any in-flight PR. */
+  prChecksLoadingByNum: Record<number, number>;
   /** Per-PR checks-load error (drives an inline retry in the Checks tab). */
   prChecksError: Record<number, string>;
   /** Lazily-loaded full-diff cache by PR number (the parsed `gh pr diff`). */
@@ -112,11 +137,16 @@ export const usePulls = create<PullsState>((set, get) => ({
   prsLoading: false,
   prError: null,
   prsFetchedAt: null,
+  prsRefreshInFlight: false,
+  prsRefreshRequestId: null,
+  prsRefreshKey: null,
+  prsRefreshQueued: null,
   prDetails: {},
   prDetailLoading: false,
   prDetailError: {},
   prChecks: {},
   prChecksLoading: false,
+  prChecksLoadingByNum: {},
   prChecksError: {},
   prDiffs: {},
   prDiffLoading: false,
@@ -128,7 +158,8 @@ export const usePulls = create<PullsState>((set, get) => ({
   prCommitSigsError: {},
   prActionPending: false,
 
-  reset: () =>
+  reset: () => {
+    rejectQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
     set({
       pullRequests: [],
       prDetails: {},
@@ -142,14 +173,21 @@ export const usePulls = create<PullsState>((set, get) => ({
       prCommitSigsLoaded: {},
       prCommitSigsError: {},
       prsFetchedAt: null,
+      prsRefreshInFlight: false,
+      prsRefreshRequestId: null,
+      prsRefreshKey: null,
+      prsRefreshQueued: null,
       prError: null,
       prsLoading: false,
-    }),
+      prChecksLoadingByNum: {},
+      prChecksLoading: false,
+    });
+  },
 
   // Fetch the repo's PRs via `gh`, pinned to the bound account when set.
   // Failures (gh missing, no GitHub remote, not logged in) surface as `prError`
   // and leave the list empty — never throw into the UI.
-  loadPullRequests: async (force, quiet) => {
+  loadPullRequests: async (force = false, quiet = false) => {
     const { summary, forge } = useRepo.getState();
     if (!summary) {
       set({ pullRequests: [], prError: null });
@@ -169,7 +207,34 @@ export const usePulls = create<PullsState>((set, get) => ({
       return;
     }
     const account = useAccounts.getState().repoAccountRef;
+    const path = summary.path;
+    const key = prListRequestKey(path, account);
+    if (get().prsRefreshInFlight) {
+      const shouldQueue = force || key !== get().prsRefreshKey;
+      const queuedPromise = shouldQueue
+        ? new Promise<void>((resolve, reject) => {
+            set((s) => ({
+              ...(!quiet ? { prsLoading: true, prError: null } : {}),
+              prsRefreshQueued: mergeQueuedPrListLoad(s.prsRefreshQueued, {
+                force,
+                quiet,
+                key,
+                waiters: [{ resolve, reject }],
+              }),
+            }));
+          })
+        : undefined;
+      if (!shouldQueue && !quiet) {
+        set({ prsLoading: true, prError: null });
+      }
+      await queuedPromise;
+      return;
+    }
+    const requestId = nextPrListRequestId++;
     set({
+      prsRefreshInFlight: true,
+      prsRefreshRequestId: requestId,
+      prsRefreshKey: key,
       ...(quiet ? {} : { prsLoading: true }),
       prError: null,
       ...(force
@@ -184,19 +249,60 @@ export const usePulls = create<PullsState>((set, get) => ({
             prThreadsError: {},
             prCommitSigsLoaded: {},
             prCommitSigsError: {},
+            prChecksLoadingByNum: {},
+            prChecksLoading: false,
           }
         : {}),
     });
-    const path = summary.path;
+    const runQueued = async () => {
+      const queued = get().prsRefreshQueued;
+      if (!queued) return;
+      set({ prsRefreshQueued: null });
+      try {
+        await get().loadPullRequests(queued.force, queued.quiet);
+        resolveQueuedPrListLoad(queued);
+      } catch (e) {
+        rejectQueuedPrListLoad(queued, e);
+      }
+    };
     try {
       const list = await api.listPullRequests(path, account);
       // Bail if the repo switched while this load was in flight, so a slow fetch
       // can't clobber the new repo's PR state.
-      if (useRepo.getState().summary?.path !== path) return;
-      set({ pullRequests: list.map(summaryToPr), prsLoading: false, prsFetchedAt: Date.now() });
+      if (!isCurrentPrListRequest(requestId, path)) {
+        return;
+      }
+      set({
+        pullRequests: list.map(summaryToPr),
+        prsLoading: false,
+        prsRefreshInFlight: false,
+        prsRefreshRequestId: null,
+        prsRefreshKey: null,
+        prsFetchedAt: Date.now(),
+      });
+      await runQueued();
     } catch (e) {
-      if (useRepo.getState().summary?.path !== path) return;
-      set({ pullRequests: [], prsLoading: false, prError: String(e) });
+      if (!isCurrentPrListRequest(requestId, path)) {
+        return;
+      }
+      if (quiet && get().prsFetchedAt != null) {
+        set({
+          prsLoading: false,
+          prsRefreshInFlight: false,
+          prsRefreshRequestId: null,
+          prsRefreshKey: null,
+        });
+      } else {
+        set({
+          pullRequests: [],
+          prsLoading: false,
+          prsRefreshInFlight: false,
+          prsRefreshRequestId: null,
+          prsRefreshKey: null,
+          prError: String(e),
+        });
+      }
+      await runQueued();
     }
   },
 
@@ -234,16 +340,36 @@ export const usePulls = create<PullsState>((set, get) => ({
   loadPrChecks: async (num, force) => {
     const summary = useRepo.getState().summary;
     if (!summary) return;
+    if (!force && get().prChecksLoadingByNum[num]) return;
     if (!force && get().prChecks[num]) return;
     const account = useAccounts.getState().repoAccountRef;
-    set((s) => ({ prChecksLoading: true, prChecksError: omit(s.prChecksError, num) }));
+    const path = summary.path;
+    const requestId = nextPrChecksRequestId++;
+    set((s) => ({
+      prChecksLoading: true,
+      prChecksLoadingByNum: { ...s.prChecksLoadingByNum, [num]: requestId },
+      prChecksError: omit(s.prChecksError, num),
+    }));
     try {
-      const checks = await api.pullRequestChecks(summary.path, num, account);
-      set((s) => ({ prChecks: { ...s.prChecks, [num]: checks }, prChecksLoading: false }));
+      const checks = await api.pullRequestChecks(path, num, account);
+      set((s) => {
+        if (!isCurrentPrChecksRequest(s, num, requestId, path)) return {};
+        const loadingByNum = omit(s.prChecksLoadingByNum, num);
+        return {
+          prChecks: { ...s.prChecks, [num]: checks },
+          prChecksLoadingByNum: loadingByNum,
+          prChecksLoading: hasNumericKeys(loadingByNum),
+        };
+      });
     } catch (e) {
       set((s) => ({
-        prChecksLoading: false,
-        prChecksError: { ...s.prChecksError, [num]: String(e) },
+        ...(isCurrentPrChecksRequest(s, num, requestId, path)
+          ? {
+              prChecksLoadingByNum: omit(s.prChecksLoadingByNum, num),
+              prChecksLoading: hasNumericKeys(omit(s.prChecksLoadingByNum, num)),
+              prChecksError: { ...s.prChecksError, [num]: String(e) },
+            }
+          : {}),
       }));
     }
   },
@@ -384,6 +510,52 @@ function omit<V>(map: Record<number, V>, key: number): Record<number, V> {
   const next = { ...map };
   delete next[key];
   return next;
+}
+
+function hasNumericKeys(map: Record<number, unknown>): boolean {
+  return Object.keys(map).length > 0;
+}
+
+function prListRequestKey(path: string, account: GithubAccountRef | null): string {
+  const accountKey = account
+    ? `${account.provider}:${account.host}:${account.accountId}:${account.login}`
+    : "default";
+  return `${path}\0${accountKey}`;
+}
+
+function isCurrentPrListRequest(requestId: number, path: string): boolean {
+  const state = usePulls.getState();
+  return state.prsRefreshRequestId === requestId && useRepo.getState().summary?.path === path;
+}
+
+function isCurrentPrChecksRequest(
+  state: PullsState,
+  num: number,
+  requestId: number,
+  path: string,
+): boolean {
+  return state.prChecksLoadingByNum[num] === requestId && useRepo.getState().summary?.path === path;
+}
+
+function mergeQueuedPrListLoad(
+  current: QueuedPrListLoad | null,
+  next: QueuedPrListLoad,
+): QueuedPrListLoad | null {
+  if (!current) return next;
+  return {
+    force: current.force || next.force,
+    quiet: current.quiet && next.quiet,
+    key: next.key,
+    waiters: [...current.waiters, ...next.waiters],
+  };
+}
+
+function resolveQueuedPrListLoad(queued: QueuedPrListLoad | null): void {
+  queued?.waiters.forEach((waiter) => waiter.resolve());
+}
+
+function rejectQueuedPrListLoad(queued: QueuedPrListLoad | null, reason: unknown): void {
+  queued?.waiters.forEach((waiter) => waiter.reject(reason));
 }
 
 // Shared body for PR write ops: require an open repo, run the call pinned to the

@@ -11,7 +11,14 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
-import { ForgeKind, type RepoForge, type RepoSummary } from "@/lib/api";
+import {
+  ForgeKind,
+  type GithubAccountRef,
+  type PrCheck,
+  type PullRequestSummary,
+  type RepoForge,
+  type RepoSummary,
+} from "@/lib/api";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -21,6 +28,20 @@ const SUMMARY: RepoSummary = {
   detached: false,
 };
 
+const OTHER_SUMMARY: RepoSummary = {
+  ...SUMMARY,
+  path: "/other",
+  workdir: "/other",
+  headOid: "def",
+};
+
+const account = (accountId: string): GithubAccountRef => ({
+  provider: "gh",
+  host: "github.com",
+  accountId,
+  login: `user-${accountId}`,
+});
+
 const forge = (over: Partial<RepoForge>): RepoForge => ({
   hasRemote: true,
   kind: ForgeKind.GitHub,
@@ -29,6 +50,32 @@ const forge = (over: Partial<RepoForge>): RepoForge => ({
   webUrl: "https://github.com/o/r",
   ...over,
 });
+
+const prSummary = (number: number, over: Partial<PullRequestSummary> = {}): PullRequestSummary => ({
+  number,
+  title: `PR ${number}`,
+  state: "OPEN",
+  headRef: `branch-${number}`,
+  baseRef: "main",
+  author: { login: "alex", name: "Alex" },
+  createdAt: "2026-01-01T00:00:00Z",
+  additions: 1,
+  deletions: 0,
+  changedFiles: 1,
+  isDraft: false,
+  url: `https://github.com/o/r/pull/${number}`,
+  ...over,
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -121,6 +168,105 @@ describe("pulls lazy-load error isolation", () => {
     await pending;
     expect(usePulls.getState().prActionPending).toBe(false);
   });
+
+  it("loads checks for a newly selected PR while another PR's checks are still pending", async () => {
+    const first = deferred<PrCheck[]>();
+    const second = deferred<PrCheck[]>();
+    invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    const loadFirst = usePulls.getState().loadPrChecks(7);
+    const loadSecond = usePulls.getState().loadPrChecks(9);
+
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(Object.keys(usePulls.getState().prChecksLoadingByNum).sort()).toEqual(["7", "9"]);
+
+    second.resolve([{ name: "lint", state: "pass" }]);
+    await loadSecond;
+
+    expect(usePulls.getState().prChecks[9]).toEqual([{ name: "lint", state: "pass" }]);
+    expect(usePulls.getState().prChecksLoading).toBe(true);
+    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+
+    first.resolve([{ name: "build", state: "pending" }]);
+    await loadFirst;
+
+    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "build", state: "pending" }]);
+    expect(usePulls.getState().prChecksLoading).toBe(false);
+    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+  });
+
+  it("ignores stale checks when the repo switches before the old request resolves", async () => {
+    const oldChecks = deferred<PrCheck[]>();
+    const newChecks = deferred<PrCheck[]>();
+    invokeMock.mockReturnValueOnce(oldChecks.promise).mockReturnValueOnce(newChecks.promise);
+
+    const oldLoad = usePulls.getState().loadPrChecks(7);
+    usePulls.getState().reset();
+    useRepo.setState({ summary: OTHER_SUMMARY, forge: forge({ webUrl: "https://github.com/o/other" }) });
+    const newLoad = usePulls.getState().loadPrChecks(7);
+
+    oldChecks.resolve([{ name: "old repo", state: "fail" }]);
+    await oldLoad;
+
+    expect(usePulls.getState().prChecks[7]).toBeUndefined();
+    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+
+    newChecks.resolve([{ name: "new repo", state: "pass" }]);
+    await newLoad;
+
+    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "new repo", state: "pass" }]);
+    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+  });
+
+  it("lets a forced checks load supersede an in-flight checks load", async () => {
+    const oldChecks = deferred<PrCheck[]>();
+    const freshChecks = deferred<PrCheck[]>();
+    invokeMock.mockReturnValueOnce(oldChecks.promise).mockReturnValueOnce(freshChecks.promise);
+
+    const oldLoad = usePulls.getState().loadPrChecks(7);
+    const freshLoad = usePulls.getState().loadPrChecks(7, true);
+
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+
+    oldChecks.resolve([{ name: "old checks", state: "fail" }]);
+    await oldLoad;
+    expect(usePulls.getState().prChecks[7]).toBeUndefined();
+    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+
+    freshChecks.resolve([{ name: "fresh checks", state: "pass" }]);
+    await freshLoad;
+
+    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "fresh checks", state: "pass" }]);
+    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+  });
+
+  it("invalidates in-flight checks when a forced PR-list refresh clears checks", async () => {
+    const oldChecks = deferred<PrCheck[]>();
+    const list = deferred<PullRequestSummary[]>();
+    const freshChecks = deferred<PrCheck[]>();
+    invokeMock
+      .mockReturnValueOnce(oldChecks.promise)
+      .mockReturnValueOnce(list.promise)
+      .mockReturnValueOnce(freshChecks.promise);
+
+    const oldLoad = usePulls.getState().loadPrChecks(7);
+    const refresh = usePulls.getState().loadPullRequests(true);
+    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+
+    const freshLoad = usePulls.getState().loadPrChecks(7);
+    expect(invokeMock).toHaveBeenCalledTimes(3);
+
+    oldChecks.resolve([{ name: "old checks", state: "fail" }]);
+    await oldLoad;
+    expect(usePulls.getState().prChecks[7]).toBeUndefined();
+
+    list.resolve([prSummary(7)]);
+    await refresh;
+    freshChecks.resolve([{ name: "fresh checks", state: "pass" }]);
+    await freshLoad;
+
+    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "fresh checks", state: "pass" }]);
+  });
 });
 
 // PRs are GitHub-only (they run through `gh`). The list load must NOT attempt
@@ -158,5 +304,178 @@ describe("pulls GitHub-only gating", () => {
 
     expect(invokeMock).toHaveBeenCalledTimes(1);
     expect(usePulls.getState().prError).toBeNull();
+  });
+});
+
+describe("pulls PR list refresh coalescing", () => {
+  it("lets a foreground panel load show loading while a quiet prefetch is in flight", async () => {
+    const quietFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(quietFetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    expect(usePulls.getState().prsRefreshInFlight).toBe(true);
+    expect(usePulls.getState().prsLoading).toBe(false);
+
+    await usePulls.getState().loadPullRequests();
+
+    expect(usePulls.getState().prsLoading).toBe(true);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    quietFetch.resolve([prSummary(7)]);
+    await load;
+
+    expect(usePulls.getState().prsLoading).toBe(false);
+    expect(usePulls.getState().pullRequests.map((pr) => pr.num)).toEqual([7]);
+  });
+
+  it("queues a forced foreground refresh requested during a quiet prefetch", async () => {
+    const quietFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(quietFetch.promise).mockResolvedValueOnce([prSummary(9)]);
+    usePulls.setState({
+      prDetails: { 7: { num: 7 } as never },
+      prChecks: { 7: [{ name: "old", state: "pass" }] },
+    });
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    const queuedLoad = usePulls.getState().loadPullRequests(true);
+
+    expect(usePulls.getState().prsLoading).toBe(true);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    quietFetch.resolve([prSummary(7)]);
+    await queuedLoad;
+    await load;
+
+    const s = usePulls.getState();
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(s.pullRequests.map((pr) => pr.num)).toEqual([9]);
+    expect(s.prDetails).toEqual({});
+    expect(s.prChecks).toEqual({});
+    expect(s.prsRefreshQueued).toBeNull();
+  });
+
+  it("does not let a stale PR-list load clear a newer repo's active refresh state", async () => {
+    const oldFetch = deferred<PullRequestSummary[]>();
+    const newFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(oldFetch.promise).mockReturnValueOnce(newFetch.promise);
+
+    const oldLoad = usePulls.getState().loadPullRequests(false, true);
+    usePulls.getState().reset();
+    useRepo.setState({ summary: OTHER_SUMMARY, forge: forge({ webUrl: "https://github.com/o/other" }) });
+    const newLoad = usePulls.getState().loadPullRequests();
+
+    oldFetch.resolve([prSummary(7)]);
+    await oldLoad;
+
+    expect(usePulls.getState().prsLoading).toBe(true);
+    expect(usePulls.getState().prsRefreshInFlight).toBe(true);
+    expect(usePulls.getState().pullRequests).toEqual([]);
+
+    newFetch.resolve([prSummary(9)]);
+    await newLoad;
+
+    expect(usePulls.getState().prsLoading).toBe(false);
+    expect(usePulls.getState().prsRefreshInFlight).toBe(false);
+    expect(usePulls.getState().pullRequests.map((pr) => pr.num)).toEqual([9]);
+  });
+
+  it("queues a non-force account reload when the bound account changes during prefetch", async () => {
+    const prefetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(prefetch.promise).mockResolvedValueOnce([prSummary(9)]);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    useAccounts.setState({ repoAccountRef: account("42") });
+    const accountReload = usePulls.getState().loadPullRequests();
+
+    expect(usePulls.getState().prsLoading).toBe(true);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    prefetch.resolve([prSummary(7)]);
+    await accountReload;
+    await load;
+
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(usePulls.getState().pullRequests.map((pr) => pr.num)).toEqual([9]);
+    expect(usePulls.getState().prsRefreshQueued).toBeNull();
+  });
+
+  it("waits for a queued force refresh before resolving the caller's promise", async () => {
+    const quietFetch = deferred<PullRequestSummary[]>();
+    const forceFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(quietFetch.promise).mockReturnValueOnce(forceFetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    let forcedSettled = false;
+    const forcedLoad = usePulls.getState().loadPullRequests(true).then(() => {
+      forcedSettled = true;
+    });
+
+    await Promise.resolve();
+    expect(forcedSettled).toBe(false);
+
+    quietFetch.resolve([prSummary(7)]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(forcedSettled).toBe(false);
+
+    forceFetch.resolve([prSummary(9)]);
+    await forcedLoad;
+    await load;
+
+    expect(forcedSettled).toBe(true);
+    expect(usePulls.getState().pullRequests.map((pr) => pr.num)).toEqual([9]);
+  });
+
+  it("preserves the last successful list when a quiet background refresh fails", async () => {
+    invokeMock.mockRejectedValueOnce("offline");
+    usePulls.setState({
+      pullRequests: [{ num: 7 } as never],
+      prsFetchedAt: 123,
+    });
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    const s = usePulls.getState();
+    expect(s.pullRequests.map((pr) => pr.num)).toEqual([7]);
+    expect(s.prsFetchedAt).toBe(123);
+    expect(s.prError).toBeNull();
+    expect(s.prsRefreshInFlight).toBe(false);
+  });
+
+  it("preserves a successful empty PR list when a quiet background refresh fails", async () => {
+    invokeMock.mockRejectedValueOnce("offline");
+    usePulls.setState({
+      pullRequests: [],
+      prsFetchedAt: 123,
+    });
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    const s = usePulls.getState();
+    expect(s.pullRequests).toEqual([]);
+    expect(s.prsFetchedAt).toBe(123);
+    expect(s.prError).toBeNull();
+    expect(s.prsRefreshInFlight).toBe(false);
+  });
+
+  it("rejects queued PR refresh waiters when reset abandons the queued load", async () => {
+    const prefetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(prefetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    const queued = usePulls.getState().loadPullRequests(true);
+
+    expect(usePulls.getState().prsRefreshQueued).not.toBeNull();
+
+    usePulls.getState().reset();
+    await expect(queued).rejects.toThrow("canceled");
+
+    prefetch.resolve([prSummary(7)]);
+    await load;
+
+    expect(usePulls.getState().pullRequests).toEqual([]);
+    expect(usePulls.getState().prsRefreshQueued).toBeNull();
   });
 });

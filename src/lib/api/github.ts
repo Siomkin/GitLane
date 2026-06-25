@@ -29,7 +29,7 @@ export interface PrAuthor {
 
 export interface PrCheck {
   name: string;
-  state: "pass" | "fail" | "pending";
+  state: "pass" | "fail" | "pending" | "skipped";
 }
 
 /** Raw gh state value. */

@@ -207,14 +207,15 @@ impl GhCheck {
             .unwrap_or_else(|| "check".to_string())
     }
 
-    /// Tri-state check result. A SUCCESS/NEUTRAL/SKIPPED conclusion (or SUCCESS
-    /// state) passes; a present non-success conclusion (or FAILURE/ERROR state)
-    /// fails; anything still in flight (no conclusion and a pending/absent
-    /// state) is "pending" rather than collapsed into a failure.
+    /// Display check result. A SUCCESS conclusion (or SUCCESS state) passes;
+    /// NEUTRAL/SKIPPED stay distinct; a present non-success conclusion (or
+    /// FAILURE/ERROR state) fails; anything still in flight (no conclusion and
+    /// a pending/absent state) is "pending" rather than collapsed into a failure.
     pub(super) fn status(&self) -> &'static str {
         if let Some(c) = &self.conclusion {
             return match c.as_str() {
-                "SUCCESS" | "NEUTRAL" | "SKIPPED" => "pass",
+                "SUCCESS" => "pass",
+                "NEUTRAL" | "SKIPPED" => "skipped",
                 "" => "pending",
                 _ => "fail",
             };
@@ -429,10 +430,14 @@ mod tests {
     }
 
     #[test]
-    fn check_passes_on_success_neutral_or_skipped_conclusion() {
+    fn check_passes_on_success_conclusion() {
         assert_eq!(gh_check(None, None, Some("SUCCESS"), None).status(), "pass");
-        assert_eq!(gh_check(None, None, Some("NEUTRAL"), None).status(), "pass");
-        assert_eq!(gh_check(None, None, Some("SKIPPED"), None).status(), "pass");
+    }
+
+    #[test]
+    fn check_keeps_neutral_or_skipped_conclusion_distinct() {
+        assert_eq!(gh_check(None, None, Some("NEUTRAL"), None).status(), "skipped");
+        assert_eq!(gh_check(None, None, Some("SKIPPED"), None).status(), "skipped");
     }
 
     #[test]

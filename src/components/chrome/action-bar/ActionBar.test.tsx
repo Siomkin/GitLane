@@ -32,7 +32,7 @@ const precedes = (a: Element, b: Element) =>
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue(undefined);
+  invokeMock.mockResolvedValue([]);
   useRepo.setState({ summary: SUMMARY, forge: FORGE });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({ accounts: [], accountsError: null, accountsLoading: false, repoAccountRef: null });
@@ -57,5 +57,21 @@ describe("ActionBar layout order", () => {
     useRepo.setState({ forge: null });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /open repository on its provider/i })).toBeNull();
+  });
+
+  it("quietly loads GitHub PRs for the toolbar badge before PRs mode opens", () => {
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
+      path: SUMMARY.path,
+      account: null,
+    });
+  });
+
+  it("does not prefetch PRs for non-GitHub remotes", () => {
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+    });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(invokeMock).not.toHaveBeenCalledWith("list_pull_requests", expect.anything());
   });
 });
