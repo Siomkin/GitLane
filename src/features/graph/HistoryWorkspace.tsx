@@ -18,7 +18,7 @@ import { LoadError } from "../../components/ui/Loading";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 
-export function HistoryWorkspace() {
+export const HistoryWorkspace = () => {
   const summary = useRepo((state) => state.summary);
   const graph = useRepo((state) => state.graph);
   const graphLoading = useRepo((state) => state.graphLoading);
@@ -34,8 +34,8 @@ export function HistoryWorkspace() {
   const wipSelected = useRepo((state) => state.wipSelected);
   const selectWip = useRepo((state) => state.selectWip);
   const density = useUi((state) => state.density);
-  const graphWidthManual = useUi((state) => state.graphWidth);
-  const setGraphWidth = useUi((state) => state.setGraphWidth);
+  const repoGraphWidth = useUi((state) => summary?.path ? state.graphWidthsByRepo[summary.path] : undefined);
+  const setRepoGraphWidth = useUi((state) => state.setRepoGraphWidth);
   // The header (HistorySearchBar) owns the rest of the search/filter state; the
   // workspace only needs the query + kind to decide which commits to highlight.
   const histQuery = useUi((state) => state.histQuery);
@@ -87,9 +87,15 @@ export function HistoryWorkspace() {
   const fallbackNodeX = graphLaneX(rowModel.fallbackMarkerLane);
   const lanesNeeded = Math.max(laneCount, rowModel.maxMarkerLane + 1);
   // Cap the auto width generously (480px) so wide lane/marker counts aren't
-  // clipped off-canvas; the user can still resize via graphWidthManual.
+  // clipped off-canvas; the user can still resize via repoGraphWidth.
   const autoGraphW = Math.min(480, Math.max(56, GEOMETRY.padLeft + lanesNeeded * GEOMETRY.laneWidth + 22));
-  const graphColW = graphWidthManual ?? autoGraphW;
+  const graphColW = repoGraphWidth ?? autoGraphW;
+  const resizeGraphColumn = useCallback(
+    (width: number) => {
+      if (summary?.path) setRepoGraphWidth(summary.path, width);
+    },
+    [setRepoGraphWidth, summary?.path],
+  );
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const getItemKey = useCallback(
@@ -161,7 +167,7 @@ export function HistoryWorkspace() {
               matchedIds={matchedIds}
             />
           )}
-          <ColumnHandle left={graphColW} onResize={setGraphWidth} />
+          <ColumnHandle left={graphColW} onResize={resizeGraphColumn} />
 
           {virtualItems.map((item) => {
             const row = rowModel.rows[item.index];
@@ -262,4 +268,4 @@ export function HistoryWorkspace() {
       </div>
     </section>
   );
-}
+};

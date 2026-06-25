@@ -134,13 +134,49 @@ beforeEach(() => {
     histFilter: "all",
     histSearchOpen: false,
     histFilterOpen: false,
-    graphWidth: null,
+    graphWidthsByRepo: {},
     density: "Compact",
     draggingFrom: null,
     actionMenu: null,
     commitMenu: null,
     stashMenu: null,
     stackedReview: null,
+  });
+});
+
+describe("HistoryWorkspace — repo-scoped graph width", () => {
+  it("stores graph column width by repo path and restores it on repo switch", () => {
+    const { rerender } = render(<HistoryWorkspace />);
+    const handle = screen.getByTitle("Drag to resize the graph column");
+    const startLeft = Number.parseFloat(handle.style.left);
+
+    fireEvent.mouseDown(handle, { clientX: startLeft });
+    fireEvent.mouseMove(window, { clientX: 300 });
+    fireEvent.mouseUp(window);
+
+    expect(useUi.getState().graphWidthsByRepo["/r"]).toBe(300);
+
+    useRepo.setState({
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "c3", detached: false },
+    });
+    rerender(<HistoryWorkspace />);
+    expect(screen.getByTitle("Drag to resize the graph column").style.left).not.toBe("300px");
+
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
+    });
+    rerender(<HistoryWorkspace />);
+    expect(screen.getByTitle("Drag to resize the graph column").style.left).toBe("300px");
+  });
+
+  it("keeps width clamping when storing repo-scoped graph widths", () => {
+    useUi.getState().setRepoGraphWidth("/r", 12);
+    useUi.getState().setRepoGraphWidth("/other", 900);
+
+    expect(useUi.getState().graphWidthsByRepo).toMatchObject({
+      "/r": 48,
+      "/other": 640,
+    });
   });
 });
 

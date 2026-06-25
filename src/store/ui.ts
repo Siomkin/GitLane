@@ -171,9 +171,9 @@ interface UiState {
 
   leftWidth: number;
   rightWidth: number;
-  /** Resizable history columns. `graphWidth` null = auto-fit to lane count. */
+  /** Resizable history graph column width, keyed by normalized repo path. */
   branchWidth: number;
-  graphWidth: number | null;
+  graphWidthsByRepo: Record<string, number>;
   whenWidth: number;
 
   settingsOpen: boolean;
@@ -267,7 +267,7 @@ interface UiState {
   adjustLeftWidth: (dx: number) => void;
   adjustRightWidth: (dx: number) => void;
   adjustBranchWidth: (dx: number) => void;
-  setGraphWidth: (w: number) => void;
+  setRepoGraphWidth: (repoPath: string, w: number) => void;
   adjustWhenWidth: (dx: number) => void;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
@@ -398,7 +398,7 @@ export const useUi = create<UiState>()(
   leftWidth: 300,
   rightWidth: 374,
   branchWidth: 150,
-  graphWidth: null,
+  graphWidthsByRepo: {},
   whenWidth: 96,
 
   settingsOpen: false,
@@ -458,7 +458,13 @@ export const useUi = create<UiState>()(
     set((s) => ({ rightWidth: Math.max(280, Math.min(560, s.rightWidth + dx)) })),
   adjustBranchWidth: (dx) =>
     set((s) => ({ branchWidth: Math.max(130, Math.min(460, s.branchWidth + dx)) })),
-  setGraphWidth: (w) => set({ graphWidth: Math.max(48, Math.min(640, w)) }),
+  setRepoGraphWidth: (repoPath, w) =>
+    set((s) => ({
+      graphWidthsByRepo: {
+        ...s.graphWidthsByRepo,
+        [repoPath]: Math.max(48, Math.min(640, w)),
+      },
+    })),
   adjustWhenWidth: (dx) =>
     set((s) => ({ whenWidth: Math.max(64, Math.min(240, s.whenWidth + dx)) })),
   setTheme: (theme) => set({ theme }),
@@ -622,7 +628,7 @@ export const useUi = create<UiState>()(
         leftWidth: s.leftWidth,
         rightWidth: s.rightWidth,
         branchWidth: s.branchWidth,
-        graphWidth: s.graphWidth,
+        graphWidthsByRepo: s.graphWidthsByRepo,
         whenWidth: s.whenWidth,
         terminalHeight: s.terminalHeight,
         terminalExpanded: s.terminalExpanded,

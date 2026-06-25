@@ -109,8 +109,15 @@ bun run build                     # tsc --noEmit + vite build passes
 - There is **no automated test suite** — so the cost of these mismatches is a runtime
   failure a user hits, not a red build. The typechecks are the static safety net; the
   manual in-app check is the rest of it. Don't skip either.
-- Commits are GPG-signed with the repo's pinned identity (see `CLAUDE.local.md`). Reference
-  the Jira key (`GP-xx`) in the branch and commit message.
+- Commits are GPG-signed with the repo's pinned identity (see `CLAUDE.local.md`). When a
+  Jira issue exists, reference the key (`GL-xx`) in the branch, commit message, and PR title.
+- Commit messages and PR titles use short human summaries. With a Jira issue, put the key
+  first: `GL-32 Persist graph and commit column widths per repository` or
+  `GL-32 fix(graph): Persist graph width per repository`. Without one, omit the key.
+  The same typed style is allowed when useful, e.g. `docs(rules): Document commit and PR
+  title style`.
+- For non-trivial changes, include a commit body / PR description that explains what changed,
+  why, and how it was validated, matching the practical style of the surrounding history.
 
 ---
 
