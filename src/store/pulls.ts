@@ -29,9 +29,8 @@ export type PrPendingAction = "merge" | "comment" | "review" | "state" | "create
 interface QueuedPrListLoad {
   force: boolean;
   quiet: boolean;
+  /** Repo + account identity the queued load targets, so waiters cancel on a switch. */
   key: string;
-  /** Repo the queued load targets, so waiters reject if the repo switches first. */
-  path: string;
   waiters: PrListQueueWaiter[];
 }
 
@@ -234,7 +233,6 @@ export const usePulls = create<PullsState>((set, get) => ({
                 force,
                 quiet,
                 key,
-                path,
                 waiters: [{ resolve, reject, force }],
               }),
             }));
@@ -274,13 +272,15 @@ export const usePulls = create<PullsState>((set, get) => ({
       const queued = get().prsRefreshQueued;
       if (!queued) return;
       // Dequeue before awaiting, so reset() can no longer cancel this waiter.
-      // Guard the repo ourselves instead: if the repo switches while the queued
-      // load runs, reject the waiters so callers (mergePr/setPrState) don't run
-      // follow-up detail loads against the newly opened repo.
+      // Guard identity ourselves instead: if the repo OR bound account changes
+      // while the queued load runs, cancel the waiters so callers (mergePr/
+      // setPrState) don't run follow-up detail loads against the wrong repo or
+      // under the wrong account. Compare the full key (path + account), not just
+      // the path, since the queued execution reads the current account fresh.
       set({ prsRefreshQueued: null });
       try {
         await get().loadPullRequests(queued.force, queued.quiet);
-        if (useRepo.getState().summary?.path === queued.path) {
+        if (currentPrListRequestKey() === queued.key) {
           resolveQueuedPrListLoad(queued);
         } else {
           cancelQueuedPrListLoad(queued, new Error("PR list refresh canceled."));
@@ -296,14 +296,18 @@ export const usePulls = create<PullsState>((set, get) => ({
       if (!isCurrentPrListRequest(requestId, path)) {
         return;
       }
-      set({
-        pullRequests: list.map(summaryToPr),
+      const prs = list.map(summaryToPr);
+      set((s) => ({
+        pullRequests: prs,
+        // Force already cleared the caches above; on a quiet/background refresh,
+        // drop details whose state/draft changed so the header can't stay stale.
+        ...(force ? {} : { prDetails: prunePrDetails(s.prDetails, prs) }),
         prsLoading: false,
         prsRefreshInFlight: false,
         prsRefreshRequestId: null,
         prsRefreshKey: null,
         prsFetchedAt: Date.now(),
-      });
+      }));
       await runQueued();
     } catch (e) {
       if (!isCurrentPrListRequest(requestId, path)) {
@@ -331,9 +335,15 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   // Force-refresh: drop caches and refetch the list. The detail/checks views
-  // re-fetch on their own because their effects key off `prsFetchedAt`.
+  // re-fetch on their own because their effects key off `prsFetchedAt`. Called
+  // fire-and-forget from the panel button, so swallow the cancellation that a
+  // repo switch/close raises when this forced load was queued behind a prefetch.
   refreshPullRequests: async () => {
-    await get().loadPullRequests(true);
+    try {
+      await get().loadPullRequests(true);
+    } catch {
+      /* canceled by a repo switch/close — there's nothing left to refresh */
+    }
   },
 
   // Cached by number — re-opening a previously-viewed PR is instant.
@@ -545,11 +555,43 @@ function hasNumericKeys(map: Record<number, unknown>): boolean {
   return Object.keys(map).length > 0;
 }
 
+// A cached detail is stale if its PR vanished from the refreshed list or its
+// state/draft changed (those drive the header's Open/Merge controls). `mergeable`
+// is intentionally ignored — list summaries don't carry it, so comparing it would
+// drop every detail on each refresh. Compared fields are both present on summaries.
+function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolean {
+  return detail.state === summary.state && detail.draft === summary.draft;
+}
+
+// On a non-force list refresh, keep only the cached details whose refreshed
+// summary still matches; drop the rest so the detail effect (keyed on
+// prsFetchedAt) refetches them instead of showing stale Open/Merge controls.
+function prunePrDetails(
+  cached: Record<number, PullRequest>,
+  summaries: PullRequest[],
+): Record<number, PullRequest> {
+  const byNum = new Map(summaries.map((p) => [p.num, p]));
+  const next: Record<number, PullRequest> = {};
+  for (const [key, detail] of Object.entries(cached)) {
+    const num = Number(key);
+    const summary = byNum.get(num);
+    if (summary && detailMatchesSummary(detail, summary)) next[num] = detail;
+  }
+  return next;
+}
+
 function prListRequestKey(path: string, account: GithubAccountRef | null): string {
   const accountKey = account
     ? `${account.provider}:${account.host}:${account.accountId}:${account.login}`
     : "default";
   return `${path}\0${accountKey}`;
+}
+
+// Repo + bound account identity of the currently-open repo, or null when none.
+function currentPrListRequestKey(): string | null {
+  const summary = useRepo.getState().summary;
+  if (!summary) return null;
+  return prListRequestKey(summary.path, useAccounts.getState().repoAccountRef);
 }
 
 function isCurrentPrListRequest(requestId: number, path: string): boolean {
@@ -575,7 +617,6 @@ function mergeQueuedPrListLoad(
     force: current.force || next.force,
     quiet: current.quiet && next.quiet,
     key: next.key,
-    path: next.path,
     waiters: [...current.waiters, ...next.waiters],
   };
 }

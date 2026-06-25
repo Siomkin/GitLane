@@ -527,4 +527,70 @@ describe("pulls PR list refresh coalescing", () => {
     // The stale fetch never populates the newly opened repo's list.
     expect(usePulls.getState().pullRequests).toEqual([]);
   });
+
+  it("cancels the old force waiter when the bound account changes before the queue drains", async () => {
+    const prefetch = deferred<PullRequestSummary[]>();
+    const queuedFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(prefetch.promise).mockReturnValueOnce(queuedFetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true); // account A (null)
+    const queued = usePulls.getState().loadPullRequests(true); // force, queued under A
+    expect(usePulls.getState().prsRefreshQueued).not.toBeNull();
+
+    // The bound account rebinds before the prefetch finishes and the queue drains;
+    // the queued load then runs under the new account, so the old waiter cancels.
+    useAccounts.setState({ repoAccountRef: account("99") });
+
+    prefetch.resolve([prSummary(7)]);
+    queuedFetch.resolve([prSummary(9)]);
+    await expect(queued).rejects.toThrow("canceled");
+    await load;
+  });
+
+  it("drops a cached detail whose state changed on a quiet refresh", async () => {
+    usePulls.setState({
+      prDetails: { 7: { num: 7, state: "open", draft: false } as never },
+      prsFetchedAt: 1,
+    });
+    invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // The summary now says closed, so the stale open detail is evicted and the
+    // detail effect (keyed on prsFetchedAt) will refetch it.
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().pullRequests.map((p) => p.num)).toEqual([7]);
+  });
+
+  it("keeps a cached detail whose summary is unchanged on a quiet refresh", async () => {
+    usePulls.setState({
+      prDetails: { 7: { num: 7, state: "open", draft: false } as never },
+      prsFetchedAt: 1,
+    });
+    invokeMock.mockResolvedValueOnce([prSummary(7, { state: "OPEN", isDraft: false })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // Unchanged → keep the cached detail so re-opening the PR stays instant.
+    expect(usePulls.getState().prDetails[7]).toEqual({ num: 7, state: "open", draft: false });
+  });
+
+  it("swallows the cancellation when a fire-and-forget manual refresh is abandoned", async () => {
+    const prefetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(prefetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    // The panel Refresh button calls refreshPullRequests() fire-and-forget; it
+    // queues a forced load behind the prefetch.
+    const refresh = usePulls.getState().refreshPullRequests();
+    expect(usePulls.getState().prsRefreshQueued).not.toBeNull();
+
+    // Switching/closing the repo cancels the queued force load — refreshPullRequests
+    // must resolve quietly rather than surface an unhandled rejection.
+    usePulls.getState().reset();
+    await expect(refresh).resolves.toBeUndefined();
+
+    prefetch.resolve([prSummary(7)]);
+    await load;
+  });
 });
