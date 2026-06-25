@@ -21,6 +21,7 @@ function makePr(over: Partial<PullRequest> = {}): PullRequest {
     age: "17h",
     add: 296,
     del: 12,
+    changedFiles: 0,
     files: [],
     comments: 0,
     body: "",

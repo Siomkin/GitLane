@@ -20,6 +20,7 @@ function pr(over: Partial<PullRequest> = {}): PullRequest {
     age: "1h",
     add: 10,
     del: 2,
+    changedFiles: 0,
     files: [],
     comments: 0,
     body: "",

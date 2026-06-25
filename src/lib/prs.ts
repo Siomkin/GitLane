@@ -92,6 +92,8 @@ export interface PullRequest {
   age: string;
   add: number;
   del: number;
+  /** Changed-file count (from both list + detail); `files` is the path list (detail only). */
+  changedFiles: number;
   files: string[];
   comments: number;
   /** Raw markdown body (empty for list summaries; filled by the detail fetch). */
@@ -262,6 +264,7 @@ export function summaryToPr(s: PullRequestSummary): PullRequest {
     age: relativeAge(s.createdAt),
     add: s.additions,
     del: s.deletions,
+    changedFiles: s.changedFiles,
     files: [],
     comments: 0,
     body: "",

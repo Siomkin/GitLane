@@ -32,6 +32,7 @@ const makePr = (over: Partial<PullRequest> = {}): PullRequest => ({
   age: "1h",
   add: 1,
   del: 1,
+  changedFiles: 0,
   files: [],
   comments: 1,
   body: "",

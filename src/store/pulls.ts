@@ -301,8 +301,9 @@ export const usePulls = create<PullsState>((set, get) => ({
       set((s) => ({
         pullRequests: prs,
         // Force already cleared the caches above; on a quiet/background refresh,
-        // drop details whose state/draft changed so the header can't stay stale.
-        ...(force ? {} : { prDetails: prunePrDetails(s.prDetails, prs) }),
+        // evict the per-PR caches for any PR whose summary changed so no tab
+        // (detail/diff/checks) keeps showing stale data.
+        ...(force ? {} : pruneStalePrCaches(s, prs)),
         prsLoading: false,
         prsRefreshInFlight: false,
         prsRefreshRequestId: null,
@@ -395,24 +396,25 @@ export const usePulls = create<PullsState>((set, get) => ({
     try {
       const checks = await api.pullRequestChecks(path, num, account);
       set((s) => {
-        if (!isCurrentPrChecksRequest(s, num, requestId, key)) return {};
+        // Superseded by a newer request for this PR → drop without touching its token.
+        if (s.prChecksLoadingByNum[num] !== requestId) return {};
         const loadingByNum = omit(s.prChecksLoadingByNum, num);
-        return {
-          prChecks: { ...s.prChecks, [num]: checks },
-          prChecksLoadingByNum: loadingByNum,
-          prChecksLoading: hasNumericKeys(loadingByNum),
-        };
+        const loading = { prChecksLoadingByNum: loadingByNum, prChecksLoading: hasNumericKeys(loadingByNum) };
+        // Always clear our own token; only cache the result if the repo+account
+        // is still the one we fetched under (else the response is stale).
+        if (currentPrListRequestKey() !== key) return loading;
+        return { ...loading, prChecks: { ...s.prChecks, [num]: checks } };
       });
     } catch (e) {
-      set((s) => ({
-        ...(isCurrentPrChecksRequest(s, num, requestId, key)
-          ? {
-              prChecksLoadingByNum: omit(s.prChecksLoadingByNum, num),
-              prChecksLoading: hasNumericKeys(omit(s.prChecksLoadingByNum, num)),
-              prChecksError: { ...s.prChecksError, [num]: String(e) },
-            }
-          : {}),
-      }));
+      set((s) => {
+        if (s.prChecksLoadingByNum[num] !== requestId) return {};
+        const loadingByNum = omit(s.prChecksLoadingByNum, num);
+        const loading = { prChecksLoadingByNum: loadingByNum, prChecksLoading: hasNumericKeys(loadingByNum) };
+        // Surface the error only when the response is still for the current
+        // repo+account; either way clear the token so retries aren't blocked.
+        if (currentPrListRequestKey() !== key) return loading;
+        return { ...loading, prChecksError: { ...s.prChecksError, [num]: String(e) } };
+      });
     }
   },
 
@@ -563,13 +565,22 @@ function hasNumericKeys(map: Record<number, unknown>): boolean {
   return Object.keys(map).length > 0;
 }
 
+// Drop several numeric keys from a record without mutating it (returns the same
+// reference when nothing is dropped, so unrelated refreshes don't re-render).
+function omitMany<V>(map: Record<number, V>, keys: number[]): Record<number, V> {
+  if (keys.length === 0) return map;
+  const next = { ...map };
+  for (const k of keys) delete next[k];
+  return next;
+}
+
 // A cached detail is stale if its PR vanished from the refreshed list or any
 // summary-level field changed: state/draft (header Open/Merge controls), title/
-// base/branch (header), or additions/deletions (new commits pushed — the Diff/
-// Commits tabs would otherwise stay stale). All of these are returned by both
-// `gh pr list` and `gh pr view`, so an unchanged PR never falsely invalidates.
-// `mergeable` is intentionally excluded — list summaries don't carry it (it maps
-// to ""), so comparing it would drop every cached detail on each refresh.
+// base/branch (header), or additions/deletions/changedFiles (new commits pushed
+// — the Diff/Commits tabs would otherwise stay stale, even if net +/- is equal
+// but files moved). All of these are returned by both `gh pr list` and `gh pr
+// view`, so an unchanged PR never falsely invalidates. `mergeable` is excluded —
+// list summaries don't carry it (maps to ""), so it would drop every detail.
 function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolean {
   return (
     detail.state === summary.state &&
@@ -578,25 +589,50 @@ function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolea
     detail.base === summary.base &&
     detail.branch === summary.branch &&
     detail.add === summary.add &&
-    detail.del === summary.del
+    detail.del === summary.del &&
+    detail.changedFiles === summary.changedFiles
   );
 }
 
-// On a non-force list refresh, keep only the cached details whose refreshed
-// summary still matches; drop the rest so the detail effect (keyed on
-// prsFetchedAt) refetches them instead of showing stale Open/Merge controls.
-function prunePrDetails(
-  cached: Record<number, PullRequest>,
-  summaries: PullRequest[],
-): Record<number, PullRequest> {
+// On a non-force list refresh, evict every per-PR cache (detail, diff, checks,
+// threads, commit-sig markers, and their errors) for PRs that left the list or
+// whose summary changed, so the prsFetchedAt-keyed tab effects refetch fresh
+// data instead of showing a stale detail/diff/checks. Returns the cache fields
+// to merge into the store (empty when nothing is stale, preserving references).
+function pruneStalePrCaches(s: PullsState, summaries: PullRequest[]): Partial<PullsState> {
   const byNum = new Map(summaries.map((p) => [p.num, p]));
-  const next: Record<number, PullRequest> = {};
-  for (const [key, detail] of Object.entries(cached)) {
-    const num = Number(key);
+  const cachedNums = new Set<number>(
+    [
+      ...Object.keys(s.prDetails),
+      ...Object.keys(s.prDiffs),
+      ...Object.keys(s.prChecks),
+      ...Object.keys(s.prThreads),
+    ].map(Number),
+  );
+  const stale: number[] = [];
+  for (const num of cachedNums) {
     const summary = byNum.get(num);
-    if (summary && detailMatchesSummary(detail, summary)) next[num] = detail;
+    if (!summary) {
+      stale.push(num); // PR left the list
+      continue;
+    }
+    // Compare against the cached detail (the only shape carrying summary fields).
+    // Without one we can't tell, so leave that PR's derived caches untouched.
+    const detail = s.prDetails[num];
+    if (detail && !detailMatchesSummary(detail, summary)) stale.push(num);
   }
-  return next;
+  if (stale.length === 0) return {};
+  return {
+    prDetails: omitMany(s.prDetails, stale),
+    prDiffs: omitMany(s.prDiffs, stale),
+    prChecks: omitMany(s.prChecks, stale),
+    prThreads: omitMany(s.prThreads, stale),
+    prCommitSigsLoaded: omitMany(s.prCommitSigsLoaded, stale),
+    prDetailError: omitMany(s.prDetailError, stale),
+    prDiffError: omitMany(s.prDiffError, stale),
+    prChecksError: omitMany(s.prChecksError, stale),
+    prThreadsError: omitMany(s.prThreadsError, stale),
+  };
 }
 
 function prListRequestKey(path: string, account: GithubAccountRef | null): string {
@@ -616,18 +652,6 @@ function currentPrListRequestKey(): string | null {
 function isCurrentPrListRequest(requestId: number, path: string): boolean {
   const state = usePulls.getState();
   return state.prsRefreshRequestId === requestId && useRepo.getState().summary?.path === path;
-}
-
-// A checks response is still current only if its request id is the latest for the
-// PR AND the repo+account it was fetched under is still the bound one — otherwise
-// a response fetched under a previous account could pin stale checks in the cache.
-function isCurrentPrChecksRequest(
-  state: PullsState,
-  num: number,
-  requestId: number,
-  key: string,
-): boolean {
-  return state.prChecksLoadingByNum[num] === requestId && currentPrListRequestKey() === key;
 }
 
 function mergeQueuedPrListLoad(

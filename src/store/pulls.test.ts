@@ -219,6 +219,25 @@ describe("pulls lazy-load error isolation", () => {
     expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
   });
 
+  it("clears the loading token when checks resolve after an account change", async () => {
+    const checks = deferred<PrCheck[]>();
+    invokeMock.mockReturnValueOnce(checks.promise);
+
+    const load = usePulls.getState().loadPrChecks(7); // under account A (null)
+    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+
+    // Account rebinds while the request is in flight; no new load supersedes it.
+    useAccounts.setState({ repoAccountRef: account("88") });
+    checks.resolve([{ name: "old account", state: "pass" }]);
+    await load;
+
+    // The stale response is dropped, but its token must be cleared so the detail
+    // effect / poll can issue a fresh load (otherwise checks stay loading forever).
+    expect(usePulls.getState().prChecks[7]).toBeUndefined();
+    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeUndefined();
+    expect(usePulls.getState().prChecksLoading).toBe(false);
+  });
+
   it("lets a forced checks load supersede an in-flight checks load", async () => {
     const oldChecks = deferred<PrCheck[]>();
     const freshChecks = deferred<PrCheck[]>();
@@ -594,6 +613,39 @@ describe("pulls PR list refresh coalescing", () => {
     // Same open state, but additions changed (new commits) → evict so the
     // Diff/Commits tabs refetch instead of showing stale files.
     expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
+  it("drops a cached detail when only the changed-file count differs", async () => {
+    usePulls.setState({
+      prDetails: { 7: summaryToPr(prSummary(7, { changedFiles: 3 })) },
+      prsFetchedAt: 1,
+    });
+    // Net +/- unchanged (default 1/0) but files moved/replaced → changedFiles differs.
+    invokeMock.mockResolvedValueOnce([prSummary(7, { changedFiles: 5 })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
+  it("evicts the diff/checks/threads caches when a summary changes", async () => {
+    usePulls.setState({
+      prDetails: { 7: summaryToPr(prSummary(7)) },
+      prDiffs: { 7: [] as never },
+      prChecks: { 7: [{ name: "build", state: "pass" }] },
+      prThreads: { 7: [] as never },
+      prsFetchedAt: 1,
+    });
+    invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // Detail AND its derived caches are evicted so no tab shows stale data.
+    const s = usePulls.getState();
+    expect(s.prDetails[7]).toBeUndefined();
+    expect(s.prDiffs[7]).toBeUndefined();
+    expect(s.prChecks[7]).toBeUndefined();
+    expect(s.prThreads[7]).toBeUndefined();
   });
 
   it("keeps a cached detail whose summary is unchanged on a quiet refresh", async () => {
