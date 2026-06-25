@@ -461,6 +461,25 @@ describe("pulls PR list refresh coalescing", () => {
     expect(s.prsRefreshInFlight).toBe(false);
   });
 
+  it("does not let a quiet retry mask a foreground failure's error", async () => {
+    usePulls.setState({ pullRequests: [{ num: 7 } as never], prsFetchedAt: 123 });
+
+    // Foreground refresh fails: clear the list, show the error, and drop the
+    // stale "last successful fetch" marker.
+    invokeMock.mockRejectedValueOnce("gh exploded");
+    await usePulls.getState().loadPullRequests();
+    expect(usePulls.getState().prError).toContain("gh exploded");
+    expect(usePulls.getState().pullRequests).toEqual([]);
+    expect(usePulls.getState().prsFetchedAt).toBeNull();
+
+    // A later quiet/background retry that also fails must keep surfacing the
+    // error, not flip to a misleading empty-no-error state.
+    invokeMock.mockRejectedValueOnce("still offline");
+    await usePulls.getState().loadPullRequests(false, true);
+    expect(usePulls.getState().prError).toContain("still offline");
+    expect(usePulls.getState().pullRequests).toEqual([]);
+  });
+
   it("rejects queued PR refresh waiters when reset abandons the queued load", async () => {
     const prefetch = deferred<PullRequestSummary[]>();
     invokeMock.mockReturnValueOnce(prefetch.promise);

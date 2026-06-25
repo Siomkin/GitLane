@@ -107,4 +107,15 @@ describe("PrHeaderActions merge", () => {
 
     expect(checkoutBranch).toHaveBeenCalledWith("feat/thing");
   });
+
+  it("disables the overflow Close action while another PR write is pending", async () => {
+    usePulls.setState({ prPendingActions: ["comment"] });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    // Close is a setPrState write — it must not start concurrently with the
+    // in-flight comment.
+    expect(screen.getByText("Close pull request").closest("button")).toBeDisabled();
+  });
 });

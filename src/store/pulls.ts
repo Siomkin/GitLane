@@ -328,6 +328,10 @@ export const usePulls = create<PullsState>((set, get) => ({
           prsRefreshInFlight: false,
           prsRefreshRequestId: null,
           prsRefreshKey: null,
+          // Clearing the list invalidates the "last successful fetch" marker, so a
+          // later quiet retry can't treat this errored/empty state as a cache to
+          // preserve and silently drop the real error.
+          prsFetchedAt: null,
           prError: String(e),
         });
       }
