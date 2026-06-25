@@ -48,6 +48,12 @@ pub trait GithubProvider {
         thread_id: &str,
         resolved: bool,
     ) -> Result<String, GithubError>;
+    fn reply_thread(
+        &self,
+        ctx: &GithubContext,
+        thread_id: &str,
+        body: &str,
+    ) -> Result<String, GithubError>;
     fn merge_pr(
         &self,
         ctx: &GithubContext,
@@ -181,6 +187,17 @@ impl GithubService {
     ) -> Result<String, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.set_thread_resolved(&ctx, thread_id, resolved)
+    }
+
+    pub fn reply_thread(
+        &self,
+        workdir: &str,
+        thread_id: &str,
+        body: &str,
+        account: Option<&GithubAccountRef>,
+    ) -> Result<String, GithubError> {
+        let (provider, ctx) = self.context(workdir, account)?;
+        provider.reply_thread(&ctx, thread_id, body)
     }
 
     pub fn merge_pr(

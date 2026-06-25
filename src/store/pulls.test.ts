@@ -86,6 +86,41 @@ describe("pulls lazy-load error isolation", () => {
     expect(s.prDiffError[9]).toBeUndefined();
     expect(s.prDiffs[9]).toEqual([]);
   });
+
+  it("replies to a review thread and refreshes that PR's thread cache", async () => {
+    invokeMock.mockResolvedValueOnce("reply ok");
+    invokeMock.mockResolvedValueOnce([]);
+
+    const out = await usePulls.getState().replyThread(7, "thread-1", "Fixed in this patch");
+
+    expect(out).toBe("reply ok");
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "reply_review_thread", {
+      path: "/repo",
+      threadId: "thread-1",
+      body: "Fixed in this patch",
+      account: null,
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "pull_request_review_threads", {
+      path: "/repo",
+      number: 7,
+      account: null,
+    });
+  });
+
+  it("does not use the global PR pending flag for review-thread actions", async () => {
+    let finishResolve!: (value: string) => void;
+    invokeMock.mockReturnValueOnce(new Promise<string>((resolve) => {
+      finishResolve = resolve;
+    }));
+
+    const pending = usePulls.getState().resolveThread(7, "thread-1", true);
+
+    expect(usePulls.getState().prActionPending).toBe(false);
+    finishResolve("ok");
+    invokeMock.mockResolvedValueOnce([]);
+    await pending;
+    expect(usePulls.getState().prActionPending).toBe(false);
+  });
 });
 
 // PRs are GitHub-only (they run through `gh`). The list load must NOT attempt

@@ -1,4 +1,4 @@
-//! Inline review-thread GraphQL operations (resolve / unresolve).
+//! Inline review-thread GraphQL operations (reply / resolve / unresolve).
 //!
 //! `gh`'s `pr` verbs surface neither file/line-anchored review threads nor their
 //! resolved state, so these go through `gh api graphql` (still account-pinned
@@ -14,6 +14,7 @@ const RESOLVE_THREAD_MUTATION: &str =
     "mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}";
 const UNRESOLVE_THREAD_MUTATION: &str =
     "mutation($id:ID!){unresolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}";
+const REPLY_THREAD_MUTATION: &str = "mutation($id:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id,body:$body}){comment{id}}}";
 
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
 pub fn review_threads(
@@ -73,6 +74,32 @@ pub fn set_thread_resolved(
     run_gh(
         workdir,
         &["api", "graphql", "-f", &query_field, "-f", &id_field],
+        token,
+    )
+}
+
+/// Add a reply to an existing review thread by its GraphQL node id.
+pub fn reply_thread(
+    workdir: &str,
+    thread_id: &str,
+    body: &str,
+    token: Option<&str>,
+) -> Result<String, String> {
+    let query_field = format!("query={REPLY_THREAD_MUTATION}");
+    let id_field = format!("id={thread_id}");
+    let body_field = format!("body={body}");
+    run_gh(
+        workdir,
+        &[
+            "api",
+            "graphql",
+            "-f",
+            &query_field,
+            "-f",
+            &id_field,
+            "-f",
+            &body_field,
+        ],
         token,
     )
 }

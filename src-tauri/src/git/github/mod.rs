@@ -110,6 +110,15 @@ pub fn set_thread_resolved(
     ipc(GithubService::default().set_thread_resolved(workdir, thread_id, resolved, account))
 }
 
+pub fn reply_thread(
+    workdir: &str,
+    thread_id: &str,
+    body: &str,
+    account: Option<&GithubAccountRef>,
+) -> Result<String, String> {
+    ipc(GithubService::default().reply_thread(workdir, thread_id, body, account))
+}
+
 pub fn merge_pr(
     workdir: &str,
     number: u64,
