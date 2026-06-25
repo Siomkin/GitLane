@@ -2,6 +2,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { arrayMove } from "@dnd-kit/helpers";
 import { api, type RepoSummary } from "../lib/api";
 import { useAccounts } from "./accounts";
+import { mergeOperationStatus } from "./operation";
 import { usePulls } from "./pulls";
 import {
   beginGraphRequest,
@@ -108,6 +109,7 @@ export function createRepoLifecycleActions(
         worktrees: [],
         stashes: [],
         changes: emptyChanges,
+        operation: null,
         loading: true,
         graphLoading: true,
         error: null,
@@ -197,6 +199,18 @@ export function createRepoLifecycleActions(
         .catch((e) => {
           if (repoStillDisplayed(summary.path)) set({ error: String(e) });
         });
+      // The active operation (merge/rebase/cherry-pick/revert) gates the
+      // conflict workspace. Best-effort: a detection failure degrades to "no
+      // operation", never the error bar. The union starts fresh (operation was
+      // cleared in Phase 2 above).
+      void api
+        .operationStatus(summary.path)
+        .then((status) => {
+          if (repoStillDisplayed(summary.path)) {
+            set({ operation: mergeOperationStatus(get().operation, status) });
+          }
+        })
+        .catch(() => {});
 
       // The graph is the heavy one — await it, then paint and pick the initial
       // selection once it lands, clearing the history skeleton.
@@ -283,6 +297,7 @@ export function createRepoLifecycleActions(
           branches: [],
           worktrees: [],
           changes: emptyChanges,
+          operation: null,
           commitFiles: [],
           selectedCommit: null,
           selectedCommits: [],
@@ -314,6 +329,7 @@ export function createRepoLifecycleActions(
         worktrees: [],
         stashes: [],
         changes: emptyChanges,
+        operation: null,
         commitFiles: [],
         selectedCommit: null,
         selectedCommits: [],
@@ -375,7 +391,13 @@ export function createRepoLifecycleActions(
       if (!opts?.quiet) set({ loading: true, error: null });
       try {
         if (opts?.scope === "worktree") {
-          const changes = await api.workingChanges(summary.path);
+          // The operation status rides along with working changes so a watcher
+          // event (terminal commit/checkout/rebase step) keeps the conflict
+          // workspace truthful. Best-effort — degrade to "no operation".
+          const [changes, opStatus] = await Promise.all([
+            api.workingChanges(summary.path),
+            api.operationStatus(summary.path).catch(() => null),
+          ]);
           if (get().summary?.path !== summary.path) return;
           const selectedFile = get().selectedFile;
           const selectedFileGone =
@@ -386,6 +408,7 @@ export function createRepoLifecycleActions(
           const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
           set({
             changes,
+            ...(opStatus ? { operation: mergeOperationStatus(get().operation, opStatus) } : {}),
             // Only clear the spinner if this call owned it (non-quiet). The quiet
             // watcher path never set it, so it must not clear a concurrent load's.
             ...(opts?.quiet ? {} : { loading: false }),
@@ -395,15 +418,17 @@ export function createRepoLifecycleActions(
           return;
         }
 
-        const [nextSummary, graph, branches, worktrees, stashes, changes, forge] = await Promise.all([
-          api.openRepo(summary.path),
-          api.commitGraph(summary.path, graphLimit),
-          api.listBranches(summary.path),
-          api.listWorktrees(summary.path).catch(() => []),
-          api.listStashes(summary.path).catch(() => []),
-          api.workingChanges(summary.path),
-          api.repoForge(summary.path).catch(() => null),
-        ]);
+        const [nextSummary, graph, branches, worktrees, stashes, changes, forge, opStatus] =
+          await Promise.all([
+            api.openRepo(summary.path),
+            api.commitGraph(summary.path, graphLimit),
+            api.listBranches(summary.path),
+            api.listWorktrees(summary.path).catch(() => []),
+            api.listStashes(summary.path).catch(() => []),
+            api.workingChanges(summary.path),
+            api.repoForge(summary.path).catch(() => null),
+            api.operationStatus(summary.path).catch(() => null),
+          ]);
         if (generation === null || !graphRequestIsCurrent(generation, summary.path)) {
           // Superseded mid-flight: replay any sync deferred during this refresh's
           // loading window so the coalesced event isn't lost on this bail (GL-20).
@@ -455,6 +480,7 @@ export function createRepoLifecycleActions(
           worktrees,
           stashes,
           changes,
+          ...(opStatus ? { operation: mergeOperationStatus(get().operation, opStatus) } : {}),
           selectedCommit,
           selectedCommits,
           selectionAnchor,

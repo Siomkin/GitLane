@@ -24,6 +24,7 @@ import { WelcomeScreen } from "./components/chrome/WelcomeScreen";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
 import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
+import { ConflictWorkspace } from "./features/conflicts";
 import { HistoryWorkspace } from "./features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
 import { ReviewWorkspace } from "./features/review/ReviewWorkspace";
@@ -49,6 +50,7 @@ const App = () => {
   const clearError = useRepo((state) => state.clearError);
   const pickAndOpen = useRepo((state) => state.pickAndOpen);
   const selectedFile = useRepo((state) => state.selectedFile);
+  const operation = useRepo((state) => state.operation);
   const revealTarget = useRepo((state) => state.revealTarget);
   const restoreSession = useRepo((state) => state.restoreSession);
   const refresh = useRepo((state) => state.refresh);
@@ -111,11 +113,18 @@ const App = () => {
     resetHistView();
   }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView]);
 
-  const showPulls = leftTab === "pulls";
+  // An active merge/rebase/cherry-pick/revert takes over the center pane: the
+  // repo is in a blocking conflicted state, so the dedicated resolution
+  // workspace supersedes the history/changes/PR views (and gates normal
+  // commit/stage flows) until the operation is continued or aborted.
+  const inConflict = !!operation;
+  const showPulls = leftTab === "pulls" && !inConflict;
 
   const backToGraph = () => setLeftTab("history");
 
-  const center = showPulls ? (
+  const center = inConflict ? (
+    <ConflictWorkspace />
+  ) : showPulls ? (
     <PullRequestDetail />
   ) : stackedReview ? (
     <StackedReview />
@@ -144,9 +153,11 @@ const App = () => {
   // manual width on roomy windows, then clamps with the viewport so narrow review
   // layouts stay usable without reserving a hidden blank column.
   const responsiveRightWidth = `clamp(280px, 34vw, ${rightWidth}px)`;
-  const gridTemplateColumns = showPulls
-    ? `${leftWidth}px 6px minmax(0,1fr)`
-    : `minmax(0,1fr) 6px ${responsiveRightWidth}`;
+  const gridTemplateColumns = inConflict
+    ? "minmax(0,1fr)"
+    : showPulls
+      ? `${leftWidth}px 6px minmax(0,1fr)`
+      : `minmax(0,1fr) 6px ${responsiveRightWidth}`;
 
   return (
     <div
@@ -175,7 +186,9 @@ const App = () => {
           <ActionBar activeTab={leftTab} onTabChange={setLeftTab} />
           <div className="relative flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
             <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
-              {showPulls ? (
+              {inConflict ? (
+                center
+              ) : showPulls ? (
                 <>
                   <LeftPanel />
                   <Resizer onResize={adjustLeftWidth} />

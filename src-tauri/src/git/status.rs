@@ -235,6 +235,14 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
     for entry in statuses.iter() {
         let s = entry.status();
 
+        // Unmerged (conflicted) paths are owned by the dedicated conflict
+        // workflow (`git::conflicts` + the in-app ConflictWorkspace), not the
+        // ordinary stage/unstage view — surfacing them here would invite normal
+        // staging semantics on a file git still considers unresolved. Skip them.
+        if s.contains(Status::CONFLICTED) {
+            continue;
+        }
+
         // Prefer head-to-index path for staged, index-to-workdir for unstaged;
         // fall back to the plain entry path.
         let entry_path = entry.path().ok().unwrap_or("").to_string();

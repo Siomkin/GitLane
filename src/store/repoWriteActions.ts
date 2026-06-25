@@ -20,6 +20,45 @@ async function runOp(
   return message;
 }
 
+// Like `runOp`, but for operations that can legitimately stop on conflicts
+// (merge/rebase/cherry-pick/revert). Git exits non-zero when it stops on a
+// conflict, but that is not a failure — it's an invitation to resolve. So after
+// any error we refresh and check whether an operation is now active: if so, the
+// conflict is the outcome (the App surfaces the ConflictWorkspace off
+// `operation`), and we return an informational message instead of throwing.
+// A genuine failure (no operation in progress) still rejects for the caller to
+// toast as an error.
+async function runMaybeConflict(
+  get: RepoGet,
+  body: (summary: RepoSummary) => Promise<string>,
+  inProgressLabel: string,
+): Promise<string> {
+  const { summary } = get();
+  if (!summary) throw new Error("No repository");
+  const opPath = summary.path;
+  // Capture whether an operation was ALREADY active before we start: only a
+  // *newly* entered operation means this op stopped on conflicts. If one was
+  // already in progress (e.g. a terminal-started merge, or a second attempt
+  // while the workspace is open), git's failure is genuine and must surface —
+  // otherwise every error would be masked as a benign "resolve conflicts".
+  const hadOperation = !!get().operation;
+  try {
+    const message = await body(summary);
+    // Don't refresh/publish onto a different repo if the user switched mid-op.
+    if (get().summary?.path === opPath) await get().refresh();
+    return message;
+  } catch (e) {
+    // Switched repos mid-op: surface the raw error; never interpret it (or the
+    // global operation) against the now-current, unrelated repo.
+    if (get().summary?.path !== opPath) throw e;
+    await get().refresh();
+    if (get().summary?.path === opPath && !hadOperation && get().operation) {
+      return `${inProgressLabel} — resolve conflicts to continue`;
+    }
+    throw e;
+  }
+}
+
 // Replay a watcher/focus re-sync that `refresh` deferred while a `loading`-holding
 // write op (checkout/fetch) was in flight. `refresh` already flushes on its own
 // success/failure, but a write op's failure path clears `loading` without going
@@ -133,17 +172,21 @@ export function createRepoWriteActions(
       }),
 
     mergeInto: (from, to) =>
-      runOp(get, async (summary) => {
-        if (summary.headBranch !== to) {
-          try {
-            await api.checkout(summary.path, to);
-          } catch (e) {
-            throw new Error(`Couldn't check out ${to} to merge into it: ${e}`);
+      runMaybeConflict(
+        get,
+        async (summary) => {
+          if (summary.headBranch !== to) {
+            try {
+              await api.checkout(summary.path, to);
+            } catch (e) {
+              throw new Error(`Couldn't check out ${to} to merge into it: ${e}`);
+            }
           }
-        }
-        await api.mergeBranch(summary.path, from);
-        return `Merged ${from} into ${to}`;
-      }),
+          await api.mergeBranch(summary.path, from);
+          return `Merged ${from} into ${to}`;
+        },
+        `Merging ${from} into ${to}`,
+      ),
 
     // `from` is the rev to advance to; `to` is the branch being moved forward.
     // When `to` is the checked-out branch, fast-forward it in the working tree
@@ -158,10 +201,14 @@ export function createRepoWriteActions(
       }),
 
     rebaseOnto: (onto) =>
-      runOp(get, async (summary) => {
-        await api.rebaseOnto(summary.path, onto);
-        return `Rebased onto ${onto}`;
-      }),
+      runMaybeConflict(
+        get,
+        async (summary) => {
+          await api.rebaseOnto(summary.path, onto);
+          return `Rebased onto ${onto}`;
+        },
+        `Rebasing onto ${onto}`,
+      ),
 
     resetCurrentTo: (target, mode) =>
       runOp(get, async (summary) => {
@@ -190,16 +237,24 @@ export function createRepoWriteActions(
       }),
 
     cherryPickCommit: (sha) =>
-      runOp(get, async (summary) => {
-        await api.cherryPick(summary.path, sha);
-        return `Cherry-picked ${sha.slice(0, 7)}`;
-      }),
+      runMaybeConflict(
+        get,
+        async (summary) => {
+          await api.cherryPick(summary.path, sha);
+          return `Cherry-picked ${sha.slice(0, 7)}`;
+        },
+        `Cherry-picking ${sha.slice(0, 7)}`,
+      ),
 
     revertCommit: (sha) =>
-      runOp(get, async (summary) => {
-        await api.revertCommit(summary.path, sha);
-        return `Reverted ${sha.slice(0, 7)}`;
-      }),
+      runMaybeConflict(
+        get,
+        async (summary) => {
+          await api.revertCommit(summary.path, sha);
+          return `Reverted ${sha.slice(0, 7)}`;
+        },
+        `Reverting ${sha.slice(0, 7)}`,
+      ),
 
     checkoutDetached: (sha) =>
       runOp(get, async (summary) => {
@@ -208,21 +263,31 @@ export function createRepoWriteActions(
       }),
 
     cherryPickMany: async (shas) => {
-      const msg = await runOp(get, async (summary) => {
-        if (shas.length === 0) throw new Error("No commits selected");
-        await api.cherryPickMany(summary.path, shas);
-        return `Cherry-picked ${shas.length} commit${shas.length === 1 ? "" : "s"}`;
-      });
+      if (shas.length === 0) throw new Error("No commits selected");
+      const n = shas.length;
+      const msg = await runMaybeConflict(
+        get,
+        async (summary) => {
+          await api.cherryPickMany(summary.path, shas);
+          return `Cherry-picked ${n} commit${n === 1 ? "" : "s"}`;
+        },
+        `Cherry-picking ${n} commit${n === 1 ? "" : "s"}`,
+      );
       get().clearSelection();
       return msg;
     },
 
     revertMany: async (shas) => {
-      const msg = await runOp(get, async (summary) => {
-        if (shas.length === 0) throw new Error("No commits selected");
-        await api.revertMany(summary.path, shas);
-        return `Reverted ${shas.length} commit${shas.length === 1 ? "" : "s"}`;
-      });
+      if (shas.length === 0) throw new Error("No commits selected");
+      const n = shas.length;
+      const msg = await runMaybeConflict(
+        get,
+        async (summary) => {
+          await api.revertMany(summary.path, shas);
+          return `Reverted ${n} commit${n === 1 ? "" : "s"}`;
+        },
+        `Reverting ${n} commit${n === 1 ? "" : "s"}`,
+      );
       get().clearSelection();
       return msg;
     },

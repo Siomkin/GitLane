@@ -6,6 +6,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
+import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
 import { ForgeKind } from "../lib/api";
 import type { PullRequest } from "../lib/prs";
@@ -174,18 +175,30 @@ describe("repo store — large history", () => {
       truncated: false,
     };
     useRepo.setState({ graph });
-    invokeMock.mockResolvedValueOnce({ staged: [], unstaged: [] });
+    // A worktree refresh reads working changes + operation status, but never
+    // rebuilds the graph.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+      if (cmd === "operation_status")
+        return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+      return Promise.resolve([]);
+    });
 
     await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
 
-    expect(invokeMock).toHaveBeenCalledTimes(1);
     expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
     expect(useRepo.getState().graph).toBe(graph);
   });
 
   it("clears a WIP selection when a worktree refresh becomes clean", async () => {
     useRepo.setState({ wipSelected: true });
-    invokeMock.mockResolvedValueOnce({ staged: [], unstaged: [] });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+      if (cmd === "operation_status")
+        return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+      return Promise.resolve([]);
+    });
 
     await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
 
@@ -1011,5 +1024,57 @@ describe("repo store — closeRepo clears forge", () => {
     const s = useRepo.getState();
     expect(s.summary).toBeNull();
     expect(s.forge).toBeNull();
+  });
+});
+
+describe("repo store — conflict actions", () => {
+  it("returns false (and does not throw) when a per-file resolution fails", async () => {
+    // A failed git write must report failure so the UI keeps the user's
+    // in-progress hunk choices instead of clearing them.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "accept_conflict_side") return Promise.reject(new Error("index.lock"));
+      return Promise.resolve([]);
+    });
+    const ok = await useRepo.getState().acceptConflictSide("src/a.ts", "ours");
+    expect(ok).toBe(false);
+  });
+
+  it("returns true when a per-file resolution succeeds", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "accept_conflict_side") return Promise.resolve("Resolved");
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+      if (cmd === "operation_status")
+        return Promise.resolve({ kind: "cherry-pick", canSkip: true, conflicts: [] });
+      return Promise.resolve([]);
+    });
+    const ok = await useRepo.getState().resolveConflictFile("src/a.ts", "merged\n");
+    expect(ok).toBe(true);
+  });
+
+  it("does not publish an operation's result onto a repo switched-to mid-await", async () => {
+    // Repo A has an active operation; start continue, then switch to repo B
+    // (with its own operation) before the git call resolves. The result must
+    // not clobber B's state.
+    const slow = deferred<string>();
+    useRepo.setState({
+      summary,
+      operation: { kind: "merge", canSkip: false, files: [] },
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "continue_operation") return slow.promise;
+      return Promise.resolve([]);
+    });
+
+    const pending = useRepo.getState().continueOperation();
+    const opB: OperationState = { kind: "rebase", canSkip: true, files: [] };
+    useRepo.setState({ summary: { ...summary, path: "/other" }, operation: opB });
+    slow.resolve("ok");
+    await pending;
+
+    // B's operation is untouched: not cleared, not refreshed away.
+    expect(useRepo.getState().summary?.path).toBe("/other");
+    expect(useRepo.getState().operation).toBe(opB);
+    // And no full refresh ran against B (only the continue_operation call fired).
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
   });
 });
