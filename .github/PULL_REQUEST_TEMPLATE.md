@@ -1,3 +1,5 @@
+<!-- PR title format: GL-12 Short summary or GL-12 fix(scope): Short summary when Jira exists; otherwise Short summary or docs(scope): Short summary. Include a useful description below for non-trivial changes. -->
+
 ## Summary
 
 <!-- What changed, and why? -->

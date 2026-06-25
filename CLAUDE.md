@@ -198,10 +198,28 @@ operations to offer (fast-forward, merge, rebase, reset). The chosen op calls th
 ## Jira
 
 This project is tracked in Jira under project key `GL` (Task / Epic / Subtask issue
-types). Reference the issue key (e.g. `GL-12`) in branch names and commit messages so
-Jira's development panel links the work automatically. The `jira-implementation-comment`
-skill posts a structured, audience-aware implementation summary to a ticket after coding
-work lands.
+types). Reference the issue key (e.g. `GL-12`) in branch names, commit messages, and PR
+titles so Jira's development panel links the work automatically.
+
+When a Jira issue exists, commit messages and PR titles start with the ticket key:
+
+```text
+GL-12 Short human summary
+GL-12 feat(scope): Short human summary
+```
+
+When there is no Jira issue, omit the key and use the same summary style:
+
+```text
+Short human summary
+docs(rules): Short human summary
+```
+
+For non-trivial changes, include a commit body / PR description that explains the
+implementation and validation in the same practical style as the surrounding history.
+
+The `jira-implementation-comment` skill posts a structured, audience-aware
+implementation summary to a ticket after coding work lands.
 
 > **Connection details** (Atlassian site, cloudId, board URL, MCP usage) live in the
 > uncommitted `CLAUDE.local.md` — they're per-account and intentionally kept out of the
