@@ -54,7 +54,7 @@ export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
 /** Reopen (closed) / Ready (draft) state buttons. Close lives in MoreMenu. */
 const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
-  const pending = usePulls((s) => s.prPendingAction !== null);
+  const pending = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
 
@@ -106,9 +106,10 @@ const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
 /** Merge split-button (label + chevron) with the strategy/delete-branch dropdown. */
 const MergeMenu = ({ pr }: { pr: PullRequest }) => {
   const mergePr = usePulls((s) => s.mergePr);
-  // Scoped to the merge action so a concurrent close/comment doesn't show
-  // "Merging…" or disable the merge control when no merge is running.
-  const pending = usePulls((s) => s.prPendingAction === "merge");
+  // "Merging…" shows only while a merge is in flight, but the control disables
+  // while ANY PR write runs so the user can't start a concurrent merge.
+  const merging = usePulls((s) => s.prPendingActions.includes("merge"));
+  const busy = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);
@@ -155,12 +156,12 @@ const MergeMenu = ({ pr }: { pr: PullRequest }) => {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        disabled={pending}
-        aria-busy={pending}
+        disabled={busy}
+        aria-busy={merging}
         className="flex h-9 items-center rounded-lg bg-emerald-600 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 dark:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
       >
         <span className="flex items-center gap-1.5 pl-3.5 pr-2.5">
-          {pending ? (
+          {merging ? (
             <>
               <span
                 aria-hidden
@@ -193,7 +194,7 @@ const MergeMenu = ({ pr }: { pr: PullRequest }) => {
               <button
                 key={m.key}
                 onClick={() => doMerge(m.key)}
-                disabled={pending}
+                disabled={busy}
                 className="w-full rounded-lg px-2.5 py-2 text-left hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/5"
               >
                 <div className="text-[13px] font-medium text-neutral-800 dark:text-neutral-100">{m.label}</div>

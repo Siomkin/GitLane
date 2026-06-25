@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
+import { summaryToPr } from "@/lib/prs";
 import {
   ForgeKind,
   type GithubAccountRef,
@@ -162,11 +163,11 @@ describe("pulls lazy-load error isolation", () => {
 
     const pending = usePulls.getState().resolveThread(7, "thread-1", true);
 
-    expect(usePulls.getState().prPendingAction).toBeNull();
+    expect(usePulls.getState().prPendingActions).toEqual([]);
     finishResolve("ok");
     invokeMock.mockResolvedValueOnce([]);
     await pending;
-    expect(usePulls.getState().prPendingAction).toBeNull();
+    expect(usePulls.getState().prPendingActions).toEqual([]);
   });
 
   it("loads checks for a newly selected PR while another PR's checks are still pending", async () => {
@@ -549,7 +550,7 @@ describe("pulls PR list refresh coalescing", () => {
 
   it("drops a cached detail whose state changed on a quiet refresh", async () => {
     usePulls.setState({
-      prDetails: { 7: { num: 7, state: "open", draft: false } as never },
+      prDetails: { 7: summaryToPr(prSummary(7)) },
       prsFetchedAt: 1,
     });
     invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
@@ -562,17 +563,29 @@ describe("pulls PR list refresh coalescing", () => {
     expect(usePulls.getState().pullRequests.map((p) => p.num)).toEqual([7]);
   });
 
-  it("keeps a cached detail whose summary is unchanged on a quiet refresh", async () => {
+  it("drops a cached detail when new commits change the diff size", async () => {
     usePulls.setState({
-      prDetails: { 7: { num: 7, state: "open", draft: false } as never },
+      prDetails: { 7: summaryToPr(prSummary(7, { additions: 1 })) },
       prsFetchedAt: 1,
     });
-    invokeMock.mockResolvedValueOnce([prSummary(7, { state: "OPEN", isDraft: false })]);
+    invokeMock.mockResolvedValueOnce([prSummary(7, { additions: 42 })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // Same open state, but additions changed (new commits) → evict so the
+    // Diff/Commits tabs refetch instead of showing stale files.
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
+  it("keeps a cached detail whose summary is unchanged on a quiet refresh", async () => {
+    const detail = summaryToPr(prSummary(7));
+    usePulls.setState({ prDetails: { 7: detail }, prsFetchedAt: 1 });
+    invokeMock.mockResolvedValueOnce([prSummary(7)]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // Unchanged → keep the cached detail so re-opening the PR stays instant.
-    expect(usePulls.getState().prDetails[7]).toEqual({ num: 7, state: "open", draft: false });
+    expect(usePulls.getState().prDetails[7]).toBe(detail);
   });
 
   it("swallows the cancellation when a fire-and-forget manual refresh is abandoned", async () => {

@@ -41,7 +41,7 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
 
 beforeEach(() => {
   useUi.setState({ confirm: null });
-  usePulls.setState({ prPendingAction: null });
+  usePulls.setState({ prPendingActions: [] });
   useRepo.setState({ checkoutBranch: vi.fn() });
 });
 
@@ -73,7 +73,7 @@ describe("PrHeaderActions merge", () => {
   });
 
   it("shows a busy merge label while a merge is pending", () => {
-    usePulls.setState({ prPendingAction: "merge" });
+    usePulls.setState({ prPendingActions: ["merge"] });
 
     render(<PrHeaderActions pr={openPr()} />);
 
@@ -82,16 +82,16 @@ describe("PrHeaderActions merge", () => {
     expect(merge).toHaveAttribute("aria-busy", "true");
   });
 
-  it("does not show the merge button as busy during a non-merge PR action", () => {
-    // A close/comment/etc. is in flight, not a merge — the merge control must
-    // stay idle (no "Merging…", not disabled).
-    usePulls.setState({ prPendingAction: "state" });
+  it("disables merge without the 'Merging…' label during a non-merge PR action", () => {
+    // A close/comment/etc. is in flight, not a merge: don't mislabel it as
+    // "Merging…", but keep merge disabled so no concurrent write can start.
+    usePulls.setState({ prPendingActions: ["state"] });
 
     render(<PrHeaderActions pr={openPr()} />);
 
     expect(screen.queryByRole("button", { name: /Merging/ })).not.toBeInTheDocument();
     const merge = screen.getByRole("button", { name: /Merge/ });
-    expect(merge).not.toBeDisabled();
+    expect(merge).toBeDisabled();
     expect(merge).toHaveAttribute("aria-busy", "false");
   });
 

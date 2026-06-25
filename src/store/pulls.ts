@@ -27,10 +27,9 @@ let nextPrChecksRequestId = 1;
 export type PrPendingAction = "merge" | "comment" | "review" | "state" | "create";
 
 interface QueuedPrListLoad {
+  /** force/quiet of the coalesced re-run (OR of force, AND of quiet across waiters). */
   force: boolean;
   quiet: boolean;
-  /** Repo + account identity the queued load targets, so waiters cancel on a switch. */
-  key: string;
   waiters: PrListQueueWaiter[];
 }
 
@@ -43,6 +42,13 @@ interface PrListQueueWaiter {
    * fire-and-forget reloads resolve quietly to avoid unhandled rejections.
    */
   force: boolean;
+  /**
+   * Repo + account identity this waiter requested. Tracked per-waiter (not per-
+   * queue) because coalescing keeps older waiters while the queue re-runs under
+   * whatever is current — a waiter whose key no longer matches must be canceled,
+   * not resolved against another account's data.
+   */
+  key: string;
 }
 
 interface PullsState {
@@ -93,11 +99,12 @@ interface PullsState {
   /** Per-PR signature-load error (silent; badges just stay absent on failure). */
   prCommitSigsError: Record<number, string>;
   /**
-   * Which PR write op is in flight (merge/comment/review/state/create), or null
-   * when idle. Discriminated rather than a single boolean so a control only shows
-   * its own busy state — e.g. the merge button isn't "Merging…" during a close.
+   * The PR write ops currently in flight (merge/comment/review/state/create), as
+   * a multiset so concurrent writes are tracked independently — one action's
+   * completion can't clear another's busy state. A control disables while any are
+   * pending; the merge button shows "Merging…" only when "merge" is among them.
    */
-  prPendingAction: PrPendingAction | null;
+  prPendingActions: PrPendingAction[];
 
   /** Clear the list + caches (on repo open / close / switch). */
   reset: () => void;
@@ -170,7 +177,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prThreadsError: {},
   prCommitSigsLoaded: {},
   prCommitSigsError: {},
-  prPendingAction: null,
+  prPendingActions: [],
 
   reset: () => {
     cancelQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
@@ -232,8 +239,7 @@ export const usePulls = create<PullsState>((set, get) => ({
               prsRefreshQueued: mergeQueuedPrListLoad(s.prsRefreshQueued, {
                 force,
                 quiet,
-                key,
-                waiters: [{ resolve, reject, force }],
+                waiters: [{ resolve, reject, force, key }],
               }),
             }));
           })
@@ -272,19 +278,14 @@ export const usePulls = create<PullsState>((set, get) => ({
       const queued = get().prsRefreshQueued;
       if (!queued) return;
       // Dequeue before awaiting, so reset() can no longer cancel this waiter.
-      // Guard identity ourselves instead: if the repo OR bound account changes
-      // while the queued load runs, cancel the waiters so callers (mergePr/
-      // setPrState) don't run follow-up detail loads against the wrong repo or
-      // under the wrong account. Compare the full key (path + account), not just
-      // the path, since the queued execution reads the current account fresh.
+      // Guard identity ourselves instead: settle each waiter against the current
+      // repo+account so callers (mergePr/setPrState) don't run follow-up detail
+      // loads against the wrong repo or under the wrong account. Per-waiter,
+      // since coalescing keeps older waiters across an account/repo change.
       set({ prsRefreshQueued: null });
       try {
         await get().loadPullRequests(queued.force, queued.quiet);
-        if (currentPrListRequestKey() === queued.key) {
-          resolveQueuedPrListLoad(queued);
-        } else {
-          cancelQueuedPrListLoad(queued, new Error("PR list refresh canceled."));
-        }
+        settleQueuedPrListLoad(queued, currentPrListRequestKey());
       } catch (e) {
         cancelQueuedPrListLoad(queued, e);
       }
@@ -378,6 +379,9 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!force && get().prChecks[num]) return;
     const account = useAccounts.getState().repoAccountRef;
     const path = summary.path;
+    // Pin the response to the repo+account it was fetched under, so an in-flight
+    // checks request can't pin stale checks after the bound account changes.
+    const key = prListRequestKey(path, account);
     const requestId = nextPrChecksRequestId++;
     set((s) => ({
       prChecksLoading: true,
@@ -387,7 +391,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     try {
       const checks = await api.pullRequestChecks(path, num, account);
       set((s) => {
-        if (!isCurrentPrChecksRequest(s, num, requestId, path)) return {};
+        if (!isCurrentPrChecksRequest(s, num, requestId, key)) return {};
         const loadingByNum = omit(s.prChecksLoadingByNum, num);
         return {
           prChecks: { ...s.prChecks, [num]: checks },
@@ -397,7 +401,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       });
     } catch (e) {
       set((s) => ({
-        ...(isCurrentPrChecksRequest(s, num, requestId, path)
+        ...(isCurrentPrChecksRequest(s, num, requestId, key)
           ? {
               prChecksLoadingByNum: omit(s.prChecksLoadingByNum, num),
               prChecksLoading: hasNumericKeys(omit(s.prChecksLoadingByNum, num)),
@@ -555,12 +559,23 @@ function hasNumericKeys(map: Record<number, unknown>): boolean {
   return Object.keys(map).length > 0;
 }
 
-// A cached detail is stale if its PR vanished from the refreshed list or its
-// state/draft changed (those drive the header's Open/Merge controls). `mergeable`
-// is intentionally ignored — list summaries don't carry it, so comparing it would
-// drop every detail on each refresh. Compared fields are both present on summaries.
+// A cached detail is stale if its PR vanished from the refreshed list or any
+// summary-level field changed: state/draft (header Open/Merge controls), title/
+// base/branch (header), or additions/deletions (new commits pushed — the Diff/
+// Commits tabs would otherwise stay stale). All of these are returned by both
+// `gh pr list` and `gh pr view`, so an unchanged PR never falsely invalidates.
+// `mergeable` is intentionally excluded — list summaries don't carry it (it maps
+// to ""), so comparing it would drop every cached detail on each refresh.
 function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolean {
-  return detail.state === summary.state && detail.draft === summary.draft;
+  return (
+    detail.state === summary.state &&
+    detail.draft === summary.draft &&
+    detail.title === summary.title &&
+    detail.base === summary.base &&
+    detail.branch === summary.branch &&
+    detail.add === summary.add &&
+    detail.del === summary.del
+  );
 }
 
 // On a non-force list refresh, keep only the cached details whose refreshed
@@ -599,13 +614,16 @@ function isCurrentPrListRequest(requestId: number, path: string): boolean {
   return state.prsRefreshRequestId === requestId && useRepo.getState().summary?.path === path;
 }
 
+// A checks response is still current only if its request id is the latest for the
+// PR AND the repo+account it was fetched under is still the bound one — otherwise
+// a response fetched under a previous account could pin stale checks in the cache.
 function isCurrentPrChecksRequest(
   state: PullsState,
   num: number,
   requestId: number,
-  path: string,
+  key: string,
 ): boolean {
-  return state.prChecksLoadingByNum[num] === requestId && useRepo.getState().summary?.path === path;
+  return state.prChecksLoadingByNum[num] === requestId && currentPrListRequestKey() === key;
 }
 
 function mergeQueuedPrListLoad(
@@ -616,13 +634,20 @@ function mergeQueuedPrListLoad(
   return {
     force: current.force || next.force,
     quiet: current.quiet && next.quiet,
-    key: next.key,
     waiters: [...current.waiters, ...next.waiters],
   };
 }
 
-function resolveQueuedPrListLoad(queued: QueuedPrListLoad | null): void {
-  queued?.waiters.forEach((waiter) => waiter.resolve());
+// Settle a queued load after its re-run completed: resolve each waiter whose
+// requested key still matches the current repo+account, and cancel the rest (the
+// load ran under a different identity than they asked for). Per-waiter because
+// coalescing keeps older waiters across an account/repo change.
+function settleQueuedPrListLoad(queued: QueuedPrListLoad | null, currentKey: string | null): void {
+  queued?.waiters.forEach((waiter) => {
+    if (waiter.key === currentKey) waiter.resolve();
+    else if (waiter.force) waiter.reject(new Error("PR list refresh canceled."));
+    else waiter.resolve();
+  });
 }
 
 // Cancel a queued load (repo switch/reset/inner error): reject the awaited force
@@ -645,14 +670,20 @@ async function runPrAction(
   const summary = useRepo.getState().summary;
   if (!summary) throw new Error("No repository");
   const account = useAccounts.getState().repoAccountRef;
-  if (!trackPending) return await body(summary.path, account);
+  if (!trackPending || !action) return await body(summary.path, account);
   // Write errors surface via the caller's toast, not `prError` (which is the
-  // list-load error and must not be cleared/clobbered by a write op). Record the
-  // specific action so each control reflects only its own in-flight state.
-  usePulls.setState({ prPendingAction: action ?? null });
+  // list-load error and must not be cleared/clobbered by a write op). Track the
+  // action in a multiset so concurrent writes are independent: one finishing
+  // removes only its own entry, never clearing another action's busy state.
+  usePulls.setState((s) => ({ prPendingActions: [...s.prPendingActions, action] }));
   try {
     return await body(summary.path, account);
   } finally {
-    usePulls.setState({ prPendingAction: null });
+    usePulls.setState((s) => {
+      const i = s.prPendingActions.indexOf(action);
+      return i === -1
+        ? {}
+        : { prPendingActions: [...s.prPendingActions.slice(0, i), ...s.prPendingActions.slice(i + 1)] };
+    });
   }
 }

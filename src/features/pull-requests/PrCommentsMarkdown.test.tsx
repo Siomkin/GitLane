@@ -53,7 +53,7 @@ beforeEach(() => {
     prThreads: {},
     prThreadsError: {},
     prsFetchedAt: 0,
-    prPendingAction: null,
+    prPendingActions: [],
     loadPrThreads: vi.fn().mockResolvedValue(undefined),
     resolveThread: defaultResolveThread,
     replyThread: defaultReplyThread,
@@ -140,7 +140,7 @@ describe("PR comment markdown", () => {
     const replyThread = vi.fn().mockResolvedValue("ok");
     usePulls.setState({
       replyThread,
-      prPendingAction: null,
+      prPendingActions: [],
       prThreads: {
         [pr.num]: [
           {
@@ -175,7 +175,7 @@ describe("PR comment markdown", () => {
     const replyThread = vi.fn().mockResolvedValue("ok");
     usePulls.setState({
       replyThread,
-      prPendingAction: null,
+      prPendingActions: [],
       prThreads: { [pr.num]: [thread("thread-key", "needs a reply")] },
     });
 
@@ -196,7 +196,7 @@ describe("PR comment markdown", () => {
     const resolveThread = vi.fn().mockReturnValue(slowResolve);
     usePulls.setState({
       resolveThread,
-      prPendingAction: null,
+      prPendingActions: [],
       prThreads: {
         [pr.num]: [
           thread("thread-a", "first"),
