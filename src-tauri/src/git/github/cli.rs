@@ -72,8 +72,8 @@ struct GhRepoView {
     url: String,
 }
 
-/// Run `gh <args...>` in `workdir`. When `token` is set it is exported as
-/// `GH_TOKEN`, pinning the call to a specific account. Returns stdout on
+/// Run `gh <args...>` in `workdir`. When `token` is set it is exported as the
+/// auth token, pinning the call to a specific account. Returns stdout on
 /// success or a readable error (including the gh-not-installed case).
 pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Result<String, String> {
     let mut cmd = Command::new("gh");
@@ -83,7 +83,14 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
     // the binary is found regardless of how the app was started.
     cmd.env("PATH", crate::shell::path());
     if let Some(t) = token {
+        // gh reads GH_TOKEN for github.com / *.ghe.com hosts and
+        // GH_ENTERPRISE_TOKEN for GitHub Enterprise Server hosts, consulting only
+        // the one that matches the operative host and ignoring the other. Export
+        // the bound-account token under both names so the call stays pinned to
+        // that account on every host; otherwise GHES requests silently fall back
+        // to gh's stored credentials and run as the wrong user.
         cmd.env("GH_TOKEN", t);
+        cmd.env("GH_ENTERPRISE_TOKEN", t);
     }
 
     let output = cmd.output().map_err(|e| {
