@@ -5,7 +5,7 @@
 // the terminal). See store/ui.ts (commit* state) and store/repo.ts
 // (commitSelected).
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { type FileChange } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { fullCommitMessage } from "../../lib/commitMessage";
@@ -23,7 +23,7 @@ const TREE_MIN_WIDTH = 300;
 const TREE_DEFAULT_WIDTH = 360;
 const TREE_MAX_WIDTH = 520;
 
-export function CommitModal() {
+export const CommitModal = () => {
   const open = useUi((s) => s.commitOpen);
   const close = useUi((s) => s.closeCommit);
   const view = useUi((s) => s.commitView);
@@ -223,17 +223,17 @@ export function CommitModal() {
       </div>
     </div>
   );
-}
+};
 
-function SegBtn({
+const SegBtn = ({
   active,
   onClick,
   children,
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
-}) {
+  children: ReactNode;
+}) => {
   return (
     <button
       onClick={onClick}
@@ -247,9 +247,9 @@ function SegBtn({
       {children}
     </button>
   );
-}
+};
 
-function Checkbox({ on, mixed = false }: { on: boolean; mixed?: boolean }) {
+const Checkbox = ({ on, mixed = false }: { on: boolean; mixed?: boolean }) => {
   return (
     <span
       className={cn(
@@ -263,9 +263,9 @@ function Checkbox({ on, mixed = false }: { on: boolean; mixed?: boolean }) {
       {mixed && <span className="h-[2px] w-2 rounded-full bg-white" />}
     </span>
   );
-}
+};
 
-function ListView({ staged }: { staged: FileChange[] }) {
+const ListView = ({ staged }: { staged: FileChange[] }) => {
   const excluded = useUi((s) => s.commitExcluded);
   const toggle = useUi((s) => s.toggleCommitFile);
   return (
@@ -295,9 +295,9 @@ function ListView({ staged }: { staged: FileChange[] }) {
       })}
     </div>
   );
-}
+};
 
-function TreeView({ staged, repoPath }: { staged: FileChange[]; repoPath: string | null }) {
+const TreeView = ({ staged, repoPath }: { staged: FileChange[]; repoPath: string | null }) => {
   const collapsed = useUi((s) => s.commitCollapsed);
   const excluded = useUi((s) => s.commitExcluded);
   const toggleCollapse = useUi((s) => s.toggleCommitCollapse);
@@ -400,4 +400,4 @@ function TreeView({ staged, repoPath }: { staged: FileChange[]; repoPath: string
       />
     </div>
   );
-}
+};
