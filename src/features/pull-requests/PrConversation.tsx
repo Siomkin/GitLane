@@ -56,7 +56,7 @@ function CommentCard({ comment }: { comment: PrComment }) {
 function Composer({ pr }: { pr: PullRequest }) {
   const commentPr = usePulls((s) => s.commentPr);
   const reviewPr = usePulls((s) => s.reviewPr);
-  const pending = usePulls((s) => s.prActionPending);
+  const pending = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [body, setBody] = useState("");

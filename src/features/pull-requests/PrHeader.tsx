@@ -3,14 +3,34 @@
 // summary first, full detail once loaded).
 import { cn } from "../../lib/cn";
 import type { PullRequest } from "../../lib/prs";
+import { usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { PrHeaderActions } from "./PrActions";
+import { checkProgressLabel, checkSummary, countChecks, type PrCheckTone } from "./prChecks";
 import { stateView } from "./prState";
 
-export function PrHeader({ pr }: { pr: PullRequest }) {
+const checkBadgeToneClass: Record<PrCheckTone, string> = {
+  pass: "text-emerald-600 dark:text-emerald-400",
+  fail: "text-rose-600 dark:text-rose-400",
+  pending: "text-amber-600 dark:text-amber-400",
+  skipped: "text-neutral-500 dark:text-neutral-400",
+  none: "text-neutral-400 dark:text-neutral-500",
+};
+
+export const PrHeader = ({ pr }: { pr: PullRequest }) => {
   const prTab = useUi((s) => s.prTab);
   const setPrTab = useUi((s) => s.setPrTab);
+  const checks = usePulls((s) => s.prChecks[pr.num]);
+  const checksLoading = usePulls((s) => !!s.prChecksLoadingByNum[pr.num]);
   const sv = stateView(pr);
+  const checkCounts = checks ? countChecks(checks) : null;
+  const checkSummaryView = checkCounts ? checkSummary(checkCounts) : null;
+  const checkBadge =
+    checkCounts != null
+      ? checkProgressLabel(checkCounts)
+      : prTab === "checks" && checksLoading
+        ? "..."
+        : undefined;
 
   return (
     <div className="flex-none px-6 pt-5">
@@ -48,7 +68,13 @@ export function PrHeader({ pr }: { pr: PullRequest }) {
           active={prTab === "diff"}
           onClick={() => setPrTab("diff")}
         />
-        <Tab label="Checks" active={prTab === "checks"} onClick={() => setPrTab("checks")} />
+        <Tab
+          label="Checks"
+          count={checkBadge}
+          countTone={checkSummaryView?.tone}
+          active={prTab === "checks"}
+          onClick={() => setPrTab("checks")}
+        />
         <Tab
           label="Commits"
           count={pr.commits.length}
@@ -58,19 +84,21 @@ export function PrHeader({ pr }: { pr: PullRequest }) {
       </div>
     </div>
   );
-}
+};
 
-function Tab({
+const Tab = ({
   label,
   count,
+  countTone,
   active,
   onClick,
 }: {
   label: string;
-  count?: number;
+  count?: number | string;
+  countTone?: PrCheckTone;
   active: boolean;
   onClick: () => void;
-}) {
+}) => {
   return (
     <button
       onClick={onClick}
@@ -82,7 +110,11 @@ function Tab({
       )}
     >
       {label}
-      {count !== undefined && <span className="text-[11px] text-neutral-400">{count}</span>}
+      {count !== undefined && (
+        <span className={cn("text-[11px] text-neutral-400", countTone && checkBadgeToneClass[countTone])}>
+          {count}
+        </span>
+      )}
     </button>
   );
-}
+};

@@ -348,13 +348,14 @@ pub struct ReviewThread {
     pub comments: Vec<PrComment>,
 }
 
-/// One status check on a PR (CI job or commit status), as a tri-state result.
+/// One status check on a PR (CI job or commit status), as a display result.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrCheck {
     pub name: String,
-    /// Tri-state: "pass" | "fail" | "pending". In-flight checks are reported as
-    /// "pending" rather than collapsed into "fail".
+    /// "pass" | "fail" | "pending" | "skipped". In-flight checks are reported
+    /// as "pending" rather than collapsed into "fail"; skipped/neutral checks
+    /// stay distinct so the frontend does not call them passed.
     pub state: String,
 }
 
@@ -405,6 +406,9 @@ pub struct PullRequestSummary {
     pub changed_files: u64,
     pub is_draft: bool,
     pub url: String,
+    /// gh mergeability verdict ("UNKNOWN" until GitHub computes it); lets the
+    /// frontend invalidate a cached detail when it flips to a definitive value.
+    pub mergeable: String,
 }
 
 /// Full pull-request detail for the center pane (body, files, checks).

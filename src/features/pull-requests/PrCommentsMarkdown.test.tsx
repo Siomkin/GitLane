@@ -32,6 +32,7 @@ const makePr = (over: Partial<PullRequest> = {}): PullRequest => ({
   age: "1h",
   add: 1,
   del: 1,
+  changedFiles: 0,
   files: [],
   comments: 1,
   body: "",
@@ -53,7 +54,7 @@ beforeEach(() => {
     prThreads: {},
     prThreadsError: {},
     prsFetchedAt: 0,
-    prActionPending: false,
+    prPendingActions: [],
     loadPrThreads: vi.fn().mockResolvedValue(undefined),
     resolveThread: defaultResolveThread,
     replyThread: defaultReplyThread,
@@ -140,7 +141,7 @@ describe("PR comment markdown", () => {
     const replyThread = vi.fn().mockResolvedValue("ok");
     usePulls.setState({
       replyThread,
-      prActionPending: false,
+      prPendingActions: [],
       prThreads: {
         [pr.num]: [
           {
@@ -175,7 +176,7 @@ describe("PR comment markdown", () => {
     const replyThread = vi.fn().mockResolvedValue("ok");
     usePulls.setState({
       replyThread,
-      prActionPending: false,
+      prPendingActions: [],
       prThreads: { [pr.num]: [thread("thread-key", "needs a reply")] },
     });
 
@@ -196,7 +197,7 @@ describe("PR comment markdown", () => {
     const resolveThread = vi.fn().mockReturnValue(slowResolve);
     usePulls.setState({
       resolveThread,
-      prActionPending: false,
+      prPendingActions: [],
       prThreads: {
         [pr.num]: [
           thread("thread-a", "first"),

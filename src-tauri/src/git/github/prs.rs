@@ -16,8 +16,10 @@ use crate::git::types::{
 // in `threads.rs`; the 250 cap matches GitHub's commit projection limit.
 const COMMIT_SIGNATURES_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){commits(first:250){nodes{commit{oid signature{isValid}}}}}}}";
 
+// `mergeable` rides the same GraphQL query (no extra round-trip); GitHub may
+// report "UNKNOWN" until it computes mergeability, which the frontend tolerates.
 const PR_LIST_FIELDS: &str =
-    "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url";
+    "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,mergeable";
 
 // `statusCheckRollup` is deliberately excluded — it's the slowest field (extra
 // API round-trips) and is fetched lazily via `pr_checks` only when needed.
@@ -60,6 +62,7 @@ pub fn list_prs(workdir: &str, token: Option<&str>) -> Result<Vec<PullRequestSum
             changed_files: p.changed_files,
             is_draft: p.is_draft,
             url: p.url,
+            mergeable: p.mergeable,
         })
         .collect())
 }

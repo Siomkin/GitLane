@@ -29,7 +29,7 @@ export interface PrAuthor {
 
 export interface PrCheck {
   name: string;
-  state: "pass" | "fail" | "pending";
+  state: "pass" | "fail" | "pending" | "skipped";
 }
 
 /** Raw gh state value. */
@@ -48,6 +48,8 @@ export interface PullRequestSummary {
   changedFiles: number;
   isDraft: boolean;
   url: string;
+  /** Mergeability verdict ("UNKNOWN" until GitHub computes it). */
+  mergeable: Mergeable;
 }
 
 export interface PrComment {

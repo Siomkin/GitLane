@@ -1,6 +1,6 @@
-// PR detail header action cluster (right side of the meta row): icon-only
-// GitHub + Checkout utility buttons, a divider, then the state actions —
-// Reopen / Ready, the Merge split-button, and Close (in a "⋯" overflow menu).
+// PR detail header action cluster (right side of the meta row): GitHub, then
+// the state actions — Reopen / Ready, the Merge split-button, and secondary
+// actions in a "..." overflow menu.
 // Write actions are gated by a confirm dialog and toast gh's result.
 
 import { useRef, useState } from "react";
@@ -27,9 +27,8 @@ const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] = [
 ];
 
 /** The full right-side action cluster for the PR detail header. */
-export function PrHeaderActions({ pr }: { pr: PullRequest }) {
+export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
   const showToast = useUi((s) => s.showToast);
-  const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const hasStateActions = pr.state !== "merged";
 
   return (
@@ -44,29 +43,18 @@ export function PrHeaderActions({ pr }: { pr: PullRequest }) {
       >
         <GitHubIcon className="h-4 w-4" />
       </button>
-      <button
-        title="Check out branch"
-        onClick={() => void checkoutBranch(pr.branch).catch((e) => showToast(String(e), "error"))}
-        className={utilBtn}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-          <path d="M12 3v12" />
-          <path d="m7 11 5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
-      </button>
       {hasStateActions && <span className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
       <LifecycleControls pr={pr} />
       {pr.state === "open" && !pr.draft && <MergeMenu pr={pr} />}
-      {pr.state === "open" && <CloseMenu pr={pr} />}
+      <MoreMenu pr={pr} />
     </div>
   );
-}
+};
 
-/** Reopen (closed) / Ready (draft) state buttons. Close lives in CloseMenu. */
-function LifecycleControls({ pr }: { pr: PullRequest }) {
+/** Reopen (closed) / Ready (draft) state buttons. Close lives in MoreMenu. */
+const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
-  const pending = usePulls((s) => s.prActionPending);
+  const pending = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
 
@@ -113,12 +101,15 @@ function LifecycleControls({ pr }: { pr: PullRequest }) {
     );
   }
   return null;
-}
+};
 
 /** Merge split-button (label + chevron) with the strategy/delete-branch dropdown. */
-function MergeMenu({ pr }: { pr: PullRequest }) {
+const MergeMenu = ({ pr }: { pr: PullRequest }) => {
   const mergePr = usePulls((s) => s.mergePr);
-  const pending = usePulls((s) => s.prActionPending);
+  // "Merging…" shows only while a merge is in flight, but the control disables
+  // while ANY PR write runs so the user can't start a concurrent merge.
+  const merging = usePulls((s) => s.prPendingActions.includes("merge"));
+  const busy = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);
@@ -165,16 +156,29 @@ function MergeMenu({ pr }: { pr: PullRequest }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        disabled={pending}
+        disabled={busy}
+        aria-busy={merging}
         className="flex h-9 items-center rounded-lg bg-emerald-600 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 dark:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
       >
         <span className="flex items-center gap-1.5 pl-3.5 pr-2.5">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-            <circle cx="6" cy="6" r="3" />
-            <circle cx="6" cy="18" r="3" />
-            <path d="M6 9v6M18 6a3 3 0 0 1-3 3H9" />
-          </svg>
-          Merge
+          {merging ? (
+            <>
+              <span
+                aria-hidden
+                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white"
+              />
+              Merging...
+            </>
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
+                <circle cx="6" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M6 9v6M18 6a3 3 0 0 1-3 3H9" />
+              </svg>
+              Merge
+            </>
+          )}
         </span>
         <span className="my-1.5 w-px self-stretch bg-white/30" />
         <span className="flex items-center px-2">
@@ -190,7 +194,7 @@ function MergeMenu({ pr }: { pr: PullRequest }) {
               <button
                 key={m.key}
                 onClick={() => doMerge(m.key)}
-                disabled={pending}
+                disabled={busy}
                 className="w-full rounded-lg px-2.5 py-2 text-left hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/5"
               >
                 <div className="text-[13px] font-medium text-neutral-800 dark:text-neutral-100">{m.label}</div>
@@ -225,18 +229,21 @@ function MergeMenu({ pr }: { pr: PullRequest }) {
       )}
     </div>
   );
-}
+};
 
-/** "⋯" overflow menu holding the (destructive) Close action. */
-function CloseMenu({ pr }: { pr: PullRequest }) {
+/** "..." overflow menu for secondary PR actions. */
+const MoreMenu = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
+  // Close is a PR write (setPrState); gate it on the same flag as the other
+  // controls so a concurrent write can't start while one is already in flight.
+  const busy = usePulls((s) => s.prPendingActions.length > 0);
+  const checkoutBranch = useRepo((s) => s.checkoutBranch);
+  const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), ref);
-
-  if (pr.state !== "open") return null; // Close only applies to an open PR.
 
   return (
     <div ref={ref} className="relative">
@@ -252,23 +259,41 @@ function CloseMenu({ pr }: { pr: PullRequest }) {
           <button
             onClick={() => {
               setOpen(false);
-              requestConfirm({
-                title: `Close pull request #${pr.num}?`,
-                message: "You can reopen it later.",
-                confirmLabel: "Close pull request",
-                danger: true,
-                onConfirm: () => void run(() => setPrState(pr.num, "close"), `Closed #${pr.num}`),
-              });
+              void checkoutBranch(pr.branch).catch((e) => showToast(String(e), "error"));
             }}
-            className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400"
+            className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-neutral-700 transition-colors hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-              <path d="M18 6 6 18M6 6l12 12" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="M12 3v12" />
+              <path d="m7 11 5 5 5-5" />
+              <path d="M5 21h14" />
             </svg>
-            Close pull request
+            Checkout branch
           </button>
+          {pr.state === "open" && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
+          {pr.state === "open" && (
+            <button
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                requestConfirm({
+                  title: `Close pull request #${pr.num}?`,
+                  message: "You can reopen it later.",
+                  confirmLabel: "Close pull request",
+                  danger: true,
+                  onConfirm: () => void run(() => setPrState(pr.num, "close"), `Closed #${pr.num}`),
+                });
+              }}
+              className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-45 disabled:hover:bg-transparent dark:text-rose-400"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+              Close pull request
+            </button>
+          )}
         </div>
       )}
     </div>
   );
-}
+};

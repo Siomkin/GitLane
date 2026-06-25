@@ -1,22 +1,30 @@
-// PR Checks tab: lazily fetches CI check runs for the PR and renders a
-// pass/fail summary plus a row per check. Refetches after a manual refresh
-// (prsFetchedAt bumps, caches cleared).
-import { useEffect } from "react";
+// PR Checks tab: renders the selected PR's CI checks once the parent detail
+// container has loaded them, plus an inline retry on checks-load failure.
 import type { PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
+import { CHECK_STATUS_LABEL, checkSummary, countChecks, type PrCheckTone } from "./prChecks";
 
-export function PrChecksTab({ pr }: { pr: PullRequest }) {
+const summaryToneClass: Record<PrCheckTone, string> = {
+  pass: "text-emerald-600 dark:text-emerald-400",
+  fail: "text-rose-600 dark:text-rose-400",
+  pending: "text-amber-600 dark:text-amber-400",
+  skipped: "text-neutral-500 dark:text-neutral-400",
+  none: "text-neutral-500 dark:text-neutral-400",
+};
+
+const rowIconClass: Record<PrCheckTone, string> = {
+  pass: "text-emerald-500",
+  fail: "text-rose-500",
+  pending: "text-amber-500",
+  skipped: "text-neutral-400",
+  none: "text-neutral-400",
+};
+
+export const PrChecksTab = ({ pr }: { pr: PullRequest }) => {
   const checks = usePulls((s) => s.prChecks[pr.num]);
   const checksError = usePulls((s) => s.prChecksError[pr.num]);
   const loadPrChecks = usePulls((s) => s.loadPrChecks);
-  const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
-
-  // Lazily fetch checks when the tab is first shown for this PR; refetch after
-  // a manual refresh (caches cleared, prsFetchedAt bumps).
-  useEffect(() => {
-    void loadPrChecks(pr.num);
-  }, [pr.num, prsFetchedAt, loadPrChecks]);
 
   if (checks === undefined) {
     return checksError ? (
@@ -31,62 +39,68 @@ export function PrChecksTab({ pr }: { pr: PullRequest }) {
     );
   }
 
-  const failed = checks.filter((c) => c.state === "fail").length;
-  const pending = checks.filter((c) => c.state === "pending").length;
+  const summary = checkSummary(countChecks(checks));
 
   return (
     <div className="space-y-3">
-      {failed > 0 ? (
-        <div className="flex items-center gap-2 text-[13px] font-medium text-rose-600 dark:text-rose-400">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 8v4M12 16h.01" />
-          </svg>
-          {failed} {failed === 1 ? "check" : "checks"} failing
-        </div>
-      ) : pending > 0 ? (
-        <div className="flex items-center gap-2 text-[13px] font-medium text-amber-600 dark:text-amber-400">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7v5l3 2" />
-          </svg>
-          {pending} {pending === 1 ? "check" : "checks"} running
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-[13px] font-medium text-emerald-600 dark:text-emerald-400">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-            <circle cx="12" cy="12" r="9" />
-            <path d="m8.5 12 2.5 2.5 4.5-5" />
-          </svg>
-          All checks have passed
-        </div>
-      )}
+      <div className={`flex items-center gap-2 text-[13px] font-medium ${summaryToneClass[summary.tone]}`}>
+        <CheckIcon tone={summary.tone} />
+        {summary.label}
+      </div>
       <div className="divide-y divide-black/5 overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:divide-white/5 dark:border-white/10 dark:bg-neutral-800">
         {checks.map((check) => (
           <div key={check.name} className="flex h-11 items-center gap-2.5 px-3.5">
-            {check.state === "pass" ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4 text-emerald-500">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-            ) : check.state === "fail" ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4 text-rose-500">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4 text-amber-500">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 7v5l3 2" />
-              </svg>
-            )}
+            <CheckIcon
+              tone={check.state}
+              className={`h-4 w-4 ${rowIconClass[check.state]}`}
+              strokeWidth="2.2"
+            />
             <span className="flex-1 truncate text-[13px] text-neutral-700 dark:text-neutral-200">
               {check.name}
             </span>
             <span className="text-[12px] text-neutral-400">
-              {check.state === "pass" ? "passed" : check.state === "fail" ? "failed" : "pending"}
+              {CHECK_STATUS_LABEL[check.state]}
             </span>
           </div>
         ))}
       </div>
     </div>
   );
-}
+};
+
+const CheckIcon = ({
+  tone,
+  className,
+  strokeWidth = "2",
+}: {
+  tone: PrCheckTone;
+  className?: string;
+  strokeWidth?: string;
+}) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    className={className ?? "h-4 w-4"}
+  >
+    {tone === "pass" ? (
+      <path d="M20 6 9 17l-5-5" />
+    ) : tone === "fail" ? (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v4M12 16h.01" />
+      </>
+    ) : tone === "pending" ? (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ) : (
+      <>
+        <circle cx="12" cy="12" r="9" strokeDasharray="3 3" />
+        <path d="M9 12h6" />
+      </>
+    )}
+  </svg>
+);

@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
+import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { PrHeaderActions } from "./PrActions";
 
@@ -22,6 +23,7 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
     age: "2h",
     add: 10,
     del: 2,
+    changedFiles: 0,
     files: [],
     comments: 0,
     body: "",
@@ -40,7 +42,8 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
 
 beforeEach(() => {
   useUi.setState({ confirm: null });
-  usePulls.setState({ prActionPending: false });
+  usePulls.setState({ prPendingActions: [] });
+  useRepo.setState({ checkoutBranch: vi.fn() });
 });
 
 describe("PrHeaderActions merge", () => {
@@ -68,5 +71,52 @@ describe("PrHeaderActions merge", () => {
     render(<PrHeaderActions pr={openPr({ mergeable: "CONFLICTING" })} />);
     expect(screen.queryByText("Merge")).not.toBeInTheDocument();
     expect(screen.getByText("Conflicts")).toBeInTheDocument();
+  });
+
+  it("shows a busy merge label while a merge is pending", () => {
+    usePulls.setState({ prPendingActions: ["merge"] });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    const merge = screen.getByRole("button", { name: /Merging/ });
+    expect(merge).toBeDisabled();
+    expect(merge).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("disables merge without the 'Merging…' label during a non-merge PR action", () => {
+    // A close/comment/etc. is in flight, not a merge: don't mislabel it as
+    // "Merging…", but keep merge disabled so no concurrent write can start.
+    usePulls.setState({ prPendingActions: ["state"] });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    expect(screen.queryByRole("button", { name: /Merging/ })).not.toBeInTheDocument();
+    const merge = screen.getByRole("button", { name: /Merge/ });
+    expect(merge).toBeDisabled();
+    expect(merge).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("keeps checkout in the overflow menu instead of the primary action row", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue("checked out");
+    useRepo.setState({ checkoutBranch });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    expect(screen.queryByText("Checkout branch")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("More actions"));
+    await userEvent.click(screen.getByText("Checkout branch"));
+
+    expect(checkoutBranch).toHaveBeenCalledWith("feat/thing");
+  });
+
+  it("disables the overflow Close action while another PR write is pending", async () => {
+    usePulls.setState({ prPendingActions: ["comment"] });
+
+    render(<PrHeaderActions pr={openPr()} />);
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    // Close is a setPrState write — it must not start concurrently with the
+    // in-flight comment.
+    expect(screen.getByText("Close pull request").closest("button")).toBeDisabled();
   });
 });

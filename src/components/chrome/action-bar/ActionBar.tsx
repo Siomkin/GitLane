@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
+import { ForgeKind } from "../../../lib/api";
 import { useDismiss } from "../../../hooks/useDismiss";
 import { focusRing } from "../../../lib/ui";
 import type { LeftTab } from "../../../lib/ui";
@@ -28,6 +29,8 @@ import type { ProviderState } from "./provider";
 /** Network ops that surface a per-button spinner driven by their command promise. */
 type NetOp = "fetch" | "pull" | "push";
 
+const PR_BADGE_REFRESH_MS = 60_000;
+
 export const ActionBar = ({
   activeTab,
   onTabChange,
@@ -44,6 +47,7 @@ export const ActionBar = ({
   const stash = useRepo((state) => state.stash);
   const changes = useRepo((state) => state.changes);
   const pullRequests = usePulls((state) => state.pullRequests);
+  const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreateBranch = useUi((state) => state.setCreateBranchOpen);
   const toggleTerminal = useUi((state) => state.toggleTerminal);
   const terminalVisible = useUi((state) => state.terminalView !== "hidden");
@@ -98,6 +102,19 @@ export const ActionBar = ({
   const providerState: ProviderState | null = forge
     ? deriveProviderState(forge, { accounts, accountsError, accountsLoading, repoAccountRef })
     : null;
+
+  // The PR badge is always visible in the toolbar, so keep its count warm even
+  // before the PR panel opens. Foreground loads still happen in LeftPanel for a
+  // visible spinner; these quiet loads just keep the badge current.
+  useEffect(() => {
+    if (!summary || forge?.kind !== ForgeKind.GitHub) return;
+    void loadPullRequests(false, true);
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void loadPullRequests(false, true);
+    }, PR_BADGE_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [forge?.kind, loadPullRequests, summary?.path, repoAccountRef?.accountId]);
 
   // ⌘ + Option + F opens the navigator and focuses its filter (the input
   // autofocuses on mount). `code === "KeyF"` since Option+F yields "ƒ" on macOS.

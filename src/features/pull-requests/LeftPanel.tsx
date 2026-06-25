@@ -1,6 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "../../lib/cn";
-import { PR_META, relativeSince, selectVisiblePrs, type PrState } from "../../lib/prs";
+import { relativeSince, selectVisiblePrs } from "../../lib/prs";
 import { ForgeKind } from "../../lib/api";
 import { usePulls } from "../../store/pulls";
 import { useRepo } from "../../store/repo";
@@ -8,19 +8,7 @@ import { useUi } from "../../store/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
 import { PlusIcon } from "@/components/ui/icons";
-
-// Per-state styling. Open reads as accent/green, merged as purple, closed as
-// rose — restyling the old `PR_META.color` hexes to the class-based palette.
-const STATE_DOT: Record<PrState, string> = {
-  open: "bg-emerald-500 dark:bg-emerald-400",
-  merged: "bg-purple-500 dark:bg-purple-400",
-  closed: "bg-rose-500 dark:bg-rose-400",
-};
-const STATE_TEXT: Record<PrState, string> = {
-  open: "text-emerald-500 dark:text-emerald-400",
-  merged: "text-purple-500 dark:text-purple-400",
-  closed: "text-rose-500 dark:text-rose-400",
-};
+import { stateView } from "./prState";
 
 // Docked sidebar for PR mode. The branch navigator that used to share this panel
 // now floats from the "Checked out" trigger (see BranchNavigator), so in history
@@ -54,12 +42,20 @@ function PullRequestsPanel() {
   const prsUnsupported = useRepo(
     (state) => state.forge != null && state.forge.kind !== ForgeKind.GitHub,
   );
+  const [now, setNow] = useState(() => Date.now());
 
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
   useEffect(() => {
     void loadPullRequests();
   }, [loadPullRequests]);
+
+  useEffect(() => {
+    if (!prsFetchedAt) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [prsFetchedAt]);
 
   const visible = selectVisiblePrs(pullRequests, prFilter);
 
@@ -87,7 +83,7 @@ function PullRequestsPanel() {
             {prsLoading
               ? "Updating…"
               : prsFetchedAt
-                ? `Updated ${relativeSince(prsFetchedAt)} ago`
+                ? `Updated ${relativeSince(prsFetchedAt, now)} ago`
                 : "Not loaded"}
           </span>
           <div className="flex items-center gap-2">
@@ -167,7 +163,7 @@ function PullRequestsPanel() {
         {!prError &&
           !prsLoading &&
           visible.map((pr) => {
-            const meta = PR_META[pr.state];
+            const sv = stateView(pr);
             const selected = pr.num === prSelected;
             return (
               <div
@@ -182,9 +178,9 @@ function PullRequestsPanel() {
               >
                 <div className="flex items-center gap-2 text-[11px]">
                   <span className="font-mono text-neutral-400">#{pr.num}</span>
-                  <span className={cn("flex items-center gap-1 font-medium", STATE_TEXT[pr.state])}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full", STATE_DOT[pr.state])} />
-                    {meta.label}
+                  <span className={cn("flex items-center gap-1 font-medium", sv.text)}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", sv.dot)} />
+                    {sv.label}
                   </span>
                   <span className="ml-auto text-neutral-400">{pr.age}</span>
                 </div>

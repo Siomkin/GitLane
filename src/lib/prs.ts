@@ -92,6 +92,8 @@ export interface PullRequest {
   age: string;
   add: number;
   del: number;
+  /** Changed-file count (from both list + detail); `files` is the path list (detail only). */
+  changedFiles: number;
   files: string[];
   comments: number;
   /** Raw markdown body (empty for list summaries; filled by the detail fetch). */
@@ -126,7 +128,10 @@ export function initials(name: string, login: string): string {
 export function relativeAge(iso: string): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "";
-  const s = Math.max(0, (Date.now() - then) / 1000);
+  return formatRelativeSeconds(Math.max(0, (Date.now() - then) / 1000));
+}
+
+function formatRelativeSeconds(s: number): string {
   if (s < 60) return `${Math.floor(s)}s`;
   const m = s / 60;
   if (m < 60) return `${Math.floor(m)}m`;
@@ -259,12 +264,13 @@ export function summaryToPr(s: PullRequestSummary): PullRequest {
     age: relativeAge(s.createdAt),
     add: s.additions,
     del: s.deletions,
+    changedFiles: s.changedFiles,
     files: [],
     comments: 0,
     body: "",
     url: s.url,
     commentList: [],
-    mergeable: "",
+    mergeable: s.mergeable,
     reviewers: [],
     assignees: [],
     labels: [],
@@ -307,6 +313,6 @@ export function selectVisiblePrs(prs: PullRequest[], filter: PrFilter): PullRequ
 }
 
 /** Compact "x ago" age from an epoch-ms timestamp (for last-fetched labels). */
-export function relativeSince(ms: number): string {
-  return relativeAge(new Date(ms).toISOString());
+export function relativeSince(ms: number, now = Date.now()): string {
+  return formatRelativeSeconds(Math.max(0, (now - ms) / 1000));
 }
