@@ -406,6 +406,9 @@ pub struct PullRequestSummary {
     pub changed_files: u64,
     pub is_draft: bool,
     pub url: String,
+    /// gh mergeability verdict ("UNKNOWN" until GitHub computes it); lets the
+    /// frontend invalidate a cached detail when it flips to a definitive value.
+    pub mergeable: String,
 }
 
 /// Full pull-request detail for the center pane (body, files, checks).

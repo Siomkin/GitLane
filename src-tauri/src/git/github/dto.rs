@@ -52,6 +52,8 @@ pub(super) struct GhPrSummary {
     pub(super) changed_files: u64,
     pub(super) is_draft: bool,
     pub(super) url: String,
+    #[serde(default)]
+    pub(super) mergeable: String,
 }
 
 #[derive(Deserialize)]

@@ -65,6 +65,7 @@ const prSummary = (number: number, over: Partial<PullRequestSummary> = {}): Pull
   changedFiles: 1,
   isDraft: false,
   url: `https://github.com/o/r/pull/${number}`,
+  mergeable: "UNKNOWN",
   ...over,
 });
 
@@ -480,6 +481,29 @@ describe("pulls PR list refresh coalescing", () => {
     expect(s.prsRefreshInFlight).toBe(false);
   });
 
+  it("drops a list response fetched under a previous account", async () => {
+    const aFetch = deferred<PullRequestSummary[]>();
+    const bFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(aFetch.promise).mockReturnValueOnce(bFetch.promise);
+
+    const aLoad = usePulls.getState().loadPullRequests(false, true); // account A (null)
+    useAccounts.setState({ repoAccountRef: account("77") }); // rebind → key differs
+    const bLoad = usePulls.getState().loadPullRequests(); // non-force, queued under B
+
+    // Account-A response resolves first: it must NOT populate the list now bound
+    // to account B; the slot is released so the queued B load can run.
+    aFetch.resolve([prSummary(1)]);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(usePulls.getState().pullRequests).toEqual([]);
+
+    // The queued B load then populates the bound account's list.
+    bFetch.resolve([prSummary(2)]);
+    await bLoad;
+    await aLoad;
+    expect(usePulls.getState().pullRequests.map((p) => p.num)).toEqual([2]);
+  });
+
   it("does not let a quiet retry mask a foreground failure's error", async () => {
     usePulls.setState({ pullRequests: [{ num: 7 } as never], prsFetchedAt: 123 });
 
@@ -626,6 +650,47 @@ describe("pulls PR list refresh coalescing", () => {
     await usePulls.getState().loadPullRequests(false, true);
 
     expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
+  it("drops a cached detail when mergeability flips to a definitive verdict", async () => {
+    usePulls.setState({
+      prDetails: { 7: summaryToPr(prSummary(7, { mergeable: "MERGEABLE" })) },
+      prsFetchedAt: 1,
+    });
+    invokeMock.mockResolvedValueOnce([prSummary(7, { mergeable: "CONFLICTING" })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // Base advanced into a conflict → invalidate so MergeMenu stops offering Merge.
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
+  it("ignores an UNKNOWN mergeable verdict when pruning", async () => {
+    const detail = summaryToPr(prSummary(7, { mergeable: "MERGEABLE" }));
+    usePulls.setState({ prDetails: { 7: detail }, prsFetchedAt: 1 });
+    invokeMock.mockResolvedValueOnce([prSummary(7, { mergeable: "UNKNOWN" })]);
+
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // UNKNOWN is indefinite (GitHub hasn't computed it) → don't churn the cache.
+    expect(usePulls.getState().prDetails[7]).toBe(detail);
+  });
+
+  it("discards an in-flight diff load when a refresh prunes the PR", async () => {
+    const diff = deferred<never[]>();
+    invokeMock.mockReturnValueOnce(diff.promise);
+    usePulls.setState({ prDetails: { 7: summaryToPr(prSummary(7)) }, prsFetchedAt: 1 });
+
+    const load = usePulls.getState().loadPrDiff(7); // captures version 0
+
+    // A quiet refresh sees #7's state change and prunes it (bumps the version).
+    invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
+    await usePulls.getState().loadPullRequests(false, true);
+
+    // The pre-prune diff resolves afterward → its write must be discarded.
+    diff.resolve([]);
+    await load;
+    expect(usePulls.getState().prDiffs[7]).toBeUndefined();
   });
 
   it("evicts the diff/checks/threads caches when a summary changes", async () => {

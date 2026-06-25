@@ -270,7 +270,7 @@ export function summaryToPr(s: PullRequestSummary): PullRequest {
     body: "",
     url: s.url,
     commentList: [],
-    mergeable: "",
+    mergeable: s.mergeable,
     reviewers: [],
     assignees: [],
     labels: [],

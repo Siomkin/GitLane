@@ -99,6 +99,13 @@ interface PullsState {
   /** Per-PR signature-load error (silent; badges just stay absent on failure). */
   prCommitSigsError: Record<number, string>;
   /**
+   * Per-PR cache generation, bumped when a refresh prunes a PR's stale caches.
+   * In-flight detail/diff/threads/signature loads capture it and discard their
+   * write if it changed, so a load started before the prune can't repopulate the
+   * just-evicted cache with a pre-refresh response.
+   */
+  prResourceVersion: Record<number, number>;
+  /**
    * The PR write ops currently in flight (merge/comment/review/state/create), as
    * a multiset so concurrent writes are tracked independently — one action's
    * completion can't clear another's busy state. A control disables while any are
@@ -177,6 +184,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prThreadsError: {},
   prCommitSigsLoaded: {},
   prCommitSigsError: {},
+  prResourceVersion: {},
   prPendingActions: [],
 
   reset: () => {
@@ -193,6 +201,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       prThreadsError: {},
       prCommitSigsLoaded: {},
       prCommitSigsError: {},
+      prResourceVersion: {},
       prsFetchedAt: null,
       prsRefreshInFlight: false,
       prsRefreshRequestId: null,
@@ -290,38 +299,46 @@ export const usePulls = create<PullsState>((set, get) => ({
         cancelQueuedPrListLoad(queued, e);
       }
     };
-    try {
-      const list = await api.listPullRequests(path, account);
-      // Bail if the repo switched while this load was in flight, so a slow fetch
-      // can't clobber the new repo's PR state.
-      if (!isCurrentPrListRequest(requestId, path)) {
-        return;
-      }
-      const prs = list.map(summaryToPr);
-      set((s) => ({
-        pullRequests: prs,
-        // Force already cleared the caches above; on a quiet/background refresh,
-        // evict the per-PR caches for any PR whose summary changed so no tab
-        // (detail/diff/checks) keeps showing stale data.
-        ...(force ? {} : pruneStalePrCaches(s, prs)),
+    // Release the in-flight slot without writing data — used when the response
+    // is for a now-stale repo/account, so the queued reload can still run.
+    const releaseSlot = () =>
+      set({
         prsLoading: false,
         prsRefreshInFlight: false,
         prsRefreshRequestId: null,
         prsRefreshKey: null,
-        prsFetchedAt: Date.now(),
-      }));
-      await runQueued();
-    } catch (e) {
-      if (!isCurrentPrListRequest(requestId, path)) {
-        return;
-      }
-      if (quiet && get().prsFetchedAt != null) {
-        set({
+      });
+    try {
+      const list = await api.listPullRequests(path, account);
+      // Superseded after a reset (repo switch) — a newer load owns the slot.
+      if (!prListLoadOwnsSlot(requestId)) return;
+      // Fetched under a now-stale repo/account (an account change queued a reload
+      // under a new key): don't write account-A data as the bound account's list;
+      // release the slot so the queued reload runs.
+      if (currentPrListRequestKey() !== key) {
+        releaseSlot();
+      } else {
+        const prs = list.map(summaryToPr);
+        set((s) => ({
+          pullRequests: prs,
+          // Force already cleared the caches above; on a quiet/background refresh,
+          // evict the per-PR caches for any PR whose summary changed so no tab
+          // (detail/diff/checks) keeps showing stale data.
+          ...(force ? {} : pruneStalePrCaches(s, prs)),
           prsLoading: false,
           prsRefreshInFlight: false,
           prsRefreshRequestId: null,
           prsRefreshKey: null,
-        });
+          prsFetchedAt: Date.now(),
+        }));
+      }
+      await runQueued();
+    } catch (e) {
+      if (!prListLoadOwnsSlot(requestId)) return;
+      if (currentPrListRequestKey() !== key) {
+        releaseSlot();
+      } else if (quiet && get().prsFetchedAt != null) {
+        releaseSlot();
       } else {
         set({
           pullRequests: [],
@@ -358,21 +375,29 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prDetails[num]) return;
     const account = useAccounts.getState().repoAccountRef;
+    const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prDetailLoading: true, prDetailError: omit(s.prDetailError, num) }));
     try {
       const detail = await api.pullRequestDetail(summary.path, num, account);
-      set((s) => ({
-        prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
-        prDetailLoading: false,
-        // Fresh commits (verified: false) — drop the applied marker so the lazy
-        // signature fetch re-runs for this PR.
-        prCommitSigsLoaded: omit(s.prCommitSigsLoaded, num),
-      }));
+      set((s) => {
+        // A refresh pruned this PR mid-flight → discard the pre-refresh response.
+        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDetailLoading: false };
+        return {
+          prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
+          prDetailLoading: false,
+          // Fresh commits (verified: false) — drop the applied marker so the lazy
+          // signature fetch re-runs for this PR.
+          prCommitSigsLoaded: omit(s.prCommitSigsLoaded, num),
+        };
+      });
     } catch (e) {
-      set((s) => ({
-        prDetailLoading: false,
-        prDetailError: { ...s.prDetailError, [num]: String(e) },
-      }));
+      set((s) => {
+        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDetailLoading: false };
+        return {
+          prDetailLoading: false,
+          prDetailError: { ...s.prDetailError, [num]: String(e) },
+        };
+      });
     }
   },
 
@@ -428,12 +453,14 @@ export const usePulls = create<PullsState>((set, get) => ({
     const detail = get().prDetails[num];
     if (!detail || detail.commits.length === 0) return;
     const account = useAccounts.getState().repoAccountRef;
+    const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prCommitSigsError: omit(s.prCommitSigsError, num) }));
     try {
       const sigs = await api.pullRequestCommitSignatures(summary.path, num, account);
       set((s) => {
         const d = s.prDetails[num];
-        if (!d) return {};
+        // Skip if pruned mid-flight or the detail was evicted under us.
+        if (!d || (s.prResourceVersion[num] ?? 0) !== version) return {};
         return {
           prDetails: {
             ...s.prDetails,
@@ -453,15 +480,23 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prDiffs[num]) return;
     const account = useAccounts.getState().repoAccountRef;
+    const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prDiffLoading: true, prDiffError: omit(s.prDiffError, num) }));
     try {
       const diffs = await api.pullRequestDiff(summary.path, num, account);
-      set((s) => ({ prDiffs: { ...s.prDiffs, [num]: diffs }, prDiffLoading: false }));
+      set((s) => {
+        // A refresh pruned this PR mid-flight → discard the pre-refresh diff.
+        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDiffLoading: false };
+        return { prDiffs: { ...s.prDiffs, [num]: diffs }, prDiffLoading: false };
+      });
     } catch (e) {
-      set((s) => ({
-        prDiffLoading: false,
-        prDiffError: { ...s.prDiffError, [num]: String(e) },
-      }));
+      set((s) => {
+        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDiffLoading: false };
+        return {
+          prDiffLoading: false,
+          prDiffError: { ...s.prDiffError, [num]: String(e) },
+        };
+      });
     }
   },
 
@@ -471,15 +506,23 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prThreads[num]) return;
     const account = useAccounts.getState().repoAccountRef;
+    const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prThreadsLoading: true, prThreadsError: omit(s.prThreadsError, num) }));
     try {
       const threads = await api.pullRequestReviewThreads(summary.path, num, account);
-      set((s) => ({ prThreads: { ...s.prThreads, [num]: threads }, prThreadsLoading: false }));
+      set((s) => {
+        // A refresh pruned this PR mid-flight → discard the pre-refresh threads.
+        if ((s.prResourceVersion[num] ?? 0) !== version) return { prThreadsLoading: false };
+        return { prThreads: { ...s.prThreads, [num]: threads }, prThreadsLoading: false };
+      });
     } catch (e) {
-      set((s) => ({
-        prThreadsLoading: false,
-        prThreadsError: { ...s.prThreadsError, [num]: String(e) },
-      }));
+      set((s) => {
+        if ((s.prResourceVersion[num] ?? 0) !== version) return { prThreadsLoading: false };
+        return {
+          prThreadsLoading: false,
+          prThreadsError: { ...s.prThreadsError, [num]: String(e) },
+        };
+      });
     }
   },
 
@@ -576,12 +619,18 @@ function omitMany<V>(map: Record<number, V>, keys: number[]): Record<number, V> 
 
 // A cached detail is stale if its PR vanished from the refreshed list or any
 // summary-level field changed: state/draft (header Open/Merge controls), title/
-// base/branch (header), or additions/deletions/changedFiles (new commits pushed
-// — the Diff/Commits tabs would otherwise stay stale, even if net +/- is equal
-// but files moved). All of these are returned by both `gh pr list` and `gh pr
-// view`, so an unchanged PR never falsely invalidates. `mergeable` is excluded —
-// list summaries don't carry it (maps to ""), so it would drop every detail.
+// base/branch (header), additions/deletions/changedFiles (new commits pushed —
+// the Diff/Commits tabs would otherwise stay stale, even if net +/- is equal but
+// files moved), or a definitive mergeable verdict (a base advance flipping
+// Merge↔Conflicts). All are returned by both `gh pr list` and `gh pr view`, so an
+// unchanged PR never falsely invalidates.
 function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolean {
+  // Mergeability is compared only when the list reports a definitive verdict —
+  // `gh pr list` returns "UNKNOWN" (or "") until GitHub computes it, so an
+  // indefinite value is ignored to avoid dropping the cached detail every refresh.
+  const mergeableChanged =
+    (summary.mergeable === "MERGEABLE" || summary.mergeable === "CONFLICTING") &&
+    summary.mergeable !== detail.mergeable;
   return (
     detail.state === summary.state &&
     detail.draft === summary.draft &&
@@ -590,7 +639,8 @@ function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolea
     detail.branch === summary.branch &&
     detail.add === summary.add &&
     detail.del === summary.del &&
-    detail.changedFiles === summary.changedFiles
+    detail.changedFiles === summary.changedFiles &&
+    !mergeableChanged
   );
 }
 
@@ -622,6 +672,8 @@ function pruneStalePrCaches(s: PullsState, summaries: PullRequest[]): Partial<Pu
     if (detail && !detailMatchesSummary(detail, summary)) stale.push(num);
   }
   if (stale.length === 0) return {};
+  const bumpedVersion = { ...s.prResourceVersion };
+  for (const num of stale) bumpedVersion[num] = (bumpedVersion[num] ?? 0) + 1;
   return {
     prDetails: omitMany(s.prDetails, stale),
     prDiffs: omitMany(s.prDiffs, stale),
@@ -632,6 +684,12 @@ function pruneStalePrCaches(s: PullsState, summaries: PullRequest[]): Partial<Pu
     prDiffError: omitMany(s.prDiffError, stale),
     prChecksError: omitMany(s.prChecksError, stale),
     prThreadsError: omitMany(s.prThreadsError, stale),
+    // Bump the cache generation so any in-flight detail/diff/threads/signature
+    // load discards its write; clear in-flight checks tokens so those requests
+    // drop (token mismatch) and the checks reload can start fresh.
+    prResourceVersion: bumpedVersion,
+    prChecksLoadingByNum: omitMany(s.prChecksLoadingByNum, stale),
+    prChecksLoading: hasNumericKeys(omitMany(s.prChecksLoadingByNum, stale)),
   };
 }
 
@@ -649,9 +707,12 @@ function currentPrListRequestKey(): string | null {
   return prListRequestKey(summary.path, useAccounts.getState().repoAccountRef);
 }
 
-function isCurrentPrListRequest(requestId: number, path: string): boolean {
-  const state = usePulls.getState();
-  return state.prsRefreshRequestId === requestId && useRepo.getState().summary?.path === path;
+// Whether this load still owns the in-flight slot. False only after reset()
+// cleared it (repo switch) and a newer load took over — in which case this load
+// must not touch the shared flags. An account change does NOT reset the slot (it
+// queues a reload), so ownership persists and the key check below handles it.
+function prListLoadOwnsSlot(requestId: number): boolean {
+  return usePulls.getState().prsRefreshRequestId === requestId;
 }
 
 function mergeQueuedPrListLoad(

@@ -48,6 +48,8 @@ export interface PullRequestSummary {
   changedFiles: number;
   isDraft: boolean;
   url: string;
+  /** Mergeability verdict ("UNKNOWN" until GitHub computes it). */
+  mergeable: Mergeable;
 }
 
 export interface PrComment {
