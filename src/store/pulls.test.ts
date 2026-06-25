@@ -693,6 +693,43 @@ describe("pulls PR list refresh coalescing", () => {
     expect(usePulls.getState().prDiffs[7]).toBeUndefined();
   });
 
+  it("discards a first detail load when the refreshed summary changed mid-flight", async () => {
+    const detail = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(detail.promise);
+    // #7 is in the previous list but has no cached detail yet (first load).
+    usePulls.setState({ pullRequests: [summaryToPr(prSummary(7))], prsFetchedAt: 1 });
+
+    const load = usePulls.getState().loadPrDetail(7); // captures version 0
+
+    // Quiet refresh: #7's summary changed → bumps its version via the previous
+    // summary baseline, even with no cache entry to compare.
+    invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
+    await usePulls.getState().loadPullRequests(false, true);
+
+    detail.resolve({});
+    await load;
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prDetailLoading).toBe(false);
+  });
+
+  it("discards an in-flight detail load when a forced refresh clears caches", async () => {
+    const detail = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(detail.promise);
+    usePulls.setState({ pullRequests: [summaryToPr(prSummary(7))], prsFetchedAt: 1 });
+
+    const load = usePulls.getState().loadPrDetail(7); // captures version 0
+
+    // Forced refresh clears caches AND bumps known PRs' versions (incl. 7).
+    invokeMock.mockResolvedValueOnce([prSummary(7)]);
+    await usePulls.getState().loadPullRequests(true);
+
+    // The pre-refresh detail resolves afterward → discarded, so the detail effect
+    // refetches fresh instead of the reload skipping on a stale cache hit.
+    detail.resolve({});
+    await load;
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
   it("evicts the diff/checks/threads caches when a summary changes", async () => {
     usePulls.setState({
       prDetails: { 7: summaryToPr(prSummary(7)) },

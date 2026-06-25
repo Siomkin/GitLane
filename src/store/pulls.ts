@@ -260,7 +260,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       return;
     }
     const requestId = nextPrListRequestId++;
-    set({
+    set((s) => ({
       prsRefreshInFlight: true,
       prsRefreshRequestId: requestId,
       prsRefreshKey: key,
@@ -280,9 +280,14 @@ export const usePulls = create<PullsState>((set, get) => ({
             prCommitSigsError: {},
             prChecksLoadingByNum: {},
             prChecksLoading: false,
+            // Bump every known PR's version so an in-flight detail/diff/threads
+            // load (which captured the old value) discards its pre-refresh write
+            // instead of repopulating the just-cleared cache and making the
+            // prsFetchedAt-triggered reload skip on a stale cache hit.
+            prResourceVersion: bumpResourceVersions(s.prResourceVersion, knownPrNums(s)),
           }
         : {}),
-    });
+    }));
     const runQueued = async () => {
       const queued = get().prsRefreshQueued;
       if (!queued) return;
@@ -617,6 +622,37 @@ function omitMany<V>(map: Record<number, V>, keys: number[]): Record<number, V> 
   return next;
 }
 
+// Increment the cache generation for each PR, so any load that captured the old
+// value discards its write (same reference when nothing changes).
+function bumpResourceVersions(
+  versions: Record<number, number>,
+  nums: number[],
+): Record<number, number> {
+  if (nums.length === 0) return versions;
+  const next = { ...versions };
+  for (const n of nums) next[n] = (next[n] ?? 0) + 1;
+  return next;
+}
+
+// Every PR number the store currently knows about — cached, in-flight, or in the
+// (previous) list. Used to invalidate in-flight loads on a forced refresh, since
+// detail/diff/threads loads aren't tracked per-PR but their PR is always known here.
+function knownPrNums(s: PullsState): number[] {
+  return [
+    ...new Set<number>(
+      [
+        ...Object.keys(s.prDetails),
+        ...Object.keys(s.prDiffs),
+        ...Object.keys(s.prChecks),
+        ...Object.keys(s.prThreads),
+        ...Object.keys(s.prChecksLoadingByNum),
+        ...Object.keys(s.prResourceVersion),
+        ...s.pullRequests.map((p) => String(p.num)),
+      ].map(Number),
+    ),
+  ];
+}
+
 // A cached detail is stale if its PR vanished from the refreshed list or any
 // summary-level field changed: state/draft (header Open/Merge controls), title/
 // base/branch (header), additions/deletions/changedFiles (new commits pushed —
@@ -651,29 +687,34 @@ function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolea
 // to merge into the store (empty when nothing is stale, preserving references).
 function pruneStalePrCaches(s: PullsState, summaries: PullRequest[]): Partial<PullsState> {
   const byNum = new Map(summaries.map((p) => [p.num, p]));
-  const cachedNums = new Set<number>(
+  const prevByNum = new Map(s.pullRequests.map((p) => [p.num, p]));
+  // Candidates: anything cached, an in-flight checks load, OR in the previous
+  // list — the last covers a PR whose first detail/checks load is still in flight
+  // (no cache entry yet) so a changed summary still bumps its version.
+  const candidateNums = new Set<number>(
     [
       ...Object.keys(s.prDetails),
       ...Object.keys(s.prDiffs),
       ...Object.keys(s.prChecks),
       ...Object.keys(s.prThreads),
+      ...Object.keys(s.prChecksLoadingByNum),
+      ...s.pullRequests.map((p) => String(p.num)),
     ].map(Number),
   );
   const stale: number[] = [];
-  for (const num of cachedNums) {
+  for (const num of candidateNums) {
     const summary = byNum.get(num);
     if (!summary) {
       stale.push(num); // PR left the list
       continue;
     }
-    // Compare against the cached detail (the only shape carrying summary fields).
-    // Without one we can't tell, so leave that PR's derived caches untouched.
-    const detail = s.prDetails[num];
-    if (detail && !detailMatchesSummary(detail, summary)) stale.push(num);
+    // Baseline = the cached detail (richest) if loaded, else the previous list
+    // summary; both carry the compared fields. Without either we can't tell.
+    const baseline = s.prDetails[num] ?? prevByNum.get(num);
+    if (baseline && !detailMatchesSummary(baseline, summary)) stale.push(num);
   }
   if (stale.length === 0) return {};
-  const bumpedVersion = { ...s.prResourceVersion };
-  for (const num of stale) bumpedVersion[num] = (bumpedVersion[num] ?? 0) + 1;
+  const bumpedVersion = bumpResourceVersions(s.prResourceVersion, stale);
   return {
     prDetails: omitMany(s.prDetails, stale),
     prDiffs: omitMany(s.prDiffs, stale),
