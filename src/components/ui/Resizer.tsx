@@ -5,7 +5,15 @@ import { useRef, useState } from "react";
 
 import { cn } from "../../lib/cn";
 
-export const Resizer = ({ onResize }: { onResize: (dx: number) => void }) => {
+export const Resizer = ({
+  onResize,
+  overlap = true,
+  className,
+}: {
+  onResize: (dx: number) => void;
+  overlap?: boolean;
+  className?: string;
+}) => {
   const lastX = useRef(0);
   const [dragging, setDragging] = useState(false);
 
@@ -49,7 +57,11 @@ export const Resizer = ({ onResize }: { onResize: (dx: number) => void }) => {
       aria-label="Resize panels"
       tabIndex={0}
       title="Drag to resize"
-      className="group relative z-20 -mx-2 flex cursor-col-resize select-none items-center justify-center outline-none"
+      className={cn(
+        "group relative z-20 flex cursor-col-resize select-none items-center justify-center outline-none",
+        overlap && "-mx-2",
+        className,
+      )}
     >
       <span
         className={cn(

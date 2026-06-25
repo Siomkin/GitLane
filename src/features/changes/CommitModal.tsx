@@ -13,10 +13,15 @@ import { basename, dirname } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { CheckIcon, FileIcon } from "@/components/ui/icons";
+import { Resizer } from "@/components/ui/Resizer";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DiffPreview } from "./DiffPreview";
 import { buildRows } from "./commitTree";
 import { isCommitReachableFromRemote } from "@/store/selection";
+
+const TREE_MIN_WIDTH = 300;
+const TREE_DEFAULT_WIDTH = 360;
+const TREE_MAX_WIDTH = 520;
 
 export function CommitModal() {
   const open = useUi((s) => s.commitOpen);
@@ -97,13 +102,21 @@ export function CommitModal() {
     }
   };
 
+  const modalSize =
+    view === "tree"
+      ? "h-[760px] w-[1280px] max-h-[calc(100vh-4rem)] max-w-[calc(100vw-4rem)]"
+      : "h-[560px] w-[920px] max-h-[90%] max-w-full";
+
   return (
     <div
       className="fixed inset-0 z-[58] grid place-items-center bg-black/30 p-8 backdrop-blur-sm"
       onClick={close}
     >
       <div
-        className="flex h-[560px] max-h-[90%] w-[920px] max-w-full flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        className={cn(
+          "flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800",
+          modalSize,
+        )}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-12 shrink-0 items-center gap-2 border-b border-black/5 px-5 dark:border-white/5">
@@ -292,15 +305,23 @@ function TreeView({ staged, repoPath }: { staged: FileChange[]; repoPath: string
   const setDir = useUi((s) => s.setCommitDir);
   const selFile = useUi((s) => s.commitSelFile);
   const selectFile = useUi((s) => s.selectCommitFile);
+  const [treeWidth, setTreeWidth] = useState(TREE_DEFAULT_WIDTH);
 
   // Default the preview to the first staged file.
   const activePath = staged.some((f) => f.path === selFile) ? selFile! : staged[0]?.path ?? null;
 
   const rows = buildRows(staged, collapsed, (p) => !excluded[p]);
+  const resizeTree = (dx: number) => {
+    setTreeWidth((width) => Math.max(TREE_MIN_WIDTH, Math.min(TREE_MAX_WIDTH, width + dx)));
+  };
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="w-[300px] shrink-0 overflow-auto border-r border-black/5 py-2 dark:border-white/10">
+    <div className="flex min-h-0 flex-1 bg-neutral-50/70 p-2 dark:bg-neutral-900/20">
+      <div
+        data-testid="commit-tree-pane"
+        className="shrink-0 overflow-auto rounded-xl border border-black/5 bg-white py-2 shadow-sm dark:border-white/10 dark:bg-neutral-800"
+        style={{ width: treeWidth }}
+      >
         {rows.map((row) =>
           row.kind === "dir" ? (
             <div
@@ -367,7 +388,16 @@ function TreeView({ staged, repoPath }: { staged: FileChange[]; repoPath: string
           ),
         )}
       </div>
-      <DiffPreview repoPath={repoPath} path={activePath} />
+      <Resizer
+        onResize={resizeTree}
+        overlap={false}
+        className="mx-1 w-0.5 shrink-0"
+      />
+      <DiffPreview
+        repoPath={repoPath}
+        path={activePath}
+        className="overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/10 dark:bg-neutral-800"
+      />
     </div>
   );
 }
