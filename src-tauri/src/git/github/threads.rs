@@ -4,6 +4,10 @@
 //! resolved state, so these go through `gh api graphql` (still account-pinned
 //! via `GH_TOKEN`). The query/mutation text and execution live here; transport
 //! goes through [`super::cli`] and response shapes through [`super::dto`].
+//!
+//! Every call passes `--hostname` explicitly: `gh api` otherwise targets gh's
+//! default host (github.com for anyone logged into more than one host), which
+//! would send a GitHub Enterprise repo's token to the wrong endpoint and 401.
 
 use super::cli::{repo_slug, run_gh};
 use super::dto::{GqlThread, GqlThreadsResp};
@@ -19,6 +23,7 @@ const REPLY_THREAD_MUTATION: &str = "mutation($id:ID!,$body:String!){addPullRequ
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
 pub fn review_threads(
     workdir: &str,
+    host: &str,
     number: u64,
     token: Option<&str>,
 ) -> Result<Vec<ReviewThread>, String> {
@@ -31,6 +36,8 @@ pub fn review_threads(
         workdir,
         &[
             "api",
+            "--hostname",
+            host,
             "graphql",
             "-f",
             &query_field,
@@ -60,6 +67,7 @@ pub fn review_threads(
 /// GraphQL node id.
 pub fn set_thread_resolved(
     workdir: &str,
+    host: &str,
     thread_id: &str,
     resolved: bool,
     token: Option<&str>,
@@ -73,7 +81,16 @@ pub fn set_thread_resolved(
     let id_field = format!("id={thread_id}");
     run_gh(
         workdir,
-        &["api", "graphql", "-f", &query_field, "-f", &id_field],
+        &[
+            "api",
+            "--hostname",
+            host,
+            "graphql",
+            "-f",
+            &query_field,
+            "-f",
+            &id_field,
+        ],
         token,
     )
 }
@@ -81,6 +98,7 @@ pub fn set_thread_resolved(
 /// Add a reply to an existing review thread by its GraphQL node id.
 pub fn reply_thread(
     workdir: &str,
+    host: &str,
     thread_id: &str,
     body: &str,
     token: Option<&str>,
@@ -92,6 +110,8 @@ pub fn reply_thread(
         workdir,
         &[
             "api",
+            "--hostname",
+            host,
             "graphql",
             "-f",
             &query_field,

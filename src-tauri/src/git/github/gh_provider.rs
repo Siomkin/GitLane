@@ -148,7 +148,7 @@ impl GithubProvider for GhProvider {
         number: u64,
     ) -> Result<Vec<ReviewThread>, GithubError> {
         let token = self.token_for_context(ctx, "pull request review threads")?;
-        threads::review_threads(&ctx.workdir, number, token.as_deref())
+        threads::review_threads(&ctx.workdir, &ctx.repository.host, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request review threads", err))
     }
 
@@ -161,7 +161,13 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "resolve review thread")?;
         Self::map(
             "resolve review thread",
-            threads::set_thread_resolved(&ctx.workdir, thread_id, resolved, token.as_deref()),
+            threads::set_thread_resolved(
+                &ctx.workdir,
+                &ctx.repository.host,
+                thread_id,
+                resolved,
+                token.as_deref(),
+            ),
         )
     }
 
@@ -174,7 +180,13 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "reply to review thread")?;
         Self::map(
             "reply to review thread",
-            threads::reply_thread(&ctx.workdir, thread_id, body, token.as_deref()),
+            threads::reply_thread(
+                &ctx.workdir,
+                &ctx.repository.host,
+                thread_id,
+                body,
+                token.as_deref(),
+            ),
         )
     }
 
