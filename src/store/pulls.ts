@@ -27,6 +27,8 @@ interface QueuedPrListLoad {
   force: boolean;
   quiet: boolean;
   key: string;
+  /** Repo the queued load targets, so waiters reject if the repo switches first. */
+  path: string;
   waiters: PrListQueueWaiter[];
 }
 
@@ -219,6 +221,7 @@ export const usePulls = create<PullsState>((set, get) => ({
                 force,
                 quiet,
                 key,
+                path,
                 waiters: [{ resolve, reject }],
               }),
             }));
@@ -257,10 +260,18 @@ export const usePulls = create<PullsState>((set, get) => ({
     const runQueued = async () => {
       const queued = get().prsRefreshQueued;
       if (!queued) return;
+      // Dequeue before awaiting, so reset() can no longer cancel this waiter.
+      // Guard the repo ourselves instead: if the repo switches while the queued
+      // load runs, reject the waiters so callers (mergePr/setPrState) don't run
+      // follow-up detail loads against the newly opened repo.
       set({ prsRefreshQueued: null });
       try {
         await get().loadPullRequests(queued.force, queued.quiet);
-        resolveQueuedPrListLoad(queued);
+        if (useRepo.getState().summary?.path === queued.path) {
+          resolveQueuedPrListLoad(queued);
+        } else {
+          rejectQueuedPrListLoad(queued, new Error("PR list refresh canceled."));
+        }
       } catch (e) {
         rejectQueuedPrListLoad(queued, e);
       }
@@ -546,6 +557,7 @@ function mergeQueuedPrListLoad(
     force: current.force || next.force,
     quiet: current.quiet && next.quiet,
     key: next.key,
+    path: next.path,
     waiters: [...current.waiters, ...next.waiters],
   };
 }

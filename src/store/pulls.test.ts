@@ -478,4 +478,34 @@ describe("pulls PR list refresh coalescing", () => {
     expect(usePulls.getState().pullRequests).toEqual([]);
     expect(usePulls.getState().prsRefreshQueued).toBeNull();
   });
+
+  it("rejects a dequeued queued refresh when the repo switches before it resolves", async () => {
+    const prefetch = deferred<PullRequestSummary[]>();
+    const queuedFetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(prefetch.promise).mockReturnValueOnce(queuedFetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    const queued = usePulls.getState().loadPullRequests(true);
+    expect(usePulls.getState().prsRefreshQueued).not.toBeNull();
+
+    // Prefetch resolves → runQueued dequeues (clears prsRefreshQueued) and starts
+    // the queued fetch, so there is no queue entry left for reset() to cancel.
+    prefetch.resolve([prSummary(7)]);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(usePulls.getState().prsRefreshQueued).toBeNull();
+
+    // Repo switches while the queued fetch is still in flight.
+    usePulls.getState().reset();
+    useRepo.setState({ summary: OTHER_SUMMARY, forge: forge({ webUrl: "https://github.com/o/other" }) });
+
+    queuedFetch.resolve([prSummary(9)]);
+    await expect(queued).rejects.toThrow("canceled");
+    await load;
+
+    // The stale fetch never populates the newly opened repo's list.
+    expect(usePulls.getState().pullRequests).toEqual([]);
+  });
 });

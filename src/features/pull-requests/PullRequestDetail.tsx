@@ -54,6 +54,9 @@ export function PullRequestDetail() {
     if (activeNum == null || summary?.state !== "open") return;
     const id = window.setInterval(() => {
       if (document.hidden) return;
+      // Skip if the previous poll's checks load is still in flight (the endpoint
+      // is already treated as slow) so requests don't stack past the interval.
+      if (usePulls.getState().prChecksLoadingByNum[activeNum]) return;
       void loadPrChecks(activeNum, true);
     }, CHECK_REFRESH_MS);
     return () => window.clearInterval(id);
