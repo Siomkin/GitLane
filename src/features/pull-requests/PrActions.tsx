@@ -27,7 +27,7 @@ const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] = [
 ];
 
 /** The full right-side action cluster for the PR detail header. */
-export function PrHeaderActions({ pr }: { pr: PullRequest }) {
+export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
   const showToast = useUi((s) => s.showToast);
   const hasStateActions = pr.state !== "merged";
 
@@ -49,10 +49,10 @@ export function PrHeaderActions({ pr }: { pr: PullRequest }) {
       <MoreMenu pr={pr} />
     </div>
   );
-}
+};
 
 /** Reopen (closed) / Ready (draft) state buttons. Close lives in MoreMenu. */
-function LifecycleControls({ pr }: { pr: PullRequest }) {
+const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
   const pending = usePulls((s) => s.prActionPending);
   const requestConfirm = useUi((s) => s.requestConfirm);
@@ -101,10 +101,10 @@ function LifecycleControls({ pr }: { pr: PullRequest }) {
     );
   }
   return null;
-}
+};
 
 /** Merge split-button (label + chevron) with the strategy/delete-branch dropdown. */
-function MergeMenu({ pr }: { pr: PullRequest }) {
+const MergeMenu = ({ pr }: { pr: PullRequest }) => {
   const mergePr = usePulls((s) => s.mergePr);
   const pending = usePulls((s) => s.prActionPending);
   const requestConfirm = useUi((s) => s.requestConfirm);
@@ -226,10 +226,10 @@ function MergeMenu({ pr }: { pr: PullRequest }) {
       )}
     </div>
   );
-}
+};
 
 /** "..." overflow menu for secondary PR actions. */
-function MoreMenu({ pr }: { pr: PullRequest }) {
+const MoreMenu = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const showToast = useUi((s) => s.showToast);
@@ -289,4 +289,4 @@ function MoreMenu({ pr }: { pr: PullRequest }) {
       )}
     </div>
   );
-}
+};

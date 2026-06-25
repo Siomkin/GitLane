@@ -35,6 +35,12 @@ interface QueuedPrListLoad {
 interface PrListQueueWaiter {
   resolve: () => void;
   reject: (reason: unknown) => void;
+  /**
+   * Whether the waiter's caller awaits a force/foreground refresh. On cancellation
+   * (repo switch/reset) force waiters reject so awaited callers stop; non-force
+   * fire-and-forget reloads resolve quietly to avoid unhandled rejections.
+   */
+  force: boolean;
 }
 
 interface PullsState {
@@ -161,7 +167,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prActionPending: false,
 
   reset: () => {
-    rejectQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
+    cancelQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
     set({
       pullRequests: [],
       prDetails: {},
@@ -222,7 +228,7 @@ export const usePulls = create<PullsState>((set, get) => ({
                 quiet,
                 key,
                 path,
-                waiters: [{ resolve, reject }],
+                waiters: [{ resolve, reject, force }],
               }),
             }));
           })
@@ -270,10 +276,10 @@ export const usePulls = create<PullsState>((set, get) => ({
         if (useRepo.getState().summary?.path === queued.path) {
           resolveQueuedPrListLoad(queued);
         } else {
-          rejectQueuedPrListLoad(queued, new Error("PR list refresh canceled."));
+          cancelQueuedPrListLoad(queued, new Error("PR list refresh canceled."));
         }
       } catch (e) {
-        rejectQueuedPrListLoad(queued, e);
+        cancelQueuedPrListLoad(queued, e);
       }
     };
     try {
@@ -566,8 +572,12 @@ function resolveQueuedPrListLoad(queued: QueuedPrListLoad | null): void {
   queued?.waiters.forEach((waiter) => waiter.resolve());
 }
 
-function rejectQueuedPrListLoad(queued: QueuedPrListLoad | null, reason: unknown): void {
-  queued?.waiters.forEach((waiter) => waiter.reject(reason));
+// Cancel a queued load (repo switch/reset/inner error): reject the awaited force
+// waiters so callers like mergePr/setPrState don't run repo-dependent follow-ups,
+// but resolve fire-and-forget non-force reloads so a normal navigation doesn't
+// surface an unhandled promise rejection.
+function cancelQueuedPrListLoad(queued: QueuedPrListLoad | null, reason: unknown): void {
+  queued?.waiters.forEach((waiter) => (waiter.force ? waiter.reject(reason) : waiter.resolve()));
 }
 
 // Shared body for PR write ops: require an open repo, run the call pinned to the

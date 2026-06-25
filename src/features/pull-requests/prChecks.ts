@@ -7,7 +7,7 @@ export interface PrCheckCounts {
   passed: number;
 }
 
-export type PrCheckTone = "pass" | "fail" | "pending" | "skipped";
+export type PrCheckTone = "pass" | "fail" | "pending" | "skipped" | "none";
 
 export interface PrCheckSummary {
   tone: PrCheckTone;
@@ -39,6 +39,11 @@ export const checkSummary = (counts: PrCheckCounts): PrCheckSummary => {
       tone: "skipped",
       label: `${counts.skipped} ${counts.skipped === 1 ? "check" : "checks"} skipped`,
     };
+  }
+  // No checks at all (empty rollup: no configured CI, or commits predating it) is
+  // neutral, not passing — don't imply CI ran and succeeded.
+  if (counts.passed === 0) {
+    return { tone: "none", label: "No checks" };
   }
   return { tone: "pass", label: "All checks have passed" };
 };

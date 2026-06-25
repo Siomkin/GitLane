@@ -15,6 +15,17 @@ describe("prChecks", () => {
     expect(checkSummary(countChecks([check("pending"), check("skipped")])).tone).toBe("pending");
   });
 
+  it("treats an empty rollup as neutral, not passing", () => {
+    expect(checkSummary(countChecks([]))).toEqual({ tone: "none", label: "No checks" });
+  });
+
+  it("still reports a fully-passing rollup as passed", () => {
+    expect(checkSummary(countChecks([check("pass"), check("pass")]))).toEqual({
+      tone: "pass",
+      label: "All checks have passed",
+    });
+  });
+
   it("reports finished checks as progress over the total", () => {
     expect(
       checkProgressLabel(countChecks([check("pass"), check("skipped"), check("pending")])),

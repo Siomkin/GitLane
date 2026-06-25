@@ -10,6 +10,7 @@ const summaryToneClass: Record<PrCheckTone, string> = {
   fail: "text-rose-600 dark:text-rose-400",
   pending: "text-amber-600 dark:text-amber-400",
   skipped: "text-neutral-500 dark:text-neutral-400",
+  none: "text-neutral-500 dark:text-neutral-400",
 };
 
 const rowIconClass: Record<PrCheckTone, string> = {
@@ -17,6 +18,7 @@ const rowIconClass: Record<PrCheckTone, string> = {
   fail: "text-rose-500",
   pending: "text-amber-500",
   skipped: "text-neutral-400",
+  none: "text-neutral-400",
 };
 
 export const PrChecksTab = ({ pr }: { pr: PullRequest }) => {

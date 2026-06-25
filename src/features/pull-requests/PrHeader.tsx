@@ -14,6 +14,7 @@ const checkBadgeToneClass: Record<PrCheckTone, string> = {
   fail: "text-rose-600 dark:text-rose-400",
   pending: "text-amber-600 dark:text-amber-400",
   skipped: "text-neutral-500 dark:text-neutral-400",
+  none: "text-neutral-400 dark:text-neutral-500",
 };
 
 export const PrHeader = ({ pr }: { pr: PullRequest }) => {

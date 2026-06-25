@@ -479,6 +479,25 @@ describe("pulls PR list refresh coalescing", () => {
     expect(usePulls.getState().prsRefreshQueued).toBeNull();
   });
 
+  it("resolves (does not reject) a queued fire-and-forget reload when reset cancels it", async () => {
+    const prefetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(prefetch.promise);
+
+    const load = usePulls.getState().loadPullRequests(false, true);
+    // A non-force reload (account/filter change) queues because the key differs.
+    useAccounts.setState({ repoAccountRef: account("42") });
+    const queued = usePulls.getState().loadPullRequests();
+    expect(usePulls.getState().prsRefreshQueued).not.toBeNull();
+
+    // Fire-and-forget callers don't await, so cancellation must resolve quietly
+    // rather than surface an unhandled rejection.
+    usePulls.getState().reset();
+    await expect(queued).resolves.toBeUndefined();
+
+    prefetch.resolve([prSummary(7)]);
+    await load;
+  });
+
   it("rejects a dequeued queued refresh when the repo switches before it resolves", async () => {
     const prefetch = deferred<PullRequestSummary[]>();
     const queuedFetch = deferred<PullRequestSummary[]>();
