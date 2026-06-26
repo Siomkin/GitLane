@@ -52,6 +52,10 @@ const previewConfirm = async ({
   const repoAtClick = useRepo.getState().summary?.path ?? null;
   const isCurrent = () =>
     token === previewToken && useRepo.getState().summary?.path === repoAtClick;
+  // Destructive previews are launched from transient menus. Close the originating
+  // menu before awaiting so a slow preview cannot resurrect a confirm after the
+  // user dismisses that menu.
+  useUi.getState().closeOverlays();
   try {
     const impact = await preview();
     if (!isCurrent()) return;

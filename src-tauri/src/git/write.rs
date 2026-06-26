@@ -1160,6 +1160,7 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
             "-g",
             "HEAD",
             "--branches",
+            "--date=unix",
             &max_count,
             "--format=%H%x1f%gd%x1f%gD%x1f%gs%x1f%gn%x1f%ge%x1f%ct",
         ],
@@ -1174,7 +1175,7 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
             let subject = parts.next().unwrap_or("").to_string();
             let committer_name = parts.next().unwrap_or("").to_string();
             let committer_email = parts.next().unwrap_or("").to_string();
-            let timestamp = parts
+            let commit_timestamp = parts
                 .next()
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(0);
@@ -1183,6 +1184,8 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
             } else {
                 &selector
             };
+            let timestamp =
+                reflog_selector_timestamp(selector_for_ref).unwrap_or(commit_timestamp);
             let ref_name = selector_for_ref
                 .split("@{")
                 .next()
@@ -1515,6 +1518,12 @@ fn limited_lines(raw: String, limit: usize) -> Vec<String> {
         lines.push("…".to_string());
     }
     lines
+}
+
+fn reflog_selector_timestamp(selector: &str) -> Option<i64> {
+    let start = selector.rfind("@{")? + 2;
+    let end = selector[start..].find('}')? + start;
+    selector[start..end].parse().ok()
 }
 
 /// The fully-qualified upstream ref (e.g. `refs/remotes/origin/main`) of a local
@@ -1989,6 +1998,46 @@ mod tests {
         assert!(entries
             .iter()
             .any(|entry| entry.short_selector.contains("HEAD@{")));
+    }
+
+    #[test]
+    fn reflog_entries_use_reflog_time_not_commit_time() {
+        let repo = TempRepo::new("reflog-time");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"old\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        let old_timestamp = 946_684_800_i64;
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(&repo.0)
+            .args(["commit", "-qm", "old"])
+            .env("GIT_AUTHOR_DATE", format!("@{old_timestamp} +0000"))
+            .env("GIT_COMMITTER_DATE", format!("@{old_timestamp} +0000"))
+            .output()
+            .expect("git launches in tests");
+        assert!(
+            out.status.success(),
+            "old commit failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        std::fs::write(repo.0.join("f.txt"), b"new\n").unwrap();
+        repo.git(&["commit", "-qam", "new"]);
+        repo.git(&["reset", "--hard", "HEAD~1"]);
+
+        let entries = reflog_entries(repo.path(), 12).expect("reflog entries");
+        let reset = entries
+            .iter()
+            .find(|entry| entry.subject.contains("reset"))
+            .expect("reset reflog entry");
+        assert!(
+            reset.timestamp > old_timestamp,
+            "reset timestamp should be the reflog event time, not old commit time: {:?}",
+            reset
+        );
     }
 
     #[test]

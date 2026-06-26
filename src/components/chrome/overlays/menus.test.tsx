@@ -67,6 +67,14 @@ const remoteBranch = (name: string) => ({
 
 const file = (path: string) => ({ path, status: "M" as const, add: 1, del: 0 });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("WipContextMenu", () => {
   it("renders nothing until a wip menu is open", () => {
     const { container } = render(<WipContextMenu />);
@@ -97,6 +105,32 @@ describe("WipContextMenu", () => {
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage all changes" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Stage all changes" })).not.toBeInTheDocument();
+  });
+
+  it("closes the menu while a destructive preview is still pending", async () => {
+    const pending = deferred<{
+      summary: string;
+      details: string[];
+      warnings: string[];
+    }>();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "preview_discard_all") return pending.promise;
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      changes: { staged: [file("b.ts")], unstaged: [], conflicted: [] },
+    });
+    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    render(<WipContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Discard all changes" }));
+
+    await waitFor(() => expect(useUi.getState().wipMenu).toBeNull());
+    expect(useUi.getState().confirm).toBeNull();
+
+    pending.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: [] });
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
   });
 });
 
