@@ -915,12 +915,14 @@ fn push_target(repo: &str, branch: &str) -> (String, String) {
 /// `--no-tags` branch/prune fetch. A remote tag that would clobber an existing
 /// local tag is left alone and treated as non-fatal, so the UI still refreshes
 /// branch updates and any tags that did import. Other tag-fetch failures still
-/// fail the operation. We do not pass `--prune-tags`: local-only tags and tags
-/// deleted upstream are intentionally preserved unless the user deletes them
-/// explicitly. The branch fetch also forces `--no-prune-tags` so a repo with
-/// `fetch.pruneTags=true` (or `remote.<name>.pruneTags=true`) and a divergent
-/// local tag does not fail the whole Fetch with "would clobber existing tag"
-/// before the per-remote loop's clobber tolerance can run.
+/// fail the operation. Local-only tags and tags deleted upstream are
+/// intentionally preserved unless the user deletes them explicitly: the
+/// per-remote tag fetch passes `--no-prune` (its explicit `refs/tags/*` refspec
+/// would otherwise prune local-only tags under `fetch.prune=true`), and the
+/// branch fetch forces `--no-prune-tags` so a repo with `fetch.pruneTags=true`
+/// (or `remote.<name>.pruneTags=true`) and a divergent local tag does not fail
+/// the whole Fetch with "would clobber existing tag" before the per-remote
+/// loop's clobber tolerance can run.
 ///
 /// When `token` is set (the repo is bound to an account) it authenticates as
 /// that account via the same inline `gh` git-credential wiring as [`push`], so
@@ -959,14 +961,20 @@ fn fetch_with_tag_import(
     let mut output = branch_output;
     for remote in fetch_remotes(repo)? {
         ensure_operand(&remote)?;
+        // `--no-prune` is essential: the explicit `refs/tags/*` refspec makes a
+        // repo with `fetch.prune=true` (or `remote.<name>.prune=true`) prune
+        // local tags absent on this remote, silently deleting the very
+        // local-only tags this loop promises to preserve.
         let tag_args = match auth {
-            Some((host, _token)) => {
-                credential_args(host, &["fetch", &remote, "--no-tags", TAG_FETCH_REFSPEC])
-            }
+            Some((host, _token)) => credential_args(
+                host,
+                &["fetch", &remote, "--no-tags", "--no-prune", TAG_FETCH_REFSPEC],
+            ),
             None => vec![
                 "fetch".to_string(),
                 remote,
                 "--no-tags".to_string(),
+                "--no-prune".to_string(),
                 TAG_FETCH_REFSPEC.to_string(),
             ],
         };
@@ -1385,6 +1393,73 @@ mod tests {
 
         let after = clone_repo.git(&["tag", "--list", "0.1.1"]);
         assert_eq!(String::from_utf8_lossy(&after.stdout).trim(), "0.1.1");
+    }
+
+    #[test]
+    fn fetch_preserves_local_only_tags_under_fetch_prune() {
+        let root = TempRepo::new("fetch-prune-local-tag-root");
+        let origin = root.0.join("origin.git");
+        let source = root.0.join("source");
+        let clone = root.0.join("clone");
+
+        Command::new("git")
+            .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+            .output()
+            .expect("git init bare launches");
+        Command::new("git")
+            .args(["init", "-q", source.to_str().unwrap()])
+            .output()
+            .expect("git init launches");
+
+        let source_repo = TempRepo(source);
+        source_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+        source_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+        source_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(source_repo.0.join("file.txt"), b"v1\n").unwrap();
+        source_repo.git_ok(&["add", "file.txt"]);
+        source_repo.git_ok(&["commit", "-q", "-m", "initial"]);
+        source_repo.git_ok(&["tag", "0.1.1"]);
+        source_repo.git_ok(&["remote", "add", "origin", origin.to_str().unwrap()]);
+        source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+        source_repo.git_ok(&["push", "-q", "origin", "refs/tags/0.1.1"]);
+        let head_out = Command::new("git")
+            .arg("-C")
+            .arg(&origin)
+            .args(["symbolic-ref", "HEAD", "refs/heads/main"])
+            .output()
+            .expect("git symbolic-ref launches");
+        assert!(head_out.status.success(), "setting origin HEAD failed");
+
+        let clone_out = Command::new("git")
+            .args([
+                "clone",
+                "--no-tags",
+                "-q",
+                origin.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ])
+            .output()
+            .expect("git clone launches");
+        assert!(clone_out.status.success(), "clone failed");
+        let clone_repo = TempRepo(clone);
+        // Pruning on + a local-only tag is the exact combination that the
+        // explicit tag refspec would delete without `--no-prune`.
+        clone_repo.git_ok(&["config", "fetch.prune", "true"]);
+        clone_repo.git_ok(&["tag", "keep-me", "HEAD"]);
+
+        let result = fetch(clone_repo.path(), None);
+        assert!(result.is_ok(), "fetch failed: {result:?}");
+
+        let local_only = clone_repo.git(&["tag", "--list", "keep-me"]);
+        assert_eq!(
+            String::from_utf8_lossy(&local_only.stdout).trim(),
+            "keep-me",
+            "a local-only tag must survive Fetch under fetch.prune=true",
+        );
+        // The remote tag must still import — preservation can't come at the cost
+        // of the feature.
+        let imported = clone_repo.git(&["tag", "--list", "0.1.1"]);
+        assert_eq!(String::from_utf8_lossy(&imported.stdout).trim(), "0.1.1");
     }
 
     #[test]
