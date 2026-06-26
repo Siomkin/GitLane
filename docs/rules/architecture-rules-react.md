@@ -46,8 +46,6 @@ that owns its concern:
 Anything else is a smell: move the call into a store action or feature hook before adding more
 UI around it.
 
----
-
 ## 2. Components & styling
 
 - **Placement mirrors role:**

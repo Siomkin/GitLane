@@ -84,6 +84,15 @@ structs like any read. The engine dictates sync-vs-async, not the read/write lab
   return tokens or enable PR operations; each forge needs its own provider implementation before
   it appears in PR workflows.
 
+### Tauri plugin allowlist
+
+Native platform dependencies are governed by
+[`docs/tauri-plugin-decisions.md`](../tauri-plugin-decisions.md). Before adding or changing a
+Tauri plugin, JS package, capability permission, CSP/config entry, or frontend plugin API call,
+check that decision record and update it in the same change. It is the single detailed source
+for installed plugins, avoided `shell`/broad `fs` access, non-secret Store use, and deferred
+native secret storage.
+
 The how (the `run_git`/`run_gh` helpers, threading, `Repository`-is-not-`Send`) is in
 [architecture-rules-rust.md](architecture-rules-rust.md).
 

@@ -36,6 +36,13 @@ and the IPC boundary (`@tauri-apps/api/core`'s `invoke`) is mocked **inline per 
 with the canonical `vi.hoisted` + `vi.mock` pattern — see [`src/test/README.md`](src/test/README.md).
 Coverage is still partial — typechecks remain the primary safety net.
 
+## Tauri plugins
+
+Installed Tauri plugins are intentionally narrow (`dialog`, `opener`, `window-state`,
+`updater`, and `process:allow-restart`). The durable allow/defer/avoid record lives in
+[`docs/tauri-plugin-decisions.md`](docs/tauri-plugin-decisions.md); check it before adding a
+plugin, JS package, capability permission, CSP/config entry, or frontend plugin API call.
+
 ## Architecture
 
 > **Before implementing new functionality, read [`docs/rules/architecture-rules.md`](docs/rules/architecture-rules.md)** —

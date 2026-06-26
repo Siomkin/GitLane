@@ -11,14 +11,49 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Always (PRs + every branch): fast frontend gate — typecheck + build + tests.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'index.html'
+              - 'vite.config.ts'
+              - 'tsconfig*.json'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
+            desktop:
+              - 'src/**'
+              - 'src-tauri/**'
+              - 'index.html'
+              - 'vite.config.ts'
+              - 'tsconfig*.json'
+              - 'package.json'
+              - 'bun.lock'
+              - '.github/workflows/ci.yml'
+
+  # PRs + every branch: fast frontend gate when frontend/package/CI inputs changed.
   frontend:
     name: Frontend (typecheck + build + tests)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -46,8 +81,14 @@ jobs:
   # fork PRs, where GitHub withholds repo secrets.
   desktop-linux-check:
     name: Desktop build + tests (linux)
-    if: github.ref == 'refs/heads/staging' || github.base_ref == 'staging' || github.ref == 'refs/heads/latest' || github.base_ref == 'latest'
-    needs: frontend
+    if: >
+      always() &&
+      (github.ref == 'refs/heads/staging' || github.base_ref == 'staging' ||
+      github.ref == 'refs/heads/latest' || github.base_ref == 'latest') &&
+      needs.changes.outputs.desktop == 'true' &&
+      needs.frontend.result != 'failure' &&
+      needs.frontend.result != 'cancelled'
+    needs: [changes, frontend]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
