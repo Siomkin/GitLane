@@ -843,6 +843,35 @@ pub fn push_branch(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Resu
     }
 }
 
+/// Publish `branch` to `upstream` (`remote/branch`) and set it as the branch's
+/// upstream in one git invocation. Used for first-push flows where the remote
+/// tracking ref does not exist yet, so `set_upstream` alone would fail.
+pub fn publish_branch(
+    repo: &str,
+    branch: &str,
+    upstream: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(branch)?;
+    let (remote, remote_branch) = upstream.split_once('/').ok_or_else(|| {
+        "Enter an upstream as remote/branch, for example origin/main.".to_string()
+    })?;
+    if remote.is_empty() || remote_branch.is_empty() {
+        return Err("Enter an upstream as remote/branch, for example origin/main.".to_string());
+    }
+    ensure_operand(remote)?;
+    ensure_operand(remote_branch)?;
+    let refspec = format!("refs/heads/{branch}:refs/heads/{remote_branch}");
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", "--set-upstream", remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", "--set-upstream", remote, &refspec]),
+    }
+}
+
 /// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
 /// falling back to `origin`) and refspec (honouring a divergent upstream branch
 /// name via `branch.<name>.merge`, else a plain `<branch>`). Shared by

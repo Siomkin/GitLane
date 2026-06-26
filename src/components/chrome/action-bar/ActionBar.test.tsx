@@ -1,13 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { ForgeKind, type RepoForge, type RepoSummary } from "@/lib/api";
+import { ForgeKind, type BranchInfo, type RepoForge, type RepoSummary } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
+import { useUi } from "@/store/ui";
 import { ActionBar } from "./ActionBar";
 
 const SUMMARY: RepoSummary = {
@@ -26,6 +27,16 @@ const FORGE: RepoForge = {
   webUrl: "https://github.com/o/r",
 };
 
+const branch = (over: Partial<BranchInfo> = {}): BranchInfo => ({
+  name: "main",
+  kind: "local",
+  target: "abc1234",
+  isHead: true,
+  upstream: "origin/main",
+  sync: { status: "upToDate", upstream: "origin/main", ahead: 0, behind: 0 },
+  ...over,
+});
+
 // True when `a` precedes `b` in document order.
 const precedes = (a: Element, b: Element) =>
   Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -33,7 +44,8 @@ const precedes = (a: Element, b: Element) =>
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
-  useRepo.setState({ summary: SUMMARY, forge: FORGE });
+  useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()] });
+  useUi.setState({ prompt: null });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({ accounts: [], accountsError: null, accountsLoading: false, repoAccountRef: null });
 });
@@ -43,7 +55,7 @@ describe("ActionBar layout order", () => {
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
 
     const commitsTab = screen.getByRole("button", { name: /Commits/ });
-    const branchTrigger = screen.getByTitle("Branches, worktrees & stashes");
+    const branchTrigger = screen.getByTitle(/Branches, worktrees & stashes/);
     const provider = screen.getByRole("button", { name: /open repository on its provider/i });
     const fetchBtn = screen.getByTitle("Fetch");
 
@@ -73,5 +85,88 @@ describe("ActionBar layout order", () => {
     });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(invokeMock).not.toHaveBeenCalledWith("list_pull_requests", expect.anything());
+  });
+
+  it("keeps Pull enabled when the current branch has an upstream", () => {
+    useRepo.setState({
+      branches: [branch({ sync: { status: "behind", upstream: "origin/main", ahead: 0, behind: 2 } })],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(screen.getByTitle("2 commits behind origin/main.")).toBeEnabled();
+    expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
+    expect(screen.getByText("↓2")).toBeInTheDocument();
+  });
+
+  it("enables Push when the current branch is ahead of its upstream", () => {
+    useRepo.setState({
+      branches: [branch({ sync: { status: "ahead", upstream: "origin/main", ahead: 1, behind: 0 } })],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(
+      screen.getAllByTitle("1 commit ahead of origin/main.").every((button) => !button.hasAttribute("disabled")),
+    ).toBe(true);
+    expect(screen.getByText("↑1")).toBeInTheDocument();
+  });
+
+  it("keeps Pull available for an up-to-date remote-tracking ref because git pull fetches first", () => {
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(screen.getByTitle("Up to date with origin/main.")).toBeEnabled();
+    expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
+  });
+
+  it("shows no synced badge for an up-to-date branch", () => {
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(screen.queryByText("synced")).not.toBeInTheDocument();
+  });
+
+  it("opens the publish prompt when pushing a branch without an upstream", () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      publishBranch,
+      branches: [
+        branch({
+          upstream: null,
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        }),
+      ],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    fireEvent.click(screen.getByTitle("This branch has no upstream configured."));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt).not.toBeNull();
+    expect(prompt?.title).toBe("Publish main");
+    expect(prompt?.defaultValue).toBe("origin/main");
+    prompt!.onSubmit("origin/main");
+    expect(publishBranch).toHaveBeenCalledWith("main", "origin/main");
+  });
+
+  it("does not permanently disable Pull and Push when branch sync state is unavailable", () => {
+    useRepo.setState({ branches: [] });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    const fallbackTitle = "Sync state is unavailable. Pull or push will let git validate the operation.";
+    expect(screen.getAllByTitle(fallbackTitle).every((button) => !button.hasAttribute("disabled"))).toBe(true);
+    expect(screen.queryByTitle(/Pull unavailable/)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/Push unavailable/)).not.toBeInTheDocument();
+  });
+
+  it("keeps detached HEAD Pull and Push disabled with explicit copy", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, headBranch: null, detached: true },
+      branches: [],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(screen.getByText(/detached @/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Pull unavailable. Detached HEAD/)).toBeDisabled();
+    expect(screen.getByTitle(/Push unavailable. Detached HEAD/)).toBeDisabled();
   });
 });

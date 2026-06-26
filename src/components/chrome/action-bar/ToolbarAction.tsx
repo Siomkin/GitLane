@@ -14,6 +14,7 @@ export const ToolbarAction = ({
   active = false,
   pending = false,
   wide = false,
+  title,
 }: {
   label: string;
   icon: ReactNode;
@@ -22,6 +23,7 @@ export const ToolbarAction = ({
   active?: boolean;
   pending?: boolean;
   wide?: boolean;
+  title?: string;
 }) => {
   return (
     <button
@@ -37,7 +39,7 @@ export const ToolbarAction = ({
       )}
       onClick={onClick}
       disabled={disabled}
-      title={label}
+      title={title ?? label}
     >
       {/* Icon layer — fades out on hover; pinned visible while pending so the
           spinner stays put. Same box as the label so swapping never reflows. */}

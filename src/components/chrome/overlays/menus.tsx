@@ -246,6 +246,7 @@ export function BranchContextMenu() {
   const renameBranchTo = useRepo((s) => s.renameBranchTo);
   const setUpstreamFor = useRepo((s) => s.setUpstreamFor);
   const pushBranch = useRepo((s) => s.pushBranch);
+  const publishBranch = useRepo((s) => s.publishBranch);
   const pull = useRepo((s) => s.pull);
   const push = useRepo((s) => s.push);
   const forcePush = useRepo((s) => s.forcePush);
@@ -295,6 +296,33 @@ export function BranchContextMenu() {
     void run(op);
   };
 
+  const defaultPublishTarget = () => {
+    if (upstream) return upstream;
+    const remote =
+      branches
+        .find((item) => item.kind === "remote" && item.name.includes("/"))
+        ?.name.split("/")[0] ?? "origin";
+    return `${remote}/${b}`;
+  };
+  const needsPublishPrompt =
+    info?.sync?.status === "noUpstream" || info?.sync?.status === "staleUpstream";
+  const promptPublishBranch = () =>
+    requestPrompt({
+      title: `Publish ${b}`,
+      message: `Remote branch for ${b} to push to and pull from.`,
+      placeholder: "origin/branch",
+      defaultValue: defaultPublishTarget(),
+      confirmLabel: "Publish",
+      onSubmit: (up) => void run(() => publishBranch(b, up)),
+    });
+  const pushLocalBranch = () => {
+    if (needsPublishPrompt) {
+      promptPublishBranch();
+      return;
+    }
+    act(() => pushBranch(b));
+  };
+
   // Remote-tracking refs (origin/…) reach this same menu, but local-only
   // mutations (push the ref, set its upstream, rename/delete it) are nonsensical
   // there — gate those on `isLocal`. Integrate/worktree/reset/tag actions stay,
@@ -314,7 +342,15 @@ export function BranchContextMenu() {
   if (isLocal) {
     if (isCurrent) {
       add({ label: "Pull (fast-forward only)", onClick: () => { close(); void pull(); } }, true);
-      add({ label: "Push", onClick: () => { close(); void push(); } });
+      add({
+        label: "Push",
+        onClick: needsPublishPrompt
+          ? promptPublishBranch
+          : () => {
+              close();
+              void push();
+            },
+      });
       add({
         label: "Force push (with lease)…",
         onClick: () =>
@@ -328,7 +364,7 @@ export function BranchContextMenu() {
           }),
       });
     } else {
-      add({ label: `Push ${b}`, onClick: () => act(() => pushBranch(b)) }, true);
+      add({ label: `Push ${b}`, onClick: pushLocalBranch }, true);
     }
     add({
       label: upstream ? `Change upstream (${upstream})…` : "Set upstream…",

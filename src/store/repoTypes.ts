@@ -156,6 +156,8 @@ export interface RepoState {
   /** Push a branch that isn't necessarily checked out, to its configured
    * remote (origin fallback). */
   pushBranch: (branch: string) => Promise<string>;
+  /** Push a branch to `remote/branch` and set that as its upstream. */
+  publishBranch: (branch: string, upstream: string) => Promise<string>;
   mergeInto: (from: string, to: string) => Promise<string>;
   fastForwardTo: (from: string, to: string) => Promise<string>;
   rebaseOnto: (onto: string) => Promise<string>;

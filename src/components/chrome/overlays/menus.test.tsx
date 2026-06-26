@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 // the store is a shared singleton with no global reset).
 const realRemoveBranch = useRepo.getState().removeBranch;
 const realCreateWorktreeAt = useRepo.getState().createWorktreeAt;
+const realPublishBranch = useRepo.getState().publishBranch;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -32,6 +33,7 @@ beforeEach(() => {
     worktrees: [],
     removeBranch: realRemoveBranch,
     createWorktreeAt: realCreateWorktreeAt,
+    publishBranch: realPublishBranch,
   });
   useUi.setState({
     wipMenu: null,
@@ -163,6 +165,64 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: true } });
     render(<BranchContextMenu />);
     expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
+  });
+
+  it("opens the publish prompt for a non-current branch without an upstream", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("Published feature to origin/feature");
+    const pushBranch = vi.fn().mockResolvedValue("Pushed feature");
+    useRepo.setState({
+      branches: [
+        {
+          ...localBranch("feature"),
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        },
+      ],
+      publishBranch,
+      pushBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+
+    render(<BranchContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Push feature" }));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt).not.toBeNull();
+    expect(prompt?.title).toBe("Publish feature");
+    expect(prompt?.defaultValue).toBe("origin/feature");
+    prompt!.onSubmit("origin/feature");
+
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feature", "origin/feature"));
+    expect(pushBranch).not.toHaveBeenCalled();
+  });
+
+  it("opens the publish prompt for the current branch without an upstream", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("Published main to origin/main");
+    const push = vi.fn().mockResolvedValue("Pushed current branch");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [
+        {
+          ...localBranch("main"),
+          isHead: true,
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        },
+      ],
+      publishBranch,
+      push,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+
+    render(<BranchContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt).not.toBeNull();
+    expect(prompt?.title).toBe("Publish main");
+    expect(prompt?.defaultValue).toBe("origin/main");
+    prompt!.onSubmit("origin/main");
+
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("main", "origin/main"));
+    expect(push).not.toHaveBeenCalled();
   });
 
   // `git branch -D` refuses a branch checked out in a linked worktree, so the

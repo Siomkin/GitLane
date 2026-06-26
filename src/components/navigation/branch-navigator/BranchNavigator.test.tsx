@@ -5,12 +5,13 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { BranchNavigator } from "./BranchNavigator";
 
-const branch = (name: string, kind: BranchInfo["kind"]): BranchInfo => ({
+const branch = (name: string, kind: BranchInfo["kind"], over: Partial<BranchInfo> = {}): BranchInfo => ({
   name,
   kind,
   target: "c1",
   isHead: false,
   upstream: null,
+  ...over,
 });
 const tagged: CommitNode = {
   id: "c1",
@@ -66,6 +67,21 @@ describe("BranchNavigator", () => {
     expect(rowFor("main").className).not.toMatch(/opacity-25/);
     expect(rowFor("feature/search").className).not.toMatch(/opacity-25/);
     expect(screen.queryByText("No matches")).not.toBeInTheDocument();
+  });
+
+  it("shows local branch sync badges", () => {
+    useRepo.setState({
+      branches: [
+        branch("main", "local", {
+          upstream: "origin/main",
+          sync: { status: "ahead", upstream: "origin/main", ahead: 2, behind: 0 },
+        }),
+      ],
+    });
+
+    render(<BranchNavigator />);
+
+    expect(screen.getByText("↑2")).toHaveAttribute("title", "2 commits ahead of origin/main.");
   });
 
   it("shows only matching rows while searching", () => {

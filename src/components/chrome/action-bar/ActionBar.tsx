@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
+import { currentBranchSyncView } from "../../../lib/branchSync";
 import { ForgeKind } from "../../../lib/api";
 import { useDismiss } from "../../../hooks/useDismiss";
 import { focusRing } from "../../../lib/ui";
@@ -40,10 +41,12 @@ export const ActionBar = ({
 }) => {
   const summary = useRepo((state) => state.summary);
   const forge = useRepo((state) => state.forge);
+  const branches = useRepo((state) => state.branches);
   const loading = useRepo((state) => state.loading);
   const fetch = useRepo((state) => state.fetch);
   const pull = useRepo((state) => state.pull);
   const push = useRepo((state) => state.push);
+  const publishBranch = useRepo((state) => state.publishBranch);
   const stash = useRepo((state) => state.stash);
   const changes = useRepo((state) => state.changes);
   const pullRequests = usePulls((state) => state.pullRequests);
@@ -55,6 +58,7 @@ export const ActionBar = ({
   const toggleNav = useUi((state) => state.toggleNav);
   const openNav = useUi((state) => state.openNav);
   const closeNav = useUi((state) => state.closeNav);
+  const requestPrompt = useUi((state) => state.requestPrompt);
   const selectPr = useUi((state) => state.selectPr);
   const accounts = useAccounts((state) => state.accounts);
   const accountsError = useAccounts((state) => state.accountsError);
@@ -94,6 +98,7 @@ export const ActionBar = ({
   const currentBranch = summary?.detached
     ? `detached @ ${summary.headOid?.slice(0, 7) ?? "?"}`
     : summary?.headBranch ?? "No branch";
+  const currentSync = currentBranchSyncView(summary, branches);
   // Open PR whose head is the checked-out branch — surfaced as a clickable badge.
   const openPr = summary?.detached
     ? undefined
@@ -141,6 +146,30 @@ export const ActionBar = ({
     closeNav();
     onTabChange(tab);
   };
+  const defaultPublishTarget = () => {
+    const branch = summary?.headBranch;
+    if (!branch) return "origin/";
+    const remote =
+      branches
+        .find((item) => item.kind === "remote" && item.name.includes("/"))
+        ?.name.split("/")[0] ?? "origin";
+    return `${remote}/${branch}`;
+  };
+  const runPush = () => {
+    const branch = summary?.headBranch;
+    if (branch && currentSync.needsPublishPrompt) {
+      requestPrompt({
+        title: `Publish ${branch}`,
+        message: `Remote branch for ${branch} to push to and pull from.`,
+        placeholder: "origin/branch",
+        defaultValue: defaultPublishTarget(),
+        confirmLabel: "Publish",
+        onSubmit: (upstream) => void run("push", () => publishBranch(branch, upstream))(),
+      });
+      return;
+    }
+    void run("push", push)();
+  };
 
   return (
     <div ref={wrapRef} className="relative flex-none">
@@ -167,13 +196,25 @@ export const ActionBar = ({
         <div className="relative">
           <button
             onClick={toggleNav}
-            title="Branches, worktrees & stashes"
+            title={`Branches, worktrees & stashes. ${currentSync.title}`}
             className="flex h-8 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
           >
             <BranchIcon className="h-4 w-4 shrink-0 text-[color:var(--accent)]" />
             <span className="truncate text-[14px] font-medium text-neutral-800 dark:text-neutral-100">
               {currentBranch}
             </span>
+            {currentSync.label && (
+              <span
+                className={cn(
+                  "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+                  currentSync.canPull || currentSync.canPush
+                    ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
+                    : "bg-black/5 text-neutral-400 dark:bg-white/5",
+                )}
+              >
+                {currentSync.label}
+              </span>
+            )}
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -236,14 +277,16 @@ export const ActionBar = ({
             icon={<PullIcon />}
             onClick={run("pull", pull)}
             pending={busy === "pull"}
-            disabled={(loading && busy !== "pull") || !summary}
+            disabled={(loading && busy !== "pull") || !summary || !currentSync.canPull}
+            title={currentSync.canPull ? currentSync.title : `Pull unavailable. ${currentSync.title}`}
           />
           <ToolbarAction
             label="Push"
             icon={<PushIcon />}
-            onClick={run("push", push)}
+            onClick={runPush}
             pending={busy === "push"}
-            disabled={(loading && busy !== "push") || !summary}
+            disabled={(loading && busy !== "push") || !summary || !currentSync.canPush}
+            title={currentSync.canPush ? currentSync.title : `Push unavailable. ${currentSync.title}`}
           />
           <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={() => openCreateBranch(true)} disabled={!summary} />
           <ToolbarAction
