@@ -94,6 +94,9 @@ export function GraphLayer({
 
     const graphRowY = (graphRow: number) =>
       rowY(visualRowByGraphRow[graphRow] ?? graphRow + (hasWip ? 1 : 0), rowHeight);
+    const headCommit = head
+      ? graph.commits.find((commit) => commit.id === head && !commit.stash)
+      : undefined;
 
     // Synthetic connectors. The WIP node hangs off HEAD; each stash row sits at
     // its own creation time in the date-ordered list, with a dashed connector
@@ -101,18 +104,24 @@ export function GraphLayer({
     // as an annotation tied to its origin rather than glued
     // beside it.
     if ((hasWip || stashConnectors.length > 0) && head) {
-      const headCommit = graph.commits.find((commit) => commit.id === head && !commit.stash);
       if (hasWip && headCommit) {
-        const x = graphLaneX(headCommit.lane);
+        const wipLane = graph.wipLane ?? headCommit.lane;
+        const x = graphLaneX(wipLane);
+        const headX = graphLaneX(headCommit.lane);
         const yHead = graphRowY(headCommit.row);
         const yWip = rowY(0, rowHeight);
-        ctx.strokeStyle = laneColor(headCommit.color);
+        ctx.strokeStyle = laneColor(graph.wipColor ?? headCommit.color);
         ctx.lineWidth = 2;
         ctx.setLineDash([2, 3]);
         if (segmentIntersectsViewport(yWip, yHead, viewportTop, canvasHeight, rowHeight)) {
           ctx.beginPath();
           ctx.moveTo(x, yWip + 7 - viewportTop);
-          ctx.lineTo(x, yHead - viewportTop);
+          if (x === headX) {
+            ctx.lineTo(x, yHead - viewportTop);
+          } else {
+            ctx.lineTo(x, yHead - 12 - viewportTop);
+            ctx.quadraticCurveTo(x, yHead - viewportTop, headX, yHead - viewportTop);
+          }
           ctx.stroke();
         }
         if (segmentIntersectsViewport(yWip, yWip, viewportTop, canvasHeight, rowHeight)) {
@@ -158,7 +167,7 @@ export function GraphLayer({
         // clamped to bound canvas coordinates, but the geometric radius should
         // still describe the full edge rather than the visible fragment.
         const radius = Math.min(Math.abs(x2 - x1), Math.abs(y2 - y1), 18);
-        if (x1 < x2) {
+        if ((edge.parentIndex ?? 0) > 0) {
           ctx.arcTo(x2, localY1, x2, localY2, radius);
         } else {
           ctx.arcTo(x1, localY2, x2, localY2, radius);

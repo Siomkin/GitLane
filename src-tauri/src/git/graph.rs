@@ -141,6 +141,11 @@ pub fn build_profiled(
     let visible_oids: HashSet<Oid> = oids.iter().copied().collect();
     let refs_map = collect_refs(repo, &visible_oids);
     let refs_elapsed = refs_started.elapsed();
+    let (head, _detached) = head_oid(repo);
+    let head_target = head
+        .as_deref()
+        .and_then(|value| Oid::from_str(value).ok())
+        .filter(|oid| visible_oids.contains(oid));
 
     // `lanes[i]` holds the parent oid that lane `i` is reserved for (or None),
     // plus whether that reservation is a *branch root* — i.e. opened because a
@@ -178,11 +183,15 @@ pub fn build_profiled(
     }
 
     let layout_started = Instant::now();
-    let mut lanes: Vec<Option<Lane>> = Vec::new();
+    let mut lanes: Vec<Option<Lane>> = head_target
+        .map(|oid| vec![Some(Lane::cont(oid))])
+        .unwrap_or_default();
     let mut nodes: Vec<CommitNode> = Vec::with_capacity(order.len());
     let mut row_of: HashMap<Oid, usize> = HashMap::new();
     let mut lane_of: HashMap<Oid, usize> = HashMap::new();
     let mut lane_count = 0usize;
+    let mut wip_lane: Option<usize> = None;
+    let mut wip_color: Option<usize> = None;
 
     for (row, entry) in order.iter().enumerate() {
         // Re-open the commit handle once here (ODB-cache hit) and reuse it for both
@@ -220,9 +229,16 @@ pub fn build_profiled(
                 }
             }
         }
-        let lane = root_lane
-            .or(cont_lane)
-            .unwrap_or_else(|| alloc_lane(&mut lanes));
+        let awaited_lane = if head_target == Some(oid) {
+            cont_lane.or(root_lane)
+        } else {
+            root_lane.or(cont_lane)
+        };
+        let lane = awaited_lane.unwrap_or_else(|| alloc_lane(&mut lanes));
+        if matches!(entry, Entry::Commit(_)) && head_target == Some(oid) {
+            wip_lane = Some(lane);
+            wip_color = Some(lane);
+        }
         for slot in 0..lanes.len() {
             if slot != lane && matches!(&lanes[slot], Some(l) if l.waiting == oid) {
                 lanes[slot] = None;
@@ -241,7 +257,15 @@ pub fn build_profiled(
         if parents.is_empty() {
             lanes[lane] = None;
         } else {
-            lanes[lane] = Some(Lane::cont(parents[0]));
+            let first_parent_already_awaited = lanes
+                .iter()
+                .enumerate()
+                .any(|(slot, s)| slot != lane && matches!(s, Some(l) if l.waiting == parents[0]));
+            if head_target == Some(oid) && first_parent_already_awaited {
+                lanes[lane] = None;
+            } else {
+                lanes[lane] = Some(Lane::cont(parents[0]));
+            }
             for &p in &parents[1..] {
                 if lanes.iter().any(|s| matches!(s, Some(l) if l.waiting == p)) {
                     continue; // already awaited → collapse, don't fan out
@@ -310,7 +334,7 @@ pub fn build_profiled(
     let edges_started = Instant::now();
     let mut edges: Vec<GraphEdge> = Vec::new();
     for node in &nodes {
-        for parent in &node.parents {
+        for (parent_index, parent) in node.parents.iter().enumerate() {
             let poid = match Oid::from_str(parent) {
                 Ok(o) => o,
                 Err(_) => continue,
@@ -330,12 +354,12 @@ pub fn build_profiled(
                 from_lane: node.lane,
                 to_row,
                 to_lane,
+                parent_index,
                 color,
             });
         }
     }
 
-    let (head, _detached) = head_oid(repo);
     let edges_elapsed = edges_started.elapsed();
 
     Ok((
@@ -343,6 +367,8 @@ pub fn build_profiled(
             commits: nodes,
             edges,
             lane_count,
+            wip_lane,
+            wip_color,
             head,
             truncated,
         },
@@ -488,8 +514,10 @@ mod tests {
         index.add_path(Path::new(name)).unwrap();
         index.write().unwrap();
         let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
-        let parent_commits: Vec<git2::Commit> =
-            parents.iter().map(|p| repo.find_commit(*p).unwrap()).collect();
+        let parent_commits: Vec<git2::Commit> = parents
+            .iter()
+            .map(|p| repo.find_commit(*p).unwrap())
+            .collect();
         let parent_refs: Vec<&git2::Commit> = parent_commits.iter().collect();
         let signature = sig(seconds);
         repo.commit(
@@ -593,12 +621,21 @@ mod tests {
         let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v2\n", &[c1], 200);
         fs::write(dir.join("a.txt"), "dirty\n").unwrap();
         // Stash committer time == base committer time (200).
-        repo.stash_save2(&sig(200), Some("WIP same second"), None).unwrap();
+        repo.stash_save2(&sig(200), Some("WIP same second"), None)
+            .unwrap();
         let _c3 = commit_on(&repo, &dir, "HEAD", "a.txt", "v3\n", &[base], 300);
 
         let graph = build(&repo, 100).unwrap();
-        let stash_node = graph.commits.iter().find(|n| n.stash.is_some()).expect("stash node");
-        let base_node = graph.commits.iter().find(|n| n.id == base.to_string()).expect("base node");
+        let stash_node = graph
+            .commits
+            .iter()
+            .find(|n| n.stash.is_some())
+            .expect("stash node");
+        let base_node = graph
+            .commits
+            .iter()
+            .find(|n| n.id == base.to_string())
+            .expect("base node");
 
         assert!(
             stash_node.row < base_node.row,
@@ -607,7 +644,10 @@ mod tests {
             base_node.row,
         );
         assert!(
-            graph.edges.iter().any(|e| e.from_row == stash_node.row && e.to_row == base_node.row),
+            graph
+                .edges
+                .iter()
+                .any(|e| e.from_row == stash_node.row && e.to_row == base_node.row),
             "stash edge runs down to the base",
         );
 
@@ -626,17 +666,113 @@ mod tests {
         let c1 = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
         let _base = commit_on(&repo, &dir, "HEAD", "a.txt", "v2\n", &[c1], 200);
         fs::write(dir.join("a.txt"), "dirty\n").unwrap();
-        repo.stash_save2(&sig(250), Some("WIP detached"), None).unwrap();
+        repo.stash_save2(&sig(250), Some("WIP detached"), None)
+            .unwrap();
         let stash_oid = repo.find_reference("refs/stash").unwrap().target().unwrap();
         // Detach HEAD onto the stash commit so the revwalk sees it as a commit.
         repo.set_head_detached(stash_oid).unwrap();
 
         let graph = build(&repo, 100).unwrap();
-        let with_stash_id = graph.commits.iter().filter(|n| n.id == stash_oid.to_string()).count();
-        assert_eq!(with_stash_id, 1, "the stash commit appears exactly once, not duplicated");
+        let with_stash_id = graph
+            .commits
+            .iter()
+            .filter(|n| n.id == stash_oid.to_string())
+            .count();
+        assert_eq!(
+            with_stash_id, 1,
+            "the stash commit appears exactly once, not duplicated"
+        );
         assert!(
             graph.commits.iter().all(|n| n.stash.is_none()),
             "the reachable stash commit is laid out as a plain commit, not injected",
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn checked_out_head_ancestor_stays_on_wip_mainline() {
+        let dir = std::env::temp_dir().join("gitlane-head-lane-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        let c1 = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+        let c2 = commit_on(&repo, &dir, "HEAD", "a.txt", "v2\n", &[c1], 200);
+        let feature = commit_on(
+            &repo,
+            &dir,
+            "refs/heads/feature",
+            "a.txt",
+            "feature\n",
+            &[c2],
+            300,
+        );
+        let merge = commit_on(
+            &repo,
+            &dir,
+            "refs/heads/staging",
+            "a.txt",
+            "merge\n",
+            &[c2, feature],
+            400,
+        );
+        let _staging_tip = commit_on(
+            &repo,
+            &dir,
+            "refs/heads/staging",
+            "a.txt",
+            "staging\n",
+            &[merge],
+            500,
+        );
+        repo.set_head("refs/heads/feature").unwrap();
+
+        let graph = build(&repo, 100).unwrap();
+        let head_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == feature.to_string())
+            .expect("feature HEAD is in the graph");
+        let merge_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == merge.to_string())
+            .expect("staging merge is in the graph");
+        let base_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == c2.to_string())
+            .expect("shared base is in the graph");
+
+        assert_eq!(graph.head.as_deref(), Some(feature.to_string().as_str()));
+        assert_eq!(
+            graph.wip_lane,
+            Some(head_node.lane),
+            "WIP continues the checked-out HEAD mainline",
+        );
+        assert!(
+            merge_node.lane > head_node.lane,
+            "newer first-parent staging lane goes right of the checked-out mainline",
+        );
+        assert_eq!(
+            base_node.lane, merge_node.lane,
+            "checked-out branch hands off to the already-open staging first-parent lane below HEAD",
+        );
+        assert!(
+            graph.edges.iter().any(|edge| {
+                edge.from_row == merge_node.row
+                    && edge.to_row == head_node.row
+                    && edge.parent_index == 1
+            }),
+            "the merge reaches the checked-out branch as a second-parent edge",
+        );
+        assert!(
+            head_node
+                .refs
+                .iter()
+                .any(|r| r.kind == "head" && r.name == "feature"),
+            "the checked-out branch still labels the real HEAD commit",
         );
 
         let _ = fs::remove_dir_all(&dir);

@@ -38,6 +38,8 @@ export interface GraphEdge {
   fromLane: number;
   toRow: number;
   toLane: number;
+  /** Zero-based parent index on the child commit; > 0 means merge parent. */
+  parentIndex?: number;
   color: number;
 }
 
@@ -45,6 +47,9 @@ export interface RepoGraph {
   commits: CommitNode[];
   edges: GraphEdge[];
   laneCount: number;
+  /** Synthetic WIP marker lane, when the backend resolves one separately from HEAD. */
+  wipLane?: number | null;
+  wipColor?: number | null;
   head: string | null;
   truncated: boolean;
 }
