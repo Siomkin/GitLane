@@ -17,7 +17,7 @@ const DashIcon = () => (
   </svg>
 );
 const ChevronIcon = ({ dir }: { dir: "up" | "down" }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3 w-3">
+  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3 w-3">
     <path d={dir === "up" ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
   </svg>
 );
@@ -200,18 +200,27 @@ export const SplitConflict = ({
   // yields the document order and the open set.
   const { order, unresolved } = useMemo(() => {
     const order: number[] = [];
+    const seen = new Set<number>();
     const unresolved = new Set<number>();
     for (const r of editor.outRows) {
       if (r.kind === "placeholder") {
-        if (!order.includes(r.regionIdx)) order.push(r.regionIdx);
+        if (!seen.has(r.regionIdx)) (seen.add(r.regionIdx), order.push(r.regionIdx));
         unresolved.add(r.regionIdx);
-      } else if (r.removable && !order.includes(r.regionIdx)) {
+      } else if (r.removable && !seen.has(r.regionIdx)) {
+        seen.add(r.regionIdx);
         order.push(r.regionIdx);
       }
     }
     return { order, unresolved };
   }, [editor.outRows]);
   const total = order.length;
+
+  // The conflict count can shrink while this file stays mounted (an external
+  // edit or watcher refresh re-derives outRows), so keep the active index in
+  // range — otherwise the counter and reveal target a hunk that no longer exists.
+  useEffect(() => {
+    setActive((prev) => Math.min(prev, Math.max(total - 1, 0)));
+  }, [total]);
 
   const reveal = useCallback(
     (i: number, smooth: boolean) => {
@@ -287,7 +296,10 @@ export const SplitConflict = ({
           </span>
           {total > 0 && (
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              <span className="text-[10.5px] font-medium tabular-nums text-neutral-400">
+              <span
+                aria-live="polite"
+                className="text-[10.5px] font-medium tabular-nums text-neutral-400"
+              >
                 conflict {active + 1} of {total}
               </span>
               <button
