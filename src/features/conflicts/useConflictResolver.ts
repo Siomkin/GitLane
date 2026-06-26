@@ -122,6 +122,45 @@ export function useConflictResolver(
     });
   }, [resolvedPaths]);
 
+  // A fresh `operation` object means the store re-read the worktree (watcher or
+  // a write), so a conflicted file may have changed on disk — e.g. the user
+  // resolved it in an external editor. Drop cached marker text for unresolved
+  // files other than the open one (they re-fetch on next select), and
+  // background-revalidate the open file (no spinner — its content stays visible)
+  // so a later in-app stage can't overwrite an external resolution with stale text.
+  useEffect(() => {
+    if (!repoPath) return;
+    const unresolvedText = new Set(
+      files.filter((f) => !f.resolved && f.kind === "text").map((f) => f.path),
+    );
+    setCache((c) => {
+      let changed = false;
+      const next = { ...c };
+      for (const p of Object.keys(next)) {
+        if (p !== selected && unresolvedText.has(p)) {
+          delete next[p];
+          changed = true;
+        }
+      }
+      return changed ? next : c;
+    });
+    if (selected && unresolvedText.has(selected) && cache[selected]) {
+      const token = ++fetchTokenRef.current;
+      api
+        .conflictFile(repoPath, selected)
+        .then((content) => {
+          if (fetchTokenRef.current !== token) return;
+          setCache((c) => ({ ...c, [selected]: content }));
+        })
+        .catch(() => {
+          /* keep the prior content; a hard load failure surfaces via the primary fetch */
+        });
+    }
+    // Re-run only when a new operation status arrives (a worktree refresh),
+    // reading the latest selected/files/cache at that point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operation, repoPath]);
+
   const select = useCallback((path: string) => setSelected(path), []);
 
   const decide = useCallback((path: string, idx: number, decision: RegionDecision) => {

@@ -204,7 +204,10 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
 /// stage to check out) the file is removed instead — covering modify/delete and
 /// add/add conflicts with one path.
 pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String, String> {
-    ensure_operand(file)?;
+    // No `ensure_operand` on `file`: every git call below passes it after `--`
+    // (pathspec), so a legitimately conflicted file named e.g. `-foo` is safe and
+    // must not be rejected. `ensure_conflicted` already gates it to the index
+    // conflict set.
     ensure_conflicted(repo, file)?;
     let (flag, stage) = match side {
         "ours" => ("--ours", "2"),
@@ -310,7 +313,9 @@ fn worktree_path(root: &str, file: &str) -> Result<std::path::PathBuf, String> {
 /// per-hunk choices. The path is resolved against the worktree root (and checked
 /// to stay inside it) so it is correct for linked worktrees and never escapes.
 pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<String, String> {
-    ensure_operand(file)?;
+    // `file` is staged after `--` and resolved through `worktree_path` (which
+    // rejects traversal), so no `ensure_operand` dash-guard is needed — and it
+    // would wrongly block a conflicted file named `-foo`.
     ensure_conflicted(repo, file)?;
     let root = run_git(repo, &["rev-parse", "--show-toplevel"])?;
     let full = worktree_path(&root, file)?;
@@ -322,7 +327,8 @@ pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<St
 /// Mark a conflicted file resolved by staging it as it currently sits on disk
 /// (after the user edited it in their own editor). `-A` also stages a deletion.
 pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> {
-    ensure_operand(file)?;
+    // `file` passed after `--`; gated by `ensure_conflicted`. No dash-guard (see
+    // `accept_conflict_side`) so a conflicted `-foo` can be staged.
     ensure_conflicted(repo, file)?;
     run_git(repo, &["add", "-A", "--", file])?;
     Ok(format!("Staged {file}"))
@@ -332,7 +338,8 @@ pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> 
 /// it can be re-resolved (`git checkout --merge`) — the inverse of staging a
 /// resolution, exposed as the per-file "Unstage" affordance.
 pub fn reconflict_file(repo: &str, file: &str) -> Result<String, String> {
-    ensure_operand(file)?;
+    // `file` is passed after `--`, so no dash-guard is needed (it would block a
+    // conflicted `-foo`).
     // Guard against clobbering: outside an active operation `git checkout
     // --merge` has no conflict to recreate and would just overwrite the worktree
     // file with the index copy, discarding any edits. Only allow it mid-operation
@@ -1280,5 +1287,31 @@ mod tests {
         repo.git(&["commit", "-qm", "init"]);
         let result = reconflict_file(repo.path(), "f.txt");
         assert!(result.is_err(), "expected refusal outside an operation: {result:?}");
+    }
+
+    #[test]
+    fn resolves_a_dash_prefixed_conflicted_path() {
+        // A tracked file named `-foo` can legitimately conflict. Every per-file
+        // command passes the path after `--`, so it must resolve rather than be
+        // rejected by the option-injection dash-guard.
+        let repo = TempRepo::new("dash-conflict");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("-foo"), b"base\n").unwrap();
+        repo.git(&["add", "--", "-foo"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        std::fs::write(repo.0.join("-foo"), b"theirs\n").unwrap();
+        repo.git(&["commit", "-qam", "theirs"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::write(repo.0.join("-foo"), b"ours\n").unwrap();
+        repo.git(&["commit", "-qam", "ours"]);
+        let _ = repo.git(&["merge", "other"]);
+        let result = resolve_conflict_file(repo.path(), "-foo", "merged\n");
+        assert!(result.is_ok(), "dash-prefixed path should resolve: {result:?}");
+        let unmerged = repo.git(&["ls-files", "-u", "--", "-foo"]);
+        assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
     }
 }

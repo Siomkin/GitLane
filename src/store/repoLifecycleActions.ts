@@ -405,7 +405,10 @@ export function createRepoLifecycleActions(
             selectedFile.source !== "commit" &&
             !changes.staged.some((file) => file.path === selectedFile.path) &&
             !changes.unstaged.some((file) => file.path === selectedFile.path);
-          const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
+          const noWip =
+            changes.staged.length === 0 &&
+            changes.unstaged.length === 0 &&
+            changes.conflicted.length === 0;
           set({
             changes,
             // Fold in a fresh operation status; on a detection failure, only
@@ -479,7 +482,11 @@ export function createRepoLifecycleActions(
           !changes.staged.some((f) => f.path === sel.path) &&
           !changes.unstaged.some((f) => f.path === sel.path);
         // If the WIP node was selected but there are no more changes, drop it.
-        const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
+        // Conflicted paths count as changes so a conflict-only worktree keeps WIP.
+        const noWip =
+          changes.staged.length === 0 &&
+          changes.unstaged.length === 0 &&
+          changes.conflicted.length === 0;
         set({
           summary: nextSummary,
           forge,

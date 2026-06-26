@@ -127,8 +127,18 @@ export const ConflictWorkspace = () => {
   // Corrupt/truncated markers can't be reconstructed in-app — block staging and
   // tell the user to fix the file in their own editor.
   const malformed = hasMalformedHunk(regions);
-  // A text file with no markers left (edited away) counts as resolved too.
-  const noMarkers = !!selectedFile && selectedFile.kind === "text" && regions.length > 0 && totalHunks === 0;
+  // A text file whose loaded content has no conflict markers left — edited away
+  // externally, or emptied entirely — counts as resolved: `git add` it as-is.
+  // Gate on loaded, non-binary content (not `regions.length`) so an empty file
+  // (zero regions) still qualifies rather than getting stuck disabled.
+  const textContentReady =
+    !!selectedFile && selectedFile.kind === "text" && !!resolver.content && !resolver.content.binary;
+  const noMarkers = textContentReady && totalHunks === 0;
+  // Binary conflicts (and text classified binary) resolve as-is too — the user
+  // picks a side, or stages their own external resolution via "Mark resolved".
+  const selectedBinary =
+    !!selectedFile &&
+    (selectedFile.kind === "binary" || (selectedFile.kind === "text" && !!resolver.content?.binary));
   const fileStaged = !!selectedFile?.resolved;
   const fileResolved =
     fileStaged || noMarkers || (totalHunks > 0 && isResolvedOf(regions, fileDecisions, fileLineSel));
@@ -216,7 +226,10 @@ export const ConflictWorkspace = () => {
     const done = (ok: boolean) => {
       if (ok) resolver.resetFile(target);
     };
-    if (noMarkers) void markConflictResolved(target).then(done);
+    // No markers left (edited away / emptied) or a binary file resolved in an
+    // external tool: stage the worktree copy as-is. Otherwise write the merged
+    // text rebuilt from the user's in-app hunk choices.
+    if (noMarkers || selectedBinary) void markConflictResolved(target).then(done);
     else {
       const text = buildResolved(
         regions,
@@ -274,6 +287,8 @@ export const ConflictWorkspace = () => {
           resolved={resolvedCount}
           unresolved={unresolved}
           canStageAll={canStageAll}
+          oursSub={oursSub}
+          theirsSub={theirsSub}
           onSelect={resolver.select}
           onAcceptOurs={(p) => acceptSide(p, "ours")}
           onAcceptTheirs={(p) => acceptSide(p, "theirs")}

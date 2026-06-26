@@ -160,6 +160,13 @@ describe("buildResolved", () => {
     );
   });
 
+  it("returns an empty string when the resolution contributes no lines", () => {
+    // Accepting an empty side for a whole-file conflict is a genuinely empty
+    // file — not the lone "\n" that join+append would otherwise produce.
+    const rgs = parseConflict("<<<<<<< HEAD\n=======\ntheirs\n>>>>>>> x\n");
+    expect(buildResolved(rgs, { 0: "ours" }, {})).toBe("");
+  });
+
   it("preserves a file that had no trailing newline", () => {
     // The conflicted source ended without a final newline; resolving it must not
     // silently add one (that would be a content change beyond the resolution).

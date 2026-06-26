@@ -217,6 +217,11 @@ export function buildResolved(
       });
     }
   });
+  // A resolution that contributes no lines (e.g. accepting an empty side for a
+  // whole-file conflict) is a genuinely empty file — return "" rather than the
+  // lone "\n" that `join("\n") + "\n"` would produce, which would corrupt an
+  // intended empty resolution.
+  if (out.length === 0) return "";
   const text = out.join("\n");
   return trailingNewline ? text + "\n" : text;
 }

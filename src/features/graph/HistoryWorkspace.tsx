@@ -44,7 +44,11 @@ export const HistoryWorkspace = () => {
   // Membership lookup once per render instead of an O(n) .includes() per row
   // (mirrors the Set idiom GraphLayer already uses).
   const selectedSet = useMemo(() => new Set(selectedCommits), [selectedCommits]);
-  const activeTabChangeCount = changes.staged.length + changes.unstaged.length;
+  // Include conflicted paths so a worktree with only unmerged files (e.g. a
+  // `git am`/`stash apply` conflict with no detected operation) still shows the
+  // WIP row, keeping the read-only Conflicts section reachable.
+  const activeTabChangeCount =
+    changes.staged.length + changes.unstaged.length + (changes.conflicted?.length ?? 0);
   const hasWip = activeTabChangeCount > 0;
   const rowModel = useMemo(
     () => buildHistoryRows({ graph, stashes, hasWip }),

@@ -82,7 +82,10 @@ export const ActionBar = ({
     }
   };
 
-  const workCount = changes.staged.length + changes.unstaged.length;
+  // Count conflicted paths too, so a conflict-only worktree (no staged/unstaged
+  // changes, no detected operation) still flags work needing attention.
+  const workCount =
+    changes.staged.length + changes.unstaged.length + (changes.conflicted?.length ?? 0);
   // Badge counts only open PRs — the list is fetched `--state all`, but a tab
   // badge should reflect what needs attention, not merged/closed history.
   const prCount = pullRequests.filter((pr) => pr.state === "open").length;

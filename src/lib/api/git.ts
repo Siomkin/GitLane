@@ -373,8 +373,13 @@ export const gitApi = {
 
   // ---- working tree / staging ----
 
-  workingChanges: (path: string) =>
-    invoke<WorkingChanges>("working_changes", { path }),
+  workingChanges: async (path: string): Promise<WorkingChanges> => {
+    const r = await invoke<WorkingChanges>("working_changes", { path });
+    // The backend always sends `conflicted`, but normalize defensively so every
+    // consumer can rely on the field being present (a defensive `?? []` once,
+    // here, instead of scattered across every reader).
+    return { ...r, conflicted: r.conflicted ?? [] };
+  },
 
   /** Diff for a working-tree file. `staged` true → index vs HEAD; false → worktree vs index.
    * `full` bypasses the backend line cap (for an explicit "show full diff"). */

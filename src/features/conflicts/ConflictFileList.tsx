@@ -9,6 +9,8 @@ export const ConflictFileList = ({
   resolved,
   unresolved,
   canStageAll,
+  oursSub,
+  theirsSub,
   onSelect,
   onAcceptOurs,
   onAcceptTheirs,
@@ -20,6 +22,10 @@ export const ConflictFileList = ({
   resolved: number;
   unresolved: number;
   canStageAll: boolean;
+  /** Operation-aware side labels (rebase inverts ours/theirs) for the quick
+   * accept buttons, matching the main editor. */
+  oursSub: string;
+  theirsSub: string;
   onSelect: (path: string) => void;
   onAcceptOurs: (path: string) => void;
   onAcceptTheirs: (path: string) => void;
@@ -45,6 +51,8 @@ export const ConflictFileList = ({
             key={file.path}
             file={file}
             selected={file.path === selected}
+            oursSub={oursSub}
+            theirsSub={theirsSub}
             onOpen={() => onSelect(file.path)}
             onAcceptOurs={() => onAcceptOurs(file.path)}
             onAcceptTheirs={() => onAcceptTheirs(file.path)}

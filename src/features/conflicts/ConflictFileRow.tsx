@@ -27,12 +27,18 @@ const kindSuffix = (file: OperationFile) =>
 export const ConflictFileRow = ({
   file,
   selected,
+  oursSub,
+  theirsSub,
   onOpen,
   onAcceptOurs,
   onAcceptTheirs,
 }: {
   file: OperationFile;
   selected: boolean;
+  /** Operation-aware side labels (rebase inverts ours/theirs) for the button
+   * tooltips, so resolving from the list can't pick the opposite side. */
+  oursSub: string;
+  theirsSub: string;
   onOpen: () => void;
   onAcceptOurs: () => void;
   onAcceptTheirs: () => void;
@@ -87,7 +93,7 @@ export const ConflictFileRow = ({
                 e.stopPropagation();
                 onAcceptOurs();
               }}
-              title="Accept current (ours)"
+              title={`Accept ${oursSub}`}
               className="h-6 rounded-md bg-[var(--accent-soft)] px-1.5 text-[10px] font-semibold text-[color:var(--accent)] hover:brightness-95"
             >
               Ours
@@ -97,7 +103,7 @@ export const ConflictFileRow = ({
                 e.stopPropagation();
                 onAcceptTheirs();
               }}
-              title="Accept incoming (theirs)"
+              title={`Accept ${theirsSub}`}
               className="h-6 rounded-md bg-[#3b7ff5]/[0.12] px-1.5 text-[10px] font-semibold text-[#3b7ff5] hover:brightness-95"
             >
               Theirs
