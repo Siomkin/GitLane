@@ -225,6 +225,30 @@ describe("BranchContextMenu", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it("pre-fills a fresh publish target for a stale upstream, not the pruned ref", () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [
+        {
+          ...localBranch("main"),
+          isHead: true,
+          upstream: "origin/deleted",
+          sync: { status: "staleUpstream", upstream: "origin/deleted", ahead: 0, behind: 0 },
+        },
+      ],
+      publishBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+
+    render(<BranchContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.title).toBe("Publish main");
+    expect(prompt?.defaultValue).toBe("origin/main");
+  });
+
   // `git branch -D` refuses a branch checked out in a linked worktree, so the
   // menu must not offer Delete there — it would only produce a git error toast.
   it("hides Delete when the branch is checked out in another worktree", () => {

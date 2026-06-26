@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
-import { currentBranchSyncView } from "../../../lib/branchSync";
+import { currentBranchSyncView, defaultPublishTarget } from "../../../lib/branchSync";
 import { ForgeKind } from "../../../lib/api";
 import { useDismiss } from "../../../hooks/useDismiss";
 import { focusRing } from "../../../lib/ui";
@@ -146,23 +146,20 @@ export const ActionBar = ({
     closeNav();
     onTabChange(tab);
   };
-  const defaultPublishTarget = () => {
-    const branch = summary?.headBranch;
-    if (!branch) return "origin/";
-    const remote =
-      branches
-        .find((item) => item.kind === "remote" && item.name.includes("/"))
-        ?.name.split("/")[0] ?? "origin";
-    return `${remote}/${branch}`;
-  };
   const runPush = () => {
     const branch = summary?.headBranch;
     if (branch && currentSync.needsPublishPrompt) {
+      const info = branches.find((b) => b.kind === "local" && b.name === branch);
       requestPrompt({
         title: `Publish ${branch}`,
         message: `Remote branch for ${branch} to push to and pull from.`,
         placeholder: "origin/branch",
-        defaultValue: defaultPublishTarget(),
+        defaultValue: defaultPublishTarget(
+          branches,
+          branch,
+          info?.upstream,
+          info?.sync?.status !== "staleUpstream",
+        ),
         confirmLabel: "Publish",
         onSubmit: (upstream) => void run("push", () => publishBranch(branch, upstream))(),
       });

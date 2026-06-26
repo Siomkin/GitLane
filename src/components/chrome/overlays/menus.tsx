@@ -9,6 +9,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
+import { defaultPublishTarget } from "@/lib/branchSync";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan, getSquashEligibility, isCommitReachableFromRemote } from "@/store/selection";
@@ -296,14 +297,6 @@ export function BranchContextMenu() {
     void run(op);
   };
 
-  const defaultPublishTarget = () => {
-    if (upstream) return upstream;
-    const remote =
-      branches
-        .find((item) => item.kind === "remote" && item.name.includes("/"))
-        ?.name.split("/")[0] ?? "origin";
-    return `${remote}/${b}`;
-  };
   const needsPublishPrompt =
     info?.sync?.status === "noUpstream" || info?.sync?.status === "staleUpstream";
   const promptPublishBranch = () =>
@@ -311,7 +304,7 @@ export function BranchContextMenu() {
       title: `Publish ${b}`,
       message: `Remote branch for ${b} to push to and pull from.`,
       placeholder: "origin/branch",
-      defaultValue: defaultPublishTarget(),
+      defaultValue: defaultPublishTarget(branches, b, upstream, info?.sync?.status !== "staleUpstream"),
       confirmLabel: "Publish",
       onSubmit: (up) => void run(() => publishBranch(b, up)),
     });

@@ -112,6 +112,18 @@ describe("ActionBar layout order", () => {
     expect(screen.getByText("↑1")).toBeInTheDocument();
   });
 
+  it("disables both Pull and Push for a diverged branch (force-push is in the branch menu)", () => {
+    useRepo.setState({
+      branches: [branch({ sync: { status: "diverged", upstream: "origin/main", ahead: 2, behind: 3 } })],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(screen.getByTitle(/Pull unavailable/)).toBeDisabled();
+    expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
+    expect(screen.getByText("↑2 ↓3")).toBeInTheDocument();
+  });
+
   it("keeps Pull available for an up-to-date remote-tracking ref because git pull fetches first", () => {
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(screen.getByTitle("Up to date with origin/main.")).toBeEnabled();
@@ -140,6 +152,28 @@ describe("ActionBar layout order", () => {
 
     const prompt = useUi.getState().prompt;
     expect(prompt).not.toBeNull();
+    expect(prompt?.title).toBe("Publish main");
+    expect(prompt?.defaultValue).toBe("origin/main");
+    prompt!.onSubmit("origin/main");
+    expect(publishBranch).toHaveBeenCalledWith("main", "origin/main");
+  });
+
+  it("pre-fills a fresh publish target for a stale upstream, not the pruned ref", () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      publishBranch,
+      branches: [
+        branch({
+          upstream: "origin/deleted",
+          sync: { status: "staleUpstream", upstream: "origin/deleted", ahead: 0, behind: 0 },
+        }),
+      ],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    fireEvent.click(screen.getByText("Push"));
+
+    const prompt = useUi.getState().prompt;
     expect(prompt?.title).toBe("Publish main");
     expect(prompt?.defaultValue).toBe("origin/main");
     prompt!.onSubmit("origin/main");
