@@ -89,7 +89,8 @@ export const HistoryWorkspace = () => {
   const rowCount = rowModel.rows.length;
   const laneCount = graph?.laneCount ?? 1;
   const fallbackNodeX = graphLaneX(rowModel.fallbackMarkerLane);
-  const lanesNeeded = Math.max(laneCount, rowModel.maxMarkerLane + 1);
+  const wipLane = hasWip ? graph?.wipLane : undefined;
+  const lanesNeeded = Math.max(laneCount, rowModel.maxMarkerLane + 1, (wipLane ?? -1) + 1);
   // Cap the auto width generously (480px) so wide lane/marker counts aren't
   // clipped off-canvas; the user can still resize via repoGraphWidth.
   const autoGraphW = Math.min(480, Math.max(56, GEOMETRY.padLeft + lanesNeeded * GEOMETRY.laneWidth + 22));

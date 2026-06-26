@@ -64,6 +64,9 @@ pub struct GraphEdge {
     pub from_lane: usize,
     pub to_row: usize,
     pub to_lane: usize,
+    /// Zero-based parent index on the child commit. `0` is the first-parent
+    /// continuation; `> 0` is a merge parent.
+    pub parent_index: usize,
     pub color: usize,
 }
 
@@ -75,6 +78,12 @@ pub struct RepoGraph {
     pub edges: Vec<GraphEdge>,
     /// Total number of lanes used — the renderer sizes the gutter from this.
     pub lane_count: usize,
+    /// Lane for the synthetic WIP marker. When HEAD is also an ancestor of a
+    /// newer branch tip, the checked-out HEAD lane remains the mainline and
+    /// the newer branch is pushed right.
+    pub wip_lane: Option<usize>,
+    /// Color index for the synthetic WIP marker lane.
+    pub wip_color: Option<usize>,
     /// Oid of HEAD, if resolvable.
     pub head: Option<String>,
     /// True if more commits exist beyond `limit` (graph was truncated).
