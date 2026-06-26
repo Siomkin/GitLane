@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { StashEntry, WorktreeInfo } from "@/lib/api";
+import type { BranchSyncState, StashEntry, WorktreeInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
 
@@ -7,6 +7,7 @@ import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
  * filtering, non-matches are removed from the popup. */
 export interface NavRefItem extends RefItem {
   match: boolean;
+  sync?: BranchSyncState | null;
 }
 
 /** A worktree paired with the oid to navigate to (its branch tip, when that tip
@@ -65,7 +66,12 @@ export function useNavigatorSections(filter: string): NavigatorSections {
 
   const locals = branches
     .filter((b) => b.kind === "local")
-    .map((b) => ({ name: b.name, oid: b.target ?? oidByName.get(b.name), match: matches(b.name) }))
+    .map((b) => ({
+      name: b.name,
+      oid: b.target ?? oidByName.get(b.name),
+      match: matches(b.name),
+      sync: b.sync,
+    }))
     .sort((a, b) => (a.name === head ? -1 : b.name === head ? 1 : a.name.localeCompare(b.name)));
   const remotes = branches
     .filter((b) => b.kind === "remote")

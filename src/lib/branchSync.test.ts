@@ -1,0 +1,149 @@
+import { describe, expect, it } from "vitest";
+import type { BranchInfo, BranchSyncState, RepoSummary } from "./api";
+import { currentBranchSyncView, defaultPublishTarget, syncBadgeLabel, syncTitle } from "./branchSync";
+
+const summary: RepoSummary = {
+  path: "/repo",
+  workdir: "/repo",
+  headBranch: "main",
+  headOid: "abc123",
+  detached: false,
+};
+
+const sync = (over: Partial<BranchSyncState>): BranchSyncState => ({
+  status: "upToDate",
+  upstream: "origin/main",
+  ahead: 0,
+  behind: 0,
+  ...over,
+});
+
+const branch = (state: BranchSyncState): BranchInfo => ({
+  name: "main",
+  kind: "local",
+  target: "abc123",
+  isHead: true,
+  upstream: state.upstream,
+  sync: state,
+});
+
+describe("branch sync view model", () => {
+  it("keeps pull available for any branch with a usable upstream", () => {
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "upToDate" }))])).toMatchObject({
+      label: null,
+      canPull: true,
+      canPush: false,
+    });
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "ahead", ahead: 1 }))])).toMatchObject({
+      label: "↑1",
+      canPull: true,
+      canPush: true,
+    });
+    const view = currentBranchSyncView(summary, [branch(sync({ status: "behind", behind: 2 }))]);
+    expect(view).toMatchObject({ label: "↓2", canPull: true, canPush: false });
+  });
+
+  it("enables push for ahead and unknown upstream states", () => {
+    const view = currentBranchSyncView(summary, [branch(sync({ status: "ahead", ahead: 1 }))]);
+    expect(view).toMatchObject({ label: "↑1", canPull: true, canPush: true, needsPublishPrompt: false });
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "unknown" }))])).toMatchObject({
+      label: null,
+      canPull: true,
+      canPush: true,
+      needsPublishPrompt: false,
+    });
+  });
+
+  it("disables both pull and push for a diverged branch (force-push lives in the branch menu)", () => {
+    // `git pull --ff-only` and a plain `git push` both fail on a diverged branch,
+    // so neither toolbar action is offered — the badge still shows the spread.
+    expect(
+      currentBranchSyncView(summary, [branch(sync({ status: "diverged", ahead: 1, behind: 1 }))]),
+    ).toMatchObject({ label: "↑1 ↓1", canPull: false, canPush: false, needsPublishPrompt: false });
+  });
+
+  it("keeps detached and no-remote branches disabled", () => {
+    expect(currentBranchSyncView({ ...summary, detached: true, headBranch: null }, [])).toMatchObject({
+      label: null,
+      canPull: false,
+      canPush: false,
+    });
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "noRemote", upstream: null }))])).toMatchObject({
+      label: null,
+      canPull: false,
+      canPush: false,
+    });
+  });
+
+  it("allows no-upstream and stale-upstream pushes through the publish prompt path", () => {
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "noUpstream", upstream: null }))])).toMatchObject({
+      label: null,
+      canPull: false,
+      canPush: true,
+      needsPublishPrompt: true,
+    });
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "staleUpstream" }))])).toMatchObject({
+      label: "stale",
+      canPull: false,
+      canPush: true,
+      needsPublishPrompt: true,
+    });
+  });
+
+  it("does not strand toolbar actions when the branch list is missing the current branch", () => {
+    expect(currentBranchSyncView(summary, [])).toMatchObject({
+      label: null,
+      canPull: true,
+      canPush: true,
+    });
+  });
+
+  it("describes stale upstreams and compact branch-row badges", () => {
+    const state = sync({ status: "staleUpstream", upstream: "origin/deleted" });
+    // A stale upstream gets a visible badge (it's an actionable warning), unlike
+    // the quiet no-upstream / no-remote states which stay badge-less.
+    expect(syncBadgeLabel(state)).toBe("stale");
+    expect(syncBadgeLabel(sync({ status: "noUpstream", upstream: null }))).toBeNull();
+    expect(syncBadgeLabel(sync({ status: "diverged", ahead: 3, behind: 2 }))).toBe("↑3 ↓2");
+    expect(syncTitle(state)).toContain("origin/deleted");
+  });
+});
+
+describe("defaultPublishTarget", () => {
+  const remote = (name: string): BranchInfo => ({
+    name,
+    kind: "remote",
+    target: "c1",
+    isHead: false,
+    upstream: null,
+  });
+
+  it("prefers the configured upstream when present", () => {
+    expect(defaultPublishTarget([remote("upstream/main")], "main", "upstream/main")).toBe(
+      "upstream/main",
+    );
+  });
+
+  it("prefers origin over other remotes when no upstream is set", () => {
+    const branches = [remote("fork/main"), remote("origin/main")];
+    expect(defaultPublishTarget(branches, "feature")).toBe("origin/feature");
+  });
+
+  it("falls back to the first remote, then origin, when origin is absent", () => {
+    expect(defaultPublishTarget([remote("fork/main")], "feature")).toBe("fork/feature");
+    expect(defaultPublishTarget([], "feature")).toBe("origin/feature");
+  });
+
+  it("re-targets a stale upstream to the local branch name, keeping its remote", () => {
+    // The pruned ref name (origin/deleted) must not be re-published; keep `origin`.
+    expect(defaultPublishTarget([], "main", "origin/deleted", false)).toBe("origin/main");
+    // Multi-remote: keep the configured (non-origin) remote rather than forcing origin.
+    expect(
+      defaultPublishTarget([remote("origin/x"), remote("fork/y")], "feature", "fork/old", false),
+    ).toBe("fork/feature");
+    // A bare local-tracking upstream (no slash) has no remote to keep — derive one.
+    expect(defaultPublishTarget([remote("origin/x")], "feature", "trunk", false)).toBe(
+      "origin/feature",
+    );
+  });
+});

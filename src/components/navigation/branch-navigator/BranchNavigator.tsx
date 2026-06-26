@@ -57,6 +57,7 @@ export function BranchNavigator() {
                 isCurrent={b.name === head}
                 dimmed={filtering && !b.match}
                 query={filter}
+                sync={b.sync}
               />
             ))}
           </Section>

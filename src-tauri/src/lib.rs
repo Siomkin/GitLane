@@ -499,6 +499,25 @@ async fn push_branch(
     .await
 }
 
+/// Publish a local branch to `upstream` (`remote/branch`) and set upstream in
+/// one push. Token resolved server-side from the bound `account`, like [`push`].
+#[tauri::command]
+async fn publish_branch(
+    path: String,
+    branch: String,
+    upstream: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::publish_branch(&path, &branch, &upstream, auth_ref)
+    })
+    .await
+}
+
 // ---- GitHub (gh CLI) ----
 
 #[tauri::command]
@@ -905,6 +924,7 @@ pub fn run() {
             fetch,
             push,
             push_branch,
+            publish_branch,
             github_accounts,
             forge_auth_statuses,
             repo_forge,

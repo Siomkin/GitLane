@@ -843,6 +843,35 @@ pub fn push_branch(repo: &str, branch: &str, auth: Option<(&str, &str)>) -> Resu
     }
 }
 
+/// Publish `branch` to `upstream` (`remote/branch`) and set it as the branch's
+/// upstream in one git invocation. Used for first-push flows where the remote
+/// tracking ref does not exist yet, so `set_upstream` alone would fail.
+pub fn publish_branch(
+    repo: &str,
+    branch: &str,
+    upstream: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(branch)?;
+    let (remote, remote_branch) = upstream.split_once('/').ok_or_else(|| {
+        "Enter an upstream as remote/branch, for example origin/main.".to_string()
+    })?;
+    if remote.is_empty() || remote_branch.is_empty() {
+        return Err("Enter an upstream as remote/branch, for example origin/main.".to_string());
+    }
+    ensure_operand(remote)?;
+    ensure_operand(remote_branch)?;
+    let refspec = format!("refs/heads/{branch}:refs/heads/{remote_branch}");
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", "--set-upstream", remote, &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", "--set-upstream", remote, &refspec]),
+    }
+}
+
 /// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
 /// falling back to `origin`) and refspec (honouring a divergent upstream branch
 /// name via `branch.<name>.merge`, else a plain `<branch>`). Shared by
@@ -1021,7 +1050,8 @@ mod tests {
     use super::{
         abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
         discard_all, ensure_operand, is_empty_after_resolution, mark_conflict_resolved,
-        reconflict_file, resolve_conflict_file, skip_operation, worktree_path,
+        publish_branch, reconflict_file, resolve_conflict_file, set_upstream, skip_operation,
+        worktree_path,
     };
     use std::path::PathBuf;
     use std::process::Command;
@@ -1115,6 +1145,70 @@ mod tests {
         assert!(worktree_path(root, "../escape.txt").is_err());
         assert!(worktree_path(root, "a/../../escape.txt").is_err());
         assert!(worktree_path(root, "/etc/passwd").is_err());
+    }
+
+    /// A repo with one commit on `main` and a configured (but offline) origin.
+    /// `git config` here keeps commits unsigned so CI without a signing key works.
+    fn repo_with_base_commit(tag: &str) -> (TempRepo, String) {
+        let repo = TempRepo::new(tag);
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["remote", "add", "origin", "https://example.test/r.git"]);
+        let head = String::from_utf8(repo.git(&["rev-parse", "HEAD"]).stdout).unwrap();
+        (repo, head.trim().to_string())
+    }
+
+    #[test]
+    fn set_upstream_writes_tracking_config() {
+        let (repo, head) = repo_with_base_commit("set-upstream");
+        // `--set-upstream-to` resolves the ref locally; seed it so no network is hit.
+        repo.git(&["update-ref", "refs/remotes/origin/main", &head]);
+
+        let result = set_upstream(repo.path(), "main", "origin/main");
+        assert!(result.is_ok(), "set_upstream failed: {result:?}");
+
+        let remote = String::from_utf8(repo.git(&["config", "branch.main.remote"]).stdout).unwrap();
+        let merge = String::from_utf8(repo.git(&["config", "branch.main.merge"]).stdout).unwrap();
+        assert_eq!(remote.trim(), "origin");
+        assert_eq!(merge.trim(), "refs/heads/main");
+    }
+
+    #[test]
+    fn set_upstream_rejects_option_like_operands() {
+        let repo = TempRepo::new("set-upstream-inj");
+        repo.git(&["init", "-q"]);
+        // Both operands flow into git unprefixed, so option-injection must fail
+        // before the subprocess runs.
+        assert!(set_upstream(repo.path(), "-D", "origin/main").is_err());
+        assert!(set_upstream(repo.path(), "main", "--upload-pack=touch /tmp/x").is_err());
+    }
+
+    #[test]
+    fn publish_branch_validates_upstream_format_before_pushing() {
+        let (repo, _) = repo_with_base_commit("publish-validate");
+        // All of these fail format/operand validation before any network push, so
+        // the offline origin is never contacted.
+        assert!(
+            publish_branch(repo.path(), "main", "originmain", None).is_err(),
+            "missing slash must be rejected"
+        );
+        assert!(
+            publish_branch(repo.path(), "main", "/main", None).is_err(),
+            "empty remote half must be rejected"
+        );
+        assert!(
+            publish_branch(repo.path(), "main", "origin/", None).is_err(),
+            "empty branch half must be rejected"
+        );
+        assert!(
+            publish_branch(repo.path(), "--upload-pack=x", "origin/main", None).is_err(),
+            "option-like branch operand must be rejected"
+        );
     }
 
     /// Build a modify/delete conflict: `base` committed, then HEAD modifies the

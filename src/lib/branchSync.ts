@@ -1,0 +1,155 @@
+import type { BranchInfo, BranchSyncState, RepoSummary } from "./api";
+
+export interface CurrentBranchSyncView {
+  label: string | null;
+  title: string;
+  canPull: boolean;
+  canPush: boolean;
+  needsPublishPrompt: boolean;
+}
+
+export const syncBadgeLabel = (sync?: BranchSyncState | null): string | null => {
+  if (!sync) return null;
+  switch (sync.status) {
+    case "upToDate":
+      return null;
+    case "ahead":
+      return `↑${sync.ahead}`;
+    case "behind":
+      return `↓${sync.behind}`;
+    case "diverged":
+      return `↑${sync.ahead} ↓${sync.behind}`;
+    case "noRemote":
+      return null;
+    case "noUpstream":
+      return null;
+    case "staleUpstream":
+      return "stale";
+    case "unknown":
+      return null;
+  }
+};
+
+export const syncTitle = (sync?: BranchSyncState | null): string => {
+  if (!sync) return "Sync state is unavailable.";
+  const upstream = sync.upstream ?? "upstream";
+  switch (sync.status) {
+    case "upToDate":
+      return `Up to date with ${upstream}.`;
+    case "ahead":
+      return `${sync.ahead} commit${plural(sync.ahead)} ahead of ${upstream}.`;
+    case "behind":
+      return `${sync.behind} commit${plural(sync.behind)} behind ${upstream}.`;
+    case "diverged":
+      return `${sync.ahead} ahead and ${sync.behind} behind ${upstream}. Rebase, merge, or force-push from the branch menu.`;
+    case "noRemote":
+      return "No remote is configured for this repository.";
+    case "noUpstream":
+      return "This branch has no upstream configured.";
+    case "staleUpstream":
+      return `Configured upstream ${upstream} is missing. Fetch/prune may have removed it.`;
+    case "unknown":
+      return `Could not compute sync state against ${upstream}. Pull or push will let git validate the operation.`;
+  }
+};
+
+export const currentBranchSyncView = (
+  summary: RepoSummary | null,
+  branches: BranchInfo[],
+): CurrentBranchSyncView => {
+  if (!summary) {
+    return {
+      label: null,
+      title: "Open a repository to sync branches.",
+      canPull: false,
+      canPush: false,
+      needsPublishPrompt: false,
+    };
+  }
+  if (summary.detached) {
+    return {
+      label: null,
+      title: "Detached HEAD has no branch upstream. Check out a branch before pulling or pushing.",
+      canPull: false,
+      canPush: false,
+      needsPublishPrompt: false,
+    };
+  }
+  if (!summary.headBranch) {
+    return {
+      label: null,
+      title: "No branch is checked out.",
+      canPull: false,
+      canPush: false,
+      needsPublishPrompt: false,
+    };
+  }
+
+  const branch = branches.find((item) => item.kind === "local" && item.name === summary.headBranch);
+  const sync = branch?.sync;
+  if (!sync) {
+    return {
+      label: null,
+      title: "Sync state is unavailable. Pull or push will let git validate the operation.",
+      canPull: true,
+      canPush: true,
+      needsPublishPrompt: false,
+    };
+  }
+
+  return {
+    label: syncBadgeLabel(sync),
+    title: syncTitle(sync),
+    canPull: canPull(sync),
+    canPush: canPush(sync),
+    needsPublishPrompt: sync.status === "noUpstream" || sync.status === "staleUpstream",
+  };
+};
+
+// A fast-forward pull (`git pull --ff-only`) can only succeed when local history
+// is a prefix of the upstream's, so `diverged` is excluded alongside the states
+// that have no resolvable upstream — offering it there guarantees a git error.
+// `unknown` stays enabled so git itself validates the operation.
+const canPull = (sync: BranchSyncState) =>
+  !["noRemote", "noUpstream", "staleUpstream", "diverged"].includes(sync.status);
+
+// A plain `git push` is rejected non-fast-forward when `diverged`; that case is
+// served by force-push in the branch context menu, not the toolbar. `noUpstream`
+// and `staleUpstream` route through the publish prompt (see `needsPublishPrompt`).
+const canPush = (sync: BranchSyncState) =>
+  sync.status === "ahead" ||
+  sync.status === "unknown" ||
+  sync.status === "noUpstream" ||
+  sync.status === "staleUpstream";
+
+/** The default `remote/branch` to pre-fill a publish prompt with. Prefers the
+ * branch's configured upstream, then a remote named `origin`, then the first
+ * remote present in the branch list — so multi-remote repos get a stable,
+ * predictable default rather than whichever remote-tracking ref sorts first.
+ *
+ * Pass `upstreamResolves: false` when the configured upstream is *stale* (its
+ * remote ref was pruned): re-publishing the deleted branch name is almost never
+ * what the user wants, so only the stale upstream's **remote** is kept and the
+ * branch defaults back to the local name (`origin/deleted` → `origin/<branch>`). */
+export const defaultPublishTarget = (
+  branches: BranchInfo[],
+  branchName: string,
+  upstream?: string | null,
+  upstreamResolves = true,
+): string => {
+  if (upstream) {
+    if (upstreamResolves) return upstream;
+    // Keep the configured remote, drop the pruned branch name. A bare upstream
+    // (a `.`-remote local-tracking ref, no slash) has no remote to keep — fall
+    // through to deriving one from the remote list.
+    const slash = upstream.indexOf("/");
+    if (slash > 0) return `${upstream.slice(0, slash)}/${branchName}`;
+  }
+  const remotes = branches
+    .filter((b) => b.kind === "remote" && b.name.includes("/"))
+    .map((b) => b.name.slice(0, b.name.indexOf("/")));
+  const remote = remotes.includes("origin") ? "origin" : remotes[0] ?? "origin";
+  return `${remote}/${branchName}`;
+};
+
+const plural = (count: number) => (count === 1 ? "" : "s");

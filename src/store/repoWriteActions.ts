@@ -80,6 +80,7 @@ export function createRepoWriteActions(
   | "renameBranchTo"
   | "setUpstreamFor"
   | "pushBranch"
+  | "publishBranch"
   | "mergeInto"
   | "fastForwardTo"
   | "rebaseOnto"
@@ -169,6 +170,12 @@ export function createRepoWriteActions(
       runOp(get, async (summary) => {
         await api.pushBranch(summary.path, branch, useAccounts.getState().repoAccountRef);
         return `Pushed ${branch}`;
+      }),
+
+    publishBranch: (branch, upstream) =>
+      runOp(get, async (summary) => {
+        await api.publishBranch(summary.path, branch, upstream, useAccounts.getState().repoAccountRef);
+        return `Published ${branch} to ${upstream}`;
       }),
 
     mergeInto: (from, to) =>
