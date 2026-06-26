@@ -888,7 +888,10 @@ fn push_target(repo: &str, branch: &str) -> (String, String) {
 /// branch updates and any tags that did import. Other tag-fetch failures still
 /// fail the operation. We do not pass `--prune-tags`: local-only tags and tags
 /// deleted upstream are intentionally preserved unless the user deletes them
-/// explicitly.
+/// explicitly. The branch fetch also forces `--no-prune-tags` so a repo with
+/// `fetch.pruneTags=true` (or `remote.<name>.pruneTags=true`) and a divergent
+/// local tag does not fail the whole Fetch with "would clobber existing tag"
+/// before the per-remote loop's clobber tolerance can run.
 ///
 /// When `token` is set (the repo is bound to an account) it authenticates as
 /// that account via the same inline `gh` git-credential wiring as [`push`], so
@@ -896,7 +899,10 @@ fn push_target(repo: &str, branch: &str) -> (String, String) {
 pub fn fetch(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
     match auth {
         Some((host, token)) => {
-            let branch_args = credential_args(host, &["fetch", "--all", "--prune", "--no-tags"]);
+            let branch_args = credential_args(
+                host,
+                &["fetch", "--all", "--prune", "--no-tags", "--no-prune-tags"],
+            );
             let branch_arg_refs: Vec<&str> = branch_args.iter().map(String::as_str).collect();
             fetch_with_tag_import(
                 repo,
@@ -905,7 +911,12 @@ pub fn fetch(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
                 &[("GH_TOKEN", token)],
             )
         }
-        None => fetch_with_tag_import(repo, &["fetch", "--all", "--prune", "--no-tags"], None, &[]),
+        None => fetch_with_tag_import(
+            repo,
+            &["fetch", "--all", "--prune", "--no-tags", "--no-prune-tags"],
+            None,
+            &[],
+        ),
     }
 }
 
