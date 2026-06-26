@@ -265,6 +265,26 @@ fn ensure_conflicted(repo: &str, file: &str) -> Result<(), String> {
     }
 }
 
+/// True when a merge/rebase/cherry-pick/revert is underway — i.e. git still holds
+/// the state needed to recreate a conflict. `git checkout --merge` is only
+/// meaningful then; outside an operation it would instead overwrite the worktree
+/// copy with the staged version, silently discarding the user's edits.
+fn operation_in_progress(repo: &str) -> bool {
+    let Ok(git_dir) = run_git(repo, &["rev-parse", "--absolute-git-dir"]) else {
+        return false;
+    };
+    let git_dir = std::path::Path::new(git_dir.trim());
+    [
+        "MERGE_HEAD",
+        "CHERRY_PICK_HEAD",
+        "REVERT_HEAD",
+        "rebase-merge",
+        "rebase-apply",
+    ]
+    .iter()
+    .any(|name| git_dir.join(name).exists())
+}
+
 /// Resolve a repo-relative `file` to an absolute path under the worktree `root`,
 /// rejecting absolute paths and `..`/prefix components so a caller-supplied path
 /// can never escape the repository. Conflicted paths come from git's index
@@ -313,6 +333,15 @@ pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> 
 /// resolution, exposed as the per-file "Unstage" affordance.
 pub fn reconflict_file(repo: &str, file: &str) -> Result<String, String> {
     ensure_operand(file)?;
+    // Guard against clobbering: outside an active operation `git checkout
+    // --merge` has no conflict to recreate and would just overwrite the worktree
+    // file with the index copy, discarding any edits. Only allow it mid-operation
+    // (the intended inverse of staging a resolution).
+    if !operation_in_progress(repo) {
+        return Err(format!(
+            "no merge in progress — cannot restore the conflict in {file:?}"
+        ));
+    }
     run_git(repo, &["checkout", "--merge", "--", file])?;
     Ok(format!("Restored conflict in {file}"))
 }
@@ -1234,5 +1263,22 @@ mod tests {
         assert!(!String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
         let body = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
         assert!(body.contains("<<<<<<<") && body.contains(">>>>>>>"));
+    }
+
+    #[test]
+    fn reconflict_file_rejected_outside_an_operation() {
+        // With no merge/rebase/etc. underway there is no conflict to recreate;
+        // `git checkout --merge` would just overwrite the worktree file with the
+        // index copy, so the guard must refuse rather than risk clobbering edits.
+        let repo = TempRepo::new("reconflict-clean");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"hi\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "init"]);
+        let result = reconflict_file(repo.path(), "f.txt");
+        assert!(result.is_err(), "expected refusal outside an operation: {result:?}");
     }
 }

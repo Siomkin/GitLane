@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type ConflictFileContent } from "../../lib/api";
 import type { OperationState } from "../../store/repo";
+import { useUi } from "../../store/ui";
 import type { RegionDecision } from "./conflictModel";
 
 export type EditorMode = "inline" | "split";
@@ -93,6 +94,9 @@ export function useConflictResolver(
       .catch(() => {
         if (fetchTokenRef.current !== token) return;
         setContentLoading(false);
+        // Surface the failure instead of leaving the editor silently blank —
+        // otherwise the file looks stuck between loading and an empty editor.
+        useUi.getState().showToast(`Couldn't load conflicts in ${selected}`, "error");
       });
   }, [repoPath, selected, needsContent, cached]);
 

@@ -101,6 +101,7 @@ export const ConflictEditor = ({
   decidedCount,
   totalHunks,
   resolved,
+  malformed,
   staged,
   decisionFor,
   lineSelFor,
@@ -128,6 +129,9 @@ export const ConflictEditor = ({
   decidedCount: number;
   totalHunks: number;
   resolved: boolean;
+  /** The file has structurally broken conflict markers — in-app resolution is
+   * disabled and the user is told to fix it in their own editor. */
+  malformed: boolean;
   staged: boolean;
   decisionFor: (idx: number) => RegionDecision | undefined;
   lineSelFor: (idx: number) => LineSelection;
@@ -157,11 +161,13 @@ export const ConflictEditor = ({
       ? "bg-sky-100 text-sky-600 dark:bg-sky-400/15 dark:text-sky-300"
       : "bg-amber-100 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300";
 
-  const footLabel = staged
-    ? "Resolved and staged"
-    : resolved
-      ? "All conflicts resolved — stage to finish this file"
-      : `${decidedCount} of ${totalHunks} conflict${totalHunks === 1 ? "" : "s"} resolved`;
+  const footLabel = malformed
+    ? "Conflict markers look malformed — fix this file in your editor, then stage it"
+    : staged
+      ? "Resolved and staged"
+      : resolved
+        ? "All conflicts resolved — stage to finish this file"
+        : `${decidedCount} of ${totalHunks} conflict${totalHunks === 1 ? "" : "s"} resolved`;
 
   const seg = (active: boolean) =>
     cn(

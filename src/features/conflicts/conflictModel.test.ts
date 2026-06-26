@@ -6,6 +6,8 @@ import {
   decidedCount,
   deriveSelection,
   effectiveDecision,
+  endsWithNewline,
+  hasMalformedHunk,
   isResolved,
   parseConflict,
   tokenize,
@@ -156,6 +158,41 @@ describe("buildResolved", () => {
     expect(buildResolved(regions, { 1: "lines" }, sel)).toBe(
       'function greet() {\n  return "theirs";\n}\n',
     );
+  });
+
+  it("preserves a file that had no trailing newline", () => {
+    // The conflicted source ended without a final newline; resolving it must not
+    // silently add one (that would be a content change beyond the resolution).
+    const src = "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> x\nb";
+    expect(endsWithNewline(src)).toBe(false);
+    const rgs = parseConflict(src);
+    expect(buildResolved(rgs, { 1: "ours" }, {}, endsWithNewline(src))).toBe("a\nours\nb");
+  });
+
+  it("keeps the trailing newline when the source had one", () => {
+    const src = "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> x\nb\n";
+    expect(endsWithNewline(src)).toBe(true);
+    const rgs = parseConflict(src);
+    expect(buildResolved(rgs, { 1: "ours" }, {}, endsWithNewline(src))).toBe("a\nours\nb\n");
+  });
+});
+
+describe("malformed markers", () => {
+  it("flags a hunk missing its ======= split", () => {
+    const rgs = parseConflict("<<<<<<< HEAD\nours\nno-split-or-close");
+    expect(hasMalformedHunk(rgs)).toBe(true);
+    // Even if every hunk looks "decided", a malformed file must never stage.
+    expect(isResolved(rgs, { 0: "ours" })).toBe(false);
+  });
+
+  it("flags a hunk missing its >>>>>>> close", () => {
+    const rgs = parseConflict("<<<<<<< HEAD\nours\n=======\ntheirs");
+    expect(hasMalformedHunk(rgs)).toBe(true);
+    expect(isResolved(rgs, { 0: "theirs" })).toBe(false);
+  });
+
+  it("does not flag a well-formed hunk", () => {
+    expect(hasMalformedHunk(parseConflict(TWO_WAY))).toBe(false);
   });
 });
 

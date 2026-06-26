@@ -19,6 +19,7 @@ const props = (over: Partial<Props> = {}): Props => {
     decidedCount: 0,
     totalHunks: 0,
     resolved: false,
+    malformed: false,
     staged: false,
     decisionFor: () => undefined,
     lineSelFor: () => new Set<string>(),
@@ -58,5 +59,11 @@ describe("ConflictEditor", () => {
     render(<ConflictEditor {...props({ binaryContent: false })} />);
     expect(screen.getByText(/Mark resolved/i)).toBeInTheDocument();
     expect(screen.queryByText("Keep current (ours)")).not.toBeInTheDocument();
+  });
+
+  it("warns and keeps the stage button disabled for malformed markers", () => {
+    render(<ConflictEditor {...props({ malformed: true })} />);
+    expect(screen.getByText(/markers look malformed/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Mark resolved/i })).toBeDisabled();
   });
 });

@@ -9,6 +9,8 @@ import {
   decidedCount as decidedCountOf,
   deriveSelection,
   effectiveDecision,
+  endsWithNewline,
+  hasMalformedHunk,
   isResolved as isResolvedOf,
   parseConflict,
   type ConflictRegion,
@@ -122,6 +124,9 @@ export const ConflictWorkspace = () => {
 
   const totalHunks = conflictRegionCount(regions);
   const decided = decidedCountOf(regions, fileDecisions, fileLineSel);
+  // Corrupt/truncated markers can't be reconstructed in-app — block staging and
+  // tell the user to fix the file in their own editor.
+  const malformed = hasMalformedHunk(regions);
   // A text file with no markers left (edited away) counts as resolved too.
   const noMarkers = !!selectedFile && selectedFile.kind === "text" && regions.length > 0 && totalHunks === 0;
   const fileStaged = !!selectedFile?.resolved;
@@ -164,6 +169,31 @@ export const ConflictWorkspace = () => {
     });
   };
 
+  // Stageable when any unstaged text file is fully decided locally. Memoized so
+  // editor interactions (line toggles, mode switches) don't re-parse every
+  // cached file on each render — only when the file set, decisions, picks, or
+  // cached content actually change. (`contentFor` is stable per content cache.)
+  // Declared before the early return below so it's never a conditional hook.
+  const canStageAll = useMemo(
+    () =>
+      files.some((f) => {
+        if (f.resolved) return false;
+        const content = resolver.contentFor(f.path);
+        if (!content || content.binary) return false;
+        const rgs = parseConflict(content.content);
+        const decs: Record<number, RegionDecision> = {};
+        const sels: Record<number, LineSelection> = {};
+        rgs.forEach((_, idx) => {
+          const d = resolver.decisions[`${f.path}::${idx}`];
+          if (d) decs[idx] = d;
+          const s = resolver.lineSel[`${f.path}::${idx}`];
+          if (s) sels[idx] = s;
+        });
+        return conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
+      }),
+    [files, resolver.contentFor, resolver.decisions, resolver.lineSel],
+  );
+
   if (!operation) return null;
 
   const op = (fn: () => Promise<string>) => {
@@ -187,7 +217,15 @@ export const ConflictWorkspace = () => {
       if (ok) resolver.resetFile(target);
     };
     if (noMarkers) void markConflictResolved(target).then(done);
-    else void resolveConflictFile(target, buildResolved(regions, fileDecisions, fileLineSel)).then(done);
+    else {
+      const text = buildResolved(
+        regions,
+        fileDecisions,
+        fileLineSel,
+        endsWithNewline(resolver.content?.content ?? ""),
+      );
+      void resolveConflictFile(target, text).then(done);
+    }
   };
 
   const stageAll = async () => {
@@ -209,34 +247,11 @@ export const ConflictWorkspace = () => {
       });
       const ready = conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
       if (!ready) continue;
-      const ok = await resolveConflictFile(f.path, buildResolved(rgs, decs, sels));
+      const text = buildResolved(rgs, decs, sels, endsWithNewline(content.content));
+      const ok = await resolveConflictFile(f.path, text);
       if (ok) resolver.resetFile(f.path);
     }
   };
-
-  // Stageable when any unstaged text file is fully decided locally. Memoized so
-  // editor interactions (line toggles, mode switches) don't re-parse every
-  // cached file on each render — only when the file set, decisions, picks, or
-  // cached content actually change. (`contentFor` is stable per content cache.)
-  const canStageAll = useMemo(
-    () =>
-      files.some((f) => {
-        if (f.resolved) return false;
-        const content = resolver.contentFor(f.path);
-        if (!content || content.binary) return false;
-        const rgs = parseConflict(content.content);
-        const decs: Record<number, RegionDecision> = {};
-        const sels: Record<number, LineSelection> = {};
-        rgs.forEach((_, idx) => {
-          const d = resolver.decisions[`${f.path}::${idx}`];
-          if (d) decs[idx] = d;
-          const s = resolver.lineSel[`${f.path}::${idx}`];
-          if (s) sels[idx] = s;
-        });
-        return conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
-      }),
-    [files, resolver.contentFor, resolver.decisions, resolver.lineSel],
-  );
 
   return (
     <div className="relative flex h-full flex-col gap-2.5" style={ACCENT_TINTS}>
@@ -279,6 +294,7 @@ export const ConflictWorkspace = () => {
             decidedCount={decided}
             totalHunks={totalHunks}
             resolved={fileResolved}
+            malformed={malformed}
             staged={fileStaged}
             decisionFor={decisionFor}
             lineSelFor={lineSelFor}

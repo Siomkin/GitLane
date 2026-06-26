@@ -23,6 +23,11 @@ export interface ConflictRegion {
   theirs: string[];
   /** diff3 common-ancestor lines, when the file uses `merge.conflictStyle=diff3`. */
   base: string[] | null;
+  /** True when the hunk's markers were structurally incomplete — a missing
+   * `=======` split or `>>>>>>>` close (truncated or nested markers). Such a hunk
+   * cannot be safely reconstructed in-app, so it blocks staging until the user
+   * fixes the file in their own editor. */
+  malformed: boolean;
 }
 
 export type Region = ContextRegion | ConflictRegion;
@@ -77,13 +82,25 @@ export function parseConflict(content: string): Region[] {
           i++;
         }
       }
-      if (i < lines.length && lines[i].startsWith(MARK_SPLIT)) i++; // skip =======
+      // A well-formed hunk has both a `=======` split and a `>>>>>>>` close. If
+      // either is missing the markers are corrupt (truncated/nested) and the
+      // reconstructed text would be wrong — flag the hunk so callers refuse to
+      // stage it (see `hasMalformedHunk` / `isResolved`).
+      let sawSplit = false;
+      let sawTheirs = false;
+      if (i < lines.length && lines[i].startsWith(MARK_SPLIT)) {
+        sawSplit = true;
+        i++; // skip =======
+      }
       while (i < lines.length && !lines[i].startsWith(MARK_THEIRS)) {
         theirs.push(lines[i]);
         i++;
       }
-      if (i < lines.length && lines[i].startsWith(MARK_THEIRS)) i++; // skip >>>>>>>
-      regions.push({ kind: "cf", ours, theirs, base });
+      if (i < lines.length && lines[i].startsWith(MARK_THEIRS)) {
+        sawTheirs = true;
+        i++; // skip >>>>>>>
+      }
+      regions.push({ kind: "cf", ours, theirs, base, malformed: !sawSplit || !sawTheirs });
     } else {
       ctx.push(lines[i]);
       i++;
@@ -96,6 +113,19 @@ export function parseConflict(content: string): Region[] {
 /** Number of conflict hunks in a parsed file. */
 export function conflictRegionCount(regions: Region[]): number {
   return regions.filter((r) => r.kind === "cf").length;
+}
+
+/** True when any hunk had structurally incomplete markers. A file with a
+ * malformed hunk can't be reconstructed safely, so the UI must keep it out of
+ * the stageable set and steer the user to fix it externally. */
+export function hasMalformedHunk(regions: Region[]): boolean {
+  return regions.some((r) => r.kind === "cf" && r.malformed);
+}
+
+/** Whether `content` ended with a newline, so {@link buildResolved} can preserve
+ * a file that had no trailing newline instead of silently appending one. */
+export function endsWithNewline(content: string): boolean {
+  return content.endsWith("\n");
 }
 
 /**
@@ -145,6 +175,7 @@ export function isResolved(
 ): boolean {
   return (
     conflictRegionCount(regions) > 0 &&
+    !hasMalformedHunk(regions) &&
     decidedCount(regions, decisions, lineSel) === conflictRegionCount(regions)
   );
 }
@@ -154,11 +185,17 @@ export function isResolved(
  * regions pass through unchanged; conflict hunks emit the chosen side(s).
  * Undecided hunks are dropped, so callers should only build text once
  * {@link isResolved} is true.
+ *
+ * `trailingNewline` should reflect whether the *original* conflicted file ended
+ * with a newline (see {@link endsWithNewline}); pass `false` to avoid adding one
+ * to a file that didn't have it, which would otherwise be a spurious content
+ * change beyond the resolution. Defaults to `true` (the common case).
  */
 export function buildResolved(
   regions: Region[],
   decisions: Record<number, RegionDecision | undefined>,
   lineSel: Record<number, LineSelection>,
+  trailingNewline = true,
 ): string {
   const out: string[] = [];
   regions.forEach((region, idx) => {
@@ -180,7 +217,8 @@ export function buildResolved(
       });
     }
   });
-  return out.join("\n") + "\n";
+  const text = out.join("\n");
+  return trailingNewline ? text + "\n" : text;
 }
 
 /** One reconstructed line plus which side it came from ("a" = ours, "b" =
