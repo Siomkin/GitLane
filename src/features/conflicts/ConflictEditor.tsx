@@ -94,6 +94,7 @@ const WholeFileCard = ({
 export const ConflictEditor = ({
   file,
   regions,
+  binaryContent,
   loading,
   mode,
   onMode,
@@ -118,6 +119,9 @@ export const ConflictEditor = ({
 }: {
   file: OperationFile;
   regions: Region[];
+  /** The fetched content came back binary (non-UTF-8 / NUL) even though the file
+   * was classified "text" — render the whole-file picker instead of the editor. */
+  binaryContent: boolean;
   loading: boolean;
   mode: EditorMode;
   onMode: (mode: EditorMode) => void;
@@ -141,7 +145,11 @@ export const ConflictEditor = ({
   onUnstage: () => void;
   onAcceptSide: (side: "ours" | "theirs") => void;
 }) => {
-  const isText = file.kind === "text";
+  // A "text" file whose content loaded as binary is handled like a binary file:
+  // the whole-file picker, not the (empty) line editor. `editableText` gates the
+  // line-editor chrome (mode toggle + resolve footer).
+  const showWholeFile = file.kind === "binary" || (file.kind === "text" && binaryContent);
+  const editableText = file.kind === "text" && !binaryContent;
   const statusLabel = staged ? "Resolved" : resolved ? "Ready to stage" : "Conflicted";
   const statusClass = staged
     ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
@@ -176,7 +184,7 @@ export const ConflictEditor = ({
         <span className={cn("grid h-5 place-items-center rounded px-1.5 text-[10px] font-semibold", statusClass)}>
           {statusLabel}
         </span>
-        {isText && !staged && (
+        {editableText && !staged && (
           <div className="ml-auto flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]">
             <button onClick={() => onMode("split")} className={seg(mode === "split")}>
               Side by side
@@ -197,24 +205,24 @@ export const ConflictEditor = ({
           <WholeFileCard
             title={
               file.deletedSide === "ours"
-                ? "Deleted by you, modified by incoming"
-                : "Modified by you, deleted by incoming"
+                ? `Deleted on ${oursSub}, modified on ${theirsSub}`
+                : `Modified on ${oursSub}, deleted on ${theirsSub}`
             }
             detail={`${file.path} cannot be auto-merged. Keep a version, or accept the deletion.`}
-            primaryLabel={file.deletedSide === "ours" ? "Accept deletion" : "Keep our version"}
+            primaryLabel={file.deletedSide === "ours" ? "Accept deletion" : `Keep ${oursSub}`}
             primaryTone="accent"
-            secondaryLabel={file.deletedSide === "ours" ? "Keep their version" : "Accept deletion"}
+            secondaryLabel={file.deletedSide === "ours" ? `Keep ${theirsSub}` : "Accept deletion"}
             secondaryTone={file.deletedSide === "ours" ? "blue" : "rose"}
             onPrimary={() => onAcceptSide("ours")}
             onSecondary={() => onAcceptSide("theirs")}
           />
-        ) : file.kind === "binary" ? (
+        ) : showWholeFile ? (
           <WholeFileCard
             title="Binary file — no line-level merge"
             detail={`Both sides changed ${basename(file.path)}. Choose which version to keep.`}
-            primaryLabel="Keep ours"
+            primaryLabel={`Keep ${oursSub}`}
             primaryTone="accent"
-            secondaryLabel="Take theirs"
+            secondaryLabel={`Take ${theirsSub}`}
             secondaryTone="blue"
             onPrimary={() => onAcceptSide("ours")}
             onSecondary={() => onAcceptSide("theirs")}
@@ -243,7 +251,7 @@ export const ConflictEditor = ({
           />
         )}
 
-        {isText && (
+        {editableText && (
           <div className="flex shrink-0 items-center gap-3 border-t border-black/5 bg-white px-4 py-2.5 dark:border-white/5 dark:bg-neutral-800">
             <span
               className={cn(

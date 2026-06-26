@@ -56,6 +56,19 @@ export const ConflictWorkspace = () => {
 
   const selectedFile = files.find((f) => f.path === resolver.selected) ?? null;
 
+  // Git inverts ours/theirs during a rebase: HEAD ("ours", index stage 2) is the
+  // commit you're replaying *onto*, and the patch being applied ("theirs", stage
+  // 3) is your own commit. The "ours"/"theirs" buttons map straight to git's
+  // `--ours`/`--theirs`, so the side *labels* must be operation-aware or a user
+  // mid-rebase picks the opposite of what they intend.
+  const rebasing = operation?.kind === "rebase";
+  const oursSub = rebasing
+    ? "rebased onto (ours)"
+    : headBranch
+      ? `${headBranch} (ours)`
+      : "current (ours)";
+  const theirsSub = rebasing ? "your commit (theirs)" : "incoming (theirs)";
+
   // Parse the selected text file's conflicted content into hunks (the editor is
   // a painter over these). Non-text / unloaded files yield no regions.
   const regions = useMemo(() => {
@@ -177,11 +190,14 @@ export const ConflictWorkspace = () => {
     else void resolveConflictFile(target, buildResolved(regions, fileDecisions, fileLineSel)).then(done);
   };
 
-  const stageAll = () => {
-    files.forEach((f) => {
-      if (f.resolved) return;
+  const stageAll = async () => {
+    // Serialize: each resolveConflictFile shells out to `git add`, and concurrent
+    // invocations contend for `.git/index.lock` (one fails, and the failure is
+    // swallowed → that file silently isn't staged). Await each in turn.
+    for (const f of files) {
+      if (f.resolved) continue;
       const content = resolver.contentFor(f.path);
-      if (!content || content.binary) return;
+      if (!content || content.binary) continue;
       const rgs = parseConflict(content.content);
       const decs: Record<number, RegionDecision> = {};
       const sels: Record<number, LineSelection> = {};
@@ -192,29 +208,35 @@ export const ConflictWorkspace = () => {
         if (s) sels[idx] = s;
       });
       const ready = conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
-      if (!ready) return;
-      void resolveConflictFile(f.path, buildResolved(rgs, decs, sels)).then((ok) => {
-        if (ok) resolver.resetFile(f.path);
-      });
-    });
+      if (!ready) continue;
+      const ok = await resolveConflictFile(f.path, buildResolved(rgs, decs, sels));
+      if (ok) resolver.resetFile(f.path);
+    }
   };
 
-  // Stageable when any unstaged text file is fully decided locally.
-  const canStageAll = files.some((f) => {
-    if (f.resolved) return false;
-    const content = resolver.contentFor(f.path);
-    if (!content || content.binary) return false;
-    const rgs = parseConflict(content.content);
-    const decs: Record<number, RegionDecision> = {};
-    const sels: Record<number, LineSelection> = {};
-    rgs.forEach((_, idx) => {
-      const d = resolver.decisions[`${f.path}::${idx}`];
-      if (d) decs[idx] = d;
-      const s = resolver.lineSel[`${f.path}::${idx}`];
-      if (s) sels[idx] = s;
-    });
-    return conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
-  });
+  // Stageable when any unstaged text file is fully decided locally. Memoized so
+  // editor interactions (line toggles, mode switches) don't re-parse every
+  // cached file on each render — only when the file set, decisions, picks, or
+  // cached content actually change. (`contentFor` is stable per content cache.)
+  const canStageAll = useMemo(
+    () =>
+      files.some((f) => {
+        if (f.resolved) return false;
+        const content = resolver.contentFor(f.path);
+        if (!content || content.binary) return false;
+        const rgs = parseConflict(content.content);
+        const decs: Record<number, RegionDecision> = {};
+        const sels: Record<number, LineSelection> = {};
+        rgs.forEach((_, idx) => {
+          const d = resolver.decisions[`${f.path}::${idx}`];
+          if (d) decs[idx] = d;
+          const s = resolver.lineSel[`${f.path}::${idx}`];
+          if (s) sels[idx] = s;
+        });
+        return conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
+      }),
+    [files, resolver.contentFor, resolver.decisions, resolver.lineSel],
+  );
 
   return (
     <div className="relative flex h-full flex-col gap-2.5" style={ACCENT_TINTS}>
@@ -240,13 +262,17 @@ export const ConflictWorkspace = () => {
           onSelect={resolver.select}
           onAcceptOurs={(p) => acceptSide(p, "ours")}
           onAcceptTheirs={(p) => acceptSide(p, "theirs")}
-          onStageAll={stageAll}
+          onStageAll={() => void stageAll()}
         />
 
         {selectedFile ? (
           <ConflictEditor
             file={selectedFile}
             regions={regions}
+            // A file libgit2 classified "text" can still return binary content
+            // (non-UTF-8, or a NUL in the worktree copy) — fall back to the
+            // whole-file picker so the user isn't stranded in an empty editor.
+            binaryContent={!!resolver.content?.binary}
             loading={resolver.contentLoading}
             mode={resolver.mode}
             onMode={resolver.setMode}
@@ -256,8 +282,8 @@ export const ConflictWorkspace = () => {
             staged={fileStaged}
             decisionFor={decisionFor}
             lineSelFor={lineSelFor}
-            oursSub={headBranch ? `${headBranch} (ours)` : "current (ours)"}
-            theirsSub="incoming (theirs)"
+            oursSub={oursSub}
+            theirsSub={theirsSub}
             lineEditor={lineEditor}
             onDecide={(idx, dec) => resolver.decide(path, idx, dec)}
             onUndo={(idx) => resolver.undo(path, idx)}

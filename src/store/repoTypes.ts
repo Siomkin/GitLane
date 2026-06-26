@@ -272,7 +272,7 @@ export type RepoDataState = Pick<
   | "error"
 >;
 
-export const emptyChanges: WorkingChanges = { staged: [], unstaged: [] };
+export const emptyChanges: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
 
 export function createInitialRepoData(openPaths: string[]): RepoDataState {
   return {

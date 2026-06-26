@@ -66,6 +66,55 @@ describe("parseConflict", () => {
   });
 });
 
+describe("parseConflict edge cases", () => {
+  type Cf = Extract<Region, { kind: "cf" }>;
+
+  it("tolerates a hunk with no closing >>>>>>> marker", () => {
+    const regions = parseConflict("<<<<<<< HEAD\nours\n=======\ntheirs");
+    const cf = regions.find((r): r is Cf => r.kind === "cf")!;
+    expect(cf.ours).toEqual(["ours"]);
+    expect(cf.theirs).toEqual(["theirs"]);
+  });
+
+  it("parses two consecutive conflict hunks", () => {
+    const src = [
+      "<<<<<<< HEAD",
+      "a-ours",
+      "=======",
+      "a-theirs",
+      ">>>>>>> x",
+      "<<<<<<< HEAD",
+      "b-ours",
+      "=======",
+      "b-theirs",
+      ">>>>>>> x",
+    ].join("\n");
+    const regions = parseConflict(src);
+    expect(regions.map((r) => r.kind)).toEqual(["cf", "cf"]);
+    expect(conflictRegionCount(regions)).toBe(2);
+  });
+
+  it("handles an empty ours side", () => {
+    const regions = parseConflict("<<<<<<< HEAD\n=======\nonly-theirs\n>>>>>>> x");
+    const cf = regions[0] as Cf;
+    expect(cf.ours).toEqual([]);
+    expect(cf.theirs).toEqual(["only-theirs"]);
+  });
+
+  it("treats an indented marker-like line as content, not a structural marker", () => {
+    // Markers are only recognised at column 0 (startsWith), so a line that merely
+    // contains "=======" stays content and never splits a hunk.
+    const regions = parseConflict("before\n  ======= not a real marker\nafter");
+    expect(regions).toHaveLength(1);
+    expect(regions[0].kind).toBe("ctx");
+  });
+
+  it("still detects markers when lines end with CR (CRLF files)", () => {
+    const src = "ctx\r\n<<<<<<< HEAD\r\nours\r\n=======\r\ntheirs\r\n>>>>>>> x\r\n";
+    expect(conflictRegionCount(parseConflict(src))).toBe(1);
+  });
+});
+
 describe("counts", () => {
   const regions = parseConflict(TWO_WAY);
 

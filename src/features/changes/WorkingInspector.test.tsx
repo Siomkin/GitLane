@@ -10,7 +10,7 @@ const staged = (path: string): FileChange => ({ path, status: "M", add: 1, del: 
 
 beforeEach(() => {
   // Reset the git-domain slice this component reads to a clean, empty tree.
-  useRepo.setState({ changes: { staged: [], unstaged: [] }, selectedFile: null });
+  useRepo.setState({ changes: { staged: [], unstaged: [], conflicted: [] }, selectedFile: null });
   useUi.setState({ fileMenu: null });
 });
 
@@ -31,7 +31,7 @@ describe("WorkingInspector", () => {
     // selectedFile already points at the staged file, so the keep-selection
     // effect is a no-op (no async selectFile → no IPC needed here).
     useRepo.setState({
-      changes: { staged: [staged("a.ts")], unstaged: [] },
+      changes: { staged: [staged("a.ts")], unstaged: [], conflicted: [] },
       selectedFile: { path: "a.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -40,7 +40,7 @@ describe("WorkingInspector", () => {
 
   it("right-clicking an unstaged row opens the file context menu for that path", () => {
     useRepo.setState({
-      changes: { staged: [], unstaged: [staged("src/a.ts")] },
+      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [] },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -52,7 +52,7 @@ describe("WorkingInspector", () => {
 
   it("right-clicking a staged row marks the menu as staged", () => {
     useRepo.setState({
-      changes: { staged: [staged("src/b.ts")], unstaged: [] },
+      changes: { staged: [staged("src/b.ts")], unstaged: [], conflicted: [] },
       selectedFile: { path: "src/b.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -64,7 +64,7 @@ describe("WorkingInspector", () => {
     // A rename's FileChange carries only the new path, so discard would half-undo
     // it — the menu opens copy-only (no discard target).
     useRepo.setState({
-      changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0 }], unstaged: [] },
+      changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0 }], unstaged: [], conflicted: [] },
       selectedFile: { path: "src/new.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -76,7 +76,7 @@ describe("WorkingInspector", () => {
 
   it("rings the row whose context menu is open", () => {
     useRepo.setState({
-      changes: { staged: [], unstaged: [staged("src/a.ts")] },
+      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [] },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);

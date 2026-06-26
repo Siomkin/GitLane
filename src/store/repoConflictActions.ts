@@ -59,7 +59,27 @@ export function createRepoConflictActions(
     if (!summary || !operation) throw new Error("No operation in progress");
     const opPath = summary.path;
     const label = operationLabel(operation.kind);
-    await call(opPath, operation.kind);
+    try {
+      await call(opPath, operation.kind);
+    } catch (e) {
+      // A continue/skip can advance to a *new* conflict step (e.g. the next
+      // rebased commit) before git reports a non-zero exit. Re-read so the
+      // workspace reflects the new conflict set immediately instead of showing
+      // the stale "all resolved" union until the filesystem watcher fires.
+      if (get().summary?.path === opPath) {
+        _set({ operation: null });
+        await get().refresh();
+        // If git simply stopped on the *next* conflict, that's forward progress,
+        // not a failure — the workspace now shows it, so report progress rather
+        // than surfacing a raw git error toast. A failure with no outstanding
+        // conflicts (e.g. a rejected commit) still propagates.
+        const next = get().operation;
+        if (get().summary?.path === opPath && next?.files.some((f) => !f.resolved)) {
+          return message(label, true);
+        }
+      }
+      throw e;
+    }
     if (get().summary?.path !== opPath) return message(label, false);
     // Clear the union so the refresh rebuilds the next step from scratch (or
     // clears it entirely when the operation completed).

@@ -204,6 +204,11 @@ pub struct FileChange {
 pub struct WorkingChanges {
     pub staged: Vec<FileChange>,
     pub unstaged: Vec<FileChange>,
+    /// Unmerged (conflicted) paths, kept out of staged/unstaged so the ordinary
+    /// stage view never applies normal staging to a file git considers
+    /// unresolved — but surfaced here so they stay visible even when operation
+    /// detection misses them (`git am`/`bisect`, a transient detection failure).
+    pub conflicted: Vec<FileChange>,
 }
 
 /// One line inside a diff hunk. `kind` is "ctx" | "add" | "del". Line numbers

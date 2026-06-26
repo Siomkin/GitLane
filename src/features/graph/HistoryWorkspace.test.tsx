@@ -120,7 +120,7 @@ beforeEach(() => {
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
     graph,
     graphLoading: false,
-    changes: { staged: [], unstaged: [] },
+    changes: { staged: [], unstaged: [], conflicted: [] },
     stashes: [],
     commitFiles: [],
     selectedFile: null,
@@ -224,7 +224,7 @@ describe("HistoryWorkspace — search highlight/dim", () => {
   });
 
   it("dims the synthetic WIP and stash rows while searching, but not when inert", () => {
-    useRepo.setState({ changes: { staged: [file], unstaged: [] }, stashes: [stash] });
+    useRepo.setState({ changes: { staged: [file], unstaged: [], conflicted: [] }, stashes: [stash] });
     // Inert: WIP + stash render at full strength.
     const { unmount } = render(<HistoryWorkspace />);
     expect(screen.getByText("// WIP").closest("button")!.className).not.toMatch(/opacity-25/);

@@ -231,15 +231,26 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
 
     let mut staged = Vec::new();
     let mut unstaged = Vec::new();
+    let mut conflicted = Vec::new();
 
     for entry in statuses.iter() {
         let s = entry.status();
 
         // Unmerged (conflicted) paths are owned by the dedicated conflict
         // workflow (`git::conflicts` + the in-app ConflictWorkspace), not the
-        // ordinary stage/unstage view — surfacing them here would invite normal
-        // staging semantics on a file git still considers unresolved. Skip them.
+        // ordinary stage/unstage view — surfacing them in those buckets would
+        // invite normal staging semantics on a file git still considers
+        // unresolved. They go in their own bucket instead of being dropped, so
+        // they stay visible (and detectable) even when the operation that owns
+        // them isn't detected — e.g. `git am`/`bisect`, or a transient
+        // `operation_status` failure — rather than vanishing from the UI.
         if s.contains(Status::CONFLICTED) {
+            conflicted.push(FileChange {
+                path: entry.path().ok().unwrap_or("").to_string(),
+                status: "C".to_string(),
+                add: 0,
+                del: 0,
+            });
             continue;
         }
 
@@ -332,7 +343,11 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         }
     }
 
-    Ok(WorkingChanges { staged, unstaged })
+    Ok(WorkingChanges {
+        staged,
+        unstaged,
+        conflicted,
+    })
 }
 
 /// Diff for a single working-tree file. `staged` true → HEAD-tree vs index;

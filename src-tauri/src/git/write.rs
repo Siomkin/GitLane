@@ -987,8 +987,9 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        accept_conflict_side, conflict_stage_absent, discard_all, ensure_operand,
-        is_empty_after_resolution, mark_conflict_resolved, resolve_conflict_file, worktree_path,
+        abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
+        discard_all, ensure_operand, is_empty_after_resolution, mark_conflict_resolved,
+        reconflict_file, resolve_conflict_file, skip_operation, worktree_path,
     };
     use std::path::PathBuf;
     use std::process::Command;
@@ -1158,5 +1159,80 @@ mod tests {
         assert!(mark_conflict_resolved(repo.path(), "clean.txt").is_err());
         // The clean file must be untouched by the rejected write.
         assert_eq!(std::fs::read_to_string(repo.0.join("clean.txt")).unwrap(), "hi\n");
+    }
+
+    /// Build a content conflict: `base` committed, then `other` and `main` change
+    /// the same line. Returns the repo with the merge stopped on the conflict.
+    fn merge_conflict_repo(tag: &str) -> TempRepo {
+        let repo = TempRepo::new(tag);
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"line1\nbase\nline3\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        std::fs::write(repo.0.join("f.txt"), b"line1\ntheirs\nline3\n").unwrap();
+        repo.git(&["commit", "-qam", "theirs"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::write(repo.0.join("f.txt"), b"line1\nours\nline3\n").unwrap();
+        repo.git(&["commit", "-qam", "ours"]);
+        // Merge stops on the content conflict in f.txt.
+        let _ = repo.git(&["merge", "other"]);
+        repo
+    }
+
+    #[test]
+    fn continue_operation_completes_a_resolved_merge() {
+        let repo = merge_conflict_repo("continue");
+        // Resolve + stage via the in-app write path, then continue.
+        resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
+        let result = continue_operation(repo.path(), "merge", Some("T"), Some("t@t.t"));
+        assert!(result.is_ok(), "continue failed: {result:?}");
+        // No conflicts remain and HEAD is a merge commit (two parents).
+        let unmerged = repo.git(&["ls-files", "-u"]);
+        assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+        let parents = repo.git(&["rev-list", "--parents", "-n", "1", "HEAD"]);
+        let line = String::from_utf8_lossy(&parents.stdout);
+        // "<commit> <parent1> <parent2>" → 3 hashes for a merge commit.
+        assert_eq!(line.split_whitespace().count(), 3, "expected a merge commit: {line:?}");
+    }
+
+    #[test]
+    fn abort_operation_restores_pre_merge_state() {
+        let repo = merge_conflict_repo("abort");
+        let result = abort_operation(repo.path(), "merge");
+        assert!(result.is_ok(), "abort failed: {result:?}");
+        // Worktree returns to our pre-merge content and the tree is clean.
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),
+            "line1\nours\nline3\n"
+        );
+        let status = repo.git(&["status", "--porcelain"]);
+        assert!(String::from_utf8_lossy(&status.stdout).trim().is_empty());
+    }
+
+    #[test]
+    fn skip_operation_rejects_merge() {
+        // Merge has no `--skip`; only sequencer ops do. The path is never touched.
+        assert!(skip_operation("/tmp", "merge").is_err());
+        assert!(skip_operation("/tmp", "nonsense").is_err());
+    }
+
+    #[test]
+    fn reconflict_file_restores_markers_after_staging() {
+        let repo = merge_conflict_repo("reconflict");
+        // Stage a resolution — the path is now merged (stage 0), not unmerged.
+        resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
+        let staged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+        assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty());
+        // Unstage: `git checkout --merge` recreates the conflict even after add.
+        let result = reconflict_file(repo.path(), "f.txt");
+        assert!(result.is_ok(), "reconflict failed: {result:?}");
+        let unmerged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+        assert!(!String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+        let body = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
+        assert!(body.contains("<<<<<<<") && body.contains(">>>>>>>"));
     }
 }

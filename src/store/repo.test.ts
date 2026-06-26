@@ -67,6 +67,7 @@ describe("repo store — discardFile", () => {
       changes: {
         staged: [{ path: "src/a.ts", status: "M", add: 1, del: 0 }],
         unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0 }],
+        conflicted: [],
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
@@ -108,6 +109,7 @@ describe("repo store — discardFile", () => {
       changes: {
         staged: [],
         unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0 }],
+        conflicted: [],
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
@@ -350,6 +352,7 @@ describe("repo store — loadRepo failed open", () => {
     const prevChanges: WorkingChanges = {
       staged: [{ path: "a.ts", status: "M", add: 1, del: 0 }],
       unstaged: [],
+      conflicted: [],
     };
     useRepo.setState({
       summary: prevSummary,
@@ -1049,6 +1052,43 @@ describe("repo store — conflict actions", () => {
     });
     const ok = await useRepo.getState().resolveConflictFile("src/a.ts", "merged\n");
     expect(ok).toBe(true);
+  });
+
+  it("clears a stale operation when operation_status fails and no conflicts remain", async () => {
+    // The conflicted bucket keeps unmerged paths visible independently, so a
+    // failed detection with a clean conflict set means the operation is over.
+    useRepo.setState({ operation: { kind: "merge", canSkip: false, files: [] } });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes")
+        return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+      if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
+      return Promise.resolve([]);
+    });
+
+    await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+
+    expect(useRepo.getState().operation).toBeNull();
+  });
+
+  it("keeps the operation when detection fails but conflicts are still present", async () => {
+    // A transient operation_status failure mid-resolution must not yank the
+    // workspace away while conflicts remain in the worktree.
+    const op: OperationState = { kind: "merge", canSkip: false, files: [] };
+    useRepo.setState({ operation: op });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes")
+        return Promise.resolve({
+          staged: [],
+          unstaged: [],
+          conflicted: [{ path: "f.txt", status: "C", add: 0, del: 0 }],
+        });
+      if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
+      return Promise.resolve([]);
+    });
+
+    await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+
+    expect(useRepo.getState().operation).toBe(op);
   });
 
   it("does not publish an operation's result onto a repo switched-to mid-await", async () => {

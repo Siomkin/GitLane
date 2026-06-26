@@ -20,6 +20,11 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const openFileMenu = useUi((state) => state.openFileMenu);
   const fileMenu = useUi((state) => state.fileMenu);
   const total = changes.staged.length + changes.unstaged.length;
+  // Unmerged paths whose owning operation isn't currently driving the conflict
+  // workspace (e.g. `git am`/`bisect`, or a transient detection failure). Shown
+  // read-only here so they never vanish from the UI — resolution still happens
+  // in the conflict view (or the terminal).
+  const conflicted = changes.conflicted ?? [];
   const selectedPath = selectedFile?.source === "commit" ? null : selectedFile?.path ?? null;
 
   const openMenu = (file: FileChange, staged: boolean, e: MouseEvent) => {
@@ -70,6 +75,24 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
             </button>
           )}
         </div>
+
+        {conflicted.length > 0 && (
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                Conflicts ({conflicted.length})
+              </span>
+            </div>
+            <div className="mb-1.5 px-1 text-[12px] text-neutral-400">
+              Unresolved paths git still considers conflicted. Resolve them in the conflict view or your terminal.
+            </div>
+            <div className="space-y-0.5">
+              {conflicted.map((file) => (
+                <FileRow key={file.path} file={file} active={false} onClick={() => {}} />
+              ))}
+            </div>
+          </div>
+        )}
 
         <FileSection
           title="Unstaged"

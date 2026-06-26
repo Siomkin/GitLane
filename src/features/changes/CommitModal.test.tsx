@@ -16,7 +16,7 @@ beforeEach(() => {
   useRepo.setState({
     summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
     graph: null,
-    changes: { staged: [staged("src/features/changes/CommitModal.tsx")], unstaged: [] },
+    changes: { staged: [staged("src/features/changes/CommitModal.tsx")], unstaged: [], conflicted: [] },
   });
   useUi.setState({
     commitOpen: true,

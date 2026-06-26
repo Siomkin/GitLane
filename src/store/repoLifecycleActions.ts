@@ -408,7 +408,15 @@ export function createRepoLifecycleActions(
           const noWip = changes.staged.length === 0 && changes.unstaged.length === 0;
           set({
             changes,
-            ...(opStatus ? { operation: mergeOperationStatus(get().operation, opStatus) } : {}),
+            // Fold in a fresh operation status; on a detection failure, only
+            // clear a stale `operation` when no conflicts remain in the worktree
+            // (they survive in `changes.conflicted`), so a transient failure
+            // mid-resolution doesn't yank the workspace out from under the user.
+            operation: opStatus
+              ? mergeOperationStatus(get().operation, opStatus)
+              : changes.conflicted.length === 0
+                ? null
+                : get().operation,
             // Only clear the spinner if this call owned it (non-quiet). The quiet
             // watcher path never set it, so it must not clear a concurrent load's.
             ...(opts?.quiet ? {} : { loading: false }),
@@ -480,7 +488,13 @@ export function createRepoLifecycleActions(
           worktrees,
           stashes,
           changes,
-          ...(opStatus ? { operation: mergeOperationStatus(get().operation, opStatus) } : {}),
+          // See the worktree-scope path above: clear a stale `operation` on a
+          // detection failure only when no conflicts remain.
+          operation: opStatus
+            ? mergeOperationStatus(get().operation, opStatus)
+            : changes.conflicted.length === 0
+              ? null
+              : get().operation,
           selectedCommit,
           selectedCommits,
           selectionAnchor,

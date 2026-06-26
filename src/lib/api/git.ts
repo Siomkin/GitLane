@@ -142,6 +142,11 @@ export interface FileChange {
 export interface WorkingChanges {
   staged: FileChange[];
   unstaged: FileChange[];
+  /** Unmerged (conflicted) paths, kept out of staged/unstaged so the ordinary
+   * stage view can't apply normal staging to a file git considers unresolved —
+   * surfaced separately so they stay visible even when the owning operation
+   * isn't detected. */
+  conflicted: FileChange[];
 }
 
 /** The active in-progress operation that can stop on conflicts. "none" when the
