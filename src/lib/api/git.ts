@@ -103,6 +103,24 @@ export interface BranchInfo {
   target: string | null;
   isHead: boolean;
   upstream: string | null;
+  sync?: BranchSyncState | null;
+}
+
+export type BranchSyncStatus =
+  | "noRemote"
+  | "noUpstream"
+  | "staleUpstream"
+  | "unknown"
+  | "upToDate"
+  | "ahead"
+  | "behind"
+  | "diverged";
+
+export interface BranchSyncState {
+  status: BranchSyncStatus;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
 }
 
 export interface WorktreeInfo {
@@ -478,6 +496,11 @@ export const gitApi = {
    * remote (origin fallback), optionally as the repo's bound `account`. */
   pushBranch: (path: string, branch: string, account?: GithubAccountRef | null) =>
     invoke<string>("push_branch", { path, branch, account: account ?? null }),
+
+  /** First-push flow: create/update `upstream` (`remote/branch`) and set it as
+   * `branch`'s upstream in the same git push. */
+  publishBranch: (path: string, branch: string, upstream: string, account?: GithubAccountRef | null) =>
+    invoke<string>("publish_branch", { path, branch, upstream, account: account ?? null }),
   /** Write the bound account's identity into the repo's local git config. */
   setRepoIdentity: (path: string, name: string, email: string) =>
     invoke<string>("set_repo_identity", { path, name, email }),

@@ -192,6 +192,23 @@ pub struct BranchInfo {
     pub is_head: bool,
     /// Upstream branch name, if any (local branches only).
     pub upstream: Option<String>,
+    /// Ahead/behind state against the configured upstream. Remote branches do
+    /// not have their own upstream state, so this is `None` for them.
+    pub sync: Option<BranchSyncState>,
+}
+
+/// Local branch sync state resolved by libgit2.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchSyncState {
+    /// "noRemote" | "noUpstream" | "staleUpstream" | "unknown" |
+    /// "upToDate" | "ahead" | "behind" | "diverged".
+    pub status: String,
+    /// Configured upstream display name (e.g. `origin/main`), including stale
+    /// upstreams that no longer resolve to a remote-tracking ref.
+    pub upstream: Option<String>,
+    pub ahead: usize,
+    pub behind: usize,
 }
 
 /// A single changed file in a diff (working tree, index, or a commit).

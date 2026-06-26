@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import type { StashEntry } from "@/lib/api";
+import type { BranchSyncState, StashEntry } from "@/lib/api";
+import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
 import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
@@ -40,6 +41,7 @@ export function BranchRow({
   isCurrent = false,
   dimmed = false,
   query = "",
+  sync = null,
 }: {
   name: string;
   kind: RowKind;
@@ -48,12 +50,14 @@ export function BranchRow({
   dimmed?: boolean;
   /** Active search term — marks the matched substring in the name (3+ chars). */
   query?: string;
+  sync?: BranchSyncState | null;
 }) {
   const navigate = useRevealNavigate();
   const openContextMenu = useUi((s) => s.openContextMenu);
   const openTagMenu = useUi((s) => s.openTagMenu);
   const tip = useTruncatedTooltip(name);
   const draggable = kind !== "tag";
+  const syncLabel = kind === "local" ? syncBadgeLabel(sync) : null;
   const { isDropTarget, dndProps } = useBranchRefDrag(
     name,
     draggable
@@ -91,6 +95,21 @@ export function BranchRow({
       <span data-truncate className="min-w-0 flex-1 truncate">
         <HighlightMatch text={name} query={query} />
       </span>
+      {syncLabel && (
+        <span
+          title={syncTitle(sync)}
+          className={cn(
+            "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+            sync?.status === "ahead" || sync?.status === "behind"
+              ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
+              : sync?.status === "diverged" || sync?.status === "staleUpstream"
+                ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                : "bg-black/5 text-neutral-400 dark:bg-white/5",
+          )}
+        >
+          {syncLabel}
+        </span>
+      )}
     </div>
   );
 }
