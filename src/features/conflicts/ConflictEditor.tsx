@@ -153,6 +153,10 @@ export const ConflictEditor = ({
   // the whole-file picker, not the (empty) line editor. `editableText` gates the
   // line-editor chrome (mode toggle + resolve footer).
   const showWholeFile = file.kind === "binary" || (file.kind === "text" && binaryContent);
+  // Whole-file conflicts (binary, text-as-binary, or modify/delete) share one
+  // footer: stage a manual external resolution (`git add`) when unstaged, or
+  // re-conflict (unstage) when already staged.
+  const wholeFile = file.kind === "deleted" || showWholeFile;
   const editableText = file.kind === "text" && !binaryContent;
   const statusLabel = staged ? "Resolved" : resolved ? "Ready to stage" : "Conflicted";
   const statusClass = staged
@@ -257,19 +261,21 @@ export const ConflictEditor = ({
           />
         )}
 
-        {showWholeFile && !staged && (
-          // Binary (or text-treated-as-binary) conflicts can't be merged line by
-          // line, but a user who resolved the file in an external tool still needs
-          // to stage that worktree copy — `git add -A` via onMarkResolved.
+        {wholeFile && (
+          // Whole-file conflicts can't be merged line by line, but a user who
+          // resolved the file in an external tool (custom binary merge, a kept
+          // modify/delete version, or its deletion) still needs to stage that
+          // worktree copy — `git add -A` via onMarkResolved — or undo a wrong
+          // side pick with Unstage once it's staged.
           <div className="flex shrink-0 items-center gap-3 border-t border-black/5 bg-white px-4 py-2.5 dark:border-white/5 dark:bg-neutral-800">
             <span className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-              Resolved this file in another tool?
+              {staged ? "Resolved and staged" : "Resolved this file in another tool?"}
             </span>
             <button
-              onClick={onMarkResolved}
+              onClick={staged ? onUnstage : onMarkResolved}
               className="ml-auto h-9 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
             >
-              Stage current version
+              {staged ? "Unstage" : "Stage current version"}
             </button>
           </div>
         )}

@@ -84,7 +84,15 @@ fn classify(repo: &Repository, conflict: &IndexConflict) -> (&'static str, &'sta
         (Some(_), None) => ("deleted", "theirs"),
         (None, Some(_)) => ("deleted", "ours"),
         (Some(our), Some(their)) => {
-            if is_binary(repo, our) || is_binary(repo, their) {
+            // Symlinks (120000) and submodule gitlinks (160000) aren't blobs we
+            // can line-merge — and their IDs aren't blobs, so `is_binary`'s
+            // `find_blob` would fail and misclassify them as "text". Route them to
+            // the whole-file picker so the user stages a manual resolution.
+            if is_special_mode(our)
+                || is_special_mode(their)
+                || is_binary(repo, our)
+                || is_binary(repo, their)
+            {
                 ("binary", "")
             } else {
                 ("text", "")
@@ -94,6 +102,13 @@ fn classify(repo: &Repository, conflict: &IndexConflict) -> (&'static str, &'sta
         // already agree on, surfaced as "deleted by theirs" for the UI's card.
         (None, None) => ("deleted", "theirs"),
     }
+}
+
+/// True for a symlink (`120000`) or submodule gitlink (`160000`) index entry —
+/// not a regular blob, so it can't be line-merged or safely read from the
+/// worktree path and must be handled as a whole-file conflict.
+fn is_special_mode(entry: &IndexEntry) -> bool {
+    matches!(entry.mode & 0o170000, 0o120000 | 0o160000)
 }
 
 /// True when an index entry's blob is binary (libgit2's NUL-byte heuristic).
@@ -140,7 +155,22 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
             "{file:?} is not a conflicted path"
         )));
     }
-    let bytes = std::fs::read(workdir.join(rel))
+    let full = workdir.join(rel);
+    // Never follow a symlink (or read a non-regular entry like a submodule
+    // directory): a conflicted symlink's worktree entry can point outside the
+    // repo (e.g. `link -> /etc/passwd`), and `fs::read` would follow it past the
+    // traversal guard above. Report it as binary — the whole-file picker, which
+    // never round-trips the worktree bytes — instead of reading the target.
+    if let Ok(meta) = std::fs::symlink_metadata(&full) {
+        if !meta.file_type().is_file() {
+            return Ok(ConflictFileContent {
+                path: file.to_string(),
+                content: String::new(),
+                binary: true,
+            });
+        }
+    }
+    let bytes = std::fs::read(&full)
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
     // Treat NUL-containing or non-UTF-8 files as binary. Lossy-decoding invalid
     // UTF-8 would replace bytes with U+FFFD and silently corrupt the file when
@@ -257,6 +287,37 @@ mod tests {
         assert!(!content.binary);
         assert!(content.content.contains("<<<<<<<"));
         assert!(content.content.contains(">>>>>>>"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn conflicted_symlink_classifies_binary_and_is_not_followed() {
+        // A conflicted symlink must NOT be read by following the link (it could
+        // point outside the repo). It should classify as binary, and a direct
+        // `conflict_file` read must return binary/empty rather than the target.
+        use std::os::unix::fs::symlink;
+        let repo = TempRepo::new("cf-symlink");
+        repo.init();
+        symlink("base-target", repo.0.join("link")).unwrap();
+        repo.git(&["add", "link"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        std::fs::remove_file(repo.0.join("link")).unwrap();
+        symlink("/etc/passwd", repo.0.join("link")).unwrap();
+        repo.git(&["commit", "-qam", "theirs"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::remove_file(repo.0.join("link")).unwrap();
+        symlink("ours-target", repo.0.join("link")).unwrap();
+        repo.git(&["commit", "-qam", "ours"]);
+        let _ = repo.git(&["merge", "other"]);
+
+        let status = operation_status(repo.path()).unwrap();
+        let link = status.conflicts.iter().find(|c| c.path == "link").expect("link conflicted");
+        assert_eq!(link.kind, "binary", "symlink conflict must be whole-file");
+        // Even called directly, the read must not follow the link to /etc/passwd.
+        let content = conflict_file(repo.path(), "link").unwrap();
+        assert!(content.binary);
+        assert!(content.content.is_empty());
     }
 
     #[test]

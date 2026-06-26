@@ -139,6 +139,9 @@ export const ConflictWorkspace = () => {
   const selectedBinary =
     !!selectedFile &&
     (selectedFile.kind === "binary" || (selectedFile.kind === "text" && !!resolver.content?.binary));
+  // Whole-file conflicts (binary, text-as-binary, or modify/delete) stage their
+  // worktree copy as-is via `git add` when resolved manually/externally.
+  const selectedWholeFile = selectedBinary || selectedFile?.kind === "deleted";
   const fileStaged = !!selectedFile?.resolved;
   const fileResolved =
     fileStaged || noMarkers || (totalHunks > 0 && isResolvedOf(regions, fileDecisions, fileLineSel));
@@ -226,10 +229,10 @@ export const ConflictWorkspace = () => {
     const done = (ok: boolean) => {
       if (ok) resolver.resetFile(target);
     };
-    // No markers left (edited away / emptied) or a binary file resolved in an
-    // external tool: stage the worktree copy as-is. Otherwise write the merged
-    // text rebuilt from the user's in-app hunk choices.
-    if (noMarkers || selectedBinary) void markConflictResolved(target).then(done);
+    // No markers left (edited away / emptied) or a whole-file conflict (binary /
+    // modify-delete) resolved externally: stage the worktree copy as-is.
+    // Otherwise write the merged text rebuilt from the user's in-app hunk choices.
+    if (noMarkers || selectedWholeFile) void markConflictResolved(target).then(done);
     else {
       const text = buildResolved(
         regions,

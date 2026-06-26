@@ -66,4 +66,43 @@ describe("ConflictEditor", () => {
     expect(screen.getByText(/markers look malformed/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Mark resolved/i })).toBeDisabled();
   });
+
+  it("lets a binary conflict stage an external resolution", () => {
+    const onMarkResolved = vi.fn();
+    render(
+      <ConflictEditor
+        {...props({
+          file: { path: "img.png", kind: "binary", deletedSide: "", resolved: false },
+          onMarkResolved,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Stage current version/i }));
+    expect(onMarkResolved).toHaveBeenCalled();
+  });
+
+  it("offers Stage current version for a modify/delete conflict", () => {
+    render(
+      <ConflictEditor
+        {...props({ file: { path: "a.ts", kind: "deleted", deletedSide: "ours", resolved: false } })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /Stage current version/i })).toBeInTheDocument();
+  });
+
+  it("offers Unstage for a staged whole-file conflict", () => {
+    const onUnstage = vi.fn();
+    render(
+      <ConflictEditor
+        {...props({
+          file: { path: "img.png", kind: "binary", deletedSide: "", resolved: true },
+          staged: true,
+          resolved: true,
+          onUnstage,
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Unstage/i }));
+    expect(onUnstage).toHaveBeenCalled();
+  });
 });
