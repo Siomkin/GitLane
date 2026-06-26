@@ -15,9 +15,10 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BranchInfo, FileChange, FileDiff, ForgeAuthStatus, GithubAccount, GithubAccountRef, PrCheck,
-    PrCommitSignature, PullRequestDetail, PullRequestSummary, RepoForge, RepoGraph, RepoIdentity,
-    RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
+    BranchInfo, ConflictFileContent, FileChange, FileDiff, ForgeAuthStatus, GithubAccount,
+    GithubAccountRef, OperationStatus, PrCheck, PrCommitSignature, PullRequestDetail,
+    PullRequestSummary, RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, StashEntry,
+    WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -153,6 +154,65 @@ async fn revert_commit(path: String, commit: String) -> Result<String, String> {
 #[tauri::command]
 async fn revert_many(path: String, commits: Vec<String>) -> Result<String, String> {
     blocking(move || git::write::revert_many(&path, &commits)).await
+}
+
+// ---- Conflict resolution ----
+
+#[tauri::command]
+async fn operation_status(path: String) -> Result<OperationStatus, String> {
+    blocking(move || git::conflicts::operation_status(&path).map_err(|e| e.to_string())).await
+}
+
+#[tauri::command]
+async fn conflict_file(path: String, file: String) -> Result<ConflictFileContent, String> {
+    blocking(move || git::conflicts::conflict_file(&path, &file).map_err(|e| e.to_string())).await
+}
+
+#[tauri::command]
+async fn accept_conflict_side(path: String, file: String, side: String) -> Result<String, String> {
+    blocking(move || git::write::accept_conflict_side(&path, &file, &side)).await
+}
+
+#[tauri::command]
+async fn resolve_conflict_file(
+    path: String,
+    file: String,
+    content: String,
+) -> Result<String, String> {
+    blocking(move || git::write::resolve_conflict_file(&path, &file, &content)).await
+}
+
+#[tauri::command]
+async fn mark_conflict_resolved(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::mark_conflict_resolved(&path, &file)).await
+}
+
+#[tauri::command]
+async fn reconflict_file(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::reconflict_file(&path, &file)).await
+}
+
+#[tauri::command]
+async fn continue_operation(
+    path: String,
+    kind: String,
+    name: Option<String>,
+    email: Option<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::continue_operation(&path, &kind, name.as_deref(), email.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn abort_operation(path: String, kind: String) -> Result<String, String> {
+    blocking(move || git::write::abort_operation(&path, &kind)).await
+}
+
+#[tauri::command]
+async fn skip_operation(path: String, kind: String) -> Result<String, String> {
+    blocking(move || git::write::skip_operation(&path, &kind)).await
 }
 
 #[tauri::command]
@@ -803,6 +863,15 @@ pub fn run() {
             cherry_pick_many,
             revert_commit,
             revert_many,
+            operation_status,
+            conflict_file,
+            accept_conflict_side,
+            resolve_conflict_file,
+            mark_conflict_resolved,
+            reconflict_file,
+            continue_operation,
+            abort_operation,
+            skip_operation,
             create_tag,
             create_annotated_tag,
             create_patch,

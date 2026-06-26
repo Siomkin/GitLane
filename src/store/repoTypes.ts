@@ -1,8 +1,10 @@
 import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
+  ConflictFile,
   FileChange,
   FileDiff,
+  OperationKind,
   RepoForge,
   RepoGraph,
   RepoSummary,
@@ -12,6 +14,26 @@ import type {
 } from "../lib/api";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
+
+/** A conflict-producing operation key, excluding the "none" idle sentinel. */
+export type ActiveOperationKind = Exclude<OperationKind, "none">;
+
+/** One file involved in the active operation, tracked across refreshes so the
+ * count/progress stays stable as each conflict is resolved. */
+export interface OperationFile extends ConflictFile {
+  /** True once the file is no longer reported as conflicted (resolved + staged). */
+  resolved: boolean;
+}
+
+/** The active merge/sequencer operation driving the conflict workflow. Null when
+ * the repo is clean / no operation is underway. */
+export interface OperationState {
+  kind: ActiveOperationKind;
+  canSkip: boolean;
+  /** Stable union of every file the operation touched (still-conflicted +
+   * already-resolved), so totals don't shrink as files are resolved. */
+  files: OperationFile[];
+}
 
 export interface SelectedFile {
   path: string;
@@ -33,6 +55,10 @@ export interface RepoState {
   /** Paths of all open repositories — the tab strip. */
   openPaths: string[];
   changes: WorkingChanges;
+  /** The active merge/rebase/cherry-pick/revert operation + its conflicts, or
+   * null when none is in progress. Refreshed with working-tree status; when
+   * non-null the app surfaces the dedicated conflict-resolution workspace. */
+  operation: OperationState | null;
   commitFiles: FileChange[];
   selectedFile: SelectedFile | null;
   fileDiff: FileDiff | null;
@@ -195,6 +221,24 @@ export interface RepoState {
   fetch: () => Promise<void>;
   pull: () => Promise<void>;
   push: () => Promise<void>;
+  // ---- conflict resolution (active operation) ----
+  // Each per-file action resolves to whether the git write succeeded; callers
+  // gate local-state cleanup on `true` so a failed write never clears decisions.
+  /** Resolve one conflicted file by taking a whole side (ours/theirs). */
+  acceptConflictSide: (file: string, side: "ours" | "theirs") => Promise<boolean>;
+  /** Write the merged `content` for a conflicted file and stage it. */
+  resolveConflictFile: (file: string, content: string) => Promise<boolean>;
+  /** Stage a conflicted file as-is (mark resolved after a manual edit). */
+  markConflictResolved: (file: string) => Promise<boolean>;
+  /** Restore conflict markers for an already-resolved file so it can be redone. */
+  reconflictFile: (file: string) => Promise<boolean>;
+  /** Continue the active operation after staging resolutions; resolves with a
+   * human message (op complete vs. next conflicts). */
+  continueOperation: () => Promise<string>;
+  /** Abort the active operation, restoring the pre-operation state. */
+  abortOperation: () => Promise<string>;
+  /** Skip the current commit of a sequencer operation (rebase/cherry-pick/revert). */
+  skipOperation: () => Promise<string>;
   clearError: () => void;
 }
 
@@ -211,6 +255,7 @@ export type RepoDataState = Pick<
   | "stashes"
   | "openPaths"
   | "changes"
+  | "operation"
   | "commitFiles"
   | "selectedFile"
   | "fileDiff"
@@ -227,7 +272,7 @@ export type RepoDataState = Pick<
   | "error"
 >;
 
-export const emptyChanges: WorkingChanges = { staged: [], unstaged: [] };
+export const emptyChanges: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
 
 export function createInitialRepoData(openPaths: string[]): RepoDataState {
   return {
@@ -239,6 +284,7 @@ export function createInitialRepoData(openPaths: string[]): RepoDataState {
     stashes: [],
     openPaths,
     changes: emptyChanges,
+    operation: null,
     commitFiles: [],
     selectedFile: null,
     fileDiff: null,

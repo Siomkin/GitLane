@@ -204,6 +204,11 @@ pub struct FileChange {
 pub struct WorkingChanges {
     pub staged: Vec<FileChange>,
     pub unstaged: Vec<FileChange>,
+    /// Unmerged (conflicted) paths, kept out of staged/unstaged so the ordinary
+    /// stage view never applies normal staging to a file git considers
+    /// unresolved — but surfaced here so they stay visible even when operation
+    /// detection misses them (`git am`/`bisect`, a transient detection failure).
+    pub conflicted: Vec<FileChange>,
 }
 
 /// One line inside a diff hunk. `kind` is "ctx" | "add" | "del". Line numbers
@@ -238,6 +243,48 @@ pub struct FileDiff {
     /// True when the diff was capped at the line limit and `hunks` holds only
     /// the first portion of the change (the frontend offers "show full diff").
     pub truncated: bool,
+}
+
+/// The in-progress merge/sequencer operation that left the repo in a conflicted
+/// or mid-operation state. Drives the conflict-resolution workflow. `kind` is
+/// "merge" | "rebase" | "cherry-pick" | "revert" | "none" — mapped from
+/// libgit2's `RepositoryState`, so a rebase/cherry-pick/revert started from a
+/// terminal is detected too.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationStatus {
+    pub kind: String,
+    /// True when the operation supports `--skip` (rebase/cherry-pick/revert).
+    pub can_skip: bool,
+    /// Unmerged (conflicted) paths still needing resolution. Empty when the
+    /// operation has no outstanding conflicts (e.g. all already staged).
+    pub conflicts: Vec<ConflictFile>,
+}
+
+/// One conflicted (unmerged) path in the index.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictFile {
+    pub path: String,
+    /// "text" (both sides changed, line-mergeable), "binary" (both sides
+    /// changed, not line-mergeable), or "deleted" (one side removed the file).
+    pub kind: String,
+    /// For the "deleted" kind, which side removed it: "ours" | "theirs". Empty
+    /// for text/binary conflicts.
+    pub deleted_side: String,
+}
+
+/// The raw conflicted content of one text file — the worktree copy git wrote
+/// with `<<<<<<< / ======= / >>>>>>>` markers — for the in-app editor to parse
+/// into hunks. The frontend owns the marker parsing (pure + testable).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictFileContent {
+    pub path: String,
+    pub content: String,
+    /// True when the file is binary (no marker content; the editor offers a
+    /// whole-file ours/theirs choice instead).
+    pub binary: bool,
 }
 
 // ---- GitHub (gh CLI) ----

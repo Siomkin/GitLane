@@ -190,6 +190,246 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
     run_git(repo, &args)
 }
 
+// ---- Conflict resolution (merge / rebase / cherry-pick / revert) ----
+//
+// `merge`/`rebase`/`cherry_pick`/`revert` above can stop on conflicts; these
+// resolve the conflicted state and drive the operation to completion. The
+// *detection* side (which operation, which files) is a libgit2 read in
+// `git::conflicts`; everything here shells out to real `git` so hooks, rerere,
+// signing, and the sequencer's own state machine all behave exactly as the CLI.
+
+/// Resolve a conflicted file by taking one whole side. `side` is "ours"
+/// (current branch) or "theirs" (incoming). Checks that stage's content into the
+/// worktree and stages it; when the chosen side *deleted* the file (so it has no
+/// stage to check out) the file is removed instead — covering modify/delete and
+/// add/add conflicts with one path.
+pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String, String> {
+    // No `ensure_operand` on `file`: every git call below passes it after `--`
+    // (pathspec), so a legitimately conflicted file named e.g. `-foo` is safe and
+    // must not be rejected. `ensure_conflicted` already gates it to the index
+    // conflict set.
+    ensure_conflicted(repo, file)?;
+    let (flag, stage) = match side {
+        "ours" => ("--ours", "2"),
+        "theirs" => ("--theirs", "3"),
+        _ => return Err(format!("unknown conflict side {side:?}")),
+    };
+    match run_git(repo, &["checkout", flag, "--", file]) {
+        Ok(_) => {
+            run_git(repo, &["add", "-A", "--", file])?;
+        }
+        // A failed checkout means "accept the deletion" ONLY when the chosen side
+        // genuinely has no staged version — a modify/delete conflict. For any
+        // other failure (a lock, a permission error, a corrupt index) we must
+        // surface the error rather than force-deleting the user's file.
+        Err(e) => {
+            if conflict_stage_absent(repo, file, stage) {
+                run_git(repo, &["rm", "-f", "--", file])?;
+            } else {
+                return Err(e);
+            }
+        }
+    }
+    Ok(format!("Resolved {file} ({side})"))
+}
+
+/// True when unmerged `stage` (2 = ours, 3 = theirs) is absent for `file` in the
+/// index — i.e. that side deleted the file. Parses `git ls-files -u` lines
+/// (`<mode> <oid> <stage>\t<path>`). A read failure returns false so we never
+/// delete on an indeterminate state.
+fn conflict_stage_absent(repo: &str, file: &str, stage: &str) -> bool {
+    match run_git(repo, &["ls-files", "-u", "--", file]) {
+        Ok(out) => !out.lines().any(|line| {
+            line.split('\t')
+                .next()
+                .and_then(|meta| meta.split_whitespace().nth(2))
+                == Some(stage)
+        }),
+        Err(_) => false,
+    }
+}
+
+/// True when `file` has unmerged (conflict) index entries — i.e. it is a path the
+/// active operation actually left conflicted. The per-file resolution commands
+/// require this so a renderer-supplied path can only touch files genuinely in the
+/// conflict set, not an arbitrary (even repo-relative) file.
+fn is_unmerged(repo: &str, file: &str) -> bool {
+    run_git(repo, &["ls-files", "-u", "--", file])
+        .map(|out| !out.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// Reject a resolution targeting a path that isn't currently conflicted.
+fn ensure_conflicted(repo: &str, file: &str) -> Result<(), String> {
+    if is_unmerged(repo, file) {
+        Ok(())
+    } else {
+        Err(format!("{file:?} is not a conflicted path"))
+    }
+}
+
+/// True when `git checkout --merge` can actually recreate a conflict for `file`:
+/// it is still unmerged, or git holds **resolve-undo** information for it from an
+/// earlier resolution in the current operation. For any other tracked path
+/// `checkout --merge` would silently overwrite the worktree with the index copy,
+/// discarding unstaged edits — so those must be refused. `git ls-files
+/// --resolve-undo` is git's own record of paths it can re-conflict.
+fn can_reconflict(repo: &str, file: &str) -> bool {
+    if is_unmerged(repo, file) {
+        return true;
+    }
+    run_git(repo, &["ls-files", "--resolve-undo", "--", file])
+        .map(|out| !out.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// Resolve a repo-relative `file` to an absolute path under the worktree `root`,
+/// rejecting absolute paths and `..`/prefix components so a caller-supplied path
+/// can never escape the repository. Conflicted paths come from git's index
+/// (which already forbids these), but this write crosses the IPC boundary, so we
+/// validate defensively before touching the filesystem.
+fn worktree_path(root: &str, file: &str) -> Result<std::path::PathBuf, String> {
+    let rel = std::path::Path::new(file);
+    if rel.is_absolute()
+        || rel.components().any(|c| {
+            matches!(
+                c,
+                std::path::Component::ParentDir | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return Err(format!("refusing unsafe path outside the worktree: {file:?}"));
+    }
+    Ok(std::path::Path::new(root.trim()).join(rel))
+}
+
+/// Write the merged `content` to a conflicted file and stage it — backs the
+/// in-app hunk editor, which reconstructs the resolved text from the user's
+/// per-hunk choices. The path is resolved against the worktree root (and checked
+/// to stay inside it) so it is correct for linked worktrees and never escapes.
+pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<String, String> {
+    // `file` is staged after `--` and resolved through `worktree_path` (which
+    // rejects traversal), so no `ensure_operand` dash-guard is needed — and it
+    // would wrongly block a conflicted file named `-foo`.
+    ensure_conflicted(repo, file)?;
+    let root = run_git(repo, &["rev-parse", "--show-toplevel"])?;
+    let full = worktree_path(&root, file)?;
+    std::fs::write(&full, content).map_err(|e| format!("write {file}: {e}"))?;
+    run_git(repo, &["add", "--", file])?;
+    Ok(format!("Resolved {file}"))
+}
+
+/// Mark a conflicted file resolved by staging it as it currently sits on disk
+/// (after the user edited it in their own editor). `-A` also stages a deletion.
+pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> {
+    // `file` passed after `--`; gated by `ensure_conflicted`. No dash-guard (see
+    // `accept_conflict_side`) so a conflicted `-foo` can be staged.
+    ensure_conflicted(repo, file)?;
+    run_git(repo, &["add", "-A", "--", file])?;
+    Ok(format!("Staged {file}"))
+}
+
+/// Restore the conflict markers for a file that was already resolved/staged so
+/// it can be re-resolved (`git checkout --merge`) — the inverse of staging a
+/// resolution, exposed as the per-file "Unstage" affordance.
+pub fn reconflict_file(repo: &str, file: &str) -> Result<String, String> {
+    // `file` is passed after `--`, so no dash-guard is needed (it would block a
+    // conflicted `-foo`).
+    // Guard against clobbering: `git checkout --merge` on a path git can't
+    // re-conflict (an unrelated tracked file) silently overwrites the worktree
+    // with the index copy, discarding unstaged edits. Only allow it for paths
+    // that are still unmerged or carry resolve-undo info (the inverse of staging
+    // a resolution).
+    if !can_reconflict(repo, file) {
+        return Err(format!(
+            "cannot restore the conflict in {file:?} — it is not an unresolved or just-resolved conflict path"
+        ));
+    }
+    run_git(repo, &["checkout", "--merge", "--", file])?;
+    Ok(format!("Restored conflict in {file}"))
+}
+
+/// Recognise the state git reports when a cherry-pick/revert patch becomes
+/// **empty** after conflict resolution — git prints "The previous cherry-pick
+/// (or revert) is now empty…" and stops, asking for `--skip` or `git commit
+/// --allow-empty`. Matched on the specific "is now empty" phrase so unrelated
+/// `--continue` failures (e.g. a hook rejecting an otherwise non-empty commit)
+/// are NOT mistaken for empty and silently skipped.
+fn is_empty_after_resolution(msg: &str) -> bool {
+    msg.to_lowercase().contains("is now empty")
+}
+
+/// Continue the active operation once its conflicts are resolved and staged.
+/// `kind` is the operation key from `git::conflicts::operation_status`. `GIT_EDITOR=true`
+/// keeps the prepared message (MERGE_MSG / the replayed commit) without opening
+/// an editor, and the bound identity is pinned with `-c user.*` exactly as
+/// [`commit`] does so the resulting commit carries the repo's account identity.
+///
+/// If a cherry-pick/revert patch resolved to an empty change, git refuses to
+/// `--continue` and asks for `--skip`; we do exactly that — the change is already
+/// present, so the now-empty patch is skipped and the operation advances. This
+/// keeps "Continue" working instead of surfacing a raw git error.
+pub fn continue_operation(
+    repo: &str,
+    kind: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> Result<String, String> {
+    let mut pre: Vec<String> = Vec::new();
+    if let (Some(n), Some(e)) = (name, email) {
+        if !n.is_empty() && !e.is_empty() {
+            pre.push("-c".into());
+            pre.push(format!("user.name={n}"));
+            pre.push("-c".into());
+            pre.push(format!("user.email={e}"));
+        }
+    }
+    let sub: &[&str] = match kind {
+        "merge" => &["merge", "--continue"],
+        "rebase" => &["rebase", "--continue"],
+        "cherry-pick" => &["cherry-pick", "--continue"],
+        "revert" => &["revert", "--continue"],
+        _ => return Err(format!("no active operation to continue ({kind})")),
+    };
+    let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
+    args.extend_from_slice(sub);
+    match run_git_env(repo, &args, &[("GIT_EDITOR", "true")]) {
+        Ok(out) => Ok(out),
+        Err(e)
+            if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) =>
+        {
+            run_git_env(repo, &[kind, "--skip"], &[("GIT_EDITOR", "true")])
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Abort the active operation, restoring the pre-operation state. `kind` is the
+/// operation key from `git::conflicts::operation_status`.
+pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
+    let sub: &[&str] = match kind {
+        "merge" => &["merge", "--abort"],
+        "rebase" => &["rebase", "--abort"],
+        "cherry-pick" => &["cherry-pick", "--abort"],
+        "revert" => &["revert", "--abort"],
+        _ => return Err(format!("no active operation to abort ({kind})")),
+    };
+    run_git(repo, sub)?;
+    Ok(format!("Aborted {kind}"))
+}
+
+/// Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).
+/// Merge has no skip and is rejected. `kind` is the operation key.
+pub fn skip_operation(repo: &str, kind: &str) -> Result<String, String> {
+    let sub: &[&str] = match kind {
+        "rebase" => &["rebase", "--skip"],
+        "cherry-pick" => &["cherry-pick", "--skip"],
+        "revert" => &["revert", "--skip"],
+        _ => return Err(format!("cannot skip a {kind} operation")),
+    };
+    run_git_env(repo, sub, &[("GIT_EDITOR", "true")])
+}
+
 /// Create a lightweight tag `name` at `sha` (defaults to HEAD). Reads back as a
 /// `RefLabel` of kind "tag" on the graph.
 pub fn create_tag(repo: &str, name: &str, sha: Option<&str>) -> Result<String, String> {
@@ -778,7 +1018,11 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{discard_all, ensure_operand};
+    use super::{
+        abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
+        discard_all, ensure_operand, is_empty_after_resolution, mark_conflict_resolved,
+        reconflict_file, resolve_conflict_file, skip_operation, worktree_path,
+    };
     use std::path::PathBuf;
     use std::process::Command;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -845,5 +1089,257 @@ mod tests {
         let status = repo.git(&["status", "--porcelain"]);
         let out = String::from_utf8_lossy(&status.stdout);
         assert!(out.trim().is_empty(), "repo not clean after discard: {out:?}");
+    }
+
+    #[test]
+    fn empty_after_resolution_matches_only_the_empty_phrase() {
+        // git's actual empty-patch message — must match.
+        assert!(is_empty_after_resolution(
+            "The previous cherry-pick is now empty, possibly due to conflict resolution."
+        ));
+        assert!(is_empty_after_resolution("The previous revert is now empty."));
+        // Unrelated --continue failures must NOT be mistaken for "empty" (which
+        // would silently --skip a patch the user wanted to keep).
+        assert!(!is_empty_after_resolution(
+            "error: Committing is not possible because you have unmerged files."
+        ));
+        assert!(!is_empty_after_resolution("nothing to commit, working tree clean"));
+        assert!(!is_empty_after_resolution("hook rejected the commit"));
+    }
+
+    #[test]
+    fn worktree_path_rejects_escapes_and_accepts_relative() {
+        let root = "/tmp/repo";
+        assert!(worktree_path(root, "src/a.ts").is_ok());
+        assert!(worktree_path(root, "nested/dir/file.txt").is_ok());
+        assert!(worktree_path(root, "../escape.txt").is_err());
+        assert!(worktree_path(root, "a/../../escape.txt").is_err());
+        assert!(worktree_path(root, "/etc/passwd").is_err());
+    }
+
+    /// Build a modify/delete conflict: `base` committed, then HEAD modifies the
+    /// file while the merged branch deletes it. Returns the repo with the merge
+    /// stopped on the conflict (stage 2 = ours present, stage 3 = theirs absent).
+    fn modify_delete_repo(tag: &str) -> TempRepo {
+        let repo = TempRepo::new(tag);
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        repo.git(&["rm", "-q", "f.txt"]);
+        repo.git(&["commit", "-qm", "delete"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::write(repo.0.join("f.txt"), b"ours-modified\n").unwrap();
+        repo.git(&["commit", "-qam", "modify"]);
+        // Merge stops on the modify/delete conflict.
+        let _ = repo.git(&["merge", "other"]);
+        repo
+    }
+
+    #[test]
+    fn conflict_stage_absent_reflects_the_deleted_side() {
+        let repo = modify_delete_repo("stage-absent");
+        // Ours (stage 2) is present (we modified); theirs (stage 3) is absent
+        // (they deleted). The guard must report exactly that, so a checkout
+        // failure on the *present* side never falls through to `git rm`.
+        assert!(!conflict_stage_absent(repo.path(), "f.txt", "2"), "ours stage should be present");
+        assert!(conflict_stage_absent(repo.path(), "f.txt", "3"), "theirs stage should be absent");
+    }
+
+    #[test]
+    fn accept_conflict_side_keeps_modified_side() {
+        let repo = modify_delete_repo("keep-ours");
+        // Accept ours: the modified version is checked out and staged, file kept.
+        let result = accept_conflict_side(repo.path(), "f.txt", "ours");
+        assert!(result.is_ok(), "accept ours failed: {result:?}");
+        assert_eq!(std::fs::read_to_string(repo.0.join("f.txt")).unwrap(), "ours-modified\n");
+        // No unmerged entries remain for the file.
+        let unmerged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+        assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+    }
+
+    #[test]
+    fn accept_conflict_side_takes_deletion_when_stage_absent() {
+        let repo = modify_delete_repo("take-theirs");
+        // Accept theirs (the deletion): checkout --theirs fails because stage 3
+        // is absent, and ONLY then do we fall back to `git rm`.
+        let result = accept_conflict_side(repo.path(), "f.txt", "theirs");
+        assert!(result.is_ok(), "accept theirs failed: {result:?}");
+        assert!(!repo.0.join("f.txt").exists(), "file should be removed");
+    }
+
+    #[test]
+    fn resolution_commands_reject_non_conflicted_paths() {
+        // A normal committed file is a perfectly safe relative path, but it is
+        // NOT in the conflict set — the resolution commands must refuse it so a
+        // renderer can only act on genuinely-conflicted files.
+        let repo = TempRepo::new("not-conflicted");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("clean.txt"), b"hi\n").unwrap();
+        repo.git(&["add", "clean.txt"]);
+        repo.git(&["commit", "-qm", "init"]);
+
+        assert!(accept_conflict_side(repo.path(), "clean.txt", "ours").is_err());
+        assert!(resolve_conflict_file(repo.path(), "clean.txt", "x\n").is_err());
+        assert!(mark_conflict_resolved(repo.path(), "clean.txt").is_err());
+        // The clean file must be untouched by the rejected write.
+        assert_eq!(std::fs::read_to_string(repo.0.join("clean.txt")).unwrap(), "hi\n");
+    }
+
+    /// Build a content conflict: `base` committed, then `other` and `main` change
+    /// the same line. Returns the repo with the merge stopped on the conflict.
+    fn merge_conflict_repo(tag: &str) -> TempRepo {
+        let repo = TempRepo::new(tag);
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"line1\nbase\nline3\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        std::fs::write(repo.0.join("f.txt"), b"line1\ntheirs\nline3\n").unwrap();
+        repo.git(&["commit", "-qam", "theirs"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::write(repo.0.join("f.txt"), b"line1\nours\nline3\n").unwrap();
+        repo.git(&["commit", "-qam", "ours"]);
+        // Merge stops on the content conflict in f.txt.
+        let _ = repo.git(&["merge", "other"]);
+        repo
+    }
+
+    #[test]
+    fn continue_operation_completes_a_resolved_merge() {
+        let repo = merge_conflict_repo("continue");
+        // Resolve + stage via the in-app write path, then continue.
+        resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
+        let result = continue_operation(repo.path(), "merge", Some("T"), Some("t@t.t"));
+        assert!(result.is_ok(), "continue failed: {result:?}");
+        // No conflicts remain and HEAD is a merge commit (two parents).
+        let unmerged = repo.git(&["ls-files", "-u"]);
+        assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+        let parents = repo.git(&["rev-list", "--parents", "-n", "1", "HEAD"]);
+        let line = String::from_utf8_lossy(&parents.stdout);
+        // "<commit> <parent1> <parent2>" → 3 hashes for a merge commit.
+        assert_eq!(line.split_whitespace().count(), 3, "expected a merge commit: {line:?}");
+    }
+
+    #[test]
+    fn abort_operation_restores_pre_merge_state() {
+        let repo = merge_conflict_repo("abort");
+        let result = abort_operation(repo.path(), "merge");
+        assert!(result.is_ok(), "abort failed: {result:?}");
+        // Worktree returns to our pre-merge content and the tree is clean.
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),
+            "line1\nours\nline3\n"
+        );
+        let status = repo.git(&["status", "--porcelain"]);
+        assert!(String::from_utf8_lossy(&status.stdout).trim().is_empty());
+    }
+
+    #[test]
+    fn skip_operation_rejects_merge() {
+        // Merge has no `--skip`; only sequencer ops do. The path is never touched.
+        assert!(skip_operation("/tmp", "merge").is_err());
+        assert!(skip_operation("/tmp", "nonsense").is_err());
+    }
+
+    #[test]
+    fn reconflict_file_restores_markers_after_staging() {
+        let repo = merge_conflict_repo("reconflict");
+        // Stage a resolution — the path is now merged (stage 0), not unmerged.
+        resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
+        let staged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+        assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty());
+        // Unstage: `git checkout --merge` recreates the conflict even after add.
+        let result = reconflict_file(repo.path(), "f.txt");
+        assert!(result.is_ok(), "reconflict failed: {result:?}");
+        let unmerged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+        assert!(!String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+        let body = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
+        assert!(body.contains("<<<<<<<") && body.contains(">>>>>>>"));
+    }
+
+    #[test]
+    fn reconflict_file_rejected_outside_an_operation() {
+        // With no merge/rebase/etc. underway there is no conflict to recreate;
+        // `git checkout --merge` would just overwrite the worktree file with the
+        // index copy, so the guard must refuse rather than risk clobbering edits.
+        let repo = TempRepo::new("reconflict-clean");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"hi\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "init"]);
+        let result = reconflict_file(repo.path(), "f.txt");
+        assert!(result.is_err(), "expected refusal outside an operation: {result:?}");
+    }
+
+    #[test]
+    fn resolves_a_dash_prefixed_conflicted_path() {
+        // A tracked file named `-foo` can legitimately conflict. Every per-file
+        // command passes the path after `--`, so it must resolve rather than be
+        // rejected by the option-injection dash-guard.
+        let repo = TempRepo::new("dash-conflict");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("-foo"), b"base\n").unwrap();
+        repo.git(&["add", "--", "-foo"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        std::fs::write(repo.0.join("-foo"), b"theirs\n").unwrap();
+        repo.git(&["commit", "-qam", "theirs"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::write(repo.0.join("-foo"), b"ours\n").unwrap();
+        repo.git(&["commit", "-qam", "ours"]);
+        let _ = repo.git(&["merge", "other"]);
+        let result = resolve_conflict_file(repo.path(), "-foo", "merged\n");
+        assert!(result.is_ok(), "dash-prefixed path should resolve: {result:?}");
+        let unmerged = repo.git(&["ls-files", "-u", "--", "-foo"]);
+        assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+    }
+
+    #[test]
+    fn reconflict_file_refuses_unrelated_path_and_keeps_edits() {
+        // Mid-merge, re-conflicting a tracked file that was never part of the
+        // conflict (no resolve-undo) must be refused — otherwise `checkout
+        // --merge` would overwrite its unstaged edits with the index copy.
+        let repo = TempRepo::new("reconflict-unrelated");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        std::fs::write(repo.0.join("other.txt"), b"orig\n").unwrap();
+        repo.git(&["add", "f.txt", "other.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        repo.git(&["checkout", "-q", "-b", "other"]);
+        std::fs::write(repo.0.join("f.txt"), b"theirs\n").unwrap();
+        repo.git(&["commit", "-qam", "theirs"]);
+        repo.git(&["checkout", "-q", "main"]);
+        std::fs::write(repo.0.join("f.txt"), b"ours\n").unwrap();
+        repo.git(&["commit", "-qam", "ours"]);
+        let _ = repo.git(&["merge", "other"]); // conflicts on f.txt only
+        // Unstaged edit to the unrelated, non-conflicted file.
+        std::fs::write(repo.0.join("other.txt"), b"my precious edits\n").unwrap();
+        let result = reconflict_file(repo.path(), "other.txt");
+        assert!(result.is_err(), "should refuse a non-conflict path: {result:?}");
+        // The edit survives — checkout --merge never ran.
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("other.txt")).unwrap(),
+            "my precious edits\n"
+        );
     }
 }

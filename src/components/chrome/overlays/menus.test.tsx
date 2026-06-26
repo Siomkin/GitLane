@@ -26,7 +26,7 @@ beforeEach(() => {
       : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
   );
   useRepo.setState({
-    changes: { staged: [], unstaged: [] },
+    changes: { staged: [], unstaged: [], conflicted: [] },
     summary: null,
     branches: [],
     worktrees: [],
@@ -80,7 +80,7 @@ describe("WipContextMenu", () => {
   });
 
   it("shows Stage all only when there are unstaged files", () => {
-    useRepo.setState({ changes: { staged: [], unstaged: [file("a.ts")] } });
+    useRepo.setState({ changes: { staged: [], unstaged: [file("a.ts")], conflicted: [] } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("WipContextMenu", () => {
   });
 
   it("shows Unstage all only when there are staged files", () => {
-    useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [] } });
+    useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [] } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage all changes" })).toBeInTheDocument();

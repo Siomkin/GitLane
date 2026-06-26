@@ -142,6 +142,40 @@ export interface FileChange {
 export interface WorkingChanges {
   staged: FileChange[];
   unstaged: FileChange[];
+  /** Unmerged (conflicted) paths, kept out of staged/unstaged so the ordinary
+   * stage view can't apply normal staging to a file git considers unresolved —
+   * surfaced separately so they stay visible even when the owning operation
+   * isn't detected. */
+  conflicted: FileChange[];
+}
+
+/** The active in-progress operation that can stop on conflicts. "none" when the
+ * repo is clean / no operation is underway. */
+export type OperationKind = "merge" | "rebase" | "cherry-pick" | "revert" | "none";
+
+/** One conflicted (unmerged) path. */
+export interface ConflictFile {
+  path: string;
+  /** "text" (line-mergeable), "binary", or "deleted" (one side removed it). */
+  kind: "text" | "binary" | "deleted";
+  /** For "deleted", the side that removed the file ("ours" | "theirs"); else "". */
+  deletedSide: "ours" | "theirs" | "";
+}
+
+/** The in-progress operation + its outstanding conflicts (see Rust
+ * `git::conflicts::operation_status`). */
+export interface OperationStatus {
+  kind: OperationKind;
+  /** True when the operation supports skipping the current commit. */
+  canSkip: boolean;
+  conflicts: ConflictFile[];
+}
+
+/** Raw conflicted content of one text file (with git's merge markers). */
+export interface ConflictFileContent {
+  path: string;
+  content: string;
+  binary: boolean;
 }
 
 export interface DiffLine {
@@ -241,6 +275,59 @@ export const gitApi = {
   revertMany: (path: string, commits: string[]) =>
     invoke<string>("revert_many", { path, commits }),
 
+  // ---- conflict resolution ----
+
+  /** The active merge/rebase/cherry-pick/revert operation + its conflicts. */
+  operationStatus: (path: string) =>
+    invoke<OperationStatus>("operation_status", { path }),
+
+  /** Worktree copy of a conflicted text file (with `<<<<<<< ======= >>>>>>>`
+   * markers) for the in-app editor to parse. */
+  conflictFile: (path: string, file: string) =>
+    invoke<ConflictFileContent>("conflict_file", { path, file }),
+
+  /** Resolve a conflicted file by taking one whole side (`git checkout
+   * --ours/--theirs` + stage; removes the file when that side deleted it). */
+  acceptConflictSide: (path: string, file: string, side: "ours" | "theirs") =>
+    invoke<string>("accept_conflict_side", { path, file, side }),
+
+  /** Write merged `content` to a conflicted file and stage it (the hunk editor's
+   * reconstructed result). */
+  resolveConflictFile: (path: string, file: string, content: string) =>
+    invoke<string>("resolve_conflict_file", { path, file, content }),
+
+  /** Stage a conflicted file as-is (mark resolved after a manual edit). */
+  markConflictResolved: (path: string, file: string) =>
+    invoke<string>("mark_conflict_resolved", { path, file }),
+
+  /** Restore conflict markers for an already-resolved file (`git checkout
+   * --merge`) so it can be re-resolved. */
+  reconflictFile: (path: string, file: string) =>
+    invoke<string>("reconflict_file", { path, file }),
+
+  /** Continue the active operation after staging resolutions. `name`/`email`
+   * pin the bound identity onto the resulting commit (as `commit` does). */
+  continueOperation: (
+    path: string,
+    kind: OperationKind,
+    name?: string | null,
+    email?: string | null,
+  ) =>
+    invoke<string>("continue_operation", {
+      path,
+      kind,
+      name: name ?? null,
+      email: email ?? null,
+    }),
+
+  /** Abort the active operation, restoring the pre-operation state. */
+  abortOperation: (path: string, kind: OperationKind) =>
+    invoke<string>("abort_operation", { path, kind }),
+
+  /** Skip the current commit in a sequencer operation (rebase/cherry-pick/revert). */
+  skipOperation: (path: string, kind: OperationKind) =>
+    invoke<string>("skip_operation", { path, kind }),
+
   /** Create a lightweight tag at `sha` (or HEAD when omitted). */
   createTag: (path: string, name: string, sha?: string) =>
     invoke<string>("create_tag", { path, name, sha: sha ?? null }),
@@ -286,8 +373,13 @@ export const gitApi = {
 
   // ---- working tree / staging ----
 
-  workingChanges: (path: string) =>
-    invoke<WorkingChanges>("working_changes", { path }),
+  workingChanges: async (path: string): Promise<WorkingChanges> => {
+    const r = await invoke<WorkingChanges>("working_changes", { path });
+    // The backend always sends `conflicted`, but normalize defensively so every
+    // consumer can rely on the field being present (a defensive `?? []` once,
+    // here, instead of scattered across every reader).
+    return { ...r, conflicted: r.conflicted ?? [] };
+  },
 
   /** Diff for a working-tree file. `staged` true → index vs HEAD; false → worktree vs index.
    * `full` bypasses the backend line cap (for an explicit "show full diff"). */
