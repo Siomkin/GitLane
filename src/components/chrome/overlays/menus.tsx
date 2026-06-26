@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, type DestructivePreview } from "@/lib/api";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import {
   buildGraphActionSpecs,
@@ -13,11 +13,97 @@ import { defaultPublishTarget } from "@/lib/branchSync";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan, getSquashEligibility, isCommitReachableFromRemote } from "@/store/selection";
-import { useUi, type PromptRequest } from "@/store/ui";
+import { useUi, type ConfirmRequest, type PromptRequest } from "@/store/ui";
 import { Backdrop, MenuPanel, useBranchOp, useFittedMenuPosition, type MenuItem } from "./shared";
 
 type PromptFn = (req: PromptRequest) => void;
 type RunFn = (op: () => Promise<string>) => void;
+
+type ConfirmFn = (req: ConfirmRequest) => void;
+
+type HeadPrecondition = {
+  branch: string | null;
+  oid: string | null;
+};
+
+// Monotonic token shared by every destructive-preview invocation. The preview
+// IPC is async, so a later click — or a repo switch — can land before an earlier
+// preview resolves. Both the token and the captured repo path are re-checked
+// after the await so only the newest click, still on the same repo, opens a
+// confirm. Without this a stale result could (re)open a dialog whose `onConfirm`
+// runs against the now-active repo — a cross-repo destructive action. GL-42 review.
+let previewToken = 0;
+
+const previewConfirm = async ({
+  requestConfirm,
+  title,
+  message,
+  confirmLabel,
+  danger,
+  preview,
+  onConfirm,
+  headPrecondition,
+}: {
+  requestConfirm: ConfirmFn;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  preview: () => Promise<DestructivePreview>;
+  onConfirm: () => void;
+  headPrecondition?: HeadPrecondition;
+}) => {
+  // Local, disposable preview read: it only enriches this confirmation modal
+  // and does not become shared repo state, so it stays at the UI boundary.
+  const token = ++previewToken;
+  const repoAtClick = useRepo.getState().summary?.path ?? null;
+  const isCurrent = () =>
+    token === previewToken && useRepo.getState().summary?.path === repoAtClick;
+  const headStillMatches = () => {
+    if (!headPrecondition) return true;
+    const summary = useRepo.getState().summary;
+    return (
+      summary?.headBranch === headPrecondition.branch &&
+      summary?.headOid === headPrecondition.oid
+    );
+  };
+  const showStaleHeadToast = () =>
+    useUi.getState().showToast("HEAD changed; preview the reset again before confirming.", "error");
+  // Destructive previews are launched from transient menus. Close the originating
+  // menu before awaiting so a slow preview cannot resurrect a confirm after the
+  // user dismisses that menu.
+  useUi.getState().closeOverlays();
+  try {
+    const impact = await preview();
+    if (!isCurrent()) return;
+    if (!headStillMatches()) {
+      showStaleHeadToast();
+      return;
+    }
+    requestConfirm({
+      title,
+      message,
+      details: [impact.summary, ...impact.details],
+      warnings: impact.warnings,
+      confirmLabel,
+      danger,
+      onConfirm: () => {
+        if (!headStillMatches()) {
+          showStaleHeadToast();
+          return;
+        }
+        onConfirm();
+      },
+    });
+  } catch (e) {
+    if (!isCurrent()) return;
+    // Fail closed: the preview also validates the operands/refs (ensure_operand +
+    // rev-parse), so a failure means we can't vouch for the impact. For a safety
+    // feature that's a reason to NOT offer a one-click destructive confirm at all
+    // — surface the error and abort. The user can retry once it's resolved. GL-42.
+    useUi.getState().showToast(`Couldn't preview the action's impact: ${String(e)}`, "error");
+  }
+};
 
 /** A sibling directory path for a new worktree: `/work/repo` + `feat/x` →
  * `/work/repo-wt-feat-x`. Pre-fills the create-worktree prompt. */
@@ -124,10 +210,17 @@ export function ActionMenu() {
   };
 
   const requestMixedReset = (branch: string, target: string, targetLabel: string) =>
-    requestConfirm({
+    void previewConfirm({
+      requestConfirm,
       title: `Reset ${branch} to ${targetLabel}?`,
       message: "Mixed reset — changes are kept in the working tree, unstaged.",
       confirmLabel: "Reset (mixed)",
+      preview: () =>
+        repoPath
+          ? // `branch` (not HEAD) is the ref being reset — it's checked out in
+            // onConfirm first — so the preview must be anchored on it. GL-42 review.
+            api.previewReset(repoPath, target, "mixed", branch)
+          : Promise.reject(new Error("No repository")),
       onConfirm: () =>
         void run(async () => {
           await checkoutBranch(branch);
@@ -240,6 +333,7 @@ export function BranchContextMenu() {
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const cur = useRepo((s) => s.summary?.headBranch ?? null);
+  const headOid = useRepo((s) => s.summary?.headOid ?? null);
   const branches = useRepo((s) => s.branches);
   const worktrees = useRepo((s) => s.worktrees);
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
@@ -299,6 +393,7 @@ export function BranchContextMenu() {
 
   const needsPublishPrompt =
     info?.sync?.status === "noUpstream" || info?.sync?.status === "staleUpstream";
+  const resetHeadPrecondition = { branch: cur, oid: headOid };
   const promptPublishBranch = () =>
     requestPrompt({
       title: `Publish ${b}`,
@@ -347,12 +442,17 @@ export function BranchContextMenu() {
       add({
         label: "Force push (with lease)…",
         onClick: () =>
-          requestConfirm({
+          void previewConfirm({
+            requestConfirm,
             title: `Force-push ${b}?`,
             message:
               "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since your last fetch). Use after amending or rebasing pushed commits.",
             confirmLabel: "Force push",
             danger: true,
+            preview: () =>
+              repoPath
+                ? api.previewForcePush(repoPath, b)
+                : Promise.reject(new Error("No repository")),
             onConfirm: () => void run(() => forcePush(b)),
           }),
       });
@@ -405,9 +505,9 @@ export function BranchContextMenu() {
   // ---- reset (only when the branch isn't the one checked out) ----
   if (tip && cur && !isCurrent) {
     add({ label: `Reset ${cur} to ${b}`, header: true }, true);
-    add({ label: "Soft — keep changes staged", indent: true, onClick: () => requestConfirm({ title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", onConfirm: () => void run(() => resetCurrentTo(tip, "soft")) }) });
-    add({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => requestConfirm({ title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", onConfirm: () => void run(() => resetCurrentTo(tip, "mixed")) }) });
-    add({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => requestConfirm({ title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, onConfirm: () => void run(() => resetCurrentTo(tip, "hard")) }) });
+    add({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "soft")), headPrecondition: resetHeadPrecondition }) });
+    add({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
+    add({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "hard")), headPrecondition: resetHeadPrecondition }) });
   }
 
   // ---- rename / delete (local branches only) ----
@@ -434,11 +534,16 @@ export function BranchContextMenu() {
         label: `Delete ${b}`,
         danger: true,
         onClick: () =>
-          requestConfirm({
+          void previewConfirm({
+            requestConfirm,
             title: `Delete branch ${b}?`,
             message: "The branch ref will be removed. Unmerged commits may be lost.",
             confirmLabel: "Delete branch",
             danger: true,
+            preview: () =>
+              repoPath
+                ? api.previewDeleteBranch(repoPath, b)
+                : Promise.reject(new Error("No repository")),
             onConfirm: () => void run(() => removeBranch(b, true)),
           }),
       });
@@ -457,11 +562,16 @@ export function BranchContextMenu() {
         label: `Delete ${b} on remote`,
         danger: true,
         onClick: () =>
-          requestConfirm({
+          void previewConfirm({
+            requestConfirm,
             title: `Delete ${remoteBranch} on ${remote}?`,
             message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`,
             confirmLabel: "Delete on remote",
             danger: true,
+            preview: () =>
+              repoPath
+                ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch)
+                : Promise.reject(new Error("No repository")),
             onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)),
           }),
       }, true);
@@ -540,7 +650,12 @@ export function CommitContextMenu() {
 
   const { sha, shortSha } = menu;
   const cur = summary?.headBranch ?? "HEAD";
+  const repoPath = summary?.path ?? null;
   const workdir = summary?.workdir ?? summary?.path ?? "";
+  const resetHeadPrecondition = {
+    branch: summary?.headBranch ?? null,
+    oid: summary?.headOid ?? null,
+  };
 
   const act = (op: () => Promise<string>) => {
     close();
@@ -667,9 +782,9 @@ export function CommitContextMenu() {
     { label: "Revert commit", onClick: () => act(() => revertCommit(sha)) },
     { label: "Create patch from commit", onClick: () => act(() => createPatchAt(sha)) },
     { label: `Reset ${cur} to here`, header: true, sep: true },
-    { label: "Soft — keep changes staged", indent: true, onClick: () => requestConfirm({ title: `Reset ${cur} to ${shortSha}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", onConfirm: () => void run(() => resetCurrentTo(sha, "soft")) }) },
-    { label: "Mixed — keep changes unstaged", indent: true, onClick: () => requestConfirm({ title: `Reset ${cur} to ${shortSha}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", onConfirm: () => void run(() => resetCurrentTo(sha, "mixed")) }) },
-    { label: "Hard — discard changes", indent: true, danger: true, onClick: () => requestConfirm({ title: `Reset ${cur} to ${shortSha}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, onConfirm: () => void run(() => resetCurrentTo(sha, "hard")) }) },
+    { label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, sha, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "soft")), headPrecondition: resetHeadPrecondition }) },
+    { label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, sha, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "mixed")), headPrecondition: resetHeadPrecondition }) },
+    { label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, sha, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "hard")), headPrecondition: resetHeadPrecondition }) },
     {
       label: "Copy commit SHA",
       sep: true,
@@ -757,6 +872,7 @@ export function WipContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const openCommit = useUi((s) => s.openCommit);
+  const repoPath = useRepo((s) => s.summary?.path ?? null);
   const changes = useRepo((s) => s.changes);
   const stageAll = useRepo((s) => s.stageAll);
   const unstageAll = useRepo((s) => s.unstageAll);
@@ -783,12 +899,17 @@ export function WipContextMenu() {
     danger: true,
     sep: true,
     onClick: () =>
-      requestConfirm({
+      void previewConfirm({
+        requestConfirm,
         title: "Discard all changes?",
         message:
           "Every uncommitted change — staged, unstaged, and untracked files — will be permanently discarded. This can't be undone.",
         confirmLabel: "Discard all",
         danger: true,
+        preview: () =>
+          repoPath
+            ? api.previewDiscardAll(repoPath)
+            : Promise.reject(new Error("No repository")),
         onConfirm: () => void run(() => discardAll()),
       }),
   });
