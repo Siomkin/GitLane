@@ -117,10 +117,14 @@ pub fn build_profiled(
     let mut walk = repo.revwalk()?;
     walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
     // Seed from every branch tip so branches outside HEAD's history still show.
+    // Tags are also seeds: release tags can point at commits that were never
+    // merged back to a branch. They still compete inside the same `limit`
+    // window as branch tips, but tag-only commits should be eligible to appear.
     // Tolerate a failed seed (consistent with the remotes/HEAD seeds below); an
     // empty walk simply yields an empty graph rather than aborting the read.
     let _ = walk.push_glob("refs/heads/*");
     let _ = walk.push_glob("refs/remotes/*");
+    let _ = walk.push_glob("refs/tags/*");
     let _ = walk.push_head();
 
     // Collect one extra to detect truncation.
@@ -490,7 +494,7 @@ fn head_oid(repo: &Repository) -> (Option<String>, bool) {
 #[cfg(test)]
 mod tests {
     use super::{build, build_profiled};
-    use git2::{Oid, Repository, Signature, Time};
+    use git2::{ObjectType, Oid, Repository, Signature, Time};
     use std::env;
     use std::fs;
     use std::path::Path;
@@ -529,6 +533,80 @@ mod tests {
             &parent_refs,
         )
         .unwrap()
+    }
+
+    #[test]
+    fn fetched_tag_ref_labels_the_visible_commit() {
+        let dir = std::env::temp_dir().join("gitlane-tag-ref-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        let tagged = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+        repo.reference("refs/tags/0.1.1", tagged, true, "test tag")
+            .unwrap();
+
+        let graph = build(&repo, 100).unwrap();
+        let tagged_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == tagged.to_string())
+            .expect("tagged commit is in the graph");
+
+        assert!(
+            tagged_node
+                .refs
+                .iter()
+                .any(|r| r.kind == "tag" && r.name == "0.1.1"),
+            "fetched local tag should be exposed as a tag ref",
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn annotated_tag_only_commit_is_included_in_the_graph() {
+        let dir = std::env::temp_dir().join("gitlane-tag-only-commit-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+
+        let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+        let tagged = commit_on(
+            &repo,
+            &dir,
+            "refs/heads/release-only",
+            "a.txt",
+            "release\n",
+            &[base],
+            200,
+        );
+        let object = repo
+            .find_object(tagged, Some(ObjectType::Commit))
+            .expect("tagged commit object");
+        repo.tag("v0.1.1", &object, &sig(210), "release tag", false)
+            .unwrap();
+        repo.find_reference("refs/heads/release-only")
+            .unwrap()
+            .delete()
+            .unwrap();
+
+        let graph = build(&repo, 100).unwrap();
+        let tagged_node = graph
+            .commits
+            .iter()
+            .find(|node| node.id == tagged.to_string())
+            .expect("tag-only commit is seeded into the graph");
+
+        assert!(
+            tagged_node
+                .refs
+                .iter()
+                .any(|r| r.kind == "tag" && r.name == "v0.1.1"),
+            "annotated tag should label the tag-only commit",
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// An in-window stash is injected as a node that reserves its own lane: a

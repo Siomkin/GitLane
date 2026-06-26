@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::process::Command;
 
 const STASH_CONTEXT_LIMIT: usize = 8;
+const TAG_FETCH_REFSPEC: &str = "refs/tags/*:refs/tags/*";
 
 /// Run `git -C <repo> <args...>`, returning combined stdout/stderr on success
 /// or the error output on a non-zero exit.
@@ -41,6 +42,18 @@ fn run_git_env(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Strin
     } else {
         Err(format!("{stdout}{stderr}").trim().to_string())
     }
+}
+
+fn run_git_env_stable_diagnostics(
+    repo: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    let mut stable_envs = Vec::with_capacity(envs.len() + 2);
+    stable_envs.extend_from_slice(envs);
+    stable_envs.push(("LC_ALL", "C"));
+    stable_envs.push(("LANG", "C"));
+    run_git_env(repo, args, &stable_envs)
 }
 
 /// Reject a user-supplied ref/branch/tag/commit/path operand that git would
@@ -298,7 +311,9 @@ fn worktree_path(root: &str, file: &str) -> Result<std::path::PathBuf, String> {
             )
         })
     {
-        return Err(format!("refusing unsafe path outside the worktree: {file:?}"));
+        return Err(format!(
+            "refusing unsafe path outside the worktree: {file:?}"
+        ));
     }
     Ok(std::path::Path::new(root.trim()).join(rel))
 }
@@ -393,12 +408,10 @@ pub fn continue_operation(
     };
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
     args.extend_from_slice(sub);
-    match run_git_env(repo, &args, &[("GIT_EDITOR", "true")]) {
+    match run_git_env_stable_diagnostics(repo, &args, &[("GIT_EDITOR", "true")]) {
         Ok(out) => Ok(out),
-        Err(e)
-            if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) =>
-        {
-            run_git_env(repo, &[kind, "--skip"], &[("GIT_EDITOR", "true")])
+        Err(e) if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) => {
+            run_git_env_stable_diagnostics(repo, &[kind, "--skip"], &[("GIT_EDITOR", "true")])
         }
         Err(e) => Err(e),
     }
@@ -864,19 +877,93 @@ fn push_target(repo: &str, branch: &str) -> (String, String) {
     (remote, refspec)
 }
 
-/// Fetch from all remotes and prune deleted upstream refs (shells out — libgit2
-/// has no network here). When `token` is set (the repo is bound to an account)
-/// it authenticates as that account via the same inline `gh` git-credential
-/// wiring as [`push`], so private remotes resolve under the right identity.
+/// Fetch from all remotes, prune deleted upstream refs, and import tags
+/// (shells out — libgit2 has no network here). `--tags` is intentional: Git's
+/// default tag auto-follow misses remote-only tags in some no-branch-update
+/// refreshes, but the UI derives visible tags from local `refs/tags/*`.
+///
+/// Tags are fetched per remote through an explicit tag-only refspec after a
+/// `--no-tags` branch/prune fetch. A remote tag that would clobber an existing
+/// local tag is left alone and treated as non-fatal, so the UI still refreshes
+/// branch updates and any tags that did import. Other tag-fetch failures still
+/// fail the operation. We do not pass `--prune-tags`: local-only tags and tags
+/// deleted upstream are intentionally preserved unless the user deletes them
+/// explicitly.
+///
+/// When `token` is set (the repo is bound to an account) it authenticates as
+/// that account via the same inline `gh` git-credential wiring as [`push`], so
+/// private remotes resolve under the right identity.
 pub fn fetch(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
     match auth {
         Some((host, token)) => {
-            let args = credential_args(host, &["fetch", "--all", "--prune"]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+            let branch_args = credential_args(host, &["fetch", "--all", "--prune", "--no-tags"]);
+            let branch_arg_refs: Vec<&str> = branch_args.iter().map(String::as_str).collect();
+            fetch_with_tag_import(
+                repo,
+                &branch_arg_refs,
+                Some((host, token)),
+                &[("GH_TOKEN", token)],
+            )
         }
-        None => run_git(repo, &["fetch", "--all", "--prune"]),
+        None => fetch_with_tag_import(repo, &["fetch", "--all", "--prune", "--no-tags"], None, &[]),
     }
+}
+
+fn fetch_with_tag_import(
+    repo: &str,
+    branch_args: &[&str],
+    auth: Option<(&str, &str)>,
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    let branch_output = run_git_env_stable_diagnostics(repo, branch_args, envs)?;
+    let mut output = branch_output;
+    for remote in fetch_remotes(repo)? {
+        ensure_operand(&remote)?;
+        let tag_args = match auth {
+            Some((host, _token)) => {
+                credential_args(host, &["fetch", &remote, "--no-tags", TAG_FETCH_REFSPEC])
+            }
+            None => vec![
+                "fetch".to_string(),
+                remote,
+                "--no-tags".to_string(),
+                TAG_FETCH_REFSPEC.to_string(),
+            ],
+        };
+        let tag_arg_refs: Vec<&str> = tag_args.iter().map(String::as_str).collect();
+        match run_git_env_stable_diagnostics(repo, &tag_arg_refs, envs) {
+            Ok(tag_output) => output = join_git_outputs(&output, &tag_output),
+            Err(e) if is_tag_clobber_rejection(&e) => output = join_git_outputs(&output, &e),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(output)
+}
+
+fn fetch_remotes(repo: &str) -> Result<Vec<String>, String> {
+    Ok(run_git(repo, &["remote"])?
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn join_git_outputs(first: &str, second: &str) -> String {
+    match (first.trim(), second.trim()) {
+        ("", "") => String::new(),
+        (a, "") => a.to_string(),
+        ("", b) => b.to_string(),
+        (a, b) => format!("{a}\n{b}"),
+    }
+}
+
+fn is_tag_clobber_rejection(output: &str) -> bool {
+    output.contains("would clobber existing tag")
+        && !output.lines().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("fatal:") || trimmed.starts_with("error:")
+        })
 }
 
 /// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally
@@ -1020,8 +1107,9 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
 mod tests {
     use super::{
         abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
-        discard_all, ensure_operand, is_empty_after_resolution, mark_conflict_resolved,
-        reconflict_file, resolve_conflict_file, skip_operation, worktree_path,
+        discard_all, ensure_operand, fetch, is_empty_after_resolution, is_tag_clobber_rejection,
+        mark_conflict_resolved, reconflict_file, resolve_conflict_file, skip_operation,
+        worktree_path,
     };
     use std::path::PathBuf;
     use std::process::Command;
@@ -1037,7 +1125,13 @@ mod tests {
 
     #[test]
     fn allows_legitimate_refs_and_oids() {
-        for ok in ["main", "feature/GP-3-foo", "origin/main", "2fe77a5abf25", "v1.2.3"] {
+        for ok in [
+            "main",
+            "feature/GP-3-foo",
+            "origin/main",
+            "2fe77a5abf25",
+            "v1.2.3",
+        ] {
             assert!(ensure_operand(ok).is_ok(), "{ok} should be allowed");
         }
     }
@@ -1049,7 +1143,8 @@ mod tests {
         fn new(tag: &str) -> Self {
             static SEQ: AtomicU32 = AtomicU32::new(0);
             let n = SEQ.fetch_add(1, Ordering::Relaxed);
-            let dir = std::env::temp_dir().join(format!("gitlane-{tag}-{}-{n}", std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("gitlane-{tag}-{}-{n}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             TempRepo(dir)
         }
@@ -1063,6 +1158,16 @@ mod tests {
                 .args(args)
                 .output()
                 .expect("git launches in tests")
+        }
+        fn git_ok(&self, args: &[&str]) {
+            let out = self.git(args);
+            assert!(
+                out.status.success(),
+                "git {:?} failed\nstdout:\n{}\nstderr:\n{}",
+                args,
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr),
+            );
         }
     }
     impl Drop for TempRepo {
@@ -1085,10 +1190,188 @@ mod tests {
         assert!(result.is_ok(), "discard_all failed: {result:?}");
 
         // Both the worktree copy and the index entry must be gone.
-        assert!(!repo.0.join("staged.txt").exists(), "worktree file survived discard");
+        assert!(
+            !repo.0.join("staged.txt").exists(),
+            "worktree file survived discard"
+        );
         let status = repo.git(&["status", "--porcelain"]);
         let out = String::from_utf8_lossy(&status.stdout);
-        assert!(out.trim().is_empty(), "repo not clean after discard: {out:?}");
+        assert!(
+            out.trim().is_empty(),
+            "repo not clean after discard: {out:?}"
+        );
+    }
+
+    #[test]
+    fn fetch_imports_remote_only_tags() {
+        let root = TempRepo::new("fetch-tags-root");
+        let origin = root.0.join("origin.git");
+        let source = root.0.join("source");
+        let clone = root.0.join("clone");
+
+        Command::new("git")
+            .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+            .output()
+            .expect("git init bare launches");
+        Command::new("git")
+            .args(["init", "-q", source.to_str().unwrap()])
+            .output()
+            .expect("git init launches");
+
+        let source_repo = TempRepo(source);
+        source_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+        source_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+        source_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(source_repo.0.join("file.txt"), b"v1\n").unwrap();
+        source_repo.git_ok(&["add", "file.txt"]);
+        source_repo.git_ok(&["commit", "-q", "-m", "initial"]);
+        source_repo.git_ok(&["tag", "0.1.1"]);
+        source_repo.git_ok(&["remote", "add", "origin", origin.to_str().unwrap()]);
+        source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+        source_repo.git_ok(&["push", "-q", "origin", "refs/tags/0.1.1"]);
+        let head_out = Command::new("git")
+            .arg("-C")
+            .arg(&origin)
+            .args(["symbolic-ref", "HEAD", "refs/heads/main"])
+            .output()
+            .expect("git symbolic-ref launches");
+        assert!(
+            head_out.status.success(),
+            "setting origin HEAD failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&head_out.stdout),
+            String::from_utf8_lossy(&head_out.stderr),
+        );
+
+        let clone_out = Command::new("git")
+            .args([
+                "clone",
+                "--no-tags",
+                "-q",
+                origin.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ])
+            .output()
+            .expect("git clone launches");
+        assert!(
+            clone_out.status.success(),
+            "clone failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&clone_out.stdout),
+            String::from_utf8_lossy(&clone_out.stderr),
+        );
+        let clone_repo = TempRepo(clone);
+        let before = clone_repo.git(&["tag", "--list", "0.1.1"]);
+        assert!(
+            String::from_utf8_lossy(&before.stdout).trim().is_empty(),
+            "test setup should start with the remote tag absent locally",
+        );
+
+        let result = fetch(clone_repo.path(), None);
+        assert!(result.is_ok(), "fetch failed: {result:?}");
+
+        let after = clone_repo.git(&["tag", "--list", "0.1.1"]);
+        assert_eq!(String::from_utf8_lossy(&after.stdout).trim(), "0.1.1");
+    }
+
+    #[test]
+    fn fetch_ignores_tag_clobber_rejection_after_branch_updates() {
+        let root = TempRepo::new("fetch-tag-clobber-root");
+        let origin = root.0.join("origin.git");
+        let source = root.0.join("source");
+        let clone = root.0.join("clone");
+
+        Command::new("git")
+            .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+            .output()
+            .expect("git init bare launches");
+        Command::new("git")
+            .args(["init", "-q", source.to_str().unwrap()])
+            .output()
+            .expect("git init launches");
+
+        let source_repo = TempRepo(source);
+        source_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+        source_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+        source_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(source_repo.0.join("file.txt"), b"v1\n").unwrap();
+        source_repo.git_ok(&["add", "file.txt"]);
+        source_repo.git_ok(&["commit", "-q", "-m", "initial"]);
+        source_repo.git_ok(&["tag", "0.1.1"]);
+        source_repo.git_ok(&["remote", "add", "origin", origin.to_str().unwrap()]);
+        source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+        source_repo.git_ok(&["push", "-q", "origin", "refs/tags/0.1.1"]);
+        let head_out = Command::new("git")
+            .arg("-C")
+            .arg(&origin)
+            .args(["symbolic-ref", "HEAD", "refs/heads/main"])
+            .output()
+            .expect("git symbolic-ref launches");
+        assert!(head_out.status.success(), "setting origin HEAD failed");
+
+        let clone_out = Command::new("git")
+            .args([
+                "clone",
+                "--no-tags",
+                "-q",
+                origin.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ])
+            .output()
+            .expect("git clone launches");
+        assert!(clone_out.status.success(), "clone failed");
+        let clone_repo = TempRepo(clone);
+        clone_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+        clone_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+        clone_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(clone_repo.0.join("local.txt"), b"local\n").unwrap();
+        clone_repo.git_ok(&["add", "local.txt"]);
+        clone_repo.git_ok(&["commit", "-q", "-m", "local diverging tag target"]);
+        clone_repo.git_ok(&["tag", "0.1.1"]);
+        let local_tag = clone_repo.git(&["rev-parse", "refs/tags/0.1.1"]);
+        let local_tag_oid = String::from_utf8_lossy(&local_tag.stdout)
+            .trim()
+            .to_string();
+
+        std::fs::write(source_repo.0.join("file.txt"), b"v2\n").unwrap();
+        source_repo.git_ok(&["commit", "-qam", "remote update"]);
+        source_repo.git_ok(&["tag", "-f", "0.1.1"]);
+        source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+        source_repo.git_ok(&["push", "-q", "--force", "origin", "refs/tags/0.1.1"]);
+        let remote_tip = source_repo.git(&["rev-parse", "HEAD"]);
+        let remote_tip_oid = String::from_utf8_lossy(&remote_tip.stdout)
+            .trim()
+            .to_string();
+
+        let result = fetch(clone_repo.path(), None);
+        assert!(
+            result.is_ok(),
+            "tag clobber rejection should not fail fetch: {result:?}"
+        );
+
+        let fetched_origin = clone_repo.git(&["rev-parse", "refs/remotes/origin/main"]);
+        assert_eq!(
+            String::from_utf8_lossy(&fetched_origin.stdout).trim(),
+            remote_tip_oid,
+            "branch updates should still be visible after the tolerated tag rejection",
+        );
+        let after_tag = clone_repo.git(&["rev-parse", "refs/tags/0.1.1"]);
+        assert_eq!(
+            String::from_utf8_lossy(&after_tag.stdout).trim(),
+            local_tag_oid,
+            "conflicting local tag should not be clobbered",
+        );
+    }
+
+    #[test]
+    fn tag_clobber_detection_does_not_mask_real_fetch_errors() {
+        assert!(is_tag_clobber_rejection(
+            "From /tmp/origin\n ! [rejected] 0.1.1 -> 0.1.1 (would clobber existing tag)"
+        ));
+        assert!(!is_tag_clobber_rejection(
+            "fatal: unable to access remote\n ! [rejected] 0.1.1 -> 0.1.1 (would clobber existing tag)"
+        ));
+        assert!(!is_tag_clobber_rejection(
+            "error: could not fetch origin\n ! [rejected] 0.1.1 -> 0.1.1 (would clobber existing tag)"
+        ));
     }
 
     #[test]
@@ -1097,13 +1380,17 @@ mod tests {
         assert!(is_empty_after_resolution(
             "The previous cherry-pick is now empty, possibly due to conflict resolution."
         ));
-        assert!(is_empty_after_resolution("The previous revert is now empty."));
+        assert!(is_empty_after_resolution(
+            "The previous revert is now empty."
+        ));
         // Unrelated --continue failures must NOT be mistaken for "empty" (which
         // would silently --skip a patch the user wanted to keep).
         assert!(!is_empty_after_resolution(
             "error: Committing is not possible because you have unmerged files."
         ));
-        assert!(!is_empty_after_resolution("nothing to commit, working tree clean"));
+        assert!(!is_empty_after_resolution(
+            "nothing to commit, working tree clean"
+        ));
         assert!(!is_empty_after_resolution("hook rejected the commit"));
     }
 
@@ -1146,8 +1433,14 @@ mod tests {
         // Ours (stage 2) is present (we modified); theirs (stage 3) is absent
         // (they deleted). The guard must report exactly that, so a checkout
         // failure on the *present* side never falls through to `git rm`.
-        assert!(!conflict_stage_absent(repo.path(), "f.txt", "2"), "ours stage should be present");
-        assert!(conflict_stage_absent(repo.path(), "f.txt", "3"), "theirs stage should be absent");
+        assert!(
+            !conflict_stage_absent(repo.path(), "f.txt", "2"),
+            "ours stage should be present"
+        );
+        assert!(
+            conflict_stage_absent(repo.path(), "f.txt", "3"),
+            "theirs stage should be absent"
+        );
     }
 
     #[test]
@@ -1156,7 +1449,10 @@ mod tests {
         // Accept ours: the modified version is checked out and staged, file kept.
         let result = accept_conflict_side(repo.path(), "f.txt", "ours");
         assert!(result.is_ok(), "accept ours failed: {result:?}");
-        assert_eq!(std::fs::read_to_string(repo.0.join("f.txt")).unwrap(), "ours-modified\n");
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),
+            "ours-modified\n"
+        );
         // No unmerged entries remain for the file.
         let unmerged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
         assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
@@ -1190,7 +1486,10 @@ mod tests {
         assert!(resolve_conflict_file(repo.path(), "clean.txt", "x\n").is_err());
         assert!(mark_conflict_resolved(repo.path(), "clean.txt").is_err());
         // The clean file must be untouched by the rejected write.
-        assert_eq!(std::fs::read_to_string(repo.0.join("clean.txt")).unwrap(), "hi\n");
+        assert_eq!(
+            std::fs::read_to_string(repo.0.join("clean.txt")).unwrap(),
+            "hi\n"
+        );
     }
 
     /// Build a content conflict: `base` committed, then `other` and `main` change
@@ -1228,7 +1527,11 @@ mod tests {
         let parents = repo.git(&["rev-list", "--parents", "-n", "1", "HEAD"]);
         let line = String::from_utf8_lossy(&parents.stdout);
         // "<commit> <parent1> <parent2>" → 3 hashes for a merge commit.
-        assert_eq!(line.split_whitespace().count(), 3, "expected a merge commit: {line:?}");
+        assert_eq!(
+            line.split_whitespace().count(),
+            3,
+            "expected a merge commit: {line:?}"
+        );
     }
 
     #[test]
@@ -1282,7 +1585,10 @@ mod tests {
         repo.git(&["add", "f.txt"]);
         repo.git(&["commit", "-qm", "init"]);
         let result = reconflict_file(repo.path(), "f.txt");
-        assert!(result.is_err(), "expected refusal outside an operation: {result:?}");
+        assert!(
+            result.is_err(),
+            "expected refusal outside an operation: {result:?}"
+        );
     }
 
     #[test]
@@ -1306,7 +1612,10 @@ mod tests {
         repo.git(&["commit", "-qam", "ours"]);
         let _ = repo.git(&["merge", "other"]);
         let result = resolve_conflict_file(repo.path(), "-foo", "merged\n");
-        assert!(result.is_ok(), "dash-prefixed path should resolve: {result:?}");
+        assert!(
+            result.is_ok(),
+            "dash-prefixed path should resolve: {result:?}"
+        );
         let unmerged = repo.git(&["ls-files", "-u", "--", "-foo"]);
         assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
     }
@@ -1332,10 +1641,13 @@ mod tests {
         std::fs::write(repo.0.join("f.txt"), b"ours\n").unwrap();
         repo.git(&["commit", "-qam", "ours"]);
         let _ = repo.git(&["merge", "other"]); // conflicts on f.txt only
-        // Unstaged edit to the unrelated, non-conflicted file.
+                                               // Unstaged edit to the unrelated, non-conflicted file.
         std::fs::write(repo.0.join("other.txt"), b"my precious edits\n").unwrap();
         let result = reconflict_file(repo.path(), "other.txt");
-        assert!(result.is_err(), "should refuse a non-conflict path: {result:?}");
+        assert!(
+            result.is_err(),
+            "should refuse a non-conflict path: {result:?}"
+        );
         // The edit survives — checkout --merge never ran.
         assert_eq!(
             std::fs::read_to_string(repo.0.join("other.txt")).unwrap(),
