@@ -941,12 +941,26 @@ fn fetch_with_tag_import(
 }
 
 fn fetch_remotes(repo: &str) -> Result<Vec<String>, String> {
-    Ok(run_git(repo, &["remote"])?
+    let remotes = run_git(repo, &["remote"])?
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(str::to_string)
-        .collect())
+        .collect::<Vec<_>>();
+    let mut included = Vec::new();
+    for remote in remotes {
+        let skip = run_git(
+            repo,
+            &["config", "--bool", &format!("remote.{remote}.skipFetchAll")],
+        )
+        .ok()
+        .map(|value| value.trim().eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+        if !skip {
+            included.push(remote);
+        }
+    }
+    Ok(included)
 }
 
 fn join_git_outputs(first: &str, second: &str) -> String {
@@ -1267,6 +1281,67 @@ mod tests {
 
         let result = fetch(clone_repo.path(), None);
         assert!(result.is_ok(), "fetch failed: {result:?}");
+
+        let after = clone_repo.git(&["tag", "--list", "0.1.1"]);
+        assert_eq!(String::from_utf8_lossy(&after.stdout).trim(), "0.1.1");
+    }
+
+    #[test]
+    fn fetch_tag_import_honors_skip_fetch_all_remotes() {
+        let root = TempRepo::new("fetch-skip-remote-root");
+        let origin = root.0.join("origin.git");
+        let source = root.0.join("source");
+        let clone = root.0.join("clone");
+        let unreachable = root.0.join("missing.git");
+
+        Command::new("git")
+            .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+            .output()
+            .expect("git init bare launches");
+        Command::new("git")
+            .args(["init", "-q", source.to_str().unwrap()])
+            .output()
+            .expect("git init launches");
+
+        let source_repo = TempRepo(source);
+        source_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+        source_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+        source_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(source_repo.0.join("file.txt"), b"v1\n").unwrap();
+        source_repo.git_ok(&["add", "file.txt"]);
+        source_repo.git_ok(&["commit", "-q", "-m", "initial"]);
+        source_repo.git_ok(&["tag", "0.1.1"]);
+        source_repo.git_ok(&["remote", "add", "origin", origin.to_str().unwrap()]);
+        source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+        source_repo.git_ok(&["push", "-q", "origin", "refs/tags/0.1.1"]);
+        let head_out = Command::new("git")
+            .arg("-C")
+            .arg(&origin)
+            .args(["symbolic-ref", "HEAD", "refs/heads/main"])
+            .output()
+            .expect("git symbolic-ref launches");
+        assert!(head_out.status.success(), "setting origin HEAD failed");
+
+        let clone_out = Command::new("git")
+            .args([
+                "clone",
+                "--no-tags",
+                "-q",
+                origin.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ])
+            .output()
+            .expect("git clone launches");
+        assert!(clone_out.status.success(), "clone failed");
+        let clone_repo = TempRepo(clone);
+        clone_repo.git_ok(&["remote", "add", "backup", unreachable.to_str().unwrap()]);
+        clone_repo.git_ok(&["config", "remote.backup.skipFetchAll", "true"]);
+
+        let result = fetch(clone_repo.path(), None);
+        assert!(
+            result.is_ok(),
+            "skipped unreachable remote should not fail tag import: {result:?}",
+        );
 
         let after = clone_repo.git(&["tag", "--list", "0.1.1"]);
         assert_eq!(String::from_utf8_lossy(&after.stdout).trim(), "0.1.1");
