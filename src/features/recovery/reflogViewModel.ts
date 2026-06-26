@@ -14,6 +14,11 @@ export const reflogTime = (entry: ReflogEntry) => {
 };
 
 export const recoveryBranchName = (entry: ReflogEntry) => {
-  const base = (entry.refName || "head").replace(/^refs\/heads\//, "").replace(/[^\w./-]+/g, "-");
-  return `recovery/${base.replace(/^\/+|\/+$/g, "") || entry.shortOid}`;
+  const base = (entry.refName || "head")
+    .replace(/^refs\/heads\//, "")
+    .replace(/[^\w./-]+/g, "-")
+    // Trim leading/trailing slashes AND dashes so the suffix can't produce an
+    // invalid ref like `recovery/-foo` or an empty `recovery/`.
+    .replace(/^[/-]+|[/-]+$/g, "");
+  return `recovery/${base || entry.shortOid}`;
 };

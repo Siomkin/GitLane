@@ -94,7 +94,10 @@ async fn delete_branch(path: String, name: String, force: bool) -> Result<String
 
 #[tauri::command]
 async fn list_reflog(path: String, limit: Option<usize>) -> Result<Vec<ReflogEntry>, String> {
-    blocking(move || git::write::reflog_entries(&path, limit.unwrap_or(80))).await
+    // Clamp the caller-supplied limit: the UI requests 120, but the command
+    // surface must not let a stray large value trigger an unbounded reflog walk.
+    let limit = limit.unwrap_or(80).clamp(1, 500);
+    blocking(move || git::write::reflog_entries(&path, limit)).await
 }
 
 #[tauri::command]
@@ -102,8 +105,11 @@ async fn preview_reset(
     path: String,
     target: String,
     mode: String,
+    source: Option<String>,
 ) -> Result<DestructivePreview, String> {
-    blocking(move || git::write::preview_reset(&path, &target, &mode)).await
+    // `source` is the ref being reset; defaults to HEAD for current-branch resets.
+    let source = source.unwrap_or_else(|| "HEAD".to_string());
+    blocking(move || git::write::preview_reset(&path, &target, &mode, &source)).await
 }
 
 #[tauri::command]

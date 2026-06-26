@@ -135,6 +135,17 @@ export function createRepoLifecycleActions(
       // failure below can't leave the now-active repo unwatched (GL-20 review).
       void api.watchRepo(summary.workdir ?? summary.path).catch(() => {});
 
+      // A repo switch invalidates any open repo-bound overlay: a destructive
+      // confirm / reflog-recovery dialog (impact + entries computed for the old
+      // repo) and any in-flight prompt (e.g. a recovery-branch name carrying an
+      // OID from the old repo). Confirming/submitting after the switch would act
+      // on the newly-active repo, so close them here. The FS watcher re-syncs via
+      // `refresh` (not `loadRepo`), so this never fires on a same-repo change —
+      // only a genuine switch. GL-42 review.
+      useUi.getState().closeConfirm();
+      useUi.getState().closeRecovery();
+      useUi.getState().closePrompt();
+
       // Reset PR state and resolve the new repo's account binding the moment the
       // summary is published — before awaiting the graph — so the ActionBar can't
       // pair the new repo's summary with the previous repo's PRs during a slow graph
@@ -321,6 +332,13 @@ export function createRepoLifecycleActions(
           fileDiff: null,
         });
         usePulls.getState().reset();
+        // Closing the last tab drops to the welcome screen; any open repo-bound
+        // overlay (destructive confirm, reflog-recovery dialog, or prompt) was
+        // bound to the now-closed repo, so clear them too. The switch-to-neighbour
+        // branch below routes through `loadRepo`, which already does this. GL-42.
+        useUi.getState().closeConfirm();
+        useUi.getState().closeRecovery();
+        useUi.getState().closePrompt();
         return;
       }
       const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0];

@@ -21,6 +21,14 @@ type RunFn = (op: () => Promise<string>) => void;
 
 type ConfirmFn = (req: ConfirmRequest) => void;
 
+// Monotonic token shared by every destructive-preview invocation. The preview
+// IPC is async, so a later click — or a repo switch — can land before an earlier
+// preview resolves. Both the token and the captured repo path are re-checked
+// after the await so only the newest click, still on the same repo, opens a
+// confirm. Without this a stale result could (re)open a dialog whose `onConfirm`
+// runs against the now-active repo — a cross-repo destructive action. GL-42 review.
+let previewToken = 0;
+
 const previewConfirm = async ({
   requestConfirm,
   title,
@@ -40,8 +48,13 @@ const previewConfirm = async ({
 }) => {
   // Local, disposable preview read: it only enriches this confirmation modal
   // and does not become shared repo state, so it stays at the UI boundary.
+  const token = ++previewToken;
+  const repoAtClick = useRepo.getState().summary?.path ?? null;
+  const isCurrent = () =>
+    token === previewToken && useRepo.getState().summary?.path === repoAtClick;
   try {
     const impact = await preview();
+    if (!isCurrent()) return;
     requestConfirm({
       title,
       message,
@@ -52,14 +65,12 @@ const previewConfirm = async ({
       onConfirm,
     });
   } catch (e) {
-    requestConfirm({
-      title,
-      message,
-      details: [`Could not load impact preview: ${String(e)}`],
-      confirmLabel,
-      danger,
-      onConfirm,
-    });
+    if (!isCurrent()) return;
+    // Fail closed: the preview also validates the operands/refs (ensure_operand +
+    // rev-parse), so a failure means we can't vouch for the impact. For a safety
+    // feature that's a reason to NOT offer a one-click destructive confirm at all
+    // — surface the error and abort. The user can retry once it's resolved. GL-42.
+    useUi.getState().showToast(`Couldn't preview the action's impact: ${String(e)}`, "error");
   }
 };
 
@@ -175,7 +186,9 @@ export function ActionMenu() {
       confirmLabel: "Reset (mixed)",
       preview: () =>
         repoPath
-          ? api.previewReset(repoPath, target, "mixed")
+          ? // `branch` (not HEAD) is the ref being reset — it's checked out in
+            // onConfirm first — so the preview must be anchored on it. GL-42 review.
+            api.previewReset(repoPath, target, "mixed", branch)
           : Promise.reject(new Error("No repository")),
       onConfirm: () =>
         void run(async () => {

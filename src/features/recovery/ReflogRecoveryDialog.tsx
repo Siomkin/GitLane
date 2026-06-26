@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { ReflogEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -9,6 +9,7 @@ export const ReflogRecoveryDialog = () => {
   const open = useUi((s) => s.recoveryOpen);
   const close = useUi((s) => s.closeRecovery);
   const requestPrompt = useUi((s) => s.requestPrompt);
+  const repoPath = useRepo((s) => s.summary?.path);
   const entries = useRepo((s) => s.reflogEntries);
   const loading = useRepo((s) => s.reflogLoading);
   const error = useRepo((s) => s.reflogError);
@@ -16,10 +17,42 @@ export const ReflogRecoveryDialog = () => {
   const createBranchAt = useRepo((s) => s.createBranchAt);
   const checkoutDetached = useRepo((s) => s.checkoutDetached);
   const run = useBranchOp();
+  // Gates the empty-state message: stays false until the first load for the
+  // current open/repo resolves, so the one frame between "entries reset to []"
+  // and "reflogLoading flips true" doesn't flash "No reflog entries found".
+  const [ready, setReady] = useState(false);
 
+  // Reload whenever the dialog opens or the active repo changes underneath it: a
+  // repo switch resets `reflogEntries` to [] without re-running this effect, so
+  // keying on `repoPath` keeps the list bound to the currently-open repo rather
+  // than showing a stale "No reflog entries found". GL-42 review.
   useEffect(() => {
-    if (open) void loadReflog();
-  }, [loadReflog, open]);
+    // Reset on close too: otherwise `ready` stays true and a reopen (or open
+    // after a repo switch) flashes the previous repo's entries / a false "No
+    // reflog entries" for one frame before the load below re-runs. GL-42 review.
+    if (!open) {
+      setReady(false);
+      return;
+    }
+    setReady(false);
+    let cancelled = false;
+    void loadReflog().finally(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadReflog, open, repoPath]);
+
+  // Escape closes the dialog, matching ConfirmDialog/PromptDialog.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, close]);
 
   if (!open) return null;
 
@@ -57,7 +90,7 @@ export const ReflogRecoveryDialog = () => {
           </div>
         </div>
         <div className="min-h-0 overflow-y-auto">
-          {loading ? (
+          {loading || !ready ? (
             <div className="px-5 py-8 text-center text-[13px] text-neutral-400">Loading reflog…</div>
           ) : error ? (
             <div className="px-5 py-8 text-center text-[13px] text-rose-500">{error}</div>

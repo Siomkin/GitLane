@@ -1138,17 +1138,28 @@ pub fn discard_all(repo: &str) -> Result<String, String> {
     Ok("Discarded all changes".to_string())
 }
 
-/// Recent reflog entries across HEAD and local refs. Uses `git log -g` rather
+/// Recent reflog entries for HEAD and local branches. Uses `git log -g` rather
 /// than libgit2 because the CLI's reflog selectors (`HEAD@{1}`) are exactly what
 /// users recognise when recovering from a bad reset/checkout.
 pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, String> {
+    // An unborn HEAD makes `git log -g HEAD …` fatal, so short-circuit to an
+    // empty list — a repo with no commits has no recovery points to show.
+    if run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_err() {
+        return Ok(Vec::new());
+    }
     let max_count = format!("--max-count={}", limit.max(1));
+    // Walk HEAD and local-branch reflogs explicitly instead of `--all`: the dialog
+    // is "HEAD and branch movements", and scoping the walk means `--max-count` is
+    // spent on recovery entries rather than being eaten by remote-tracking / tag /
+    // stash reflogs that `--all` would include (which could starve the list in a
+    // fetch-heavy repo). GL-42 review.
     let raw = run_git(
         repo,
         &[
             "log",
             "-g",
-            "--all",
+            "HEAD",
+            "--branches",
             &max_count,
             "--format=%H%x1f%gd%x1f%gD%x1f%gs%x1f%gn%x1f%ge%x1f%ct",
         ],
@@ -1193,32 +1204,63 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
         .collect())
 }
 
-pub fn preview_reset(repo: &str, target: &str, mode: &str) -> Result<DestructivePreview, String> {
+/// Preview a reset of `source` (the ref that will be reset — `HEAD` for the
+/// current branch, or a named branch when the caller checks it out first) back
+/// to `target`. The impacted commits are those on `source` but not `target`, so
+/// the range must be anchored on `source`, not always `HEAD`. GL-42 review.
+pub fn preview_reset(
+    repo: &str,
+    target: &str,
+    mode: &str,
+    source: &str,
+) -> Result<DestructivePreview, String> {
     ensure_operand(target)?;
+    ensure_operand(source)?;
     let mode = match mode {
         "soft" | "mixed" | "hard" => mode,
         _ => "mixed",
     };
+    // Validate both ends up front. The impact reads below tolerate git failures
+    // with `unwrap_or_default()`, so an unresolvable target or source would
+    // otherwise yield a confident-looking but empty preview ("No commits are
+    // currently ahead of the target"). Fail loudly instead, routing the UI to its
+    // error path. GL-42 review.
+    run_git(repo, &["rev-parse", "--verify", &format!("{target}^{{commit}}")])?;
+    // Qualify a local-branch source to refs/heads so a same-named tag can't shadow
+    // it (git ref precedence resolves a bare name to the tag first); HEAD and
+    // arbitrary commit-ish sources are validated and used as-is. GL-42 review.
+    let source_ref = if source == "HEAD" {
+        source.to_string()
+    } else if run_git(
+        repo,
+        &["rev-parse", "--verify", &format!("refs/heads/{source}^{{commit}}")],
+    )
+    .is_ok()
+    {
+        format!("refs/heads/{source}")
+    } else {
+        run_git(repo, &["rev-parse", "--verify", &format!("{source}^{{commit}}")])?;
+        source.to_string()
+    };
     let target_short = rev_parse_short(repo, target).unwrap_or_else(|| target.to_string());
+    let range = format!("{target}..{source_ref}");
     let commits = limited_lines(
-        run_git(
-            repo,
-            &[
-                "log",
-                "--oneline",
-                "--max-count=8",
-                &format!("{target}..HEAD"),
-            ],
-        )
-        .unwrap_or_default(),
+        run_git(repo, &["log", "--oneline", "--max-count=8", &range]).unwrap_or_default(),
         8,
     );
     let files = limited_lines(
-        run_git(repo, &["diff", "--name-status", &format!("{target}..HEAD")]).unwrap_or_default(),
+        run_git(repo, &["diff", "--name-status", &range]).unwrap_or_default(),
         12,
     );
     let mut details = Vec::new();
-    details.push(format!("Current branch/HEAD will move to {target_short}."));
+    // Name the ref that actually moves: HEAD for a current-branch reset, or the
+    // specific branch when a non-current branch is being reset. GL-42 review.
+    let mover = if source == "HEAD" {
+        "Current branch/HEAD".to_string()
+    } else {
+        source.to_string()
+    };
+    details.push(format!("{mover} will move to {target_short}."));
     if commits.is_empty() {
         details.push("No commits are currently ahead of the target.".to_string());
     } else {
@@ -1241,11 +1283,19 @@ pub fn preview_reset(repo: &str, target: &str, mode: &str) -> Result<Destructive
         ),
         "hard" => {
             warnings.push("Hard reset also discards uncommitted tracked-file changes.".to_string());
-            let status = status_lines(repo);
-            if !status.is_empty() {
+            // Fail closed on a status read error (mirrors preview_discard_all):
+            // silently dropping it could hide a dirty tree before a hard reset.
+            // Only tracked entries are at risk — `reset --hard` leaves untracked
+            // files (`??`) in place, so listing them would overstate the impact
+            // and mismatch the warning above. GL-42 review.
+            let tracked: Vec<String> = limited_lines(run_git(repo, &["status", "--porcelain=v1"])?, 16)
+                .into_iter()
+                .filter(|line| !line.starts_with("??"))
+                .collect();
+            if !tracked.is_empty() {
                 warnings.push(format!(
-                    "Uncommitted changes currently present: {}",
-                    status.join("; ")
+                    "Uncommitted tracked changes that will be lost: {}",
+                    tracked.join("; ")
                 ));
             }
         }
@@ -1263,7 +1313,10 @@ pub fn preview_reset(repo: &str, target: &str, mode: &str) -> Result<Destructive
 }
 
 pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
-    let status = status_lines(repo);
+    // Fail closed: read status directly (not the lossy `status_lines`) so a stale
+    // or inaccessible repo errors out instead of rendering a misleading "working
+    // tree is already clean" before a discard. GL-42 review.
+    let status = limited_lines(run_git(repo, &["status", "--porcelain=v1"])?, 16);
     let mut details = Vec::new();
     if status.is_empty() {
         details.push("The working tree is already clean.".to_string());
@@ -1286,7 +1339,18 @@ pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
 
 pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
     ensure_operand(branch)?;
-    let tip = rev_parse_short(repo, branch).unwrap_or_else(|| "unknown".to_string());
+    // Fail closed on a missing branch (consistent with preview_reset): otherwise
+    // the impact reads soft-fail to "unknown"/empty and the dialog looks fine for
+    // a branch that doesn't exist. GL-42 review.
+    // Use the fully-qualified ref for impact reads: a bare name resolves a same-
+    // named tag before the branch (git ref precedence), so it could compute the
+    // wrong impact while `git branch -D` deletes the branch. GL-42 review.
+    let branch_ref = format!("refs/heads/{branch}");
+    run_git(
+        repo,
+        &["rev-parse", "--verify", &format!("{branch_ref}^{{commit}}")],
+    )?;
+    let tip = rev_parse_short(repo, &branch_ref).unwrap_or_else(|| "unknown".to_string());
     let unmerged = limited_lines(
         run_git(
             repo,
@@ -1294,7 +1358,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
                 "log",
                 "--oneline",
                 "--max-count=8",
-                &format!("HEAD..{branch}"),
+                &format!("HEAD..{branch_ref}"),
             ],
         )
         .unwrap_or_default(),
@@ -1325,12 +1389,15 @@ pub fn preview_delete_remote_branch(
 ) -> Result<DestructivePreview, String> {
     ensure_operand(remote)?;
     ensure_operand(branch)?;
-    let remote_ref = format!("{remote}/{branch}");
+    let remote_short = format!("{remote}/{branch}");
+    // Qualify to refs/remotes for the lookup so a same-named tag/branch can't be
+    // resolved instead; keep the short form for display. GL-42 review.
+    let remote_ref = format!("refs/remotes/{remote_short}");
     let tip = rev_parse_short(repo, &remote_ref).unwrap_or_else(|| "unknown locally".to_string());
     Ok(DestructivePreview {
         summary: format!("Delete {branch} on {remote}"),
         details: vec![
-            format!("Remote-tracking ref {remote_ref} currently points at {tip}."),
+            format!("Remote-tracking ref {remote_short} currently points at {tip}."),
             "The server-side branch is deleted for everyone using that remote.".to_string(),
         ],
         warnings: vec!["GitLane cannot recover a deleted server-side branch unless its commit is still available locally or on another remote ref.".to_string()],
@@ -1339,13 +1406,34 @@ pub fn preview_delete_remote_branch(
 
 pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
     ensure_operand(branch)?;
+    // Fail closed if the local branch is gone (stale menu / concurrent delete),
+    // and use the qualified ref for rev reads so a same-named tag can't be
+    // resolved instead. Config reads (push_target/branch_upstream) still take the
+    // short branch name, since git config is keyed by it. GL-42 review.
+    let branch_ref = format!("refs/heads/{branch}");
+    run_git(
+        repo,
+        &["rev-parse", "--verify", &format!("{branch_ref}^{{commit}}")],
+    )?;
     let (remote, refspec) = push_target(repo, branch);
     let upstream = branch_upstream(repo, branch).unwrap_or_else(|| {
         pushed_branch_name(&refspec)
-            .map(|name| format!("{remote}/{name}"))
-            .unwrap_or_else(|| format!("{remote}/{branch}"))
+            .map(|name| format!("refs/remotes/{remote}/{name}"))
+            .unwrap_or_else(|| format!("refs/remotes/{remote}/{branch}"))
     });
-    let local_tip = rev_parse_short(repo, branch).unwrap_or_else(|| "unknown".to_string());
+    // `upstream` is derived from git config (remote name / `%(upstream)`), not from
+    // a guarded UI operand, yet it flows unquoted into the `git log` rev-ranges
+    // below. A config value beginning with `-` would be parsed as an option, so
+    // apply the same dash-guard used for user operands. GL-42.
+    ensure_operand(&upstream)?;
+    // Short form for display only; reads/ranges use the fully-qualified ref so a
+    // same-named local branch/tag can't shadow the remote-tracking ref. GL-42.
+    let upstream_display = upstream
+        .strip_prefix("refs/remotes/")
+        .or_else(|| upstream.strip_prefix("refs/heads/"))
+        .unwrap_or(upstream.as_str())
+        .to_string();
+    let local_tip = rev_parse_short(repo, &branch_ref).unwrap_or_else(|| "unknown".to_string());
     let remote_tip =
         rev_parse_short(repo, &upstream).unwrap_or_else(|| "unknown locally".to_string());
     let remote_only = limited_lines(
@@ -1355,7 +1443,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview
                 "log",
                 "--oneline",
                 "--max-count=8",
-                &format!("{branch}..{upstream}"),
+                &format!("{branch_ref}..{upstream}"),
             ],
         )
         .unwrap_or_default(),
@@ -1368,7 +1456,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview
                 "log",
                 "--oneline",
                 "--max-count=8",
-                &format!("{upstream}..{branch}"),
+                &format!("{upstream}..{branch_ref}"),
             ],
         )
         .unwrap_or_default(),
@@ -1376,7 +1464,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview
     );
     let mut details = vec![
         format!("Pushes local {branch} ({local_tip}) to {remote} using refspec {refspec}."),
-        format!("Local tracking comparison target: {upstream} ({remote_tip})."),
+        format!("Local tracking comparison target: {upstream_display} ({remote_tip})."),
     ];
     if !local_only.is_empty() {
         details.push(format!(
@@ -1415,13 +1503,6 @@ fn rev_parse_short(repo: &str, rev: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-fn status_lines(repo: &str) -> Vec<String> {
-    limited_lines(
-        run_git(repo, &["status", "--porcelain=v1"]).unwrap_or_default(),
-        16,
-    )
-}
-
 fn limited_lines(raw: String, limit: usize) -> Vec<String> {
     let mut lines: Vec<String> = raw
         .lines()
@@ -1436,12 +1517,15 @@ fn limited_lines(raw: String, limit: usize) -> Vec<String> {
     lines
 }
 
+/// The fully-qualified upstream ref (e.g. `refs/remotes/origin/main`) of a local
+/// branch, or `None` if it has no upstream. The full form (not `%(upstream:short)`)
+/// is used so impact reads can't be shadowed by a same-named local branch/tag.
 fn branch_upstream(repo: &str, branch: &str) -> Option<String> {
     run_git(
         repo,
         &[
             "for-each-ref",
-            "--format=%(upstream:short)",
+            "--format=%(upstream)",
             &format!("refs/heads/{branch}"),
         ],
     )
@@ -1451,12 +1535,10 @@ fn branch_upstream(repo: &str, branch: &str) -> Option<String> {
 }
 
 fn pushed_branch_name(refspec: &str) -> Option<&str> {
-    refspec
-        .split(':')
-        .nth(1)
-        .or(Some(refspec))?
-        .strip_prefix("refs/heads/")
-        .or_else(|| refspec.split(':').nth(1).or(Some(refspec)))
+    // The destination side of a `src:dst` refspec, or the whole spec when there's
+    // no colon; with any `refs/heads/` prefix stripped.
+    let dst = refspec.split(':').nth(1).unwrap_or(refspec);
+    Some(dst.strip_prefix("refs/heads/").unwrap_or(dst))
 }
 
 fn credential_args(host: &str, command: &[&str]) -> Vec<String> {
@@ -1493,7 +1575,8 @@ mod tests {
     use super::{
         abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
         discard_all, ensure_operand, fetch, is_empty_after_resolution, is_tag_clobber_rejection,
-        mark_conflict_resolved, preview_discard_all, preview_reset, publish_branch, reconflict_file,
+        mark_conflict_resolved, preview_delete_branch, preview_delete_remote_branch,
+        preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
         reflog_entries, resolve_conflict_file, set_upstream, skip_operation, worktree_path,
     };
     use std::path::PathBuf;
@@ -1909,6 +1992,63 @@ mod tests {
     }
 
     #[test]
+    fn reflog_entries_scope_excludes_remote_and_stash() {
+        let repo = TempRepo::new("reflog-scope");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        // A remote-tracking ref update and a stash both create reflog entries that
+        // `git log -g --all` would surface but the recovery list must not.
+        repo.git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        std::fs::write(repo.0.join("f.txt"), b"dirty\n").unwrap();
+        repo.git(&["stash", "-q"]);
+
+        let entries = reflog_entries(repo.path(), 50).expect("reflog entries");
+        assert!(!entries.is_empty(), "HEAD/branch entries should remain");
+        assert!(
+            entries
+                .iter()
+                .all(|e| !e.selector.contains("remotes") && !e.selector.contains("stash")),
+            "remote-tracking and stash reflog entries must be excluded: {:?}",
+            entries.iter().map(|e| &e.selector).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn reflog_entries_on_unborn_repo_is_empty_not_error() {
+        // An unborn HEAD makes `git log -g HEAD …` fatal, so `reflog_entries`
+        // short-circuits on the `rev-parse --verify HEAD` pre-check and returns an
+        // empty list — the recovery dialog shows its "No reflog entries" state.
+        let repo = TempRepo::new("reflog-empty");
+        repo.git(&["init", "-q", "-b", "main"]);
+        let entries = reflog_entries(repo.path(), 12).expect("reflog entries on empty repo");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn reflog_entries_with_no_reflog_is_empty_not_error() {
+        // A committed repo whose reflog was pruned/disabled: HEAD resolves, but
+        // `git log -g HEAD --branches` exits 0 with no output (it does NOT error),
+        // so the read yields an empty list rather than surfacing a git failure.
+        let repo = TempRepo::new("reflog-pruned");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        std::fs::remove_dir_all(repo.0.join(".git/logs")).unwrap();
+
+        let entries = reflog_entries(repo.path(), 12).expect("reflog entries with no reflog");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
     fn reset_preview_lists_commits_and_recovery_warning() {
         let repo = TempRepo::new("reset-preview");
         repo.git(&["init", "-q", "-b", "main"]);
@@ -1921,10 +2061,90 @@ mod tests {
         std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
         repo.git(&["commit", "-qam", "two"]);
 
-        let preview = preview_reset(repo.path(), "HEAD~1", "hard").expect("preview");
+        let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
         assert!(preview.summary.contains("hard"));
         assert!(preview.details.iter().any(|line| line.contains("two")));
         assert!(preview.warnings.iter().any(|line| line.contains("reflog")));
+    }
+
+    #[test]
+    fn reset_preview_anchors_on_the_source_ref_not_head() {
+        // A reset of a *non-current* branch (drag a branch onto a commit) checks
+        // that branch out first, so the impacted commits are `target..source`,
+        // not `target..HEAD`. The preview must reflect the branch being reset.
+        let repo = TempRepo::new("reset-source-ref");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        // A feature branch with a commit that HEAD (main) does not have.
+        repo.git(&["checkout", "-q", "-b", "feature"]);
+        std::fs::write(repo.0.join("f.txt"), b"feature\n").unwrap();
+        repo.git(&["commit", "-qam", "feature-only"]);
+        // Back on main so HEAD != the branch being reset.
+        repo.git(&["checkout", "-q", "main"]);
+
+        // Resetting `feature` to base must list feature-only, even though HEAD=main.
+        let on_source =
+            preview_reset(repo.path(), "main", "mixed", "feature").expect("preview source");
+        assert!(on_source
+            .details
+            .iter()
+            .any(|line| line.contains("feature-only")));
+        // Anchored on HEAD (main) the same range is empty — proves the fix matters.
+        let on_head = preview_reset(repo.path(), "main", "mixed", "HEAD").expect("preview head");
+        assert!(!on_head
+            .details
+            .iter()
+            .any(|line| line.contains("feature-only")));
+    }
+
+    #[test]
+    fn reset_preview_source_uses_branch_not_same_named_tag() {
+        let repo = TempRepo::new("reset-ambig");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "one"]);
+        // Branch `dup` carries an extra commit; tag `dup` stays at base (== main).
+        repo.git(&["branch", "dup"]);
+        repo.git(&["checkout", "-q", "dup"]);
+        std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+        repo.git(&["commit", "-qam", "dup-only"]);
+        repo.git(&["checkout", "-q", "main"]);
+        repo.git(&["tag", "dup", "main"]);
+
+        // Resetting branch `dup` to main: impact is main..refs/heads/dup = dup-only.
+        // A bare `dup` would resolve to the tag (== main) and show nothing.
+        let preview = preview_reset(repo.path(), "main", "mixed", "dup").expect("preview");
+        assert!(
+            preview.details.iter().any(|line| line.contains("dup-only")),
+            "reset source must resolve to the branch, not the same-named tag: {:?}",
+            preview.details
+        );
+    }
+
+    #[test]
+    fn reset_preview_fails_closed_on_unresolvable_refs() {
+        let repo = TempRepo::new("reset-bad-refs");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+
+        // A bogus target or source must error (fail closed) rather than render a
+        // confident empty preview.
+        assert!(preview_reset(repo.path(), "does-not-exist", "mixed", "HEAD").is_err());
+        assert!(preview_reset(repo.path(), "HEAD", "mixed", "does-not-exist").is_err());
     }
 
     #[test]
@@ -1950,6 +2170,141 @@ mod tests {
             .warnings
             .iter()
             .any(|line| line.contains("Untracked files")));
+    }
+
+    #[test]
+    fn discard_all_preview_fails_closed_on_non_repo() {
+        // A path that isn't a git repo must error, not report "already clean".
+        let dir = TempRepo::new("discard-non-repo");
+        assert!(preview_discard_all(dir.path()).is_err());
+    }
+
+    #[test]
+    fn delete_branch_preview_uses_branch_not_same_named_tag() {
+        let repo = TempRepo::new("delete-ambig");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "one"]);
+        std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+        repo.git(&["commit", "-qam", "two"]);
+        // Branch `dup` at the first commit, tag `dup` at HEAD. A bare `dup`
+        // resolves to the tag (ref precedence); the preview must use the branch.
+        repo.git(&["branch", "dup", "HEAD~1"]);
+        repo.git(&["tag", "dup", "HEAD"]);
+        let branch_tip = String::from_utf8(
+            repo.git(&["rev-parse", "--short", "refs/heads/dup"]).stdout,
+        )
+        .unwrap();
+        let branch_tip = branch_tip.trim();
+
+        let preview = preview_delete_branch(repo.path(), "dup").expect("preview");
+        assert!(
+            preview.details.iter().any(|line| line.contains(branch_tip)),
+            "preview must report the branch tip {branch_tip}, not the tag: {:?}",
+            preview.details
+        );
+    }
+
+    #[test]
+    fn force_push_preview_fails_closed_for_missing_branch() {
+        let (repo, _) = repo_with_base_commit("force-push-missing");
+        assert!(preview_force_push(repo.path(), "no-such-branch").is_err());
+    }
+
+    #[test]
+    fn reset_preview_hard_lists_tracked_but_not_untracked() {
+        let repo = TempRepo::new("reset-hard-untracked");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("tracked.txt"), b"one\n").unwrap();
+        repo.git(&["add", "tracked.txt"]);
+        repo.git(&["commit", "-qm", "one"]);
+        std::fs::write(repo.0.join("tracked.txt"), b"two\n").unwrap();
+        repo.git(&["commit", "-qam", "two"]);
+        // Dirty the tree: a tracked edit (lost by --hard) and an untracked file
+        // (which --hard leaves in place, so it must NOT appear in the warning).
+        std::fs::write(repo.0.join("tracked.txt"), b"dirty\n").unwrap();
+        std::fs::write(repo.0.join("untracked.txt"), b"keep\n").unwrap();
+
+        let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("tracked changes that will be lost")
+                && line.contains("tracked.txt")));
+        let full = format!("{}{}", preview.details.join("\n"), preview.warnings.join("\n"));
+        assert!(
+            !full.contains("untracked.txt"),
+            "hard-reset preview must not list untracked files: {full}"
+        );
+    }
+
+    #[test]
+    fn delete_branch_preview_lists_unmerged_commits() {
+        let repo = TempRepo::new("delete-branch-preview");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "base"]);
+        // A feature branch with a commit that is not reachable from HEAD (main).
+        repo.git(&["checkout", "-q", "-b", "feature"]);
+        std::fs::write(repo.0.join("f.txt"), b"feature\n").unwrap();
+        repo.git(&["commit", "-qam", "feature-work"]);
+        repo.git(&["checkout", "-q", "main"]);
+
+        let preview = preview_delete_branch(repo.path(), "feature").expect("preview");
+        assert!(preview.summary.contains("feature"));
+        assert!(preview
+            .details
+            .iter()
+            .any(|line| line.contains("feature-work")));
+        // A non-existent branch fails closed rather than showing an "unknown" tip.
+        assert!(preview_delete_branch(repo.path(), "ghost").is_err());
+    }
+
+    #[test]
+    fn delete_remote_branch_preview_warns_unrecoverable() {
+        let (repo, head) = repo_with_base_commit("delete-remote-preview");
+        // Seed the remote-tracking ref so rev-parse resolves locally (offline).
+        repo.git(&["update-ref", "refs/remotes/origin/main", &head]);
+
+        let preview =
+            preview_delete_remote_branch(repo.path(), "origin", "main").expect("preview");
+        assert!(preview.summary.contains("main"));
+        assert!(preview.summary.contains("origin"));
+        assert!(preview.warnings.iter().any(|line| line.contains("recover")));
+    }
+
+    #[test]
+    fn force_push_preview_reports_local_divergence() {
+        let (repo, base) = repo_with_base_commit("force-push-preview");
+        // Configure upstream and seed a remote-tracking ref at the base commit so
+        // the local branch is one commit ahead — all resolved offline.
+        repo.git(&["config", "branch.main.remote", "origin"]);
+        repo.git(&["config", "branch.main.merge", "refs/heads/main"]);
+        repo.git(&["update-ref", "refs/remotes/origin/main", &base]);
+        std::fs::write(repo.0.join("f.txt"), b"local\n").unwrap();
+        repo.git(&["commit", "-qam", "local-work"]);
+
+        let preview = preview_force_push(repo.path(), "main").expect("preview");
+        assert!(preview.summary.contains("main"));
+        assert!(preview
+            .details
+            .iter()
+            .any(|line| line.contains("local-work")));
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("force-with-lease")));
     }
 
     #[test]

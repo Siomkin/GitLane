@@ -25,4 +25,14 @@ describe("reflogViewModel", () => {
       "recovery/feature-with-spaces",
     );
   });
+
+  it("strips a leading dash that would make an invalid ref", () => {
+    expect(recoveryBranchName(entry({ refName: "-oops" }))).toBe("recovery/oops");
+  });
+
+  it("falls back to the short oid when the ref sanitizes to empty", () => {
+    expect(recoveryBranchName(entry({ refName: "---", shortOid: "abc1234" }))).toBe(
+      "recovery/abc1234",
+    );
+  });
 });

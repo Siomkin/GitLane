@@ -275,8 +275,13 @@ export const gitApi = {
   listReflog: (path: string, limit?: number) =>
     invoke<ReflogEntry[]>("list_reflog", { path, limit: limit ?? null }),
 
-  previewReset: (path: string, target: string, mode: "soft" | "mixed" | "hard") =>
-    invoke<DestructivePreview>("preview_reset", { path, target, mode }),
+  previewReset: (
+    path: string,
+    target: string,
+    mode: "soft" | "mixed" | "hard",
+    // The ref being reset; omit for current-branch resets (defaults to HEAD).
+    source?: string,
+  ) => invoke<DestructivePreview>("preview_reset", { path, target, mode, source: source ?? null }),
 
   previewDiscardAll: (path: string) =>
     invoke<DestructivePreview>("preview_discard_all", { path }),
