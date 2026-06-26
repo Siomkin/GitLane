@@ -8,7 +8,7 @@
 use crate::git::types::{
     DestructivePreview, ReflogEntry, StashContextCommit, StashEntry, WorktreeInfo,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::Command;
 
 const STASH_CONTEXT_LIMIT: usize = 8;
@@ -1288,17 +1288,25 @@ pub fn preview_reset(
             warnings.push("Hard reset also discards uncommitted tracked-file changes.".to_string());
             // Fail closed on a status read error (mirrors preview_discard_all):
             // silently dropping it could hide a dirty tree before a hard reset.
-            // Only tracked entries are at risk — `reset --hard` leaves untracked
-            // files (`??`) in place, so listing them would overstate the impact
-            // and mismatch the warning above. GL-42 review.
-            let tracked: Vec<String> = limited_lines(run_git(repo, &["status", "--porcelain=v1"])?, 16)
-                .into_iter()
-                .filter(|line| !line.starts_with("??"))
-                .collect();
+            // Ordinary untracked files stay put, but untracked files/directories
+            // that obstruct tracked files in the target tree can be deleted by
+            // `git reset --hard`, so report that narrower set separately.
+            let tracked: Vec<String> =
+                limited_lines(run_git(repo, &["status", "--porcelain=v1"])?, 16)
+                    .into_iter()
+                    .filter(|line| !line.starts_with("??"))
+                    .collect();
             if !tracked.is_empty() {
                 warnings.push(format!(
                     "Uncommitted tracked changes that will be lost: {}",
                     tracked.join("; ")
+                ));
+            }
+            let obstructions = hard_reset_untracked_obstructions(repo, target)?;
+            if !obstructions.is_empty() {
+                warnings.push(format!(
+                    "Untracked files or directories in the target's way that may be deleted: {}",
+                    obstructions.join("; ")
                 ));
             }
         }
@@ -1518,6 +1526,44 @@ fn limited_lines(raw: String, limit: usize) -> Vec<String> {
         lines.push("…".to_string());
     }
     lines
+}
+
+fn path_conflicts_with_reset_target(untracked: &str, target_path: &str) -> bool {
+    untracked == target_path
+        || untracked
+            .strip_prefix(target_path)
+            .is_some_and(|rest| rest.starts_with('/'))
+        || target_path
+            .strip_prefix(untracked)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+fn hard_reset_untracked_obstructions(repo: &str, target: &str) -> Result<Vec<String>, String> {
+    let target_tree = format!("{target}^{{tree}}");
+    let target_paths: Vec<String> = run_git(repo, &["ls-tree", "-r", "--name-only", &target_tree])?
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect();
+    let untracked_paths: Vec<String> =
+        run_git(repo, &["ls-files", "--others", "--exclude-standard"])?
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(str::to_string)
+            .collect();
+
+    let mut seen = HashSet::new();
+    let mut obstructions = Vec::new();
+    for untracked in untracked_paths {
+        if target_paths
+            .iter()
+            .any(|target_path| path_conflicts_with_reset_target(&untracked, target_path))
+            && seen.insert(untracked.clone())
+        {
+            obstructions.push(format!("?? {untracked}"));
+        }
+    }
+    Ok(obstructions.into_iter().take(16).collect())
 }
 
 fn reflog_selector_timestamp(selector: &str) -> Option<i64> {
@@ -2265,21 +2311,25 @@ mod tests {
     }
 
     #[test]
-    fn reset_preview_hard_lists_tracked_but_not_untracked() {
+    fn reset_preview_hard_lists_tracked_and_untracked_obstructions_only() {
         let repo = TempRepo::new("reset-hard-untracked");
         repo.git(&["init", "-q", "-b", "main"]);
         repo.git(&["config", "user.email", "t@t.t"]);
         repo.git(&["config", "user.name", "T"]);
         repo.git(&["config", "commit.gpgsign", "false"]);
         std::fs::write(repo.0.join("tracked.txt"), b"one\n").unwrap();
-        repo.git(&["add", "tracked.txt"]);
+        std::fs::write(repo.0.join("restored.txt"), b"target\n").unwrap();
+        repo.git(&["add", "tracked.txt", "restored.txt"]);
         repo.git(&["commit", "-qm", "one"]);
         std::fs::write(repo.0.join("tracked.txt"), b"two\n").unwrap();
-        repo.git(&["commit", "-qam", "two"]);
-        // Dirty the tree: a tracked edit (lost by --hard) and an untracked file
-        // (which --hard leaves in place, so it must NOT appear in the warning).
+        repo.git(&["rm", "-q", "restored.txt"]);
+        repo.git(&["commit", "-am", "two"]);
+        // Dirty the tree: a tracked edit is lost by --hard, an ordinary untracked
+        // file is left in place, and an untracked file that blocks a target-tree
+        // tracked path can be overwritten/deleted by reset --hard.
         std::fs::write(repo.0.join("tracked.txt"), b"dirty\n").unwrap();
         std::fs::write(repo.0.join("untracked.txt"), b"keep\n").unwrap();
+        std::fs::write(repo.0.join("restored.txt"), b"obstruct\n").unwrap();
 
         let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
         assert!(preview
@@ -2287,10 +2337,18 @@ mod tests {
             .iter()
             .any(|line| line.contains("tracked changes that will be lost")
                 && line.contains("tracked.txt")));
-        let full = format!("{}{}", preview.details.join("\n"), preview.warnings.join("\n"));
+        let full = format!(
+            "{}{}",
+            preview.details.join("\n"),
+            preview.warnings.join("\n")
+        );
+        assert!(
+            full.contains("restored.txt"),
+            "hard-reset preview must list untracked target obstructions: {full}"
+        );
         assert!(
             !full.contains("untracked.txt"),
-            "hard-reset preview must not list untracked files: {full}"
+            "hard-reset preview must not list ordinary untracked files: {full}"
         );
     }
 

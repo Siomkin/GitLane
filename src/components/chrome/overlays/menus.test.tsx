@@ -337,6 +337,36 @@ describe("BranchContextMenu", () => {
     confirm!.onConfirm();
     await waitFor(() => expect(removeBranch).toHaveBeenCalledWith("feature", true));
   });
+
+  it("does not open a reset confirmation if HEAD changes while the preview is pending", async () => {
+    const pending = deferred<{
+      summary: string;
+      details: string[];
+      warnings: string[];
+    }>();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "can_fast_forward") return Promise.resolve(false);
+      if (cmd === "preview_reset") return pending.promise;
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "old", detached: false },
+      branches: [localBranch("feature")],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mixed — keep changes unstaged" }));
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "other", headOid: "new", detached: false },
+    });
+    pending.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: [] });
+
+    await waitFor(() =>
+      expect(useUi.getState().toast?.message).toContain("HEAD changed"),
+    );
+    expect(useUi.getState().confirm).toBeNull();
+  });
 });
 
 describe("WorktreeContextMenu", () => {
