@@ -66,8 +66,6 @@ freezes the whole UI (no repaint) until it returns.
   constraint, "callers should only offer fast-forward when it is one") the way the existing
   modules already do.
 
----
-
 ## 5. Layout/computation belongs in Rust, painting in JS
 
 - The graph layout algorithm lives in `graph.rs`: it walks the DAG and assigns each commit a
