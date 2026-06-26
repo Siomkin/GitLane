@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { cn } from "../../lib/cn";
 import {
   resolvedRows,
@@ -98,9 +99,30 @@ export const InlineConflict = ({
   onDecide: (idx: number, decision: RegionDecision) => void;
   onUndo: (idx: number) => void;
 }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // On open, land on the first still-undecided conflict instead of the file top.
+  // jsdom has no layout engine and throws on scrollIntoView, so it's guarded.
+  useEffect(() => {
+    const target = regions.findIndex((r, i) => r.kind === "cf" && !decisionFor(i));
+    if (target < 0) return;
+    const raf = requestAnimationFrame(() => {
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-region="${target}"]`);
+      if (!el || typeof el.scrollIntoView !== "function") return;
+      try {
+        el.scrollIntoView({ block: "center" });
+      } catch {
+        /* unimplemented under jsdom */
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+    // Run once per mounted file.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   let lineNo = 0;
   return (
-    <div className="flex-1 overflow-auto py-1.5">
+    <div ref={scrollRef} className="flex-1 overflow-auto py-1.5">
       {regions.map((region, idx) => {
         if (region.kind === "ctx") {
           return region.lines.map((line, k) => {
@@ -119,6 +141,7 @@ export const InlineConflict = ({
           return (
             <div
               key={idx}
+              data-region={idx}
               className="mx-1.5 my-1 overflow-hidden rounded-md border border-amber-300/60 dark:border-amber-400/30"
             >
               <SidePreview
@@ -148,7 +171,7 @@ export const InlineConflict = ({
         }
         const rows = resolvedRows(region, dec, lineSelFor(idx));
         return (
-          <div key={idx} className="group relative">
+          <div key={idx} data-region={idx} className="group relative">
             {rows.map((row, k) => (
               <div
                 key={k}
