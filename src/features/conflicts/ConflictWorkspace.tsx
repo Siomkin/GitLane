@@ -270,7 +270,7 @@ export const ConflictWorkspace = () => {
   };
 
   return (
-    <div className="relative flex h-full flex-col gap-2.5" style={ACCENT_TINTS}>
+    <div className="relative flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden" style={ACCENT_TINTS}>
       <ConflictBanner
         kind={operation.kind}
         canSkip={operation.canSkip}
@@ -300,6 +300,9 @@ export const ConflictWorkspace = () => {
 
         {selectedFile ? (
           <ConflictEditor
+            // Remount per file so the editor's scroll-to-first-conflict effect
+            // re-runs when a different conflicted file is opened.
+            key={selectedFile.path}
             file={selectedFile}
             regions={regions}
             // A file libgit2 classified "text" can still return binary content
