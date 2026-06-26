@@ -123,6 +123,24 @@ export interface BranchSyncState {
   behind: number;
 }
 
+export interface ReflogEntry {
+  oid: string;
+  shortOid: string;
+  selector: string;
+  shortSelector: string;
+  refName: string;
+  subject: string;
+  committerName: string;
+  committerEmail: string;
+  timestamp: number;
+}
+
+export interface DestructivePreview {
+  summary: string;
+  details: string[];
+  warnings: string[];
+}
+
 export interface WorktreeInfo {
   name: string;
   path: string;
@@ -253,6 +271,24 @@ export const gitApi = {
 
   deleteBranch: (path: string, name: string, force = false) =>
     invoke<string>("delete_branch", { path, name, force }),
+
+  listReflog: (path: string, limit?: number) =>
+    invoke<ReflogEntry[]>("list_reflog", { path, limit: limit ?? null }),
+
+  previewReset: (path: string, target: string, mode: "soft" | "mixed" | "hard") =>
+    invoke<DestructivePreview>("preview_reset", { path, target, mode }),
+
+  previewDiscardAll: (path: string) =>
+    invoke<DestructivePreview>("preview_discard_all", { path }),
+
+  previewDeleteBranch: (path: string, branch: string) =>
+    invoke<DestructivePreview>("preview_delete_branch", { path, branch }),
+
+  previewDeleteRemoteBranch: (path: string, remote: string, branch: string) =>
+    invoke<DestructivePreview>("preview_delete_remote_branch", { path, remote, branch }),
+
+  previewForcePush: (path: string, branch: string) =>
+    invoke<DestructivePreview>("preview_force_push", { path, branch }),
 
   renameBranch: (path: string, oldName: string, newName: string) =>
     invoke<string>("rename_branch", { path, old: oldName, new: newName }),

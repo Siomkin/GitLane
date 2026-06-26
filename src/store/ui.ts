@@ -110,6 +110,10 @@ export interface ConfirmRequest {
   title: string;
   /** Optional second line with detail / the irreversible consequence. */
   message?: string;
+  /** Concrete impact lines shown before the action runs. */
+  details?: string[];
+  /** High-risk consequences or recovery limitations. */
+  warnings?: string[];
   /** Confirm-button label (default "Confirm"). */
   confirmLabel?: string;
   /** Style the confirm button as destructive (red). */
@@ -191,6 +195,7 @@ interface UiState {
   wipMenu: WipMenu | null;
   tagMenu: TagMenu | null;
   worktreeMenu: WorktreeMenu | null;
+  recoveryOpen: boolean;
   /** In-app terminal: floating panel that collapses to a status pill without
    * killing the PTY. `hidden` = no panel (PTY killed); `collapsed` = pill;
    * `open` = full floating panel. */
@@ -297,6 +302,8 @@ interface UiState {
   openWipMenu: (menu: WipMenu) => void;
   openTagMenu: (menu: TagMenu) => void;
   openWorktreeMenu: (menu: WorktreeMenu) => void;
+  openRecovery: () => void;
+  closeRecovery: () => void;
   toggleTerminal: () => void;
   collapseTerminal: () => void;
   expandTerminal: () => void;
@@ -415,6 +422,7 @@ export const useUi = create<UiState>()(
   wipMenu: null,
   tagMenu: null,
   worktreeMenu: null,
+  recoveryOpen: false,
   terminalView: "hidden",
   terminalHeight: 480,
   terminalExpanded: false,
@@ -502,6 +510,8 @@ export const useUi = create<UiState>()(
   openWipMenu: (menu) => set({ ...noMenus, wipMenu: menu }),
   openTagMenu: (menu) => set({ ...noMenus, tagMenu: menu }),
   openWorktreeMenu: (menu) => set({ ...noMenus, worktreeMenu: menu }),
+  openRecovery: () => set({ ...noMenus, recoveryOpen: true }),
+  closeRecovery: () => set({ recoveryOpen: false }),
   // Toolbar button cycles the visible terminal chrome. Only the panel close
   // button kills the PTY and moves the view back to hidden.
   toggleTerminal: () =>

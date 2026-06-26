@@ -5,7 +5,9 @@
 //! signing, and the full conflict machinery — all of which libgit2 wrappers
 //! reimplement only partially. These back the drag-and-drop branch actions.
 
-use crate::git::types::{StashContextCommit, StashEntry, WorktreeInfo};
+use crate::git::types::{
+    DestructivePreview, ReflogEntry, StashContextCommit, StashEntry, WorktreeInfo,
+};
 use std::collections::HashMap;
 use std::process::Command;
 
@@ -1136,6 +1138,327 @@ pub fn discard_all(repo: &str) -> Result<String, String> {
     Ok("Discarded all changes".to_string())
 }
 
+/// Recent reflog entries across HEAD and local refs. Uses `git log -g` rather
+/// than libgit2 because the CLI's reflog selectors (`HEAD@{1}`) are exactly what
+/// users recognise when recovering from a bad reset/checkout.
+pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, String> {
+    let max_count = format!("--max-count={}", limit.max(1));
+    let raw = run_git(
+        repo,
+        &[
+            "log",
+            "-g",
+            "--all",
+            &max_count,
+            "--format=%H%x1f%gd%x1f%gD%x1f%gs%x1f%gn%x1f%ge%x1f%ct",
+        ],
+    )?;
+    Ok(raw
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(7, '\u{1f}');
+            let oid = parts.next()?.to_string();
+            let short_selector = parts.next().unwrap_or("").to_string();
+            let selector = parts.next().unwrap_or("").to_string();
+            let subject = parts.next().unwrap_or("").to_string();
+            let committer_name = parts.next().unwrap_or("").to_string();
+            let committer_email = parts.next().unwrap_or("").to_string();
+            let timestamp = parts
+                .next()
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(0);
+            let selector_for_ref = if selector.is_empty() {
+                &short_selector
+            } else {
+                &selector
+            };
+            let ref_name = selector_for_ref
+                .split("@{")
+                .next()
+                .unwrap_or("")
+                .trim_start_matches("refs/heads/")
+                .to_string();
+            Some(ReflogEntry {
+                short_oid: short_oid(&oid),
+                oid,
+                selector,
+                short_selector,
+                ref_name,
+                subject,
+                committer_name,
+                committer_email,
+                timestamp,
+            })
+        })
+        .collect())
+}
+
+pub fn preview_reset(repo: &str, target: &str, mode: &str) -> Result<DestructivePreview, String> {
+    ensure_operand(target)?;
+    let mode = match mode {
+        "soft" | "mixed" | "hard" => mode,
+        _ => "mixed",
+    };
+    let target_short = rev_parse_short(repo, target).unwrap_or_else(|| target.to_string());
+    let commits = limited_lines(
+        run_git(
+            repo,
+            &[
+                "log",
+                "--oneline",
+                "--max-count=8",
+                &format!("{target}..HEAD"),
+            ],
+        )
+        .unwrap_or_default(),
+        8,
+    );
+    let files = limited_lines(
+        run_git(repo, &["diff", "--name-status", &format!("{target}..HEAD")]).unwrap_or_default(),
+        12,
+    );
+    let mut details = Vec::new();
+    details.push(format!("Current branch/HEAD will move to {target_short}."));
+    if commits.is_empty() {
+        details.push("No commits are currently ahead of the target.".to_string());
+    } else {
+        details.push(format!(
+            "Commits no longer on the branch tip: {}",
+            commits.join("; ")
+        ));
+    }
+    if !files.is_empty() {
+        details.push(format!(
+            "Files changed by those commits: {}",
+            files.join("; ")
+        ));
+    }
+    let mut warnings = Vec::new();
+    match mode {
+        "soft" => details.push("Soft reset keeps those commit changes staged.".to_string()),
+        "mixed" => details.push(
+            "Mixed reset keeps those commit changes in the working tree, unstaged.".to_string(),
+        ),
+        "hard" => {
+            warnings.push("Hard reset also discards uncommitted tracked-file changes.".to_string());
+            let status = status_lines(repo);
+            if !status.is_empty() {
+                warnings.push(format!(
+                    "Uncommitted changes currently present: {}",
+                    status.join("; ")
+                ));
+            }
+        }
+        _ => {}
+    }
+    warnings.push(
+        "The previous HEAD remains recoverable from the reflog while Git keeps it locally."
+            .to_string(),
+    );
+    Ok(DestructivePreview {
+        summary: format!("Reset {mode} to {target_short}"),
+        details,
+        warnings,
+    })
+}
+
+pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
+    let status = status_lines(repo);
+    let mut details = Vec::new();
+    if status.is_empty() {
+        details.push("The working tree is already clean.".to_string());
+    } else {
+        details.push(format!(
+            "Files that will be reset or removed: {}",
+            status.join("; ")
+        ));
+    }
+    Ok(DestructivePreview {
+        summary: "Discard every staged, unstaged, and untracked working-tree change".to_string(),
+        details,
+        warnings: vec![
+            "Tracked edits may be recoverable only if they were previously committed or stashed."
+                .to_string(),
+            "Untracked files removed by git clean are not recoverable from the reflog.".to_string(),
+        ],
+    })
+}
+
+pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
+    ensure_operand(branch)?;
+    let tip = rev_parse_short(repo, branch).unwrap_or_else(|| "unknown".to_string());
+    let unmerged = limited_lines(
+        run_git(
+            repo,
+            &[
+                "log",
+                "--oneline",
+                "--max-count=8",
+                &format!("HEAD..{branch}"),
+            ],
+        )
+        .unwrap_or_default(),
+        8,
+    );
+    let mut details = vec![format!("Local branch {branch} points at {tip}.")];
+    if unmerged.is_empty() {
+        details.push("No commits are shown ahead of the current HEAD.".to_string());
+    } else {
+        details.push(format!(
+            "Commits ahead of current HEAD: {}",
+            unmerged.join("; ")
+        ));
+    }
+    Ok(DestructivePreview {
+        summary: format!("Delete local branch {branch}"),
+        details,
+        warnings: vec![
+            "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.".to_string(),
+        ],
+    })
+}
+
+pub fn preview_delete_remote_branch(
+    repo: &str,
+    remote: &str,
+    branch: &str,
+) -> Result<DestructivePreview, String> {
+    ensure_operand(remote)?;
+    ensure_operand(branch)?;
+    let remote_ref = format!("{remote}/{branch}");
+    let tip = rev_parse_short(repo, &remote_ref).unwrap_or_else(|| "unknown locally".to_string());
+    Ok(DestructivePreview {
+        summary: format!("Delete {branch} on {remote}"),
+        details: vec![
+            format!("Remote-tracking ref {remote_ref} currently points at {tip}."),
+            "The server-side branch is deleted for everyone using that remote.".to_string(),
+        ],
+        warnings: vec!["GitLane cannot recover a deleted server-side branch unless its commit is still available locally or on another remote ref.".to_string()],
+    })
+}
+
+pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
+    ensure_operand(branch)?;
+    let (remote, refspec) = push_target(repo, branch);
+    let upstream = branch_upstream(repo, branch).unwrap_or_else(|| {
+        pushed_branch_name(&refspec)
+            .map(|name| format!("{remote}/{name}"))
+            .unwrap_or_else(|| format!("{remote}/{branch}"))
+    });
+    let local_tip = rev_parse_short(repo, branch).unwrap_or_else(|| "unknown".to_string());
+    let remote_tip =
+        rev_parse_short(repo, &upstream).unwrap_or_else(|| "unknown locally".to_string());
+    let remote_only = limited_lines(
+        run_git(
+            repo,
+            &[
+                "log",
+                "--oneline",
+                "--max-count=8",
+                &format!("{branch}..{upstream}"),
+            ],
+        )
+        .unwrap_or_default(),
+        8,
+    );
+    let local_only = limited_lines(
+        run_git(
+            repo,
+            &[
+                "log",
+                "--oneline",
+                "--max-count=8",
+                &format!("{upstream}..{branch}"),
+            ],
+        )
+        .unwrap_or_default(),
+        8,
+    );
+    let mut details = vec![
+        format!("Pushes local {branch} ({local_tip}) to {remote} using refspec {refspec}."),
+        format!("Local tracking comparison target: {upstream} ({remote_tip})."),
+    ];
+    if !local_only.is_empty() {
+        details.push(format!(
+            "Local-only commits to publish: {}",
+            local_only.join("; ")
+        ));
+    }
+    let mut warnings = vec![
+        "--force-with-lease aborts if the remote moved since the local tracking ref was updated."
+            .to_string(),
+    ];
+    if remote_only.is_empty() {
+        details.push("No remote-only commits are visible from the local tracking ref.".to_string());
+    } else {
+        warnings.push(format!(
+            "Remote-only commits that may be replaced: {}",
+            remote_only.join("; ")
+        ));
+    }
+    Ok(DestructivePreview {
+        summary: format!("Force-push {branch} with lease"),
+        details,
+        warnings,
+    })
+}
+
+fn short_oid(oid: &str) -> String {
+    oid.chars().take(7).collect()
+}
+
+fn rev_parse_short(repo: &str, rev: &str) -> Option<String> {
+    ensure_operand(rev).ok()?;
+    run_git(repo, &["rev-parse", "--short", rev])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn status_lines(repo: &str) -> Vec<String> {
+    limited_lines(
+        run_git(repo, &["status", "--porcelain=v1"]).unwrap_or_default(),
+        16,
+    )
+}
+
+fn limited_lines(raw: String, limit: usize) -> Vec<String> {
+    let mut lines: Vec<String> = raw
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .take(limit + 1)
+        .map(|line| line.trim().to_string())
+        .collect();
+    if lines.len() > limit {
+        lines.truncate(limit);
+        lines.push("…".to_string());
+    }
+    lines
+}
+
+fn branch_upstream(repo: &str, branch: &str) -> Option<String> {
+    run_git(
+        repo,
+        &[
+            "for-each-ref",
+            "--format=%(upstream:short)",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .ok()
+    .map(|s| s.trim().to_string())
+    .filter(|s| !s.is_empty())
+}
+
+fn pushed_branch_name(refspec: &str) -> Option<&str> {
+    refspec
+        .split(':')
+        .nth(1)
+        .or(Some(refspec))?
+        .strip_prefix("refs/heads/")
+        .or_else(|| refspec.split(':').nth(1).or(Some(refspec)))
+}
+
 fn credential_args(host: &str, command: &[&str]) -> Vec<String> {
     let mut args = vec![
         "-c".to_string(),
@@ -1170,8 +1493,8 @@ mod tests {
     use super::{
         abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
         discard_all, ensure_operand, fetch, is_empty_after_resolution, is_tag_clobber_rejection,
-        mark_conflict_resolved, publish_branch, reconflict_file, resolve_conflict_file,
-        set_upstream, skip_operation, worktree_path,
+        mark_conflict_resolved, preview_discard_all, preview_reset, publish_branch, reconflict_file,
+        reflog_entries, resolve_conflict_file, set_upstream, skip_operation, worktree_path,
     };
     use std::path::PathBuf;
     use std::process::Command;
@@ -1562,6 +1885,71 @@ mod tests {
         assert!(!is_tag_clobber_rejection(
             "error: could not fetch origin\n ! [rejected] 0.1.1 -> 0.1.1 (would clobber existing tag)"
         ));
+    }
+
+    #[test]
+    fn reflog_entries_expose_recovery_commits() {
+        let repo = TempRepo::new("reflog");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "one"]);
+        std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+        repo.git(&["commit", "-qam", "two"]);
+        repo.git(&["reset", "--hard", "HEAD~1"]);
+
+        let entries = reflog_entries(repo.path(), 12).expect("reflog entries");
+        assert!(entries.iter().any(|entry| entry.subject.contains("reset")));
+        assert!(entries
+            .iter()
+            .any(|entry| entry.short_selector.contains("HEAD@{")));
+    }
+
+    #[test]
+    fn reset_preview_lists_commits_and_recovery_warning() {
+        let repo = TempRepo::new("reset-preview");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+        repo.git(&["add", "f.txt"]);
+        repo.git(&["commit", "-qm", "one"]);
+        std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+        repo.git(&["commit", "-qam", "two"]);
+
+        let preview = preview_reset(repo.path(), "HEAD~1", "hard").expect("preview");
+        assert!(preview.summary.contains("hard"));
+        assert!(preview.details.iter().any(|line| line.contains("two")));
+        assert!(preview.warnings.iter().any(|line| line.contains("reflog")));
+    }
+
+    #[test]
+    fn discard_all_preview_warns_about_untracked_limits() {
+        let repo = TempRepo::new("discard-preview");
+        repo.git(&["init", "-q", "-b", "main"]);
+        repo.git(&["config", "user.email", "t@t.t"]);
+        repo.git(&["config", "user.name", "T"]);
+        repo.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(repo.0.join("tracked.txt"), b"one\n").unwrap();
+        repo.git(&["add", "tracked.txt"]);
+        repo.git(&["commit", "-qm", "one"]);
+        std::fs::write(repo.0.join("tracked.txt"), b"two\n").unwrap();
+        std::fs::write(repo.0.join("new.txt"), b"new\n").unwrap();
+
+        let preview = preview_discard_all(repo.path()).expect("preview");
+        assert!(preview
+            .details
+            .iter()
+            .any(|line| line.contains("tracked.txt")));
+        assert!(preview.details.iter().any(|line| line.contains("new.txt")));
+        assert!(preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("Untracked files")));
     }
 
     #[test]

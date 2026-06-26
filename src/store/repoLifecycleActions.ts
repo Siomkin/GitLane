@@ -35,6 +35,7 @@ export function createRepoLifecycleActions(
   | "restoreSession"
   | "refresh"
   | "loadMoreHistory"
+  | "loadReflog"
 > {
   // Store-side glue over the pure request-coordination primitives in
   // `repoRequests.ts`: a graph response is "current" only if it owns both the
@@ -106,6 +107,9 @@ export function createRepoLifecycleActions(
         forge: null,
         graph: null,
         branches: [],
+        reflogEntries: [],
+        reflogLoading: false,
+        reflogError: null,
         worktrees: [],
         stashes: [],
         changes: emptyChanges,
@@ -295,6 +299,9 @@ export function createRepoLifecycleActions(
           forge: null,
           graph: null,
           branches: [],
+          reflogEntries: [],
+          reflogLoading: false,
+          reflogError: null,
           worktrees: [],
           changes: emptyChanges,
           operation: null,
@@ -326,6 +333,9 @@ export function createRepoLifecycleActions(
         forge: null,
         graph: null,
         branches: [],
+        reflogEntries: [],
+        reflogLoading: false,
+        reflogError: null,
         worktrees: [],
         stashes: [],
         changes: emptyChanges,
@@ -549,6 +559,20 @@ export function createRepoLifecycleActions(
         if (!graphRequestIsCurrent(generation, summary.path)) return;
         set({ loadingMoreHistory: false });
         useUi.getState().showToast(String(error), "error");
+      }
+    },
+
+    loadReflog: async () => {
+      const { summary } = get();
+      if (!summary) return;
+      set({ reflogLoading: true, reflogError: null });
+      try {
+        const reflogEntries = await api.listReflog(summary.path, 120);
+        if (get().summary?.path !== summary.path) return;
+        set({ reflogEntries, reflogLoading: false });
+      } catch (e) {
+        if (get().summary?.path !== summary.path) return;
+        set({ reflogLoading: false, reflogError: String(e) });
       }
     },
   };

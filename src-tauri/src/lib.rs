@@ -15,10 +15,10 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BranchInfo, ConflictFileContent, FileChange, FileDiff, ForgeAuthStatus, GithubAccount,
-    GithubAccountRef, OperationStatus, PrCheck, PrCommitSignature, PullRequestDetail,
-    PullRequestSummary, RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, StashEntry,
-    WorkingChanges, WorktreeInfo,
+    BranchInfo, ConflictFileContent, DestructivePreview, FileChange, FileDiff, ForgeAuthStatus,
+    GithubAccount, GithubAccountRef, OperationStatus, PrCheck, PrCommitSignature,
+    PullRequestDetail, PullRequestSummary, ReflogEntry, RepoForge, RepoGraph, RepoIdentity,
+    RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -90,6 +90,44 @@ async fn create_branch(
 #[tauri::command]
 async fn delete_branch(path: String, name: String, force: bool) -> Result<String, String> {
     blocking(move || git::write::delete_branch(&path, &name, force)).await
+}
+
+#[tauri::command]
+async fn list_reflog(path: String, limit: Option<usize>) -> Result<Vec<ReflogEntry>, String> {
+    blocking(move || git::write::reflog_entries(&path, limit.unwrap_or(80))).await
+}
+
+#[tauri::command]
+async fn preview_reset(
+    path: String,
+    target: String,
+    mode: String,
+) -> Result<DestructivePreview, String> {
+    blocking(move || git::write::preview_reset(&path, &target, &mode)).await
+}
+
+#[tauri::command]
+async fn preview_discard_all(path: String) -> Result<DestructivePreview, String> {
+    blocking(move || git::write::preview_discard_all(&path)).await
+}
+
+#[tauri::command]
+async fn preview_delete_branch(path: String, branch: String) -> Result<DestructivePreview, String> {
+    blocking(move || git::write::preview_delete_branch(&path, &branch)).await
+}
+
+#[tauri::command]
+async fn preview_delete_remote_branch(
+    path: String,
+    remote: String,
+    branch: String,
+) -> Result<DestructivePreview, String> {
+    blocking(move || git::write::preview_delete_remote_branch(&path, &remote, &branch)).await
+}
+
+#[tauri::command]
+async fn preview_force_push(path: String, branch: String) -> Result<DestructivePreview, String> {
+    blocking(move || git::write::preview_force_push(&path, &branch)).await
 }
 
 #[tauri::command]
@@ -870,6 +908,12 @@ pub fn run() {
             checkout,
             create_branch,
             delete_branch,
+            list_reflog,
+            preview_reset,
+            preview_discard_all,
+            preview_delete_branch,
+            preview_delete_remote_branch,
+            preview_force_push,
             rename_branch,
             set_upstream,
             merge_branch,

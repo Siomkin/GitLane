@@ -211,6 +211,31 @@ pub struct BranchSyncState {
     pub behind: usize,
 }
 
+/// One recent reflog entry from HEAD or a local ref. Recovery operations use
+/// `oid`, while the selectors make the original reflog source visible.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReflogEntry {
+    pub oid: String,
+    pub short_oid: String,
+    pub selector: String,
+    pub short_selector: String,
+    pub ref_name: String,
+    pub subject: String,
+    pub committer_name: String,
+    pub committer_email: String,
+    pub timestamp: i64,
+}
+
+/// Read-only impact summary shown before a destructive operation runs.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DestructivePreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
 /// A single changed file in a diff (working tree, index, or a commit).
 /// `status` is a one-letter git code: M(odified) A(dded) D(eleted) R(enamed)
 /// C(opied) T(ypechange) U(ntracked) or `?` when unknown.

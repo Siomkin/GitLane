@@ -5,6 +5,7 @@ import type {
   FileChange,
   FileDiff,
   OperationKind,
+  ReflogEntry,
   RepoForge,
   RepoGraph,
   RepoSummary,
@@ -50,6 +51,9 @@ export interface RepoState {
   forge: RepoForge | null;
   graph: RepoGraph | null;
   branches: BranchInfo[];
+  reflogEntries: ReflogEntry[];
+  reflogLoading: boolean;
+  reflogError: string | null;
   worktrees: WorktreeInfo[];
   stashes: StashEntry[];
   /** Paths of all open repositories — the tab strip. */
@@ -107,6 +111,7 @@ export interface RepoState {
   }) => Promise<void>;
   /** Request the next bounded page of graph history. */
   loadMoreHistory: () => Promise<void>;
+  loadReflog: () => Promise<void>;
   selectCommit: (id: string | null) => Promise<void>;
   /** Select `id`, surface the graph, and request a scroll to it. Used by the
    * branch navigator so picking a branch jumps the graph to that branch's tip. */
@@ -253,6 +258,9 @@ export type RepoDataState = Pick<
   | "forge"
   | "graph"
   | "branches"
+  | "reflogEntries"
+  | "reflogLoading"
+  | "reflogError"
   | "worktrees"
   | "stashes"
   | "openPaths"
@@ -282,6 +290,9 @@ export function createInitialRepoData(openPaths: string[]): RepoDataState {
     forge: null,
     graph: null,
     branches: [],
+    reflogEntries: [],
+    reflogLoading: false,
+    reflogError: null,
     worktrees: [],
     stashes: [],
     openPaths,

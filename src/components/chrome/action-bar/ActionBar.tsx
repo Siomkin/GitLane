@@ -53,6 +53,7 @@ export const ActionBar = ({
   const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreateBranch = useUi((state) => state.setCreateBranchOpen);
   const toggleTerminal = useUi((state) => state.toggleTerminal);
+  const openRecovery = useUi((state) => state.openRecovery);
   const terminalVisible = useUi((state) => state.terminalView !== "hidden");
   const navOpen = useUi((state) => state.navOpen);
   const toggleNav = useUi((state) => state.toggleNav);
@@ -286,6 +287,12 @@ export const ActionBar = ({
             title={currentSync.canPush ? currentSync.title : `Push unavailable. ${currentSync.title}`}
           />
           <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={() => openCreateBranch(true)} disabled={!summary} />
+          <ToolbarAction
+            label="Recover"
+            icon={<ClockIcon />}
+            onClick={openRecovery}
+            disabled={!summary}
+          />
           <ToolbarAction
             label="Stash"
             icon={<StashIcon />}

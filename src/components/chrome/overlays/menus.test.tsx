@@ -21,11 +21,13 @@ const realPublishBranch = useRepo.getState().publishBranch;
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockImplementation((cmd: string) =>
-    cmd === "can_fast_forward"
-      ? Promise.resolve(false)
-      : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
-  );
+  invokeMock.mockImplementation((cmd: string) => {
+    if (cmd === "can_fast_forward") return Promise.resolve(false);
+    if (cmd.startsWith("preview_")) {
+      return Promise.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: ["Recovery warning"] });
+    }
+    return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+  });
   useRepo.setState({
     changes: { staged: [], unstaged: [], conflicted: [] },
     summary: null,
@@ -285,12 +287,19 @@ describe("BranchContextMenu", () => {
   // branches actually delete, matching the dialog's "Unmerged commits may be lost".
   it("force-deletes on confirm (passes force=true to removeBranch)", async () => {
     const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
-    useRepo.setState({ branches: [localBranch("feature")], removeBranch });
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      branches: [localBranch("feature")],
+      removeBranch,
+    });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
+    expect(confirm?.details).toContain("Impact summary");
+    expect(confirm?.warnings).toContain("Recovery warning");
     confirm!.onConfirm();
     await waitFor(() => expect(removeBranch).toHaveBeenCalledWith("feature", true));
   });

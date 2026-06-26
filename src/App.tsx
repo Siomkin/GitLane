@@ -27,6 +27,7 @@ import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
 import { ConflictWorkspace } from "./features/conflicts";
 import { HistoryWorkspace } from "./features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
+import { ReflogRecoveryDialog } from "./features/recovery";
 import { ReviewWorkspace } from "./features/review/ReviewWorkspace";
 import { AgentMessageDialog, ReviewNotesTray } from "./features/review-notes/ReviewNotes";
 import { StackedReview } from "./features/review/StackedReview";
@@ -223,6 +224,7 @@ const App = () => {
       <WorktreeContextMenu />
       <CreateBranchDialog />
       <CreatePrDialog />
+      <ReflogRecoveryDialog />
       <AgentMessageDialog />
       <CommitModal />
       <ConfirmDialog />
