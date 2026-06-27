@@ -141,20 +141,25 @@ export interface PromptRequest {
   onSubmit: (value: string) => void;
 }
 
-/** A freeform review note pinned to a single diff line. Session-only — never
- * persisted; collected in a tray and bundled into the "message for agent". */
+/** A freeform review ("local") comment pinned to a contiguous range of diff
+ * lines. Session-only — never persisted; collected and bundled into the "hand to
+ * agent" message. A single-line comment is just a range whose ends coincide. */
 export interface ReviewNote {
-  /** Deterministic key: JSON `[file, side, line]` (one note per line). */
+  /** Deterministic key: `${file}#${fromRef}-${toRef}` (one note per range). */
   id: string;
-  /** Path of the file the line belongs to. */
+  /** Path of the file the range belongs to. */
   file: string;
-  /** Diff side: "L" = old/deleted line, "R" = new/added/context line. */
+  /** Anchor (range-end) side, kept for stable ordering. "L" = old, "R" = new/ctx. */
   side: "L" | "R";
-  /** Line number on that side. */
+  /** Anchor (range-end) line number on that side, kept for ordering. */
   line: number;
-  /** Display ref, e.g. "R20" / "L4". */
+  /** Display ref of the range start, e.g. "R18" / "L4". */
+  fromRef: string;
+  /** Display ref of the range end (the anchor), e.g. "R20". */
+  toRef: string;
+  /** Combined display label, e.g. "R20" or "R18–R20". */
   lineRef: string;
-  /** The line's source text, captured for context in the agent message. */
+  /** The range's source text (joined), captured for context in the message. */
   code: string;
   /** The reviewer's note. */
   body: string;
@@ -355,7 +360,7 @@ interface UiState {
   setCommitDir: (paths: string[], included: boolean) => void;
   setCommitMsg: (msg: string) => void;
 
-  /** Pin/replace a review note on a diff line (keyed by file+side+line). */
+  /** Pin/replace a local comment on a diff line range (keyed by file + range). */
   addReviewNote: (note: Omit<ReviewNote, "id">) => void;
   removeReviewNote: (id: string) => void;
   clearReviewNotes: () => void;
@@ -597,8 +602,8 @@ export const useUi = create<UiState>()(
 
   addReviewNote: (note) =>
     set((s) => {
-      // One note per line: replace any existing note on the same file+side+line.
-      const id = JSON.stringify([note.file, note.side, note.line]);
+      // One note per range: replace any existing note on the same file + range.
+      const id = `${note.file}#${note.fromRef}-${note.toRef}`;
       const rest = s.reviewNotes.filter((n) => n.id !== id);
       return { reviewNotes: [...rest, { ...note, id }] };
     }),

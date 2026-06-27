@@ -65,6 +65,18 @@ pub fn apply_line(
     ))
 }
 
+/// Build the `git diff` args for the patch source that backs hunk/line staging.
+///
+/// The frontend chooses a hunk/line index from the **displayed** diff, which is
+/// rendered by libgit2 (`git/status/*` with `context_lines(3)`). To keep those
+/// indices addressing the same boundaries here, this patch source must segment
+/// identically: libgit2 uses the Myers algorithm with no indent heuristic, so we
+/// pin `--diff-algorithm=myers --no-indent-heuristic` (and the default 3 context
+/// lines) rather than inheriting the user's `diff.algorithm`/`diff.indentHeuristic`
+/// config. `extract_single_hunk_patch`/`extract_single_line_patch` additionally
+/// validate the expected hunk range / line content before applying, so any
+/// residual divergence fails safe ("refresh and try again") instead of staging
+/// the wrong hunk.
 pub(super) fn patch_diff_args<'a>(staged: bool, file: &'a str) -> Vec<&'a str> {
     let mut args = vec![
         "diff",

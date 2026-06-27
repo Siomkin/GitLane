@@ -1,0 +1,40 @@
+// Docked footer shown under a diff when local comments exist: summarises the
+// pending comments and opens the "hand to agent" message composer. Replaces the
+// old floating notes tray — it lives at the bottom of the review surface.
+
+import { useRepo } from "../../../store/repo";
+import { useUi } from "../../../store/ui";
+import { DiamondIcon } from "@/components/ui/icons";
+
+export const HandToAgentBar = () => {
+  const notes = useUi((s) => s.reviewNotes);
+  const openAgentMessage = useUi((s) => s.openAgentMessage);
+  const branch = useRepo((s) => s.summary?.headBranch ?? null);
+
+  if (notes.length === 0) return null;
+  const n = notes.length;
+  const word = n === 1 ? "comment" : "comments";
+
+  return (
+    <div className="flex flex-none items-center gap-2.5 border-t border-black/5 p-3 dark:border-white/5">
+      <span className="flex flex-none items-center gap-1.5 text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">
+        <DiamondIcon width={14} height={14} className="text-neutral-500" />
+        Hand to agent
+        <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-neutral-500 px-1 text-[10px] font-semibold text-white">
+          {n}
+        </span>
+      </span>
+      <div className="min-w-0 flex-1 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
+        {n} {word}
+        {branch ? ` · branch ${branch}` : ""}
+      </div>
+      <button
+        type="button"
+        onClick={openAgentMessage}
+        className="h-9 flex-none rounded-lg bg-[color:var(--accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110"
+      >
+        Prepare message for agent
+      </button>
+    </div>
+  );
+};

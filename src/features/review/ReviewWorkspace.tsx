@@ -6,20 +6,38 @@ import { useRepo } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
 import {
   DiffTruncatedNotice,
-  HunkActionButton,
-  HunkHeader,
-  LineActionButton,
+  HunkCardHeader,
+  LineStageButton,
   MONO,
   numCell,
   Tokens,
   UnifiedLine,
 } from "./DiffBody";
+import {
+  buildColumnLineMeta,
+  buildLineMeta,
+  CommentCard,
+  CommentEditor,
+  CommentHandle,
+  HandToAgentBar,
+  useLineComments,
+  type LineCommentsController,
+  type LineRowComments,
+} from "./comments";
 import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diffRows";
 import { hunkPatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
 type DiffMode = "split" | "unified";
+
+/** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
+ * which can't be staged. */
+type HunkActionApi = {
+  source: "unstaged" | "staged";
+  onApply: (hunkIndex: number, expectedHeader: string) => void;
+  onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+};
 
 export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const fileDiff = useRepo((state) => state.fileDiff);
@@ -55,6 +73,8 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
       ) : (
         <UnifiedDiff file={fileDiff} hunkAction={hunkAction} />
       )}
+
+      <HandToAgentBar />
     </main>
   );
 }
@@ -122,20 +142,13 @@ function FullDiffNotice() {
   return <DiffTruncatedNotice onShowFull={loadFullFileDiff} loading={diffLoading} />;
 }
 
-function UnifiedDiff({
-  file,
-  hunkAction,
-}: {
-  file: FileDiff;
-  hunkAction: {
-    source: "unstaged" | "staged";
-    onApply: (hunkIndex: number, expectedHeader: string) => void;
-    onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
-  } | null;
-}) {
+function UnifiedDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActionApi | null }) {
   const rows = useMemo(() => flattenUnified(file.hunks), [file.hunks]);
   const tones = useMemo(() => unifiedTones(file.hunks), [file.hunks]);
+  const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
+  const comments = useLineComments(file.path, lines);
   const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
+  const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -145,29 +158,28 @@ function UnifiedDiff({
           testId="review-unified-scroll"
           renderRow={(row) =>
             row.kind === "header" ? (
-              <HunkHeader
+              <HunkCardHeader
                 header={row.header}
-                action={
-                  hunkAction ? (
-                    <HunkActionButton
-                      label={hunkAction.source === "staged" ? "Unstage hunk" : "Stage hunk"}
-                      unavailableReason={unavailableReason}
-                      onClick={() => hunkAction.onApply(row.hunkIndex, row.header)}
-                    />
-                  ) : null
+                changed={row.changed}
+                stage={
+                  hunkAction
+                    ? {
+                        mode,
+                        onClick: () => hunkAction.onApply(row.hunkIndex, row.header),
+                        disabledReason: unavailableReason,
+                      }
+                    : null
                 }
               />
             ) : (
               <UnifiedLine
                 line={row.line}
-                file={file.path}
-                action={
-                  hunkAction && !unavailableReason && row.line.kind !== "ctx" ? (
-                    <LineActionButton
-                      label={hunkAction.source === "staged" ? "Unstage line" : "Stage line"}
-                      onClick={() => hunkAction.onApplyLine(row.hunkIndex, row.lineIndex, row.line)}
-                    />
-                  ) : null
+                comments={comments.rowFor(row.seq)}
+                controller={comments}
+                stage={
+                  hunkAction && !unavailableReason && row.line.kind !== "ctx"
+                    ? { mode, onClick: () => hunkAction.onApplyLine(row.hunkIndex, row.lineIndex, row.line) }
+                    : null
                 }
               />
             )
@@ -180,20 +192,18 @@ function UnifiedDiff({
   );
 }
 
-function SplitDiff({
-  file,
-  hunkAction,
-}: {
-  file: FileDiff;
-  hunkAction: {
-    source: "unstaged" | "staged";
-    onApply: (hunkIndex: number, expectedHeader: string) => void;
-    onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
-  } | null;
-}) {
+function SplitDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActionApi | null }) {
   const rows = useMemo(() => flattenSplit(file.hunks), [file.hunks]);
   const tones = useMemo(() => splitTones(file.hunks), [file.hunks]);
+  // Each column is commented independently: the old (L) side and new (R) side
+  // get their own controller, so hovering one half reveals only that half's
+  // stage + comment affordances.
+  const leftLines = useMemo(() => buildColumnLineMeta(file.hunks, "L"), [file.hunks]);
+  const rightLines = useMemo(() => buildColumnLineMeta(file.hunks, "R"), [file.hunks]);
+  const leftComments = useLineComments(file.path, leftLines);
+  const rightComments = useLineComments(file.path, rightLines);
   const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
+  const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -203,29 +213,29 @@ function SplitDiff({
           testId="review-split-scroll"
           renderRow={(row) =>
             row.kind === "header" ? (
-              <HunkHeader
+              <HunkCardHeader
                 header={row.header}
-                action={
-                  hunkAction ? (
-                    <HunkActionButton
-                      label={hunkAction.source === "staged" ? "Unstage hunk" : "Stage hunk"}
-                      unavailableReason={unavailableReason}
-                      onClick={() => hunkAction.onApply(row.hunkIndex, row.header)}
-                    />
-                  ) : null
+                changed={row.changed}
+                stage={
+                  hunkAction
+                    ? {
+                        mode,
+                        onClick: () => hunkAction.onApply(row.hunkIndex, row.header),
+                        disabledReason: unavailableReason,
+                      }
+                    : null
                 }
               />
             ) : (
               <SplitLine
                 row={row.row}
                 hunkIndex={row.hunkIndex}
-                lineAction={
-                  hunkAction && !unavailableReason
-                    ? {
-                        label: hunkAction.source === "staged" ? "Unstage line" : "Stage line",
-                        onApply: hunkAction.onApplyLine,
-                      }
-                    : null
+                left={row.leftSeq != null ? leftComments.rowFor(row.leftSeq) : null}
+                right={row.rightSeq != null ? rightComments.rowFor(row.rightSeq) : null}
+                leftController={leftComments}
+                rightController={rightComments}
+                lineStage={
+                  hunkAction && !unavailableReason ? { mode, onApply: hunkAction.onApplyLine } : null
                 }
               />
             )
@@ -241,72 +251,111 @@ function SplitDiff({
 function SplitLine({
   row,
   hunkIndex,
-  lineAction,
+  lineStage,
+  left,
+  right,
+  leftController,
+  rightController,
 }: {
   row: SplitRow;
   hunkIndex: number;
-  lineAction: {
-    label: string;
+  lineStage: {
+    mode: "stage" | "unstage";
     onApply: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
   } | null;
+  left?: LineRowComments | null;
+  right?: LineRowComments | null;
+  leftController?: LineCommentsController | null;
+  rightController?: LineCommentsController | null;
 }) {
-  const { left, right } = row;
+  const { left: leftCell, right: rightCell } = row;
   return (
-    <div
-      className="group/line flex"
-      style={{ fontFamily: MONO, fontSize: "12.5px", lineHeight: "19px", minHeight: "19px" }}
-    >
-      <SplitHalf
-        no={left?.line.oldNo ?? null}
-        content={left ? left.line.content : null}
-        tone={left?.line.kind === "del" ? "del" : "ctx"}
-        action={
-          left && left.line.kind === "del" && lineAction ? (
-            <LineActionButton
-              label={lineAction.label}
-              onClick={() => lineAction.onApply(hunkIndex, left.lineIndex, left.line)}
-            />
-          ) : null
-        }
-        border
-      />
-      <SplitHalf
-        no={right?.line.newNo ?? null}
-        content={right ? right.line.content : null}
-        tone={right?.line.kind === "add" ? "add" : "ctx"}
-        action={
-          right && right.line.kind === "add" && lineAction ? (
-            <LineActionButton
-              label={lineAction.label}
-              onClick={() => lineAction.onApply(hunkIndex, right.lineIndex, right.line)}
-            />
-          ) : null
-        }
-      />
+    <div>
+      <div className="flex" style={{ fontFamily: MONO, fontSize: "12.5px", lineHeight: "19px", minHeight: "19px" }}>
+        <SplitHalf
+          no={leftCell?.line.oldNo ?? null}
+          content={leftCell ? leftCell.line.content : null}
+          tone={leftCell?.line.kind === "del" ? "del" : "ctx"}
+          comments={left}
+          action={
+            leftCell && leftCell.line.kind === "del" && lineStage ? (
+              <LineStageButton
+                stage={{
+                  mode: lineStage.mode,
+                  onClick: () => lineStage.onApply(hunkIndex, leftCell.lineIndex, leftCell.line),
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              />
+            ) : null
+          }
+          border
+        />
+        <SplitHalf
+          no={rightCell?.line.newNo ?? null}
+          content={rightCell ? rightCell.line.content : null}
+          tone={rightCell?.line.kind === "add" ? "add" : "ctx"}
+          comments={right}
+          action={
+            rightCell && rightCell.line.kind === "add" && lineStage ? (
+              <LineStageButton
+                stage={{
+                  mode: lineStage.mode,
+                  onClick: () => lineStage.onApply(hunkIndex, rightCell.lineIndex, rightCell.line),
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              />
+            ) : null
+          }
+        />
+      </div>
+      {/* Each side's editor/card renders below the row, indented under that half;
+       * the scope label ("Comment on line L4 / R20") names the side. */}
+      {left?.editHere && leftController ? (
+        <CommentEditor scope={left.scope} controller={leftController} indent="ml-[46px] mr-3" />
+      ) : null}
+      {left?.showCard ? (
+        <CommentCard scope={left.scope} body={left.body} onEdit={left.edit} onDelete={left.remove} indent="ml-[46px] mr-3" />
+      ) : null}
+      {right?.editHere && rightController ? (
+        <CommentEditor scope={right.scope} controller={rightController} indent="ml-[50%] mr-3" />
+      ) : null}
+      {right?.showCard ? (
+        <CommentCard scope={right.scope} body={right.body} onEdit={right.edit} onDelete={right.remove} indent="ml-[50%] mr-3" />
+      ) : null}
     </div>
   );
 }
 
+// One pane of a split row, and its own hover group (`group/line`) so hovering it
+// reveals only this side's stage button + comment handle.
 function SplitHalf({
   no,
   content,
   tone,
   action,
+  comments,
   border,
 }: {
   no: number | null;
   content: string | null;
   tone: "ctx" | "add" | "del";
   action?: ReactNode;
+  comments?: LineRowComments | null;
   border?: boolean;
 }) {
   const present = content != null;
-  const bg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
+  const baseBg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
+  // Comment selection/coverage tints this side independently of the other.
+  const bg = comments?.selecting
+    ? "var(--accent-soft)"
+    : comments?.covered
+      ? "rgba(120,120,120,0.06)"
+      : baseBg;
   const gut = tone === "add" ? "#2e9e62" : tone === "del" ? "#e0626f" : "transparent";
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-1 items-start overflow-hidden",
+        "group/line flex min-w-0 flex-1 items-start overflow-hidden",
         border && "border-r border-black/5 dark:border-white/5",
       )}
       style={{
@@ -316,8 +365,14 @@ function SplitHalf({
         backgroundImage: present ? undefined : HATCH,
         borderLeft: `3px solid ${gut}`,
       }}
+      onMouseEnter={comments?.onRowEnter}
     >
-      <span className={numCell}>{no ?? ""}</span>
+      {/* Stage button overlays the line number (mirrors the unified view's
+       * sign-column staging); the number fades under it on hover. */}
+      <span className={cn(numCell, "relative")}>
+        <span className={cn(!!action && "transition-opacity group-hover/line:opacity-0")}>{no ?? ""}</span>
+        {action}
+      </span>
       {present ? (
         <span className="min-w-0 flex-1 overflow-hidden">
           <Tokens content={content} />
@@ -325,7 +380,11 @@ function SplitHalf({
       ) : (
         <span className="flex-1" />
       )}
-      {action}
+      {comments ? (
+        <span className="flex flex-none items-center self-stretch pl-1 pr-2.5">
+          <CommentHandle row={comments} />
+        </span>
+      ) : null}
     </div>
   );
 }

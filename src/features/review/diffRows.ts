@@ -12,23 +12,39 @@ export type SplitCell = { line: DiffLine; lineIndex: number };
  * right (either side may be absent for a pure add/del). */
 export type SplitRow = { left: SplitCell | null; right: SplitCell | null };
 
-/** One flattened row of a unified diff: a hunk header or a single line. */
+/** One flattened row of a unified diff: a hunk header or a single line. Header
+ * rows carry the hunk's `changed`-line count (for the header label); line rows
+ * carry a file-global `seq` for comment range addressing. */
 export type UnifiedRow =
-  | { kind: "header"; header: string; hunkIndex: number; key: string }
-  | { kind: "line"; line: DiffLine; hunkIndex: number; lineIndex: number; key: string };
+  | { kind: "header"; header: string; hunkIndex: number; changed: number; key: string }
+  | { kind: "line"; line: DiffLine; hunkIndex: number; lineIndex: number; seq: number; key: string };
 
-/** One flattened row of a split diff: a hunk header or a left/right pair. */
+/** One flattened row of a split diff: a hunk header or a left/right pair. Each
+ * half carries its own column seq (`leftSeq` for a deletion, `rightSeq` for an
+ * addition/context), so the two sides are commented independently; a seq is null
+ * when that half isn't commentable on this row. */
 export type SplitDiffRow =
-  | { kind: "header"; header: string; hunkIndex: number; key: string }
-  | { kind: "row"; row: SplitRow; hunkIndex: number; key: string };
+  | { kind: "header"; header: string; hunkIndex: number; changed: number; key: string }
+  | {
+      kind: "row";
+      row: SplitRow;
+      hunkIndex: number;
+      leftSeq: number | null;
+      rightSeq: number | null;
+      key: string;
+    };
 
 /** Flatten hunks into header + line rows, in render order. Keys are stable for
  * a given diff so the virtualizer can track rows across re-renders. */
 export function flattenUnified(hunks: DiffHunk[]): UnifiedRow[] {
   const rows: UnifiedRow[] = [];
+  let seq = 0;
   hunks.forEach((hunk, h) => {
-    rows.push({ kind: "header", header: hunk.header, hunkIndex: h, key: `h${h}` });
-    hunk.lines.forEach((line, l) => rows.push({ kind: "line", line, hunkIndex: h, lineIndex: l, key: `h${h}l${l}` }));
+    const changed = hunk.lines.reduce((n, line) => (line.kind === "ctx" ? n : n + 1), 0);
+    rows.push({ kind: "header", header: hunk.header, hunkIndex: h, changed, key: `h${h}` });
+    hunk.lines.forEach((line, l) =>
+      rows.push({ kind: "line", line, hunkIndex: h, lineIndex: l, seq: seq++, key: `h${h}l${l}` }),
+    );
   });
   return rows;
 }
@@ -68,9 +84,18 @@ export function toSplitRows(lines: DiffLine[]): SplitRow[] {
 /** Flatten hunks into header + paired split rows, in render order. */
 export function flattenSplit(hunks: DiffHunk[]): SplitDiffRow[] {
   const rows: SplitDiffRow[] = [];
+  let leftSeq = 0;
+  let rightSeq = 0;
   hunks.forEach((hunk, h) => {
-    rows.push({ kind: "header", header: hunk.header, hunkIndex: h, key: `h${h}` });
-    toSplitRows(hunk.lines).forEach((row, r) => rows.push({ kind: "row", row, hunkIndex: h, key: `h${h}r${r}` }));
+    const changed = hunk.lines.reduce((n, line) => (line.kind === "ctx" ? n : n + 1), 0);
+    rows.push({ kind: "header", header: hunk.header, hunkIndex: h, changed, key: `h${h}` });
+    toSplitRows(hunk.lines).forEach((row, r) => {
+      // Left column = deletions only; right column = additions + context. Mirrors
+      // buildColumnLineMeta so each half's seq indexes its own comment controller.
+      const left = row.left && row.left.line.kind === "del" ? leftSeq++ : null;
+      const right = row.right ? rightSeq++ : null;
+      rows.push({ kind: "row", row, hunkIndex: h, leftSeq: left, rightSeq: right, key: `h${h}r${r}` });
+    });
   });
   return rows;
 }

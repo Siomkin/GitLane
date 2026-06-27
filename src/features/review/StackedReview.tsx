@@ -10,6 +10,7 @@ import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { FileIcon } from "@/components/ui/icons";
 import { DiffTruncatedNotice, UnifiedDiffBody } from "./DiffBody";
+import { HandToAgentBar } from "./comments";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
 /** Changed-line count above which a file starts collapsed, so a lockfile-sized
@@ -205,6 +206,8 @@ export function StackedReview() {
           })
         )}
       </div>
+
+      <HandToAgentBar />
     </main>
   );
 }
