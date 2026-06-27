@@ -304,6 +304,15 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+export function CommentIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v4A3.5 3.5 0 0 1 15.5 14H12l-5 4v-4.3A3.5 3.5 0 0 1 5 10.5z" />
+      <path d="M9 8h6M9 11h4" />
+    </IconBase>
+  );
+}
+
 export function GitHubIcon(props: IconProps) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>

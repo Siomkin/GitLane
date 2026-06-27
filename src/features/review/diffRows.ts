@@ -10,12 +10,12 @@ export type SplitRow = { left: DiffLine | null; right: DiffLine | null };
 
 /** One flattened row of a unified diff: a hunk header or a single line. */
 export type UnifiedRow =
-  | { kind: "header"; header: string; key: string }
+  | { kind: "header"; header: string; hunkIndex: number; key: string }
   | { kind: "line"; line: DiffLine; key: string };
 
 /** One flattened row of a split diff: a hunk header or a left/right pair. */
 export type SplitDiffRow =
-  | { kind: "header"; header: string; key: string }
+  | { kind: "header"; header: string; hunkIndex: number; key: string }
   | { kind: "row"; row: SplitRow; key: string };
 
 /** Flatten hunks into header + line rows, in render order. Keys are stable for
@@ -23,7 +23,7 @@ export type SplitDiffRow =
 export function flattenUnified(hunks: DiffHunk[]): UnifiedRow[] {
   const rows: UnifiedRow[] = [];
   hunks.forEach((hunk, h) => {
-    rows.push({ kind: "header", header: hunk.header, key: `h${h}` });
+    rows.push({ kind: "header", header: hunk.header, hunkIndex: h, key: `h${h}` });
     hunk.lines.forEach((line, l) => rows.push({ kind: "line", line, key: `h${h}l${l}` }));
   });
   return rows;
@@ -58,7 +58,7 @@ export function toSplitRows(lines: DiffLine[]): SplitRow[] {
 export function flattenSplit(hunks: DiffHunk[]): SplitDiffRow[] {
   const rows: SplitDiffRow[] = [];
   hunks.forEach((hunk, h) => {
-    rows.push({ kind: "header", header: hunk.header, key: `h${h}` });
+    rows.push({ kind: "header", header: hunk.header, hunkIndex: h, key: `h${h}` });
     toSplitRows(hunk.lines).forEach((row, r) => rows.push({ kind: "row", row, key: `h${h}r${r}` }));
   });
   return rows;

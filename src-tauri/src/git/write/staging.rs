@@ -1,6 +1,6 @@
 //! Working-tree staging, discard, and commit writes.
 
-use super::cli::run_git;
+use super::cli::{run_git, run_git_with_input};
 
 /// Stage a single file (also stages deletions).
 pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
@@ -10,6 +10,95 @@ pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
 /// Unstage a single file, restoring it to its HEAD state in the index.
 pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
     run_git(repo, &["restore", "--staged", "--", file])
+}
+
+/// Stage one hunk from the worktree diff, or unstage one hunk from the staged
+/// diff when `staged` is true. Git still owns patch parsing/application; the
+/// frontend only chooses a hunk index from the diff it is showing.
+pub fn apply_hunk(
+    repo: &str,
+    file: &str,
+    staged: bool,
+    hunk_index: usize,
+    expected_header: &str,
+) -> Result<String, String> {
+    let diff = if staged {
+        run_git(repo, &["diff", "--cached", "--no-ext-diff", "--", file])?
+    } else {
+        run_git(repo, &["diff", "--no-ext-diff", "--", file])?
+    };
+    let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header)?;
+    apply_hunk_patch(repo, &patch, staged)?;
+    Ok(format!(
+        "{} hunk in {file}",
+        if staged { "Unstaged" } else { "Staged" }
+    ))
+}
+
+pub(super) fn apply_hunk_patch(repo: &str, patch: &str, reverse: bool) -> Result<String, String> {
+    let args: Vec<&str> = if reverse {
+        vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
+    } else {
+        vec!["apply", "--cached", "--whitespace=nowarn", "-"]
+    };
+    run_git_with_input(repo, &args, patch)
+}
+
+fn extract_single_hunk_patch(
+    diff: &str,
+    hunk_index: usize,
+    expected_header: &str,
+) -> Result<String, String> {
+    if diff.trim().is_empty() {
+        return Err("No patch is available for this file".to_string());
+    }
+
+    let mut header = Vec::new();
+    let mut current_hunk = Vec::new();
+    let mut current_index = None;
+
+    for line in diff.split_inclusive('\n') {
+        if line.starts_with("diff --git ") && (!header.is_empty() || current_index.is_some()) {
+            break;
+        }
+
+        if line.starts_with("@@ ") {
+            if current_index == Some(hunk_index) {
+                break;
+            }
+            current_index = Some(current_index.map_or(0, |idx| idx + 1));
+            current_hunk.clear();
+        }
+
+        if current_index.is_some() {
+            current_hunk.push(line);
+        } else {
+            header.push(line);
+        }
+    }
+
+    let Some(found_index) = current_index else {
+        return Err("Patch-level staging is unavailable for this file".to_string());
+    };
+    if found_index != hunk_index {
+        return Err("That hunk is no longer available; refresh the diff and try again".to_string());
+    }
+
+    let actual_header = current_hunk
+        .first()
+        .map(|line| line.trim_end_matches(['\r', '\n']))
+        .unwrap_or_default();
+    if actual_header != expected_header {
+        return Err("That hunk changed on disk; refresh the diff and try again".to_string());
+    }
+
+    let mut patch = String::new();
+    patch.extend(header);
+    patch.extend(current_hunk);
+    if !patch.ends_with('\n') {
+        patch.push('\n');
+    }
+    Ok(patch)
 }
 
 /// Unstage several files in one atomic invocation (`git restore --staged -- A B…`)

@@ -31,7 +31,8 @@ describe("flattenUnified", () => {
       "line",
     ]);
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
-    expect(rows[0]).toMatchObject({ kind: "header", header: "@@ -1,2 +1,2 @@" });
+    expect(rows[0]).toMatchObject({ kind: "header", header: "@@ -1,2 +1,2 @@", hunkIndex: 0 });
+    expect(rows[4]).toMatchObject({ kind: "header", header: "@@ -10 +10 @@", hunkIndex: 1 });
   });
 });
 
@@ -64,5 +65,6 @@ describe("flattenSplit", () => {
 
     expect(rows.map((r) => r.kind)).toEqual(["header", "row"]);
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
+    expect(rows[0]).toMatchObject({ kind: "header", hunkIndex: 0 });
   });
 });

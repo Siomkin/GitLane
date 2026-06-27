@@ -4,8 +4,9 @@ import { cn } from "../../lib/cn";
 import { basename, dirname } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
-import { DiffTruncatedNotice, HunkHeader, MONO, numCell, Tokens, UnifiedLine } from "./DiffBody";
+import { DiffTruncatedNotice, HunkActionButton, HunkHeader, MONO, numCell, Tokens, UnifiedLine } from "./DiffBody";
 import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diffRows";
+import { hunkPatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
@@ -14,8 +15,18 @@ type DiffMode = "split" | "unified";
 export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const fileDiff = useRepo((state) => state.fileDiff);
   const diffLoading = useRepo((state) => state.diffLoading);
+  const selectedFile = useRepo((state) => state.selectedFile);
+  const applyHunk = useRepo((state) => state.applyHunk);
   const clearSelectedFile = useRepo((state) => state.clearSelectedFile);
   const [mode, setMode] = useState<DiffMode>("unified");
+  const hunkAction =
+    selectedFile && selectedFile.source !== "commit"
+      ? {
+          source: selectedFile.source,
+          onApply: (hunkIndex: number, expectedHeader: string) =>
+            applyHunk(selectedFile.path, selectedFile.source === "staged", hunkIndex, expectedHeader),
+        }
+      : null;
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
@@ -28,9 +39,9 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
       ) : fileDiff.binary ? (
         <EmptyDiff title="Binary file" />
       ) : mode === "split" ? (
-        <SplitDiff file={fileDiff} />
+        <SplitDiff file={fileDiff} hunkAction={hunkAction} />
       ) : (
-        <UnifiedDiff file={fileDiff} />
+        <UnifiedDiff file={fileDiff} hunkAction={hunkAction} />
       )}
     </main>
   );
@@ -99,9 +110,16 @@ function FullDiffNotice() {
   return <DiffTruncatedNotice onShowFull={loadFullFileDiff} loading={diffLoading} />;
 }
 
-function UnifiedDiff({ file }: { file: FileDiff }) {
+function UnifiedDiff({
+  file,
+  hunkAction,
+}: {
+  file: FileDiff;
+  hunkAction: { source: "unstaged" | "staged"; onApply: (hunkIndex: number, expectedHeader: string) => void } | null;
+}) {
   const rows = useMemo(() => flattenUnified(file.hunks), [file.hunks]);
   const tones = useMemo(() => unifiedTones(file.hunks), [file.hunks]);
+  const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -111,7 +129,18 @@ function UnifiedDiff({ file }: { file: FileDiff }) {
           testId="review-unified-scroll"
           renderRow={(row) =>
             row.kind === "header" ? (
-              <HunkHeader header={row.header} />
+              <HunkHeader
+                header={row.header}
+                action={
+                  hunkAction ? (
+                    <HunkActionButton
+                      label={hunkAction.source === "staged" ? "Unstage hunk" : "Stage hunk"}
+                      unavailableReason={unavailableReason}
+                      onClick={() => hunkAction.onApply(row.hunkIndex, row.header)}
+                    />
+                  ) : null
+                }
+              />
             ) : (
               <UnifiedLine line={row.line} file={file.path} />
             )
@@ -124,9 +153,16 @@ function UnifiedDiff({ file }: { file: FileDiff }) {
   );
 }
 
-function SplitDiff({ file }: { file: FileDiff }) {
+function SplitDiff({
+  file,
+  hunkAction,
+}: {
+  file: FileDiff;
+  hunkAction: { source: "unstaged" | "staged"; onApply: (hunkIndex: number, expectedHeader: string) => void } | null;
+}) {
   const rows = useMemo(() => flattenSplit(file.hunks), [file.hunks]);
   const tones = useMemo(() => splitTones(file.hunks), [file.hunks]);
+  const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -136,7 +172,18 @@ function SplitDiff({ file }: { file: FileDiff }) {
           testId="review-split-scroll"
           renderRow={(row) =>
             row.kind === "header" ? (
-              <HunkHeader header={row.header} />
+              <HunkHeader
+                header={row.header}
+                action={
+                  hunkAction ? (
+                    <HunkActionButton
+                      label={hunkAction.source === "staged" ? "Unstage hunk" : "Stage hunk"}
+                      unavailableReason={unavailableReason}
+                      onClick={() => hunkAction.onApply(row.hunkIndex, row.header)}
+                    />
+                  ) : null
+                }
+              />
             ) : (
               <SplitLine row={row.row} />
             )

@@ -475,6 +475,10 @@ export const gitApi = {
   unstageFile: (path: string, file: string) =>
     invoke<string>("unstage_file", { path, file }),
 
+  /** Stage one hunk from an unstaged diff, or unstage one hunk from a staged diff. */
+  applyHunk: (path: string, file: string, staged: boolean, hunkIndex: number, expectedHeader: string) =>
+    invoke<string>("apply_hunk", { path, file, staged, hunkIndex, expectedHeader }),
+
   /** Unstage several files atomically (one `git restore --staged`). */
   unstageFiles: (path: string, files: string[]) =>
     invoke<string>("unstage_files", { path, files }),

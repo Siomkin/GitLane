@@ -3,7 +3,7 @@
 // line-number gutters, a sign column, a colored left border + tinted background
 // per changed line, and client-side syntax highlighting.
 
-import { memo, useMemo, useState } from "react";
+import { memo, type ReactNode, useMemo, useState } from "react";
 import type { DiffHunk, DiffLine } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { highlight } from "../../lib/highlight";
@@ -11,6 +11,7 @@ import { modEnter } from "../../lib/platform";
 import { MONO_FONT } from "../../lib/ui";
 import { useUi } from "../../store/ui";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
+import { CheckIcon, CommentIcon } from "@/components/ui/icons";
 
 export const MONO = MONO_FONT;
 
@@ -58,16 +59,50 @@ export function DiffTruncatedNotice({
   );
 }
 
-export function HunkHeader({ header }: { header: string }) {
+export const HunkHeader = ({ header, action }: { header: string; action?: ReactNode }) => {
   return (
     <div
-      className="px-4 py-1 bg-violet-500/[0.06] dark:bg-violet-400/[0.08] text-violet-500 dark:text-violet-300 font-mono text-[12px]"
+      className="group/hunk flex items-center gap-2 px-4 py-1 bg-violet-500/[0.06] dark:bg-violet-400/[0.08] text-violet-500 dark:text-violet-300 font-mono text-[12px]"
       style={{ fontFamily: MONO, lineHeight: "20px" }}
     >
-      {header}
+      <span className="min-w-0 flex-1 truncate">{header}</span>
+      {action}
     </div>
   );
-}
+};
+
+export const HunkActionButton = ({
+  label,
+  unavailableReason,
+  onClick,
+}: {
+  label: string;
+  unavailableReason?: string | null;
+  onClick: () => void;
+}) => {
+  const disabled = !!unavailableReason;
+  return (
+    <button
+      type="button"
+      title={unavailableReason ?? label}
+      aria-label={unavailableReason ?? label}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className={cn(
+        "ml-auto inline-flex h-6 flex-none items-center gap-1 rounded-md border px-2 font-sans text-[11px] font-medium opacity-0 transition group-hover/hunk:opacity-100 focus:opacity-100",
+        disabled
+          ? "cursor-not-allowed border-black/10 text-neutral-400 opacity-60 dark:border-white/10"
+          : "border-[color:var(--accent)] bg-white text-[color:var(--accent)] hover:bg-[color:var(--accent)]/10 dark:bg-neutral-800",
+      )}
+    >
+      <CheckIcon width={12} height={12} />
+      {disabled ? "Unavailable" : label}
+    </button>
+  );
+};
 
 // Memoized: `line` is a stable object from the cached FileDiff and `file` is a
 // string, so an unrelated re-render of the diff body skips unchanged rows.
@@ -119,12 +154,20 @@ export const UnifiedLine = memo(function UnifiedLine({ line, file }: { line: Dif
 
 /** Full unified diff body for a file (all hunks). When `file` is given, each line
  * gains a hover affordance to pin a review note (the "message for agent" input). */
-export function UnifiedDiffBody({ hunks, file }: { hunks: DiffHunk[]; file?: string }) {
+export function UnifiedDiffBody({
+  hunks,
+  file,
+  renderHunkAction,
+}: {
+  hunks: DiffHunk[];
+  file?: string;
+  renderHunkAction?: (hunk: DiffHunk, hunkIndex: number) => ReactNode;
+}) {
   return (
     <>
       {hunks.map((hunk, index) => (
         <section key={`${hunk.header}:${index}`}>
-          <HunkHeader header={hunk.header} />
+          <HunkHeader header={hunk.header} action={renderHunkAction?.(hunk, index)} />
           {hunk.lines.map((line, lineIndex) => (
             <UnifiedLine key={lineIndex} line={line} file={file} />
           ))}
@@ -139,7 +182,7 @@ export function UnifiedDiffBody({ hunks, file }: { hunks: DiffHunk[]; file?: str
 const NOTE_INDENT = "ml-[92px] mr-3 max-w-[680px]";
 
 /**
- * The per-line review-note affordance: a hover "+" pinned to the gutter that
+ * The per-line review-note affordance: a hover comment button pinned to the gutter that
  * opens an inline editor, plus the saved note card. State lives in `useUi`
  * (session-only); one note per file+side+line.
  */
@@ -186,7 +229,7 @@ function LineNotes({
             title={note ? "Edit note" : "Add note for agent"}
             className="pointer-events-auto grid h-[17px] w-[17px] place-items-center rounded-[5px] bg-[#3b7ff5] text-[12px] font-semibold leading-none text-white shadow-[0_2px_6px_rgba(0,0,0,0.35)] hover:brightness-110"
           >
-            {note ? "✎" : "+"}
+            {note ? "✎" : <CommentIcon width={12} height={12} strokeWidth={2.2} />}
           </button>
         </div>
       )}

@@ -213,6 +213,8 @@ export interface RepoState {
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;
+  /** Stage one hunk from an unstaged diff, or unstage one hunk from a staged diff. */
+  applyHunk: (path: string, staged: boolean, hunkIndex: number, expectedHeader: string) => Promise<void>;
   /** Discard a file's working-tree changes (unstaging first when `staged`). */
   discardFile: (path: string, staged: boolean) => Promise<void>;
   stageAll: () => Promise<void>;

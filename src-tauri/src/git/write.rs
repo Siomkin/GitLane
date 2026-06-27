@@ -39,8 +39,8 @@ pub use remotes::{
     delete_remote_branch, fetch, force_push, publish_branch, pull, push, push_branch, push_tag,
 };
 pub use staging::{
-    commit, discard_all, discard_file, stage_all, stage_file, unstage_all, unstage_file,
-    unstage_files,
+    apply_hunk, commit, discard_all, discard_file, stage_all, stage_file, unstage_all,
+    unstage_file, unstage_files,
 };
 pub use stashes::{
     stash, stash_apply, stash_apply_index, stash_branch, stash_drop, stash_list, stash_pop,

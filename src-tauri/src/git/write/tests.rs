@@ -1,8 +1,9 @@
 use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution, worktree_path};
 use super::operands::ensure_operand;
 use super::remotes::is_tag_clobber_rejection;
+use super::staging::apply_hunk_patch;
 use super::{
-    abort_operation, accept_conflict_side, continue_operation, discard_all, fetch,
+    abort_operation, accept_conflict_side, apply_hunk, continue_operation, discard_all, fetch,
     mark_conflict_resolved, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
     reflog_entries, resolve_conflict_file, set_upstream, skip_operation,
@@ -95,6 +96,115 @@ fn discard_all_clears_staged_files_in_unborn_repo() {
         out.trim().is_empty(),
         "repo not clean after discard: {out:?}"
     );
+}
+
+#[test]
+fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
+    let repo = TempRepo::new("stage-hunk-unusual-path");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    let file = "space ü #.txt";
+    std::fs::write(
+        repo.0.join(file),
+        "one\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\ntwelve\n",
+    )
+    .unwrap();
+    repo.git_ok(&["add", file]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(
+        repo.0.join(file),
+        "ONE\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\nTWELVE\n",
+    )
+    .unwrap();
+
+    apply_hunk(repo.path(), file, false, 0, "@@ -1,4 +1,4 @@").expect("stage first hunk");
+
+    let cached = repo.git(&["diff", "--cached", "--", file]);
+    let cached_text = String::from_utf8_lossy(&cached.stdout);
+    assert!(cached_text.contains("+ONE"));
+    assert!(!cached_text.contains("+TWELVE"));
+    let unstaged = repo.git(&["diff", "--", file]);
+    let unstaged_text = String::from_utf8_lossy(&unstaged.stdout);
+    assert!(!unstaged_text.contains("+ONE"));
+    assert!(unstaged_text.contains("+TWELVE"));
+}
+
+#[test]
+fn apply_hunk_unstages_one_staged_hunk() {
+    let repo = TempRepo::new("unstage-hunk");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(
+        repo.0.join("file.txt"),
+        "one\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\ntwelve\n",
+    )
+    .unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(
+        repo.0.join("file.txt"),
+        "ONE\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\nTWELVE\n",
+    )
+    .unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+
+    apply_hunk(repo.path(), "file.txt", true, 0, "@@ -1,4 +1,4 @@").expect("unstage first hunk");
+
+    let cached = repo.git(&["diff", "--cached", "--", "file.txt"]);
+    let cached_text = String::from_utf8_lossy(&cached.stdout);
+    assert!(!cached_text.contains("+ONE"));
+    assert!(cached_text.contains("+TWELVE"));
+    let unstaged = repo.git(&["diff", "--", "file.txt"]);
+    let unstaged_text = String::from_utf8_lossy(&unstaged.stdout);
+    assert!(unstaged_text.contains("+ONE"));
+}
+
+#[test]
+fn apply_hunk_stages_deleted_file_hunk() {
+    let repo = TempRepo::new("stage-deleted-hunk");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("gone.txt"), "one\ntwo\nthree\n").unwrap();
+    repo.git_ok(&["add", "gone.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::remove_file(repo.0.join("gone.txt")).unwrap();
+
+    apply_hunk(repo.path(), "gone.txt", false, 0, "@@ -1,3 +0,0 @@").expect("stage deletion hunk");
+
+    let status = repo.git(&["diff", "--cached", "--name-status", "--", "gone.txt"]);
+    assert_eq!(
+        String::from_utf8_lossy(&status.stdout).trim(),
+        "D\tgone.txt"
+    );
+}
+
+#[test]
+fn apply_hunk_rejects_stale_hunk_header() {
+    let repo = TempRepo::new("stale-hunk");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("file.txt"), "one\ntwo\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(repo.0.join("file.txt"), "ONE\ntwo\n").unwrap();
+
+    let err = apply_hunk(repo.path(), "file.txt", false, 0, "@@ -9,1 +9,1 @@").unwrap_err();
+
+    assert!(err.contains("changed on disk"));
+}
+
+#[test]
+fn apply_hunk_patch_surfaces_git_rejection() {
+    let repo = TempRepo::new("reject-hunk-patch");
+    repo.git_ok(&["init", "-q"]);
+
+    let err = apply_hunk_patch(repo.path(), "not a patch\n", false).unwrap_err();
+
+    assert!(!err.is_empty());
 }
 
 #[test]
