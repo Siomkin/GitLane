@@ -16,7 +16,7 @@ import { OnboardingSuccess } from "./OnboardingSuccess";
 import { ChevronLeft } from "./icons";
 import { useOnboarding } from "./useOnboarding";
 
-export function RepoOnboarding({ onClose }: { onClose?: () => void }) {
+export const RepoOnboarding = ({ onClose }: { onClose?: () => void }) => {
   // In overlay mode, opening a repo (or pressing the action) dismisses the overlay.
   const ob = useOnboarding(onClose);
 
@@ -62,4 +62,4 @@ export function RepoOnboarding({ onClose }: { onClose?: () => void }) {
       <main className="min-h-0 flex-1 overflow-y-auto">{body}</main>
     </div>
   );
-}
+};

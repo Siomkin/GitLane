@@ -42,3 +42,32 @@ pub fn recents_status(paths: &[String]) -> Vec<RecentStatus> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::recents_status;
+
+    #[test]
+    fn plain_dir_and_missing_path_are_not_present() {
+        let base = std::env::temp_dir().join(format!("gitlane-recents-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let plain = base.join("not-a-repo");
+        std::fs::create_dir_all(&plain).expect("create temp dir");
+        let missing = base.join("gone");
+
+        let statuses = recents_status(&[
+            plain.to_string_lossy().into_owned(),
+            missing.to_string_lossy().into_owned(),
+        ]);
+
+        // A directory that exists but is not a Git repo is reported missing (so
+        // the UI flags it rather than offering to open it).
+        assert!(!statuses[0].exists, "a non-repo directory is not present");
+        assert_eq!(statuses[0].branch, None);
+        // A path that no longer exists at all is missing too.
+        assert!(!statuses[1].exists, "a missing path is not present");
+        assert_eq!(statuses[1].branch, None);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

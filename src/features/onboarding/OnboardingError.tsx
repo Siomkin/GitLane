@@ -5,7 +5,7 @@ import { RetryIcon, WarningTriangle, XCircle } from "./icons";
  * unreachable / canceled / generic): a fail uses the red warning triangle, a
  * cancel the neutral crossed circle, and the git `fatal:` line is shown verbatim
  * in a terminal block. */
-export function OnboardingError({ ob }: { ob: OnboardingApi }) {
+export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
   const error = ob.error;
   if (!error) return null;
 
@@ -59,4 +59,4 @@ export function OnboardingError({ ob }: { ob: OnboardingApi }) {
       </div>
     </div>
   );
-}
+};

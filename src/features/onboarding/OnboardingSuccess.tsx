@@ -4,7 +4,7 @@ import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "./icons";
 /** The post-clone ("opened") and post-init ("empty") confirmation screens. Both
  * show a repo header (name + branch + path) and a success body; the primary
  * action opens the repo in GitLane (entering the main app shell). */
-export function OnboardingSuccess({ ob }: { ob: OnboardingApi }) {
+export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
   const result = ob.result;
   if (!result) return null;
   const isEmpty = result.screen === "empty";
@@ -101,4 +101,4 @@ export function OnboardingSuccess({ ob }: { ob: OnboardingApi }) {
       </div>
     </div>
   );
-}
+};

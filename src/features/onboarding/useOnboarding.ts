@@ -45,7 +45,7 @@ function defaultParent(): string {
 
 /** @param onDone Called after an action opens a repo — used by the overlay
  * (open-state) entry point to dismiss itself once a repo is opened. */
-export function useOnboarding(onDone?: () => void) {
+export const useOnboarding = (onDone?: () => void) => {
   const recents = useRepo((state) => state.recents);
 
   const [screen, setScreen] = useState<OnboardingScreen>("home");
@@ -299,7 +299,7 @@ export function useOnboarding(onDone?: () => void) {
     enterResult,
     revealResult,
   };
-}
+};
 
 export type OnboardingApi = ReturnType<typeof useOnboarding>;
 export type { UrlState };

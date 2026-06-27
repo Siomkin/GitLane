@@ -5,7 +5,7 @@ import { BranchPillIcon } from "./icons";
 /** One row in the onboarding "Recent repositories" list: avatar, name (+ a
  * "Missing" badge when the path is gone), path, last-open time, and either the
  * current branch or a hover "Locate…" affordance for missing repos. */
-export function RecentRepoRow({ repo, onOpen }: { repo: RecentRepo; onOpen: () => void }) {
+export const RecentRepoRow = ({ repo, onOpen }: { repo: RecentRepo; onOpen: () => void }) => {
   const { initials, hue } = avatarFor(repo.name);
   const missing = !!repo.missing;
   const when = relativeTime(repo.lastOpenedAt);
@@ -55,4 +55,4 @@ export function RecentRepoRow({ repo, onOpen }: { repo: RecentRepo; onOpen: () =
       </span>
     </button>
   );
-}
+};

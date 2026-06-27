@@ -4,7 +4,7 @@ import { ChevronDown, ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph 
 
 /** The initialize-repository form: location, folder name, initial branch, and
  * the README + .gitignore starter options. */
-export function InitForm({ ob }: { ob: OnboardingApi }) {
+export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
   const inputCls =
     "h-11 w-full rounded-xl border border-black/10 bg-white px-3.5 font-mono text-[13.5px] text-neutral-800 shadow-sm outline-none focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[color:var(--accent)]/40 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-100";
 
@@ -170,4 +170,4 @@ export function InitForm({ ob }: { ob: OnboardingApi }) {
       </div>
     </div>
   );
-}
+};

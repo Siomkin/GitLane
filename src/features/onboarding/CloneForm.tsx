@@ -2,7 +2,7 @@ import type { OnboardingApi } from "./useOnboarding";
 import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "./icons";
 
 /** The clone form: a validated remote-URL field and a destination chooser. */
-export function CloneForm({ ob }: { ob: OnboardingApi }) {
+export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
   const { state, repo } = ob.url;
   const borderCls =
     state === "valid"
@@ -117,4 +117,4 @@ export function CloneForm({ ob }: { ob: OnboardingApi }) {
       </div>
     </div>
   );
-}
+};

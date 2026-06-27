@@ -4,7 +4,7 @@ import { ChevronRight, CloneIcon, FolderGlyph, NewRepoIcon } from "./icons";
 
 /** The onboarding start screen: clone / init / open actions on the left, the
  * recent-repositories list on the right. */
-export function HomeScreen({ ob }: { ob: OnboardingApi }) {
+export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
   return (
     <div className="grid min-h-full grid-cols-[1fr_minmax(380px,460px)]">
       {/* Left: actions */}
@@ -112,4 +112,4 @@ export function HomeScreen({ ob }: { ob: OnboardingApi }) {
       </div>
     </div>
   );
-}
+};

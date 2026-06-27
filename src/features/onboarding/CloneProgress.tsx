@@ -4,7 +4,7 @@ import { SpinnerRing } from "./icons";
 
 /** The clone-in-progress screen: a determinate bar driven by the backend's live
  * `clone-progress` events, plus a cancel control. */
-export function CloneProgress({ ob }: { ob: OnboardingApi }) {
+export const CloneProgress = ({ ob }: { ob: OnboardingApi }) => {
   const repo = parseRepoName(ob.cloneUrl);
   const pct = Math.round(ob.progress.pct);
 
@@ -43,4 +43,4 @@ export function CloneProgress({ ob }: { ob: OnboardingApi }) {
       </div>
     </div>
   );
-}
+};
