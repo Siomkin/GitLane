@@ -75,7 +75,7 @@ describe("in-diff local comments", () => {
       code: "added line",
       body: "x",
     });
-    render(<HandToAgentBar surface="work" />);
+    render(<HandToAgentBar surfaces={["work"]} />);
     expect(screen.getByText("Hand to agent")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Prepare message for agent" }));
     expect(useUi.getState().agentMessageOpen).toBe(true);

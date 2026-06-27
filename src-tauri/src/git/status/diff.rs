@@ -108,11 +108,20 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
                     };
                     let mut lines = Vec::new();
                     for l in 0..line_count {
+                        let dl = patch.line_in_hunk(h, l)?;
+                        // Skip libgit2's "\ No newline at end of file" marker
+                        // pseudo-lines (origins '=' / '>' / '<'); content lines
+                        // always use ' ' / '+' / '-'. The staging backend filters
+                        // these markers too, so emitting them would misalign the
+                        // line indices and hunk-body comparison used for staging.
+                        if matches!(dl.origin(), '=' | '>' | '<') {
+                            continue;
+                        }
                         if collected >= limit {
                             truncated = true;
                             break;
                         }
-                        lines.push(line_for(&patch.line_in_hunk(h, l)?));
+                        lines.push(line_for(&dl));
                         collected += 1;
                     }
                     if !lines.is_empty() {

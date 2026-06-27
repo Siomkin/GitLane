@@ -18,15 +18,18 @@ import { selectEnabledAgents } from "../terminal/agents";
  * Send-to-terminal. */
 export function AgentMessageDialog() {
   const open = useUi((s) => s.agentMessageOpen);
-  const surface = useUi((s) => s.agentMessageSurface);
+  const surfaces = useUi((s) => s.agentMessageSurfaces);
   const branch = useUi((s) => s.agentMessageBranch);
   const allNotes = useUi((s) => s.reviewNotes);
   const removeReviewNote = useUi((s) => s.removeReviewNote);
   const close = useUi((s) => s.closeAgentMessage);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
   const showToast = useUi((s) => s.showToast);
-  // Only the comments from the surface that opened the dialog are handed off.
-  const notes = useMemo(() => allNotes.filter((n) => n.surface === surface), [allNotes, surface]);
+  // Only the comments from the surface(s) that opened the dialog are handed off.
+  const notes = useMemo(
+    () => allNotes.filter((n) => surfaces.includes(n.surface)),
+    [allNotes, surfaces],
+  );
   const agentsRaw = useTerminalAgents((s) => s.agents);
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
   const [text, setText] = useState("");

@@ -209,7 +209,7 @@ export function StackedReview() {
         )}
       </div>
 
-      <HandToAgentBar surface={surface} />
+      <HandToAgentBar surfaces={[surface]} />
     </main>
   );
 }

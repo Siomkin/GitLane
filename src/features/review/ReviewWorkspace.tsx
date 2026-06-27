@@ -46,12 +46,24 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const applyLine = useRepo((state) => state.applyLine);
   const clearSelectedFile = useRepo((state) => state.clearSelectedFile);
   const selectedCommit = useRepo((state) => state.selectedCommit);
+  const changes = useRepo((state) => state.changes);
   const [mode, setMode] = useState<DiffMode>("unified");
-  // Notes are scoped to the diff surface, so a comment on a working diff doesn't
-  // reattach to the same file viewed in a commit (and vice versa).
-  const surface = selectedFile?.source === "commit" ? `commit:${selectedCommit ?? ""}` : "work";
-  const hunkAction =
+  // Notes are scoped to the diff surface — and, for the working tree, to the
+  // staged vs unstaged source — so a comment never reattaches to the same file
+  // viewed in a different diff (the staged and unstaged sides have distinct refs).
+  const surface =
+    selectedFile?.source === "commit"
+      ? `commit:${selectedCommit ?? ""}`
+      : `work:${selectedFile?.source ?? "unstaged"}`;
+  // A rename/copy comes back from a single-file (pathspec) diff as an added patch,
+  // so partial-staging would split the rename — offer only whole-file staging.
+  const changeFile =
     selectedFile && selectedFile.source !== "commit"
+      ? changes[selectedFile.source].find((f) => f.path === selectedFile.path)
+      : undefined;
+  const wholeFileOnly = changeFile?.status === "R" || changeFile?.status === "C";
+  const hunkAction =
+    selectedFile && selectedFile.source !== "commit" && !wholeFileOnly
       ? {
           source: selectedFile.source,
           onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) =>
@@ -83,7 +95,7 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
         <UnifiedDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       )}
 
-      <HandToAgentBar surface={surface} />
+      <HandToAgentBar surfaces={[surface]} />
     </main>
   );
 }

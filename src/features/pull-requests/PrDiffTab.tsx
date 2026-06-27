@@ -68,7 +68,7 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
         );
       })}
       {/* Comments made on PR diffs are reachable here too (docked at the bottom). */}
-      <HandToAgentBar surface={surface} branch={pr.branch} />
+      <HandToAgentBar surfaces={[surface]} branch={pr.branch} />
     </div>
   );
 }

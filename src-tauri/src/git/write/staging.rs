@@ -200,12 +200,19 @@ fn extract_single_hunk_patch(
     }
 
     let mut patch = String::new();
-    patch.extend(header);
+    patch.extend(header.into_iter().filter(|&line| !is_mode_change_line(line)));
     patch.extend(current_hunk);
     if !patch.ends_with('\n') {
         patch.push('\n');
     }
     Ok(patch)
+}
+
+/// A file-header `old mode`/`new mode` line. Stripped from partial (single-hunk
+/// or single-line) patches: reusing the full header would also stage a chmod the
+/// user never selected as part of the content action.
+fn is_mode_change_line(line: &str) -> bool {
+    line.starts_with("old mode ") || line.starts_with("new mode ")
 }
 
 #[derive(Clone)]
@@ -246,7 +253,7 @@ fn extract_single_line_patch(
     let (old_start, new_start, old_count, new_count) =
         single_line_range(&lines, line_index, &hunk_header)?;
     let mut patch = String::new();
-    patch.extend(file_header);
+    patch.extend(file_header.into_iter().filter(|&line| !is_mode_change_line(line)));
     patch.push_str(&format!(
         "@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"
     ));

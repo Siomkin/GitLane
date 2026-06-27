@@ -264,10 +264,11 @@ interface UiState {
   /** Session-only review notes pinned to diff lines — the input to the "prepare
    * message for agent" flow. Never persisted (cleared on repo switch). */
   reviewNotes: ReviewNote[];
-  /** The "prepare message for agent" popup, plus the diff surface + branch it was
-   * opened from — so it composes from that surface's notes against the right branch. */
+  /** The "prepare message for agent" popup, plus the diff surface(s) + branch it
+   * was opened from — so it composes from those surfaces' notes against the right
+   * branch. (A set, because the working review mixes staged + unstaged sources.) */
   agentMessageOpen: boolean;
-  agentMessageSurface: string | null;
+  agentMessageSurfaces: string[];
   agentMessageBranch: string | null;
 
   /** Pending destructive-action confirmation modal (null = none open). */
@@ -371,7 +372,7 @@ interface UiState {
   addReviewNote: (note: Omit<ReviewNote, "id">) => void;
   removeReviewNote: (id: string) => void;
   clearReviewNotes: () => void;
-  openAgentMessage: (surface: string, branch: string | null) => void;
+  openAgentMessage: (surfaces: string[], branch: string | null) => void;
   closeAgentMessage: () => void;
 
   /** Open the destructive-action confirmation modal. */
@@ -463,7 +464,7 @@ export const useUi = create<UiState>()(
 
   reviewNotes: [],
   agentMessageOpen: false,
-  agentMessageSurface: null,
+  agentMessageSurfaces: [],
   agentMessageBranch: null,
   confirm: null,
   prompt: null,
@@ -620,8 +621,8 @@ export const useUi = create<UiState>()(
     set((s) => ({ reviewNotes: s.reviewNotes.filter((n) => n.id !== id) })),
   clearReviewNotes: () =>
     set((s) => (s.reviewNotes.length ? { reviewNotes: [], agentMessageOpen: false } : s)),
-  openAgentMessage: (surface, branch) =>
-    set({ agentMessageOpen: true, agentMessageSurface: surface, agentMessageBranch: branch }),
+  openAgentMessage: (surfaces, branch) =>
+    set({ agentMessageOpen: true, agentMessageSurfaces: surfaces, agentMessageBranch: branch }),
   closeAgentMessage: () => set({ agentMessageOpen: false }),
 
   requestConfirm: (req) => set({ ...noMenus, confirm: req }),
