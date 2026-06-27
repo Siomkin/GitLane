@@ -25,7 +25,7 @@ import {
   type LineRowComments,
 } from "./comments";
 import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diffRows";
-import { hunkPatchUnavailableReason } from "./hunkActions";
+import { hunkBody, hunkPatchUnavailableReason, lineStagePatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
@@ -35,7 +35,7 @@ type DiffMode = "split" | "unified";
  * which can't be staged. */
 type HunkActionApi = {
   source: "unstaged" | "staged";
-  onApply: (hunkIndex: number, expectedHeader: string) => void;
+  onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) => void;
   onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
 };
 
@@ -51,8 +51,14 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
     selectedFile && selectedFile.source !== "commit"
       ? {
           source: selectedFile.source,
-          onApply: (hunkIndex: number, expectedHeader: string) =>
-            applyHunk(selectedFile.path, selectedFile.source === "staged", hunkIndex, expectedHeader),
+          onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) =>
+            applyHunk(
+              selectedFile.path,
+              selectedFile.source === "staged",
+              hunkIndex,
+              expectedHeader,
+              expectedBody,
+            ),
           onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) =>
             applyLine(selectedFile.path, selectedFile.source === "staged", hunkIndex, lineIndex, line),
         }
@@ -148,6 +154,7 @@ function UnifiedDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkAct
   const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
   const comments = useLineComments(file.path, lines);
   const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
+  const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
   const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -165,7 +172,8 @@ function UnifiedDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkAct
                   hunkAction
                     ? {
                         mode,
-                        onClick: () => hunkAction.onApply(row.hunkIndex, row.header),
+                        onClick: () =>
+                          hunkAction.onApply(row.hunkIndex, row.header, hunkBody(file.hunks[row.hunkIndex])),
                         disabledReason: unavailableReason,
                       }
                     : null
@@ -177,7 +185,7 @@ function UnifiedDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkAct
                 comments={comments.rowFor(row.seq)}
                 controller={comments}
                 stage={
-                  hunkAction && !unavailableReason && row.line.kind !== "ctx"
+                  hunkAction && !lineUnavailable && row.line.kind !== "ctx"
                     ? { mode, onClick: () => hunkAction.onApplyLine(row.hunkIndex, row.lineIndex, row.line) }
                     : null
                 }
@@ -203,6 +211,7 @@ function SplitDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActio
   const leftComments = useLineComments(file.path, leftLines);
   const rightComments = useLineComments(file.path, rightLines);
   const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
+  const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
   const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -220,7 +229,8 @@ function SplitDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActio
                   hunkAction
                     ? {
                         mode,
-                        onClick: () => hunkAction.onApply(row.hunkIndex, row.header),
+                        onClick: () =>
+                          hunkAction.onApply(row.hunkIndex, row.header, hunkBody(file.hunks[row.hunkIndex])),
                         disabledReason: unavailableReason,
                       }
                     : null
@@ -235,7 +245,7 @@ function SplitDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActio
                 leftController={leftComments}
                 rightController={rightComments}
                 lineStage={
-                  hunkAction && !unavailableReason ? { mode, onApply: hunkAction.onApplyLine } : null
+                  hunkAction && !lineUnavailable ? { mode, onApply: hunkAction.onApplyLine } : null
                 }
               />
             )

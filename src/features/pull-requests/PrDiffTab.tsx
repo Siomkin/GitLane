@@ -7,6 +7,7 @@ import { usePulls } from "../../store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { UnifiedDiffBody } from "../review/DiffBody";
+import { HandToAgentBar } from "../review/comments";
 
 export function PrDiffTab({ pr }: { pr: PullRequest }) {
   const diffs = usePulls((s) => s.prDiffs[pr.num]);
@@ -64,6 +65,8 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
           </div>
         );
       })}
+      {/* Comments made on PR diffs are reachable here too (docked at the bottom). */}
+      <HandToAgentBar />
     </div>
   );
 }

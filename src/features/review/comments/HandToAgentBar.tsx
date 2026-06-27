@@ -16,7 +16,7 @@ export const HandToAgentBar = () => {
   const word = n === 1 ? "comment" : "comments";
 
   return (
-    <div className="flex flex-none items-center gap-2.5 border-t border-black/5 p-3 dark:border-white/5">
+    <div className="sticky bottom-0 z-10 flex flex-none items-center gap-2.5 border-t border-black/5 bg-white p-3 dark:border-white/5 dark:bg-neutral-800">
       <span className="flex flex-none items-center gap-1.5 text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">
         <DiamondIcon width={14} height={14} className="text-neutral-500" />
         Hand to agent

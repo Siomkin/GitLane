@@ -21,10 +21,11 @@ pub fn apply_hunk(
     staged: bool,
     hunk_index: usize,
     expected_header: &str,
+    expected_body: &str,
 ) -> Result<String, String> {
     let args = patch_diff_args(staged, file);
     let diff = run_git(repo, &args)?;
-    let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header)?;
+    let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header, expected_body)?;
     apply_hunk_patch(repo, &patch, staged)?;
     Ok(format!(
         "{} hunk in {file}",
@@ -126,6 +127,7 @@ fn extract_single_hunk_patch(
     diff: &str,
     hunk_index: usize,
     expected_header: &str,
+    expected_body: &str,
 ) -> Result<String, String> {
     if diff.trim().is_empty() {
         return Err("No patch is available for this file".to_string());
@@ -167,6 +169,21 @@ fn extract_single_hunk_patch(
         .map(|line| line.trim_end_matches(['\r', '\n']))
         .unwrap_or_default();
     if hunk_range(actual_header) != hunk_range(expected_header) {
+        return Err("That hunk changed on disk; refresh the diff and try again".to_string());
+    }
+
+    // The @@ range alone can match while the body changed on disk (e.g. an edit
+    // landed during the watcher debounce). Compare the body the UI displayed —
+    // one `{sign}{content}` line per row (markers and trailing EOLs stripped),
+    // matching the frontend's `hunkBody`.
+    let actual_body = current_hunk
+        .iter()
+        .skip(1)
+        .filter(|line| !line.starts_with('\\'))
+        .map(|line| line.trim_end_matches(['\r', '\n']))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if actual_body != expected_body {
         return Err("That hunk changed on disk; refresh the diff and try again".to_string());
     }
 

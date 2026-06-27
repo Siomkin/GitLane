@@ -119,7 +119,13 @@ describe("ReviewWorkspace — virtualized diff", () => {
     render(<ReviewWorkspace />);
     fireEvent.click(screen.getByRole("button", { name: "Stage hunk" }));
 
-    expect(applyHunk).toHaveBeenCalledWith("src/huge.ts", false, 0, "@@ -1 +1 @@");
+    expect(applyHunk).toHaveBeenCalledWith(
+      "src/huge.ts",
+      false,
+      0,
+      "@@ -1 +1 @@",
+      "+line 0\n+line 1\n+line 2",
+    );
   });
 
   it("stages a changed line through the repo store action", () => {

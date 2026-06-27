@@ -399,11 +399,18 @@ export function createRepoWriteActions(
       }
     },
 
-    applyHunk: async (path, staged, hunkIndex, expectedHeader) => {
+    applyHunk: async (path, staged, hunkIndex, expectedHeader, expectedBody) => {
       const { summary } = get();
       if (!summary) return;
       try {
-        const message = await api.applyHunk(summary.path, path, staged, hunkIndex, expectedHeader);
+        const message = await api.applyHunk(
+          summary.path,
+          path,
+          staged,
+          hunkIndex,
+          expectedHeader,
+          expectedBody,
+        );
         await get().refresh();
         const { changes } = get();
         const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";

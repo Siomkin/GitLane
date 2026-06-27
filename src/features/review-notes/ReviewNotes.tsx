@@ -28,6 +28,9 @@ export function AgentMessageDialog() {
   const agentsRaw = useTerminalAgents((s) => s.agents);
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
   const [text, setText] = useState("");
+  // Tracks whether the user has manually edited the composed message, so note
+  // changes (e.g. removing one from the list) don't clobber their edits.
+  const [dirty, setDirty] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const agents = selectEnabledAgents(agentsRaw);
@@ -37,10 +40,17 @@ export function AgentMessageDialog() {
     availableAgents[0] ??
     null;
 
-  // Compose once each time the popup opens; later edits are the user's to keep.
+  // Recompose while the dialog is open and untouched — so opening fresh, or
+  // removing a comment from the list, updates the message — but never overwrite
+  // manual edits (the dialog explicitly asks the user to review/edit).
   useEffect(() => {
-    if (open) setText(composeAgentMessage(notes, branch));
-  }, [open, notes, branch]);
+    if (open && !dirty) setText(composeAgentMessage(notes, branch));
+  }, [open, dirty, notes, branch]);
+
+  // Reset the edit flag when the dialog closes, so the next open composes fresh.
+  useEffect(() => {
+    if (!open) setDirty(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -120,7 +130,10 @@ export function AgentMessageDialog() {
         </div>
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setDirty(true);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
           }}

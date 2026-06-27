@@ -118,7 +118,8 @@ fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
     )
     .unwrap();
 
-    apply_hunk(repo.path(), file, false, 0, "@@ -1,4 +1,4 @@").expect("stage first hunk");
+    apply_hunk(repo.path(), file, false, 0, "@@ -1,4 +1,4 @@", "-one\n+ONE\n 2\n 3\n 4")
+        .expect("stage first hunk");
 
     let cached = repo.git(&["diff", "--cached", "--", file]);
     let cached_text = String::from_utf8_lossy(&cached.stdout);
@@ -174,6 +175,7 @@ fn apply_hunk_allows_different_function_context_text() {
         false,
         0,
         "@@ -1,4 +1,4 @@ different context",
+        "-one\n+ONE\n two\n three\n four",
     )
     .expect("stage hunk");
 
@@ -201,7 +203,8 @@ fn apply_hunk_unstages_one_staged_hunk() {
     .unwrap();
     repo.git_ok(&["add", "file.txt"]);
 
-    apply_hunk(repo.path(), "file.txt", true, 0, "@@ -1,4 +1,4 @@").expect("unstage first hunk");
+    apply_hunk(repo.path(), "file.txt", true, 0, "@@ -1,4 +1,4 @@", "-one\n+ONE\n 2\n 3\n 4")
+        .expect("unstage first hunk");
 
     let cached = repo.git(&["diff", "--cached", "--", "file.txt"]);
     let cached_text = String::from_utf8_lossy(&cached.stdout);
@@ -223,7 +226,8 @@ fn apply_hunk_stages_deleted_file_hunk() {
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
     std::fs::remove_file(repo.0.join("gone.txt")).unwrap();
 
-    apply_hunk(repo.path(), "gone.txt", false, 0, "@@ -1,3 +0,0 @@").expect("stage deletion hunk");
+    apply_hunk(repo.path(), "gone.txt", false, 0, "@@ -1,3 +0,0 @@", "-one\n-two\n-three")
+        .expect("stage deletion hunk");
 
     let status = repo.git(&["diff", "--cached", "--name-status", "--", "gone.txt"]);
     assert_eq!(
@@ -243,7 +247,33 @@ fn apply_hunk_rejects_stale_hunk_header() {
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
     std::fs::write(repo.0.join("file.txt"), "ONE\ntwo\n").unwrap();
 
-    let err = apply_hunk(repo.path(), "file.txt", false, 0, "@@ -9,1 +9,1 @@").unwrap_err();
+    let err = apply_hunk(repo.path(), "file.txt", false, 0, "@@ -9,1 +9,1 @@", "").unwrap_err();
+
+    assert!(err.contains("changed on disk"));
+}
+
+#[test]
+fn apply_hunk_rejects_stale_hunk_body() {
+    let repo = TempRepo::new("stale-hunk-body");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("file.txt"), "one\ntwo\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(repo.0.join("file.txt"), "ONE\ntwo\n").unwrap();
+
+    // Correct @@ range but a body the diff never produced (the file changed on
+    // disk since it was displayed) → rejected before anything is staged.
+    let err = apply_hunk(
+        repo.path(),
+        "file.txt",
+        false,
+        0,
+        "@@ -1,2 +1,2 @@",
+        "-stale\n+content\n two",
+    )
+    .unwrap_err();
 
     assert!(err.contains("changed on disk"));
 }

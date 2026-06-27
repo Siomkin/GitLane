@@ -1,4 +1,4 @@
-import type { FileDiff } from "../../lib/api";
+import type { DiffHunk, FileDiff } from "../../lib/api";
 import type { ChangeSource } from "../../store/repo";
 
 export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
@@ -11,3 +11,25 @@ export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource)
   if (file.status === "T") return "Type changes can only be staged as a file";
   return null;
 };
+
+/** Line-level staging is unavailable wherever hunk staging is, plus on whole-file
+ * add/delete diffs: their patches carry `new file`/`deleted file` headers + a
+ * /dev/null side, which `git apply --unidiff-zero` rejects for a single-line
+ * (partial) patch. Such files stage/unstage as a whole instead. */
+export const lineStagePatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
+  const hunkReason = hunkPatchUnavailableReason(file, source);
+  if (hunkReason) return hunkReason;
+  if (file.status === "A" || file.status === "D") {
+    return "Added/deleted files can only be staged as a file";
+  }
+  return null;
+};
+
+/** Canonical body of a hunk, one `{sign}{content}` line per row joined by
+ * newlines — the form the staging backend reconstructs from its patch source.
+ * Passed to `applyHunk` so the backend can reject staging a hunk whose content
+ * changed on disk since it was displayed (the @@ range alone isn't enough). */
+export const hunkBody = (hunk: DiffHunk): string =>
+  hunk.lines
+    .map((line) => `${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "}${line.content}`)
+    .join("\n");

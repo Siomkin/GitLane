@@ -421,9 +421,12 @@ async fn apply_hunk(
     staged: bool,
     hunk_index: usize,
     expected_header: String,
+    expected_body: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::apply_hunk(&path, &file, staged, hunk_index, &expected_header))
-        .await
+    blocking(move || {
+        git::write::apply_hunk(&path, &file, staged, hunk_index, &expected_header, &expected_body)
+    })
+    .await
 }
 
 #[tauri::command]
