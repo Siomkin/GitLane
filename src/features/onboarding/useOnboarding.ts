@@ -25,10 +25,10 @@ import {
   validateCloneUrl,
 } from "./onboarding";
 
-/** The post-clone / post-init confirmation shown before entering the repo. */
+/** The repository a just-completed clone/init produced, shown on the success
+ * screen before entering it. Which screen to show (empty after init vs opened
+ * after clone) is the hook's `screen` state — not duplicated here. */
 export interface OnboardingResult {
-  screen: "empty" | "opened";
-  via: "clone" | "init";
   name: string;
   branch: string;
   path: string;
@@ -201,7 +201,7 @@ export const useOnboarding = (onDone?: () => void) => {
         } catch {
           /* fall back to the parsed name/path */
         }
-        setResult({ screen: "opened", via: "clone", name, branch, path: finalPath });
+        setResult({ name, branch, path: finalPath });
         setScreen("opened");
       } catch (e) {
         if (cancelingRef.current) return; // cancel already showed its own screen
@@ -252,7 +252,7 @@ export const useOnboarding = (onDone?: () => void) => {
     void (async () => {
       try {
         const path = await api.initRepo(initParent, name, branch, initReadme, initIgnore);
-        setResult({ screen: "empty", via: "init", name, branch, path });
+        setResult({ name, branch, path });
         setScreen("empty");
       } catch (e) {
         setInitError(String(e));

@@ -7,7 +7,9 @@ import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "./icons";
 export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
   const result = ob.result;
   if (!result) return null;
-  const isEmpty = result.screen === "empty";
+  // Which confirmation to show is the hook's screen state (the only source of
+  // truth) — "empty" after init, "opened" after clone.
+  const isEmpty = ob.screen === "empty";
 
   return (
     <div className="flex min-h-full flex-col">
