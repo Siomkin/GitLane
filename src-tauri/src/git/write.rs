@@ -12,6 +12,7 @@ mod branches;
 mod cli;
 mod conflict_resolution;
 mod identity;
+mod lifecycle;
 mod operands;
 mod recovery;
 mod remotes;
@@ -26,6 +27,7 @@ pub use branches::{
     create_tag, delete_branch, delete_tag, fast_forward, fast_forward_branch, merge, rebase,
     rename_branch, reset, revert, revert_many, set_upstream,
 };
+pub use lifecycle::{cancel_clone, clone, init, CloneSlot};
 pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
     reconflict_file, resolve_conflict_file, skip_operation,

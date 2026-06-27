@@ -4,6 +4,23 @@
 
 const LS_OPEN = "gitlane.openPaths";
 const LS_LAST = "gitlane.lastPath";
+const LS_RECENTS = "gitlane.recentRepos";
+
+/** Max recent repositories kept (the onboarding "Recent" list is short). */
+const RECENTS_LIMIT = 12;
+
+/** A previously-opened repository shown on the onboarding screen, most-recent
+ * first. `branch`/`missing` are refreshed from disk on the start screen; only
+ * the durable fields are persisted (`missing` is recomputed, never stored). */
+export interface RecentRepo {
+  path: string;
+  name: string;
+  branch: string | null;
+  /** Epoch ms of the last open, for the relative "when" label + ordering. */
+  lastOpenedAt: number;
+  /** Runtime-only: true when the path no longer resolves on disk. */
+  missing?: boolean;
+}
 
 /** Open-repo paths persisted from a previous session (the tab strip). */
 export function readOpenPaths(): string[] {
@@ -35,4 +52,43 @@ export function persistSession(openPaths: string[], lastPath: string | null): vo
   } catch {
     /* ignore quota / unavailable */
   }
+}
+
+/** Recently-opened repositories from a previous session (most-recent first). */
+export function readRecents(): RecentRepo[] {
+  try {
+    const raw = localStorage.getItem(LS_RECENTS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((r): r is RecentRepo => !!r && typeof r.path === "string")
+      .map((r) => ({
+        path: r.path,
+        name: typeof r.name === "string" ? r.name : r.path,
+        branch: typeof r.branch === "string" ? r.branch : null,
+        lastOpenedAt: typeof r.lastOpenedAt === "number" ? r.lastOpenedAt : 0,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** Mirror the recent list to localStorage (durable fields only — `missing` is a
+ * runtime flag recomputed each launch). */
+export function persistRecents(recents: RecentRepo[]): void {
+  try {
+    const durable = recents
+      .slice(0, RECENTS_LIMIT)
+      .map(({ path, name, branch, lastOpenedAt }) => ({ path, name, branch, lastOpenedAt }));
+    localStorage.setItem(LS_RECENTS, JSON.stringify(durable));
+  } catch {
+    /* ignore quota / unavailable */
+  }
+}
+
+/** Move/insert `entry` at the front of the recent list (dedup by path), capped. */
+export function upsertRecent(recents: RecentRepo[], entry: RecentRepo): RecentRepo[] {
+  const rest = recents.filter((r) => r.path !== entry.path);
+  return [entry, ...rest].slice(0, RECENTS_LIMIT);
 }

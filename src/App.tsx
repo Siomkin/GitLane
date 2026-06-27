@@ -20,7 +20,7 @@ import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { SettingsModal } from "./components/chrome/SettingsModal";
 import { TitleBar } from "./components/chrome/TitleBar";
 import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
-import { WelcomeScreen } from "./components/chrome/WelcomeScreen";
+import { RepoOnboarding } from "./features/onboarding";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
 import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
@@ -49,7 +49,6 @@ const App = () => {
   const summary = useRepo((state) => state.summary);
   const error = useRepo((state) => state.error);
   const clearError = useRepo((state) => state.clearError);
-  const pickAndOpen = useRepo((state) => state.pickAndOpen);
   const selectedFile = useRepo((state) => state.selectedFile);
   const operation = useRepo((state) => state.operation);
   const revealTarget = useRepo((state) => state.revealTarget);
@@ -208,7 +207,7 @@ const App = () => {
           </div>
         </>
       ) : (
-        <WelcomeScreen onOpen={pickAndOpen} />
+        <RepoOnboarding />
       )}
 
       <SettingsModal />

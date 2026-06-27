@@ -65,6 +65,44 @@ fn login_path() -> Option<String> {
     }
 }
 
+/// Reveal `path` in the OS file manager (macOS Finder, Windows Explorer, or the
+/// default Linux handler), selecting the item where the platform supports it.
+/// Used by the onboarding "Reveal in Finder" action after a repo is initialized.
+/// Spawns and returns immediately — the file manager owns the window.
+pub fn reveal(path: &str) -> Result<(), String> {
+    let mut cmd = {
+        #[cfg(target_os = "macos")]
+        {
+            let mut c = Command::new("open");
+            c.args(["-R", path]);
+            c
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let mut c = Command::new("explorer");
+            // `/select,<path>` highlights the item in its parent folder.
+            c.arg(format!("/select,{path}"));
+            c
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            let mut c = Command::new("xdg-open");
+            c.arg(path);
+            c
+        }
+    };
+    cmd.env("PATH", path_var())
+        .spawn()
+        .map_err(|e| format!("failed to reveal {path}: {e}"))?;
+    Ok(())
+}
+
+/// Internal alias so [`reveal`] can reuse the augmented PATH without colliding
+/// with its `path` parameter name.
+fn path_var() -> String {
+    path()
+}
+
 /// Pure fallback: `current` with existing Homebrew `bin` directories prepended
 /// (when they exist on disk and aren't already listed). Dirs already present are
 /// not duplicated.

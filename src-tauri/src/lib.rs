@@ -17,13 +17,19 @@ use watcher::WatcherState;
 use git::types::{
     BranchInfo, ConflictFileContent, DestructivePreview, FileChange, FileDiff, ForgeAuthStatus,
     GithubAccount, GithubAccountRef, OperationStatus, PrCheck, PrCommitSignature,
-    PullRequestDetail, PullRequestSummary, ReflogEntry, RepoForge, RepoGraph, RepoIdentity,
-    RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
+    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RepoForge, RepoGraph,
+    RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
 /// pages while virtualized rows/canvas keep rendering memory bounded.
 const DEFAULT_GRAPH_LIMIT: usize = 2000;
+
+/// Holds the in-flight `git clone` child so [`cancel_clone`] can terminate it
+/// from another command while the clone streams progress. The inner [`Arc`] is
+/// cloned out before the clone runs on the blocking pool.
+#[derive(Default)]
+struct CloneState(git::write::CloneSlot);
 
 /// Run blocking work (a `git`/`gh` subprocess) off the webview's main thread.
 /// Synchronous Tauri commands execute on the main thread, so a blocking
@@ -792,6 +798,57 @@ async fn clear_repo_identity(path: String) -> Result<String, String> {
     blocking(move || git::write::clear_repo_identity(&path)).await
 }
 
+// ---- repository onboarding (clone / init / recents) ----
+
+/// Clone `url` into `dest`, streaming `clone-progress` events as it runs. The
+/// child is parked in [`CloneState`] so [`cancel_clone`] can stop it. Returns the
+/// cloned path on success; the frontend then opens it.
+#[tauri::command]
+async fn clone_repo(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, CloneState>,
+    url: String,
+    dest: String,
+) -> Result<String, String> {
+    let slot = state.0.clone();
+    blocking(move || git::write::clone(&app, slot, &url, &dest)).await
+}
+
+/// Terminate an in-flight [`clone_repo`]. Instant (lock + kill), so it stays a
+/// plain sync command and never queues behind the blocking pool the clone holds.
+#[tauri::command]
+fn cancel_clone(state: tauri::State<'_, CloneState>) -> Result<(), String> {
+    git::write::cancel_clone(&state.0)
+}
+
+/// Initialize a new repository at `parent`/`name` on `branch`, optionally seeding
+/// a README and a `.gitignore` template. Returns the new repo's path.
+#[tauri::command]
+async fn init_repo(
+    parent: String,
+    name: String,
+    branch: String,
+    readme: bool,
+    gitignore: String,
+) -> Result<String, String> {
+    blocking(move || git::write::init(&parent, &name, &branch, readme, &gitignore)).await
+}
+
+/// Presence + current branch for each recent repo path, so the onboarding list
+/// can flag missing paths and show branches. Touches the filesystem per path, so
+/// it runs off the main thread.
+#[tauri::command]
+async fn recents_status(paths: Vec<String>) -> Result<Vec<RecentStatus>, String> {
+    blocking(move || Ok(git::read::recents_status(&paths))).await
+}
+
+/// Reveal `path` in the OS file manager (Finder/Explorer). Spawns and returns
+/// immediately, so a plain sync command is fine.
+#[tauri::command]
+fn reveal_path(path: String) -> Result<(), String> {
+    shell::reveal(&path)
+}
+
 // ---- terminal ----
 
 /// All configured terminal agents (enabled + disabled), each with its command's
@@ -880,6 +937,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(WatcherState::default())
         .manage(TerminalState::default())
+        .manage(CloneState::default())
         .setup(|app| {
             // The updater is desktop-only; registering it here (rather than in the
             // builder chain) keeps a future mobile build compiling without it. The
@@ -1039,6 +1097,11 @@ pub fn run() {
             set_repo_identity,
             repo_identity,
             clear_repo_identity,
+            clone_repo,
+            cancel_clone,
+            init_repo,
+            recents_status,
+            reveal_path,
             terminal_agents_get,
             terminal_agents_set,
             terminal_agents_reset,

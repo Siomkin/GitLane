@@ -68,6 +68,22 @@ export interface RepoIdentity {
   email: string;
 }
 
+/** Presence + current branch of a recently-opened repo path (see Rust
+ * `RecentStatus`). `exists: false` marks a path that no longer resolves on disk
+ * so the onboarding list can flag it "Missing". */
+export interface RecentStatus {
+  path: string;
+  exists: boolean;
+  branch: string | null;
+}
+
+/** Payload of the `clone-progress` event streamed during a clone (see Rust
+ * `CloneProgress`). `pct` is the blended overall completion 0–100. */
+export interface CloneProgress {
+  stage: string;
+  pct: number;
+}
+
 /** Remote forge keys emitted by the backend's `ForgeKind::key()`
  * (`src-tauri/src/git/forge.rs`). This is the single source of truth on the TS
  * side — compare against `ForgeKind.GitHub` rather than a bare `"github"`
@@ -585,6 +601,34 @@ export const gitApi = {
 
   /** Remove the pinned identity from local git config (defer to global). */
   clearRepoIdentity: (path: string) => invoke<string>("clear_repo_identity", { path }),
+
+  // ---- repository onboarding (clone / init / recents) ----
+
+  /** Clone `url` into `dest`, streaming `clone-progress` events while it runs.
+   * Resolves with the cloned repo's path; the caller then opens it. Reject with
+   * the git failure text (classified UI-side into exists/auth/unreachable). */
+  cloneRepo: (url: string, dest: string) => invoke<string>("clone_repo", { url, dest }),
+
+  /** Cancel an in-flight {@link cloneRepo} (kills the `git clone` child). */
+  cancelClone: () => invoke<void>("cancel_clone"),
+
+  /** Initialize a new repo at `parent`/`name` on `branch`, optionally seeding a
+   * README and a `.gitignore` template. Resolves with the new repo's path. */
+  initRepo: (
+    parent: string,
+    name: string,
+    branch: string,
+    readme: boolean,
+    gitignore: string,
+  ) => invoke<string>("init_repo", { parent, name, branch, readme, gitignore }),
+
+  /** Presence + current branch for each recent repo path (missing-path + branch
+   * info for the onboarding "Recent" list). */
+  recentsStatus: (paths: string[]) => invoke<RecentStatus[]>("recents_status", { paths }),
+
+  /** Reveal `path` in the OS file manager (Finder/Explorer). */
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+
   /** Start watching `path`; the backend emits `repo-changed` on any change. */
   watchRepo: (path: string) => invoke<void>("watch_repo", { path }),
 };

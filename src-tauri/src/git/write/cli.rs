@@ -73,6 +73,28 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
     }
 }
 
+/// Run `git <args>` **without** `-C <repo>`, for operations that act outside an
+/// existing repository (clone into a new dir, init a fresh repo). PATH is
+/// augmented exactly like [`run_git`]. Returns combined stdout/stderr on success
+/// or the error output on a non-zero exit.
+pub(super) fn run_git_bare(args: &[&str]) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    cmd.args(args).env("PATH", crate::shell::path());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(format!("{stdout}{stderr}").trim().to_string())
+    } else {
+        Err(format!("{stdout}{stderr}").trim().to_string())
+    }
+}
+
 pub(super) fn run_git_env_stable_diagnostics(
     repo: &str,
     args: &[&str],
