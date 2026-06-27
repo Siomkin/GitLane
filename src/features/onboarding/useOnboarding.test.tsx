@@ -76,3 +76,24 @@ describe("openRecent — relocating a missing recent", () => {
     expect(removeSpy).toHaveBeenCalledWith("/old/gone");
   });
 });
+
+describe("overlay unmount during clone", () => {
+  it("cancels an in-flight clone when the hook unmounts mid-progress", async () => {
+    useRepo.setState({
+      recents: [{ path: "/code/x", name: "x", branch: null, lastOpenedAt: 0 }],
+      summary: null,
+    });
+    // clone_repo stays in flight; other reads (recents_status, cancel_clone) resolve.
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "clone_repo" ? new Promise<string>(() => {}) : Promise.resolve([]),
+    );
+
+    const { result, unmount } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://github.com/o/r.git"));
+    act(() => result.current.startClone());
+    await waitFor(() => expect(result.current.screen).toBe("progress"));
+
+    unmount();
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("cancel_clone"));
+  });
+});

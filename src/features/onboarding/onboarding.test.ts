@@ -69,6 +69,13 @@ describe("classifyCloneError", () => {
     );
   });
 
+  it("maps a concurrent-clone rejection", () => {
+    const c = classifyCloneError("A clone is already in progress.");
+    expect(c.kind).toBe("failed");
+    expect(c.title).toBe("A clone is already running");
+    expect(c.cmd).toBe("");
+  });
+
   it("falls back to a generic failure with the message preserved", () => {
     const c = classifyCloneError("fatal: something unexpected happened");
     expect(c.kind).toBe("failed");

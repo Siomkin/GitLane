@@ -52,11 +52,7 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
     // yet (we create it) or it's an empty directory the user pointed us at (so a
     // partial clone would be the only thing in it). A pre-existing *non-empty*
     // dir is never removed — git refuses to clone into one anyway.
-    let dest_path = std::path::Path::new(dest);
-    let cleanup_eligible = !dest_path.exists()
-        || std::fs::read_dir(dest_path)
-            .map(|mut entries| entries.next().is_none())
-            .unwrap_or(false);
+    let cleanup_eligible = clone_cleanup_eligible(std::path::Path::new(dest));
 
     let mut cmd = Command::new("git");
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
@@ -267,6 +263,17 @@ fn parse_percent(line: &str) -> Option<u32> {
     line[start..percent].parse::<u32>().ok().map(|p| p.min(100))
 }
 
+/// Whether a failed/canceled clone may remove `dest`: it doesn't exist yet (we
+/// create it) or it's an empty directory the user pointed us at. A pre-existing
+/// non-empty dir is never eligible — git won't clone into one anyway, and we must
+/// not delete the user's files.
+fn clone_cleanup_eligible(dest: &std::path::Path) -> bool {
+    !dest.exists()
+        || std::fs::read_dir(dest)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false)
+}
+
 /// Kill the in-flight clone child, if any. Idempotent: a no-op once the clone has
 /// finished and reclaimed its handle.
 pub fn cancel_clone(slot: &CloneSlot) -> Result<(), String> {
@@ -441,6 +448,24 @@ mod tests {
         // Still valid UTF-8 / not split mid-char (String guarantees this; the
         // boundary trim must keep it intact).
         assert!(t.is_char_boundary(0));
+    }
+
+    #[test]
+    fn cleanup_eligibility_covers_absent_and_empty_dirs_only() {
+        let base = std::env::temp_dir().join(format!("gitlane-clone-elig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let absent = base.join("absent");
+        let empty = base.join("empty");
+        let nonempty = base.join("nonempty");
+        std::fs::create_dir_all(&empty).unwrap();
+        std::fs::create_dir_all(&nonempty).unwrap();
+        std::fs::write(nonempty.join("file.txt"), "x").unwrap();
+
+        assert!(clone_cleanup_eligible(&absent), "absent dir is eligible");
+        assert!(clone_cleanup_eligible(&empty), "empty dir is eligible");
+        assert!(!clone_cleanup_eligible(&nonempty), "non-empty dir is not eligible");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

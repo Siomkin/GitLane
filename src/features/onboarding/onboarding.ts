@@ -58,6 +58,16 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
   const lower = message.toLowerCase();
   const cmd = fatalLine(message);
 
+  if (lower.includes("already in progress")) {
+    return {
+      kind: "failed",
+      title: "A clone is already running",
+      message: "Wait for the current clone to finish before starting another.",
+      cmd: "",
+      fail: true,
+      retryLabel: "Try again",
+    };
+  }
   if (lower.includes("already exists")) {
     return {
       kind: "exists",

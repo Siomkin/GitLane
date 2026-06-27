@@ -150,8 +150,15 @@ export const useOnboarding = (onDone?: () => void) => {
         })();
         return;
       }
-      void useRepo.getState().loadRepo(repo.path);
-      onDone?.();
+      void (async () => {
+        const before = useRepo.getState().summary?.path ?? null;
+        await useRepo.getState().loadRepo(repo.path);
+        const after = useRepo.getState().summary?.path ?? null;
+        // Dismiss only once we're actually on the target repo — it became active
+        // (path changed) or already was. A failed open leaves the previous repo
+        // active, so the overlay stays open and the error bar surfaces.
+        if (after !== before || after === repo.path) onDone?.();
+      })();
     },
     [onDone],
   );
@@ -259,8 +266,14 @@ export const useOnboarding = (onDone?: () => void) => {
   // ---- result (enter the repo / reveal it) ----
   const enterResult = useCallback(() => {
     if (!result) return;
-    void useRepo.getState().loadRepo(result.path);
-    onDone?.();
+    void (async () => {
+      const before = useRepo.getState().summary?.path ?? null;
+      await useRepo.getState().loadRepo(result.path);
+      const after = useRepo.getState().summary?.path ?? null;
+      // Only dismiss once the repo opened (path changed / already active); a
+      // failed open keeps the success screen rather than dropping to a bare error.
+      if (after !== before || after === result.path) onDone?.();
+    })();
   }, [result, onDone]);
 
   const revealResult = useCallback(() => {
