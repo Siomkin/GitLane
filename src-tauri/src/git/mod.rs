@@ -1,10 +1,10 @@
 //! Git access layer for GitLane.
 //!
-//! - [`read`]   — libgit2-backed reads (graph, refs, branches).
-//! - [`status`] — libgit2-backed working-tree status and diffs.
+//! - [`read`]   — libgit2-backed repo, branch, graph, and identity reads.
+//! - [`status`] — libgit2-backed working-tree, commit, and range diffs.
 //! - [`conflicts`] — libgit2 conflict + in-progress-operation detection.
-//! - [`graph`]  — DAG → lane layout for the visual commit tree.
-//! - [`write`]  — mutating operations, shelled out to the real `git` binary.
+//! - [`graph`]  — facade for DAG → lane layout and graph ref/stash helpers.
+//! - [`write`]  — facade for mutating operations shelled out to real `git`.
 //! - [`forge`]  — remote URL forge detection for provider routing/errors.
 //! - [`github`] — GitHub accounts + pull requests, shelled out to the `gh` CLI.
 //! - [`types`]  — serializable types shared with the frontend.

@@ -60,7 +60,7 @@ frontend** (`src/`). The frontend calls Rust via `invoke()`.
 Adding or changing a command means editing all of these:
 
 1. `src-tauri/src/lib.rs` — `#[tauri::command]` fns **and** the `generate_handler!` list (easy to forget the registration).
-2. The implementation module under `src-tauri/src/git/` — `read.rs`, `status.rs`, `graph.rs`, `write.rs`, or the `github/` directory (see the read/write split below).
+2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `write.rs` + `write/`, or the `github/` directory (see the read/write split below).
 3. `src-tauri/src/git/types.rs` — serde structs returned to the frontend. All use `#[serde(rename_all = "camelCase")]`, so JSON fields are camelCase on the TS side.
 4. `src/lib/api/{git,github,terminal}.ts` (merged into the `api` object by `api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces.
 
@@ -68,8 +68,8 @@ Adding or changing a command means editing all of these:
 
 ### Read/write split — the central design decision
 
-- **Reads** use libgit2 via the `git2` crate: `git/read.rs` (summary, branches, fast-forward check), `git/graph.rs` (the commit graph), and `git/status.rs` (working-tree status, staged/unstaged diffs, commit diffs). Most reads are synchronous; the potentially expensive `commit_graph` command opens the repo inside `blocking()` so large histories do not freeze the webview. `git2` is built with `default-features = false`, so **network features (clone/fetch/push) are deliberately unavailable** through libgit2.
-- **Writes** (checkout, branch create/delete/rename, merge, rebase, reset, cherry-pick, revert, stage/unstage, commit, stash, pull, push) shell out to the user's real `git` binary in `git/write.rs`. This is intentional — the CLI honours hooks, credential helpers, `.gitconfig`, signing, and the full conflict machinery. **Do not reimplement write operations with libgit2.**
+- **Reads** use libgit2 via the `git2` crate: `git/read.rs` is the facade for repo summary, branches, fast-forward checks, graph entrypoint, and repo identity with focused helpers in `git/read/`; `git/status.rs` is the facade for working-tree, commit, and range diffs with helpers in `git/status/`; `git/conflicts.rs` is the facade for conflict-operation detection and conflicted-file reads with helpers in `git/conflicts/`; `git/graph.rs` is the facade for commit graph layout with helpers in `git/graph/`. Most reads are synchronous; the potentially expensive `commit_graph` command opens the repo inside `blocking()` so large histories do not freeze the webview. `git2` is built with `default-features = false`, so **network features (clone/fetch/push) are deliberately unavailable** through libgit2.
+- **Writes** (checkout, branch create/delete/rename, merge, rebase, reset, cherry-pick, revert, stage/unstage, commit, stash, pull, push) shell out to the user's real `git` binary through the `git/write.rs` facade and focused modules under `git/write/` (`cli`, `operands`, `branches`, `conflict_resolution`, `staging`, `stashes`, `worktrees`, `remotes`, `recovery`, `identity`). This is intentional — the CLI honours hooks, credential helpers, `.gitconfig`, signing, and the full conflict machinery. **Do not reimplement write operations with libgit2.**
 - **GitHub** (`git/github/`, split by provider/service/transport responsibility) shells out to the user's `gh` CLI for accounts and pull requests by default — same rationale: `gh` owns credentials, multi-account, and host config. Tauri commands call `GithubService`, which builds a provider-neutral `GithubContext` from `{ host, owner, name }` repository identity plus an optional `{ provider, host, accountId, login }` account ref, then dispatches to a `GithubProvider`. `GhProvider` is the default provider and delegates to the split `gh` modules. `github/cli.rs` owns the single `gh` subprocess (`run_gh` — the only `Command::new("gh")` in the tree); `dto`/`prs`/`threads`/`diff` hold response shapes, PR ops, review-thread GraphQL, and patch parsing. `github/mod.rs` is the stable service-backed facade for the `git::github::*` API. `git/forge.rs` detects known non-GitHub remotes (Bitbucket, GitLab, Azure DevOps, Gitea, Forgejo/Codeberg) so unsupported forges fail with explicit messages instead of generic `gh` failures.
 
 ### Async / threading: keep subprocesses off the main thread
@@ -103,7 +103,8 @@ The frontend is a dumb painter: `src/features/graph/GraphLayer.tsx` (the column-
 used inside the history view) renders those coordinates on a `<canvas>`
 (chosen over DOM/SVG so redraws stay cheap at thousands of rows). `palette.ts` holds all
 geometry constants and lane colors; the `color` index from Rust is mod'd into the
-palette. **Don't put layout logic in the frontend** — extend `graph.rs` instead.
+palette. **Don't put layout logic in the frontend** — extend the `git/graph.rs` facade and
+focused helpers under `git/graph/` instead.
 `HistoryWorkspace` uses `@tanstack/react-virtual` for the fixed-height commit,
 stash, WIP, and load-more rows. `GraphLayer` follows the same virtual window so
 its canvas backing store is bounded by the viewport plus overscan.
