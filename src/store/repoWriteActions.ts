@@ -108,6 +108,7 @@ export function createRepoWriteActions(
   | "stageFile"
   | "unstageFile"
   | "applyHunk"
+  | "applyLine"
   | "discardFile"
   | "stageAll"
   | "unstageAll"
@@ -403,6 +404,28 @@ export function createRepoWriteActions(
       if (!summary) return;
       try {
         const message = await api.applyHunk(summary.path, path, staged, hunkIndex, expectedHeader);
+        await get().refresh();
+        const { changes } = get();
+        const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
+        const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
+        if (changes[preferred].some((file) => file.path === path)) {
+          await get().selectFile(path, preferred);
+        } else if (changes[fallback].some((file) => file.path === path)) {
+          await get().selectFile(path, fallback);
+        } else {
+          set({ selectedFile: null, fileDiff: null });
+        }
+        useUi.getState().showToast(message);
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    applyLine: async (path, staged, hunkIndex, lineIndex, line) => {
+      const { summary } = get();
+      if (!summary) return;
+      try {
+        const message = await api.applyLine(summary.path, path, staged, hunkIndex, lineIndex, line);
         await get().refresh();
         const { changes } = get();
         const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";

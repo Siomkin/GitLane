@@ -104,9 +104,38 @@ export const HunkActionButton = ({
   );
 };
 
+export const LineActionButton = ({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    title={label}
+    aria-label={label}
+    onClick={(event) => {
+      event.stopPropagation();
+      onClick();
+    }}
+    className="mr-2 h-[17px] flex-none rounded-[5px] border border-[color:var(--accent)] bg-white px-1.5 font-sans text-[10.5px] font-medium leading-none text-[color:var(--accent)] opacity-0 shadow-sm transition hover:bg-[color:var(--accent)]/10 focus:opacity-100 group-hover/line:opacity-100 dark:bg-neutral-800"
+  >
+    {label}
+  </button>
+);
+
 // Memoized: `line` is a stable object from the cached FileDiff and `file` is a
 // string, so an unrelated re-render of the diff body skips unchanged rows.
-export const UnifiedLine = memo(function UnifiedLine({ line, file }: { line: DiffLine; file?: string }) {
+export const UnifiedLine = memo(function UnifiedLine({
+  line,
+  file,
+  action,
+}: {
+  line: DiffLine;
+  file?: string;
+  action?: ReactNode;
+}) {
   const tone = line.kind;
   const bg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
   const gut = tone === "add" ? "#2e9e62" : tone === "del" ? "#e0626f" : "transparent";
@@ -138,7 +167,10 @@ export const UnifiedLine = memo(function UnifiedLine({ line, file }: { line: Dif
       >
         {sign}
       </span>
-      <Tokens content={line.content} />
+      <span className="min-w-0 flex-1 overflow-hidden">
+        <Tokens content={line.content} />
+      </span>
+      {action}
     </div>
   );
 
@@ -158,10 +190,12 @@ export function UnifiedDiffBody({
   hunks,
   file,
   renderHunkAction,
+  renderLineAction,
 }: {
   hunks: DiffHunk[];
   file?: string;
   renderHunkAction?: (hunk: DiffHunk, hunkIndex: number) => ReactNode;
+  renderLineAction?: (line: DiffLine, hunkIndex: number, lineIndex: number) => ReactNode;
 }) {
   return (
     <>
@@ -169,7 +203,12 @@ export function UnifiedDiffBody({
         <section key={`${hunk.header}:${index}`}>
           <HunkHeader header={hunk.header} action={renderHunkAction?.(hunk, index)} />
           {hunk.lines.map((line, lineIndex) => (
-            <UnifiedLine key={lineIndex} line={line} file={file} />
+            <UnifiedLine
+              key={lineIndex}
+              line={line}
+              file={file}
+              action={renderLineAction?.(line, index, lineIndex)}
+            />
           ))}
         </section>
       ))}

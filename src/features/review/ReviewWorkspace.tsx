@@ -1,10 +1,19 @@
-import { useMemo, useState } from "react";
-import type { DiffHunk, FileDiff } from "../../lib/api";
+import { type ReactNode, useMemo, useState } from "react";
+import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { basename, dirname } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
-import { DiffTruncatedNotice, HunkActionButton, HunkHeader, MONO, numCell, Tokens, UnifiedLine } from "./DiffBody";
+import {
+  DiffTruncatedNotice,
+  HunkActionButton,
+  HunkHeader,
+  LineActionButton,
+  MONO,
+  numCell,
+  Tokens,
+  UnifiedLine,
+} from "./DiffBody";
 import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diffRows";
 import { hunkPatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
@@ -17,6 +26,7 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const diffLoading = useRepo((state) => state.diffLoading);
   const selectedFile = useRepo((state) => state.selectedFile);
   const applyHunk = useRepo((state) => state.applyHunk);
+  const applyLine = useRepo((state) => state.applyLine);
   const clearSelectedFile = useRepo((state) => state.clearSelectedFile);
   const [mode, setMode] = useState<DiffMode>("unified");
   const hunkAction =
@@ -25,6 +35,8 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
           source: selectedFile.source,
           onApply: (hunkIndex: number, expectedHeader: string) =>
             applyHunk(selectedFile.path, selectedFile.source === "staged", hunkIndex, expectedHeader),
+          onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) =>
+            applyLine(selectedFile.path, selectedFile.source === "staged", hunkIndex, lineIndex, line),
         }
       : null;
 
@@ -115,7 +127,11 @@ function UnifiedDiff({
   hunkAction,
 }: {
   file: FileDiff;
-  hunkAction: { source: "unstaged" | "staged"; onApply: (hunkIndex: number, expectedHeader: string) => void } | null;
+  hunkAction: {
+    source: "unstaged" | "staged";
+    onApply: (hunkIndex: number, expectedHeader: string) => void;
+    onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+  } | null;
 }) {
   const rows = useMemo(() => flattenUnified(file.hunks), [file.hunks]);
   const tones = useMemo(() => unifiedTones(file.hunks), [file.hunks]);
@@ -142,7 +158,18 @@ function UnifiedDiff({
                 }
               />
             ) : (
-              <UnifiedLine line={row.line} file={file.path} />
+              <UnifiedLine
+                line={row.line}
+                file={file.path}
+                action={
+                  hunkAction && !unavailableReason && row.line.kind !== "ctx" ? (
+                    <LineActionButton
+                      label={hunkAction.source === "staged" ? "Unstage line" : "Stage line"}
+                      onClick={() => hunkAction.onApplyLine(row.hunkIndex, row.lineIndex, row.line)}
+                    />
+                  ) : null
+                }
+              />
             )
           }
         />
@@ -158,7 +185,11 @@ function SplitDiff({
   hunkAction,
 }: {
   file: FileDiff;
-  hunkAction: { source: "unstaged" | "staged"; onApply: (hunkIndex: number, expectedHeader: string) => void } | null;
+  hunkAction: {
+    source: "unstaged" | "staged";
+    onApply: (hunkIndex: number, expectedHeader: string) => void;
+    onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+  } | null;
 }) {
   const rows = useMemo(() => flattenSplit(file.hunks), [file.hunks]);
   const tones = useMemo(() => splitTones(file.hunks), [file.hunks]);
@@ -185,7 +216,18 @@ function SplitDiff({
                 }
               />
             ) : (
-              <SplitLine row={row.row} />
+              <SplitLine
+                row={row.row}
+                hunkIndex={row.hunkIndex}
+                lineAction={
+                  hunkAction && !unavailableReason
+                    ? {
+                        label: hunkAction.source === "staged" ? "Unstage line" : "Stage line",
+                        onApply: hunkAction.onApplyLine,
+                      }
+                    : null
+                }
+              />
             )
           }
         />
@@ -196,20 +238,50 @@ function SplitDiff({
   );
 }
 
-function SplitLine({ row }: { row: SplitRow }) {
+function SplitLine({
+  row,
+  hunkIndex,
+  lineAction,
+}: {
+  row: SplitRow;
+  hunkIndex: number;
+  lineAction: {
+    label: string;
+    onApply: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+  } | null;
+}) {
   const { left, right } = row;
   return (
-    <div className="flex" style={{ fontFamily: MONO, fontSize: "12.5px", lineHeight: "19px", minHeight: "19px" }}>
+    <div
+      className="group/line flex"
+      style={{ fontFamily: MONO, fontSize: "12.5px", lineHeight: "19px", minHeight: "19px" }}
+    >
       <SplitHalf
-        no={left?.oldNo ?? null}
-        content={left ? left.content : null}
-        tone={left?.kind === "del" ? "del" : "ctx"}
+        no={left?.line.oldNo ?? null}
+        content={left ? left.line.content : null}
+        tone={left?.line.kind === "del" ? "del" : "ctx"}
+        action={
+          left && left.line.kind === "del" && lineAction ? (
+            <LineActionButton
+              label={lineAction.label}
+              onClick={() => lineAction.onApply(hunkIndex, left.lineIndex, left.line)}
+            />
+          ) : null
+        }
         border
       />
       <SplitHalf
-        no={right?.newNo ?? null}
-        content={right ? right.content : null}
-        tone={right?.kind === "add" ? "add" : "ctx"}
+        no={right?.line.newNo ?? null}
+        content={right ? right.line.content : null}
+        tone={right?.line.kind === "add" ? "add" : "ctx"}
+        action={
+          right && right.line.kind === "add" && lineAction ? (
+            <LineActionButton
+              label={lineAction.label}
+              onClick={() => lineAction.onApply(hunkIndex, right.lineIndex, right.line)}
+            />
+          ) : null
+        }
       />
     </div>
   );
@@ -219,11 +291,13 @@ function SplitHalf({
   no,
   content,
   tone,
+  action,
   border,
 }: {
   no: number | null;
   content: string | null;
   tone: "ctx" | "add" | "del";
+  action?: ReactNode;
   border?: boolean;
 }) {
   const present = content != null;
@@ -244,7 +318,14 @@ function SplitHalf({
       }}
     >
       <span className={numCell}>{no ?? ""}</span>
-      {present ? <Tokens content={content} /> : <span className="flex-1" />}
+      {present ? (
+        <span className="min-w-0 flex-1 overflow-hidden">
+          <Tokens content={content} />
+        </span>
+      ) : (
+        <span className="flex-1" />
+      )}
+      {action}
     </div>
   );
 }
@@ -268,7 +349,7 @@ function splitTones(hunks: DiffHunk[]): Tone[] {
   for (const hunk of hunks) {
     out.push("header");
     for (const row of toSplitRows(hunk.lines)) {
-      out.push(row.right?.kind === "add" ? "add" : row.left?.kind === "del" ? "del" : "ctx");
+      out.push(row.right?.line.kind === "add" ? "add" : row.left?.line.kind === "del" ? "del" : "ctx");
     }
   }
   return out;

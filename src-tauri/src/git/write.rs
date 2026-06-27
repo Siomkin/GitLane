@@ -39,7 +39,7 @@ pub use remotes::{
     delete_remote_branch, fetch, force_push, publish_branch, pull, push, push_branch, push_tag,
 };
 pub use staging::{
-    apply_hunk, commit, discard_all, discard_file, stage_all, stage_file, unstage_all,
+    apply_hunk, apply_line, commit, discard_all, discard_file, stage_all, stage_file, unstage_all,
     unstage_file, unstage_files,
 };
 pub use stashes::{

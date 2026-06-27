@@ -32,6 +32,7 @@ describe("flattenUnified", () => {
     ]);
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(rows[0]).toMatchObject({ kind: "header", header: "@@ -1,2 +1,2 @@", hunkIndex: 0 });
+    expect(rows[2]).toMatchObject({ kind: "line", hunkIndex: 0, lineIndex: 1 });
     expect(rows[4]).toMatchObject({ kind: "header", header: "@@ -10 +10 @@", hunkIndex: 1 });
   });
 });
@@ -48,12 +49,14 @@ describe("toSplitRows", () => {
     ]);
 
     expect(rows).toHaveLength(4);
-    expect([rows[0].left?.content, rows[0].right?.content]).toEqual(["x", "x"]);
-    expect([rows[1].left?.content, rows[1].right?.content]).toEqual(["old", "new"]);
-    expect([rows[2].left?.content, rows[2].right?.content]).toEqual(["gone", "a"]);
+    expect([rows[0].left?.line.content, rows[0].right?.line.content]).toEqual(["x", "x"]);
+    expect([rows[1].left?.line.content, rows[1].right?.line.content]).toEqual(["old", "new"]);
+    expect([rows[1].left?.lineIndex, rows[1].right?.lineIndex]).toEqual([1, 2]);
+    expect([rows[2].left?.line.content, rows[2].right?.line.content]).toEqual(["gone", "a"]);
     // The extra addition has no deletion to pair with → blank left half.
     expect(rows[3].left).toBeNull();
-    expect(rows[3].right?.content).toBe("b");
+    expect(rows[3].right?.line.content).toBe("b");
+    expect(rows[3].right?.lineIndex).toBe(5);
   });
 });
 
@@ -66,5 +69,6 @@ describe("flattenSplit", () => {
     expect(rows.map((r) => r.kind)).toEqual(["header", "row"]);
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(rows[0]).toMatchObject({ kind: "header", hunkIndex: 0 });
+    expect(rows[1]).toMatchObject({ kind: "row", hunkIndex: 0 });
   });
 });

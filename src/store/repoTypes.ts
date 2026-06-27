@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
   ConflictFile,
+  DiffLine,
   FileChange,
   FileDiff,
   OperationKind,
@@ -215,6 +216,8 @@ export interface RepoState {
   unstageFile: (path: string) => Promise<void>;
   /** Stage one hunk from an unstaged diff, or unstage one hunk from a staged diff. */
   applyHunk: (path: string, staged: boolean, hunkIndex: number, expectedHeader: string) => Promise<void>;
+  /** Stage one changed line from an unstaged diff, or unstage one changed line from a staged diff. */
+  applyLine: (path: string, staged: boolean, hunkIndex: number, lineIndex: number, line: DiffLine) => Promise<void>;
   /** Discard a file's working-tree changes (unstaging first when `staged`). */
   discardFile: (path: string, staged: boolean) => Promise<void>;
   stageAll: () => Promise<void>;
