@@ -1,90 +1,41 @@
-// The "prepare message for agent" flow. Local review notes are pinned to diff
-// lines (see DiffBody's LineNotes) and collected here:
-//   - ReviewNotesTray  — a floating pill that shows the note count and opens…
-//   - AgentMessageDialog — a popup with an *editable* message composed from the
-//     notes, which the user can Copy or push into the in-app terminal agent.
-// Notes are session-only (never persisted); the composed text is the artefact.
+// The "hand to agent" message composer. Local review comments are pinned to diff
+// line ranges (see the review/comments module); the docked HandToAgentBar opens
+// this dialog — an *editable* message composed from the comments that the user
+// can Copy or push into the in-app terminal agent. Comments are session-only
+// (never persisted); the composed text is the artefact.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
+import { basename } from "../../lib/paths";
 import { focusRing } from "../../lib/ui";
-import { useRepo } from "../../store/repo";
 import { useTerminalAgents } from "../../store/terminalAgents";
-import { useUi, type ReviewNote } from "../../store/ui";
+import { useUi } from "../../store/ui";
+import { CloseIcon, DiamondIcon } from "@/components/ui/icons";
+import { composeAgentMessage, orderedNotes } from "../review/comments";
 import { selectEnabledAgents } from "../terminal/agents";
 
-/** Notes ordered for a stable, readable message: by file, then line, then side. */
-function ordered(notes: ReviewNote[]): ReviewNote[] {
-  return [...notes].sort(
-    (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.side.localeCompare(b.side),
-  );
-}
-
-/** Build the default agent message from the pinned review notes. */
-export function composeAgentMessage(notes: ReviewNote[], branch?: string | null): string {
-  if (notes.length === 0) return "";
-  const where = branch ? ` on branch \`${branch}\`` : "";
-  const intro = `Please address the following code review ${
-    notes.length === 1 ? "comment" : "comments"
-  }${where}.\n\nKeep the fix scoped to the review feedback, avoid unrelated edits, and run the relevant checks.`;
-  const blocks = ordered(notes).map((n, i) => {
-    const parts = [`${i + 1}. ${n.file} — line ${n.lineRef}`];
-    parts.push(`   Feedback: ${n.body.trim()}`);
-    return parts.join("\n");
-  });
-  return `${intro}\n\nReview ${notes.length === 1 ? "comment" : "comments"}:\n\n${blocks.join("\n\n")}\n`;
-}
-
-/** Floating pill (bottom-left, above the terminal) summarising pinned notes. */
-export function ReviewNotesTray() {
-  const notes = useUi((s) => s.reviewNotes);
-  const agentMessageOpen = useUi((s) => s.agentMessageOpen);
-  const openAgentMessage = useUi((s) => s.openAgentMessage);
-  const clearReviewNotes = useUi((s) => s.clearReviewNotes);
-
-  // Hide while the dialog is up (it supersedes the tray) or with nothing pinned.
-  if (notes.length === 0 || agentMessageOpen) return null;
-
-  return (
-    <div className="pointer-events-none absolute bottom-4 left-4 z-30">
-      <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-black/10 bg-white py-1.5 pl-1.5 pr-1.5 shadow-[0_12px_30px_-6px_rgba(0,0,0,0.3)] dark:border-white/10 dark:bg-neutral-800">
-        <span className="grid h-5 w-5 place-items-center rounded-full bg-[#3b7ff5] text-[11px] font-semibold text-white">
-          {notes.length}
-        </span>
-        <span className="text-[13px] text-neutral-600 dark:text-neutral-300">
-          review {notes.length === 1 ? "note" : "notes"}
-        </span>
-        <button
-          onClick={openAgentMessage}
-          className="h-8 rounded-full bg-[#3b7ff5] px-3 text-[13px] font-medium text-white hover:brightness-110"
-        >
-          Prepare message for agent
-        </button>
-        <button
-          onClick={() => clearReviewNotes()}
-          title="Clear all notes"
-          className="grid h-7 w-7 place-items-center rounded-full text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** The popup: an editable, pre-composed message with Copy / Open-in-terminal. */
+/** The popup: an editable, pre-composed message with an agent picker + Copy /
+ * Send-to-terminal. */
 export function AgentMessageDialog() {
   const open = useUi((s) => s.agentMessageOpen);
-  const notes = useUi((s) => s.reviewNotes);
+  const surfaces = useUi((s) => s.agentMessageSurfaces);
+  const branch = useUi((s) => s.agentMessageBranch);
+  const allNotes = useUi((s) => s.reviewNotes);
+  const removeReviewNote = useUi((s) => s.removeReviewNote);
   const close = useUi((s) => s.closeAgentMessage);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
   const showToast = useUi((s) => s.showToast);
-  const branch = useRepo((s) => s.summary?.headBranch ?? null);
+  // Only the comments from the surface(s) that opened the dialog are handed off.
+  const notes = useMemo(
+    () => allNotes.filter((n) => surfaces.includes(n.surface)),
+    [allNotes, surfaces],
+  );
   const agentsRaw = useTerminalAgents((s) => s.agents);
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
   const [text, setText] = useState("");
+  // Tracks whether the user has manually edited the composed message, so note
+  // changes (e.g. removing one from the list) don't clobber their edits.
+  const [dirty, setDirty] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const agents = selectEnabledAgents(agentsRaw);
@@ -94,10 +45,17 @@ export function AgentMessageDialog() {
     availableAgents[0] ??
     null;
 
-  // Compose once each time the popup opens; later edits are the user's to keep.
+  // Recompose while the dialog is open and untouched — so opening fresh, or
+  // removing a comment from the list, updates the message — but never overwrite
+  // manual edits (the dialog explicitly asks the user to review/edit).
   useEffect(() => {
-    if (open) setText(composeAgentMessage(notes, branch));
-  }, [open, notes, branch]);
+    if (open && !dirty) setText(composeAgentMessage(notes, branch));
+  }, [open, dirty, notes, branch]);
+
+  // Reset the edit flag when the dialog closes, so the next open composes fresh.
+  useEffect(() => {
+    if (!open) setDirty(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -116,6 +74,8 @@ export function AgentMessageDialog() {
   if (!open) return null;
 
   const empty = text.trim().length === 0;
+  const count = notes.length;
+  const word = count === 1 ? "comment" : "comments";
 
   const copy = () => {
     if (empty) return;
@@ -132,7 +92,7 @@ export function AgentMessageDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-black/30 p-10 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] grid place-items-center bg-black/30 p-10 backdrop-blur-sm dark:bg-black/55"
       onClick={close}
     >
       <div
@@ -140,54 +100,82 @@ export function AgentMessageDialog() {
         className="w-[560px] max-w-full rounded-2xl border border-black/10 bg-white p-5 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
       >
-        <div className="text-[16px] font-semibold text-neutral-800 dark:text-neutral-100">
-          Prepare message for agent
+        <div className="flex items-center gap-2">
+          <DiamondIcon width={16} height={16} className="text-neutral-500" />
+          <div className="text-[16px] font-semibold text-neutral-800 dark:text-neutral-100">
+            Hand off to {selectedAgent?.name ?? "agent"}
+          </div>
         </div>
         <div className="mt-0.5 text-[12px] text-neutral-400">
-          {notes.length} {notes.length === 1 ? "note" : "notes"} · choose an agent and edit before sending
+          {count} {word} · review &amp; edit before sending
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
-            Agent
-          </span>
-          {agents.map((agent) => (
-            <button
-              key={agent.id}
-              type="button"
-              onClick={() => {
-                if (agent.available) setSelectedAgentId(agent.id);
-              }}
-              disabled={!agent.available}
-              title={agent.available ? agent.command : `${agent.command} was not found on PATH`}
-              className={cn(
-                "h-8 rounded-lg px-2.5 font-mono text-[12px] font-medium transition",
-                agent.available
-                  ? selectedAgent?.id === agent.id
-                    ? "bg-[var(--accent)] text-white shadow-sm"
-                    : "border border-black/10 text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/10"
-                  : "cursor-not-allowed border border-black/5 text-neutral-300 dark:border-white/5 dark:text-neutral-600",
-                focusRing,
-              )}
+        {/* Every pending comment, removable here — including ones whose lines
+         * vanished after a diff refresh (orphaned), which otherwise have no UI. */}
+        <div className="mt-3 max-h-28 space-y-0.5 overflow-auto rounded-lg border border-black/5 p-1 dark:border-white/5">
+          {orderedNotes(notes).map((n) => (
+            <div
+              key={n.id}
+              className="group/note flex items-center gap-2 rounded px-1.5 py-0.5 text-[12px] hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
             >
-              {agent.name}
-            </button>
+              <span className="flex-none font-mono text-[11px] text-neutral-400">
+                {basename(n.file)}:{n.lineRef}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-neutral-600 dark:text-neutral-300">{n.body}</span>
+              <button
+                type="button"
+                onClick={() => removeReviewNote(n.id)}
+                title="Remove comment"
+                aria-label={`Remove comment on ${n.file}:${n.lineRef}`}
+                className="flex-none rounded p-0.5 text-neutral-400 opacity-0 transition hover:text-rose-500 focus:opacity-100 group-hover/note:opacity-100"
+              >
+                <CloseIcon width={12} height={12} />
+              </button>
+            </div>
           ))}
-          {agents.length === 0 && (
-            <span className="text-[12px] text-amber-600 dark:text-amber-400">
-              No enabled agents. Add one in Settings.
-            </span>
-          )}
         </div>
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setDirty(true);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Escape") close();
           }}
           spellCheck={false}
-          className="mt-3 h-64 w-full resize-none overflow-auto rounded-xl border border-black/10 bg-black/[0.02] p-3.5 font-mono text-[12.5px] leading-relaxed text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-200"
+          className="mt-3 h-60 w-full resize-none overflow-auto rounded-xl border border-black/10 bg-black/[0.02] p-3.5 font-mono text-[12.5px] leading-relaxed text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-200"
         />
-        <div className="mt-3 flex items-center justify-end gap-2">
+        <div className="mt-3 flex items-center gap-2">
+          {agents.length > 0 ? (
+            <div className="mr-auto flex rounded-lg bg-black/[0.06] p-0.5 text-[12.5px] dark:bg-white/[0.06]">
+              {agents.map((agent) => (
+                <button
+                  key={agent.id}
+                  type="button"
+                  onClick={() => {
+                    if (agent.available) setSelectedAgentId(agent.id);
+                  }}
+                  disabled={!agent.available}
+                  title={agent.available ? agent.command : `${agent.command} was not found on PATH`}
+                  className={cn(
+                    "h-8 rounded-md px-3 font-mono font-medium transition",
+                    agent.available
+                      ? selectedAgent?.id === agent.id
+                        ? "bg-[color:var(--accent)] text-white shadow-sm"
+                        : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+                      : "cursor-not-allowed text-neutral-300 dark:text-neutral-600",
+                    focusRing,
+                  )}
+                >
+                  {agent.name}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="mr-auto text-[12px] text-amber-600 dark:text-amber-400">
+              No enabled agents. Add one in Settings.
+            </span>
+          )}
           <button
             onClick={close}
             className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
@@ -204,7 +192,7 @@ export function AgentMessageDialog() {
           <button
             onClick={send}
             disabled={empty || !selectedAgent}
-            className="h-9 rounded-lg bg-[#3b7ff5] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+            className="h-9 rounded-lg bg-[color:var(--accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 disabled:opacity-45"
           >
             Send to {selectedAgent?.name ?? "agent"}
           </button>

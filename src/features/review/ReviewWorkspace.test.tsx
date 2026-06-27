@@ -12,7 +12,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 // rows and the assertion is meaningless.
 beforeAll(() => {
   const isScroll = (el: HTMLElement) =>
-    el.getAttribute("data-testid") === "review-unified-scroll";
+    el.getAttribute("data-testid") === "review-unified-scroll" ||
+    el.getAttribute("data-testid") === "review-split-scroll";
   const rect = (height: number): DOMRect =>
     ({
       height,
@@ -103,5 +104,62 @@ describe("ReviewWorkspace — virtualized diff", () => {
       }),
     );
     await waitFor(() => expect(useRepo.getState().fileDiff?.truncated).toBe(false));
+  });
+
+  it("stages a working diff hunk through the repo store action", () => {
+    const applyHunk = vi.fn(async () => {});
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "src/huge.ts", source: "unstaged" },
+      fileDiff: bigDiff(3),
+      diffLoading: false,
+      applyHunk,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "Stage hunk" }));
+
+    expect(applyHunk).toHaveBeenCalledWith(
+      "src/huge.ts",
+      false,
+      0,
+      "@@ -1 +1 @@",
+      "+line 0\n+line 1\n+line 2",
+    );
+  });
+
+  it("stages a changed line through the repo store action", () => {
+    const applyLine = vi.fn(async () => {});
+    const fileDiff = bigDiff(3);
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "src/huge.ts", source: "unstaged" },
+      fileDiff,
+      diffLoading: false,
+      applyLine,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Stage line" })[0]);
+
+    expect(applyLine).toHaveBeenCalledWith("src/huge.ts", false, 0, 0, fileDiff.hunks[0].lines[0]);
+  });
+
+  it("stages a changed line from split view", () => {
+    const applyLine = vi.fn(async () => {});
+    const fileDiff = bigDiff(3);
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "src/huge.ts", source: "unstaged" },
+      fileDiff,
+      diffLoading: false,
+      applyLine,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Stage line" })[0]);
+
+    expect(applyLine).toHaveBeenCalledWith("src/huge.ts", false, 0, 0, fileDiff.hunks[0].lines[0]);
   });
 });

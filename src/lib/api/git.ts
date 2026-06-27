@@ -475,6 +475,39 @@ export const gitApi = {
   unstageFile: (path: string, file: string) =>
     invoke<string>("unstage_file", { path, file }),
 
+  /** Stage one hunk from an unstaged diff, or unstage one hunk from a staged diff.
+   * `expectedBody` is the displayed hunk's canonical body; the backend rejects the
+   * stage if the current patch's hunk content no longer matches it. */
+  applyHunk: (
+    path: string,
+    file: string,
+    staged: boolean,
+    hunkIndex: number,
+    expectedHeader: string,
+    expectedBody: string,
+  ) => invoke<string>("apply_hunk", { path, file, staged, hunkIndex, expectedHeader, expectedBody }),
+
+  /** Stage one changed line from an unstaged diff, or unstage one changed line from a staged diff. */
+  applyLine: (
+    path: string,
+    file: string,
+    staged: boolean,
+    hunkIndex: number,
+    lineIndex: number,
+    line: DiffLine,
+  ) =>
+    invoke<string>("apply_line", {
+      path,
+      file,
+      staged,
+      hunkIndex,
+      lineIndex,
+      expectedKind: line.kind,
+      expectedContent: line.content,
+      expectedOldNo: line.oldNo,
+      expectedNewNo: line.newNo,
+    }),
+
   /** Unstage several files atomically (one `git restore --staged`). */
   unstageFiles: (path: string, files: string[]) =>
     invoke<string>("unstage_files", { path, files }),

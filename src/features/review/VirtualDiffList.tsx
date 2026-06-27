@@ -7,9 +7,9 @@
 import { useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
-/** Default unified/split line height (matches DiffBody's 19px rows). Hunk
- * headers and note-bearing rows are taller and get measured up from here. */
-const ESTIMATED_ROW = 19;
+/** Default line-row height (unified rows are 22px; split rows 19px). Hunk-card
+ * headers and comment-bearing rows are taller and get measured up from here. */
+const ESTIMATED_ROW = 22;
 /** Generous overscan: diff scrolling is fast and rows are cheap, so keep a
  * comfortable buffer above/below the viewport to avoid blank flashes. */
 const DIFF_OVERSCAN = 24;

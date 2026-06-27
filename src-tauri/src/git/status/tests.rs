@@ -47,3 +47,32 @@ fn large_commit_diff_truncates_until_full_is_requested() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn diff_skips_no_newline_eofnl_markers() {
+    let dir = std::env::temp_dir().join("gitlane-diff-eofnl-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    // A file whose last line has no trailing newline, edited in place — libgit2
+    // emits a "\ No newline at end of file" EOFNL marker pseudo-line for it.
+    commit(&repo, &dir, "nonl.txt", "one\ntwo\nthree");
+    let oid = commit(&repo, &dir, "nonl.txt", "one\ntwo\nTHREE").to_string();
+    let path = dir.to_str().unwrap();
+
+    let diff = commit_file_diff(path, &oid, "nonl.txt", false).unwrap();
+    let lines: Vec<_> = diff.hunks.iter().flat_map(|h| &h.lines).collect();
+
+    // The real content change is present...
+    assert!(lines.iter().any(|l| l.kind == "del" && l.content == "three"));
+    assert!(lines.iter().any(|l| l.kind == "add" && l.content == "THREE"));
+    // ...and the EOFNL marker pseudo-lines are dropped (no stray rows leak in).
+    let allowed = ["one", "two", "three", "THREE"];
+    assert!(
+        lines.iter().all(|l| allowed.contains(&l.content.as_str())),
+        "unexpected line content: {:?}",
+        lines.iter().map(|l| &l.content).collect::<Vec<_>>()
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

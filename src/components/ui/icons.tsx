@@ -304,6 +304,40 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+export function CommentIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v4A3.5 3.5 0 0 1 15.5 14H12l-5 4v-4.3A3.5 3.5 0 0 1 5 10.5z" />
+      <path d="M9 8h6M9 11h4" />
+    </IconBase>
+  );
+}
+
+export function MessageSquareIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </IconBase>
+  );
+}
+
+export function MinusIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="2" {...props}>
+      <path d="M5 12h14" />
+    </IconBase>
+  );
+}
+
+/** Filled diamond — the "hand to agent" marker. */
+export function DiamondIcon(props: IconProps) {
+  return (
+    <IconBase fill="currentColor" stroke="none" {...props}>
+      <path d="M12 2 22 12 12 22 2 12z" />
+    </IconBase>
+  );
+}
+
 export function GitHubIcon(props: IconProps) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>

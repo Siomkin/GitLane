@@ -141,20 +141,29 @@ export interface PromptRequest {
   onSubmit: (value: string) => void;
 }
 
-/** A freeform review note pinned to a single diff line. Session-only — never
- * persisted; collected in a tray and bundled into the "message for agent". */
+/** A freeform review ("local") comment pinned to a contiguous range of diff
+ * lines. Session-only — never persisted; collected and bundled into the "hand to
+ * agent" message. A single-line comment is just a range whose ends coincide. */
 export interface ReviewNote {
-  /** Deterministic key: JSON `[file, side, line]` (one note per line). */
+  /** Deterministic key: `${surface}#${file}#${fromRef}-${toRef}` (one note per range). */
   id: string;
-  /** Path of the file the line belongs to. */
+  /** The diff surface this note belongs to (e.g. "work", "commit:<oid>",
+   * "range:<base>..<head>", "pr:<num>"), so the same file/line in a different
+   * diff doesn't re-attach the note or fold it into the wrong hand-off. */
+  surface: string;
+  /** Path of the file the range belongs to. */
   file: string;
-  /** Diff side: "L" = old/deleted line, "R" = new/added/context line. */
+  /** Anchor (range-end) side, kept for stable ordering. "L" = old, "R" = new/ctx. */
   side: "L" | "R";
-  /** Line number on that side. */
+  /** Anchor (range-end) line number on that side, kept for ordering. */
   line: number;
-  /** Display ref, e.g. "R20" / "L4". */
+  /** Display ref of the range start, e.g. "R18" / "L4". */
+  fromRef: string;
+  /** Display ref of the range end (the anchor), e.g. "R20". */
+  toRef: string;
+  /** Combined display label, e.g. "R20" or "R18–R20". */
   lineRef: string;
-  /** The line's source text, captured for context in the agent message. */
+  /** The range's source text (joined), captured for context in the message. */
   code: string;
   /** The reviewer's note. */
   body: string;
@@ -255,8 +264,12 @@ interface UiState {
   /** Session-only review notes pinned to diff lines — the input to the "prepare
    * message for agent" flow. Never persisted (cleared on repo switch). */
   reviewNotes: ReviewNote[];
-  /** The "prepare message for agent" popup. */
+  /** The "prepare message for agent" popup, plus the diff surface(s) + branch it
+   * was opened from — so it composes from those surfaces' notes against the right
+   * branch. (A set, because the working review mixes staged + unstaged sources.) */
   agentMessageOpen: boolean;
+  agentMessageSurfaces: string[];
+  agentMessageBranch: string | null;
 
   /** Pending destructive-action confirmation modal (null = none open). */
   confirm: ConfirmRequest | null;
@@ -355,11 +368,11 @@ interface UiState {
   setCommitDir: (paths: string[], included: boolean) => void;
   setCommitMsg: (msg: string) => void;
 
-  /** Pin/replace a review note on a diff line (keyed by file+side+line). */
+  /** Pin/replace a local comment on a diff line range (keyed by file + range). */
   addReviewNote: (note: Omit<ReviewNote, "id">) => void;
   removeReviewNote: (id: string) => void;
   clearReviewNotes: () => void;
-  openAgentMessage: () => void;
+  openAgentMessage: (surfaces: string[], branch: string | null) => void;
   closeAgentMessage: () => void;
 
   /** Open the destructive-action confirmation modal. */
@@ -451,6 +464,8 @@ export const useUi = create<UiState>()(
 
   reviewNotes: [],
   agentMessageOpen: false,
+  agentMessageSurfaces: [],
+  agentMessageBranch: null,
   confirm: null,
   prompt: null,
 
@@ -597,8 +612,8 @@ export const useUi = create<UiState>()(
 
   addReviewNote: (note) =>
     set((s) => {
-      // One note per line: replace any existing note on the same file+side+line.
-      const id = JSON.stringify([note.file, note.side, note.line]);
+      // One note per range per surface: replace any existing note with the same key.
+      const id = `${note.surface}#${note.file}#${note.fromRef}-${note.toRef}`;
       const rest = s.reviewNotes.filter((n) => n.id !== id);
       return { reviewNotes: [...rest, { ...note, id }] };
     }),
@@ -606,7 +621,8 @@ export const useUi = create<UiState>()(
     set((s) => ({ reviewNotes: s.reviewNotes.filter((n) => n.id !== id) })),
   clearReviewNotes: () =>
     set((s) => (s.reviewNotes.length ? { reviewNotes: [], agentMessageOpen: false } : s)),
-  openAgentMessage: () => set({ agentMessageOpen: true }),
+  openAgentMessage: (surfaces, branch) =>
+    set({ agentMessageOpen: true, agentMessageSurfaces: surfaces, agentMessageBranch: branch }),
   closeAgentMessage: () => set({ agentMessageOpen: false }),
 
   requestConfirm: (req) => set({ ...noMenus, confirm: req }),

@@ -415,6 +415,49 @@ async fn unstage_file(path: String, file: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn apply_hunk(
+    path: String,
+    file: String,
+    staged: bool,
+    hunk_index: usize,
+    expected_header: String,
+    expected_body: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::apply_hunk(&path, &file, staged, hunk_index, &expected_header, &expected_body)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn apply_line(
+    path: String,
+    file: String,
+    staged: bool,
+    hunk_index: usize,
+    line_index: usize,
+    expected_kind: String,
+    expected_content: String,
+    expected_old_no: Option<u32>,
+    expected_new_no: Option<u32>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::apply_line(
+            &path,
+            &file,
+            staged,
+            hunk_index,
+            line_index,
+            &expected_kind,
+            &expected_content,
+            expected_old_no,
+            expected_new_no,
+        )
+    })
+    .await
+}
+
+#[tauri::command]
 async fn unstage_files(path: String, files: Vec<String>) -> Result<String, String> {
     blocking(move || git::write::unstage_files(&path, &files)).await
 }
@@ -958,6 +1001,8 @@ pub fn run() {
             diff_range_file,
             stage_file,
             unstage_file,
+            apply_hunk,
+            apply_line,
             unstage_files,
             discard_file,
             stage_all,

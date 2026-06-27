@@ -29,7 +29,7 @@ import { HistoryWorkspace } from "./features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
 import { ReflogRecoveryDialog } from "./features/recovery";
 import { ReviewWorkspace } from "./features/review/ReviewWorkspace";
-import { AgentMessageDialog, ReviewNotesTray } from "./features/review-notes/ReviewNotes";
+import { AgentMessageDialog } from "./features/review-notes/ReviewNotes";
 import { StackedReview } from "./features/review/StackedReview";
 import { CommitModal } from "./features/changes/CommitModal";
 import { RightPanel } from "./features/changes/RightPanel";
@@ -205,8 +205,6 @@ const App = () => {
             </div>
             {/* Floating terminal overlay — overlays the grid without resizing it. */}
             <TerminalLayer />
-            {/* Review-notes tray — floats over the grid when notes are pinned. */}
-            <ReviewNotesTray />
           </div>
         </>
       ) : (

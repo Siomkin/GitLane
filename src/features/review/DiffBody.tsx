@@ -1,18 +1,35 @@
 // Shared highlighted diff rendering used by the single-file review and the
-// stacked changes review. Matches the design prototype's unified diff: two
-// line-number gutters, a sign column, a colored left border + tinted background
-// per changed line, and client-side syntax highlighting.
+// stacked changes review. The unified view matches the design prototype: each
+// hunk is a rounded card, changed lines stage from a hover button in the sign
+// column, and a right-rail handle pins "local comments" (single line or a
+// dragged range) that are later handed to an agent. The split view keeps its
+// simpler two-pane layout.
 
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import type { DiffHunk, DiffLine } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { highlight } from "../../lib/highlight";
-import { modEnter } from "../../lib/platform";
 import { MONO_FONT } from "../../lib/ui";
-import { useUi } from "../../store/ui";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
+import { CheckIcon, MinusIcon, PlusIcon } from "@/components/ui/icons";
+import {
+  buildLineMeta,
+  CommentCard,
+  CommentEditor,
+  CommentHandle,
+  useLineComments,
+  type LineCommentsController,
+  type LineRowComments,
+} from "./comments";
 
 export const MONO = MONO_FONT;
+
+// Add/del tints + rails, shared by unified and split. Kept as the app's brand
+// green/rose (consistent with the graph) rather than the mockup's emerald.
+const ADD_BG = "rgba(46,158,98,0.11)";
+const DEL_BG = "rgba(225,98,111,0.12)";
+const ADD_RAIL = "#2e9e62";
+const DEL_RAIL = "#e0626f";
 
 export const numCell =
   "w-[42px] flex-none px-2 text-right text-neutral-400 dark:text-neutral-500 tabular-nums select-none";
@@ -58,210 +75,211 @@ export function DiffTruncatedNotice({
   );
 }
 
-export function HunkHeader({ header }: { header: string }) {
+// ===========================================================================
+// Unified + split views — flat hunk header, line staging, in-diff comments.
+// ===========================================================================
+
+/** A hunk's stage/unstage affordance. `mode` flips label + icon; `disabledReason`
+ * (e.g. truncated/untracked) shows a disabled pill with an explanatory title. */
+export type HunkStage = { mode: "stage" | "unstage"; onClick: () => void; disabledReason?: string | null };
+
+/** A single changed line's stage/unstage affordance (the sign-column button). */
+export type LineStage = { mode: "stage" | "unstage"; onClick: () => void };
+
+/** Flat full-width hunk header bar: the @@ header, the changed-line count, and
+ * (when staging is available) a Stage/Unstage hunk pill. */
+export const HunkCardHeader = ({
+  header,
+  changed,
+  stage,
+}: {
+  header: string;
+  changed: number;
+  stage?: HunkStage | null;
+}) => {
+  const disabled = !!stage?.disabledReason;
   return (
-    <div
-      className="px-4 py-1 bg-violet-500/[0.06] dark:bg-violet-400/[0.08] text-violet-500 dark:text-violet-300 font-mono text-[12px]"
-      style={{ fontFamily: MONO, lineHeight: "20px" }}
-    >
-      {header}
+    <div className="group/hunk flex h-9 items-center gap-2 border-b border-violet-500/10 bg-violet-500/[0.06] px-3 dark:border-white/5 dark:bg-violet-400/[0.08]">
+      <span
+        className="min-w-0 flex-1 truncate font-mono text-[12px] text-violet-600 dark:text-violet-300"
+        style={{ fontFamily: MONO }}
+      >
+        {header}
+      </span>
+      {stage && (
+        <button
+          type="button"
+          disabled={disabled}
+          title={stage.disabledReason ?? undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            stage.onClick();
+          }}
+          className={cn(
+            "flex h-7 flex-none items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-semibold opacity-0 transition group-hover/hunk:opacity-100 focus:opacity-100",
+            disabled
+              ? "cursor-not-allowed border border-black/10 text-neutral-400 dark:border-white/10"
+              : stage.mode === "unstage"
+                ? "border border-[color:var(--accent)]/40 bg-[color:var(--accent)]/10 text-[color:var(--accent)]"
+                : "border border-black/10 text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5",
+          )}
+        >
+          {!disabled && stage.mode === "unstage" && <CheckIcon width={10} height={10} />}
+          {disabled ? "Unavailable" : stage.mode === "unstage" ? "Unstage hunk" : "Stage hunk"}
+        </button>
+      )}
+      <span className="flex-none text-[11px] text-neutral-500 dark:text-neutral-400">
+        {changed} {changed === 1 ? "line" : "lines"}
+        {stage?.mode === "unstage" ? " staged" : ""}
+      </span>
     </div>
   );
-}
+};
 
-// Memoized: `line` is a stable object from the cached FileDiff and `file` is a
-// string, so an unrelated re-render of the diff body skips unchanged rows.
-export const UnifiedLine = memo(function UnifiedLine({ line, file }: { line: DiffLine; file?: string }) {
+/** The small hover icon button to stage/unstage one line. Overlaid on the sign
+ * column in the unified view, and placed at the end of a changed half in the
+ * split view — pass a `className` to position it. */
+export const LineStageButton = ({ stage, className }: { stage: LineStage; className?: string }) => (
+  <button
+    type="button"
+    title={stage.mode === "unstage" ? "Unstage line" : "Stage line"}
+    aria-label={stage.mode === "unstage" ? "Unstage line" : "Stage line"}
+    onClick={(e) => {
+      e.stopPropagation();
+      stage.onClick();
+    }}
+    className={cn(
+      "grid h-4 w-4 flex-none place-items-center rounded-[4px] border border-black/25 bg-white text-[color:var(--accent)] opacity-0 transition hover:bg-[color:var(--accent)]/10 focus:opacity-100 group-hover/line:opacity-100 dark:border-white/30 dark:bg-neutral-800",
+      className,
+    )}
+  >
+    {stage.mode === "unstage" ? (
+      <MinusIcon width={10} height={10} strokeWidth={3} />
+    ) : (
+      <PlusIcon width={10} height={10} strokeWidth={3} />
+    )}
+  </button>
+);
+
+// Memoized: `line` is a stable object from the cached FileDiff; the small option
+// objects (stage/comments) change only when this row's state does, so unrelated
+// re-renders of the diff body skip unchanged rows.
+export const UnifiedLine = memo(function UnifiedLine({
+  line,
+  stage,
+  comments,
+  controller,
+}: {
+  line: DiffLine;
+  stage?: LineStage | null;
+  comments?: LineRowComments | null;
+  controller?: LineCommentsController | null;
+}) {
   const tone = line.kind;
-  const bg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
-  const gut = tone === "add" ? "#2e9e62" : tone === "del" ? "#e0626f" : "transparent";
+  const selecting = !!comments?.selecting;
+  const covered = !!comments?.covered;
   const sign = tone === "add" ? "+" : tone === "del" ? "−" : "";
-  const signColor = tone === "add" ? "#2e9e62" : tone === "del" ? "#e0626f" : undefined;
+  const signColor = tone === "add" ? ADD_RAIL : tone === "del" ? DEL_RAIL : undefined;
+  const bg = selecting
+    ? "var(--accent-soft)"
+    : tone === "add"
+      ? ADD_BG
+      : tone === "del"
+        ? DEL_BG
+        : covered
+          ? "rgba(120,120,120,0.06)"
+          : "transparent";
+  const rail = tone === "add" ? ADD_RAIL : tone === "del" ? DEL_RAIL : covered ? "rgba(120,120,120,0.5)" : "transparent";
 
-  // A deletion belongs to the old (L) side; adds/context to the new (R) side.
-  const side: "L" | "R" = tone === "del" ? "L" : "R";
-  const lineNo = side === "L" ? line.oldNo : line.newNo;
-  const notable = !!file && lineNo != null;
-
-  const row = (
+  const grid = (
     <div
-      className="flex items-start"
+      className={cn(
+        "grid grid-cols-[92px_minmax(0,1fr)_36px] items-center",
+        tone === "ctx" && !covered && !selecting && "hover:bg-black/[0.02] dark:hover:bg-white/[0.03]",
+      )}
       style={{
         fontFamily: MONO,
         fontSize: "12.5px",
-        lineHeight: "19px",
-        minHeight: "19px",
+        lineHeight: "22px",
+        minHeight: "22px",
         background: bg,
-        borderLeft: `3px solid ${gut}`,
+        borderLeft: `3px solid ${rail}`,
       }}
+      onMouseEnter={comments?.onRowEnter}
     >
-      <span className={numCell}>{line.oldNo ?? ""}</span>
-      <span className={numCell}>{line.newNo ?? ""}</span>
-      <span
-        className={cn("w-3 flex-none text-center", signColor == null && "text-neutral-400")}
-        style={signColor ? { color: signColor } : undefined}
-      >
-        {sign}
-      </span>
-      <Tokens content={line.content} />
-    </div>
-  );
-
-  if (!notable) return row;
-
-  return (
-    <div className="group/line relative">
-      {row}
-      <LineNotes file={file!} side={side} line={lineNo!} code={line.content} />
-    </div>
-  );
-});
-
-/** Full unified diff body for a file (all hunks). When `file` is given, each line
- * gains a hover affordance to pin a review note (the "message for agent" input). */
-export function UnifiedDiffBody({ hunks, file }: { hunks: DiffHunk[]; file?: string }) {
-  return (
-    <>
-      {hunks.map((hunk, index) => (
-        <section key={`${hunk.header}:${index}`}>
-          <HunkHeader header={hunk.header} />
-          {hunk.lines.map((line, lineIndex) => (
-            <UnifiedLine key={lineIndex} line={line} file={file} />
-          ))}
-        </section>
-      ))}
-    </>
-  );
-}
-
-// Left padding that clears the two number gutters (42px each) + the sign column,
-// so note cards align under the code rather than the line numbers.
-const NOTE_INDENT = "ml-[92px] mr-3 max-w-[680px]";
-
-/**
- * The per-line review-note affordance: a hover "+" pinned to the gutter that
- * opens an inline editor, plus the saved note card. State lives in `useUi`
- * (session-only); one note per file+side+line.
- */
-function LineNotes({
-  file,
-  side,
-  line,
-  code,
-}: {
-  file: string;
-  side: "L" | "R";
-  line: number;
-  code: string;
-}) {
-  const note = useUi((s) =>
-    s.reviewNotes.find((n) => n.file === file && n.side === side && n.line === line),
-  );
-  const addReviewNote = useUi((s) => s.addReviewNote);
-  const removeReviewNote = useUi((s) => s.removeReviewNote);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const lineRef = `${side}${line}`;
-
-  const open = () => {
-    setDraft(note?.body ?? "");
-    setEditing(true);
-  };
-  const save = () => {
-    const body = draft.trim();
-    if (body) addReviewNote({ file, side, line, lineRef, code, body });
-    setEditing(false);
-  };
-
-  return (
-    <>
-      {!editing && (
-        // Anchored to the right edge of the line-number gutter (two 42px columns)
-        // so the affordance sits over the line number, not in the empty far-left
-        // cell. The wrapper ignores pointer events; only the button is clickable.
-        <div className="pointer-events-none absolute left-0 top-0 z-10 flex h-[19px] w-[84px] items-center justify-end pr-1 opacity-0 transition group-hover/line:opacity-100">
-          <button
-            type="button"
-            onClick={open}
-            title={note ? "Edit note" : "Add note for agent"}
-            className="pointer-events-auto grid h-[17px] w-[17px] place-items-center rounded-[5px] bg-[#3b7ff5] text-[12px] font-semibold leading-none text-white shadow-[0_2px_6px_rgba(0,0,0,0.35)] hover:brightness-110"
+      <div className="grid grid-cols-[1fr_1fr_22px] items-center">
+        <span className="select-none pr-1 text-right tabular-nums text-neutral-400 dark:text-neutral-500">
+          {line.oldNo ?? ""}
+        </span>
+        <span className="select-none pr-1 text-right tabular-nums text-neutral-400 dark:text-neutral-500">
+          {line.newNo ?? ""}
+        </span>
+        <span className="relative grid select-none place-items-center">
+          <span
+            className={cn(stage && "transition-opacity group-hover/line:opacity-0")}
+            style={signColor ? { color: signColor } : undefined}
           >
-            {note ? "✎" : "+"}
-          </button>
-        </div>
-      )}
+            {sign}
+          </span>
+          {stage && <LineStageButton stage={stage} className="absolute inset-0 m-auto" />}
+        </span>
+      </div>
+      <span className="overflow-hidden pl-2">
+        <Tokens content={line.content} />
+      </span>
+      <span className="flex items-center justify-end pr-3">{comments ? <CommentHandle row={comments} /> : null}</span>
+    </div>
+  );
 
-      {editing ? (
-        <div
-          className={cn(
-            "my-1.5 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/[0.06] p-3",
-            NOTE_INDENT,
-          )}
-        >
-          <textarea
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                e.preventDefault();
-                setEditing(false);
-              }
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                save();
-              }
-            }}
-            placeholder={`Note for line ${lineRef}… (${modEnter} to save)`}
-            rows={2}
-            className="w-full resize-y bg-transparent text-[13px] text-neutral-700 dark:text-neutral-200 outline-none placeholder:text-neutral-400 font-sans"
-          />
-          <div className="mt-1.5 flex items-center justify-end gap-2">
-            <button
-              onClick={() => setEditing(false)}
-              className="rounded-md px-2.5 py-1 text-[12px] text-neutral-500 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={save}
-              disabled={!draft.trim()}
-              className="rounded-md bg-[#3b7ff5] px-2.5 py-1 text-[12px] font-semibold text-white hover:brightness-110 disabled:opacity-45"
-            >
-              Save note
-            </button>
-          </div>
-        </div>
-      ) : note ? (
-        <div
-          className={cn(
-            "my-1.5 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/[0.06] p-3",
-            NOTE_INDENT,
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" fill="#3b7ff5" className="w-3.5 h-3.5">
-              <path d="M12 2 22 12 12 22 2 12z" />
-            </svg>
-            <span className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-100">Note for agent</span>
-            <span className="ml-auto text-[11px] text-neutral-400 font-mono">line {lineRef}</span>
-          </div>
-          <div className="mt-1 whitespace-pre-wrap break-words text-[13px] text-neutral-700 dark:text-neutral-200">
-            {note.body}
-          </div>
-          <div className="mt-1.5 flex justify-end gap-3 text-[11.5px]">
-            <button onClick={open} className="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200">
-              Edit
-            </button>
-            <button
-              onClick={() => removeReviewNote(note.id)}
-              className="text-rose-500 hover:text-rose-600"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
+  const body = (
+    <>
+      {grid}
+      {comments?.editHere && controller ? <CommentEditor scope={comments.scope} controller={controller} /> : null}
+      {comments?.showCard ? (
+        <CommentCard scope={comments.scope} body={comments.body} onEdit={comments.edit} onDelete={comments.remove} />
       ) : null}
     </>
+  );
+
+  return <div className="group/line">{body}</div>;
+});
+
+const countChanged = (hunk: DiffHunk) =>
+  hunk.lines.reduce((n, line) => (line.kind === "ctx" ? n : n + 1), 0);
+
+/** Full unified diff body for a file (all hunks), rendered as hunk cards. When
+ * `file` and `surface` are given, each line gains the local-comment affordances
+ * (the comment controller is scoped to this file + review surface). */
+export function UnifiedDiffBody({
+  hunks,
+  file,
+  surface,
+}: {
+  hunks: DiffHunk[];
+  file?: string;
+  surface?: string;
+}) {
+  const lines = useMemo(() => (file ? buildLineMeta(hunks) : []), [hunks, file]);
+  const controller = useLineComments(surface ?? "", file ?? "", lines);
+  let seq = -1;
+  return (
+    <div>
+      {hunks.map((hunk, h) => (
+        <div key={`${hunk.header}:${h}`}>
+          <HunkCardHeader header={hunk.header} changed={countChanged(hunk)} />
+          {hunk.lines.map((line, l) => {
+            seq += 1;
+            return (
+              <UnifiedLine
+                key={l}
+                line={line}
+                comments={file ? controller.rowFor(seq) : null}
+                controller={file ? controller : null}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
   );
 }

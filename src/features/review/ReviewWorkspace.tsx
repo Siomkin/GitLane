@@ -1,21 +1,83 @@
-import { useMemo, useState } from "react";
-import type { DiffHunk, FileDiff } from "../../lib/api";
+import { type ReactNode, useMemo, useState } from "react";
+import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { basename, dirname } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
-import { DiffTruncatedNotice, HunkHeader, MONO, numCell, Tokens, UnifiedLine } from "./DiffBody";
+import {
+  DiffTruncatedNotice,
+  HunkCardHeader,
+  LineStageButton,
+  MONO,
+  numCell,
+  Tokens,
+  UnifiedLine,
+} from "./DiffBody";
+import {
+  buildLineMeta,
+  CommentCard,
+  CommentEditor,
+  CommentHandle,
+  HandToAgentBar,
+  useLineComments,
+  type LineCommentsController,
+  type LineRowComments,
+} from "./comments";
 import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diffRows";
+import { hunkBody, hunkPatchUnavailableReason, lineStagePatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
 type DiffMode = "split" | "unified";
 
+/** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
+ * which can't be staged. */
+type HunkActionApi = {
+  source: "unstaged" | "staged";
+  onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) => void;
+  onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+};
+
 export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const fileDiff = useRepo((state) => state.fileDiff);
   const diffLoading = useRepo((state) => state.diffLoading);
+  const selectedFile = useRepo((state) => state.selectedFile);
+  const applyHunk = useRepo((state) => state.applyHunk);
+  const applyLine = useRepo((state) => state.applyLine);
   const clearSelectedFile = useRepo((state) => state.clearSelectedFile);
+  const selectedCommit = useRepo((state) => state.selectedCommit);
+  const changes = useRepo((state) => state.changes);
   const [mode, setMode] = useState<DiffMode>("unified");
+  // Notes are scoped to the diff surface — and, for the working tree, to the
+  // staged vs unstaged source — so a comment never reattaches to the same file
+  // viewed in a different diff (the staged and unstaged sides have distinct refs).
+  const surface =
+    selectedFile?.source === "commit"
+      ? `commit:${selectedCommit ?? ""}`
+      : `work:${selectedFile?.source ?? "unstaged"}`;
+  // A rename/copy comes back from a single-file (pathspec) diff as an added patch,
+  // so partial-staging would split the rename — offer only whole-file staging.
+  const changeFile =
+    selectedFile && selectedFile.source !== "commit"
+      ? changes[selectedFile.source].find((f) => f.path === selectedFile.path)
+      : undefined;
+  const wholeFileOnly = changeFile?.status === "R" || changeFile?.status === "C";
+  const hunkAction =
+    selectedFile && selectedFile.source !== "commit" && !wholeFileOnly
+      ? {
+          source: selectedFile.source,
+          onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) =>
+            applyHunk(
+              selectedFile.path,
+              selectedFile.source === "staged",
+              hunkIndex,
+              expectedHeader,
+              expectedBody,
+            ),
+          onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) =>
+            applyLine(selectedFile.path, selectedFile.source === "staged", hunkIndex, lineIndex, line),
+        }
+      : null;
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
@@ -28,10 +90,12 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
       ) : fileDiff.binary ? (
         <EmptyDiff title="Binary file" />
       ) : mode === "split" ? (
-        <SplitDiff file={fileDiff} />
+        <SplitDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       ) : (
-        <UnifiedDiff file={fileDiff} />
+        <UnifiedDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       )}
+
+      <HandToAgentBar surfaces={[surface]} />
     </main>
   );
 }
@@ -99,9 +163,22 @@ function FullDiffNotice() {
   return <DiffTruncatedNotice onShowFull={loadFullFileDiff} loading={diffLoading} />;
 }
 
-function UnifiedDiff({ file }: { file: FileDiff }) {
+function UnifiedDiff({
+  file,
+  hunkAction,
+  surface,
+}: {
+  file: FileDiff;
+  hunkAction: HunkActionApi | null;
+  surface: string;
+}) {
   const rows = useMemo(() => flattenUnified(file.hunks), [file.hunks]);
   const tones = useMemo(() => unifiedTones(file.hunks), [file.hunks]);
+  const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
+  const comments = useLineComments(surface, file.path, lines);
+  const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
+  const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
+  const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -111,9 +188,31 @@ function UnifiedDiff({ file }: { file: FileDiff }) {
           testId="review-unified-scroll"
           renderRow={(row) =>
             row.kind === "header" ? (
-              <HunkHeader header={row.header} />
+              <HunkCardHeader
+                header={row.header}
+                changed={row.changed}
+                stage={
+                  hunkAction
+                    ? {
+                        mode,
+                        onClick: () =>
+                          hunkAction.onApply(row.hunkIndex, row.header, hunkBody(file.hunks[row.hunkIndex])),
+                        disabledReason: unavailableReason,
+                      }
+                    : null
+                }
+              />
             ) : (
-              <UnifiedLine line={row.line} file={file.path} />
+              <UnifiedLine
+                line={row.line}
+                comments={comments.rowFor(row.seq)}
+                controller={comments}
+                stage={
+                  hunkAction && !lineUnavailable && row.line.kind !== "ctx"
+                    ? { mode, onClick: () => hunkAction.onApplyLine(row.hunkIndex, row.lineIndex, row.line) }
+                    : null
+                }
+              />
             )
           }
         />
@@ -124,9 +223,25 @@ function UnifiedDiff({ file }: { file: FileDiff }) {
   );
 }
 
-function SplitDiff({ file }: { file: FileDiff }) {
+function SplitDiff({
+  file,
+  hunkAction,
+  surface,
+}: {
+  file: FileDiff;
+  hunkAction: HunkActionApi | null;
+  surface: string;
+}) {
   const rows = useMemo(() => flattenSplit(file.hunks), [file.hunks]);
   const tones = useMemo(() => splitTones(file.hunks), [file.hunks]);
+  // One controller over the file's lines (same seq space as unified, so a
+  // mixed-side range like L12–R12 still resolves). Each half resolves its own
+  // line's seq; `confineDragToSide` keeps a drag within the column it started on.
+  const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
+  const comments = useLineComments(surface, file.path, lines, { confineDragToSide: true });
+  const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
+  const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
+  const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
@@ -136,9 +251,31 @@ function SplitDiff({ file }: { file: FileDiff }) {
           testId="review-split-scroll"
           renderRow={(row) =>
             row.kind === "header" ? (
-              <HunkHeader header={row.header} />
+              <HunkCardHeader
+                header={row.header}
+                changed={row.changed}
+                stage={
+                  hunkAction
+                    ? {
+                        mode,
+                        onClick: () =>
+                          hunkAction.onApply(row.hunkIndex, row.header, hunkBody(file.hunks[row.hunkIndex])),
+                        disabledReason: unavailableReason,
+                      }
+                    : null
+                }
+              />
             ) : (
-              <SplitLine row={row.row} />
+              <SplitLine
+                row={row.row}
+                hunkIndex={row.hunkIndex}
+                controller={comments}
+                left={row.leftSeq != null ? comments.rowFor(row.leftSeq) : null}
+                right={row.rightSeq != null ? comments.rowFor(row.rightSeq) : null}
+                lineStage={
+                  hunkAction && !lineUnavailable ? { mode, onApply: hunkAction.onApplyLine } : null
+                }
+              />
             )
           }
         />
@@ -149,43 +286,112 @@ function SplitDiff({ file }: { file: FileDiff }) {
   );
 }
 
-function SplitLine({ row }: { row: SplitRow }) {
-  const { left, right } = row;
+function SplitLine({
+  row,
+  hunkIndex,
+  lineStage,
+  controller,
+  left,
+  right,
+}: {
+  row: SplitRow;
+  hunkIndex: number;
+  lineStage: {
+    mode: "stage" | "unstage";
+    onApply: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+  } | null;
+  controller: LineCommentsController;
+  left?: LineRowComments | null;
+  right?: LineRowComments | null;
+}) {
+  const { left: leftCell, right: rightCell } = row;
   return (
-    <div className="flex" style={{ fontFamily: MONO, fontSize: "12.5px", lineHeight: "19px", minHeight: "19px" }}>
-      <SplitHalf
-        no={left?.oldNo ?? null}
-        content={left ? left.content : null}
-        tone={left?.kind === "del" ? "del" : "ctx"}
-        border
-      />
-      <SplitHalf
-        no={right?.newNo ?? null}
-        content={right ? right.content : null}
-        tone={right?.kind === "add" ? "add" : "ctx"}
-      />
+    <div>
+      <div className="flex" style={{ fontFamily: MONO, fontSize: "12.5px", lineHeight: "19px", minHeight: "19px" }}>
+        <SplitHalf
+          no={leftCell?.line.oldNo ?? null}
+          content={leftCell ? leftCell.line.content : null}
+          tone={leftCell?.line.kind === "del" ? "del" : "ctx"}
+          comments={left}
+          action={
+            leftCell && leftCell.line.kind === "del" && lineStage ? (
+              <LineStageButton
+                stage={{
+                  mode: lineStage.mode,
+                  onClick: () => lineStage.onApply(hunkIndex, leftCell.lineIndex, leftCell.line),
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              />
+            ) : null
+          }
+          border
+        />
+        <SplitHalf
+          no={rightCell?.line.newNo ?? null}
+          content={rightCell ? rightCell.line.content : null}
+          tone={rightCell?.line.kind === "add" ? "add" : "ctx"}
+          comments={right}
+          action={
+            rightCell && rightCell.line.kind === "add" && lineStage ? (
+              <LineStageButton
+                stage={{
+                  mode: lineStage.mode,
+                  onClick: () => lineStage.onApply(hunkIndex, rightCell.lineIndex, rightCell.line),
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+              />
+            ) : null
+          }
+        />
+      </div>
+      {/* Each side's editor/card renders below the row, indented under that half;
+       * the scope label ("Comment on line L4 / R20") names the side. */}
+      {left?.editHere ? (
+        <CommentEditor scope={left.scope} controller={controller} indent="ml-[46px] mr-3" />
+      ) : null}
+      {left?.showCard ? (
+        <CommentCard scope={left.scope} body={left.body} onEdit={left.edit} onDelete={left.remove} indent="ml-[46px] mr-3" />
+      ) : null}
+      {right?.editHere ? (
+        <CommentEditor scope={right.scope} controller={controller} indent="ml-[50%] mr-3" />
+      ) : null}
+      {right?.showCard ? (
+        <CommentCard scope={right.scope} body={right.body} onEdit={right.edit} onDelete={right.remove} indent="ml-[50%] mr-3" />
+      ) : null}
     </div>
   );
 }
 
+// One pane of a split row, and its own hover group (`group/line`) so hovering it
+// reveals only this side's stage button + comment handle.
 function SplitHalf({
   no,
   content,
   tone,
+  action,
+  comments,
   border,
 }: {
   no: number | null;
   content: string | null;
   tone: "ctx" | "add" | "del";
+  action?: ReactNode;
+  comments?: LineRowComments | null;
   border?: boolean;
 }) {
   const present = content != null;
-  const bg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
+  const baseBg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
+  // Comment selection/coverage tints this side independently of the other.
+  const bg = comments?.selecting
+    ? "var(--accent-soft)"
+    : comments?.covered
+      ? "rgba(120,120,120,0.06)"
+      : baseBg;
   const gut = tone === "add" ? "#2e9e62" : tone === "del" ? "#e0626f" : "transparent";
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-1 items-start overflow-hidden",
+        "group/line flex min-w-0 flex-1 items-start overflow-hidden",
         border && "border-r border-black/5 dark:border-white/5",
       )}
       style={{
@@ -195,9 +401,26 @@ function SplitHalf({
         backgroundImage: present ? undefined : HATCH,
         borderLeft: `3px solid ${gut}`,
       }}
+      onMouseEnter={comments?.onRowEnter}
     >
-      <span className={numCell}>{no ?? ""}</span>
-      {present ? <Tokens content={content} /> : <span className="flex-1" />}
+      {/* Stage button overlays the line number (mirrors the unified view's
+       * sign-column staging); the number fades under it on hover. */}
+      <span className={cn(numCell, "relative")}>
+        <span className={cn(!!action && "transition-opacity group-hover/line:opacity-0")}>{no ?? ""}</span>
+        {action}
+      </span>
+      {present ? (
+        <span className="min-w-0 flex-1 overflow-hidden">
+          <Tokens content={content} />
+        </span>
+      ) : (
+        <span className="flex-1" />
+      )}
+      {comments ? (
+        <span className="flex flex-none items-center self-stretch pl-1 pr-2.5">
+          <CommentHandle row={comments} />
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -221,7 +444,7 @@ function splitTones(hunks: DiffHunk[]): Tone[] {
   for (const hunk of hunks) {
     out.push("header");
     for (const row of toSplitRows(hunk.lines)) {
-      out.push(row.right?.kind === "add" ? "add" : row.left?.kind === "del" ? "del" : "ctx");
+      out.push(row.right?.line.kind === "add" ? "add" : row.left?.line.kind === "del" ? "del" : "ctx");
     }
   }
   return out;

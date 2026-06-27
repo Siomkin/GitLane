@@ -1,6 +1,7 @@
 //! Shared real-`git` subprocess helpers.
 
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 /// Run `git -C <repo> <args...>`, returning combined stdout/stderr on success
 /// or the error output on a non-zero exit.
@@ -27,6 +28,40 @@ pub(super) fn run_git_env(
     let output = cmd
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(format!("{stdout}{stderr}").trim().to_string())
+    } else {
+        Err(format!("{stdout}{stderr}").trim().to_string())
+    }
+}
+
+/// Run `git -C <repo> <args...>` with `input` connected to stdin.
+pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Result<String, String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(repo)
+        .args(args)
+        .env("PATH", crate::shell::path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(input.as_bytes())
+            .map_err(|e| format!("failed to write git stdin: {e}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("failed to wait for git: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();

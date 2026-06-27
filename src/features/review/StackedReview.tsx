@@ -10,6 +10,7 @@ import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { FileIcon } from "@/components/ui/icons";
 import { DiffTruncatedNotice, UnifiedDiffBody } from "./DiffBody";
+import { HandToAgentBar } from "./comments";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
 /** Changed-line count above which a file starts collapsed, so a lockfile-sized
@@ -49,6 +50,8 @@ export function StackedReview() {
   const oid = review?.oid ?? null;
   const range = review?.range ?? null;
   const path = summary?.path ?? null;
+  // Notes are scoped to this review (a specific commit or base..head range).
+  const surface = range ? `range:${range.base}..${range.head}` : `commit:${oid ?? ""}`;
 
   // Fetch the file list for this oid/range; reset the diff cache + collapse.
   useEffect(() => {
@@ -184,7 +187,7 @@ export function StackedReview() {
                       <div className="px-4 py-3 text-xs text-neutral-400">Loading diff…</div>
                     ) : diff && !diff.binary ? (
                       <>
-                        <UnifiedDiffBody hunks={diff.hunks} file={file.path} />
+                        <UnifiedDiffBody hunks={diff.hunks} file={file.path} surface={surface} />
                         {diff.truncated && (
                           <DiffTruncatedNotice
                             onShowFull={() =>
@@ -205,6 +208,8 @@ export function StackedReview() {
           })
         )}
       </div>
+
+      <HandToAgentBar surfaces={[surface]} />
     </main>
   );
 }
