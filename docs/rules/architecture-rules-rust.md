@@ -9,7 +9,7 @@ contract that governs every command and are not repeated here.
 ## 1. Engine specifics — how each side of the split is implemented
 
 - **All shelling-out goes through the `run_git` / `run_git_env` / `run_gh` helpers**
-  (`write.rs`, `github/cli.rs`) — never `Command::new("git")` ad hoc. `run_gh` is the
+  (`write/cli.rs`, `github/cli.rs`) — never `Command::new("git")` ad hoc. `run_gh` is the
   only place under `git/github/` that constructs a `gh` subprocess. Tauri GitHub commands
   enter through `GithubService`, which dispatches to `GhProvider`; do not call `prs`,
   `threads`, `diff`, or `cli` directly from `lib.rs`. They already set the augmented `PATH`
@@ -23,6 +23,10 @@ contract that governs every command and are not repeated here.
 - **libgit2 reads** stay in-process. Summary/status/diff reads remain synchronous;
   `commit_graph` is **async + `blocking()`** because large histories are measurably
   expensive. Open the repository inside the worker closure.
+- **Git module facades stay stable.** `read.rs`, `status.rs`, `conflicts.rs`,
+  `graph.rs`, and `write.rs` are public facades for IPC callers. Put implementation
+  details in their focused sibling folders (`read/`, `status/`, `conflicts/`,
+  `graph/`, `write/`) and re-export only the command-facing functions from the facade.
 
 ---
 
@@ -68,9 +72,10 @@ freezes the whole UI (no repaint) until it returns.
 
 ## 5. Layout/computation belongs in Rust, painting in JS
 
-- The graph layout algorithm lives in `graph.rs`: it walks the DAG and assigns each commit a
+- The graph layout algorithm lives behind the `graph.rs` facade, with the actual DAG walk,
+  lane assignment, ref labels, and stash injection in `graph/`: it assigns each commit a
   `(row, lane, color)` plus resolved edges. The frontend is a **dumb painter**. **Don't put
-  layout logic in the frontend — extend `graph.rs`.**
+  layout logic in the frontend — extend the Rust graph modules.**
 - Same principle generally: if a computation can be done once in Rust and shipped as resolved
   data, do it there rather than recomputing per-render in JS.
 

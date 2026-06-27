@@ -25,9 +25,10 @@ Adding or changing a command means editing **all four**, in this order, and veri
 they agree:
 
 1. **Impl** — the real work in the right module under `src-tauri/src/git/`
-   (`read.rs` / `status.rs` / `graph.rs` for reads, `write.rs` for writes, the
-   `github/` directory for `gh`). Free functions that take a `path: &str` and return
-   `Result<_, String>`.
+   (`read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/`,
+   and `graph.rs` + `graph/` for reads; `write.rs` + `write/` for real-`git` operations; the
+   `github/` directory for `gh`). Facades expose free functions that take a
+   `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`.
 2. **Command + registration** — `src-tauri/src/lib.rs`: the `#[tauri::command]` fn **and**
    its line in `tauri::generate_handler![…]`. Forgetting the handler entry is the #1
    "command not found" bug.
@@ -54,15 +55,16 @@ The central design decision. Before writing a backend function, decide which it 
 
 | Operation | Engine | Module | Sync/async |
 |-----------|--------|--------|-----------|
-| Read repo state (summary, branches, status, diffs) | **libgit2** (`git2`) | `read.rs` / `status.rs` | **sync** command |
-| Build the potentially large commit graph | **libgit2** (`git2`) | `graph.rs` | **async** + `blocking()` |
-| Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write.rs` | **async** + `blocking()` |
+| Read repo state (summary, branches, status, diffs, conflicts) | **libgit2** (`git2`) | `read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/` | **sync** command |
+| Build the potentially large commit graph | **libgit2** (`git2`) | `graph.rs` + `graph/` | **async** + `blocking()` |
+| Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write.rs` + `write/` | **async** + `blocking()` |
 | GitHub (accounts, PRs, checks) | **GithubService → GithubProvider → `GhProvider` → `gh`** | `github/` | **async** + `blocking()` |
 
 The split is "can libgit2 do it?", not literally "read vs write". A few **read-shaped**
 commands still shell out to `git` because libgit2 doesn't cover them well — `list_worktrees`
-and `list_stashes` live in `write.rs` and are therefore `async` + `blocking()`, returning
-structs like any read. The engine dictates sync-vs-async, not the read/write label.
+and `list_stashes` live under the `write.rs` facade (`write/worktrees.rs` and
+`write/stashes.rs`) and are therefore `async` + `blocking()`, returning structs like
+any read. The engine dictates sync-vs-async, not the read/write label.
 
 - **Do not reimplement write operations with libgit2.** The CLI honours hooks, credential
   helpers, `.gitconfig`, signing, and conflict machinery; libgit2 reimplements those only
