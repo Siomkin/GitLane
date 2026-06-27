@@ -13,6 +13,15 @@ export type OnboardingScreen =
   | "empty"
   | "opened";
 
+/** The repository a just-completed clone/init produced, shown on the success
+ * screen before entering it. Which screen to show (empty after init vs opened
+ * after clone) is the orchestrator's `screen` state — not duplicated here. */
+export interface OnboardingResult {
+  name: string;
+  branch: string;
+  path: string;
+}
+
 export type UrlState = "empty" | "valid" | "invalid";
 
 /** Validate a clone URL and extract the repo name it would produce. Accepts

@@ -1,124 +1,35 @@
-// State machine for the repository onboarding flow (GL-38). Owns the transient
-// UI state — which screen, the clone/init form fields, live clone progress, and
-// the error/success result — while delegating durable work to the repo store
-// (open/recents) and the backend (clone/init/reveal). The screens themselves are
-// presentational and receive slices of this hook's return.
+// Orchestrator for the repository onboarding flow (GL-38). Owns the screen state
+// machine and the shared post-clone/init result, plus the open-existing actions
+// (open local, open/relocate recents). The heavy clone and init concerns live in
+// their own hooks (useCloneFlow / useInitFlow); this composes them and exposes a
+// single flat API the presentational screens consume. Splitting keeps each
+// concern to one reason to change (architecture-rules-react §4).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, type CloneProgress } from "../../lib/api";
-import { repoLabel } from "../../lib/paths";
+import { api } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import type { RecentRepo } from "../../store/repoSession";
-import {
-  canceledCloneCopy,
-  classifyCloneError,
-  type CloneErrorCopy,
-  type GitignoreTemplate,
-  joinPath,
-  type OnboardingScreen,
-  parentDir,
-  parseRepoName,
-  retryRerunsClone,
-  type UrlState,
-  validateCloneUrl,
-} from "./onboarding";
-
-/** The repository a just-completed clone/init produced, shown on the success
- * screen before entering it. Which screen to show (empty after init vs opened
- * after clone) is the hook's `screen` state — not duplicated here. */
-export interface OnboardingResult {
-  name: string;
-  branch: string;
-  path: string;
-}
-
-const INITIAL_PROGRESS: CloneProgress = { stage: "Connecting to remote", pct: 0 };
-
-/** Default parent directory for a new clone/init: alongside the most recent repo,
- * so the common case needs no Browse. Empty when there are no recents yet. */
-function defaultParent(): string {
-  const recents = useRepo.getState().recents;
-  return recents[0] ? parentDir(recents[0].path) : "";
-}
+import type { OnboardingResult, OnboardingScreen } from "./onboarding";
+import { useCloneFlow } from "./useCloneFlow";
+import { useInitFlow } from "./useInitFlow";
 
 /** @param onDone Called after an action opens a repo — used by the overlay
  * (open-state) entry point to dismiss itself once a repo is opened. */
 export const useOnboarding = (onDone?: () => void) => {
   const recents = useRepo((state) => state.recents);
-
   const [screen, setScreen] = useState<OnboardingScreen>("home");
-
-  // Clone form / flow.
-  const [cloneUrl, setCloneUrl] = useState("");
-  const [cloneParent, setCloneParent] = useState(defaultParent);
-  const [progress, setProgress] = useState<CloneProgress>(INITIAL_PROGRESS);
-  const [error, setError] = useState<CloneErrorCopy | null>(null);
-  const cancelingRef = useRef(false);
-  // Synchronous guard so a double-click can't fire two clones before the screen
-  // switches away from the form (the backend would reject the second anyway).
-  const cloningRef = useRef(false);
-
-  // Init form.
-  const [initParent, setInitParent] = useState(defaultParent);
-  const [initName, setInitName] = useState("my-project");
-  const [initBranch, setInitBranch] = useState("main");
-  const [initReadme, setInitReadme] = useState(true);
-  const [initIgnore, setInitIgnore] = useState<GitignoreTemplate>("None");
-  const [initError, setInitError] = useState<string | null>(null);
-  const [initBusy, setInitBusy] = useState(false);
-  // Synchronous guard against a double-submit firing two init_repo calls before
-  // the async `initBusy` state has a chance to disable the button.
-  const initBusyRef = useRef(false);
-
-  // Post-clone/init confirmation.
   const [result, setResult] = useState<OnboardingResult | null>(null);
 
-  const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
+  const { goCloneForm, ...clone } = useCloneFlow({ setScreen, setResult });
+  const { goInitForm, ...init } = useInitFlow({ setScreen, setResult });
 
   // Refresh recents' presence + branch from disk when the start screen mounts.
   useEffect(() => {
     void useRepo.getState().refreshRecents();
   }, []);
 
-  // Live clone progress streamed from the backend.
-  useEffect(() => {
-    const unlisten = listen<CloneProgress>("clone-progress", ({ payload }) => {
-      setProgress(payload);
-    });
-    return () => {
-      void unlisten.then((off) => off());
-    };
-  }, []);
-
-  // Track the live screen for the unmount cleanup below (avoids re-subscribing).
-  const screenRef = useRef(screen);
-  screenRef.current = screen;
-
-  // If the overlay is dismissed mid-clone (Close / Escape / repo switch unmounts
-  // this hook), stop the background clone rather than letting it run on with no
-  // UI. The canceling flag also suppresses the in-flight startClone's post-await
-  // state updates on the now-unmounted hook.
-  useEffect(() => {
-    return () => {
-      if (screenRef.current === "progress") {
-        cancelingRef.current = true;
-        void api.cancelClone().catch(() => {});
-      }
-    };
-  }, []);
-
-  // ---- navigation ----
   const goHome = useCallback(() => setScreen("home"), []);
-  const goClone = useCallback(() => {
-    setError(null);
-    setScreen("clone");
-  }, []);
-  const goInit = useCallback(() => {
-    setInitError(null);
-    setScreen("init");
-  }, []);
 
   // ---- open existing (straight into the repo, no confirmation screen) ----
   const openLocal = useCallback(() => {
@@ -165,104 +76,6 @@ export const useOnboarding = (onDone?: () => void) => {
 
   const clearRecents = useCallback(() => useRepo.getState().clearRecents(), []);
 
-  // ---- clone ----
-  const browseCloneParent = useCallback(() => {
-    void (async () => {
-      const picked = await openDialog({ directory: true, multiple: false });
-      if (typeof picked === "string") setCloneParent(picked);
-    })();
-  }, []);
-
-  const canClone = url.state === "valid" && cloneParent.trim() !== "";
-
-  const startClone = useCallback(() => {
-    if (cloningRef.current) return;
-    const validated = validateCloneUrl(cloneUrl);
-    if (validated.state !== "valid" || cloneParent.trim() === "") return;
-    const dest = joinPath(cloneParent, validated.repo);
-    cloningRef.current = true;
-    cancelingRef.current = false;
-    setError(null);
-    setProgress(INITIAL_PROGRESS);
-    setScreen("progress");
-    void (async () => {
-      try {
-        const path = await api.cloneRepo(cloneUrl.trim(), dest);
-        if (cancelingRef.current) return;
-        // Read the cloned repo so the confirmation shows its real branch/path.
-        let name = parseRepoName(cloneUrl);
-        let branch = "main";
-        let finalPath = path;
-        try {
-          const summary = await api.openRepo(path);
-          finalPath = summary.path;
-          name = repoLabel(summary.path);
-          branch = summary.headBranch ?? "main";
-        } catch {
-          /* fall back to the parsed name/path */
-        }
-        setResult({ name, branch, path: finalPath });
-        setScreen("opened");
-      } catch (e) {
-        if (cancelingRef.current) return; // cancel already showed its own screen
-        setError(classifyCloneError(String(e)));
-        setScreen("error");
-      } finally {
-        cloningRef.current = false;
-      }
-    })();
-  }, [cloneUrl, cloneParent]);
-
-  const cancelClone = useCallback(() => {
-    cancelingRef.current = true;
-    void api.cancelClone().catch(() => {});
-    setError(canceledCloneCopy());
-    setScreen("error");
-  }, []);
-
-  const retry = useCallback(() => {
-    if (error && retryRerunsClone(error.kind)) {
-      startClone();
-    } else {
-      // exists / unreachable → back to the form so the URL/destination can change.
-      setScreen("clone");
-    }
-  }, [error, startClone]);
-
-  // ---- init ----
-  const browseInitParent = useCallback(() => {
-    void (async () => {
-      const picked = await openDialog({ directory: true, multiple: false });
-      if (typeof picked === "string") setInitParent(picked);
-    })();
-  }, []);
-
-  const toggleReadme = useCallback(() => setInitReadme((v) => !v), []);
-
-  const canInit = initParent.trim() !== "" && initName.trim() !== "";
-
-  const startInit = useCallback(() => {
-    if (initBusyRef.current) return;
-    if (initParent.trim() === "" || initName.trim() === "") return;
-    const name = initName.trim();
-    const branch = initBranch.trim() || "main";
-    initBusyRef.current = true;
-    setInitError(null);
-    setInitBusy(true);
-    void (async () => {
-      try {
-        const path = await api.initRepo(initParent, name, branch, initReadme, initIgnore);
-        setResult({ name, branch, path });
-        setScreen("empty");
-      } catch (e) {
-        setInitError(String(e));
-      } finally {
-        initBusyRef.current = false;
-        setInitBusy(false);
-      }
-    })();
-  }, [initParent, initName, initBranch, initReadme, initIgnore]);
-
   // ---- result (enter the repo / reveal it) ----
   const enterResult = useCallback(() => {
     if (!result) return;
@@ -285,40 +98,15 @@ export const useOnboarding = (onDone?: () => void) => {
     goHome,
     // home
     recents,
-    goClone,
-    goInit,
+    goClone: goCloneForm,
+    goInit: goInitForm,
     openLocal,
     openRecent,
     clearRecents,
-    // clone
-    cloneUrl,
-    setCloneUrl,
-    url,
-    cloneParent,
-    browseCloneParent,
-    canClone,
-    startClone,
-    // progress
-    progress,
-    cancelClone,
-    // error
-    error,
-    retry,
-    // init
-    initParent,
-    browseInitParent,
-    initName,
-    setInitName,
-    initBranch,
-    setInitBranch,
-    initReadme,
-    toggleReadme,
-    initIgnore,
-    setInitIgnore,
-    initError,
-    initBusy,
-    canInit,
-    startInit,
+    // clone flow (form / progress / error)
+    ...clone,
+    // init flow (form)
+    ...init,
     // result
     result,
     enterResult,
@@ -327,4 +115,3 @@ export const useOnboarding = (onDone?: () => void) => {
 };
 
 export type OnboardingApi = ReturnType<typeof useOnboarding>;
-export type { UrlState };
