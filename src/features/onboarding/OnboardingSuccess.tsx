@@ -77,11 +77,11 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
                 Cloned {result.name}
               </div>
               <div className="mt-1.5 text-[14px] leading-relaxed text-neutral-500 dark:text-neutral-400">
-                Fetched all branches and checked out{" "}
+                Checked out{" "}
                 <span className="font-mono font-medium text-neutral-700 dark:text-neutral-200">
                   {result.branch}
                 </span>{" "}
-                into {result.path}. You're ready to start working.
+                into {result.path}.
               </div>
               <div className="mt-6 inline-flex items-center gap-2 text-[12.5px] text-neutral-400 dark:text-neutral-500">
                 <CheckGlyph className="h-4 w-4 text-emerald-500" />

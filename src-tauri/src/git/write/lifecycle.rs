@@ -48,9 +48,15 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         return Err("Choose a destination folder for the clone.".to_string());
     }
 
-    // Whether this clone will create `dest`. Used to clean up a partial clone on
-    // failure/cancel without ever removing a directory the user already had.
-    let created = !std::path::Path::new(dest).exists();
+    // Whether a failed/canceled clone may remove `dest`: when it doesn't exist
+    // yet (we create it) or it's an empty directory the user pointed us at (so a
+    // partial clone would be the only thing in it). A pre-existing *non-empty*
+    // dir is never removed — git refuses to clone into one anyway.
+    let dest_path = std::path::Path::new(dest);
+    let cleanup_eligible = !dest_path.exists()
+        || std::fs::read_dir(dest_path)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false);
 
     let mut cmd = Command::new("git");
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
@@ -77,10 +83,15 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("failed to launch git: {e}"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| "failed to capture git output".to_string())?;
+        // Kill the just-spawned child if we can't capture its output, rather than
+        // leaving an untracked process running (it was never parked in the slot).
+        let stderr = match child.stderr.take() {
+            Some(stderr) => stderr,
+            None => {
+                let _ = child.kill();
+                return Err("failed to capture git output".to_string());
+            }
+        };
         *guard = Some(child);
         stderr
     };
@@ -148,7 +159,7 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         // created the destination for this clone, remove it so the path is clean
         // (matching the canceled-state copy) and a retry doesn't hit "already
         // exists". Best-effort: a removal failure must not mask the real error.
-        if created {
+        if cleanup_eligible {
             let _ = std::fs::remove_dir_all(dest);
         }
         Err(extract_error(&transcript))
