@@ -68,6 +68,8 @@ const App = () => {
   const closeNav = useUi((state) => state.closeNav);
   const clearReviewNotes = useUi((state) => state.clearReviewNotes);
   const resetHistView = useUi((state) => state.resetHistView);
+  const onboardingOpen = useUi((state) => state.onboardingOpen);
+  const closeOnboarding = useUi((state) => state.closeOnboarding);
   const [leftTab, setLeftTab] = useState<LeftTab>("history");
 
   // Reopen the last active repository on launch, and load gh accounts.
@@ -111,7 +113,10 @@ const App = () => {
     closeNav();
     clearReviewNotes();
     resetHistView();
-  }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView]);
+    // Any repo switch (incl. dropping to the no-repo start state) dismisses the
+    // onboarding overlay so it can't linger over a different repo.
+    closeOnboarding();
+  }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView, closeOnboarding]);
 
   // An active merge/rebase/cherry-pick/revert takes over the center pane: the
   // repo is in a blocking conflicted state, so the dedicated resolution
@@ -209,6 +214,10 @@ const App = () => {
       ) : (
         <RepoOnboarding />
       )}
+
+      {/* Onboarding raised from the tab strip while a repo is open (the no-repo
+          start state renders RepoOnboarding inline above instead). */}
+      {onboardingOpen && summary && <RepoOnboarding onClose={closeOnboarding} />}
 
       <SettingsModal />
       <ActionMenu />

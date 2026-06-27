@@ -43,7 +43,9 @@ function defaultParent(): string {
   return recents[0] ? parentDir(recents[0].path) : "";
 }
 
-export function useOnboarding() {
+/** @param onDone Called after an action opens a repo — used by the overlay
+ * (open-state) entry point to dismiss itself once a repo is opened. */
+export function useOnboarding(onDone?: () => void) {
   const recents = useRepo((state) => state.recents);
 
   const [screen, setScreen] = useState<OnboardingScreen>("home");
@@ -97,24 +99,34 @@ export function useOnboarding() {
 
   // ---- open existing (straight into the repo, no confirmation screen) ----
   const openLocal = useCallback(() => {
-    void useRepo.getState().pickAndOpen();
-  }, []);
+    void (async () => {
+      const before = useRepo.getState().summary?.path ?? null;
+      await useRepo.getState().pickAndOpen();
+      // Only dismiss the overlay if a repo actually opened (dialog not canceled).
+      if ((useRepo.getState().summary?.path ?? null) !== before) onDone?.();
+    })();
+  }, [onDone]);
 
-  const openRecent = useCallback((repo: RecentRepo) => {
-    if (repo.missing) {
-      // The path moved/disappeared: let the user point at its new location, and
-      // drop the stale entry once they open the replacement.
-      void (async () => {
-        const picked = await openDialog({ directory: true, multiple: false });
-        if (typeof picked === "string") {
-          useRepo.getState().removeRecent(repo.path);
-          await useRepo.getState().loadRepo(picked);
-        }
-      })();
-      return;
-    }
-    void useRepo.getState().loadRepo(repo.path);
-  }, []);
+  const openRecent = useCallback(
+    (repo: RecentRepo) => {
+      if (repo.missing) {
+        // The path moved/disappeared: let the user point at its new location, and
+        // drop the stale entry once they open the replacement.
+        void (async () => {
+          const picked = await openDialog({ directory: true, multiple: false });
+          if (typeof picked === "string") {
+            useRepo.getState().removeRecent(repo.path);
+            await useRepo.getState().loadRepo(picked);
+            onDone?.();
+          }
+        })();
+        return;
+      }
+      void useRepo.getState().loadRepo(repo.path);
+      onDone?.();
+    },
+    [onDone],
+  );
 
   const clearRecents = useCallback(() => useRepo.getState().clearRecents(), []);
 
@@ -211,8 +223,10 @@ export function useOnboarding() {
 
   // ---- result (enter the repo / reveal it) ----
   const enterResult = useCallback(() => {
-    if (result) void useRepo.getState().loadRepo(result.path);
-  }, [result]);
+    if (!result) return;
+    void useRepo.getState().loadRepo(result.path);
+    onDone?.();
+  }, [result, onDone]);
 
   const revealResult = useCallback(() => {
     if (result) void api.revealPath(result.path).catch(() => {});

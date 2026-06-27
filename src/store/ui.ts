@@ -192,6 +192,9 @@ interface UiState {
   settingsOpen: boolean;
   settingsTab: SettingsTab;
   addAccountOpen: boolean;
+  /** Repository-onboarding overlay (clone / init / open) raised from the tab
+   * strip while a repo is already open. Transient (not persisted). */
+  onboardingOpen: boolean;
 
   /** Branch navigator dropdown raised by the "Checked out" trigger. Transient. */
   navOpen: boolean;
@@ -301,6 +304,9 @@ interface UiState {
   closeSettings: () => void;
   setSettingsTab: (tab: SettingsTab) => void;
   setAddAccountOpen: (open: boolean) => void;
+  /** Raise / dismiss the repository-onboarding overlay from within an open repo. */
+  openOnboarding: () => void;
+  closeOnboarding: () => void;
 
   openNav: () => void;
   closeNav: () => void;
@@ -424,6 +430,7 @@ export const useUi = create<UiState>()(
   settingsOpen: false,
   settingsTab: "general",
   addAccountOpen: false,
+  onboardingOpen: false,
 
   navOpen: false,
   draggingFrom: null,
@@ -507,6 +514,8 @@ export const useUi = create<UiState>()(
 
   openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
   closeSettings: () => set({ settingsOpen: false, addAccountOpen: false }),
+  openOnboarding: () => set({ onboardingOpen: true }),
+  closeOnboarding: () => set({ onboardingOpen: false }),
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   setAddAccountOpen: (open) => set({ addAccountOpen: open }),
 

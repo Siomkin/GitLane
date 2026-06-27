@@ -17,10 +17,11 @@ export const TitleBar = () => {
   const loadRepo = useRepo((state) => state.loadRepo);
   const closeRepo = useRepo((state) => state.closeRepo);
   const reorderOpenPaths = useRepo((state) => state.reorderOpenPaths);
-  const pickAndOpen = useRepo((state) => state.pickAndOpen);
   const theme = useResolvedTheme();
   const toggleTheme = useUi((state) => state.toggleTheme);
   const onSettings = useUi((state) => state.openSettings);
+  const openOnboarding = useUi((state) => state.openOnboarding);
+  const closeOnboarding = useUi((state) => state.closeOnboarding);
   const activePath = summary?.path ?? null;
 
   const handleProjectDragEnd = useCallback(
@@ -54,6 +55,7 @@ export const TitleBar = () => {
                 index={index}
                 active={active}
                 onSelect={() => {
+                  closeOnboarding();
                   if (!active) void loadRepo(path);
                 }}
                 onClose={() => void closeRepo(path)}
@@ -61,13 +63,15 @@ export const TitleBar = () => {
             );
           })}
         </DragDropProvider>
-        <button
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
-          onClick={pickAndOpen}
-          title="Open another repository"
-        >
-          <PlusIcon className="h-3.5 w-3.5" />
-        </button>
+        {openPaths.length > 0 && (
+          <button
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
+            onClick={openOnboarding}
+            title="Open or create a repository"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div data-tauri-drag-region className="ml-auto flex items-center gap-1">
