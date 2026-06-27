@@ -70,20 +70,32 @@ pub fn apply_line(
 ///
 /// The frontend chooses a hunk/line index from the **displayed** diff, which is
 /// rendered by libgit2 (`git/status/*` with `context_lines(3)`). To keep those
-/// indices addressing the same boundaries here, this patch source must segment
-/// identically: libgit2 uses the Myers algorithm with no indent heuristic, so we
-/// pin `--diff-algorithm=myers --no-indent-heuristic` (and the default 3 context
-/// lines) rather than inheriting the user's `diff.algorithm`/`diff.indentHeuristic`
-/// config. `extract_single_hunk_patch`/`extract_single_line_patch` additionally
-/// validate the expected hunk range / line content before applying, so any
-/// residual divergence fails safe ("refresh and try again") instead of staging
-/// the wrong hunk.
+/// indices addressing the same boundaries here — and to keep the patch parseable
+/// and `git apply`-able — every formatting knob is pinned rather than inherited
+/// from the user's config:
+/// - `--diff-algorithm=myers --no-indent-heuristic` matches libgit2's segmentation
+///   (overrides `diff.algorithm` / `diff.indentHeuristic`).
+/// - `--unified=3 --inter-hunk-context=0` matches libgit2's 3-line context and
+///   no inter-hunk merging (overrides `diff.context` / `diff.interHunkContext`).
+/// - `--no-color` keeps ANSI escapes out of the parsed output (overrides `color.ui`).
+/// - `--src-prefix=a/ --dst-prefix=b/` keeps the standard prefixes the extracted
+///   patch is re-applied with via `git apply` (overrides `diff.noprefix` /
+///   `diff.mnemonicPrefix`).
+///
+/// `extract_single_hunk_patch`/`extract_single_line_patch` additionally validate
+/// the expected hunk range + body / line content before applying, so any residual
+/// divergence fails safe ("refresh and try again") instead of staging the wrong hunk.
 pub(super) fn patch_diff_args<'a>(staged: bool, file: &'a str) -> Vec<&'a str> {
     let mut args = vec![
         "diff",
         "--no-ext-diff",
+        "--no-color",
         "--no-indent-heuristic",
         "--diff-algorithm=myers",
+        "--unified=3",
+        "--inter-hunk-context=0",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
     ];
     if staged {
         args.push("--cached");

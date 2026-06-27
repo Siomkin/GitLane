@@ -61,7 +61,15 @@ const norm = (r: Range): Range => ({
   toSeq: Math.max(r.fromSeq, r.toSeq),
 });
 
-export function useLineComments(file: string, lines: LineMeta[]): LineCommentsController {
+export function useLineComments(
+  surface: string,
+  file: string,
+  lines: LineMeta[],
+  opts?: { confineDragToSide?: boolean },
+): LineCommentsController {
+  // Split view confines a drag to the side it started on (left/old vs right/new),
+  // so dragging across columns doesn't select the interleaved opposite side.
+  const confineDragToSide = !!opts?.confineDragToSide;
   const allNotes = useUi((s) => s.reviewNotes);
   const addReviewNote = useUi((s) => s.addReviewNote);
   const removeReviewNote = useUi((s) => s.removeReviewNote);
@@ -78,14 +86,14 @@ export function useLineComments(file: string, lines: LineMeta[]): LineCommentsCo
   const placed = useMemo<Placed[]>(() => {
     const out: Placed[] = [];
     for (const n of allNotes) {
-      if (n.file !== file) continue;
+      if (n.surface !== surface || n.file !== file) continue;
       const a = refToSeq.get(n.fromRef);
       const b = refToSeq.get(n.toRef);
       if (a == null || b == null) continue;
       out.push({ id: n.id, body: n.body, fromSeq: Math.min(a, b), toSeq: Math.max(a, b) });
     }
     return out;
-  }, [allNotes, file, refToSeq]);
+  }, [allNotes, surface, file, refToSeq]);
 
   const anchorBySeq = useMemo(() => {
     const m = new Map<number, Placed>();
@@ -110,10 +118,12 @@ export function useLineComments(file: string, lines: LineMeta[]): LineCommentsCo
 
   const save = useCallback(() => {
     const body = draft.trim();
-    if (editRange && body) addReviewNote(buildNote(file, lines, editRange.fromSeq, editRange.toSeq, body));
+    if (editRange && body) {
+      addReviewNote(buildNote(surface, file, lines, editRange.fromSeq, editRange.toSeq, body));
+    }
     setEditRange(null);
     setDraft("");
-  }, [addReviewNote, draft, editRange, file, lines]);
+  }, [addReviewNote, draft, editRange, surface, file, lines]);
 
   const cancel = useCallback(() => {
     setEditRange(null);
@@ -164,7 +174,13 @@ export function useLineComments(file: string, lines: LineMeta[]): LineCommentsCo
           setEditRange(null);
           setOpenId(null);
         },
-        onRowEnter: () => setDrag((d) => (d ? { fromSeq: d.fromSeq, toSeq: seq } : d)),
+        onRowEnter: () =>
+          setDrag((d) => {
+            if (!d) return d;
+            // In split view, only extend across rows on the same side.
+            if (confineDragToSide && lines[seq]?.side !== lines[d.fromSeq]?.side) return d;
+            return { fromSeq: d.fromSeq, toSeq: seq };
+          }),
         toggleCard: () => {
           if (anchor) setOpenId((id) => (id === anchor.id ? null : anchor.id));
         },
@@ -181,7 +197,7 @@ export function useLineComments(file: string, lines: LineMeta[]): LineCommentsCo
         },
       };
     },
-    [anchorBySeq, drag, editRange, openId, placed, lines, removeReviewNote],
+    [anchorBySeq, drag, editRange, openId, placed, lines, removeReviewNote, confineDragToSide],
   );
 
   return { active: drag != null || editRange != null, draft, setDraft, save, cancel, onDraftKey, rowFor };

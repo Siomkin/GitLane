@@ -6,13 +6,23 @@ import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
 import { DiamondIcon } from "@/components/ui/icons";
 
-export const HandToAgentBar = () => {
+export const HandToAgentBar = ({
+  surface,
+  branch: branchOverride,
+}: {
+  /** The review surface whose comments this bar summarises + hands off. */
+  surface: string;
+  /** Branch named in the hand-off message; defaults to the checked-out branch
+   * (PR diffs pass the PR's head branch instead). */
+  branch?: string | null;
+}) => {
   const notes = useUi((s) => s.reviewNotes);
   const openAgentMessage = useUi((s) => s.openAgentMessage);
-  const branch = useRepo((s) => s.summary?.headBranch ?? null);
+  const headBranch = useRepo((s) => s.summary?.headBranch ?? null);
+  const branch = branchOverride ?? headBranch;
 
-  if (notes.length === 0) return null;
-  const n = notes.length;
+  const n = notes.reduce((count, note) => (note.surface === surface ? count + 1 : count), 0);
+  if (n === 0) return null;
   const word = n === 1 ? "comment" : "comments";
 
   return (
@@ -30,7 +40,7 @@ export const HandToAgentBar = () => {
       </div>
       <button
         type="button"
-        onClick={openAgentMessage}
+        onClick={() => openAgentMessage(surface, branch)}
         className="h-9 flex-none rounded-lg bg-[color:var(--accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110"
       >
         Prepare message for agent

@@ -247,12 +247,20 @@ export const UnifiedLine = memo(function UnifiedLine({
 const countChanged = (hunk: DiffHunk) =>
   hunk.lines.reduce((n, line) => (line.kind === "ctx" ? n : n + 1), 0);
 
-/** Full unified diff body for a file (all hunks), rendered as hunk cards. Used by
- * the stacked review; when `file` is given, each line gains the local-comment
- * affordances (the comment controller is scoped to this file). */
-export function UnifiedDiffBody({ hunks, file }: { hunks: DiffHunk[]; file?: string }) {
+/** Full unified diff body for a file (all hunks), rendered as hunk cards. When
+ * `file` and `surface` are given, each line gains the local-comment affordances
+ * (the comment controller is scoped to this file + review surface). */
+export function UnifiedDiffBody({
+  hunks,
+  file,
+  surface,
+}: {
+  hunks: DiffHunk[];
+  file?: string;
+  surface?: string;
+}) {
   const lines = useMemo(() => (file ? buildLineMeta(hunks) : []), [hunks, file]);
-  const controller = useLineComments(file ?? "", lines);
+  const controller = useLineComments(surface ?? "", file ?? "", lines);
   let seq = -1;
   return (
     <div>

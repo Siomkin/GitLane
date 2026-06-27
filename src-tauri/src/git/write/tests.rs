@@ -138,8 +138,13 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
         vec![
             "diff",
             "--no-ext-diff",
+            "--no-color",
             "--no-indent-heuristic",
             "--diff-algorithm=myers",
+            "--unified=3",
+            "--inter-hunk-context=0",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "--",
             "file.txt",
         ]
@@ -149,8 +154,13 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
         vec![
             "diff",
             "--no-ext-diff",
+            "--no-color",
             "--no-indent-heuristic",
             "--diff-algorithm=myers",
+            "--unified=3",
+            "--inter-hunk-context=0",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "--cached",
             "--",
             "file.txt",

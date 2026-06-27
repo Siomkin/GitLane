@@ -3,7 +3,6 @@ export { CommentEditor } from "./CommentEditor";
 export { CommentHandle } from "./CommentHandle";
 export { HandToAgentBar } from "./HandToAgentBar";
 export {
-  buildColumnLineMeta,
   buildLineMeta,
   composeAgentMessage,
   orderedNotes,

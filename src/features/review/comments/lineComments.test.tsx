@@ -20,7 +20,7 @@ afterEach(() => useUi.getState().clearReviewNotes());
 
 describe("in-diff local comments", () => {
   it("opens a comment from a line handle and pins it to the store", () => {
-    render(<UnifiedDiffBody hunks={hunks} file="a.ts" />);
+    render(<UnifiedDiffBody hunks={hunks} file="a.ts" surface="work" />);
     expect(screen.getByText("@@ -1,2 +1,3 @@")).toBeInTheDocument();
 
     // Click the added line's handle (release commits the single-line range).
@@ -36,6 +36,7 @@ describe("in-diff local comments", () => {
     // Saved to the store as a single-line range; editor closes.
     expect(useUi.getState().reviewNotes).toHaveLength(1);
     expect(useUi.getState().reviewNotes[0].lineRef).toBe("R2");
+    expect(useUi.getState().reviewNotes[0].surface).toBe("work");
     expect(screen.queryByPlaceholderText(/Request change/)).toBeNull();
 
     // The line is now an anchor; expanding the marker shows the saved card.
@@ -44,8 +45,10 @@ describe("in-diff local comments", () => {
     expect(screen.getAllByText("Local comment").length).toBeGreaterThan(0);
   });
 
-  it("HandToAgentBar surfaces the pending count and opens the composer", () => {
+  it("does not attach a note from a different surface", () => {
+    // Same file + ref, but pinned to another diff surface (a specific commit).
     useUi.getState().addReviewNote({
+      surface: "commit:other",
       file: "a.ts",
       side: "R",
       line: 2,
@@ -55,7 +58,24 @@ describe("in-diff local comments", () => {
       code: "added line",
       body: "x",
     });
-    render(<HandToAgentBar />);
+    render(<UnifiedDiffBody hunks={hunks} file="a.ts" surface="work" />);
+    // The note belongs to another surface, so no anchor marker is rendered here.
+    expect(screen.queryByRole("button", { name: "Toggle comment" })).toBeNull();
+  });
+
+  it("HandToAgentBar surfaces the pending count and opens the composer", () => {
+    useUi.getState().addReviewNote({
+      surface: "work",
+      file: "a.ts",
+      side: "R",
+      line: 2,
+      fromRef: "R2",
+      toRef: "R2",
+      lineRef: "R2",
+      code: "added line",
+      body: "x",
+    });
+    render(<HandToAgentBar surface="work" />);
     expect(screen.getByText("Hand to agent")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Prepare message for agent" }));
     expect(useUi.getState().agentMessageOpen).toBe(true);

@@ -4,11 +4,10 @@
 // can Copy or push into the in-app terminal agent. Comments are session-only
 // (never persisted); the composed text is the artefact.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { basename } from "../../lib/paths";
 import { focusRing } from "../../lib/ui";
-import { useRepo } from "../../store/repo";
 import { useTerminalAgents } from "../../store/terminalAgents";
 import { useUi } from "../../store/ui";
 import { CloseIcon, DiamondIcon } from "@/components/ui/icons";
@@ -19,12 +18,15 @@ import { selectEnabledAgents } from "../terminal/agents";
  * Send-to-terminal. */
 export function AgentMessageDialog() {
   const open = useUi((s) => s.agentMessageOpen);
-  const notes = useUi((s) => s.reviewNotes);
+  const surface = useUi((s) => s.agentMessageSurface);
+  const branch = useUi((s) => s.agentMessageBranch);
+  const allNotes = useUi((s) => s.reviewNotes);
   const removeReviewNote = useUi((s) => s.removeReviewNote);
   const close = useUi((s) => s.closeAgentMessage);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
   const showToast = useUi((s) => s.showToast);
-  const branch = useRepo((s) => s.summary?.headBranch ?? null);
+  // Only the comments from the surface that opened the dialog are handed off.
+  const notes = useMemo(() => allNotes.filter((n) => n.surface === surface), [allNotes, surface]);
   const agentsRaw = useTerminalAgents((s) => s.agents);
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
   const [text, setText] = useState("");

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { DiffHunk } from "../../../lib/api";
 import type { ReviewNote } from "../../../store/ui";
 import {
-  buildColumnLineMeta,
   buildLineMeta,
   buildNote,
   composeAgentMessage,
@@ -39,17 +38,6 @@ describe("buildLineMeta", () => {
   });
 });
 
-describe("buildColumnLineMeta", () => {
-  // hunk: ctx(R1), del(L2), add(R2), add(R3)
-  it("left column = deletions only (context is commented from the right)", () => {
-    expect(buildColumnLineMeta([hunk], "L").map((l) => l.ref)).toEqual(["L2"]);
-  });
-
-  it("right column = additions + context", () => {
-    expect(buildColumnLineMeta([hunk], "R").map((l) => l.ref)).toEqual(["R1", "R2", "R3"]);
-  });
-});
-
 describe("rangeLabel / scopeText", () => {
   it("collapses a single-line range", () => {
     expect(rangeLabel("R2", "R2")).toBe("R2");
@@ -64,8 +52,9 @@ describe("rangeLabel / scopeText", () => {
 describe("buildNote", () => {
   const lines = buildLineMeta([hunk]);
 
-  it("captures a multi-line range, joined code, and anchor at the range end", () => {
-    const note = buildNote("a.ts", lines, 2, 3, "  please fix  ");
+  it("captures the surface, a multi-line range, joined code, and anchor at the range end", () => {
+    const note = buildNote("work", "a.ts", lines, 2, 3, "  please fix  ");
+    expect(note.surface).toBe("work");
     expect(note.fromRef).toBe("R2");
     expect(note.toRef).toBe("R3");
     expect(note.lineRef).toBe("R2–R3");
@@ -76,11 +65,14 @@ describe("buildNote", () => {
   });
 
   it("normalises a bottom-up drag to the same range", () => {
-    expect(buildNote("a.ts", lines, 3, 2, "x")).toEqual(buildNote("a.ts", lines, 2, 3, "x"));
+    expect(buildNote("work", "a.ts", lines, 3, 2, "x")).toEqual(
+      buildNote("work", "a.ts", lines, 2, 3, "x"),
+    );
   });
 
   it("handles a single-line selection", () => {
-    const note = buildNote("a.ts", lines, 1, 1, "note");
+    const note = buildNote("commit:abc", "a.ts", lines, 1, 1, "note");
+    expect(note.surface).toBe("commit:abc");
     expect(note.lineRef).toBe("L2");
     expect(note.code).toBe("old line");
   });
@@ -89,6 +81,7 @@ describe("buildNote", () => {
 describe("composeAgentMessage", () => {
   const note = (over: Partial<ReviewNote>): ReviewNote => ({
     id: "x",
+    surface: "work",
     file: "a.ts",
     side: "R",
     line: 2,

@@ -14,6 +14,8 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
   const diffError = usePulls((s) => s.prDiffError[pr.num]);
   const loadPrDiff = usePulls((s) => s.loadPrDiff);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
+  // Notes are scoped to this PR, and the hand-off names the PR's head branch.
+  const surface = `pr:${pr.num}`;
 
   // Lazily fetch the full diff when the tab is first shown for this PR; refetch
   // after a manual refresh (caches cleared, prsFetchedAt bumps).
@@ -60,13 +62,13 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
             {file.binary ? (
               <div className="px-4 py-3 text-[12px] italic text-neutral-400">Binary file</div>
             ) : (
-              <UnifiedDiffBody hunks={file.hunks} file={file.path} />
+              <UnifiedDiffBody hunks={file.hunks} file={file.path} surface={surface} />
             )}
           </div>
         );
       })}
       {/* Comments made on PR diffs are reachable here too (docked at the bottom). */}
-      <HandToAgentBar />
+      <HandToAgentBar surface={surface} branch={pr.branch} />
     </div>
   );
 }

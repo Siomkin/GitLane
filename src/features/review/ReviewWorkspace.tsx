@@ -14,7 +14,6 @@ import {
   UnifiedLine,
 } from "./DiffBody";
 import {
-  buildColumnLineMeta,
   buildLineMeta,
   CommentCard,
   CommentEditor,
@@ -46,7 +45,11 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const applyHunk = useRepo((state) => state.applyHunk);
   const applyLine = useRepo((state) => state.applyLine);
   const clearSelectedFile = useRepo((state) => state.clearSelectedFile);
+  const selectedCommit = useRepo((state) => state.selectedCommit);
   const [mode, setMode] = useState<DiffMode>("unified");
+  // Notes are scoped to the diff surface, so a comment on a working diff doesn't
+  // reattach to the same file viewed in a commit (and vice versa).
+  const surface = selectedFile?.source === "commit" ? `commit:${selectedCommit ?? ""}` : "work";
   const hunkAction =
     selectedFile && selectedFile.source !== "commit"
       ? {
@@ -75,12 +78,12 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
       ) : fileDiff.binary ? (
         <EmptyDiff title="Binary file" />
       ) : mode === "split" ? (
-        <SplitDiff file={fileDiff} hunkAction={hunkAction} />
+        <SplitDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       ) : (
-        <UnifiedDiff file={fileDiff} hunkAction={hunkAction} />
+        <UnifiedDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       )}
 
-      <HandToAgentBar />
+      <HandToAgentBar surface={surface} />
     </main>
   );
 }
@@ -148,11 +151,19 @@ function FullDiffNotice() {
   return <DiffTruncatedNotice onShowFull={loadFullFileDiff} loading={diffLoading} />;
 }
 
-function UnifiedDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActionApi | null }) {
+function UnifiedDiff({
+  file,
+  hunkAction,
+  surface,
+}: {
+  file: FileDiff;
+  hunkAction: HunkActionApi | null;
+  surface: string;
+}) {
   const rows = useMemo(() => flattenUnified(file.hunks), [file.hunks]);
   const tones = useMemo(() => unifiedTones(file.hunks), [file.hunks]);
   const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
-  const comments = useLineComments(file.path, lines);
+  const comments = useLineComments(surface, file.path, lines);
   const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
   const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
   const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
@@ -200,16 +211,22 @@ function UnifiedDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkAct
   );
 }
 
-function SplitDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActionApi | null }) {
+function SplitDiff({
+  file,
+  hunkAction,
+  surface,
+}: {
+  file: FileDiff;
+  hunkAction: HunkActionApi | null;
+  surface: string;
+}) {
   const rows = useMemo(() => flattenSplit(file.hunks), [file.hunks]);
   const tones = useMemo(() => splitTones(file.hunks), [file.hunks]);
-  // Each column is commented independently: the old (L) side and new (R) side
-  // get their own controller, so hovering one half reveals only that half's
-  // stage + comment affordances.
-  const leftLines = useMemo(() => buildColumnLineMeta(file.hunks, "L"), [file.hunks]);
-  const rightLines = useMemo(() => buildColumnLineMeta(file.hunks, "R"), [file.hunks]);
-  const leftComments = useLineComments(file.path, leftLines);
-  const rightComments = useLineComments(file.path, rightLines);
+  // One controller over the file's lines (same seq space as unified, so a
+  // mixed-side range like L12–R12 still resolves). Each half resolves its own
+  // line's seq; `confineDragToSide` keeps a drag within the column it started on.
+  const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
+  const comments = useLineComments(surface, file.path, lines, { confineDragToSide: true });
   const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
   const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
   const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
@@ -240,10 +257,9 @@ function SplitDiff({ file, hunkAction }: { file: FileDiff; hunkAction: HunkActio
               <SplitLine
                 row={row.row}
                 hunkIndex={row.hunkIndex}
-                left={row.leftSeq != null ? leftComments.rowFor(row.leftSeq) : null}
-                right={row.rightSeq != null ? rightComments.rowFor(row.rightSeq) : null}
-                leftController={leftComments}
-                rightController={rightComments}
+                controller={comments}
+                left={row.leftSeq != null ? comments.rowFor(row.leftSeq) : null}
+                right={row.rightSeq != null ? comments.rowFor(row.rightSeq) : null}
                 lineStage={
                   hunkAction && !lineUnavailable ? { mode, onApply: hunkAction.onApplyLine } : null
                 }
@@ -262,10 +278,9 @@ function SplitLine({
   row,
   hunkIndex,
   lineStage,
+  controller,
   left,
   right,
-  leftController,
-  rightController,
 }: {
   row: SplitRow;
   hunkIndex: number;
@@ -273,10 +288,9 @@ function SplitLine({
     mode: "stage" | "unstage";
     onApply: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
   } | null;
+  controller: LineCommentsController;
   left?: LineRowComments | null;
   right?: LineRowComments | null;
-  leftController?: LineCommentsController | null;
-  rightController?: LineCommentsController | null;
 }) {
   const { left: leftCell, right: rightCell } = row;
   return (
@@ -320,14 +334,14 @@ function SplitLine({
       </div>
       {/* Each side's editor/card renders below the row, indented under that half;
        * the scope label ("Comment on line L4 / R20") names the side. */}
-      {left?.editHere && leftController ? (
-        <CommentEditor scope={left.scope} controller={leftController} indent="ml-[46px] mr-3" />
+      {left?.editHere ? (
+        <CommentEditor scope={left.scope} controller={controller} indent="ml-[46px] mr-3" />
       ) : null}
       {left?.showCard ? (
         <CommentCard scope={left.scope} body={left.body} onEdit={left.edit} onDelete={left.remove} indent="ml-[46px] mr-3" />
       ) : null}
-      {right?.editHere && rightController ? (
-        <CommentEditor scope={right.scope} controller={rightController} indent="ml-[50%] mr-3" />
+      {right?.editHere ? (
+        <CommentEditor scope={right.scope} controller={controller} indent="ml-[50%] mr-3" />
       ) : null}
       {right?.showCard ? (
         <CommentCard scope={right.scope} body={right.body} onEdit={right.edit} onDelete={right.remove} indent="ml-[50%] mr-3" />

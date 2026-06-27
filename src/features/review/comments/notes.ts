@@ -4,7 +4,6 @@
 
 import type { DiffHunk, DiffLine } from "../../../lib/api";
 import type { ReviewNote } from "../../../store/ui";
-import { toSplitRows } from "../diffRows";
 
 /** A visible diff line, addressable for comments. `seq` is its 0-based position
  * across the file's flattened (header-free) line list — matching diffRows' `seq`. */
@@ -40,24 +39,6 @@ export function buildLineMeta(hunks: DiffHunk[]): LineMeta[] {
  * comments by row (seq = split-row index, matching diffRows' flattenSplit). Each
  * row is represented by its new-side (R) line when present, else the old-side
  * (L) deletion — so a comment anchors to the row's primary line. */
-/** Comment metadata for one split-view column, so each side is independently
- * commentable. The left column holds deletions only (L*); context — which renders
- * on both sides — is commented from the right column (R*) to avoid a duplicate
- * handle, alongside additions. seq is the index within the column, matching
- * diffRows' per-row `leftSeq`/`rightSeq`. */
-export function buildColumnLineMeta(hunks: DiffHunk[], side: "L" | "R"): LineMeta[] {
-  const out: LineMeta[] = [];
-  for (const hunk of hunks) {
-    for (const row of toSplitRows(hunk.lines)) {
-      const cell = side === "L" ? row.left : row.right;
-      if (!cell) continue;
-      if (side === "L" && cell.line.kind !== "del") continue;
-      out.push(lineMetaFor(cell.line, out.length));
-    }
-  }
-  return out;
-}
-
 /** ref → seq, for resolving a saved note's stored refs back to positions in the
  * current diff (the diff can re-flow across refreshes; refs stay stable). */
 export function refIndex(lines: LineMeta[]): Map<string, number> {
@@ -81,6 +62,7 @@ export function scopeText(fromRef: string, toRef: string): string {
 /** Build a note (sans id) from a selected seq range and body. Endpoints are
  * normalised so a top-down or bottom-up drag yields the same range. */
 export function buildNote(
+  surface: string,
   file: string,
   lines: LineMeta[],
   fromSeq: number,
@@ -96,6 +78,7 @@ export function buildNote(
     .map((l) => l.code)
     .join("\n");
   return {
+    surface,
     file,
     side: to.side,
     line: to.lineNo,

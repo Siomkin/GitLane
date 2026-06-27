@@ -84,18 +84,19 @@ export function toSplitRows(lines: DiffLine[]): SplitRow[] {
 /** Flatten hunks into header + paired split rows, in render order. */
 export function flattenSplit(hunks: DiffHunk[]): SplitDiffRow[] {
   const rows: SplitDiffRow[] = [];
-  let leftSeq = 0;
-  let rightSeq = 0;
+  // Global line offset of the current hunk, so a half's seq indexes the shared
+  // `buildLineMeta` list (a deletion comments on the left, an addition/context on
+  // the right — context is handled on the right only to avoid a duplicate handle).
+  let base = 0;
   hunks.forEach((hunk, h) => {
     const changed = hunk.lines.reduce((n, line) => (line.kind === "ctx" ? n : n + 1), 0);
     rows.push({ kind: "header", header: hunk.header, hunkIndex: h, changed, key: `h${h}` });
     toSplitRows(hunk.lines).forEach((row, r) => {
-      // Left column = deletions only; right column = additions + context. Mirrors
-      // buildColumnLineMeta so each half's seq indexes its own comment controller.
-      const left = row.left && row.left.line.kind === "del" ? leftSeq++ : null;
-      const right = row.right ? rightSeq++ : null;
-      rows.push({ kind: "row", row, hunkIndex: h, leftSeq: left, rightSeq: right, key: `h${h}r${r}` });
+      const leftSeq = row.left && row.left.line.kind === "del" ? base + row.left.lineIndex : null;
+      const rightSeq = row.right ? base + row.right.lineIndex : null;
+      rows.push({ kind: "row", row, hunkIndex: h, leftSeq, rightSeq, key: `h${h}r${r}` });
     });
+    base += hunk.lines.length;
   });
   return rows;
 }
