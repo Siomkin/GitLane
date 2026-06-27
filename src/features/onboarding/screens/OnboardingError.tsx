@@ -1,5 +1,5 @@
-import type { OnboardingApi } from "./useOnboarding";
-import { RetryIcon, WarningTriangle, XCircle } from "./icons";
+import type { OnboardingApi } from "../flows/useOnboarding";
+import { RetryIcon, WarningTriangle, XCircle } from "../icons";
 
 /** The clone-failed screen. Renders the classified copy (exists / auth /
  * unreachable / canceled / generic): a fail uses the red warning triangle, a

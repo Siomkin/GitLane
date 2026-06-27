@@ -1,5 +1,5 @@
-import type { OnboardingApi } from "./useOnboarding";
-import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "./icons";
+import type { OnboardingApi } from "../flows/useOnboarding";
+import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "../icons";
 
 /** The clone form: a validated remote-URL field and a destination chooser. */
 export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {

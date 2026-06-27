@@ -7,10 +7,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import type { RecentRepo } from "../../store/repoSession";
-import type { OnboardingResult, OnboardingScreen } from "./onboarding";
+import { api } from "../../../lib/api";
+import { useRepo } from "../../../store/repo";
+import type { RecentRepo } from "../../../store/repoSession";
+import type { OnboardingResult, OnboardingScreen } from "../onboarding";
 import { useCloneFlow } from "./useCloneFlow";
 import { useInitFlow } from "./useInitFlow";
 

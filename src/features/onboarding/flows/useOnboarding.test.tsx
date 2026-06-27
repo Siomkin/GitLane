@@ -9,8 +9,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openDialogMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
 import { useOnboarding } from "./useOnboarding";
-import { useRepo } from "../../store/repo";
-import type { RecentRepo } from "../../store/repoSession";
+import { useRepo } from "../../../store/repo";
+import type { RecentRepo } from "../../../store/repoSession";
 
 const missing: RecentRepo = {
   path: "/old/gone",

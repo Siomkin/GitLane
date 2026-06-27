@@ -1,5 +1,5 @@
-import type { OnboardingApi } from "./useOnboarding";
-import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "./icons";
+import type { OnboardingApi } from "../flows/useOnboarding";
+import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "../icons";
 
 /** The post-clone ("opened") and post-init ("empty") confirmation screens. Both
  * show a repo header (name + branch + path) and a success body; the primary

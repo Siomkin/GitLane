@@ -5,8 +5,8 @@
 
 import { useCallback, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api } from "../../lib/api";
-import type { GitignoreTemplate, OnboardingResult, OnboardingScreen } from "./onboarding";
+import { api } from "../../../lib/api";
+import type { GitignoreTemplate, OnboardingResult, OnboardingScreen } from "../onboarding";
 import { defaultParent } from "./parents";
 
 interface InitFlowDeps {

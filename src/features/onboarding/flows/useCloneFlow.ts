@@ -6,8 +6,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, type CloneProgress } from "../../lib/api";
-import { repoLabel } from "../../lib/paths";
+import { api, type CloneProgress } from "../../../lib/api";
+import { repoLabel } from "../../../lib/paths";
 import {
   canceledCloneCopy,
   classifyCloneError,
@@ -18,7 +18,7 @@ import {
   parseRepoName,
   retryRerunsClone,
   validateCloneUrl,
-} from "./onboarding";
+} from "../onboarding";
 import { defaultParent } from "./parents";
 
 const INITIAL_PROGRESS: CloneProgress = { stage: "Connecting to remote", pct: 0 };

@@ -7,14 +7,14 @@
 // form → empty-repo success.
 
 import { useEffect } from "react";
-import { CloneForm } from "./CloneForm";
-import { CloneProgress } from "./CloneProgress";
-import { HomeScreen } from "./HomeScreen";
-import { InitForm } from "./InitForm";
-import { OnboardingError } from "./OnboardingError";
-import { OnboardingSuccess } from "./OnboardingSuccess";
+import { CloneForm } from "./screens/CloneForm";
+import { CloneProgress } from "./screens/CloneProgress";
+import { HomeScreen } from "./screens/HomeScreen";
+import { InitForm } from "./screens/InitForm";
+import { OnboardingError } from "./screens/OnboardingError";
+import { OnboardingSuccess } from "./screens/OnboardingSuccess";
 import { ChevronLeft } from "./icons";
-import { useOnboarding } from "./useOnboarding";
+import { useOnboarding } from "./flows/useOnboarding";
 
 export const RepoOnboarding = ({ onClose }: { onClose?: () => void }) => {
   // In overlay mode, opening a repo (or pressing the action) dismisses the overlay.
