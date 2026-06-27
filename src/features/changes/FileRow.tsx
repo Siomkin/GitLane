@@ -43,7 +43,7 @@ export function FileRow({
         className={cn(
           "flex w-full items-center gap-2.5 rounded-lg px-2 text-left hover:bg-black/5 dark:hover:bg-white/5",
           focusRing,
-          compact ? "h-9" : "h-12",
+          compact ? "h-11" : "h-12",
           active && "bg-[var(--accent-soft)]",
           menuActive && "bg-[var(--accent-soft)] ring-1 ring-inset ring-[color:var(--accent)]",
         )}
@@ -54,9 +54,10 @@ export function FileRow({
           <span className="block truncate text-[13px] text-neutral-800 dark:text-neutral-100">
             {basename(file.path)}
           </span>
-          {!compact && (
-            <span className="block truncate text-[11px] text-neutral-400">{dirname(file.path)}</span>
-          )}
+          {/* Always show the directory — in compact rows too (a selected commit's
+              file list), so the location is clear, matching the working-changes
+              rows. */}
+          <span className="block truncate text-[11px] text-neutral-400">{dirname(file.path)}</span>
         </span>
         <span
           className={cn(
