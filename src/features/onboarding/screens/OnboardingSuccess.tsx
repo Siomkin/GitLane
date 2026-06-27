@@ -1,5 +1,14 @@
+import { isMac, isWindows } from "../../../lib/platform";
 import type { OnboardingApi } from "../flows/useOnboarding";
 import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "../icons";
+
+/** Platform-appropriate label for the reveal-in-file-manager action (the backend
+ * reveal_path is cross-platform; only the wording differs). */
+const REVEAL_LABEL = isMac
+  ? "Reveal in Finder"
+  : isWindows
+    ? "Reveal in Explorer"
+    : "Show in folder";
 
 /** The post-clone ("opened") and post-init ("empty") confirmation screens. Both
  * show a repo header (name + branch + path) and a success body; the primary
@@ -63,7 +72,7 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
                   onClick={ob.revealResult}
                   className="h-10 rounded-xl border border-black/10 px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
                 >
-                  Reveal in Finder
+                  {REVEAL_LABEL}
                 </button>
                 <button
                   onClick={ob.enterResult}

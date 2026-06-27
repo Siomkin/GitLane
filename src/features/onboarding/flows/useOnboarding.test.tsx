@@ -77,6 +77,50 @@ describe("openRecent — relocating a missing recent", () => {
   });
 });
 
+describe("openRecent — opening a present recent", () => {
+  const present: RecentRepo = { path: "/code/present", name: "present", branch: "main", lastOpenedAt: 0 };
+
+  it("keeps the overlay open when the open fails (no path change)", async () => {
+    useRepo.setState({ recents: [present], summary: null });
+    // loadRepo fails to open → summary stays null (path unchanged).
+    const loadSpy = vi.spyOn(useRepo.getState(), "loadRepo").mockResolvedValue(undefined);
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openRecent(present));
+
+    await waitFor(() => expect(loadSpy).toHaveBeenCalledWith("/code/present"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // No path change → not dismissed; the global error bar surfaces the failure.
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("dismisses once the repo becomes active", async () => {
+    useRepo.setState({ recents: [present], summary: null });
+    const loadSpy = vi.spyOn(useRepo.getState(), "loadRepo").mockImplementation(async () => {
+      useRepo.setState({
+        summary: {
+          path: "/code/present",
+          workdir: "/code/present",
+          headBranch: "main",
+          headOid: null,
+          detached: false,
+        },
+      });
+    });
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openRecent(present));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(loadSpy).toHaveBeenCalledWith("/code/present");
+  });
+});
+
 describe("overlay unmount during clone", () => {
   it("cancels an in-flight clone when the hook unmounts mid-progress", async () => {
     useRepo.setState({
