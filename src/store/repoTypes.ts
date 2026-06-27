@@ -1,10 +1,12 @@
 import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
+  FileBlame,
   ConflictFile,
   DiffLine,
   FileChange,
   FileDiff,
+  FileHistoryEntry,
   OperationKind,
   ReflogEntry,
   RepoForge,
@@ -43,6 +45,23 @@ export interface SelectedFile {
   source: ChangeSource;
 }
 
+export interface FileHistoryState {
+  path: string;
+  entries: FileHistoryEntry[];
+  loading: boolean;
+  loadingMore: boolean;
+  error: string | null;
+  hasMore: boolean;
+  nextOffset: number;
+  truncated: boolean;
+  selectedOid: string | null;
+  selectedPath: string | null;
+  selectedDiff: FileDiff | null;
+  diffLoading: boolean;
+  blame: FileBlame | null;
+  blameLoading: boolean;
+}
+
 export const INITIAL_GRAPH_LIMIT = 2_000;
 export const GRAPH_PAGE_SIZE = 2_000;
 
@@ -69,6 +88,7 @@ export interface RepoState {
    * non-null the app surfaces the dedicated conflict-resolution workspace. */
   operation: OperationState | null;
   commitFiles: FileChange[];
+  fileHistory: FileHistoryState | null;
   selectedFile: SelectedFile | null;
   fileDiff: FileDiff | null;
   selectedCommit: string | null;
@@ -222,6 +242,12 @@ export interface RepoState {
   openWorktree: (worktreePath: string) => Promise<void>;
   /** Open the combined-diff review for a commit range base..head. */
   compareRange: (base: string, head: string, title: string) => void;
+  /** Open a dedicated history-inspection page for a repo-relative file. */
+  openFileHistory: (path: string, mode?: "history" | "blame") => Promise<void>;
+  loadMoreFileHistory: () => Promise<void>;
+  selectFileHistoryRevision: (oid: string, path?: string | null) => Promise<void>;
+  loadFileBlame: (revision?: string | null) => Promise<void>;
+  closeFileHistory: () => void;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;
@@ -290,6 +316,7 @@ export type RepoDataState = Pick<
   | "changes"
   | "operation"
   | "commitFiles"
+  | "fileHistory"
   | "selectedFile"
   | "fileDiff"
   | "selectedCommit"
@@ -326,6 +353,7 @@ export function createInitialRepoData(
     changes: emptyChanges,
     operation: null,
     commitFiles: [],
+    fileHistory: null,
     selectedFile: null,
     fileDiff: null,
     selectedCommit: null,

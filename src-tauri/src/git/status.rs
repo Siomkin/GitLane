@@ -8,11 +8,13 @@
 
 mod commit;
 mod diff;
+mod history;
 mod range;
 #[cfg(test)]
 mod tests;
 mod working;
 
 pub use commit::{commit_file_diff, commit_files};
+pub use history::{file_blame, file_history};
 pub use range::{diff_range, diff_range_file};
 pub use working::{file_diff, working_changes};

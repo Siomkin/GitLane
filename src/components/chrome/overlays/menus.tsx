@@ -330,6 +330,7 @@ export function BranchContextMenu() {
   const requestPrompt = useUi((s) => s.requestPrompt);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
+  const openRangeReview = useUi((s) => s.openRangeReview);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const cur = useRepo((s) => s.summary?.headBranch ?? null);
@@ -471,6 +472,16 @@ export function BranchContextMenu() {
           onSubmit: (up) => void run(() => setUpstreamFor(b, up)),
         }),
     });
+  }
+
+  if (upstream && tip) {
+    add({
+      label: `Compare ${b} with ${upstream}`,
+      onClick: () => {
+        close();
+        openRangeReview(upstream, b, `Comparing ${b} with ${upstream}`);
+      },
+    }, true);
   }
 
   // ---- integrate cur <-> branch ----
@@ -822,6 +833,7 @@ export function FileContextMenu() {
   const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);
   const discardFile = useRepo((s) => s.discardFile);
+  const openFileHistory = useRepo((s) => s.openFileHistory);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   if (!menu) return null;
 
@@ -840,6 +852,21 @@ export function FileContextMenu() {
     { label: "Copy file name", onClick: () => copy(fileName, `Copied ${fileName}`) },
     { label: "Copy relative path", onClick: () => copy(path, "Copied relative path") },
     { label: "Copy full path", onClick: () => copy(fullPath, "Copied full path") },
+    {
+      label: "View file history",
+      sep: true,
+      onClick: () => {
+        close();
+        void openFileHistory(path);
+      },
+    },
+    {
+      label: "Blame file",
+      onClick: () => {
+        close();
+        void openFileHistory(path, "blame");
+      },
+    },
   ];
 
   // Discard is a working-tree op — only offered on working-changes rows.

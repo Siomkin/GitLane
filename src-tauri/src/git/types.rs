@@ -308,6 +308,60 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
+/// One commit in a repository-relative file's history.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHistoryEntry {
+    pub oid: String,
+    pub short_oid: String,
+    pub subject: String,
+    pub body: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub timestamp: i64,
+    pub status: String,
+    pub path: String,
+    /// Previous repository-relative path when the commit renamed this file.
+    pub previous_path: Option<String>,
+}
+
+/// Bounded file-history result. `has_more` means another request can continue
+/// from `next_offset`; `truncated` means the backend stopped at its scan cap.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileHistoryPage {
+    pub entries: Vec<FileHistoryEntry>,
+    pub next_offset: usize,
+    pub has_more: bool,
+    pub truncated: bool,
+}
+
+/// One text line annotated by git blame.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlameLine {
+    pub line_no: usize,
+    pub content: String,
+    pub oid: String,
+    pub short_oid: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub timestamp: i64,
+    pub original_path: String,
+    pub original_line: usize,
+}
+
+/// Blame result for a repository-relative text file.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileBlame {
+    pub path: String,
+    pub revision: Option<String>,
+    pub binary: bool,
+    pub truncated: bool,
+    pub lines: Vec<BlameLine>,
+}
+
 /// The in-progress merge/sequencer operation that left the repo in a conflicted
 /// or mid-operation state. Drives the conflict-resolution workflow. `kind` is
 /// "merge" | "rebase" | "cherry-pick" | "revert" | "none" — mapped from

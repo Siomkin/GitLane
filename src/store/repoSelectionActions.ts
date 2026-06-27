@@ -19,6 +19,11 @@ export function createRepoSelectionActions(
   | "loadFullFileDiff"
   | "clearSelectedFile"
   | "compareRange"
+  | "openFileHistory"
+  | "loadMoreFileHistory"
+  | "selectFileHistoryRevision"
+  | "loadFileBlame"
+  | "closeFileHistory"
 > {
   return {
     selectCommit: async (id) => get().selectCommitMulti(id ?? "", {}),
@@ -54,6 +59,7 @@ export function createRepoSelectionActions(
         selectedCommits,
         selectionAnchor: anchor,
         wipSelected: false,
+        fileHistory: null,
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
@@ -76,6 +82,7 @@ export function createRepoSelectionActions(
     selectWip: () =>
       set({
         wipSelected: true,
+        fileHistory: null,
         selectedCommit: null,
         selectedCommits: [],
         selectionAnchor: null,
@@ -122,5 +129,155 @@ export function createRepoSelectionActions(
     compareRange: (base, head, title) => {
       useUi.getState().openRangeReview(base, head, title);
     },
+
+    openFileHistory: async (path, mode = "history") => {
+      const { summary } = get();
+      if (!summary) return;
+      const requestPath = path;
+      set({
+        fileHistory: {
+          path,
+          entries: [],
+          loading: true,
+          loadingMore: false,
+          error: null,
+          hasMore: false,
+          nextOffset: 0,
+          truncated: false,
+          selectedOid: null,
+          selectedPath: null,
+          selectedDiff: null,
+          diffLoading: false,
+          blame: null,
+          blameLoading: mode === "blame",
+        },
+        error: null,
+      });
+      try {
+        const page = await api.fileHistory(summary.path, path, 0, 100);
+        if (get().fileHistory?.path !== requestPath) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? {
+                ...state.fileHistory,
+                entries: page.entries,
+                loading: false,
+                hasMore: page.hasMore,
+                nextOffset: page.nextOffset,
+                truncated: page.truncated,
+              }
+            : null,
+        }));
+        const first = page.entries[0];
+        if (first) void get().selectFileHistoryRevision(first.oid, first.path);
+        if (mode === "blame") void get().loadFileBlame(first?.oid ?? null);
+      } catch (e) {
+        if (get().fileHistory?.path !== requestPath) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? { ...state.fileHistory, loading: false, blameLoading: false, error: String(e) }
+            : null,
+        }));
+      }
+    },
+
+    loadMoreFileHistory: async () => {
+      const { summary, fileHistory } = get();
+      if (!summary || !fileHistory || fileHistory.loadingMore || !fileHistory.hasMore) return;
+      const requestPath = fileHistory.path;
+      set((state) => ({
+        fileHistory: state.fileHistory ? { ...state.fileHistory, loadingMore: true } : null,
+      }));
+      try {
+        const page = await api.fileHistory(summary.path, requestPath, fileHistory.nextOffset, 100);
+        if (get().fileHistory?.path !== requestPath) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? {
+                ...state.fileHistory,
+                entries: [...state.fileHistory.entries, ...page.entries],
+                loadingMore: false,
+                hasMore: page.hasMore,
+                nextOffset: page.nextOffset,
+                truncated: page.truncated,
+              }
+            : null,
+        }));
+      } catch (e) {
+        if (get().fileHistory?.path !== requestPath) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? { ...state.fileHistory, loadingMore: false, error: String(e) }
+            : null,
+        }));
+      }
+    },
+
+    selectFileHistoryRevision: async (oid, pathOverride) => {
+      const { summary, fileHistory } = get();
+      if (!summary || !fileHistory) return;
+      const filePath = pathOverride ?? fileHistory.path;
+      const requestPath = fileHistory.path;
+      set((state) => ({
+        fileHistory: state.fileHistory
+          ? {
+              ...state.fileHistory,
+              selectedOid: oid,
+              selectedPath: filePath,
+              selectedDiff: null,
+              diffLoading: true,
+              error: null,
+            }
+          : null,
+      }));
+      try {
+        const selectedDiff = await api.commitFileDiff(summary.path, oid, filePath);
+        const current = get().fileHistory;
+        if (current?.path !== requestPath || current.selectedOid !== oid) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? { ...state.fileHistory, selectedDiff, diffLoading: false }
+            : null,
+        }));
+      } catch (e) {
+        const current = get().fileHistory;
+        if (current?.path !== requestPath || current.selectedOid !== oid) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? { ...state.fileHistory, diffLoading: false, error: String(e) }
+            : null,
+        }));
+      }
+    },
+
+    loadFileBlame: async (revision) => {
+      const { summary, fileHistory } = get();
+      if (!summary || !fileHistory) return;
+      const requestPath = fileHistory.path;
+      const blameRevision = revision ?? fileHistory.selectedOid;
+      set((state) => ({
+        fileHistory: state.fileHistory ? { ...state.fileHistory, blameLoading: true } : null,
+      }));
+      try {
+        const blame = await api.fileBlame(summary.path, requestPath, blameRevision);
+        const current = get().fileHistory;
+        if (current?.path !== requestPath || current.selectedOid !== blameRevision) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? { ...state.fileHistory, blame, blameLoading: false }
+            : null,
+        }));
+      } catch (e) {
+        const current = get().fileHistory;
+        if (current?.path !== requestPath || current.selectedOid !== blameRevision) return;
+        set((state) => ({
+          fileHistory: state.fileHistory
+            ? { ...state.fileHistory, blameLoading: false, error: String(e) }
+            : null,
+        }));
+      }
+    },
+
+    closeFileHistory: () => set({ fileHistory: null }),
   };
 }

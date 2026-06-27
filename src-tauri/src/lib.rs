@@ -15,9 +15,10 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BranchInfo, ConflictFileContent, DestructivePreview, FileChange, FileDiff, ForgeAuthStatus,
-    GithubAccount, GithubAccountRef, OperationStatus, PrCheck, PrCommitSignature,
-    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RepoForge, RepoGraph,
+    BranchInfo, ConflictFileContent, DestructivePreview, FileBlame, FileChange, FileDiff,
+    FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus, PrCheck,
+    PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RepoForge,
+    RepoGraph,
     RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
@@ -408,6 +409,26 @@ fn diff_range_file(
 ) -> Result<FileDiff, String> {
     git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn file_history(
+    path: String,
+    file: String,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<FileHistoryPage, String> {
+    git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn file_blame(
+    path: String,
+    file: String,
+    revision: Option<String>,
+    limit: Option<usize>,
+) -> Result<FileBlame, String> {
+    git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1057,6 +1078,8 @@ pub fn run() {
             commit_file_diff,
             diff_range,
             diff_range_file,
+            file_history,
+            file_blame,
             stage_file,
             unstage_file,
             apply_hunk,

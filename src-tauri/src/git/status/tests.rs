@@ -1,4 +1,4 @@
-use super::commit_file_diff;
+use super::{commit_file_diff, file_blame, file_history};
 use super::diff::DIFF_LINE_LIMIT;
 use git2::{Repository, Signature};
 use std::fs;
@@ -14,6 +14,17 @@ fn commit(repo: &Repository, dir: &Path, name: &str, content: &str) -> git2::Oid
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     let parents: Vec<&git2::Commit> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents)
+        .unwrap()
+}
+
+fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
+    let mut index = repo.index().unwrap();
+    index.write().unwrap();
+    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+    let sig = Signature::now("Bench", "bench@example.test").unwrap();
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
         .unwrap()
 }
 
@@ -73,6 +84,78 @@ fn diff_skips_no_newline_eofnl_markers() {
         "unexpected line content: {:?}",
         lines.iter().map(|l| &l.content).collect::<Vec<_>>()
     );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_history_lists_changes_newest_first_and_paginates() {
+    let dir = std::env::temp_dir().join("gitlane-file-history-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    commit(&repo, &dir, "tracked.txt", "one\ntwo\n");
+    fs::remove_file(dir.join("tracked.txt")).unwrap();
+    let mut index = repo.index().unwrap();
+    index.remove_path(Path::new("tracked.txt")).unwrap();
+    index.write().unwrap();
+    commit_index(&repo, "delete tracked.txt");
+
+    let path = dir.to_str().unwrap();
+    let first = file_history(path, "tracked.txt", Some(0), Some(2)).unwrap();
+    assert_eq!(first.entries.len(), 2);
+    assert!(first.has_more);
+    assert_eq!(first.entries[0].status, "D");
+    assert_eq!(first.entries[1].status, "M");
+
+    let second = file_history(path, "tracked.txt", Some(first.next_offset), Some(2)).unwrap();
+    assert_eq!(second.entries.len(), 1);
+    assert!(!second.has_more);
+    assert_eq!(second.entries[0].status, "A");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_history_follows_detected_renames_backward() {
+    let dir = std::env::temp_dir().join("gitlane-file-history-rename-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "old name.txt", "same\n");
+
+    fs::rename(dir.join("old name.txt"), dir.join("new name.txt")).unwrap();
+    let mut index = repo.index().unwrap();
+    index.remove_path(Path::new("old name.txt")).unwrap();
+    index.add_path(Path::new("new name.txt")).unwrap();
+    index.write().unwrap();
+    commit_index(&repo, "rename file");
+
+    let page = file_history(dir.to_str().unwrap(), "new name.txt", None, Some(10)).unwrap();
+    assert_eq!(page.entries.len(), 2);
+    assert_eq!(page.entries[0].status, "R");
+    assert_eq!(page.entries[0].previous_path.as_deref(), Some("old name.txt"));
+    assert_eq!(page.entries[1].path, "old name.txt");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_blame_returns_line_attribution() {
+    let dir = std::env::temp_dir().join("gitlane-file-blame-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "blame.txt", "first\n");
+    let second = commit(&repo, &dir, "blame.txt", "first\nsecond\n").to_string();
+
+    let blame = file_blame(dir.to_str().unwrap(), "blame.txt", Some(second), Some(10)).unwrap();
+    assert!(!blame.binary);
+    assert_eq!(blame.lines.len(), 2);
+    assert_eq!(blame.lines[0].content, "first");
+    assert_eq!(blame.lines[1].content, "second");
+    assert_eq!(blame.lines[1].author_name, "Bench");
 
     let _ = fs::remove_dir_all(&dir);
 }

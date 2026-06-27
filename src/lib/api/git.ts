@@ -259,6 +259,46 @@ export interface FileDiff {
   truncated: boolean;
 }
 
+export interface FileHistoryEntry {
+  oid: string;
+  shortOid: string;
+  subject: string;
+  body: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: number;
+  status: FileStatus | "?";
+  path: string;
+  previousPath: string | null;
+}
+
+export interface FileHistoryPage {
+  entries: FileHistoryEntry[];
+  nextOffset: number;
+  hasMore: boolean;
+  truncated: boolean;
+}
+
+export interface BlameLine {
+  lineNo: number;
+  content: string;
+  oid: string;
+  shortOid: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: number;
+  originalPath: string;
+  originalLine: number;
+}
+
+export interface FileBlame {
+  path: string;
+  revision: string | null;
+  binary: boolean;
+  truncated: boolean;
+  lines: BlameLine[];
+}
+
 export const gitApi = {
   openRepo: (path: string) => invoke<RepoSummary>("open_repo", { path }),
 
@@ -484,6 +524,24 @@ export const gitApi = {
    * line cap (for an explicit "show full diff"). */
   diffRangeFile: (path: string, base: string, head: string, file: string, full?: boolean) =>
     invoke<FileDiff>("diff_range_file", { path, base, head, file, full: full ?? null }),
+
+  /** Bounded newest-first history for a repository-relative file path. */
+  fileHistory: (path: string, file: string, offset?: number, limit?: number) =>
+    invoke<FileHistoryPage>("file_history", {
+      path,
+      file,
+      offset: offset ?? null,
+      limit: limit ?? null,
+    }),
+
+  /** Line-level attribution for a text file at a revision or the working tree. */
+  fileBlame: (path: string, file: string, revision?: string | null, limit?: number) =>
+    invoke<FileBlame>("file_blame", {
+      path,
+      file,
+      revision: revision ?? null,
+      limit: limit ?? null,
+    }),
 
   stageFile: (path: string, file: string) =>
     invoke<string>("stage_file", { path, file }),
