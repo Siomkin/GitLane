@@ -48,6 +48,10 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         return Err("Choose a destination folder for the clone.".to_string());
     }
 
+    // Whether this clone will create `dest`. Used to clean up a partial clone on
+    // failure/cancel without ever removing a directory the user already had.
+    let created = !std::path::Path::new(dest).exists();
+
     let mut cmd = Command::new("git");
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
     // is an absolute path the UI built, so it can never be one. `LC_ALL=C` keeps
@@ -62,19 +66,24 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "failed to capture git output".to_string())?;
-
-    // Park the child so `cancel_clone` can kill it. Replaces any previous
-    // (already-finished) handle from an earlier clone.
-    if let Ok(mut guard) = slot.lock() {
+    // Spawn and park the child atomically under the slot lock, refusing to start
+    // a second clone while one is already in flight — that would orphan the first
+    // process and make `cancel_clone` target the wrong one.
+    let mut stderr = {
+        let mut guard = slot.lock().map_err(|e| e.to_string())?;
+        if guard.is_some() {
+            return Err("A clone is already in progress.".to_string());
+        }
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("failed to launch git: {e}"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| "failed to capture git output".to_string())?;
         *guard = Some(child);
-    }
+        stderr
+    };
 
     // Nudge the bar before git's first percentage lands.
     let _ = app.emit(
@@ -135,6 +144,13 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         );
         Ok(dest.to_string())
     } else {
+        // A failed or canceled clone can leave a partial `.git` / checkout. If we
+        // created the destination for this clone, remove it so the path is clean
+        // (matching the canceled-state copy) and a retry doesn't hit "already
+        // exists". Best-effort: a removal failure must not mask the real error.
+        if created {
+            let _ = std::fs::remove_dir_all(dest);
+        }
         Err(extract_error(&transcript))
     }
 }
@@ -291,17 +307,31 @@ pub fn init(
             "The folder {target} already exists and isn't empty. Choose an empty folder or a different name."
         ));
     }
+    // Remember whether the directory already existed: a rollback must only remove
+    // a directory this init created, never one the user already had.
+    let existed_before = target_path.exists();
     std::fs::create_dir_all(&target).map_err(|e| format!("Couldn't create {target}: {e}"))?;
 
-    super::cli::run_git_bare(&["init", "-b", branch, &target])?;
+    // Run init + seed files as one fallible unit so a failure after the directory
+    // exists can be rolled back rather than leaving an orphaned empty/partial repo.
+    let seeded = (|| -> Result<(), String> {
+        super::cli::run_git_bare(&["init", "-b", branch, &target])?;
+        if readme {
+            std::fs::write(target_path.join("README.md"), format!("# {name}\n"))
+                .map_err(|e| format!("Couldn't write README.md: {e}"))?;
+        }
+        if let Some(contents) = gitignore_template(gitignore) {
+            std::fs::write(target_path.join(".gitignore"), contents)
+                .map_err(|e| format!("Couldn't write .gitignore: {e}"))?;
+        }
+        Ok(())
+    })();
 
-    if readme {
-        std::fs::write(target_path.join("README.md"), format!("# {name}\n"))
-            .map_err(|e| format!("Couldn't write README.md: {e}"))?;
-    }
-    if let Some(contents) = gitignore_template(gitignore) {
-        std::fs::write(target_path.join(".gitignore"), contents)
-            .map_err(|e| format!("Couldn't write .gitignore: {e}"))?;
+    if let Err(e) = seeded {
+        if !existed_before {
+            let _ = std::fs::remove_dir_all(&target);
+        }
+        return Err(e);
     }
 
     Ok(target)

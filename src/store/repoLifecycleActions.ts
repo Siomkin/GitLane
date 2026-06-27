@@ -427,7 +427,11 @@ export function createRepoLifecycleActions(
         const byPath = new Map(statuses.map((s) => [s.path, s]));
         const next = get().recents.map((r) => {
           const status = byPath.get(r.path);
-          return status ? { ...r, missing: !status.exists, branch: status.branch ?? r.branch } : r;
+          // When present, trust the probed branch (null = detached, clearing a
+          // stale label); when missing, keep the last-known branch to display.
+          return status
+            ? { ...r, missing: !status.exists, branch: status.exists ? status.branch : r.branch }
+            : r;
         });
         persistRecents(next);
         set({ recents: next });

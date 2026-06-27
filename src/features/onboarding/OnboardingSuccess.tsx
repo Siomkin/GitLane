@@ -85,7 +85,7 @@ export function OnboardingSuccess({ ob }: { ob: OnboardingApi }) {
               </div>
               <div className="mt-6 inline-flex items-center gap-2 text-[12.5px] text-neutral-400 dark:text-neutral-500">
                 <CheckGlyph className="h-4 w-4 text-emerald-500" />
-                Working tree is clean and up to date with origin/{result.branch}
+                Checked out {result.branch} — ready to start working
               </div>
               <div className="mt-6 flex items-center justify-center gap-2.5">
                 <button

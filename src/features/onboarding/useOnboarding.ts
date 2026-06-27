@@ -65,6 +65,9 @@ export function useOnboarding(onDone?: () => void) {
   const [initIgnore, setInitIgnore] = useState<GitignoreTemplate>("None");
   const [initError, setInitError] = useState<string | null>(null);
   const [initBusy, setInitBusy] = useState(false);
+  // Synchronous guard against a double-submit firing two init_repo calls before
+  // the async `initBusy` state has a chance to disable the button.
+  const initBusyRef = useRef(false);
 
   // Post-clone/init confirmation.
   const [result, setResult] = useState<OnboardingResult | null>(null);
@@ -83,6 +86,23 @@ export function useOnboarding(onDone?: () => void) {
     });
     return () => {
       void unlisten.then((off) => off());
+    };
+  }, []);
+
+  // Track the live screen for the unmount cleanup below (avoids re-subscribing).
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
+
+  // If the overlay is dismissed mid-clone (Close / Escape / repo switch unmounts
+  // this hook), stop the background clone rather than letting it run on with no
+  // UI. The canceling flag also suppresses the in-flight startClone's post-await
+  // state updates on the now-unmounted hook.
+  useEffect(() => {
+    return () => {
+      if (screenRef.current === "progress") {
+        cancelingRef.current = true;
+        void api.cancelClone().catch(() => {});
+      }
     };
   }, []);
 
@@ -203,9 +223,11 @@ export function useOnboarding(onDone?: () => void) {
   const canInit = initParent.trim() !== "" && initName.trim() !== "";
 
   const startInit = useCallback(() => {
+    if (initBusyRef.current) return;
     if (initParent.trim() === "" || initName.trim() === "") return;
     const name = initName.trim();
     const branch = initBranch.trim() || "main";
+    initBusyRef.current = true;
     setInitError(null);
     setInitBusy(true);
     void (async () => {
@@ -216,6 +238,7 @@ export function useOnboarding(onDone?: () => void) {
       } catch (e) {
         setInitError(String(e));
       } finally {
+        initBusyRef.current = false;
         setInitBusy(false);
       }
     })();
