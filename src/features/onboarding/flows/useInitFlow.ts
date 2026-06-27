@@ -6,7 +6,12 @@
 import { useCallback, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api } from "../../../lib/api";
-import type { GitignoreTemplate, OnboardingResult, OnboardingScreen } from "../onboarding";
+import {
+  type GitignoreTemplate,
+  isSafeLeafName,
+  type OnboardingResult,
+  type OnboardingScreen,
+} from "../onboarding";
 import { defaultParent } from "./parents";
 
 interface InitFlowDeps {
@@ -26,7 +31,8 @@ export const useInitFlow = ({ setScreen, setResult }: InitFlowDeps) => {
   // the async `initBusy` state has a chance to disable the button.
   const initBusyRef = useRef(false);
 
-  const canInit = initParent.trim() !== "" && initName.trim() !== "";
+  // Reject `.`/`..`/separators so init always targets a fresh child folder.
+  const canInit = initParent.trim() !== "" && isSafeLeafName(initName);
 
   const browseInitParent = useCallback(() => {
     void (async () => {

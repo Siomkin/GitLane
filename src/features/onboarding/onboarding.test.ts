@@ -3,6 +3,7 @@ import {
   avatarFor,
   canceledCloneCopy,
   classifyCloneError,
+  isSafeLeafName,
   joinPath,
   parentDir,
   parseRepoName,
@@ -31,6 +32,26 @@ describe("validateCloneUrl", () => {
     expect(validateCloneUrl("   ").state).toBe("empty");
     expect(validateCloneUrl("not a url").state).toBe("invalid");
     expect(validateCloneUrl("ftp://example.com/x").state).toBe("invalid");
+  });
+
+  it("rejects URLs whose derived folder name would escape the parent", () => {
+    // Otherwise-wellformed URLs whose leaf is a dot-segment must not be cloneable.
+    expect(validateCloneUrl("https://github.com/owner/.").state).toBe("invalid");
+    expect(validateCloneUrl("https://github.com/owner/..").state).toBe("invalid");
+  });
+});
+
+describe("isSafeLeafName", () => {
+  it("accepts ordinary folder names", () => {
+    for (const ok of ["repo", "my-project", "repo.git", "a.b.c"]) {
+      expect(isSafeLeafName(ok), ok).toBe(true);
+    }
+  });
+
+  it("rejects empty, dot-segments, and separators", () => {
+    for (const bad of ["", "   ", ".", "..", "a/b", "a\\b", "./x"]) {
+      expect(isSafeLeafName(bad), bad).toBe(false);
+    }
   });
 });
 

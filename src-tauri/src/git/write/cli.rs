@@ -73,15 +73,21 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
     }
 }
 
-/// Run `git <args>` **without** `-C <repo>`, for operations that act outside an
-/// existing repository (clone into a new dir, init a fresh repo). PATH is
-/// augmented exactly like [`run_git`]. Returns combined stdout/stderr on success
-/// or the error output on a non-zero exit.
-pub(super) fn run_git_bare(args: &[&str]) -> Result<String, String> {
+/// Build a `git <args>` command **without** `-C <repo>` (PATH augmented like
+/// [`run_git`]), for operations that act outside an existing repository
+/// (clone/init). Callers needing custom stdio/streaming — the clone progress
+/// reader — build on this so git subprocess construction stays centralized here;
+/// most callers use the buffered [`run_git_bare`].
+pub(super) fn git_command_bare(args: &[&str]) -> Command {
     let mut cmd = Command::new("git");
     cmd.args(args).env("PATH", crate::shell::path());
+    cmd
+}
 
-    let output = cmd
+/// Run `git <args>` **without** `-C <repo>`. Returns combined stdout/stderr on
+/// success or the error output on a non-zero exit.
+pub(super) fn run_git_bare(args: &[&str]) -> Result<String, String> {
+    let output = git_command_bare(args)
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
 

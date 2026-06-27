@@ -8,13 +8,13 @@
 //! UI can paint a real determinate bar and cancel an in-flight clone (GL-38).
 
 use std::io::Read;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use super::operands::ensure_operand;
+use super::operands::{ensure_operand, ensure_safe_leaf};
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -47,6 +47,13 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
     if dest.is_empty() {
         return Err("Choose a destination folder for the clone.".to_string());
     }
+    // Reject a destination whose leaf is a dot-segment (`.`/`..`) — git resolves
+    // it to the parent / grandparent rather than a fresh child folder. The UI
+    // blocks this too; this is defense-in-depth on the raw joined path.
+    let leaf = dest.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+    if leaf.is_empty() || leaf == "." || leaf == ".." {
+        return Err("Choose a valid destination folder.".to_string());
+    }
 
     // Whether a failed/canceled clone may remove `dest`: when it doesn't exist
     // yet (we create it) or it's an empty directory the user pointed us at (so a
@@ -54,14 +61,13 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
     // dir is never removed — git refuses to clone into one anyway.
     let cleanup_eligible = clone_cleanup_eligible(std::path::Path::new(dest));
 
-    let mut cmd = Command::new("git");
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
     // is an absolute path the UI built, so it can never be one. `LC_ALL=C` keeps
     // the progress text English and byte-stable for the parser regardless of the
-    // user's locale.
-    cmd.args(["clone", "--progress", "--", url, dest])
-        .env("PATH", crate::shell::path())
-        .env("LC_ALL", "C")
+    // user's locale. git Command construction (incl. PATH) is centralized in
+    // cli::git_command_bare.
+    let mut cmd = super::cli::git_command_bare(&["clone", "--progress", "--", url, dest]);
+    cmd.env("LC_ALL", "C")
         .env("LANG", "C")
         // git writes progress + errors to stderr; stdout carries nothing we need,
         // so null it to avoid an unread pipe.
@@ -305,9 +311,9 @@ pub fn init(
     if name.is_empty() {
         return Err("Enter a folder name for the new repository.".to_string());
     }
-    if name.contains('/') || name.contains('\\') {
-        return Err("The folder name can't contain a path separator.".to_string());
-    }
+    // Reject `.`/`..`/separators so the new repo is always a fresh child of the
+    // chosen parent (shared with the clone destination leaf check).
+    ensure_safe_leaf(name)?;
     let branch = if branch.is_empty() { "main" } else { branch };
     ensure_operand(name)?;
     ensure_operand(branch)?;
@@ -466,6 +472,18 @@ mod tests {
         assert!(!clone_cleanup_eligible(&nonempty), "non-empty dir is not eligible");
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn init_rejects_dot_segment_and_separator_names() {
+        // Validation fails before any filesystem/git work, so a throwaway parent
+        // is fine — nothing is created on disk.
+        for bad in [".", "..", "a/b", "a\\b", ""] {
+            assert!(
+                super::init("/tmp", bad, "main", false, "None").is_err(),
+                "init should reject name {bad:?}"
+            );
+        }
     }
 
     #[test]

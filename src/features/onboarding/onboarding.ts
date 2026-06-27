@@ -30,10 +30,13 @@ export type UrlState = "empty" | "valid" | "invalid";
 export function validateCloneUrl(raw: string): { state: UrlState; repo: string } {
   const url = (raw ?? "").trim();
   if (!url) return { state: "empty", repo: "repository" };
+  const repo = parseRepoName(url);
   const wellFormed =
     /^(https?:\/\/|git@[\w.-]+:|ssh:\/\/|git:\/\/)[^\s]+/.test(url) &&
     /[/:][\w.-]+(\.git)?\/?$/.test(url);
-  return { state: wellFormed ? "valid" : "invalid", repo: parseRepoName(url) };
+  // A well-formed URL whose derived folder name is unsafe (e.g. ends in /., /..)
+  // can't produce a valid child destination → treat the URL as invalid.
+  return { state: wellFormed && isSafeLeafName(repo) ? "valid" : "invalid", repo };
 }
 
 /** The repository (leaf) name a clone URL resolves to, sans `.git`. Falls back
@@ -42,6 +45,20 @@ export function parseRepoName(url: string): string {
   const trimmed = (url ?? "").trim().replace(/\/+$/, "");
   const match = trimmed.match(/([\w.-]+?)(\.git)?$/);
   return match && match[1] ? match[1] : "repository";
+}
+
+/** A safe directory leaf name for a new clone/init: non-empty and not a
+ * dot-segment (`.`/`..`) or path that would resolve outside the chosen parent.
+ * Mirrors the backend `ensure_safe_leaf`. */
+export function isSafeLeafName(name: string): boolean {
+  const trimmed = name.trim();
+  return (
+    trimmed !== "" &&
+    trimmed !== "." &&
+    trimmed !== ".." &&
+    !trimmed.includes("/") &&
+    !trimmed.includes("\\")
+  );
 }
 
 export type CloneErrorKind = "exists" | "auth" | "unreachable" | "canceled" | "failed";
