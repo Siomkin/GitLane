@@ -5,8 +5,7 @@ import { basename, dirname } from "../../lib/paths";
 import { cn } from "../../lib/cn";
 import { useRepo } from "../../store/repo";
 import { StatusBadge, StatusPill } from "@/components/ui/StatusBadge";
-import { UnifiedDiffBody } from "../review/DiffBody";
-import { TruncatedNotice } from "./FileHistoryView";
+import { DiffPane } from "./DiffPane";
 
 /** Cap on rendered file rows so a huge compare result stays bounded in the DOM. */
 const FILE_RENDER_CAP = 400;
@@ -111,7 +110,15 @@ export function CompareView() {
             )}
           </div>
           <div className="flex-1 overflow-auto">
-            <DiffPane />
+            <DiffPane
+              loading={compare.diffLoading}
+              diff={compare.selectedDiff}
+              error={compare.diffError}
+              emptyLabel="Select a file."
+              onShowFull={
+                compare.selectedPath ? () => void selectFile(compare.selectedPath!, true) : undefined
+              }
+            />
           </div>
         </div>
 
@@ -182,43 +189,6 @@ export function CompareView() {
           </div>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function DiffPane() {
-  const compare = useRepo((s) => s.compare);
-  const selectFile = useRepo((s) => s.selectCompareFile);
-  if (!compare) return null;
-  if (compare.diffLoading) {
-    return (
-      <div className="space-y-1.5 p-3.5">
-        {[60, 80, 50, 70, 90, 40, 75, 55].map((w, i) => (
-          <div key={i} className="shim h-[18px] rounded bg-black/[0.05] dark:bg-white/[0.06]" style={{ width: `${w}%` }} />
-        ))}
-      </div>
-    );
-  }
-  const diff = compare.selectedDiff;
-  if (!diff) {
-    if (compare.diffError) {
-      return (
-        <div className="grid h-full place-content-center px-6 text-center text-sm text-rose-500">
-          {compare.diffError}
-        </div>
-      );
-    }
-    return <div className="grid h-full place-content-center text-sm text-neutral-400">Select a file.</div>;
-  }
-  if (diff.binary) {
-    return <div className="grid h-full place-content-center text-sm text-neutral-400">Binary file — no text diff.</div>;
-  }
-  return (
-    <div className="p-3.5">
-      <UnifiedDiffBody hunks={diff.hunks} />
-      {diff.truncated && compare.selectedPath && (
-        <TruncatedNotice onShowFull={() => void selectFile(compare.selectedPath!, true)} />
-      )}
     </div>
   );
 }

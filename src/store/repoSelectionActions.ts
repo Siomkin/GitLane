@@ -460,8 +460,32 @@ export function createRepoSelectionActions(
         const selectedPath = get().compare?.selectedPath ?? null;
         const stillThere = selectedPath && result.files.some((f) => f.path === selectedPath);
         if (stillThere) {
-          // Re-fetch the selected file's diff so it reflects the new endpoint state.
-          void get().selectCompareFile(selectedPath);
+          // Ref-to-ref comparisons are pinned to immutable commits: if the file
+          // set and totals came back byte-identical, the selected file's diff
+          // can't have changed, so skip re-fetching it. Working-tree compares
+          // (head === null) can change content without moving line counts, so
+          // they always re-fetch to stay truthful.
+          const unchanged =
+            head !== null &&
+            result.add === compare.add &&
+            result.del === compare.del &&
+            result.ahead === compare.ahead &&
+            result.behind === compare.behind &&
+            result.files.length === compare.files.length &&
+            result.files.every((f, i) => {
+              const prev = compare.files[i];
+              return (
+                !!prev &&
+                prev.path === f.path &&
+                prev.status === f.status &&
+                prev.add === f.add &&
+                prev.del === f.del
+              );
+            });
+          if (!(unchanged && get().compare?.selectedDiff)) {
+            // Re-fetch the selected file's diff so it reflects the new endpoint state.
+            void get().selectCompareFile(selectedPath);
+          }
         } else if (!selectedPath) {
           // Nothing selected (or selection cleared): land on the first file if any.
           const first = result.files[0]?.path ?? null;

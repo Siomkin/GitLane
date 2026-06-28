@@ -7,23 +7,13 @@ use git2::{BlameOptions, Delta, DiffOptions, Oid, Repository};
 use crate::git::read::open;
 use crate::git::types::{BlameLine, FileBlame, FileHistoryEntry, FileHistoryPage};
 
+use super::diff::status_letter;
+
 const DEFAULT_HISTORY_LIMIT: usize = 100;
 const MAX_HISTORY_LIMIT: usize = 500;
 const HISTORY_SCAN_CAP: usize = 5_000;
 const DEFAULT_BLAME_LIMIT: usize = 2_000;
 const MAX_BLAME_LIMIT: usize = 10_000;
-
-fn status_letter(status: Delta) -> &'static str {
-    match status {
-        Delta::Added => "A",
-        Delta::Deleted => "D",
-        Delta::Renamed => "R",
-        Delta::Copied => "C",
-        Delta::Modified => "M",
-        Delta::Typechange => "T",
-        _ => "?",
-    }
-}
 
 fn path_string(path: Option<&Path>) -> Option<String> {
     path.map(|p| p.to_string_lossy().into_owned())

@@ -5,7 +5,7 @@ use git2::{Delta, Diff, Patch};
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff};
 
 /// Map a `git2` delta status to the one-letter code the frontend expects.
-fn status_letter(status: Delta) -> &'static str {
+pub(super) fn status_letter(status: Delta) -> &'static str {
     match status {
         Delta::Added => "A",
         Delta::Deleted => "D",

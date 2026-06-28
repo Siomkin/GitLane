@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useRepo } from "../../store/repo";
-import { initials, oidColor, relativeTime, shortAge } from "./inspect";
+import { initials } from "../../lib/ui";
+import { oidColor, relativeTime, shortAge } from "./inspect";
 
 /** Blame mode: line attribution (grouped by commit run) + a line inspector. */
 export function BlameView() {

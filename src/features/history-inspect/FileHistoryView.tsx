@@ -4,8 +4,9 @@ import { basename } from "../../lib/paths";
 import { cn } from "../../lib/cn";
 import { useRepo } from "../../store/repo";
 import { StatusBadge, StatusPill } from "@/components/ui/StatusBadge";
-import { UnifiedDiffBody } from "../review/DiffBody";
-import { initials, relativeTime } from "./inspect";
+import { initials } from "../../lib/ui";
+import { DiffPane } from "./DiffPane";
+import { relativeTime } from "./inspect";
 
 /** File-history mode: revision list + selected-revision diff + inspector. */
 export function FileHistoryView({
@@ -115,7 +116,17 @@ export function FileHistoryView({
           )}
         </div>
         <div className="flex-1 overflow-auto">
-          <DiffPane />
+          <DiffPane
+            loading={history.diffLoading}
+            diff={history.selectedDiff}
+            error={history.error}
+            emptyLabel="Select a revision."
+            onShowFull={
+              history.selectedOid
+                ? () => void selectRevision(history.selectedOid!, history.selectedPath, true)
+                : undefined
+            }
+          />
         </div>
       </div>
 
@@ -130,63 +141,6 @@ export function FileHistoryView({
           />
         )}
       </div>
-    </div>
-  );
-}
-
-function DiffPane() {
-  const history = useRepo((s) => s.fileHistory);
-  const selectRevision = useRepo((s) => s.selectFileHistoryRevision);
-  if (!history) return null;
-  if (history.diffLoading) {
-    return (
-      <div className="space-y-1.5 p-3.5">
-        {[60, 80, 50, 70, 90, 40, 75, 55, 85, 65].map((w, i) => (
-          <div key={i} className="shim h-[18px] rounded bg-black/[0.05] dark:bg-white/[0.06]" style={{ width: `${w}%` }} />
-        ))}
-      </div>
-    );
-  }
-  const diff = history.selectedDiff;
-  if (!diff) {
-    if (history.error) {
-      return (
-        <div className="grid h-full place-content-center px-6 text-center text-sm text-rose-500">
-          {history.error}
-        </div>
-      );
-    }
-    return <div className="grid h-full place-content-center text-sm text-neutral-400">Select a revision.</div>;
-  }
-  if (diff.binary) {
-    return <div className="grid h-full place-content-center text-sm text-neutral-400">Binary file — no text diff.</div>;
-  }
-  return (
-    <div className="p-3.5">
-      <UnifiedDiffBody hunks={diff.hunks} />
-      {diff.truncated && history.selectedOid && (
-        <TruncatedNotice
-          onShowFull={() => void selectRevision(history.selectedOid!, history.selectedPath, true)}
-        />
-      )}
-    </div>
-  );
-}
-
-/** Banner + action shown when the backend capped a diff at DIFF_LINE_LIMIT. */
-export function TruncatedNotice({ onShowFull }: { onShowFull: () => void }) {
-  return (
-    <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.08] px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5 shrink-0">
-        <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-      </svg>
-      Diff capped for performance.
-      <button
-        onClick={onShowFull}
-        className="ml-auto h-7 rounded-md border border-amber-500/30 px-2.5 text-[11.5px] font-semibold hover:bg-amber-500/10"
-      >
-        Show full diff
-      </button>
     </div>
   );
 }

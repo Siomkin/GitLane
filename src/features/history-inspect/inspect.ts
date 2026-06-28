@@ -42,17 +42,6 @@ export function shortAge(unixSeconds: number): string {
   return "now";
 }
 
-/** Up-to-two-letter initials for an avatar bubble. */
-export function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => w[0]!)
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
 /** Deterministic lane color for an oid, so blame runs read like graph lanes. */
 export function oidColor(oid: string): string {
   let hash = 0;
