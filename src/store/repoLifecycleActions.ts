@@ -1,6 +1,7 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { arrayMove } from "@dnd-kit/helpers";
 import { api, type RepoSummary } from "../lib/api";
+import { repoLabel } from "../lib/paths";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
 import { usePulls } from "./pulls";
@@ -12,7 +13,7 @@ import {
   openIntentIsCurrent,
   takePendingRefresh,
 } from "./repoRequests";
-import { persistSession, readLastPath } from "./repoSession";
+import { persistRecents, persistSession, readLastPath, upsertRecent } from "./repoSession";
 import { useUi } from "./ui";
 import {
   emptyChanges,
@@ -33,6 +34,9 @@ export function createRepoLifecycleActions(
   | "closeRepo"
   | "reorderOpenPaths"
   | "restoreSession"
+  | "refreshRecents"
+  | "removeRecent"
+  | "clearRecents"
   | "refresh"
   | "loadMoreHistory"
   | "loadReflog"
@@ -100,10 +104,20 @@ export function createRepoLifecycleActions(
       const openPaths = get().openPaths.includes(summary.path)
         ? get().openPaths
         : [...get().openPaths, summary.path];
+      // Record this open in the recents list (most-recent first) so the
+      // onboarding screen can offer it without browsing the filesystem again.
+      const recents = upsertRecent(get().recents, {
+        path: summary.path,
+        name: repoLabel(summary.path),
+        branch: summary.headBranch,
+        lastOpenedAt: Date.now(),
+      });
       persistSession(openPaths, summary.path);
+      persistRecents(recents);
       set({
         summary,
         openPaths,
+        recents,
         forge: null,
         graph: null,
         branches: [],
@@ -400,6 +414,41 @@ export function createRepoLifecycleActions(
     restoreSession: async () => {
       const last = readLastPath();
       if (last) await get().loadRepo(last);
+    },
+
+    // Probe each recent's path on disk: flag the ones that no longer resolve as
+    // `missing` and refresh their current branch. Best-effort — a probe failure
+    // leaves the list untouched. Merged by path so a concurrent open isn't lost.
+    refreshRecents: async () => {
+      const paths = get().recents.map((r) => r.path);
+      if (paths.length === 0) return;
+      try {
+        const statuses = await api.recentsStatus(paths);
+        const byPath = new Map(statuses.map((s) => [s.path, s]));
+        const next = get().recents.map((r) => {
+          const status = byPath.get(r.path);
+          // When present, trust the probed branch (null = detached, clearing a
+          // stale label); when missing, keep the last-known branch to display.
+          return status
+            ? { ...r, missing: !status.exists, branch: status.exists ? status.branch : r.branch }
+            : r;
+        });
+        persistRecents(next);
+        set({ recents: next });
+      } catch {
+        /* best-effort: keep the existing recents on a status probe failure */
+      }
+    },
+
+    removeRecent: (path) => {
+      const next = get().recents.filter((r) => r.path !== path);
+      persistRecents(next);
+      set({ recents: next });
+    },
+
+    clearRecents: () => {
+      persistRecents([]);
+      set({ recents: [] });
     },
 
     refresh: async (opts) => {

@@ -20,7 +20,7 @@ import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { SettingsModal } from "./components/chrome/SettingsModal";
 import { TitleBar } from "./components/chrome/TitleBar";
 import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
-import { WelcomeScreen } from "./components/chrome/WelcomeScreen";
+import { RepoOnboarding } from "./features/onboarding";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
 import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
@@ -49,7 +49,6 @@ const App = () => {
   const summary = useRepo((state) => state.summary);
   const error = useRepo((state) => state.error);
   const clearError = useRepo((state) => state.clearError);
-  const pickAndOpen = useRepo((state) => state.pickAndOpen);
   const selectedFile = useRepo((state) => state.selectedFile);
   const operation = useRepo((state) => state.operation);
   const revealTarget = useRepo((state) => state.revealTarget);
@@ -69,6 +68,8 @@ const App = () => {
   const closeNav = useUi((state) => state.closeNav);
   const clearReviewNotes = useUi((state) => state.clearReviewNotes);
   const resetHistView = useUi((state) => state.resetHistView);
+  const onboardingOpen = useUi((state) => state.onboardingOpen);
+  const closeOnboarding = useUi((state) => state.closeOnboarding);
   const [leftTab, setLeftTab] = useState<LeftTab>("history");
 
   // Reopen the last active repository on launch, and load gh accounts.
@@ -112,7 +113,10 @@ const App = () => {
     closeNav();
     clearReviewNotes();
     resetHistView();
-  }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView]);
+    // Any repo switch (incl. dropping to the no-repo start state) dismisses the
+    // onboarding overlay so it can't linger over a different repo.
+    closeOnboarding();
+  }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView, closeOnboarding]);
 
   // An active merge/rebase/cherry-pick/revert takes over the center pane: the
   // repo is in a blocking conflicted state, so the dedicated resolution
@@ -208,8 +212,12 @@ const App = () => {
           </div>
         </>
       ) : (
-        <WelcomeScreen onOpen={pickAndOpen} />
+        <RepoOnboarding />
       )}
+
+      {/* Onboarding raised from the tab strip while a repo is open (the no-repo
+          start state renders RepoOnboarding inline above instead). */}
+      {onboardingOpen && summary && <RepoOnboarding onClose={closeOnboarding} />}
 
       <SettingsModal />
       <ActionMenu />

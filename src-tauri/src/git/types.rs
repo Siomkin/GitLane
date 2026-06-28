@@ -102,6 +102,18 @@ pub struct RepoSummary {
     pub detached: bool,
 }
 
+/// Presence + current branch of a recently-opened repository, for the
+/// onboarding "Recent" list. `exists: false` flags a path that no longer
+/// resolves on disk so the UI can mark it "Missing".
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentStatus {
+    pub path: String,
+    pub exists: bool,
+    /// Currently checked-out branch (short name), or None when detached / gone.
+    pub branch: Option<String>,
+}
+
 /// Remote-forge summary for the toolbar provider indicator. Pure libgit2
 /// detection from the configured remote URLs — no network or auth probing.
 #[derive(Debug, Clone, Serialize)]

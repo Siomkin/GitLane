@@ -14,6 +14,7 @@ import type {
   WorkingChanges,
   WorktreeInfo,
 } from "../lib/api";
+import type { RecentRepo } from "./repoSession";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
 
@@ -59,6 +60,9 @@ export interface RepoState {
   stashes: StashEntry[];
   /** Paths of all open repositories — the tab strip. */
   openPaths: string[];
+  /** Recently-opened repositories for the onboarding "Recent" list (most-recent
+   * first). Updated on each successful open; persisted to localStorage. */
+  recents: RecentRepo[];
   changes: WorkingChanges;
   /** The active merge/rebase/cherry-pick/revert operation + its conflicts, or
    * null when none is in progress. Refreshed with working-tree status; when
@@ -103,6 +107,13 @@ export interface RepoState {
   /** Reorder the open repository tabs without changing the active repository. */
   reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
   restoreSession: () => Promise<void>;
+  /** Refresh recents' presence + current branch from disk (start-screen mount):
+   * flags paths that no longer exist as `missing` and updates their branch. */
+  refreshRecents: () => Promise<void>;
+  /** Drop one recent entry (e.g. a missing path the user dismisses). */
+  removeRecent: (path: string) => void;
+  /** Clear the entire recent list. */
+  clearRecents: () => void;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working
    * changes, avoiding a graph rebuild for ordinary file/index watcher events. */
   refresh: (opts?: {
@@ -275,6 +286,7 @@ export type RepoDataState = Pick<
   | "worktrees"
   | "stashes"
   | "openPaths"
+  | "recents"
   | "changes"
   | "operation"
   | "commitFiles"
@@ -295,7 +307,10 @@ export type RepoDataState = Pick<
 
 export const emptyChanges: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
 
-export function createInitialRepoData(openPaths: string[]): RepoDataState {
+export function createInitialRepoData(
+  openPaths: string[],
+  recents: RecentRepo[] = [],
+): RepoDataState {
   return {
     summary: null,
     forge: null,
@@ -307,6 +322,7 @@ export function createInitialRepoData(openPaths: string[]): RepoDataState {
     worktrees: [],
     stashes: [],
     openPaths,
+    recents,
     changes: emptyChanges,
     operation: null,
     commitFiles: [],
