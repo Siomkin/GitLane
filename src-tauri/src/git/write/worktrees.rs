@@ -83,6 +83,35 @@ fn ensure_clean_worktree(repo: &str, label: &str) -> Result<(), String> {
     }
 }
 
+/// Re-read the worktree list and confirm `from_worktree_path` is still registered
+/// and still has `branch` checked out. The frontend captures the path when its
+/// menu opens; an external `git worktree`/checkout in between could move the
+/// branch elsewhere (or detach that worktree), so verify against live state and
+/// fail closed *before* removing/detaching anything — otherwise we could destroy
+/// a clean, unrelated worktree and delete the branch regardless.
+fn ensure_worktree_has_branch(repo: &str, from_worktree_path: &str, branch: &str) -> Result<(), String> {
+    // Compare on the resolved real path: git's porcelain output canonicalizes
+    // (e.g. macOS `/var` → `/private/var`), so a raw string compare against the
+    // UI-supplied path can spuriously miss. Fall back to a trimmed compare when a
+    // path can't be resolved (e.g. it's already gone).
+    let same_path = |a: &str, b: &str| match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a.trim_end_matches('/') == b.trim_end_matches('/'),
+    };
+    match worktrees(repo)?
+        .into_iter()
+        .find(|w| same_path(&w.path, from_worktree_path))
+    {
+        Some(w) if w.branch.as_deref() == Some(branch) => Ok(()),
+        Some(_) => Err(format!(
+            "{branch} is no longer checked out at {from_worktree_path}. Refresh and try again."
+        )),
+        None => Err(format!(
+            "No worktree is registered at {from_worktree_path} anymore. Refresh and try again."
+        )),
+    }
+}
+
 /// Move `branch` from another linked worktree into `repo`.
 ///
 /// Git only allows a local branch to be checked out in one worktree at a time.
@@ -96,6 +125,7 @@ pub fn move_branch_to_worktree(
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
+    ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
     ensure_clean_worktree(repo, "current")?;
     ensure_clean_worktree(from_worktree_path, "source")?;
     run_git(from_worktree_path, &["checkout", "--detach"])?;
@@ -117,6 +147,7 @@ pub fn delete_branch_with_worktree(
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
+    ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
     remove_worktree(repo, from_worktree_path, false)?;
     super::branches::delete_branch(repo, branch, true)?;
     Ok(format!("Deleted {branch} and its worktree"))

@@ -22,6 +22,7 @@ const realMoveBranchToCurrentWorktree = useRepo.getState().moveBranchToCurrentWo
 const realDeleteBranchWithWorktree = useRepo.getState().deleteBranchWithWorktree;
 const realRemoveWorktree = useRepo.getState().removeWorktree;
 const realOpenWorktree = useRepo.getState().openWorktree;
+const realOpenCompare = useRepo.getState().openCompare;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -44,6 +45,7 @@ beforeEach(() => {
     deleteBranchWithWorktree: realDeleteBranchWithWorktree,
     removeWorktree: realRemoveWorktree,
     openWorktree: realOpenWorktree,
+    openCompare: realOpenCompare,
   });
   useUi.setState({
     wipMenu: null,
@@ -74,6 +76,11 @@ const remoteBranch = (name: string) => ({
 });
 
 const file = (path: string) => ({ path, status: "M" as const, add: 1, del: 0 });
+
+// Grouped menus tuck many actions into accordion rows; open one by clicking its
+// parent, then its children render inline. Single-open: opening one collapses
+// any other.
+const openGroup = (name: string) => fireEvent.click(screen.getByRole("menuitem", { name }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -143,15 +150,16 @@ describe("WipContextMenu", () => {
 });
 
 describe("TagContextMenu", () => {
-  it("offers checkout / branch / worktree / push / delete / copy for a tag", () => {
+  it("offers checkout / push / create / copy / delete for a tag", () => {
     useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234" } });
     render(<TagContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Checkout tag (detached)" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Create branch from here…" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Create worktree from tag…" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Push tag to origin" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete tag" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy tag name" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete tag" })).toBeInTheDocument();
+    openGroup("Create");
+    expect(screen.getByRole("menuitem", { name: "Branch from here…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Worktree from tag…" })).toBeInTheDocument();
   });
 
   // A branch and a tag can share a short name, so the operations must reference
@@ -159,7 +167,8 @@ describe("TagContextMenu", () => {
   it("uses the tag sha (not its name) as the create-branch start point", () => {
     useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234deadbeef" } });
     render(<TagContextMenu />);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Create branch from here…" }));
+    openGroup("Create");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Branch from here…" }));
     expect(useUi.getState().createBranchStart).toBe("abc1234deadbeef");
     expect(useUi.getState().createBranchOpen).toBe(true);
   });
@@ -169,7 +178,8 @@ describe("TagContextMenu", () => {
     useRepo.setState({ createWorktreeAt });
     useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234deadbeef" } });
     render(<TagContextMenu />);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Create worktree from tag…" }));
+    openGroup("Create");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Worktree from tag…" }));
     const prompt = useUi.getState().prompt;
     expect(prompt).not.toBeNull();
     // The prompt's default path still reflects the readable tag name as a label.
@@ -209,17 +219,72 @@ describe("BranchContextMenu", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("offers Delete for a local non-current branch", () => {
+  it("offers Delete (inside Danger zone) for a local non-current branch", () => {
     useRepo.setState({ branches: [localBranch("feature")] });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    openGroup("Danger zone");
     expect(screen.getByRole("menuitem", { name: "Delete feature" })).toBeInTheDocument();
+  });
+
+  it("groups actions behind collapsed accordion rows that open one at a time", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    // Groups start collapsed — children aren't in the DOM yet.
+    expect(screen.getByRole("menuitem", { name: "Compare" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("menuitem", { name: "Merge feature" })).not.toBeInTheDocument();
+
+    openGroup("Integrate into current");
+    expect(screen.getByRole("menuitem", { name: "Merge feature" })).toBeInTheDocument();
+
+    // Single-open: opening Compare collapses Integrate.
+    openGroup("Compare");
+    expect(screen.queryByRole("menuitem", { name: "Merge feature" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Compare with branch…" })).toBeInTheDocument();
+  });
+
+  it("compare-with-branch opens a branch picker (not a free-text field) and compares against the picked branch", async () => {
+    const openCompare = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("main"), localBranch("feature"), localBranch("develop"), remoteBranch("origin/main")],
+      openCompare,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Compare");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Compare with branch…" }));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt).not.toBeNull();
+    // It's a picker now: options are present and the head branch is excluded.
+    const values = prompt?.options?.map((o) => o.value);
+    expect(values).toEqual(["main", "develop", "origin/main"]);
+    expect(values).not.toContain("feature");
+    // Current branch is flagged and pre-highlighted via defaultValue.
+    expect(prompt?.options?.find((o) => o.value === "main")?.hint).toBe("current");
+    expect(prompt?.options?.find((o) => o.value === "origin/main")?.hint).toBe("remote");
+    expect(prompt?.defaultValue).toBe("main");
+
+    prompt!.onSubmit("develop");
+    await waitFor(() =>
+      expect(openCompare).toHaveBeenCalledWith(
+        expect.objectContaining({ base: "develop", head: "feature", scope: "branch" }),
+      ),
+    );
   });
 
   it("hides Delete for the current branch", () => {
     useRepo.setState({ branches: [localBranch("feature")] });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: true } });
     render(<BranchContextMenu />);
+    openGroup("Danger zone");
     expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
   });
 
@@ -308,7 +373,7 @@ describe("BranchContextMenu", () => {
   // `git branch -D` refuses a branch checked out in a linked worktree. Rather
   // than a two-step (remove worktree, then delete), the menu offers one combined
   // action; the plain disabled Delete is gone for the linked-worktree case.
-  it("offers Local checkout + a combined delete for a branch in a linked worktree", () => {
+  it("promotes Open worktree + groups Local checkout/Remove under Worktree for a linked worktree", () => {
     const moveBranchToCurrentWorktree = vi.fn().mockResolvedValue("Moved feature to local checkout");
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
@@ -318,19 +383,14 @@ describe("BranchContextMenu", () => {
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
-    expect(screen.getByText("Continue in")).toBeInTheDocument();
+    // Open worktree is promoted to the top.
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
-    // Remove-just-the-worktree (keep the branch) sits alongside the combined delete.
-    expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
-    // The combined action replaces the plain (disabled) Delete.
-    expect(screen.getByRole("menuitem", { name: "Delete feature & worktree…" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
     // Checkout stays hidden: offering it would only produce a git worktree error.
     expect(screen.queryByRole("menuitem", { name: "Checkout feature" })).not.toBeInTheDocument();
-    // Rename stays available: `git branch -m` works on a worktree-checked-out branch.
-    expect(screen.getByRole("menuitem", { name: "Rename feature…" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("menuitem", { name: "Local checkout" }));
+    // Worktree group holds the move + remove actions.
+    openGroup("Worktree");
+    expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Local checkout (move here)" }));
     expect(moveBranchToCurrentWorktree).toHaveBeenCalledWith("feature", "/work/repo-feature");
   });
 
@@ -347,6 +407,7 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
+    openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature & worktree…" }));
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     expect(invokeMock).toHaveBeenCalledWith(
@@ -360,8 +421,8 @@ describe("BranchContextMenu", () => {
     );
   });
 
-  // "Remove worktree" keeps the branch — it only removes the worktree dir (the
-  // keep-the-branch counterpart to the combined delete).
+  // "Remove worktree" (in the Worktree group) keeps the branch — it only removes
+  // the worktree dir (the keep-the-branch counterpart to the combined delete).
   it("removes only the worktree (keeping the branch) on confirm", () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed worktree");
     const deleteBranchWithWorktree = vi.fn().mockResolvedValue("Deleted feature and its worktree");
@@ -375,6 +436,7 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
+    openGroup("Worktree");
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
@@ -395,10 +457,12 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
+    openGroup("Danger zone");
     expect(screen.getByRole("menuitem", { name: "Delete feature" })).toBeDisabled();
     expect(screen.getByText("Checked out in the main worktree.")).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Delete feature & worktree…" })).not.toBeInTheDocument();
-    // Git can't remove the main worktree, so neither remove option is offered.
+    // Git can't remove the main worktree, so the Worktree group offers no Remove.
+    openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
     // Opening the main worktree is still fine.
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
@@ -410,6 +474,7 @@ describe("BranchContextMenu", () => {
     useRepo.setState({ branches: [remoteBranch("origin/feature")] });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    openGroup("Danger zone");
     expect(screen.queryByRole("menuitem", { name: "Delete origin/feature" })).not.toBeInTheDocument();
     // The remote-delete item is a different action and must remain available.
     expect(screen.getByRole("menuitem", { name: "Delete origin/feature on remote" })).toBeInTheDocument();
@@ -426,6 +491,7 @@ describe("BranchContextMenu", () => {
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     const confirm = useUi.getState().confirm;
@@ -454,6 +520,7 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
+    openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Mixed — keep changes unstaged" }));
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "other", headOid: "new", detached: false },

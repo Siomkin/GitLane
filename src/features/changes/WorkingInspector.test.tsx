@@ -93,8 +93,11 @@ describe("FileContextMenu", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: false } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Copy full path" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Open file history" })).toBeInTheDocument();
+    // Copy variants lead the menu, flat (most-used here).
+    expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
+    // History views are tucked into the History group.
+    fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+    expect(screen.getByRole("menuitem", { name: "File history" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Blame" })).toBeInTheDocument();
   });
 
@@ -107,8 +110,8 @@ describe("FileContextMenu", () => {
   it("omits the discard item for a committed file (copy-only menu)", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
     render(<FileContextMenu />);
-    expect(screen.getByRole("menuitem", { name: "Copy full path" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
   });
 
   it("opens file history and blame from the context menu", () => {
@@ -117,12 +120,14 @@ describe("FileContextMenu", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
     const first = render(<FileContextMenu />);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open file history" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "File history" }));
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts");
     first.unmount();
 
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
     render(<FileContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Blame" }));
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts", "blame");
   });

@@ -1,7 +1,15 @@
-import { useLayoutEffect, useRef, useState, type DependencyList, type RefObject } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type DependencyList,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useUi } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import { focusRing } from "@/lib/ui";
+import { ChevronRightIcon } from "@/components/ui/icons";
 
 /**
  * Keep a menu anchored at (x, y) fully on-screen. Measures the panel's *real*
@@ -56,8 +64,16 @@ export function useBranchOp() {
 }
 export interface MenuItem {
   label: string;
-  /** Required unless `header` is set (headers are non-clickable labels). */
+  /** Required unless `header` or `submenu` is set. */
   onClick?: () => void;
+  /** Leading glyph — the caller sizes it (e.g. `<PushIcon className="h-4 w-4" />`). */
+  icon?: ReactNode;
+  /** Accordion children: the row becomes an in-place expander. One level only. */
+  submenu?: MenuItem[];
+  /** Faint mono context line shown atop an expanded submenu (e.g. "into main"). */
+  note?: string;
+  /** Tints the expander row + its expanded block as destructive (rose). */
+  tone?: "danger";
   /** Visible but non-interactive item, usually paired with a short reason. */
   disabled?: boolean;
   disabledReason?: string;
@@ -77,6 +93,7 @@ export function MenuPanel({
   items,
   onClose,
   width = 220,
+  heading,
 }: {
   /** Anchor x (e.g. the click's clientX) — clamped on-screen internally. */
   left: number;
@@ -85,12 +102,128 @@ export function MenuPanel({
   items: MenuItem[];
   onClose: () => void;
   width?: number;
+  /** Optional non-interactive header block rendered at the top of the panel. */
+  heading?: ReactNode;
 }) {
   // Close on Escape (and outside mousedown); the backdrop shields underlying
   // content from the dismissing click. Mirrors ConfirmDialog/the navigator.
   const panelRef = useRef<HTMLDivElement>(null);
   useDismiss(true, onClose, panelRef);
-  const pos = useFittedMenuPosition(left, top, panelRef, [items.length]);
+  // Single-open accordion: index of the expanded submenu row (or null). Opening
+  // one collapses the others so the panel stays compact.
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // openIndex changes the panel height, so re-fit on toggle as well as count.
+  const pos = useFittedMenuPosition(left, top, panelRef, [items.length, openIndex]);
+
+  const sep = (key: string) => (
+    <div key={key} className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />
+  );
+
+  // A leaf row (also used for submenu children, with `nested` adding indent).
+  const renderRow = (it: MenuItem, key: string, nested: boolean) => {
+    if (it.header) {
+      return (
+        <div key={key}>
+          {it.sep && sep(`${key}-sep`)}
+          <div
+            className={`flex items-center gap-1.5 pb-1 pt-1.5 ${
+              nested ? (it.indent ? "pl-12 pr-3" : "pl-9 pr-3") : "px-3"
+            } ${it.danger || it.tone === "danger" ? "text-rose-500/70" : "text-neutral-400"}`}
+          >
+            {it.icon && <span className="grid shrink-0 place-items-center">{it.icon}</span>}
+            <span className="text-[10px] font-semibold uppercase tracking-wider">{it.label}</span>
+          </div>
+        </div>
+      );
+    }
+    const reasonId = it.disabledReason ? `menu-item-reason-${key}` : undefined;
+    const pad = nested ? (it.indent ? "pl-12 pr-3" : "pl-9 pr-3") : it.indent ? "pl-6 pr-3" : "px-3";
+    return (
+      <div key={key}>
+        {it.sep && sep(`${key}-sep`)}
+        <button
+          type="button"
+          role="menuitem"
+          disabled={it.disabled}
+          aria-label={it.disabledReason ? it.label : undefined}
+          aria-describedby={reasonId}
+          onClick={it.disabled ? undefined : it.onClick}
+          className={`flex w-full items-center gap-2.5 text-left text-[13px] ${focusRing} ${
+            it.disabledReason ? "min-h-10 py-1.5" : "h-8"
+          } ${pad} ${
+            it.disabled
+              ? "cursor-not-allowed text-neutral-400 dark:text-neutral-500"
+              : it.danger
+              ? "text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+              : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
+          }`}
+        >
+          {it.icon && (
+            <span className={`grid shrink-0 place-items-center ${it.danger ? "" : "text-neutral-400"}`}>
+              {it.icon}
+            </span>
+          )}
+          <span className="flex flex-col">
+            <span className="whitespace-nowrap">{it.label}</span>
+            {it.disabledReason && (
+              <span id={reasonId} className="mt-0.5 whitespace-normal text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">
+                {it.disabledReason}
+              </span>
+            )}
+          </span>
+        </button>
+      </div>
+    );
+  };
+
+  const renderItem = (it: MenuItem, i: number) => {
+    if (!it.submenu) return renderRow(it, `${it.label}-${i}`, false);
+    const open = openIndex === i;
+    const danger = it.tone === "danger";
+    return (
+      <div key={`${it.label}-${i}`}>
+        {it.sep && sep(`grp-${i}-sep`)}
+        <button
+          type="button"
+          role="menuitem"
+          aria-haspopup="true"
+          aria-expanded={open}
+          onClick={() => setOpenIndex(open ? null : i)}
+          className={`group flex h-8 w-full items-center gap-2.5 px-3 text-left text-[13px] ${focusRing} ${
+            danger
+              ? "text-neutral-700 hover:bg-rose-500/10 hover:text-rose-600 dark:text-neutral-200 dark:hover:text-rose-400"
+              : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
+          }`}
+        >
+          {it.icon && (
+            <span className={`grid shrink-0 place-items-center text-neutral-400 ${danger ? "group-hover:text-rose-500" : ""}`}>
+              {it.icon}
+            </span>
+          )}
+          <span className="whitespace-nowrap">{it.label}</span>
+          <ChevronRightIcon
+            className={`ml-auto -mr-1 h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${
+              open ? "rotate-90" : ""
+            } ${danger ? "group-hover:text-rose-500" : ""}`}
+          />
+        </button>
+        {open && (
+          <div className="border-y border-black/5 bg-black/[0.025] dark:border-white/5 dark:bg-white/[0.03]">
+            {/* Danger groups carry their meaning via the rose header/items, not a
+                background wash — keep the expanded tint neutral like every group. */}
+            {it.note && (
+              <div className="truncate px-3 pb-0.5 pl-9 pt-1.5 font-mono text-[10.5px] text-neutral-400">
+                {it.note}
+              </div>
+            )}
+            {it.submenu.map((child, ci) => renderRow(child, `${i}-${ci}`, true))}
+            <div className="h-1" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <Backdrop onClick={onClose} z={49} />
@@ -106,47 +239,10 @@ export function MenuPanel({
           animation: "gp-pop .12s ease-out",
         }}
       >
-        {items.map((it, i) => {
-          const reasonId = it.disabledReason ? `menu-item-reason-${i}` : undefined;
-          return it.header ? (
-            <div key={`${it.label}-${i}`}>
-              {it.sep && <div className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />}
-              <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                {it.label}
-              </div>
-            </div>
-          ) : (
-            <div key={`${it.label}-${i}`}>
-              {it.sep && <div className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />}
-              <button
-                type="button"
-                role="menuitem"
-                disabled={it.disabled}
-                aria-label={it.disabledReason ? it.label : undefined}
-                aria-describedby={reasonId}
-                onClick={it.disabled ? undefined : it.onClick}
-                className={`flex w-full flex-col items-start justify-center text-left text-[13px] ${focusRing} ${
-                  it.disabledReason ? "min-h-10 py-1.5" : "h-8"
-                } ${
-                  it.indent ? "pl-6 pr-3" : "px-3"
-                } ${
-                  it.disabled
-                    ? "cursor-not-allowed text-neutral-400 dark:text-neutral-500"
-                    : it.danger
-                    ? "text-rose-500 hover:bg-rose-500/10 dark:text-rose-400"
-                    : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
-                }`}
-              >
-                <span className="whitespace-nowrap">{it.label}</span>
-                {it.disabledReason && (
-                  <span id={reasonId} className="mt-0.5 whitespace-normal text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">
-                    {it.disabledReason}
-                  </span>
-                )}
-              </button>
-            </div>
-          );
-        })}
+        {heading && (
+          <div className="mb-1 border-b border-black/5 px-3 pb-1.5 pt-0.5 dark:border-white/5">{heading}</div>
+        )}
+        {items.map((it, i) => renderItem(it, i))}
       </div>
     </>
   );

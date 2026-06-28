@@ -223,6 +223,92 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
 }
 
 #[test]
+fn delete_branch_with_worktree_refuses_when_path_no_longer_holds_the_branch() {
+    // The frontend's captured path can go stale: an external checkout/detach in
+    // the source worktree means it no longer owns the branch. The op must verify
+    // against live `git worktree list` and abort — never remove a clean,
+    // now-unrelated worktree and then delete the branch anyway.
+    let repo = TempRepo::new("delete-worktree-branch-stale");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-branch-stale-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+    // Simulate the external change: the source worktree detaches off `feature`.
+    let detach = Command::new("git")
+        .arg("-C")
+        .arg(&linked)
+        .args(["checkout", "--detach", "-q"])
+        .output()
+        .expect("git detaches the linked worktree");
+    assert!(detach.status.success());
+
+    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str)
+        .expect_err("a stale worktree path should abort the delete");
+    assert!(err.contains("feature"), "error should name the branch, got: {err}");
+
+    // Both the branch and the (now detached) worktree survive untouched.
+    let branches = repo.git(&["branch", "--list", "feature"]);
+    assert!(
+        String::from_utf8_lossy(&branches.stdout).contains("feature"),
+        "feature branch must survive a refused delete"
+    );
+    assert!(linked.exists(), "the worktree directory must survive");
+
+    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn move_branch_to_worktree_refuses_when_path_no_longer_holds_the_branch() {
+    let repo = TempRepo::new("move-worktree-branch-stale");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-move-worktree-branch-stale-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+    let detach = Command::new("git")
+        .arg("-C")
+        .arg(&linked)
+        .args(["checkout", "--detach", "-q"])
+        .output()
+        .expect("git detaches the linked worktree");
+    assert!(detach.status.success());
+
+    let err = move_branch_to_worktree(repo.path(), "feature", linked_str)
+        .expect_err("a stale worktree path should abort the move");
+    assert!(err.contains("feature"), "error should name the branch, got: {err}");
+    // The current worktree was not switched onto the branch.
+    let current = repo.git(&["branch", "--show-current"]);
+    assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "main");
+
+    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
 fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
     let repo = TempRepo::new("stage-hunk-unusual-path");
     repo.git_ok(&["init", "-q"]);
