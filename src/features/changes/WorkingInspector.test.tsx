@@ -94,8 +94,8 @@ describe("FileContextMenu", () => {
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy full path" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "View file history" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Blame file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open file history" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Blame" })).toBeInTheDocument();
   });
 
   it("adapts the discard label to 'Unstage & discard changes' for a staged file", () => {
@@ -117,13 +117,13 @@ describe("FileContextMenu", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
     const first = render(<FileContextMenu />);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "View file history" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open file history" }));
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts");
     first.unmount();
 
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
     render(<FileContextMenu />);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Blame file" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Blame" }));
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts", "blame");
   });
 });

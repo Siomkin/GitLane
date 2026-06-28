@@ -33,11 +33,14 @@ fn short_oid(oid: Oid) -> String {
     oid.to_string().chars().take(7).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn commit_entry(
     commit: &git2::Commit<'_>,
     status: Delta,
     path: String,
     previous_path: Option<String>,
+    add: usize,
+    del: usize,
 ) -> FileHistoryEntry {
     let oid = commit.id();
     FileHistoryEntry {
@@ -50,6 +53,8 @@ fn commit_entry(
         timestamp: commit.time().seconds(),
         status: status_letter(status).to_string(),
         path,
+        add,
+        del,
         previous_path,
     }
 }
@@ -87,7 +92,7 @@ pub fn file_history(
         let mut diff = repo.diff_tree_to_tree(parent.as_ref(), Some(&tree), Some(&mut opts))?;
         diff.find_similar(None)?;
 
-        for delta in diff.deltas() {
+        for (idx, delta) in diff.deltas().enumerate() {
             let old_path = path_string(delta.old_file().path());
             let new_path = path_string(delta.new_file().path());
             let delta_path = match delta.status() {
@@ -104,8 +109,21 @@ pub fn file_history(
             } else {
                 None
             };
+            let (add, del) = git2::Patch::from_diff(&diff, idx)
+                .ok()
+                .flatten()
+                .and_then(|p| p.line_stats().ok())
+                .map(|(_ctx, add, del)| (add, del))
+                .unwrap_or((0, 0));
             if seen_matches >= skip {
-                entries.push(commit_entry(&commit, delta.status(), delta_path, previous_path.clone()));
+                entries.push(commit_entry(
+                    &commit,
+                    delta.status(),
+                    delta_path,
+                    previous_path.clone(),
+                    add,
+                    del,
+                ));
             }
             seen_matches += 1;
             if let Some(prev) = previous_path {
@@ -114,7 +132,7 @@ pub fn file_history(
             break;
         }
 
-        if entries.len() >= requested + 1 {
+        if entries.len() > requested {
             break;
         }
     }
@@ -188,6 +206,7 @@ pub fn file_blame(
                 content: text,
                 oid: String::new(),
                 short_oid: "worktree".to_string(),
+                subject: String::new(),
                 author_name: "Uncommitted".to_string(),
                 author_email: String::new(),
                 timestamp: 0,
@@ -198,11 +217,17 @@ pub fn file_blame(
         };
         let oid = hunk.final_commit_id();
         let sig = hunk.final_signature();
+        let subject = repo
+            .find_commit(oid)
+            .ok()
+            .and_then(|c| c.summary().ok().flatten().map(|s| s.to_string()))
+            .unwrap_or_default();
         lines.push(BlameLine {
             line_no,
             content: text,
             oid: oid.to_string(),
             short_oid: short_oid(oid),
+            subject,
             author_name: sig
                 .as_ref()
                 .and_then(|s| s.name().ok())

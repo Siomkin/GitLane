@@ -25,7 +25,7 @@ import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
 import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
 import { ConflictWorkspace } from "./features/conflicts";
-import { FileHistoryWorkspace } from "./features/file-history/FileHistoryWorkspace";
+import { HistoryInspectWorkspace } from "./features/history-inspect";
 import { HistoryWorkspace } from "./features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
 import { ReflogRecoveryDialog } from "./features/recovery";
@@ -52,6 +52,7 @@ const App = () => {
   const clearError = useRepo((state) => state.clearError);
   const selectedFile = useRepo((state) => state.selectedFile);
   const fileHistory = useRepo((state) => state.fileHistory);
+  const compare = useRepo((state) => state.compare);
   const operation = useRepo((state) => state.operation);
   const revealTarget = useRepo((state) => state.revealTarget);
   const restoreSession = useRepo((state) => state.restoreSession);
@@ -133,8 +134,8 @@ const App = () => {
     <ConflictWorkspace />
   ) : showPulls ? (
     <PullRequestDetail />
-  ) : fileHistory ? (
-    <FileHistoryWorkspace />
+  ) : compare || fileHistory ? (
+    <HistoryInspectWorkspace />
   ) : stackedReview ? (
     <StackedReview />
   ) : leftTab === "changes" ? (

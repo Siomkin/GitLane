@@ -1,4 +1,4 @@
-use super::{commit_file_diff, file_blame, file_history};
+use super::{commit_file_diff, compare_file_diff, compare_refs, file_blame, file_history};
 use super::diff::DIFF_LINE_LIMIT;
 use git2::{Repository, Signature};
 use std::fs;
@@ -156,6 +156,73 @@ fn file_blame_returns_line_attribution() {
     assert_eq!(blame.lines[0].content, "first");
     assert_eq!(blame.lines[1].content, "second");
     assert_eq!(blame.lines[1].author_name, "Bench");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_history_reports_line_stats() {
+    let dir = std::env::temp_dir().join("gitlane-file-history-stats-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "stats.txt", "a\n");
+    commit(&repo, &dir, "stats.txt", "a\nb\nc\n");
+
+    let page = file_history(dir.to_str().unwrap(), "stats.txt", None, Some(10)).unwrap();
+    assert_eq!(page.entries.len(), 2);
+    // Newest commit appended two lines.
+    assert_eq!(page.entries[0].add, 2);
+    assert_eq!(page.entries[0].del, 0);
+    // The original commit added the file's first line.
+    assert_eq!(page.entries[1].add, 1);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn compare_refs_lists_changed_files_with_counts_and_distance() {
+    let dir = std::env::temp_dir().join("gitlane-compare-refs-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let base = commit(&repo, &dir, "kept.txt", "one\n").to_string();
+    commit(&repo, &dir, "kept.txt", "one\ntwo\n");
+    let head = commit(&repo, &dir, "added.txt", "new\n").to_string();
+
+    let path = dir.to_str().unwrap();
+    let result = compare_refs(path, &base, Some(&head)).unwrap();
+    let names: Vec<&str> = result.files.iter().map(|f| f.path.as_str()).collect();
+    assert!(names.contains(&"kept.txt"));
+    assert!(names.contains(&"added.txt"));
+    assert!(result.add >= 2);
+    // head is two commits past base.
+    assert_eq!(result.ahead, 2);
+    assert_eq!(result.behind, 0);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn compare_refs_against_working_tree() {
+    let dir = std::env::temp_dir().join("gitlane-compare-working-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let base = commit(&repo, &dir, "work.txt", "one\n").to_string();
+    // Uncommitted edit in the working tree.
+    fs::write(dir.join("work.txt"), "one\ntwo\n").unwrap();
+
+    let path = dir.to_str().unwrap();
+    let result = compare_refs(path, &base, None).unwrap();
+    assert_eq!(result.files.len(), 1);
+    assert_eq!(result.files[0].path, "work.txt");
+    assert_eq!(result.ahead, 0);
+    assert_eq!(result.behind, 0);
+
+    let diff = compare_file_diff(path, &base, None, "work.txt", false).unwrap();
+    assert!(diff.add >= 1);
+    assert!(!diff.hunks.is_empty());
 
     let _ = fs::remove_dir_all(&dir);
 }

@@ -23,7 +23,13 @@ export function createRepoSelectionActions(
   | "loadMoreFileHistory"
   | "selectFileHistoryRevision"
   | "loadFileBlame"
+  | "selectBlameLine"
   | "closeFileHistory"
+  | "openCompare"
+  | "selectCompareFile"
+  | "setComparePathFilter"
+  | "swapCompare"
+  | "closeCompare"
 > {
   return {
     selectCommit: async (id) => get().selectCommitMulti(id ?? "", {}),
@@ -60,6 +66,7 @@ export function createRepoSelectionActions(
         selectionAnchor: anchor,
         wipSelected: false,
         fileHistory: null,
+        compare: null,
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
@@ -83,6 +90,7 @@ export function createRepoSelectionActions(
       set({
         wipSelected: true,
         fileHistory: null,
+        compare: null,
         selectedCommit: null,
         selectedCommits: [],
         selectionAnchor: null,
@@ -135,8 +143,10 @@ export function createRepoSelectionActions(
       if (!summary) return;
       const requestPath = path;
       set({
+        compare: null,
         fileHistory: {
           path,
+          mode,
           entries: [],
           loading: true,
           loadingMore: false,
@@ -150,6 +160,8 @@ export function createRepoSelectionActions(
           diffLoading: false,
           blame: null,
           blameLoading: mode === "blame",
+          blameRevision: null,
+          blameSelectedOid: null,
         },
         error: null,
       });
@@ -256,12 +268,14 @@ export function createRepoSelectionActions(
       const requestPath = fileHistory.path;
       const blameRevision = revision ?? fileHistory.selectedOid;
       set((state) => ({
-        fileHistory: state.fileHistory ? { ...state.fileHistory, blameLoading: true } : null,
+        fileHistory: state.fileHistory
+          ? { ...state.fileHistory, blameLoading: true, blameRevision, blameSelectedOid: null }
+          : null,
       }));
       try {
         const blame = await api.fileBlame(summary.path, requestPath, blameRevision);
         const current = get().fileHistory;
-        if (current?.path !== requestPath || current.selectedOid !== blameRevision) return;
+        if (current?.path !== requestPath || current.blameRevision !== blameRevision) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, blame, blameLoading: false }
@@ -269,7 +283,7 @@ export function createRepoSelectionActions(
         }));
       } catch (e) {
         const current = get().fileHistory;
-        if (current?.path !== requestPath || current.selectedOid !== blameRevision) return;
+        if (current?.path !== requestPath || current.blameRevision !== blameRevision) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, blameLoading: false, error: String(e) }
@@ -278,6 +292,115 @@ export function createRepoSelectionActions(
       }
     },
 
+    selectBlameLine: (oid) =>
+      set((state) => ({
+        fileHistory: state.fileHistory
+          ? { ...state.fileHistory, blameSelectedOid: oid }
+          : null,
+      })),
+
     closeFileHistory: () => set({ fileHistory: null }),
+
+    openCompare: async ({ base, head, baseLabel, headLabel, scope, title }) => {
+      const { summary } = get();
+      if (!summary) return;
+      set({
+        fileHistory: null,
+        compare: {
+          base,
+          head,
+          baseLabel,
+          headLabel,
+          scope,
+          title,
+          files: [],
+          loading: true,
+          error: null,
+          add: 0,
+          del: 0,
+          ahead: 0,
+          behind: 0,
+          pathFilter: "",
+          selectedPath: null,
+          selectedDiff: null,
+          diffLoading: false,
+        },
+        error: null,
+      });
+      try {
+        const result = await api.compareRefs(summary.path, base, head);
+        // Bail if the user opened a different comparison meanwhile.
+        const cur = get().compare;
+        if (cur?.base !== base || cur.head !== head) return;
+        set((state) => ({
+          compare: state.compare
+            ? {
+                ...state.compare,
+                files: result.files,
+                add: result.add,
+                del: result.del,
+                ahead: result.ahead,
+                behind: result.behind,
+                loading: false,
+              }
+            : null,
+        }));
+        const first = result.files[0];
+        if (first) void get().selectCompareFile(first.path);
+      } catch (e) {
+        const cur = get().compare;
+        if (cur?.base !== base || cur.head !== head) return;
+        set((state) => ({
+          compare: state.compare ? { ...state.compare, loading: false, error: String(e) } : null,
+        }));
+      }
+    },
+
+    selectCompareFile: async (path) => {
+      const { summary, compare } = get();
+      if (!summary || !compare) return;
+      const { base, head } = compare;
+      set((state) => ({
+        compare: state.compare
+          ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true }
+          : null,
+      }));
+      try {
+        const selectedDiff = await api.compareFileDiff(summary.path, base, head, path);
+        const cur = get().compare;
+        if (cur?.base !== base || cur.head !== head || cur.selectedPath !== path) return;
+        set((state) => ({
+          compare: state.compare ? { ...state.compare, selectedDiff, diffLoading: false } : null,
+        }));
+      } catch (e) {
+        const cur = get().compare;
+        if (cur?.base !== base || cur.head !== head || cur.selectedPath !== path) return;
+        set((state) => ({
+          compare: state.compare
+            ? { ...state.compare, diffLoading: false, error: String(e) }
+            : null,
+        }));
+      }
+    },
+
+    setComparePathFilter: (filter) =>
+      set((state) => (state.compare ? { compare: { ...state.compare, pathFilter: filter } } : {})),
+
+    swapCompare: async () => {
+      const { compare } = get();
+      // Only commit-range comparisons have two commits to swap; a working-tree
+      // comparison has no second endpoint.
+      if (!compare || compare.head === null) return;
+      await get().openCompare({
+        base: compare.head,
+        head: compare.base,
+        baseLabel: compare.headLabel,
+        headLabel: compare.baseLabel,
+        scope: compare.scope,
+        title: `Comparing ${compare.baseLabel} with ${compare.headLabel}`,
+      });
+    },
+
+    closeCompare: () => set({ compare: null }),
   };
 }

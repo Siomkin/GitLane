@@ -15,11 +15,11 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BranchInfo, ConflictFileContent, DestructivePreview, FileBlame, FileChange, FileDiff,
-    FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus, PrCheck,
-    PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RepoForge,
-    RepoGraph,
-    RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
+    BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame, FileChange,
+    FileDiff, FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus,
+    PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
+    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges,
+    WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -429,6 +429,27 @@ fn file_blame(
     limit: Option<usize>,
 ) -> Result<FileBlame, String> {
     git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn compare_refs(
+    path: String,
+    base: String,
+    head: Option<String>,
+) -> Result<CompareResult, String> {
+    git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn compare_file_diff(
+    path: String,
+    base: String,
+    head: Option<String>,
+    file: String,
+    full: Option<bool>,
+) -> Result<FileDiff, String> {
+    git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1080,6 +1101,8 @@ pub fn run() {
             diff_range_file,
             file_history,
             file_blame,
+            compare_refs,
+            compare_file_diff,
             stage_file,
             unstage_file,
             apply_hunk,

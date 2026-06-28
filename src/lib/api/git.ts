@@ -269,6 +269,8 @@ export interface FileHistoryEntry {
   timestamp: number;
   status: FileStatus | "?";
   path: string;
+  add: number;
+  del: number;
   previousPath: string | null;
 }
 
@@ -284,6 +286,7 @@ export interface BlameLine {
   content: string;
   oid: string;
   shortOid: string;
+  subject: string;
   authorName: string;
   authorEmail: string;
   timestamp: number;
@@ -297,6 +300,14 @@ export interface FileBlame {
   binary: boolean;
   truncated: boolean;
   lines: BlameLine[];
+}
+
+export interface CompareResult {
+  files: FileChange[];
+  add: number;
+  del: number;
+  ahead: number;
+  behind: number;
 }
 
 export const gitApi = {
@@ -541,6 +552,27 @@ export const gitApi = {
       file,
       revision: revision ?? null,
       limit: limit ?? null,
+    }),
+
+  /** Changed files plus totals for a `base..head` comparison. `head = null`
+   * compares `base` against the working tree. */
+  compareRefs: (path: string, base: string, head?: string | null) =>
+    invoke<CompareResult>("compare_refs", { path, base, head: head ?? null }),
+
+  /** Full diff for one file within a comparison (see [`compareRefs`]). */
+  compareFileDiff: (
+    path: string,
+    base: string,
+    head: string | null,
+    file: string,
+    full?: boolean,
+  ) =>
+    invoke<FileDiff>("compare_file_diff", {
+      path,
+      base,
+      head: head ?? null,
+      file,
+      full: full ?? null,
     }),
 
   stageFile: (path: string, file: string) =>

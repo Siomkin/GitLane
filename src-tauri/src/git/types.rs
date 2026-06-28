@@ -321,6 +321,10 @@ pub struct FileHistoryEntry {
     pub timestamp: i64,
     pub status: String,
     pub path: String,
+    /// Lines added to this file in the commit.
+    pub add: usize,
+    /// Lines removed from this file in the commit.
+    pub del: usize,
     /// Previous repository-relative path when the commit renamed this file.
     pub previous_path: Option<String>,
 }
@@ -344,6 +348,9 @@ pub struct BlameLine {
     pub content: String,
     pub oid: String,
     pub short_oid: String,
+    /// Summary line of the commit that last touched this line ("" if unknown /
+    /// uncommitted).
+    pub subject: String,
     pub author_name: String,
     pub author_email: String,
     pub timestamp: i64,
@@ -360,6 +367,20 @@ pub struct FileBlame {
     pub binary: bool,
     pub truncated: bool,
     pub lines: Vec<BlameLine>,
+}
+
+/// Changed-file list plus aggregate stats for a `base..head` comparison, where
+/// `head` is either another commit-ish or — when the request omits it — the
+/// working tree. `ahead`/`behind` are commit-distance counts between the two
+/// endpoints (both zero for a working-tree comparison).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareResult {
+    pub files: Vec<FileChange>,
+    pub add: usize,
+    pub del: usize,
+    pub ahead: usize,
+    pub behind: usize,
 }
 
 /// The in-progress merge/sequencer operation that left the repo in a conflicted

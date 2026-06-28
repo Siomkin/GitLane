@@ -330,7 +330,7 @@ export function BranchContextMenu() {
   const requestPrompt = useUi((s) => s.requestPrompt);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
-  const openRangeReview = useUi((s) => s.openRangeReview);
+  const openCompare = useRepo((s) => s.openCompare);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const cur = useRepo((s) => s.summary?.headBranch ?? null);
@@ -474,14 +474,47 @@ export function BranchContextMenu() {
     });
   }
 
-  if (upstream && tip) {
+  // ---- compare ----
+  if (tip) {
+    if (upstream) {
+      add({
+        label: "Compare with upstream",
+        onClick: () => {
+          close();
+          void openCompare({
+            base: upstream,
+            head: b,
+            baseLabel: upstream,
+            headLabel: b,
+            scope: "upstream",
+            title: `Comparing ${b} with ${upstream}`,
+          });
+        },
+      }, true);
+    }
     add({
-      label: `Compare ${b} with ${upstream}`,
-      onClick: () => {
-        close();
-        openRangeReview(upstream, b, `Comparing ${b} with ${upstream}`);
-      },
-    }, true);
+      label: "Compare with branch…",
+      onClick: () =>
+        requestPrompt({
+          title: `Compare ${b} with…`,
+          message: "Another branch to compare against (it becomes the base).",
+          placeholder: "main",
+          defaultValue: cur && cur !== b ? cur : "",
+          confirmLabel: "Compare",
+          onSubmit: (other) => {
+            const base = other.trim();
+            if (!base) return;
+            void openCompare({
+              base,
+              head: b,
+              baseLabel: base,
+              headLabel: b,
+              scope: "branch",
+              title: `Comparing ${b} with ${base}`,
+            });
+          },
+        }),
+    }, !upstream);
   }
 
   // ---- integrate cur <-> branch ----
@@ -639,6 +672,8 @@ export function CommitContextMenu() {
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openStackedReview = useUi((s) => s.openStackedReview);
   const openRangeReview = useUi((s) => s.openRangeReview);
+  const openCompare = useRepo((s) => s.openCompare);
+  const selectedCommit = useRepo((s) => s.selectedCommit);
   const summary = useRepo((s) => s.summary);
   const graph = useRepo((s) => s.graph);
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
@@ -748,8 +783,61 @@ export function CommitContextMenu() {
     graph?.head === sha &&
     !isCommitReachableFromRemote(graph, sha);
 
+  const hasOtherSelected = !!selectedCommit && selectedCommit !== sha;
   const items: MenuItem[] = [
     { label: "Review all changes", onClick: () => { close(); openStackedReview(sha, `Reviewing ${shortSha}`); } },
+    {
+      label: "Compare with working tree",
+      sep: true,
+      onClick: () => {
+        close();
+        void openCompare({
+          base: sha,
+          head: null,
+          baseLabel: shortSha,
+          headLabel: "Working tree",
+          scope: "working",
+          title: `Comparing ${shortSha} with the working tree`,
+        });
+      },
+    },
+    {
+      label: hasOtherSelected
+        ? `Compare with ${selectedCommit!.slice(0, 7)}`
+        : "Compare with selected commit…",
+      onClick: () => {
+        close();
+        if (hasOtherSelected) {
+          void openCompare({
+            base: selectedCommit!,
+            head: sha,
+            baseLabel: selectedCommit!.slice(0, 7),
+            headLabel: shortSha,
+            scope: "commit",
+            title: `Comparing ${shortSha} with ${selectedCommit!.slice(0, 7)}`,
+          });
+        } else {
+          requestPrompt({
+            title: `Compare ${shortSha} with…`,
+            message: "Another commit-ish to compare against (it becomes the base).",
+            placeholder: "HEAD~1, a branch, or a SHA",
+            confirmLabel: "Compare",
+            onSubmit: (other) => {
+              const base = other.trim();
+              if (!base) return;
+              void openCompare({
+                base,
+                head: sha,
+                baseLabel: base.length > 12 ? base.slice(0, 7) : base,
+                headLabel: shortSha,
+                scope: "commit",
+                title: `Comparing ${shortSha} with ${base}`,
+              });
+            },
+          });
+        }
+      },
+    },
     ...(canRewordHead
       ? [{
           label: "Edit commit message…",
@@ -849,24 +937,23 @@ export function FileContextMenu() {
   };
 
   const items: MenuItem[] = [
-    { label: "Copy file name", onClick: () => copy(fileName, `Copied ${fileName}`) },
-    { label: "Copy relative path", onClick: () => copy(path, "Copied relative path") },
-    { label: "Copy full path", onClick: () => copy(fullPath, "Copied full path") },
     {
-      label: "View file history",
-      sep: true,
+      label: "Open file history",
       onClick: () => {
         close();
         void openFileHistory(path);
       },
     },
     {
-      label: "Blame file",
+      label: "Blame",
       onClick: () => {
         close();
         void openFileHistory(path, "blame");
       },
     },
+    { label: "Copy file name", sep: true, onClick: () => copy(fileName, `Copied ${fileName}`) },
+    { label: "Copy relative path", onClick: () => copy(path, "Copied relative path") },
+    { label: "Copy full path", onClick: () => copy(fullPath, "Copied full path") },
   ];
 
   // Discard is a working-tree op — only offered on working-changes rows.
