@@ -16,10 +16,10 @@ describe("FileRow", () => {
     expect(screen.getByText("src/lib/")).toBeInTheDocument();
   });
 
-  it("hides the directory in compact mode", () => {
+  it("shows the directory in compact mode too (commit file lists keep their location)", () => {
     render(<FileRow file={file} active={false} onClick={() => {}} compact />);
     expect(screen.getByText("paths.ts")).toBeInTheDocument();
-    expect(screen.queryByText("src/lib/")).not.toBeInTheDocument();
+    expect(screen.getByText("src/lib/")).toBeInTheDocument();
   });
 
   it("shows the added/deleted counts and the status badge", () => {
