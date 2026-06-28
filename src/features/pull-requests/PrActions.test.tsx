@@ -1,7 +1,7 @@
 // Finding: merging must go through the confirm dialog (it's irreversible and
 // deletes the branch by default), not fire immediately on strategy click.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
@@ -118,5 +118,93 @@ describe("PrHeaderActions merge", () => {
     // Close is a setPrState write — it must not start concurrently with the
     // in-flight comment.
     expect(screen.getByText("Close pull request").closest("button")).toBeDisabled();
+  });
+
+  it("shows a spinner on the overflow Checkout while the checkout is in flight", async () => {
+    // Checkout is a repo write, not a `gh` PR action, so it tracks its own
+    // pending flag; the menu stays open to host the spinner until it resolves.
+    let resolveCheckout!: (v: string) => void;
+    const checkoutBranch = vi.fn(() => new Promise<string>((r) => (resolveCheckout = r)));
+    useRepo.setState({ checkoutBranch });
+
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByTitle("More actions"));
+    await userEvent.click(screen.getByText("Checkout branch"));
+
+    expect(checkoutBranch).toHaveBeenCalledWith("feat/thing");
+    expect(screen.getByText("Checking out…")).toBeInTheDocument();
+
+    // Resolving closes the menu and clears the pending label.
+    resolveCheckout("ok");
+    await waitFor(() => expect(screen.queryByText("Checking out…")).not.toBeInTheDocument());
+  });
+
+  it("shows a spinner on Reopen once the confirm dialog runs the state change", async () => {
+    let resolveState!: (v: string) => void;
+    const setPrState = vi.fn(() => new Promise<string>((r) => (resolveState = r)));
+    usePulls.setState({ setPrState });
+
+    render(<PrHeaderActions pr={openPr({ state: "closed" })} />);
+    await userEvent.click(screen.getByText("Reopen"));
+
+    // Nothing runs until the confirm dialog's action fires.
+    expect(setPrState).not.toHaveBeenCalled();
+    const confirm = useUi.getState().confirm;
+    await act(async () => {
+      confirm?.onConfirm();
+    });
+
+    expect(setPrState).toHaveBeenCalledWith(42, "reopen");
+    expect(await screen.findByText("Reopening…")).toBeInTheDocument();
+
+    resolveState("ok");
+    await waitFor(() => expect(screen.queryByText("Reopening…")).not.toBeInTheDocument());
+  });
+
+  it("shows a spinner on Ready once the confirm dialog runs the state change", async () => {
+    let resolveState!: (v: string) => void;
+    const setPrState = vi.fn(() => new Promise<string>((r) => (resolveState = r)));
+    usePulls.setState({ setPrState });
+
+    render(<PrHeaderActions pr={openPr({ draft: true })} />);
+    await userEvent.click(screen.getByText("Ready"));
+
+    expect(setPrState).not.toHaveBeenCalled();
+    await act(async () => {
+      useUi.getState().confirm?.onConfirm();
+    });
+
+    expect(setPrState).toHaveBeenCalledWith(42, "ready");
+    expect(await screen.findByText("Marking ready…")).toBeInTheDocument();
+
+    resolveState("ok");
+    await waitFor(() => expect(screen.queryByText("Marking ready…")).not.toBeInTheDocument());
+  });
+
+  it("surfaces the close-in-flight state on the overflow trigger after confirm", async () => {
+    // The menu dismisses on click, so the always-visible overflow trigger is
+    // where Close's pending feedback has to land.
+    let resolveState!: (v: string) => void;
+    const setPrState = vi.fn(() => new Promise<string>((r) => (resolveState = r)));
+    usePulls.setState({ setPrState });
+
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByTitle("More actions"));
+    await userEvent.click(screen.getByText("Close pull request"));
+
+    expect(setPrState).not.toHaveBeenCalled();
+    await act(async () => {
+      useUi.getState().confirm?.onConfirm();
+    });
+
+    expect(setPrState).toHaveBeenCalledWith(42, "close");
+    const trigger = screen.getByRole("button", { name: "Closing pull request…" });
+    expect(trigger).toHaveAttribute("aria-busy", "true");
+    expect(trigger).toBeDisabled();
+
+    resolveState("ok");
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Closing pull request…" })).not.toBeInTheDocument(),
+    );
   });
 });

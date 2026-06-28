@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 import type { ReviewThread } from "../../lib/api";
 import { usePulls } from "../../store/pulls";
+import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 
 type PendingAction = "reply" | "resolve" | null;
@@ -84,8 +85,10 @@ export const ReviewThreadControls = ({ prNum, thread, authorInitials }: ReviewTh
           <button
             type="submit"
             disabled={pending}
-            className="h-9 rounded-lg bg-[var(--accent)] px-3 text-[12.5px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+            aria-busy={pendingAction === "reply"}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 text-[12.5px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
           >
+            {pendingAction === "reply" && <InlineSpinner className="h-3.5 w-3.5" />}
             Reply
           </button>
         )}
@@ -95,8 +98,10 @@ export const ReviewThreadControls = ({ prNum, thread, authorInitials }: ReviewTh
         <button
           onClick={toggleResolved}
           disabled={pending}
-          className="rounded-md border border-black/10 px-2.5 py-1 text-[11.5px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+          aria-busy={pendingAction === "resolve"}
+          className="inline-flex items-center gap-1.5 rounded-md border border-black/10 px-2.5 py-1 text-[11.5px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
         >
+          {pendingAction === "resolve" && <InlineSpinner className="h-3 w-3" />}
           {thread.isResolved ? "Unresolve conversation" : "Resolve conversation"}
         </button>
         {thread.isResolved && (
