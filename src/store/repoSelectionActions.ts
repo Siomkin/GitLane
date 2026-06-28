@@ -27,6 +27,7 @@ export function createRepoSelectionActions(
   | "closeFileHistory"
   | "openCompare"
   | "selectCompareFile"
+  | "refreshCompare"
   | "setComparePathFilter"
   | "swapCompare"
   | "closeCompare"
@@ -165,6 +166,7 @@ export function createRepoSelectionActions(
           diffLoading: false,
           blame: null,
           blameLoading: mode === "blame",
+          blameError: null,
           blameRevision: null,
           blameSelectedOid: null,
         },
@@ -232,7 +234,7 @@ export function createRepoSelectionActions(
       }
     },
 
-    selectFileHistoryRevision: async (oid, pathOverride) => {
+    selectFileHistoryRevision: async (oid, pathOverride, full = false) => {
       const { summary, fileHistory } = get();
       if (!summary || !fileHistory) return;
       const filePath = pathOverride ?? fileHistory.path;
@@ -259,7 +261,7 @@ export function createRepoSelectionActions(
           : null,
       }));
       try {
-        const selectedDiff = await api.commitFileDiff(repoPath, oid, filePath);
+        const selectedDiff = await api.commitFileDiff(repoPath, oid, filePath, full);
         if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
@@ -276,12 +278,15 @@ export function createRepoSelectionActions(
       }
     },
 
-    loadFileBlame: async (revision) => {
+    loadFileBlame: async (revision, pathOverride) => {
       const { summary, fileHistory } = get();
       if (!summary || !fileHistory) return;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
       const blameRevision = revision ?? fileHistory.selectedOid;
+      // Blame the path the file had at the target revision (renames change it),
+      // falling back to the current path when no historical path is known.
+      const blamePath = pathOverride ?? fileHistory.selectedPath ?? fileHistory.path;
       const fresh = () => {
         const current = get().fileHistory;
         return (
@@ -292,11 +297,17 @@ export function createRepoSelectionActions(
       };
       set((state) => ({
         fileHistory: state.fileHistory
-          ? { ...state.fileHistory, blameLoading: true, blameRevision, blameSelectedOid: null }
+          ? {
+              ...state.fileHistory,
+              blameLoading: true,
+              blameError: null,
+              blameRevision,
+              blameSelectedOid: null,
+            }
           : null,
       }));
       try {
-        const blame = await api.fileBlame(repoPath, requestPath, blameRevision);
+        const blame = await api.fileBlame(repoPath, blamePath, blameRevision);
         if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
@@ -307,7 +318,7 @@ export function createRepoSelectionActions(
         if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
-            ? { ...state.fileHistory, blameLoading: false, error: String(e) }
+            ? { ...state.fileHistory, blameLoading: false, blameError: String(e) }
             : null,
         }));
       }
@@ -380,7 +391,7 @@ export function createRepoSelectionActions(
       }
     },
 
-    selectCompareFile: async (path) => {
+    selectCompareFile: async (path, full = false) => {
       const { summary, compare } = get();
       if (!summary || !compare) return;
       const { base, head } = compare;
@@ -400,7 +411,7 @@ export function createRepoSelectionActions(
           : null,
       }));
       try {
-        const selectedDiff = await api.compareFileDiff(repoPath, base, head, path);
+        const selectedDiff = await api.compareFileDiff(repoPath, base, head, path, full);
         if (!fresh()) return;
         set((state) => ({
           compare: state.compare ? { ...state.compare, selectedDiff, diffLoading: false } : null,
@@ -412,6 +423,50 @@ export function createRepoSelectionActions(
             ? { ...state.compare, diffLoading: false, error: String(e) }
             : null,
         }));
+      }
+    },
+
+    refreshCompare: async () => {
+      const { summary, compare } = get();
+      if (!summary || !compare) return;
+      const { base, head, selectedPath } = compare;
+      const repoPath = summary.path;
+      const fresh = () => {
+        const cur = get().compare;
+        return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
+      };
+      try {
+        const result = await api.compareRefs(repoPath, base, head);
+        if (!fresh()) return;
+        // Update the file set in place (no loading flicker, keep the selection).
+        set((state) => ({
+          compare: state.compare
+            ? {
+                ...state.compare,
+                files: result.files,
+                add: result.add,
+                del: result.del,
+                ahead: result.ahead,
+                behind: result.behind,
+                error: null,
+              }
+            : null,
+        }));
+        // Re-fetch the selected file's diff if it still exists; otherwise move to
+        // the first remaining file (or clear when nothing's left).
+        const stillThere = selectedPath && result.files.some((f) => f.path === selectedPath);
+        const next = stillThere ? selectedPath : result.files[0]?.path ?? null;
+        if (next) {
+          void get().selectCompareFile(next);
+        } else {
+          set((state) => ({
+            compare: state.compare
+              ? { ...state.compare, selectedPath: null, selectedDiff: null, diffLoading: false }
+              : null,
+          }));
+        }
+      } catch {
+        // A best-effort background refresh: leave the prior view in place on error.
       }
     },
 

@@ -8,7 +8,11 @@ import { UnifiedDiffBody } from "../review/DiffBody";
 import { initials, relativeTime } from "./inspect";
 
 /** File-history mode: revision list + selected-revision diff + inspector. */
-export function FileHistoryView({ onBlameRevision }: { onBlameRevision: (oid: string) => void }) {
+export function FileHistoryView({
+  onBlameRevision,
+}: {
+  onBlameRevision: (oid: string, path: string) => void;
+}) {
   const history = useRepo((s) => s.fileHistory);
   const selectRevision = useRepo((s) => s.selectFileHistoryRevision);
   const loadMore = useRepo((s) => s.loadMoreFileHistory);
@@ -41,7 +45,7 @@ export function FileHistoryView({ onBlameRevision }: { onBlameRevision: (oid: st
                 <div key={i} className="shim h-[58px] rounded-lg bg-black/[0.05] dark:bg-white/[0.06]" />
               ))}
             </div>
-          ) : history.error ? (
+          ) : history.error && history.entries.length === 0 ? (
             <ErrorState message={history.error} onRetry={() => void openFileHistory(history.path)} />
           ) : history.entries.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-neutral-400">
@@ -102,7 +106,7 @@ export function FileHistoryView({ onBlameRevision }: { onBlameRevision: (oid: st
             <div className="ml-auto flex items-center gap-2">
               <span className="font-mono text-[11px] text-neutral-400">at {selected.shortOid}</span>
               <button
-                onClick={() => onBlameRevision(selected.oid)}
+                onClick={() => onBlameRevision(selected.oid, selected.path)}
                 className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
               >
                 Blame at this revision
@@ -122,7 +126,7 @@ export function FileHistoryView({ onBlameRevision }: { onBlameRevision: (oid: st
             entry={selected}
             filePath={history.path}
             onOpenCommit={() => void revealCommit(selected.oid)}
-            onBlame={() => onBlameRevision(selected.oid)}
+            onBlame={() => onBlameRevision(selected.oid, selected.path)}
           />
         )}
       </div>
@@ -132,6 +136,7 @@ export function FileHistoryView({ onBlameRevision }: { onBlameRevision: (oid: st
 
 function DiffPane() {
   const history = useRepo((s) => s.fileHistory);
+  const selectRevision = useRepo((s) => s.selectFileHistoryRevision);
   if (!history) return null;
   if (history.diffLoading) {
     return (
@@ -144,6 +149,13 @@ function DiffPane() {
   }
   const diff = history.selectedDiff;
   if (!diff) {
+    if (history.error) {
+      return (
+        <div className="grid h-full place-content-center px-6 text-center text-sm text-rose-500">
+          {history.error}
+        </div>
+      );
+    }
     return <div className="grid h-full place-content-center text-sm text-neutral-400">Select a revision.</div>;
   }
   if (diff.binary) {
@@ -152,6 +164,29 @@ function DiffPane() {
   return (
     <div className="p-3.5">
       <UnifiedDiffBody hunks={diff.hunks} />
+      {diff.truncated && history.selectedOid && (
+        <TruncatedNotice
+          onShowFull={() => void selectRevision(history.selectedOid!, history.selectedPath, true)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Banner + action shown when the backend capped a diff at DIFF_LINE_LIMIT. */
+export function TruncatedNotice({ onShowFull }: { onShowFull: () => void }) {
+  return (
+    <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.08] px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5 shrink-0">
+        <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+      </svg>
+      Diff capped for performance.
+      <button
+        onClick={onShowFull}
+        className="ml-auto h-7 rounded-md border border-amber-500/30 px-2.5 text-[11.5px] font-semibold hover:bg-amber-500/10"
+      >
+        Show full diff
+      </button>
     </div>
   );
 }

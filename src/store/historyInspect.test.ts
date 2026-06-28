@@ -90,6 +90,43 @@ describe("repo store — file history", () => {
     // Repo A's response must not populate repo B's (now cleared) inspection view.
     expect(useRepo.getState().fileHistory).toBeNull();
   });
+
+  it("routes blame failures to blameError, leaving the history list intact", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "file_history") return Promise.resolve(historyPage);
+      if (cmd === "commit_file_diff") return Promise.resolve(fileDiff);
+      if (cmd === "file_blame") return Promise.reject("fatal: no such path");
+      return Promise.resolve(null);
+    });
+
+    await useRepo.getState().openFileHistory("src/a.ts");
+    await useRepo.getState().loadFileBlame();
+
+    const fh = useRepo.getState().fileHistory!;
+    expect(fh.blameError).toContain("no such path");
+    expect(fh.error).toBeNull(); // history list stays usable
+    expect(fh.entries).toHaveLength(1);
+  });
+
+  it("blames the historical path passed for a renamed revision", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "file_history") return Promise.resolve(historyPage);
+      if (cmd === "commit_file_diff") return Promise.resolve(fileDiff);
+      if (cmd === "file_blame")
+        return Promise.resolve({ path: "old/a.ts", revision: "aaaaaaaaaaaa", binary: false, truncated: false, lines: [] });
+      return Promise.resolve(null);
+    });
+
+    await useRepo.getState().openFileHistory("src/a.ts");
+    await useRepo.getState().loadFileBlame("aaaaaaaaaaaa", "old/a.ts");
+
+    expect(invokeMock).toHaveBeenCalledWith("file_blame", {
+      path: "/repo",
+      file: "old/a.ts",
+      revision: "aaaaaaaaaaaa",
+      limit: null,
+    });
+  });
 });
 
 describe("repo store — compare", () => {
@@ -174,5 +211,37 @@ describe("repo store — compare", () => {
     // The filter is stored; the full file set is untouched.
     expect(useRepo.getState().compare!.pathFilter).toBe("b.ts");
     expect(useRepo.getState().compare!.files).toHaveLength(2);
+  });
+
+  it("refreshCompare re-fetches the file set in place and keeps the selection", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return Promise.resolve(compareResult);
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().openCompare({
+      base: "abc",
+      head: null,
+      baseLabel: "abc",
+      headLabel: "Working tree",
+      scope: "working",
+      title: "t",
+    });
+    useRepo.getState().selectCompareFile("src/b.ts");
+    await Promise.resolve();
+
+    // Working tree changed: now only one file differs.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs")
+        return Promise.resolve({ files: [{ path: "src/b.ts", status: "M", add: 1, del: 0 }], add: 1, del: 0, ahead: 0, behind: 0 });
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().refreshCompare();
+
+    const cmp = useRepo.getState().compare!;
+    expect(cmp.files).toHaveLength(1);
+    expect(cmp.add).toBe(1);
+    expect(cmp.selectedPath).toBe("src/b.ts"); // selection preserved
   });
 });

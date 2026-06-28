@@ -22,13 +22,17 @@ export function HistoryInspectWorkspace() {
     const fh = useRepo.getState().fileHistory;
     if (!fh) return;
     useRepo.setState({ fileHistory: { ...fh, mode: "blame" } });
-    if (!fh.blame && !fh.blameLoading) void useRepo.getState().loadFileBlame(fh.selectedOid);
+    // Reload when the loaded blame doesn't match the currently selected revision
+    // (e.g. a different revision was picked in History since blame last loaded).
+    if (!fh.blameLoading && fh.blameRevision !== fh.selectedOid) {
+      void useRepo.getState().loadFileBlame(fh.selectedOid, fh.selectedPath);
+    }
   };
-  const blameRevision = (oid: string) => {
+  const blameRevision = (oid: string, path: string) => {
     const fh = useRepo.getState().fileHistory;
     if (!fh) return;
     useRepo.setState({ fileHistory: { ...fh, mode: "blame" } });
-    void useRepo.getState().loadFileBlame(oid);
+    void useRepo.getState().loadFileBlame(oid, path);
   };
 
   return (

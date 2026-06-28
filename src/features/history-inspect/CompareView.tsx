@@ -6,6 +6,7 @@ import { cn } from "../../lib/cn";
 import { useRepo } from "../../store/repo";
 import { StatusBadge, StatusPill } from "@/components/ui/StatusBadge";
 import { UnifiedDiffBody } from "../review/DiffBody";
+import { TruncatedNotice } from "./FileHistoryView";
 
 /** Cap on rendered file rows so a huge compare result stays bounded in the DOM. */
 const FILE_RENDER_CAP = 400;
@@ -187,6 +188,7 @@ export function CompareView() {
 
 function DiffPane() {
   const compare = useRepo((s) => s.compare);
+  const selectFile = useRepo((s) => s.selectCompareFile);
   if (!compare) return null;
   if (compare.diffLoading) {
     return (
@@ -207,6 +209,9 @@ function DiffPane() {
   return (
     <div className="p-3.5">
       <UnifiedDiffBody hunks={diff.hunks} />
+      {diff.truncated && compare.selectedPath && (
+        <TruncatedNotice onShowFull={() => void selectFile(compare.selectedPath!, true)} />
+      )}
     </div>
   );
 }

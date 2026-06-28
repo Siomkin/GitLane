@@ -62,6 +62,9 @@ export interface FileHistoryState {
   diffLoading: boolean;
   blame: FileBlame | null;
   blameLoading: boolean;
+  /** Blame-specific error, kept out of [`error`] so a blame failure never
+   * blanks the (successfully loaded) history list with a full-page error. */
+  blameError: string | null;
   /** The revision the loaded blame is for — independent of [`selectedOid`] so
    * "blame previous revision" can target a parent without moving the list. */
   blameRevision: string | null;
@@ -280,8 +283,10 @@ export interface RepoState {
   /** Open a dedicated history-inspection page for a repo-relative file. */
   openFileHistory: (path: string, mode?: "history" | "blame") => Promise<void>;
   loadMoreFileHistory: () => Promise<void>;
-  selectFileHistoryRevision: (oid: string, path?: string | null) => Promise<void>;
-  loadFileBlame: (revision?: string | null) => Promise<void>;
+  selectFileHistoryRevision: (oid: string, path?: string | null, full?: boolean) => Promise<void>;
+  /** Blame `path` (defaults to the selected revision's path, so renames blame
+   * the historical name) at `revision` (defaults to the selected revision). */
+  loadFileBlame: (revision?: string | null, path?: string | null) => Promise<void>;
   /** Mark which blame line's commit is selected (drives the blame inspector). */
   selectBlameLine: (oid: string) => void;
   closeFileHistory: () => void;
@@ -295,7 +300,10 @@ export interface RepoState {
     scope: CompareScope;
     title: string;
   }) => Promise<void>;
-  selectCompareFile: (path: string) => Promise<void>;
+  selectCompareFile: (path: string, full?: boolean) => Promise<void>;
+  /** Re-fetch the open comparison's file list + selected diff in place (used by
+   * refresh so a working-tree compare reflects external edits/commits). */
+  refreshCompare: () => Promise<void>;
   setComparePathFilter: (filter: string) => void;
   /** Swap base/head of a commit-range comparison and re-fetch (no-op for a
    * working-tree comparison, which has no second commit). */
