@@ -9,7 +9,8 @@ import { initials, type PrComment, type PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { Markdown } from "@/components/ui/Markdown";
-import { useRunPrAction } from "./usePrAction";
+import { InlineSpinner } from "@/components/ui/Loading";
+import { useKeyedPrAction } from "./usePrAction";
 
 export function PrConversation({ pr }: { pr: PullRequest }) {
   return (
@@ -58,7 +59,7 @@ function Composer({ pr }: { pr: PullRequest }) {
   const reviewPr = usePulls((s) => s.reviewPr);
   const pending = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const run = useRunPrAction();
+  const { pendingKey, start } = useKeyedPrAction();
   const [body, setBody] = useState("");
   const trimmed = body.trim();
   const isOpen = pr.state === "open";
@@ -88,13 +89,15 @@ function Composer({ pr }: { pr: PullRequest }) {
                     confirmLabel: "Request changes",
                     danger: true,
                     onConfirm: async () =>
-                      after(await run(() => reviewPr(pr.num, "request-changes", body), `Requested changes on #${pr.num}`)),
+                      after(await start("request-changes", () => reviewPr(pr.num, "request-changes", body), `Requested changes on #${pr.num}`)),
                   })
                 }
                 disabled={pending || !trimmed}
+                aria-busy={pendingKey === "request-changes"}
                 title={!trimmed ? "A note is required to request changes" : undefined}
                 className={ghostBtn}
               >
+                {pendingKey === "request-changes" && <InlineSpinner className="h-3.5 w-3.5" />}
                 Request changes
               </button>
               <button
@@ -104,21 +107,25 @@ function Composer({ pr }: { pr: PullRequest }) {
                     message: trimmed ? undefined : "Approve with no comment.",
                     confirmLabel: "Approve",
                     onConfirm: async () =>
-                      after(await run(() => reviewPr(pr.num, "approve", body), `Approved #${pr.num}`)),
+                      after(await start("approve", () => reviewPr(pr.num, "approve", body), `Approved #${pr.num}`)),
                   })
                 }
                 disabled={pending}
+                aria-busy={pendingKey === "approve"}
                 className={cn(ghostBtn, "text-emerald-600 dark:text-emerald-400")}
               >
+                {pendingKey === "approve" && <InlineSpinner className="h-3.5 w-3.5" />}
                 Approve
               </button>
             </>
           )}
           <button
-            onClick={async () => after(await run(() => commentPr(pr.num, body), "Comment posted"))}
+            onClick={async () => after(await start("comment", () => commentPr(pr.num, body), "Comment posted"))}
             disabled={pending || !trimmed}
-            className="h-8 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+            aria-busy={pendingKey === "comment"}
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
           >
+            {pendingKey === "comment" && <InlineSpinner className="h-3.5 w-3.5" />}
             Comment
           </button>
         </div>
@@ -128,4 +135,4 @@ function Composer({ pr }: { pr: PullRequest }) {
 }
 
 const ghostBtn =
-  "h-8 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";

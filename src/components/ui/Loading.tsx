@@ -19,6 +19,23 @@ export function Spinner({ className, accent = false }: { className?: string; acc
   );
 }
 
+/** A small in-button spinner that inherits the button's text colour via
+ * `currentColor`, so it reads correctly on accent / danger / outline buttons
+ * alike. Used to swap a PR action button's leading icon while its write is in
+ * flight (the store's `prPendingActions` disables every sibling; this shows
+ * *which* one is running). */
+export function InlineSpinner({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "inline-block animate-spin rounded-full border-2 border-current border-t-transparent",
+        className ?? "h-3.5 w-3.5",
+      )}
+    />
+  );
+}
+
 export function Loading({ label, className }: { label: string; className?: string }) {
   return (
     <div

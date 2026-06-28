@@ -3,7 +3,7 @@
 // — success on the first line, the raw error otherwise — and reports whether it
 // succeeded so callers can clear their own input on success.
 
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useUi } from "../../store/ui";
 
 export function useRunPrAction() {
@@ -22,4 +22,34 @@ export function useRunPrAction() {
     },
     [showToast],
   );
+}
+
+/** Local per-button pending tracking layered over `useRunPrAction`.
+ *
+ * The pulls store's `prPendingActions` already disables every PR write button
+ * while any one is in flight (so no concurrent writes can start); this hook adds
+ * *which* button to spin. `start(key, action)` marks `key` pending for the
+ * lifetime of `action`, so confirm-gated writes only spin once the user
+ * confirms — `start` is invoked inside `onConfirm`, not at click time. A
+ * synchronous `busyRef` guards the render-lag double-click window, mirroring the
+ * toolbar's network-op runner. */
+export function useKeyedPrAction() {
+  const run = useRunPrAction();
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const start = useCallback(
+    async (key: string, action: () => Promise<string>, okMessage?: string): Promise<boolean> => {
+      if (busyRef.current) return false;
+      busyRef.current = true;
+      setPendingKey(key);
+      try {
+        return await run(action, okMessage);
+      } finally {
+        busyRef.current = false;
+        setPendingKey(null);
+      }
+    },
+    [run],
+  );
+  return { pendingKey, start };
 }

@@ -13,7 +13,8 @@ import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { useDismiss } from "../../hooks/useDismiss";
 import { GitHubIcon } from "@/components/ui/icons";
-import { useRunPrAction } from "./usePrAction";
+import { InlineSpinner } from "@/components/ui/Loading";
+import { useKeyedPrAction, useRunPrAction } from "./usePrAction";
 
 const utilBtn =
   "grid h-9 w-9 place-items-center rounded-lg border border-black/10 text-neutral-600 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
@@ -56,26 +57,31 @@ const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
   const pending = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const run = useRunPrAction();
+  const { pendingKey, start } = useKeyedPrAction();
 
   if (pr.state === "closed") {
     return (
       <button
         disabled={pending}
+        aria-busy={pendingKey === "reopen"}
         onClick={() =>
           requestConfirm({
             title: `Reopen pull request #${pr.num}?`,
             message: "This will move the PR back to open.",
             confirmLabel: "Reopen",
-            onConfirm: () => void run(() => setPrState(pr.num, "reopen"), `Reopened #${pr.num}`),
+            onConfirm: () => void start("reopen", () => setPrState(pr.num, "reopen"), `Reopened #${pr.num}`),
           })
         }
         className={outlineBtn}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-          <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
-        </svg>
-        Reopen
+        {pendingKey === "reopen" ? (
+          <InlineSpinner className="h-4 w-4" />
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+            <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
+          </svg>
+        )}
+        {pendingKey === "reopen" ? "Reopening…" : "Reopen"}
       </button>
     );
   }
@@ -83,20 +89,25 @@ const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
     return (
       <button
         disabled={pending}
+        aria-busy={pendingKey === "ready"}
         onClick={() =>
           requestConfirm({
             title: `Mark #${pr.num} ready for review?`,
             message: "This takes the PR out of draft so it can be reviewed and merged.",
             confirmLabel: "Ready for review",
-            onConfirm: () => void run(() => setPrState(pr.num, "ready"), `#${pr.num} ready for review`),
+            onConfirm: () => void start("ready", () => setPrState(pr.num, "ready"), `#${pr.num} ready for review`),
           })
         }
         className={outlineBtn}
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-          <path d="M20 6 9 17l-5-5" />
-        </svg>
-        Ready
+        {pendingKey === "ready" ? (
+          <InlineSpinner className="h-4 w-4" />
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        )}
+        {pendingKey === "ready" ? "Marking ready…" : "Ready"}
       </button>
     );
   }
@@ -240,10 +251,26 @@ const MoreMenu = ({ pr }: { pr: PullRequest }) => {
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const run = useRunPrAction();
+  const { start } = useKeyedPrAction();
   const [open, setOpen] = useState(false);
+  // Checkout is a repo write (not a `gh` PR action), so it tracks its own
+  // pending flag and keeps the menu open while it runs to host the spinner.
+  const [checkingOut, setCheckingOut] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), ref);
+
+  const runCheckout = async () => {
+    if (checkingOut) return;
+    setCheckingOut(true);
+    try {
+      await checkoutBranch(pr.branch);
+      setOpen(false);
+    } catch (e) {
+      showToast(String(e), "error");
+    } finally {
+      setCheckingOut(false);
+    }
+  };
 
   return (
     <div ref={ref} className="relative">
@@ -257,18 +284,20 @@ const MoreMenu = ({ pr }: { pr: PullRequest }) => {
       {open && (
         <div className="gp-pop absolute right-0 top-[calc(100%+6px)] z-50 w-[208px] overflow-hidden rounded-xl border border-black/10 bg-white py-1.5 shadow-[0_22px_50px_-10px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-800">
           <button
-            onClick={() => {
-              setOpen(false);
-              void checkoutBranch(pr.branch).catch((e) => showToast(String(e), "error"));
-            }}
-            className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-neutral-700 transition-colors hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
+            onClick={() => void runCheckout()}
+            disabled={checkingOut}
+            className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-neutral-700 transition-colors hover:bg-black/5 disabled:opacity-45 disabled:hover:bg-transparent dark:text-neutral-200 dark:hover:bg-white/5"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M12 3v12" />
-              <path d="m7 11 5 5 5-5" />
-              <path d="M5 21h14" />
-            </svg>
-            Checkout branch
+            {checkingOut ? (
+              <InlineSpinner className="h-4 w-4" />
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M12 3v12" />
+                <path d="m7 11 5 5 5-5" />
+                <path d="M5 21h14" />
+              </svg>
+            )}
+            {checkingOut ? "Checking out…" : "Checkout branch"}
           </button>
           {pr.state === "open" && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
           {pr.state === "open" && (
@@ -281,7 +310,7 @@ const MoreMenu = ({ pr }: { pr: PullRequest }) => {
                   message: "You can reopen it later.",
                   confirmLabel: "Close pull request",
                   danger: true,
-                  onConfirm: () => void run(() => setPrState(pr.num, "close"), `Closed #${pr.num}`),
+                  onConfirm: () => void start("close", () => setPrState(pr.num, "close"), `Closed #${pr.num}`),
                 });
               }}
               className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-45 disabled:hover:bg-transparent dark:text-rose-400"

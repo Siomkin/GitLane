@@ -7,6 +7,7 @@ import type { BranchInfo } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import { usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
+import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 
 /** Best guess at the base branch: the conventional default if present, else the
@@ -35,6 +36,7 @@ export function CreatePrDialog() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   // Reset the form each time the dialog opens.
   useEffect(() => {
@@ -52,14 +54,19 @@ export function CreatePrDialog() {
   const canSubmit = !!title.trim() && !!base && !!head && base !== head;
 
   const submit = async () => {
-    if (!canSubmit) return;
-    const ok = await run(
-      () => createPr(base, head, title.trim(), body, draft),
-      `Opened PR from ${head} → ${base}`,
-    );
-    if (ok) {
-      // gh prints the new PR URL; offer to open it, then close.
-      close();
+    if (!canSubmit || creating) return;
+    setCreating(true);
+    try {
+      const ok = await run(
+        () => createPr(base, head, title.trim(), body, draft),
+        `Opened PR from ${head} → ${base}`,
+      );
+      if (ok) {
+        // gh prints the new PR URL; offer to open it, then close.
+        close();
+      }
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -130,10 +137,12 @@ export function CreatePrDialog() {
             </button>
             <button
               onClick={() => void submit()}
-              disabled={!canSubmit || pending}
-              className="h-9 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+              disabled={!canSubmit || pending || creating}
+              aria-busy={creating}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
             >
-              {draft ? "Create draft" : "Create pull request"}
+              {creating && <InlineSpinner className="h-3.5 w-3.5" />}
+              {creating ? "Creating…" : draft ? "Create draft" : "Create pull request"}
             </button>
           </div>
         </div>
