@@ -174,11 +174,8 @@ const MergeMenu = ({ pr }: { pr: PullRequest }) => {
         <span className="flex items-center gap-1.5 pl-3.5 pr-2.5">
           {merging ? (
             <>
-              <span
-                aria-hidden
-                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white"
-              />
-              Merging...
+              <InlineSpinner className="h-3.5 w-3.5" />
+              Merging…
             </>
           ) : (
             <>
@@ -251,7 +248,7 @@ const MoreMenu = ({ pr }: { pr: PullRequest }) => {
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const { start } = useKeyedPrAction();
+  const { pendingKey, start } = useKeyedPrAction();
   const [open, setOpen] = useState(false);
   // Checkout is a repo write (not a `gh` PR action), so it tracks its own
   // pending flag and keeps the menu open while it runs to host the spinner.
@@ -274,12 +271,24 @@ const MoreMenu = ({ pr }: { pr: PullRequest }) => {
 
   return (
     <div ref={ref} className="relative">
-      <button title="More actions" onClick={() => setOpen((o) => !o)} className={utilBtn}>
-        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-          <circle cx="12" cy="5" r="1.6" />
-          <circle cx="12" cy="12" r="1.6" />
-          <circle cx="12" cy="19" r="1.6" />
-        </svg>
+      <button
+        title={pendingKey === "close" ? "Closing pull request…" : "More actions"}
+        onClick={() => setOpen((o) => !o)}
+        // Close runs after the menu has dismissed, so the overflow trigger is the
+        // only control left on screen to host its in-flight feedback.
+        disabled={pendingKey === "close"}
+        aria-busy={pendingKey === "close"}
+        className={utilBtn}
+      >
+        {pendingKey === "close" ? (
+          <InlineSpinner className="h-4 w-4" />
+        ) : (
+          <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+            <circle cx="12" cy="5" r="1.6" />
+            <circle cx="12" cy="12" r="1.6" />
+            <circle cx="12" cy="19" r="1.6" />
+          </svg>
+        )}
       </button>
       {open && (
         <div className="gp-pop absolute right-0 top-[calc(100%+6px)] z-50 w-[208px] overflow-hidden rounded-xl border border-black/10 bg-white py-1.5 shadow-[0_22px_50px_-10px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-800">

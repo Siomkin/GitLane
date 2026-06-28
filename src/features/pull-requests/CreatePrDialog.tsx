@@ -45,6 +45,10 @@ export function CreatePrDialog() {
       setTitle("");
       setBody("");
       setDraft(false);
+      // Clear a stale pending flag if the dialog was cancelled mid-create and
+      // reopened (the in-flight `finally` also clears it; the global `pending`
+      // guard still blocks a real concurrent submit).
+      setCreating(false);
     }
   }, [open, defaultBase]);
 

@@ -160,4 +160,51 @@ describe("PrHeaderActions merge", () => {
     resolveState("ok");
     await waitFor(() => expect(screen.queryByText("Reopening…")).not.toBeInTheDocument());
   });
+
+  it("shows a spinner on Ready once the confirm dialog runs the state change", async () => {
+    let resolveState!: (v: string) => void;
+    const setPrState = vi.fn(() => new Promise<string>((r) => (resolveState = r)));
+    usePulls.setState({ setPrState });
+
+    render(<PrHeaderActions pr={openPr({ draft: true })} />);
+    await userEvent.click(screen.getByText("Ready"));
+
+    expect(setPrState).not.toHaveBeenCalled();
+    await act(async () => {
+      useUi.getState().confirm?.onConfirm();
+    });
+
+    expect(setPrState).toHaveBeenCalledWith(42, "ready");
+    expect(await screen.findByText("Marking ready…")).toBeInTheDocument();
+
+    resolveState("ok");
+    await waitFor(() => expect(screen.queryByText("Marking ready…")).not.toBeInTheDocument());
+  });
+
+  it("surfaces the close-in-flight state on the overflow trigger after confirm", async () => {
+    // The menu dismisses on click, so the always-visible overflow trigger is
+    // where Close's pending feedback has to land.
+    let resolveState!: (v: string) => void;
+    const setPrState = vi.fn(() => new Promise<string>((r) => (resolveState = r)));
+    usePulls.setState({ setPrState });
+
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByTitle("More actions"));
+    await userEvent.click(screen.getByText("Close pull request"));
+
+    expect(setPrState).not.toHaveBeenCalled();
+    await act(async () => {
+      useUi.getState().confirm?.onConfirm();
+    });
+
+    expect(setPrState).toHaveBeenCalledWith(42, "close");
+    const trigger = screen.getByRole("button", { name: "Closing pull request…" });
+    expect(trigger).toHaveAttribute("aria-busy", "true");
+    expect(trigger).toBeDisabled();
+
+    resolveState("ok");
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Closing pull request…" })).not.toBeInTheDocument(),
+    );
+  });
 });

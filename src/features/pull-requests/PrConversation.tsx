@@ -98,7 +98,7 @@ function Composer({ pr }: { pr: PullRequest }) {
                 className={ghostBtn}
               >
                 {pendingKey === "request-changes" && <InlineSpinner className="h-3.5 w-3.5" />}
-                Request changes
+                {pendingKey === "request-changes" ? "Requesting…" : "Request changes"}
               </button>
               <button
                 onClick={() =>
@@ -115,7 +115,7 @@ function Composer({ pr }: { pr: PullRequest }) {
                 className={cn(ghostBtn, "text-emerald-600 dark:text-emerald-400")}
               >
                 {pendingKey === "approve" && <InlineSpinner className="h-3.5 w-3.5" />}
-                Approve
+                {pendingKey === "approve" ? "Approving…" : "Approve"}
               </button>
             </>
           )}
@@ -126,7 +126,7 @@ function Composer({ pr }: { pr: PullRequest }) {
             className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
           >
             {pendingKey === "comment" && <InlineSpinner className="h-3.5 w-3.5" />}
-            Comment
+            {pendingKey === "comment" ? "Posting…" : "Comment"}
           </button>
         </div>
       </div>
