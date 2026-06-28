@@ -3,6 +3,8 @@ import type { CommitNode, RefLabel } from "../../lib/api";
 import { buildClusterItems } from "./refCluster";
 import { cn } from "../../lib/cn";
 import { focusRing } from "@/lib/ui";
+import { findOtherBranchWorktree } from "../../lib/graphActions";
+import { TreeIcon } from "../../components/ui/icons";
 import { useRepo } from "../../store/repo";
 import { selectionForContextMenu } from "../../store/selection";
 import { useUi } from "../../store/ui";
@@ -169,10 +171,22 @@ function RefCluster({
   );
 }
 
+/** Name of the worktree a local branch is checked out in (when it isn't the
+ * open one), so its pill can show the worktree glyph. Returns a primitive so the
+ * selector only re-renders this pill when its own worktree binding changes. */
+function useBranchWorktreeName(branch: string, enabled: boolean): string | null {
+  return useRepo((s) => {
+    if (!enabled) return null;
+    const wt = findOtherBranchWorktree(s.worktrees, branch, s.summary?.workdir ?? s.summary?.path ?? "");
+    return wt ? (wt.path.replace(/\/+$/, "").split("/").pop() ?? null) : null;
+  });
+}
+
 function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current: boolean; targetSha: string }) {
   const openContextMenu = useUi((state) => state.openContextMenu);
   const openTagMenu = useUi((state) => state.openTagMenu);
   const checkoutBranch = useRepo((state) => state.checkoutBranch);
+  const worktreeName = useBranchWorktreeName(refLabel.name, refLabel.kind === "branch" && !current);
   const draggable = refLabel.kind === "branch" || refLabel.kind === "remote";
   const name = refLabel.name;
   // The pill is nested in a droppable commit row, so stop drag events bubbling.
@@ -214,6 +228,11 @@ function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 shrink-0">
       <path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.34 9.5 4 4 0 0 0 7 17.5" />
     </svg>
+  ) : worktreeName ? (
+    // Checked out in another worktree → the worktree glyph instead of the plain
+    // branch fork. Neutral (not accent): accent is reserved for the *active*
+    // worktree, and this branch lives in a non-active one.
+    <TreeIcon className="h-3 w-3 shrink-0 text-neutral-400" />
   ) : (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 shrink-0 text-neutral-400">
       <path d="M6 3v15M18 9a9 9 0 0 1-9 9" />
@@ -226,6 +245,7 @@ function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current
     <span
       {...dndProps}
       className={cn(base, style)}
+      title={worktreeName ? `Checked out in worktree: ${worktreeName}` : undefined}
       style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => {
@@ -275,6 +295,7 @@ function CombinedRefPill({
   targetSha: string;
 }) {
   const openContextMenu = useUi((state) => state.openContextMenu);
+  const worktreeName = useBranchWorktreeName(local.name, !current);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
   // target); the remote ref is reachable by splitting.
   const { isDropTarget, dndProps } = useBranchRefDrag(local.name, {
@@ -334,6 +355,8 @@ function CombinedRefPill({
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3 w-3 shrink-0">
           <path d="M20 6 9 17l-5-5" />
         </svg>
+      ) : worktreeName ? (
+        <TreeIcon className="h-3 w-3 shrink-0 text-neutral-400" />
       ) : (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 shrink-0 text-neutral-400">
           <path d="M6 3v15M18 9a9 9 0 0 1-9 9" />

@@ -1,5 +1,7 @@
+import { useEffect, useRef, useState } from "react";
 import type { CommitNode, StashEntry } from "../../lib/api";
-import { StashIcon } from "../../components/ui/icons";
+import { CheckIcon, StashIcon } from "../../components/ui/icons";
+import { cn } from "../../lib/cn";
 import { fullCommitMessage, splitCommitMessage } from "../../lib/commitMessage";
 import { useRepo } from "../../store/repo";
 import { isCommitReachableFromRemote } from "../../store/selection";
@@ -25,6 +27,11 @@ export function CommitInspector() {
   const requestPrompt = useUi((state) => state.requestPrompt);
   const fileMenu = useUi((state) => state.fileMenu);
   const showToast = useUi((state) => state.showToast);
+  // Transient "Copied" state for the SHA pill (replaces the separate button +
+  // toast with inline feedback). Cleared after a short beat.
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (copyTimer.current) window.clearTimeout(copyTimer.current); }, []);
   // Exclude in-window stash nodes (now part of `graph.commits`): a selected stash
   // must fall through to the `selectedStash` → StashMeta path, not render as a
   // commit with empty author. The default fallback likewise skips stash nodes.
@@ -77,7 +84,9 @@ export function CommitInspector() {
   const copySha = () => {
     try {
       void navigator.clipboard.writeText(selectedOid);
-      showToast("Commit SHA copied");
+      setCopied(true);
+      if (copyTimer.current) window.clearTimeout(copyTimer.current);
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1200);
     } catch {
       /* ignore */
     }
@@ -104,26 +113,38 @@ export function CommitInspector() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-md bg-black/[0.05] px-2 py-1 font-mono text-xs text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400">
-          {selectedStash && !selected ? <StashIcon className="h-3.5 w-3.5 text-amber-500" /> : null}
-          {selectedStash && !selected ? selectedShortLabel : `commit ${selectedShortLabel}`}
-        </span>
-        <div className="ml-auto flex gap-2">
-          {selected ? (
-            <button
-              className="h-8 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110"
-              onClick={() => void checkoutDetached(selected.id).catch((e) => showToast(String(e), "error"))}
-            >
-              Checkout
-            </button>
-          ) : null}
+        <button
+          type="button"
+          onClick={copySha}
+          title="Copy SHA"
+          aria-label={copied ? "SHA copied" : "Copy SHA"}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-xs transition-colors duration-200",
+            copied
+              ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
+              : "bg-black/[0.05] text-neutral-500 hover:bg-black/[0.08] dark:bg-white/[0.06] dark:text-neutral-400 dark:hover:bg-white/[0.1]",
+          )}
+        >
+          {copied ? (
+            <>
+              <CheckIcon className="h-3.5 w-3.5" />
+              Copied
+            </>
+          ) : (
+            <>
+              {selectedStash && !selected ? <StashIcon className="h-3.5 w-3.5 text-amber-500" /> : null}
+              {selectedStash && !selected ? selectedShortLabel : `commit ${selectedShortLabel}`}
+            </>
+          )}
+        </button>
+        {selected ? (
           <button
-            className="h-8 rounded-lg border border-black/10 px-3.5 text-[13px] text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
-            onClick={copySha}
+            className="ml-auto h-8 rounded-lg border border-black/10 px-3 text-[13px] text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
+            onClick={() => void checkoutDetached(selected.id).catch((e) => showToast(String(e), "error"))}
           >
-            Copy SHA
+            Checkout
           </button>
-        </div>
+        ) : null}
       </div>
 
       <div

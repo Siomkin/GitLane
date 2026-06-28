@@ -3,8 +3,9 @@ use super::operands::ensure_operand;
 use super::remotes::is_tag_clobber_rejection;
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, continue_operation, discard_all,
-    fetch, mark_conflict_resolved, preview_delete_branch, preview_delete_remote_branch,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, continue_operation,
+    delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
+    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
     reflog_entries, resolve_conflict_file, set_upstream, skip_operation,
 };
@@ -96,6 +97,129 @@ fn discard_all_clears_staged_files_in_unborn_repo() {
         out.trim().is_empty(),
         "repo not clean after discard: {out:?}"
     );
+}
+
+#[test]
+fn move_branch_to_worktree_detaches_source_then_checks_out_branch() {
+    let repo = TempRepo::new("move-worktree-branch");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-move-worktree-branch-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+
+    let result = move_branch_to_worktree(repo.path(), "feature", linked_str)
+        .expect("move branch from linked worktree");
+    assert_eq!(result, "Moved feature to local checkout");
+
+    let current = repo.git(&["branch", "--show-current"]);
+    assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "feature");
+
+    let source_head = Command::new("git")
+        .arg("-C")
+        .arg(&linked)
+        .args(["symbolic-ref", "--quiet", "--short", "HEAD"])
+        .output()
+        .expect("git launches in linked worktree");
+    assert!(
+        !source_head.status.success(),
+        "source worktree should be detached, got {}",
+        String::from_utf8_lossy(&source_head.stdout)
+    );
+
+    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
+    let repo = TempRepo::new("delete-worktree-branch");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-branch-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+
+    let result = delete_branch_with_worktree(repo.path(), "feature", linked_str)
+        .expect("delete branch and its worktree");
+    assert_eq!(result, "Deleted feature and its worktree");
+
+    // The branch is gone...
+    let branches = repo.git(&["branch", "--list", "feature"]);
+    assert!(
+        String::from_utf8_lossy(&branches.stdout).trim().is_empty(),
+        "feature branch should be deleted"
+    );
+    // ...and so is the worktree registration (and its directory).
+    let worktrees = repo.git(&["worktree", "list", "--porcelain"]);
+    let listing = String::from_utf8_lossy(&worktrees.stdout);
+    assert!(
+        !listing.contains(linked_str),
+        "linked worktree should be removed, still in: {listing}"
+    );
+    assert!(!linked.exists(), "linked worktree directory should be gone");
+
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
+    let repo = TempRepo::new("delete-worktree-branch-dirty");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-branch-dirty-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+    // Make the worktree dirty so the (unforced) removal must refuse.
+    std::fs::write(linked.join("file.txt"), "edited\n").unwrap();
+
+    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str)
+        .expect_err("dirty worktree should abort the delete");
+    assert!(!err.is_empty(), "expected a git error message");
+
+    // Nothing was destroyed: the branch and worktree both survive.
+    let branches = repo.git(&["branch", "--list", "feature"]);
+    assert!(
+        String::from_utf8_lossy(&branches.stdout).contains("feature"),
+        "feature branch must survive a refused delete"
+    );
+    assert!(linked.exists(), "dirty worktree directory must survive");
+
+    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    let _ = std::fs::remove_dir_all(&linked);
 }
 
 #[test]

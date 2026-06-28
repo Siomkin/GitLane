@@ -71,3 +71,53 @@ pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<S
     run_git(repo, &args)?;
     Ok(format!("Removed worktree {worktree_path}"))
 }
+
+fn ensure_clean_worktree(repo: &str, label: &str) -> Result<(), String> {
+    let status = run_git(repo, &["status", "--porcelain"])?;
+    if status.trim().is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Cannot move branch because the {label} worktree has uncommitted changes. Commit or stash them first."
+        ))
+    }
+}
+
+/// Move `branch` from another linked worktree into `repo`.
+///
+/// Git only allows a local branch to be checked out in one worktree at a time.
+/// To preserve the linked worktree directory while moving the branch back here,
+/// detach the source worktree at its current HEAD, then check out the branch in
+/// the current worktree. Both worktrees must be clean before either checkout.
+pub fn move_branch_to_worktree(
+    repo: &str,
+    branch: &str,
+    from_worktree_path: &str,
+) -> Result<String, String> {
+    ensure_operand(branch)?;
+    ensure_operand(from_worktree_path)?;
+    ensure_clean_worktree(repo, "current")?;
+    ensure_clean_worktree(from_worktree_path, "source")?;
+    run_git(from_worktree_path, &["checkout", "--detach"])?;
+    run_git(repo, &["checkout", branch])?;
+    Ok(format!("Moved {branch} to local checkout"))
+}
+
+/// Remove the linked worktree at `from_worktree_path`, then delete `branch`.
+///
+/// Git refuses to delete a branch that is checked out in a worktree, so this is
+/// the one-step path for "I'm done with this branch and its worktree": free the
+/// branch by removing its worktree, then force-delete the branch. The worktree
+/// removal runs first and is *not* forced, so a dirty or locked worktree aborts
+/// the whole operation (git's error surfaces) before the branch is touched.
+pub fn delete_branch_with_worktree(
+    repo: &str,
+    branch: &str,
+    from_worktree_path: &str,
+) -> Result<String, String> {
+    ensure_operand(branch)?;
+    ensure_operand(from_worktree_path)?;
+    remove_worktree(repo, from_worktree_path, false)?;
+    super::branches::delete_branch(repo, branch, true)?;
+    Ok(format!("Deleted {branch} and its worktree"))
+}

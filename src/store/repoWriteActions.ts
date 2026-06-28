@@ -98,6 +98,8 @@ export function createRepoWriteActions(
   | "deleteTag"
   | "pushTag"
   | "removeWorktree"
+  | "moveBranchToCurrentWorktree"
+  | "deleteBranchWithWorktree"
   | "deleteRemoteBranch"
   | "forcePush"
   | "discardAll"
@@ -346,6 +348,14 @@ export function createRepoWriteActions(
     removeWorktree: (worktreePath, force = false) =>
       runOp(get, async (summary) => api.removeWorktree(summary.path, worktreePath, force)),
 
+    moveBranchToCurrentWorktree: (branch, fromWorktreePath) =>
+      runOp(get, async (summary) => api.moveBranchToWorktree(summary.path, branch, fromWorktreePath)),
+
+    deleteBranchWithWorktree: (branch, fromWorktreePath) =>
+      runOp(get, async (summary) =>
+        api.deleteBranchWithWorktree(summary.path, branch, fromWorktreePath),
+      ),
+
     deleteRemoteBranch: (remote, branch) =>
       runOp(get, async (summary) => {
         await api.deleteRemoteBranch(summary.path, remote, branch, useAccounts.getState().repoAccountRef);
@@ -372,6 +382,27 @@ export function createRepoWriteActions(
 
     openWorktree: async (worktreePath) => {
       await get().loadRepo(worktreePath);
+      // Switching into a worktree is usually about its in-progress work, but
+      // loadRepo parks the selection on the tip commit. If the freshly loaded
+      // worktree is dirty, surface its working tree (the WIP node) so the
+      // uncommitted files are visible immediately instead of hidden behind a
+      // commit diff. Best-effort and guarded against a repo switch landing
+      // between the load and the select.
+      const summary = get().summary;
+      if (!summary) return;
+      try {
+        const changes = await api.workingChanges(summary.path);
+        const dirty =
+          changes.staged.length > 0 ||
+          changes.unstaged.length > 0 ||
+          changes.conflicted.length > 0;
+        if (dirty && get().summary?.path === summary.path) {
+          set({ changes });
+          get().selectWip();
+        }
+      } catch {
+        // A failed status read just leaves loadRepo's default tip selection.
+      }
     },
 
 

@@ -8,6 +8,9 @@ import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
 export interface NavRefItem extends RefItem {
   match: boolean;
   sync?: BranchSyncState | null;
+  /** Name of the worktree this branch is checked out in, when that worktree is
+   * not the one currently open (so the row can flag it as busy elsewhere). */
+  worktree?: string | null;
 }
 
 /** A worktree paired with the oid to navigate to (its branch tip, when that tip
@@ -17,6 +20,8 @@ export interface WorktreeItem {
   wt: WorktreeInfo;
   oid?: string;
   match: boolean;
+  /** This worktree backs the currently open repo tab (the "you are here" row). */
+  isActive: boolean;
 }
 
 /** A stash row paired with its match flag. */
@@ -64,6 +69,22 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const allTags = useMemo(() => collectTags(graph?.commits ?? []), [graph?.commits]);
   const head = summary?.headBranch ?? null;
 
+  // The worktree backing the open tab — matched on both workdir and the
+  // canonical repo path (they diverge for a bare repo), mirroring the worktree
+  // context menu's active-worktree check.
+  const trimPath = (p: string) => p.replace(/\/+$/, "");
+  const activeWorkdir = summary?.workdir ? trimPath(summary.workdir) : null;
+  const activeRepoPath = summary?.path ? trimPath(summary.path) : null;
+  const isActiveWtPath = (p: string) =>
+    trimPath(p) === activeWorkdir || trimPath(p) === activeRepoPath;
+  // Map each branch checked out in a *non-active* worktree to that worktree's
+  // name, so the Local list can flag it: such a branch can't be checked out or
+  // deleted here while another worktree holds it.
+  const branchWorktree = new Map<string, string>();
+  for (const wt of worktrees) {
+    if (wt.branch && !isActiveWtPath(wt.path)) branchWorktree.set(wt.branch, wt.name);
+  }
+
   const locals = branches
     .filter((b) => b.kind === "local")
     .map((b) => ({
@@ -71,6 +92,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       oid: b.target ?? oidByName.get(b.name),
       match: matches(b.name),
       sync: b.sync,
+      worktree: branchWorktree.get(b.name) ?? null,
     }))
     .sort((a, b) => (a.name === head ? -1 : b.name === head ? 1 : a.name.localeCompare(b.name)));
   const remotes = branches
@@ -89,6 +111,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       ? (branches.find((b) => b.name === wt.branch)?.target ?? oidByName.get(wt.branch))
       : undefined,
     match: matches(wt.branch ?? wt.name),
+    isActive: isActiveWtPath(wt.path),
   }));
   const stashItems = stashes.map((s) => ({ stash: s, match: matches(s.message) }));
 

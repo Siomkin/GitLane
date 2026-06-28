@@ -58,6 +58,9 @@ export interface MenuItem {
   label: string;
   /** Required unless `header` is set (headers are non-clickable labels). */
   onClick?: () => void;
+  /** Visible but non-interactive item, usually paired with a short reason. */
+  disabled?: boolean;
+  disabledReason?: string;
   danger?: boolean;
   sep?: boolean;
   /** Non-clickable group header (e.g. a label above a cluster of related
@@ -103,8 +106,9 @@ export function MenuPanel({
           animation: "gp-pop .12s ease-out",
         }}
       >
-        {items.map((it, i) =>
-          it.header ? (
+        {items.map((it, i) => {
+          const reasonId = it.disabledReason ? `menu-item-reason-${i}` : undefined;
+          return it.header ? (
             <div key={`${it.label}-${i}`}>
               {it.sep && <div className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />}
               <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -115,21 +119,34 @@ export function MenuPanel({
             <div key={`${it.label}-${i}`}>
               {it.sep && <div className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />}
               <button
+                type="button"
                 role="menuitem"
-                onClick={it.onClick}
-                className={`flex h-8 w-full items-center whitespace-nowrap text-left text-[13px] ${focusRing} ${
+                disabled={it.disabled}
+                aria-label={it.disabledReason ? it.label : undefined}
+                aria-describedby={reasonId}
+                onClick={it.disabled ? undefined : it.onClick}
+                className={`flex w-full flex-col items-start justify-center text-left text-[13px] ${focusRing} ${
+                  it.disabledReason ? "min-h-10 py-1.5" : "h-8"
+                } ${
                   it.indent ? "pl-6 pr-3" : "px-3"
                 } ${
-                  it.danger
+                  it.disabled
+                    ? "cursor-not-allowed text-neutral-400 dark:text-neutral-500"
+                    : it.danger
                     ? "text-rose-500 hover:bg-rose-500/10 dark:text-rose-400"
                     : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
                 }`}
               >
-                {it.label}
+                <span className="whitespace-nowrap">{it.label}</span>
+                {it.disabledReason && (
+                  <span id={reasonId} className="mt-0.5 whitespace-normal text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">
+                    {it.disabledReason}
+                  </span>
+                )}
               </button>
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
     </>
   );

@@ -357,6 +357,9 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
+  const moveBranchToCurrentWorktree = useRepo((s) => s.moveBranchToCurrentWorktree);
+  const deleteBranchWithWorktree = useRepo((s) => s.deleteBranchWithWorktree);
+  const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
 
   // Can the current branch fast-forward to this one? (branch is a descendant of
@@ -386,6 +389,10 @@ export function BranchContextMenu() {
   const tipShort = tip ? tip.slice(0, 7) : null;
   const upstream = info?.upstream ?? null;
   const existingWt = findOtherBranchWorktree(worktrees, b, workdir);
+  // The full info for that worktree (findOtherBranchWorktree returns the leaner
+  // WorktreeRef), so we know whether it's the main worktree — git refuses to
+  // remove that one, so "Remove worktree" is only offered for linked ones.
+  const existingWtInfo = existingWt ? worktrees.find((w) => w.path === existingWt.path) : null;
 
   const act = (op: () => Promise<string>) => {
     close();
@@ -526,7 +533,32 @@ export function BranchContextMenu() {
 
   // ---- worktree / checkout ----
   if (existingWt) {
+    if (isLocal && !isCurrent) {
+      add({ label: "Continue in", header: true }, true);
+      add({
+        label: "Local checkout",
+        indent: true,
+        onClick: () => act(() => moveBranchToCurrentWorktree(b, existingWt.path)),
+      });
+    }
     add({ label: "Open worktree", onClick: () => { close(); void openWorktree(existingWt.path); } }, true);
+    // Remove just the worktree, keeping the branch (distinct from the combined
+    // "Delete … & worktree" below). Git refuses to remove the main worktree, so
+    // only offer it for linked ones.
+    if (!existingWtInfo?.isMain) {
+      add({
+        label: "Remove worktree",
+        danger: true,
+        onClick: () =>
+          requestConfirm({
+            title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`,
+            message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.`,
+            confirmLabel: "Remove worktree",
+            danger: true,
+            onConfirm: () => void run(() => removeWorktree(existingWt.path)),
+          }),
+      });
+    }
   }
   if (!isCurrent && !existingWt) {
     add({ label: isRemote ? `Checkout ${b} (detached)` : `Checkout ${b}`, onClick: () => act(() => checkoutBranch(b)) }, !existingWt);
@@ -569,11 +601,36 @@ export function BranchContextMenu() {
           },
         }),
     }, true);
-    // Skip when the branch is checked out in another worktree: `git branch -D`
-    // refuses a worktree-checked-out branch (the force flag bypasses the
-    // merged-safety check, not the worktree lock), so offering Delete here only
-    // leads to a confusing git error. Mirrors the Checkout gating above.
-    if (!isCurrent && !existingWt) {
+    // `git branch -D` refuses a worktree-checked-out branch (the force flag
+    // bypasses the merged-safety check, not the worktree lock). For a *linked*
+    // worktree, offer a single combined action that removes the worktree and
+    // then deletes the branch — no need to make the user do it in two steps. The
+    // main worktree can't be removed, so there Delete stays disabled with a reason.
+    if (!isCurrent && existingWt && !existingWtInfo?.isMain) {
+      add({
+        label: `Delete ${b} & worktree…`,
+        danger: true,
+        onClick: () =>
+          void previewConfirm({
+            requestConfirm,
+            title: `Delete branch ${b} and its worktree?`,
+            message: `Removes the linked worktree at ${existingWt.path}, then deletes ${b}. Unmerged commits may be lost.`,
+            confirmLabel: "Delete branch & worktree",
+            danger: true,
+            preview: () =>
+              repoPath
+                ? api.previewDeleteBranch(repoPath, b)
+                : Promise.reject(new Error("No repository")),
+            onConfirm: () => void run(() => deleteBranchWithWorktree(b, existingWt.path)),
+          }),
+      });
+    } else if (!isCurrent && existingWt) {
+      add({
+        label: `Delete ${b}`,
+        disabled: true,
+        disabledReason: "Checked out in the main worktree.",
+      });
+    } else if (!isCurrent) {
       add({
         label: `Delete ${b}`,
         danger: true,
@@ -1089,10 +1146,10 @@ export function TagContextMenu() {
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
 }
 
-/** Right-click menu on a navigator worktree row. Opening it switches the app to
- * that worktree (loads it as a repo tab) — distinct from the row's plain click,
- * which only scrolls the current graph to the worktree's tip. Removing a
- * worktree needs a backend command and is intentionally absent here. */
+/** Right-click menu on a navigator worktree row. "Open worktree" switches the
+ * app to that checkout (loads it as a repo tab) — distinct from the row's plain
+ * click, which only scrolls the current graph to the worktree's tip. The active
+ * worktree only offers "Copy path" (it's already open; nothing to open/remove). */
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
@@ -1113,25 +1170,27 @@ export function WorktreeContextMenu() {
   const trim = (p: string) => p.replace(/\/+$/, "");
   const isActiveWorktree =
     (!!workdir && trim(path) === trim(workdir)) || (!!repoPath && trim(path) === trim(repoPath));
-
-  const items: MenuItem[] = [
-    {
+  const items: MenuItem[] = [];
+  // The active worktree is already open, so opening it again is a no-op; only
+  // offer the switch for the others.
+  if (!isActiveWorktree) {
+    items.push({
       label: "Open worktree",
       onClick: () => {
         close();
         void openWorktree(path).catch((e) => showToast(String(e), "error"));
       },
+    });
+  }
+  items.push({
+    label: "Copy path",
+    sep: items.length > 0,
+    onClick: () => {
+      close();
+      void navigator.clipboard?.writeText(path);
+      showToast("Copied path");
     },
-    {
-      label: "Copy path",
-      sep: true,
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(path);
-        showToast("Copied path");
-      },
-    },
-  ];
+  });
   // Don't offer removal of the primary worktree (git refuses) or the one
   // currently open in the app (it'd delete the active tab's directory).
   if (!isMain && !isActiveWorktree) {

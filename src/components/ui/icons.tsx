@@ -252,10 +252,15 @@ export function CloudIcon(props: IconProps) {
 }
 
 export function TreeIcon(props: IconProps) {
+  // A git-fork glyph (one node splitting into two) — used for worktree
+  // affordances: it reads as "this branch also lives in another checkout".
   return (
-    <IconBase strokeWidth="1.7" {...props}>
-      <path d="M12 3l5 7h-3l4 6H6l4-6H7z" />
-      <path d="M12 16v5" />
+    <IconBase {...props}>
+      <circle cx="12" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="18" r="2.5" />
+      <path d="M12 8.5V13" />
+      <path d="M6 15.5V14a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1.5" />
     </IconBase>
   );
 }
