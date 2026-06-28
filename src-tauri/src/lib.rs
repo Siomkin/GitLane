@@ -411,45 +411,55 @@ fn diff_range_file(
         .map_err(|e| e.to_string())
 }
 
+// These reads can be expensive on large repos — a multi-thousand-commit history
+// walk (each step diffing one file), blame over a long file, or a full-tree
+// comparison. Like `commit_graph`, run them on the blocking pool so they never
+// stall the webview thread (the non-Send Repository is opened inside the closure).
 #[tauri::command]
-fn file_history(
+async fn file_history(
     path: String,
     file: String,
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<FileHistoryPage, String> {
-    git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string())
+    blocking(move || git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string()))
+        .await
 }
 
 #[tauri::command]
-fn file_blame(
+async fn file_blame(
     path: String,
     file: String,
     revision: Option<String>,
     limit: Option<usize>,
 ) -> Result<FileBlame, String> {
-    git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string())
+    blocking(move || git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string()))
+        .await
 }
 
 #[tauri::command]
-fn compare_refs(
+async fn compare_refs(
     path: String,
     base: String,
     head: Option<String>,
 ) -> Result<CompareResult, String> {
-    git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string())
+    blocking(move || git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string()))
+        .await
 }
 
 #[tauri::command]
-fn compare_file_diff(
+async fn compare_file_diff(
     path: String,
     base: String,
     head: Option<String>,
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, String> {
-    git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
-        .map_err(|e| e.to_string())
+    blocking(move || {
+        git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]

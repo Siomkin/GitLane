@@ -96,6 +96,9 @@ export interface CompareState {
   selectedPath: string | null;
   selectedDiff: FileDiff | null;
   diffLoading: boolean;
+  /** Per-file diff error, kept out of [`error`] so a diff failure never hides
+   * the (loaded) changed-files list. */
+  diffError: string | null;
 }
 
 export const INITIAL_GRAPH_LIMIT = 2_000;

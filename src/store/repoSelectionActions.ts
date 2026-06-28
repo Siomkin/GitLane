@@ -361,6 +361,7 @@ export function createRepoSelectionActions(
           selectedPath: null,
           selectedDiff: null,
           diffLoading: false,
+          diffError: null,
         },
         error: null,
       });
@@ -407,7 +408,7 @@ export function createRepoSelectionActions(
       };
       set((state) => ({
         compare: state.compare
-          ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true }
+          ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true, diffError: null }
           : null,
       }));
       try {
@@ -418,9 +419,11 @@ export function createRepoSelectionActions(
         }));
       } catch (e) {
         if (!fresh()) return;
+        // A per-file diff failure stays in diffError so the changed-files list
+        // (loaded from compare_refs) remains visible.
         set((state) => ({
           compare: state.compare
-            ? { ...state.compare, diffLoading: false, error: String(e) }
+            ? { ...state.compare, diffLoading: false, diffError: String(e) }
             : null,
         }));
       }
@@ -429,7 +432,7 @@ export function createRepoSelectionActions(
     refreshCompare: async () => {
       const { summary, compare } = get();
       if (!summary || !compare) return;
-      const { base, head, selectedPath } = compare;
+      const { base, head } = compare;
       const repoPath = summary.path;
       const fresh = () => {
         const cur = get().compare;
@@ -452,18 +455,29 @@ export function createRepoSelectionActions(
               }
             : null,
         }));
-        // Re-fetch the selected file's diff if it still exists; otherwise move to
-        // the first remaining file (or clear when nothing's left).
+        // Re-read the *current* selection — the user may have picked another file
+        // while this refresh was in flight; don't yank them back to a stale path.
+        const selectedPath = get().compare?.selectedPath ?? null;
         const stillThere = selectedPath && result.files.some((f) => f.path === selectedPath);
-        const next = stillThere ? selectedPath : result.files[0]?.path ?? null;
-        if (next) {
-          void get().selectCompareFile(next);
+        if (stillThere) {
+          // Re-fetch the selected file's diff so it reflects the new endpoint state.
+          void get().selectCompareFile(selectedPath);
+        } else if (!selectedPath) {
+          // Nothing selected (or selection cleared): land on the first file if any.
+          const first = result.files[0]?.path ?? null;
+          if (first) void get().selectCompareFile(first);
         } else {
-          set((state) => ({
-            compare: state.compare
-              ? { ...state.compare, selectedPath: null, selectedDiff: null, diffLoading: false }
-              : null,
-          }));
+          // The selected file is gone from the new result set: fall back / clear.
+          const next = result.files[0]?.path ?? null;
+          if (next) {
+            void get().selectCompareFile(next);
+          } else {
+            set((state) => ({
+              compare: state.compare
+                ? { ...state.compare, selectedPath: null, selectedDiff: null, diffLoading: false }
+                : null,
+            }));
+          }
         }
       } catch {
         // A best-effort background refresh: leave the prior view in place on error.

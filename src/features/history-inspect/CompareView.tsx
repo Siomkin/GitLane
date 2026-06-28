@@ -201,6 +201,13 @@ function DiffPane() {
   }
   const diff = compare.selectedDiff;
   if (!diff) {
+    if (compare.diffError) {
+      return (
+        <div className="grid h-full place-content-center px-6 text-center text-sm text-rose-500">
+          {compare.diffError}
+        </div>
+      );
+    }
     return <div className="grid h-full place-content-center text-sm text-neutral-400">Select a file.</div>;
   }
   if (diff.binary) {

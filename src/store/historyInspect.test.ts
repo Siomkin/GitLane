@@ -244,4 +244,58 @@ describe("repo store — compare", () => {
     expect(cmp.add).toBe(1);
     expect(cmp.selectedPath).toBe("src/b.ts"); // selection preserved
   });
+
+  it("refreshCompare does not override a selection made while it was in flight", async () => {
+    let resolveRefresh!: (value: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return Promise.resolve(compareResult);
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().openCompare({
+      base: "main",
+      head: "feature",
+      baseLabel: "main",
+      headLabel: "feature",
+      scope: "branch",
+      title: "t",
+    });
+    // Default selection is the first file (src/a.ts).
+    expect(useRepo.getState().compare!.selectedPath).toBe("src/a.ts");
+
+    // Start a background refresh whose compare_refs is held open.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return new Promise((res) => (resolveRefresh = res));
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    const refreshing = useRepo.getState().refreshCompare();
+    // User picks another file while the refresh is in flight.
+    await useRepo.getState().selectCompareFile("src/b.ts");
+    resolveRefresh(compareResult);
+    await refreshing;
+
+    expect(useRepo.getState().compare!.selectedPath).toBe("src/b.ts");
+  });
+
+  it("routes per-file diff failures to diffError, keeping the file list", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return Promise.resolve(compareResult);
+      if (cmd === "compare_file_diff") return Promise.reject("fatal: bad object");
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().openCompare({
+      base: "main",
+      head: "feature",
+      baseLabel: "main",
+      headLabel: "feature",
+      scope: "branch",
+      title: "t",
+    });
+
+    const cmp = useRepo.getState().compare!;
+    expect(cmp.diffError).toContain("bad object");
+    expect(cmp.error).toBeNull();
+    expect(cmp.files).toHaveLength(2);
+  });
 });
