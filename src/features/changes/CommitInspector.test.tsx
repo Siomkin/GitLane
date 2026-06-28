@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
@@ -85,6 +85,26 @@ describe("CommitInspector", () => {
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+  });
+
+  it("copies the SHA when the commit pill is clicked, with inline confirmation", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    useRepo.setState({
+      graph: { ...graph, commits: [commit({ id: "c1", shortId: "c1", summary: "real commit" })] },
+      stashes: [],
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+    });
+    render(<CommitInspector />);
+
+    const pill = screen.getByRole("button", { name: "Copy SHA" });
+    expect(pill).toHaveTextContent("commit c1");
+    fireEvent.click(pill);
+    expect(writeText).toHaveBeenCalledWith("c1");
+    // Inline feedback replaces the old toast + separate button.
+    expect(screen.getByText("Copied")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy SHA" })).not.toBeInTheDocument();
   });
 
   it("synthesises stash metadata from the graph node when the stash list hasn't loaded", () => {

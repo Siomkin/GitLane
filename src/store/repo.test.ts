@@ -1118,3 +1118,64 @@ describe("repo store — conflict actions", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
   });
 });
+
+describe("repo store — openWorktree", () => {
+  const wtSummary: RepoSummary = {
+    path: "/repo-wt",
+    workdir: "/repo-wt",
+    headBranch: "feature",
+    headOid: null,
+    detached: false,
+  };
+  // loadRepo would normally park the selection on this tip.
+  const graphWithTip: RepoGraph = {
+    ...emptyGraph,
+    head: "tip",
+    commits: [{ id: "tip" }] as unknown as RepoGraph["commits"],
+  };
+
+  it("surfaces the WIP node when the opened worktree is dirty", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(wtSummary);
+        case "commit_graph":
+          return Promise.resolve(graphWithTip);
+        case "working_changes":
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "a.ts", status: "M", add: 1, del: 0 }],
+            conflicted: [],
+          });
+        default:
+          return Promise.resolve([]);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    // Opening a dirty worktree lands on its working tree, not the tip commit.
+    expect(useRepo.getState().wipSelected).toBe(true);
+    expect(useRepo.getState().selectedCommit).toBeNull();
+  });
+
+  it("keeps loadRepo's tip selection when the opened worktree is clean", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(wtSummary);
+        case "commit_graph":
+          return Promise.resolve(graphWithTip);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+        default:
+          return Promise.resolve([]);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    expect(useRepo.getState().wipSelected).toBe(false);
+    expect(useRepo.getState().selectedCommit).toBe("tip");
+  });
+});

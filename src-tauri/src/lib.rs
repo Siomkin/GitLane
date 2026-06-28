@@ -81,6 +81,25 @@ async fn add_worktree(
 }
 
 #[tauri::command]
+async fn move_branch_to_worktree(
+    path: String,
+    branch: String,
+    from_worktree_path: String,
+) -> Result<String, String> {
+    blocking(move || git::write::move_branch_to_worktree(&path, &branch, &from_worktree_path)).await
+}
+
+#[tauri::command]
+async fn delete_branch_with_worktree(
+    path: String,
+    branch: String,
+    from_worktree_path: String,
+) -> Result<String, String> {
+    blocking(move || git::write::delete_branch_with_worktree(&path, &branch, &from_worktree_path))
+        .await
+}
+
+#[tauri::command]
 async fn checkout(path: String, target: String) -> Result<String, String> {
     blocking(move || git::write::checkout(&path, &target)).await
 }
@@ -1064,6 +1083,8 @@ pub fn run() {
             list_branches,
             list_worktrees,
             add_worktree,
+            move_branch_to_worktree,
+            delete_branch_with_worktree,
             checkout,
             create_branch,
             delete_branch,

@@ -47,4 +47,6 @@ pub use staging::{
 pub use stashes::{
     stash, stash_apply, stash_apply_index, stash_branch, stash_drop, stash_list, stash_pop,
 };
-pub use worktrees::{add_worktree, remove_worktree, worktrees};
+pub use worktrees::{
+    add_worktree, delete_branch_with_worktree, move_branch_to_worktree, remove_worktree, worktrees,
+};

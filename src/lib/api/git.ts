@@ -330,6 +330,14 @@ export const gitApi = {
   addWorktree: (path: string, worktreePath: string, reference?: string) =>
     invoke<string>("add_worktree", { path, worktreePath, reference: reference ?? null }),
 
+  /** Detach `branch` from another linked worktree, then check it out here. */
+  moveBranchToWorktree: (path: string, branch: string, fromWorktreePath: string) =>
+    invoke<string>("move_branch_to_worktree", { path, branch, fromWorktreePath }),
+
+  /** Remove the linked worktree at `fromWorktreePath`, then delete `branch`. */
+  deleteBranchWithWorktree: (path: string, branch: string, fromWorktreePath: string) =>
+    invoke<string>("delete_branch_with_worktree", { path, branch, fromWorktreePath }),
+
   checkout: (path: string, target: string) =>
     invoke<string>("checkout", { path, target }),
 

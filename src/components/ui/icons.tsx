@@ -252,10 +252,15 @@ export function CloudIcon(props: IconProps) {
 }
 
 export function TreeIcon(props: IconProps) {
+  // A git-fork glyph (one node splitting into two) — used for worktree
+  // affordances: it reads as "this branch also lives in another checkout".
   return (
-    <IconBase strokeWidth="1.7" {...props}>
-      <path d="M12 3l5 7h-3l4 6H6l4-6H7z" />
-      <path d="M12 16v5" />
+    <IconBase {...props}>
+      <circle cx="12" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="18" r="2.5" />
+      <path d="M12 8.5V13" />
+      <path d="M6 15.5V14a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1.5" />
     </IconBase>
   );
 }
@@ -300,6 +305,57 @@ export function CheckIcon(props: IconProps) {
   return (
     <IconBase strokeWidth="2.2" {...props}>
       <path d="m5 12 5 5L20 7" />
+    </IconBase>
+  );
+}
+
+export function FileTextIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5M9 13h6M9 17h5" />
+    </IconBase>
+  );
+}
+
+export function CompareIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M7 7h10M7 7l3-3M7 7l3 3M17 17H7M17 17l-3-3M17 17l-3 3" />
+    </IconBase>
+  );
+}
+
+export function CopyIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </IconBase>
+  );
+}
+
+export function HashIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />
+    </IconBase>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14" />
+    </IconBase>
+  );
+}
+
+export function TagIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" />
+      <circle cx="7.5" cy="7.5" r="1.3" fill="currentColor" stroke="none" />
     </IconBase>
   );
 }

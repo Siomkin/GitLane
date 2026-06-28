@@ -42,6 +42,7 @@ export function BranchRow({
   dimmed = false,
   query = "",
   sync = null,
+  worktree = null,
 }: {
   name: string;
   kind: RowKind;
@@ -51,6 +52,8 @@ export function BranchRow({
   /** Active search term — marks the matched substring in the name (3+ chars). */
   query?: string;
   sync?: BranchSyncState | null;
+  /** Name of the worktree holding this branch (when not the open one). */
+  worktree?: string | null;
 }) {
   const navigate = useRevealNavigate();
   const openContextMenu = useUi((s) => s.openContextMenu);
@@ -91,7 +94,20 @@ export function BranchRow({
         openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent });
       }}
     >
-      <RowGlyph kind={kind} current={isCurrent} />
+      {worktree && !isCurrent ? (
+        // A branch parked in a worktree gets the worktree glyph (in accent) in
+        // place of the branch fork — the same icon as the Worktrees section, so
+        // the two read as the same thing. The tooltip names which worktree.
+        <span
+          title={`Checked out in worktree: ${worktree}`}
+          aria-label={`Checked out in worktree ${worktree}`}
+          className="shrink-0 text-neutral-400"
+        >
+          <TreeIcon className="h-3.5 w-3.5" />
+        </span>
+      ) : (
+        <RowGlyph kind={kind} current={isCurrent} />
+      )}
       <span data-truncate className="min-w-0 flex-1 truncate">
         <HighlightMatch text={name} query={query} />
       </span>
@@ -119,6 +135,7 @@ export function BranchRow({
 export function WorktreeRow({
   wt,
   oid,
+  isActive,
   dimmed = false,
   query = "",
 }: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
@@ -129,17 +146,24 @@ export function WorktreeRow({
   return (
     <div
       {...tip}
-      className={cn(ROW_CLASS, dimmed && DIM_CLASS)}
+      className={cn(
+        "flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] transition-opacity",
+        isActive
+          ? "bg-[var(--accent-soft)] font-medium text-[color:var(--accent)]"
+          : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
+        dimmed && DIM_CLASS,
+      )}
       onClick={() => navigate(oid)}
       onContextMenu={(e) => {
         e.preventDefault();
         openWorktreeMenu({ x: e.clientX, y: e.clientY, path: wt.path, name: label, isMain: wt.isMain });
       }}
     >
-      <TreeIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+      <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
       <span data-truncate className="min-w-0 flex-1 truncate">
         <HighlightMatch text={label} query={query} />
       </span>
+      {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
       {wt.isMain && <span className="shrink-0 text-[10px] font-medium text-neutral-400">main</span>}
     </div>
   );

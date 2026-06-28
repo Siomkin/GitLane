@@ -88,6 +88,14 @@ describe("useNavigatorSections", () => {
     expect(render("v1.0").tags[0].match).toBe(true);
   });
 
+  it("flags a local branch checked out in a non-active worktree with that worktree's name", () => {
+    const s = render("");
+    // feature/search is checked out in the linked worktree "wt" (path /wt).
+    expect(s.locals.find((b) => b.name === "feature/search")?.worktree).toBe("wt");
+    // The head branch lives in the open worktree (/r), so it isn't flagged.
+    expect(s.locals.find((b) => b.name === "main")?.worktree).toBeNull();
+  });
+
   it("reports isEmpty for a repo with no refs/worktrees/stashes", () => {
     seed({ branches: [], worktrees: [], stashes: [], graph: { ...graph, commits: [] } });
     const s = render("anything");

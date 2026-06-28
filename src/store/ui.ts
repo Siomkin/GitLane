@@ -125,18 +125,36 @@ export interface ConfirmRequest {
 /** A pending text-input prompt (rename branch, tag name, squash message, …).
  * Rendered as an in-app modal — native `window.prompt` is unreliable in the
  * Tauri webview. */
+/** A pickable suggestion in a prompt's combobox list. Selecting a row submits
+ * with its `value`; the typed text still acts as a free-text fallback so refs
+ * outside the list (a raw SHA, `HEAD~1`) stay reachable. */
+export interface PromptOption {
+  value: string;
+  /** Display text (defaults to `value`). */
+  label?: string;
+  /** Muted right-aligned hint shown on the row (e.g. "current", "remote"). */
+  hint?: string;
+}
+
 export interface PromptRequest {
   title: string;
   /** Optional helper line under the title. */
   message?: string;
   /** Input placeholder. */
   placeholder?: string;
-  /** Pre-filled value (e.g. the current branch name when renaming). */
+  /** Pre-filled value (e.g. the current branch name when renaming). With
+   * `options`, this pre-highlights the matching row instead of pre-filling the
+   * search box. */
   defaultValue?: string;
   /** Use a multiline editor for full commit messages or longer text. */
   multiline?: boolean;
   /** Submit-button label (default "OK"). */
   confirmLabel?: string;
+  /** When set, the field becomes a searchable picker over these options (like
+   * the branch navigator) rather than a bare text input — so the user selects
+   * instead of typing the exact ref. The typed text filters the list; a typed
+   * value not in the list is still accepted on submit. */
+  options?: PromptOption[];
   /** Run with the trimmed value; only fired when the input is non-empty. */
   onSubmit: (value: string) => void;
 }

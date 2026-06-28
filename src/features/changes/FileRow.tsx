@@ -37,7 +37,7 @@ export function FileRow({
   const actionLabel = action?.tone === "stage" ? "Stage file" : "Unstage file";
 
   return (
-    <div className="group relative" onContextMenu={onContextMenu}>
+    <div className="group relative select-none" onContextMenu={onContextMenu}>
       <button
         type="button"
         className={cn(

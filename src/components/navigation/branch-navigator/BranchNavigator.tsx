@@ -58,6 +58,7 @@ export function BranchNavigator() {
                 dimmed={filtering && !b.match}
                 query={filter}
                 sync={b.sync}
+                worktree={b.worktree}
               />
             ))}
           </Section>
@@ -93,7 +94,7 @@ export function BranchNavigator() {
         {worktrees.length > 0 && (
           <Section label="Worktrees">
             {worktrees.map((w) => (
-              <WorktreeRow key={w.wt.path} wt={w.wt} oid={w.oid} dimmed={filtering && !w.match} query={filter} />
+              <WorktreeRow key={w.wt.path} wt={w.wt} oid={w.oid} isActive={w.isActive} dimmed={filtering && !w.match} query={filter} />
             ))}
           </Section>
         )}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type DestructivePreview } from "@/lib/api";
+import { api, type BranchInfo, type DestructivePreview } from "@/lib/api";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import {
   buildGraphActionSpecs,
@@ -9,9 +9,28 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
+import {
+  BranchIcon,
+  CheckIcon,
+  ClockIcon,
+  CompareIcon,
+  CopyIcon,
+  FileTextIcon,
+  FolderIcon,
+  HashIcon,
+  MinusIcon,
+  PlusIcon,
+  PullIcon,
+  PushIcon,
+  StashIcon,
+  TrashIcon,
+  TreeIcon,
+  WarningIcon,
+} from "@/components/ui/icons";
 import { defaultPublishTarget } from "@/lib/branchSync";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
+import type { RepoState } from "@/store/repoTypes";
 import { buildCommitBatchPlan, getSquashEligibility, isCommitReachableFromRemote } from "@/store/selection";
 import { useUi, type ConfirmRequest, type PromptRequest } from "@/store/ui";
 import { Backdrop, MenuPanel, useBranchOp, useFittedMenuPosition, type MenuItem } from "./shared";
@@ -129,6 +148,41 @@ function promptCreateWorktree(
     defaultValue: defaultWorktreePath(workdir, label),
     confirmLabel: "Create worktree",
     onSubmit: (path) => run(() => createWorktreeAt(path, reference)),
+  });
+}
+
+/** Branch-picker prompt for "Compare <head> with…": offers the repo's other
+ * branches (current first, then locals, then remotes) as a searchable list so
+ * the user selects the comparison base instead of typing it. The selected
+ * branch becomes the diff base. */
+function promptCompareBranch(
+  requestPrompt: PromptFn,
+  openCompare: RepoState["openCompare"],
+  branches: BranchInfo[],
+  head: string,
+  cur: string | null,
+) {
+  const others = branches.filter((x) => x.name !== head);
+  const locals = others
+    .filter((x) => x.kind === "local")
+    .sort((x, y) => (x.name === cur ? -1 : y.name === cur ? 1 : x.name.localeCompare(y.name)));
+  const remotes = others.filter((x) => x.kind === "remote").sort((x, y) => x.name.localeCompare(y.name));
+  const options = [
+    ...locals.map((x) => ({ value: x.name, hint: x.name === cur ? "current" : undefined })),
+    ...remotes.map((x) => ({ value: x.name, hint: "remote" })),
+  ];
+  requestPrompt({
+    title: `Compare ${head} with…`,
+    message: "Pick a branch to compare against (it becomes the base).",
+    placeholder: "Search branches",
+    defaultValue: cur && cur !== head ? cur : "",
+    confirmLabel: "Compare",
+    options,
+    onSubmit: (other) => {
+      const base = other.trim();
+      if (!base) return;
+      void openCompare({ base, head, baseLabel: base, headLabel: head, scope: "branch", title: `Comparing ${head} with ${base}` });
+    },
   });
 }
 
@@ -357,6 +411,9 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
+  const moveBranchToCurrentWorktree = useRepo((s) => s.moveBranchToCurrentWorktree);
+  const deleteBranchWithWorktree = useRepo((s) => s.deleteBranchWithWorktree);
+  const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
 
   // Can the current branch fast-forward to this one? (branch is a descendant of
@@ -386,6 +443,10 @@ export function BranchContextMenu() {
   const tipShort = tip ? tip.slice(0, 7) : null;
   const upstream = info?.upstream ?? null;
   const existingWt = findOtherBranchWorktree(worktrees, b, workdir);
+  // The full info for that worktree (findOtherBranchWorktree returns the leaner
+  // WorktreeRef), so we know whether it's the main worktree — git refuses to
+  // remove that one, so "Remove worktree" is only offered for linked ones.
+  const existingWtInfo = existingWt ? worktrees.find((w) => w.path === existingWt.path) : null;
 
   const act = (op: () => Promise<string>) => {
     close();
@@ -420,247 +481,184 @@ export function BranchContextMenu() {
   // store) fails closed — local-only mutations hide rather than show on a remote.
   const isLocal = info?.kind === "local";
   const isRemote = info?.kind === "remote";
-  const items: MenuItem[] = [];
-  // Push an item, marking it the start of a new visual group (a leading
-  // separator) only when something precedes it — so whichever group renders
-  // first never opens with a stray divider, regardless of what's gated out.
-  const add = (item: MenuItem, startsGroup = false) =>
-    items.push({ ...item, sep: startsGroup && items.length > 0 });
+  const sync = info?.sync ?? null;
+  const aheadBehind = sync && sync.upstream ? `↑${sync.ahead} ↓${sync.behind}` : null;
+  // `git worktree add <path> <branch>` errors if <branch> is already checked out
+  // anywhere; create the worktree detached at the tip in that case.
+  const wtCheckedOut = isCurrent || worktrees.some((w) => w.branch === b);
+  const wtRef = wtCheckedOut && tip ? tip : b;
 
-  // ---- remote sync (local branches only) ----
-  if (isLocal) {
-    if (isCurrent) {
-      add({ label: "Pull (fast-forward only)", onClick: () => { close(); void pull(); } }, true);
-      add({
-        label: "Push",
-        onClick: needsPublishPrompt
-          ? promptPublishBranch
-          : () => {
-              close();
-              void push();
-            },
-      });
-      add({
-        label: "Force push (with lease)…",
-        onClick: () =>
-          void previewConfirm({
-            requestConfirm,
-            title: `Force-push ${b}?`,
-            message:
-              "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since your last fetch). Use after amending or rebasing pushed commits.",
-            confirmLabel: "Force push",
-            danger: true,
-            preview: () =>
-              repoPath
-                ? api.previewForcePush(repoPath, b)
-                : Promise.reject(new Error("No repository")),
-            onConfirm: () => void run(() => forcePush(b)),
-          }),
-      });
-    } else {
-      add({ label: `Push ${b}`, onClick: pushLocalBranch }, true);
-    }
-    add({
-      label: upstream ? `Change upstream (${upstream})…` : "Set upstream…",
-      onClick: () =>
-        requestPrompt({
-          title: `Set upstream for ${b}`,
-          message: "Remote-tracking ref to track (must already exist).",
-          placeholder: "origin/branch",
-          defaultValue: upstream ?? `origin/${b}`,
-          confirmLabel: "Set upstream",
-          onSubmit: (up) => void run(() => setUpstreamFor(b, up)),
-        }),
+  // The branch is named once, here — rows below never repeat it.
+  const heading = (
+    <div className="flex w-full items-center gap-1.5">
+      <BranchIcon className="h-3.5 w-3.5 shrink-0 text-[color:var(--accent)]" />
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-neutral-800 dark:text-neutral-100">
+        {b}
+      </span>
+      {isCurrent && <span className="shrink-0 text-[10px] font-medium text-[color:var(--accent)]">current</span>}
+      {aheadBehind && <span className="shrink-0 font-mono text-[10.5px] text-neutral-400">{aheadBehind}</span>}
+      {existingWt && (
+        <span className="flex h-5 shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+          <TreeIcon className="h-3 w-3" />
+          worktree
+        </span>
+      )}
+    </div>
+  );
+
+  // ---- everyday actions (lead the menu) ----
+  const top: MenuItem[] = [];
+  if (isLocal && isCurrent) {
+    top.push({ label: "Pull (fast-forward only)", icon: <PullIcon className="h-4 w-4" />, onClick: () => { close(); void pull(); } });
+    top.push({
+      label: "Push",
+      icon: <PushIcon className="h-4 w-4" />,
+      onClick: needsPublishPrompt ? promptPublishBranch : () => { close(); void push(); },
+    });
+  } else if (isLocal) {
+    top.push({ label: `Push ${b}`, icon: <PushIcon className="h-4 w-4" />, onClick: pushLocalBranch });
+  }
+  if (existingWt) {
+    top.push({
+      label: "Open worktree",
+      icon: <FolderIcon className="h-4 w-4 text-[color:var(--accent)]" />,
+      onClick: () => { close(); void openWorktree(existingWt.path); },
+    });
+  }
+  if (!isCurrent && !existingWt) {
+    top.push({
+      label: isRemote ? `Checkout ${b} (detached)` : `Checkout ${b}`,
+      icon: <CheckIcon className="h-4 w-4" />,
+      onClick: () => act(() => checkoutBranch(b)),
     });
   }
 
-  // ---- compare ----
+  // ---- intent groups: Compare / Integrate / Create / Worktree ----
+  const groups: MenuItem[] = [];
   if (tip) {
+    const children: MenuItem[] = [];
     if (upstream) {
-      add({
+      children.push({
         label: "Compare with upstream",
-        onClick: () => {
-          close();
-          void openCompare({
-            base: upstream,
-            head: b,
-            baseLabel: upstream,
-            headLabel: b,
-            scope: "upstream",
-            title: `Comparing ${b} with ${upstream}`,
-          });
-        },
-      }, true);
+        onClick: () => { close(); void openCompare({ base: upstream, head: b, baseLabel: upstream, headLabel: b, scope: "upstream", title: `Comparing ${b} with ${upstream}` }); },
+      });
     }
-    add({
+    children.push({
       label: "Compare with branch…",
-      onClick: () =>
-        requestPrompt({
-          title: `Compare ${b} with…`,
-          message: "Another branch to compare against (it becomes the base).",
-          placeholder: "main",
-          defaultValue: cur && cur !== b ? cur : "",
-          confirmLabel: "Compare",
-          onSubmit: (other) => {
-            const base = other.trim();
-            if (!base) return;
-            void openCompare({
-              base,
-              head: b,
-              baseLabel: base,
-              headLabel: b,
-              scope: "branch",
-              title: `Comparing ${b} with ${base}`,
-            });
-          },
-        }),
-    }, !upstream);
+      onClick: () => promptCompareBranch(requestPrompt, openCompare, branches, b, cur),
+    });
+    groups.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: children });
   }
-
-  // ---- integrate cur <-> branch ----
   if (!isCurrent && cur) {
-    if (canFf) add({ label: `Fast-forward ${cur} to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) }, true);
-    add({ label: `Merge ${b} into ${cur}`, onClick: () => act(() => mergeInto(b, cur)) }, !canFf);
-    add({ label: `Rebase ${cur} onto ${b}`, onClick: () => act(async () => { await checkoutBranch(cur); return rebaseOnto(b); }) });
+    const children: MenuItem[] = [];
+    if (canFf) children.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
+    children.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
+    children.push({ label: `Rebase onto ${b}`, onClick: () => act(async () => { await checkoutBranch(cur); return rebaseOnto(b); }) });
+    if (tip) {
+      children.push({ label: "Cherry-pick tip", onClick: () => act(() => cherryPickCommit(tip)) });
+      children.push({ label: "Revert tip", onClick: () => act(() => revertCommit(tip)) });
+    }
+    groups.push({ label: "Integrate into current", icon: <BranchIcon className="h-4 w-4" />, note: `into ${cur}`, submenu: children });
   }
-
-  // ---- worktree / checkout ----
+  {
+    const children: MenuItem[] = [
+      { label: "Branch from here…", onClick: () => openCreateBranchFrom(b) },
+      { label: "Worktree from branch…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b) },
+    ];
+    if (tip) {
+      children.push({
+        label: "Tag here…",
+        onClick: () => requestPrompt({ title: `Create tag at ${tipShort}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, tip)) }),
+      });
+      children.push({ label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b) });
+    }
+    groups.push({ label: "Create", icon: <PlusIcon className="h-4 w-4" />, submenu: children });
+  }
   if (existingWt) {
-    add({ label: "Open worktree", onClick: () => { close(); void openWorktree(existingWt.path); } }, true);
-  }
-  if (!isCurrent && !existingWt) {
-    add({ label: isRemote ? `Checkout ${b} (detached)` : `Checkout ${b}`, onClick: () => act(() => checkoutBranch(b)) }, !existingWt);
-  }
-
-  // ---- create from this point ----
-  // `git worktree add <path> <branch>` errors if <branch> is already checked out
-  // anywhere; in that case create the worktree detached at the tip instead.
-  const wtCheckedOut = isCurrent || worktrees.some((w) => w.branch === b);
-  const wtRef = wtCheckedOut && tip ? tip : b;
-  add({ label: `Create worktree from ${b}…`, onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b) }, true);
-  add({ label: "Create branch from here…", onClick: () => openCreateBranchFrom(b) });
-  if (tip && !isCurrent && cur) {
-    add({ label: `Cherry-pick ${b} tip onto ${cur}`, onClick: () => act(() => cherryPickCommit(tip)) });
-  }
-  if (tip) {
-    add({ label: `Revert ${b} tip`, onClick: () => act(() => revertCommit(tip)) });
-  }
-
-  // ---- reset (only when the branch isn't the one checked out) ----
-  if (tip && cur && !isCurrent) {
-    add({ label: `Reset ${cur} to ${b}`, header: true }, true);
-    add({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "soft")), headPrecondition: resetHeadPrecondition }) });
-    add({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
-    add({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "hard")), headPrecondition: resetHeadPrecondition }) });
-  }
-
-  // ---- rename / delete (local branches only) ----
-  if (isLocal) {
-    add({
-      label: `Rename ${b}…`,
-      onClick: () =>
-        requestPrompt({
-          title: `Rename branch ${b}`,
-          placeholder: "new-branch-name",
-          defaultValue: b,
-          confirmLabel: "Rename",
-          onSubmit: (next) => {
-            if (next !== b) void run(() => renameBranchTo(b, next));
-          },
-        }),
-    }, true);
-    // Skip when the branch is checked out in another worktree: `git branch -D`
-    // refuses a worktree-checked-out branch (the force flag bypasses the
-    // merged-safety check, not the worktree lock), so offering Delete here only
-    // leads to a confusing git error. Mirrors the Checkout gating above.
-    if (!isCurrent && !existingWt) {
-      add({
-        label: `Delete ${b}`,
+    const children: MenuItem[] = [
+      { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); showToast("Copied path"); } },
+    ];
+    if (isLocal && !isCurrent) {
+      children.push({ label: "Local checkout (move here)", onClick: () => act(() => moveBranchToCurrentWorktree(b, existingWt.path)) });
+    }
+    if (!existingWtInfo?.isMain) {
+      children.push({
+        label: "Remove worktree",
         danger: true,
-        onClick: () =>
-          void previewConfirm({
-            requestConfirm,
-            title: `Delete branch ${b}?`,
-            message: "The branch ref will be removed. Unmerged commits may be lost.",
-            confirmLabel: "Delete branch",
-            danger: true,
-            preview: () =>
-              repoPath
-                ? api.previewDeleteBranch(repoPath, b)
-                : Promise.reject(new Error("No repository")),
-            onConfirm: () => void run(() => removeBranch(b, true)),
-          }),
+        onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path)) }),
+      });
+    }
+    groups.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });
+  }
+
+  // ---- copy (used constantly, kept in plain sight) ----
+  const copy: MenuItem[] = [
+    { label: "Copy branch name", icon: <CopyIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(b); showToast(`Copied ${b}`); } },
+  ];
+  if (tip) {
+    copy.push({ label: "Copy tip SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(tip); showToast(`Copied ${tipShort}`); } });
+  }
+
+  // ---- danger zone: rare + destructive, folded away behind one row ----
+  const danger: MenuItem[] = [];
+  if (isLocal) {
+    danger.push({ label: "Manage", header: true });
+    danger.push({
+      label: `Rename ${b}…`,
+      onClick: () => requestPrompt({ title: `Rename branch ${b}`, placeholder: "new-branch-name", defaultValue: b, confirmLabel: "Rename", onSubmit: (next) => { if (next !== b) void run(() => renameBranchTo(b, next)); } }),
+    });
+    if (isCurrent) {
+      danger.push({
+        label: "Force push (with lease)…",
+        onClick: () => void previewConfirm({ requestConfirm, title: `Force-push ${b}?`, message: "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since your last fetch). Use after amending or rebasing pushed commits.", confirmLabel: "Force push", danger: true, preview: () => repoPath ? api.previewForcePush(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => forcePush(b)) }),
       });
     }
   }
-
-  // ---- delete on the remote (remote-tracking refs only) ----
-  // Split the ref name into remote + branch on the first slash: `origin/feat/x`
-  // → remote `origin`, branch `feat/x`. Deletes the branch on the server.
+  if (tip && cur && !isCurrent) {
+    danger.push({ label: `Reset ${cur} to ${b}`, header: true, danger: true, sep: danger.length > 0 });
+    danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "soft")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "hard")), headPrecondition: resetHeadPrecondition }) });
+  }
+  if (isLocal) {
+    // Set upstream is rare — tuck it down at the end, just above Delete.
+    danger.push({
+      label: upstream ? `Change upstream (${upstream})…` : "Set upstream…",
+      sep: danger.length > 0,
+      onClick: () => requestPrompt({ title: `Set upstream for ${b}`, message: "Remote-tracking ref to track (must already exist).", placeholder: "origin/branch", defaultValue: upstream ?? `origin/${b}`, confirmLabel: "Set upstream", onSubmit: (up) => void run(() => setUpstreamFor(b, up)) }),
+    });
+    if (!isCurrent && existingWt && !existingWtInfo?.isMain) {
+      danger.push({ label: `Delete ${b} & worktree…`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b} and its worktree?`, message: `Removes the linked worktree at ${existingWt.path}, then deletes ${b}. Unmerged commits may be lost.`, confirmLabel: "Delete branch & worktree", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteBranchWithWorktree(b, existingWt.path)) }) });
+    } else if (!isCurrent && existingWt) {
+      danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: "Checked out in the main worktree." });
+    } else if (!isCurrent) {
+      danger.push({ label: `Delete ${b}`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b}?`, message: "The branch ref will be removed. Unmerged commits may be lost.", confirmLabel: "Delete branch", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => removeBranch(b, true)) }) });
+    }
+  }
   if (isRemote) {
     const slash = b.indexOf("/");
     if (slash > 0) {
       const remote = b.slice(0, slash);
       const remoteBranch = b.slice(slash + 1);
-      add({
-        label: `Delete ${b} on remote`,
-        danger: true,
-        onClick: () =>
-          void previewConfirm({
-            requestConfirm,
-            title: `Delete ${remoteBranch} on ${remote}?`,
-            message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`,
-            confirmLabel: "Delete on remote",
-            danger: true,
-            preview: () =>
-              repoPath
-                ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch)
-                : Promise.reject(new Error("No repository")),
-            onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)),
-          }),
-      }, true);
+      danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)) }) });
     }
   }
 
-  // ---- tags ----
-  if (tip) {
-    add({
-      label: "Create tag here…",
-      onClick: () =>
-        requestPrompt({
-          title: `Create tag at ${tipShort}`,
-          placeholder: "v1.0.0",
-          confirmLabel: "Create tag",
-          onSubmit: (name) => void run(() => createTagAt(name, tip)),
-        }),
-    }, true);
-    add({
-      label: "Create annotated tag here…",
-      onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b),
-    });
+  // Assemble with a separator at each section boundary.
+  const items: MenuItem[] = [...top];
+  if (groups.length) {
+    groups[0] = { ...groups[0], sep: items.length > 0 };
+    items.push(...groups);
+  }
+  if (copy.length) {
+    copy[0] = { ...copy[0], sep: items.length > 0 };
+    items.push(...copy);
+  }
+  if (danger.length) {
+    items.push({ label: "Danger zone", icon: <WarningIcon className="h-4 w-4" />, tone: "danger", sep: items.length > 0, submenu: danger });
   }
 
-  // ---- copy ----
-  add({
-    label: "Copy branch name",
-    onClick: () => {
-      close();
-      void navigator.clipboard?.writeText(b);
-      showToast(`Copied ${b}`);
-    },
-  }, true);
-  if (tip) {
-    add({
-      label: "Copy tip SHA",
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(tip);
-        showToast(`Copied ${tipShort}`);
-      },
-    });
-  }
-
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={264} />;
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={248} heading={heading} />;
 }
 
 export function CommitContextMenu() {
@@ -784,135 +782,84 @@ export function CommitContextMenu() {
     !isCommitReachableFromRemote(graph, sha);
 
   const hasOtherSelected = !!selectedCommit && selectedCommit !== sha;
-  const items: MenuItem[] = [
-    { label: "Review all changes", onClick: () => { close(); openStackedReview(sha, `Reviewing ${shortSha}`); } },
+
+  const top: MenuItem[] = [
+    { label: "Review all changes", icon: <FileTextIcon className="h-4 w-4" />, onClick: () => { close(); openStackedReview(sha, `Reviewing ${shortSha}`); } },
+    { label: "Checkout commit", icon: <CheckIcon className="h-4 w-4" />, onClick: () => act(() => checkoutDetached(sha)) },
+  ];
+
+  const groups: MenuItem[] = [
     {
-      label: "Compare with working tree",
-      sep: true,
-      onClick: () => {
-        close();
-        void openCompare({
-          base: sha,
-          head: null,
-          baseLabel: shortSha,
-          headLabel: "Working tree",
-          scope: "working",
-          title: `Comparing ${shortSha} with the working tree`,
-        });
-      },
+      label: "Compare",
+      icon: <CompareIcon className="h-4 w-4" />,
+      submenu: [
+        { label: "With working tree", onClick: () => { close(); void openCompare({ base: sha, head: null, baseLabel: shortSha, headLabel: "Working tree", scope: "working", title: `Comparing ${shortSha} with the working tree` }); } },
+        {
+          label: hasOtherSelected ? `With ${selectedCommit!.slice(0, 7)}` : "With selected commit…",
+          onClick: () => {
+            close();
+            if (hasOtherSelected) {
+              void openCompare({ base: selectedCommit!, head: sha, baseLabel: selectedCommit!.slice(0, 7), headLabel: shortSha, scope: "commit", title: `Comparing ${shortSha} with ${selectedCommit!.slice(0, 7)}` });
+            } else {
+              requestPrompt({ title: `Compare ${shortSha} with…`, message: "Another commit-ish to compare against (it becomes the base).", placeholder: "HEAD~1, a branch, or a SHA", confirmLabel: "Compare", onSubmit: (other) => { const base = other.trim(); if (!base) return; void openCompare({ base, head: sha, baseLabel: base.length > 12 ? base.slice(0, 7) : base, headLabel: shortSha, scope: "commit", title: `Comparing ${shortSha} with ${base}` }); } });
+            }
+          },
+        },
+      ],
     },
     {
-      label: hasOtherSelected
-        ? `Compare with ${selectedCommit!.slice(0, 7)}`
-        : "Compare with selected commit…",
-      onClick: () => {
-        close();
-        if (hasOtherSelected) {
-          void openCompare({
-            base: selectedCommit!,
-            head: sha,
-            baseLabel: selectedCommit!.slice(0, 7),
-            headLabel: shortSha,
-            scope: "commit",
-            title: `Comparing ${shortSha} with ${selectedCommit!.slice(0, 7)}`,
-          });
-        } else {
-          requestPrompt({
-            title: `Compare ${shortSha} with…`,
-            message: "Another commit-ish to compare against (it becomes the base).",
-            placeholder: "HEAD~1, a branch, or a SHA",
-            confirmLabel: "Compare",
-            onSubmit: (other) => {
-              const base = other.trim();
-              if (!base) return;
-              void openCompare({
-                base,
-                head: sha,
-                baseLabel: base.length > 12 ? base.slice(0, 7) : base,
-                headLabel: shortSha,
-                scope: "commit",
-                title: `Comparing ${shortSha} with ${base}`,
-              });
-            },
-          });
-        }
-      },
-    },
-    ...(canRewordHead
-      ? [{
-          label: "Edit commit message…",
-          sep: true,
-          onClick: () =>
-            requestPrompt({
-              title: "Edit commit message",
-              message: `This commit has not been pushed: ${shortSha}.`,
-              placeholder: "Subject\n\nDescription",
-              defaultValue: fullCommitMessage(subject, body),
-              multiline: true,
-              confirmLabel: "Update message",
-              onSubmit: (msg) => {
-                const next = splitCommitMessage(msg);
-                void run(() => amendHeadMessage(next.summary, next.description));
-              },
-            }),
-        }]
-      : []),
-    { label: "Checkout commit", sep: !canRewordHead, onClick: () => act(() => checkoutDetached(sha)) },
-    { label: "Create worktree from this commit…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
-    { label: "Create branch from here…", onClick: () => openCreateBranchFrom(sha) },
-    { label: "Create tag here…", onClick: () =>
-      requestPrompt({
-        title: `Create tag at ${shortSha}`,
-        placeholder: "v1.0.0",
-        confirmLabel: "Create tag",
-        onSubmit: (name) => void run(() => createTagAt(name, sha)),
-      }) },
-    { label: "Create annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, sha, shortSha) },
-    { label: `Merge ${shortSha} into ${cur}`, sep: true, onClick: () => act(() => mergeInto(sha, cur)) },
-    {
-      label: `Rebase ${cur} onto ${shortSha}`,
-      onClick: () =>
-        act(async () => {
-          if (cur !== "HEAD") await checkoutBranch(cur);
-          return rebaseOnto(sha);
-        }),
-    },
-    { label: `Cherry-pick onto ${cur}`, sep: true, onClick: () => act(() => cherryPickCommit(sha)) },
-    { label: "Revert commit", onClick: () => act(() => revertCommit(sha)) },
-    { label: "Create patch from commit", onClick: () => act(() => createPatchAt(sha)) },
-    { label: `Reset ${cur} to here`, header: true, sep: true },
-    { label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, sha, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "soft")), headPrecondition: resetHeadPrecondition }) },
-    { label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, sha, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "mixed")), headPrecondition: resetHeadPrecondition }) },
-    { label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, sha, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "hard")), headPrecondition: resetHeadPrecondition }) },
-    {
-      label: "Copy commit SHA",
-      sep: true,
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(sha);
-        showToast(`Copied ${shortSha}`);
-      },
+      label: "Integrate into current",
+      icon: <BranchIcon className="h-4 w-4" />,
+      note: `into ${cur}`,
+      submenu: [
+        { label: `Merge ${shortSha}`, onClick: () => act(() => mergeInto(sha, cur)) },
+        { label: `Rebase onto ${shortSha}`, onClick: () => act(async () => { if (cur !== "HEAD") await checkoutBranch(cur); return rebaseOnto(sha); }) },
+        { label: "Cherry-pick", onClick: () => act(() => cherryPickCommit(sha)) },
+        { label: "Revert", onClick: () => act(() => revertCommit(sha)) },
+      ],
     },
     {
-      label: "Copy commit subject",
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(subject);
-        showToast("Copied subject");
-      },
-    },
-    {
-      label: "Copy full message",
-      onClick: () => {
-        close();
-        const full = body ? `${subject}\n\n${body}` : subject;
-        void navigator.clipboard?.writeText(full);
-        showToast("Copied message");
-      },
+      label: "Create",
+      icon: <PlusIcon className="h-4 w-4" />,
+      submenu: [
+        { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
+        { label: "Worktree from commit…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
+        { label: "Tag here…", onClick: () => requestPrompt({ title: `Create tag at ${shortSha}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, sha)) }) },
+        { label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, sha, shortSha) },
+        { label: "Patch from commit", onClick: () => act(() => createPatchAt(sha)) },
+      ],
     },
   ];
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={260} />;
+  const copy: MenuItem[] = [
+    { label: "Copy commit SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(sha); showToast(`Copied ${shortSha}`); } },
+    {
+      label: "Copy",
+      icon: <CopyIcon className="h-4 w-4" />,
+      submenu: [
+        { label: "Subject", onClick: () => { close(); void navigator.clipboard?.writeText(subject); showToast("Copied subject"); } },
+        { label: "Full message", onClick: () => { close(); const full = body ? `${subject}\n\n${body}` : subject; void navigator.clipboard?.writeText(full); showToast("Copied message"); } },
+      ],
+    },
+  ];
+
+  const danger: MenuItem[] = [];
+  if (canRewordHead) {
+    danger.push({ label: "Edit commit message…", onClick: () => requestPrompt({ title: "Edit commit message", message: `This commit has not been pushed: ${shortSha}.`, placeholder: "Subject\n\nDescription", defaultValue: fullCommitMessage(subject, body), multiline: true, confirmLabel: "Update message", onSubmit: (msg) => { const next = splitCommitMessage(msg); void run(() => amendHeadMessage(next.summary, next.description)); } }) });
+  }
+  danger.push({ label: `Reset ${cur} to here`, header: true, danger: true, sep: danger.length > 0 });
+  danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, sha, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "soft")), headPrecondition: resetHeadPrecondition }) });
+  danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, sha, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "mixed")), headPrecondition: resetHeadPrecondition }) });
+  danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, sha, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "hard")), headPrecondition: resetHeadPrecondition }) });
+
+  const items: MenuItem[] = [...top];
+  groups[0] = { ...groups[0], sep: true };
+  items.push(...groups);
+  copy[0] = { ...copy[0], sep: true };
+  items.push(...copy);
+  items.push({ label: "Danger zone", icon: <WarningIcon className="h-4 w-4" />, tone: "danger", sep: true, submenu: danger });
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
 }
 
 export function FileContextMenu() {
@@ -936,24 +883,23 @@ export function FileContextMenu() {
     showToast(toast);
   };
 
+  // Copy is the most-used action here, so it leads — a "Copy" header labels the
+  // cluster so the rows don't each repeat the word + icon. The history views are
+  // tucked into a History group below.
   const items: MenuItem[] = [
+    { label: "Copy", header: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
+    { label: "File name", onClick: () => copy(fileName, `Copied ${fileName}`) },
+    { label: "Relative path", onClick: () => copy(path, "Copied relative path") },
+    { label: "Full path", onClick: () => copy(fullPath, "Copied full path") },
     {
-      label: "Open file history",
-      onClick: () => {
-        close();
-        void openFileHistory(path);
-      },
+      label: "History",
+      icon: <ClockIcon className="h-4 w-4" />,
+      sep: true,
+      submenu: [
+        { label: "File history", onClick: () => { close(); void openFileHistory(path); } },
+        { label: "Blame", onClick: () => { close(); void openFileHistory(path, "blame"); } },
+      ],
     },
-    {
-      label: "Blame",
-      onClick: () => {
-        close();
-        void openFileHistory(path, "blame");
-      },
-    },
-    { label: "Copy file name", sep: true, onClick: () => copy(fileName, `Copied ${fileName}`) },
-    { label: "Copy relative path", onClick: () => copy(path, "Copied relative path") },
-    { label: "Copy full path", onClick: () => copy(fullPath, "Copied full path") },
   ];
 
   // Discard is a working-tree op — only offered on working-changes rows.
@@ -961,6 +907,7 @@ export function FileContextMenu() {
     const { staged } = discard;
     items.push({
       label: staged ? "Unstage & discard changes" : "Discard changes",
+      icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
       sep: true,
       onClick: () =>
@@ -999,17 +946,18 @@ export function WipContextMenu() {
   const hasUnstaged = changes.unstaged.length > 0;
 
   const items: MenuItem[] = [
-    { label: "Commit…", onClick: () => { close(); openCommit(); } },
+    { label: "Commit…", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); openCommit(); } },
   ];
   if (hasUnstaged) {
-    items.push({ label: "Stage all changes", sep: true, onClick: () => { close(); void stageAll(); } });
+    items.push({ label: "Stage all changes", icon: <PlusIcon className="h-4 w-4" />, sep: true, onClick: () => { close(); void stageAll(); } });
   }
   if (hasStaged) {
-    items.push({ label: "Unstage all changes", sep: !hasUnstaged, onClick: () => { close(); void unstageAll(); } });
+    items.push({ label: "Unstage all changes", icon: <MinusIcon className="h-4 w-4" />, sep: !hasUnstaged, onClick: () => { close(); void unstageAll(); } });
   }
-  items.push({ label: "Stash all changes", sep: true, onClick: () => { close(); void stash(); } });
+  items.push({ label: "Stash all changes", icon: <StashIcon className="h-4 w-4" />, sep: true, onClick: () => { close(); void stash(); } });
   items.push({
     label: "Discard all changes",
+    icon: <TrashIcon className="h-4 w-4" />,
     danger: true,
     sep: true,
     onClick: () =>
@@ -1052,20 +1000,32 @@ export function TagContextMenu() {
 
   const { name, sha } = menu;
 
+  // Operate on the peeled commit `sha`, never the tag name: a branch and tag can
+  // share a short name, and `git branch new <name>` then fails as ambiguous.
+  // `name` stays only for labels and the default worktree path.
   const items: MenuItem[] = [
-    // Operate on the peeled commit `sha`, never the tag name: a branch and tag
-    // can share a short name, and `git branch new <name>` then fails as
-    // ambiguous. `name` stays only for labels and the default worktree path.
-    { label: "Checkout tag (detached)", onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
-    { label: "Create branch from here…", onClick: () => openCreateBranchFrom(sha) },
+    { label: "Checkout tag (detached)", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
+    { label: "Push tag to origin", icon: <PushIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => pushTag(name)); } },
     {
-      label: "Create worktree from tag…",
-      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name),
+      label: "Create",
+      icon: <PlusIcon className="h-4 w-4" />,
+      sep: true,
+      submenu: [
+        { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
+        { label: "Worktree from tag…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name) },
+      ],
     },
-    { label: "Push tag to origin", sep: true, onClick: () => { close(); void run(() => pushTag(name)); } },
+    {
+      label: "Copy tag name",
+      icon: <CopyIcon className="h-4 w-4" />,
+      sep: true,
+      onClick: () => { close(); void navigator.clipboard?.writeText(name); showToast(`Copied ${name}`); },
+    },
     {
       label: "Delete tag",
+      icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
+      sep: true,
       onClick: () =>
         requestConfirm({
           title: `Delete tag ${name}?`,
@@ -1075,24 +1035,15 @@ export function TagContextMenu() {
           onConfirm: () => void run(() => deleteTag(name)),
         }),
     },
-    {
-      label: "Copy tag name",
-      sep: true,
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(name);
-        showToast(`Copied ${name}`);
-      },
-    },
   ];
 
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
 }
 
-/** Right-click menu on a navigator worktree row. Opening it switches the app to
- * that worktree (loads it as a repo tab) — distinct from the row's plain click,
- * which only scrolls the current graph to the worktree's tip. Removing a
- * worktree needs a backend command and is intentionally absent here. */
+/** Right-click menu on a navigator worktree row. "Open worktree" switches the
+ * app to that checkout (loads it as a repo tab) — distinct from the row's plain
+ * click, which only scrolls the current graph to the worktree's tip. The active
+ * worktree only offers "Copy path" (it's already open; nothing to open/remove). */
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
@@ -1113,30 +1064,35 @@ export function WorktreeContextMenu() {
   const trim = (p: string) => p.replace(/\/+$/, "");
   const isActiveWorktree =
     (!!workdir && trim(path) === trim(workdir)) || (!!repoPath && trim(path) === trim(repoPath));
-
-  const items: MenuItem[] = [
-    {
+  const items: MenuItem[] = [];
+  // The active worktree is already open, so opening it again is a no-op; only
+  // offer the switch for the others.
+  if (!isActiveWorktree) {
+    items.push({
       label: "Open worktree",
+      icon: <FolderIcon className="h-4 w-4" />,
       onClick: () => {
         close();
         void openWorktree(path).catch((e) => showToast(String(e), "error"));
       },
+    });
+  }
+  items.push({
+    label: "Copy path",
+    icon: <CopyIcon className="h-4 w-4" />,
+    sep: items.length > 0,
+    onClick: () => {
+      close();
+      void navigator.clipboard?.writeText(path);
+      showToast("Copied path");
     },
-    {
-      label: "Copy path",
-      sep: true,
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(path);
-        showToast("Copied path");
-      },
-    },
-  ];
+  });
   // Don't offer removal of the primary worktree (git refuses) or the one
   // currently open in the app (it'd delete the active tab's directory).
   if (!isMain && !isActiveWorktree) {
     items.push({
       label: "Remove worktree",
+      icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
       sep: true,
       onClick: () =>
@@ -1171,30 +1127,40 @@ export function StashContextMenu() {
   const oid = stashes.find((s) => s.index === index)?.oid;
 
   const items: MenuItem[] = [
+    { label: "View changes", icon: <FileTextIcon className="h-4 w-4" />, onClick: () => { close(); if (oid) openStackedReview(oid, `Stash: ${message}`); } },
     {
-      label: "View changes",
-      onClick: () => {
-        close();
-        if (oid) openStackedReview(oid, `Stash: ${message}`);
-      },
-    },
-    { label: "Apply", sep: true, onClick: () => { close(); void run(() => applyStash(index, false)); } },
-    { label: "Apply with index", onClick: () => { close(); void run(() => applyStash(index, false, true)); } },
-    { label: "Pop (apply & drop)", onClick: () => { close(); void run(() => applyStash(index, true)); } },
-    {
-      label: "Apply to new branch…",
+      label: "Apply",
+      icon: <CheckIcon className="h-4 w-4" />,
       sep: true,
-      onClick: () =>
-        requestPrompt({
-          title: "Apply stash to a new branch",
-          message: "Branches from the stash's parent commit, then applies the stash.",
-          placeholder: "new-branch-name",
-          confirmLabel: "Create & apply",
-          onSubmit: (branch) => void run(() => branchFromStash(index, branch)),
-        }),
+      submenu: [
+        { label: "Apply", onClick: () => { close(); void run(() => applyStash(index, false)); } },
+        { label: "Apply with index", onClick: () => { close(); void run(() => applyStash(index, false, true)); } },
+        { label: "Pop (apply & drop)", onClick: () => { close(); void run(() => applyStash(index, true)); } },
+        {
+          label: "Apply to new branch…",
+          onClick: () =>
+            requestPrompt({
+              title: "Apply stash to a new branch",
+              message: "Branches from the stash's parent commit, then applies the stash.",
+              placeholder: "new-branch-name",
+              confirmLabel: "Create & apply",
+              onSubmit: (branch) => void run(() => branchFromStash(index, branch)),
+            }),
+        },
+      ],
+    },
+    {
+      label: "Copy",
+      icon: <CopyIcon className="h-4 w-4" />,
+      sep: true,
+      submenu: [
+        { label: "Stash SHA", onClick: () => { close(); if (oid) { void navigator.clipboard?.writeText(oid); showToast(`Copied ${oid.slice(0, 7)}`); } } },
+        { label: "Stash message", onClick: () => { close(); void navigator.clipboard?.writeText(message); showToast("Copied stash message"); } },
+      ],
     },
     {
       label: "Drop",
+      icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
       sep: true,
       onClick: () =>
@@ -1205,25 +1171,6 @@ export function StashContextMenu() {
           danger: true,
           onConfirm: () => void run(() => dropStash(index)),
         }),
-    },
-    {
-      label: "Copy stash SHA",
-      sep: true,
-      onClick: () => {
-        close();
-        if (oid) {
-          void navigator.clipboard?.writeText(oid);
-          showToast(`Copied ${oid.slice(0, 7)}`);
-        }
-      },
-    },
-    {
-      label: "Copy stash message",
-      onClick: () => {
-        close();
-        void navigator.clipboard?.writeText(message);
-        showToast("Copied stash message");
-      },
     },
   ];
 

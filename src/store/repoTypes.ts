@@ -267,6 +267,11 @@ export interface RepoState {
   pushTag: (name: string) => Promise<string>;
   /** Remove a linked worktree (`force` drops the dirty/locked check). */
   removeWorktree: (worktreePath: string, force?: boolean) => Promise<string>;
+  /** Move a branch checked out in a linked worktree back to the current checkout. */
+  moveBranchToCurrentWorktree: (branch: string, fromWorktreePath: string) => Promise<string>;
+  /** Remove the linked worktree holding `branch`, then delete the branch — the
+   * one-step path when a branch's Delete is locked by its worktree. */
+  deleteBranchWithWorktree: (branch: string, fromWorktreePath: string) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
   deleteRemoteBranch: (remote: string, branch: string) => Promise<string>;
