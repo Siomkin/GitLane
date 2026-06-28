@@ -139,6 +139,10 @@ export function createRepoLifecycleActions(
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
+        // Inspection slices are repo-bound; a switch must not leave an old repo's
+        // history/compare view mounted against the new (or null) summary.
+        fileHistory: null,
+        compare: null,
         graphLimit: INITIAL_GRAPH_LIMIT,
         loadingMoreHistory: false,
       });
@@ -344,6 +348,8 @@ export function createRepoLifecycleActions(
           loadingMoreHistory: false,
           selectedFile: null,
           fileDiff: null,
+          fileHistory: null,
+          compare: null,
         });
         usePulls.getState().reset();
         // Closing the last tab drops to the welcome screen; any open repo-bound
@@ -387,6 +393,8 @@ export function createRepoLifecycleActions(
         loadingMoreHistory: false,
         selectedFile: null,
         fileDiff: null,
+        fileHistory: null,
+        compare: null,
       });
       persistSession(remaining, next);
       await get().loadRepo(next);

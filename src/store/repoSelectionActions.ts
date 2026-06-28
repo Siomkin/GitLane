@@ -142,6 +142,11 @@ export function createRepoSelectionActions(
       const { summary } = get();
       if (!summary) return;
       const requestPath = path;
+      // Stale-response guard token: a repo switch mid-request must not let this
+      // response publish into a different repo (the path/oid checks alone can
+      // collide when both repos share a relative path).
+      const repoPath = summary.path;
+      const fresh = () => get().summary?.path === repoPath && get().fileHistory?.path === requestPath;
       set({
         compare: null,
         fileHistory: {
@@ -166,8 +171,8 @@ export function createRepoSelectionActions(
         error: null,
       });
       try {
-        const page = await api.fileHistory(summary.path, path, 0, 100);
-        if (get().fileHistory?.path !== requestPath) return;
+        const page = await api.fileHistory(repoPath, path, 0, 100);
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? {
@@ -184,7 +189,7 @@ export function createRepoSelectionActions(
         if (first) void get().selectFileHistoryRevision(first.oid, first.path);
         if (mode === "blame") void get().loadFileBlame(first?.oid ?? null);
       } catch (e) {
-        if (get().fileHistory?.path !== requestPath) return;
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, loading: false, blameLoading: false, error: String(e) }
@@ -197,12 +202,14 @@ export function createRepoSelectionActions(
       const { summary, fileHistory } = get();
       if (!summary || !fileHistory || fileHistory.loadingMore || !fileHistory.hasMore) return;
       const requestPath = fileHistory.path;
+      const repoPath = summary.path;
+      const fresh = () => get().summary?.path === repoPath && get().fileHistory?.path === requestPath;
       set((state) => ({
         fileHistory: state.fileHistory ? { ...state.fileHistory, loadingMore: true } : null,
       }));
       try {
-        const page = await api.fileHistory(summary.path, requestPath, fileHistory.nextOffset, 100);
-        if (get().fileHistory?.path !== requestPath) return;
+        const page = await api.fileHistory(repoPath, requestPath, fileHistory.nextOffset, 100);
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? {
@@ -216,7 +223,7 @@ export function createRepoSelectionActions(
             : null,
         }));
       } catch (e) {
-        if (get().fileHistory?.path !== requestPath) return;
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, loadingMore: false, error: String(e) }
@@ -230,6 +237,15 @@ export function createRepoSelectionActions(
       if (!summary || !fileHistory) return;
       const filePath = pathOverride ?? fileHistory.path;
       const requestPath = fileHistory.path;
+      const repoPath = summary.path;
+      const fresh = () => {
+        const current = get().fileHistory;
+        return (
+          get().summary?.path === repoPath &&
+          current?.path === requestPath &&
+          current.selectedOid === oid
+        );
+      };
       set((state) => ({
         fileHistory: state.fileHistory
           ? {
@@ -243,17 +259,15 @@ export function createRepoSelectionActions(
           : null,
       }));
       try {
-        const selectedDiff = await api.commitFileDiff(summary.path, oid, filePath);
-        const current = get().fileHistory;
-        if (current?.path !== requestPath || current.selectedOid !== oid) return;
+        const selectedDiff = await api.commitFileDiff(repoPath, oid, filePath);
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, selectedDiff, diffLoading: false }
             : null,
         }));
       } catch (e) {
-        const current = get().fileHistory;
-        if (current?.path !== requestPath || current.selectedOid !== oid) return;
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, diffLoading: false, error: String(e) }
@@ -266,24 +280,31 @@ export function createRepoSelectionActions(
       const { summary, fileHistory } = get();
       if (!summary || !fileHistory) return;
       const requestPath = fileHistory.path;
+      const repoPath = summary.path;
       const blameRevision = revision ?? fileHistory.selectedOid;
+      const fresh = () => {
+        const current = get().fileHistory;
+        return (
+          get().summary?.path === repoPath &&
+          current?.path === requestPath &&
+          current.blameRevision === blameRevision
+        );
+      };
       set((state) => ({
         fileHistory: state.fileHistory
           ? { ...state.fileHistory, blameLoading: true, blameRevision, blameSelectedOid: null }
           : null,
       }));
       try {
-        const blame = await api.fileBlame(summary.path, requestPath, blameRevision);
-        const current = get().fileHistory;
-        if (current?.path !== requestPath || current.blameRevision !== blameRevision) return;
+        const blame = await api.fileBlame(repoPath, requestPath, blameRevision);
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, blame, blameLoading: false }
             : null,
         }));
       } catch (e) {
-        const current = get().fileHistory;
-        if (current?.path !== requestPath || current.blameRevision !== blameRevision) return;
+        if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
             ? { ...state.fileHistory, blameLoading: false, error: String(e) }
@@ -304,6 +325,11 @@ export function createRepoSelectionActions(
     openCompare: async ({ base, head, baseLabel, headLabel, scope, title }) => {
       const { summary } = get();
       if (!summary) return;
+      const repoPath = summary.path;
+      const fresh = () => {
+        const cur = get().compare;
+        return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
+      };
       set({
         fileHistory: null,
         compare: {
@@ -328,10 +354,9 @@ export function createRepoSelectionActions(
         error: null,
       });
       try {
-        const result = await api.compareRefs(summary.path, base, head);
-        // Bail if the user opened a different comparison meanwhile.
-        const cur = get().compare;
-        if (cur?.base !== base || cur.head !== head) return;
+        const result = await api.compareRefs(repoPath, base, head);
+        // Bail if the user opened a different comparison or switched repos.
+        if (!fresh()) return;
         set((state) => ({
           compare: state.compare
             ? {
@@ -348,8 +373,7 @@ export function createRepoSelectionActions(
         const first = result.files[0];
         if (first) void get().selectCompareFile(first.path);
       } catch (e) {
-        const cur = get().compare;
-        if (cur?.base !== base || cur.head !== head) return;
+        if (!fresh()) return;
         set((state) => ({
           compare: state.compare ? { ...state.compare, loading: false, error: String(e) } : null,
         }));
@@ -360,21 +384,29 @@ export function createRepoSelectionActions(
       const { summary, compare } = get();
       if (!summary || !compare) return;
       const { base, head } = compare;
+      const repoPath = summary.path;
+      const fresh = () => {
+        const cur = get().compare;
+        return (
+          get().summary?.path === repoPath &&
+          cur?.base === base &&
+          cur.head === head &&
+          cur.selectedPath === path
+        );
+      };
       set((state) => ({
         compare: state.compare
           ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true }
           : null,
       }));
       try {
-        const selectedDiff = await api.compareFileDiff(summary.path, base, head, path);
-        const cur = get().compare;
-        if (cur?.base !== base || cur.head !== head || cur.selectedPath !== path) return;
+        const selectedDiff = await api.compareFileDiff(repoPath, base, head, path);
+        if (!fresh()) return;
         set((state) => ({
           compare: state.compare ? { ...state.compare, selectedDiff, diffLoading: false } : null,
         }));
       } catch (e) {
-        const cur = get().compare;
-        if (cur?.base !== base || cur.head !== head || cur.selectedPath !== path) return;
+        if (!fresh()) return;
         set((state) => ({
           compare: state.compare
             ? { ...state.compare, diffLoading: false, error: String(e) }

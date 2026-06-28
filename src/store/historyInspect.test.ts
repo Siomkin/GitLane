@@ -72,6 +72,24 @@ describe("repo store — file history", () => {
     await useRepo.getState().openFileHistory("src/a.ts");
     expect(useRepo.getState().compare).toBeNull();
   });
+
+  it("does not publish a history response after the repo was switched", async () => {
+    let resolveHistory!: (value: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "file_history") return new Promise((res) => (resolveHistory = res));
+      return Promise.resolve(fileDiff);
+    });
+
+    const pending = useRepo.getState().openFileHistory("src/a.ts");
+    // The user switches to another repo while the request is in flight, and
+    // opens the same relative path there.
+    useRepo.setState({ summary: { ...summary, path: "/other-repo" }, fileHistory: null });
+    resolveHistory(historyPage);
+    await pending;
+
+    // Repo A's response must not populate repo B's (now cleared) inspection view.
+    expect(useRepo.getState().fileHistory).toBeNull();
+  });
 });
 
 describe("repo store — compare", () => {
