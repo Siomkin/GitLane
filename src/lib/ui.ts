@@ -22,3 +22,15 @@ export const eyebrow =
   "text-[11px] font-semibold uppercase tracking-wider text-neutral-400";
 
 export const panelHeading = "text-[16px] font-semibold leading-tight text-neutral-800 dark:text-neutral-100";
+
+/** 1–2 letter avatar initials from an author's display name. Splits on any
+ * whitespace, drops empties, takes the first letter of the first two words,
+ * uppercased. Returns "" for an empty/blank name. */
+export function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}

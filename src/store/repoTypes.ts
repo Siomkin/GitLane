@@ -1,10 +1,12 @@
 import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
+  FileBlame,
   ConflictFile,
   DiffLine,
   FileChange,
   FileDiff,
+  FileHistoryEntry,
   OperationKind,
   ReflogEntry,
   RepoForge,
@@ -43,6 +45,62 @@ export interface SelectedFile {
   source: ChangeSource;
 }
 
+export interface FileHistoryState {
+  path: string;
+  /** Which mode the inspection opened in / is showing. */
+  mode: "history" | "blame";
+  entries: FileHistoryEntry[];
+  loading: boolean;
+  loadingMore: boolean;
+  error: string | null;
+  hasMore: boolean;
+  nextOffset: number;
+  truncated: boolean;
+  selectedOid: string | null;
+  selectedPath: string | null;
+  selectedDiff: FileDiff | null;
+  diffLoading: boolean;
+  blame: FileBlame | null;
+  blameLoading: boolean;
+  /** Blame-specific error, kept out of [`error`] so a blame failure never
+   * blanks the (successfully loaded) history list with a full-page error. */
+  blameError: string | null;
+  /** The revision the loaded blame is for — independent of [`selectedOid`] so
+   * "blame previous revision" can target a parent without moving the list. */
+  blameRevision: string | null;
+  /** SHA of the blame line the user picked (drives the blame inspector). */
+  blameSelectedOid: string | null;
+}
+
+/** Which two endpoints a compare view is showing. */
+export type CompareScope = "upstream" | "branch" | "commit" | "working";
+
+/** A `base..head` comparison surface (branch/commit ranges or working tree). */
+export interface CompareState {
+  /** Left (older) endpoint — a ref or oid passed to the backend. */
+  base: string;
+  /** Right (newer) endpoint, or null when comparing against the working tree. */
+  head: string | null;
+  baseLabel: string;
+  headLabel: string;
+  scope: CompareScope;
+  title: string;
+  files: FileChange[];
+  loading: boolean;
+  error: string | null;
+  add: number;
+  del: number;
+  ahead: number;
+  behind: number;
+  pathFilter: string;
+  selectedPath: string | null;
+  selectedDiff: FileDiff | null;
+  diffLoading: boolean;
+  /** Per-file diff error, kept out of [`error`] so a diff failure never hides
+   * the (loaded) changed-files list. */
+  diffError: string | null;
+}
+
 export const INITIAL_GRAPH_LIMIT = 2_000;
 export const GRAPH_PAGE_SIZE = 2_000;
 
@@ -69,6 +127,9 @@ export interface RepoState {
    * non-null the app surfaces the dedicated conflict-resolution workspace. */
   operation: OperationState | null;
   commitFiles: FileChange[];
+  fileHistory: FileHistoryState | null;
+  /** The active compare surface (branch/commit/working diff), or null. */
+  compare: CompareState | null;
   selectedFile: SelectedFile | null;
   fileDiff: FileDiff | null;
   selectedCommit: string | null;
@@ -222,6 +283,35 @@ export interface RepoState {
   openWorktree: (worktreePath: string) => Promise<void>;
   /** Open the combined-diff review for a commit range base..head. */
   compareRange: (base: string, head: string, title: string) => void;
+  /** Open a dedicated history-inspection page for a repo-relative file. */
+  openFileHistory: (path: string, mode?: "history" | "blame") => Promise<void>;
+  loadMoreFileHistory: () => Promise<void>;
+  selectFileHistoryRevision: (oid: string, path?: string | null, full?: boolean) => Promise<void>;
+  /** Blame `path` (defaults to the selected revision's path, so renames blame
+   * the historical name) at `revision` (defaults to the selected revision). */
+  loadFileBlame: (revision?: string | null, path?: string | null) => Promise<void>;
+  /** Mark which blame line's commit is selected (drives the blame inspector). */
+  selectBlameLine: (oid: string) => void;
+  closeFileHistory: () => void;
+  /** Open a compare surface between two endpoints. `head: null` compares the
+   * base against the working tree. */
+  openCompare: (opts: {
+    base: string;
+    head: string | null;
+    baseLabel: string;
+    headLabel: string;
+    scope: CompareScope;
+    title: string;
+  }) => Promise<void>;
+  selectCompareFile: (path: string, full?: boolean) => Promise<void>;
+  /** Re-fetch the open comparison's file list + selected diff in place (used by
+   * refresh so a working-tree compare reflects external edits/commits). */
+  refreshCompare: () => Promise<void>;
+  setComparePathFilter: (filter: string) => void;
+  /** Swap base/head of a commit-range comparison and re-fetch (no-op for a
+   * working-tree comparison, which has no second commit). */
+  swapCompare: () => Promise<void>;
+  closeCompare: () => void;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;
@@ -290,6 +380,8 @@ export type RepoDataState = Pick<
   | "changes"
   | "operation"
   | "commitFiles"
+  | "fileHistory"
+  | "compare"
   | "selectedFile"
   | "fileDiff"
   | "selectedCommit"
@@ -326,6 +418,8 @@ export function createInitialRepoData(
     changes: emptyChanges,
     operation: null,
     commitFiles: [],
+    fileHistory: null,
+    compare: null,
     selectedFile: null,
     fileDiff: null,
     selectedCommit: null,

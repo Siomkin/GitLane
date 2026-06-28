@@ -25,6 +25,7 @@ import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
 import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
 import { ConflictWorkspace } from "./features/conflicts";
+import { HistoryInspectWorkspace } from "./features/history-inspect";
 import { HistoryWorkspace } from "./features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
 import { ReflogRecoveryDialog } from "./features/recovery";
@@ -50,6 +51,14 @@ const App = () => {
   const error = useRepo((state) => state.error);
   const clearError = useRepo((state) => state.clearError);
   const selectedFile = useRepo((state) => state.selectedFile);
+  const fileHistory = useRepo((state) => state.fileHistory);
+  const compare = useRepo((state) => state.compare);
+  const workingTreeClean = useRepo(
+    (state) =>
+      state.changes.staged.length === 0 &&
+      state.changes.unstaged.length === 0 &&
+      state.changes.conflicted.length === 0,
+  );
   const operation = useRepo((state) => state.operation);
   const revealTarget = useRepo((state) => state.revealTarget);
   const restoreSession = useRepo((state) => state.restoreSession);
@@ -104,6 +113,14 @@ const App = () => {
     if (revealTarget) setLeftTab("history");
   }, [revealTarget]);
 
+  // The changes view is only reachable by opening a working-tree file, so once
+  // the tree goes clean (after a commit, or discarding the last change) there's
+  // nothing left to stage or diff — fall back to the graph instead of stranding
+  // an empty "Select a file to view its diff" pane.
+  useEffect(() => {
+    if (leftTab === "changes" && workingTreeClean) setLeftTab("history");
+  }, [leftTab, workingTreeClean]);
+
   // Start each repo in the history view (avoid a stale changes/review pane), drop
   // any review notes pinned against the previous repo's diffs, and reset the
   // history search/filter so one repo's query never lands on another's commits.
@@ -131,6 +148,8 @@ const App = () => {
     <ConflictWorkspace />
   ) : showPulls ? (
     <PullRequestDetail />
+  ) : compare || fileHistory ? (
+    <HistoryInspectWorkspace />
   ) : stackedReview ? (
     <StackedReview />
   ) : leftTab === "changes" ? (

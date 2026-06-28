@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { FileChange } from "../../lib/api";
 import { useRepo } from "../../store/repo";
@@ -94,6 +94,8 @@ describe("FileContextMenu", () => {
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy full path" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open file history" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Blame" })).toBeInTheDocument();
   });
 
   it("adapts the discard label to 'Unstage & discard changes' for a staged file", () => {
@@ -107,5 +109,21 @@ describe("FileContextMenu", () => {
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Copy full path" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
+  });
+
+  it("opens file history and blame from the context menu", () => {
+    const openFileHistory = vi.fn(async () => {});
+    useRepo.setState({ openFileHistory });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
+    const first = render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open file history" }));
+    expect(openFileHistory).toHaveBeenCalledWith("src/a.ts");
+    first.unmount();
+
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
+    render(<FileContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Blame" }));
+    expect(openFileHistory).toHaveBeenCalledWith("src/a.ts", "blame");
   });
 });

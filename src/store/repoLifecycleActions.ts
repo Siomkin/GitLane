@@ -139,6 +139,10 @@ export function createRepoLifecycleActions(
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
+        // Inspection slices are repo-bound; a switch must not leave an old repo's
+        // history/compare view mounted against the new (or null) summary.
+        fileHistory: null,
+        compare: null,
         graphLimit: INITIAL_GRAPH_LIMIT,
         loadingMoreHistory: false,
       });
@@ -344,6 +348,8 @@ export function createRepoLifecycleActions(
           loadingMoreHistory: false,
           selectedFile: null,
           fileDiff: null,
+          fileHistory: null,
+          compare: null,
         });
         usePulls.getState().reset();
         // Closing the last tab drops to the welcome screen; any open repo-bound
@@ -387,6 +393,8 @@ export function createRepoLifecycleActions(
         loadingMoreHistory: false,
         selectedFile: null,
         fileDiff: null,
+        fileHistory: null,
+        compare: null,
       });
       persistSession(remaining, next);
       await get().loadRepo(next);
@@ -503,6 +511,10 @@ export function createRepoLifecycleActions(
             ...(selectedFileGone ? { selectedFile: null, fileDiff: null } : {}),
             ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
           });
+          // A working-tree comparison (head: null) reflects the live tree, so a
+          // worktree-scope event (edit/stage/terminal commit) must refresh it.
+          // Ref-to-ref comparisons are pinned to commits and don't change here.
+          if (get().compare?.head === null) void get().refreshCompare();
           return;
         }
 
@@ -592,6 +604,9 @@ export function createRepoLifecycleActions(
           ...(gone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
+        // A full refresh can move branch/commit tips, so re-run any open
+        // comparison (ref-to-ref as well as working-tree) to keep it truthful.
+        if (get().compare) void get().refreshCompare();
         if (opts?.prs !== false) void usePulls.getState().loadPullRequests(false, true);
         // A non-quiet refresh held `loading`; replay anything deferred during it.
         flushPendingRefresh();

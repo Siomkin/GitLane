@@ -15,10 +15,11 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BranchInfo, ConflictFileContent, DestructivePreview, FileChange, FileDiff, ForgeAuthStatus,
-    GithubAccount, GithubAccountRef, OperationStatus, PrCheck, PrCommitSignature,
-    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RepoForge, RepoGraph,
-    RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges, WorktreeInfo,
+    BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame, FileChange,
+    FileDiff, FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus,
+    PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
+    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges,
+    WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -408,6 +409,57 @@ fn diff_range_file(
 ) -> Result<FileDiff, String> {
     git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
         .map_err(|e| e.to_string())
+}
+
+// These reads can be expensive on large repos — a multi-thousand-commit history
+// walk (each step diffing one file), blame over a long file, or a full-tree
+// comparison. Like `commit_graph`, run them on the blocking pool so they never
+// stall the webview thread (the non-Send Repository is opened inside the closure).
+#[tauri::command]
+async fn file_history(
+    path: String,
+    file: String,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<FileHistoryPage, String> {
+    blocking(move || git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string()))
+        .await
+}
+
+#[tauri::command]
+async fn file_blame(
+    path: String,
+    file: String,
+    revision: Option<String>,
+    limit: Option<usize>,
+) -> Result<FileBlame, String> {
+    blocking(move || git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string()))
+        .await
+}
+
+#[tauri::command]
+async fn compare_refs(
+    path: String,
+    base: String,
+    head: Option<String>,
+) -> Result<CompareResult, String> {
+    blocking(move || git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string()))
+        .await
+}
+
+#[tauri::command]
+async fn compare_file_diff(
+    path: String,
+    base: String,
+    head: Option<String>,
+    file: String,
+    full: Option<bool>,
+) -> Result<FileDiff, String> {
+    blocking(move || {
+        git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1057,6 +1109,10 @@ pub fn run() {
             commit_file_diff,
             diff_range,
             diff_range_file,
+            file_history,
+            file_blame,
+            compare_refs,
+            compare_file_diff,
             stage_file,
             unstage_file,
             apply_hunk,

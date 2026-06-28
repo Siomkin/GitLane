@@ -7,12 +7,16 @@
 //! diff conversion, working-tree reads, commit reads, and range reads.
 
 mod commit;
+mod compare;
 mod diff;
+mod history;
 mod range;
 #[cfg(test)]
 mod tests;
 mod working;
 
 pub use commit::{commit_file_diff, commit_files};
+pub use compare::{compare_file_diff, compare_refs};
+pub use history::{file_blame, file_history};
 pub use range::{diff_range, diff_range_file};
 pub use working::{file_diff, working_changes};
