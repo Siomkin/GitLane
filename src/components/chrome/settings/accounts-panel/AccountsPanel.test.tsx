@@ -149,6 +149,25 @@ describe("AccountsPanel (add-account model)", () => {
     expect(screen.getByText("Resolving account…")).toBeInTheDocument();
   });
 
+  it("shows a resolving state in the connect screen while the whoami is in flight", () => {
+    const gitlabAuthed: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "https://gitlab.com/gitlab-org/cli",
+      notes: "PR features are not implemented for GitLab.",
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed], forgeAccountsLoading: ["gitlab"] });
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
+    fireEvent.click(screen.getByText("GitLab"));
+    expect(screen.getByText("Signed in — resolving account…")).toBeInTheDocument();
+  });
+
   it("shows an email/UPN identity (Azure) as-is, not as a double-@ handle", () => {
     const azureAuthed: ForgeAuthStatus = {
       provider: "azure-devops",

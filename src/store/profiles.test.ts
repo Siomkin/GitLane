@@ -9,7 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import type { RepoSummary } from "../lib/api";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
-import { useProfiles } from "./profiles";
+import { appliedProfileId, useProfiles } from "./profiles";
 import type { GitProfile } from "../lib/profiles";
 
 const path = "repo-under-test";
@@ -98,5 +98,16 @@ describe("useProfiles — custom email persistence across profile switches", () 
     await applyProfile("p1");
     await applyProfile("p2");
     expect(useAccounts.getState().repoIdentity?.email).toBe("work@acme.io");
+  });
+
+  it("scrubs the applied id (and override) when the applied profile is deleted", async () => {
+    const { applyProfile, setCustomEmail, deleteProfile } = useProfiles.getState();
+    await applyProfile("p2");
+    await setCustomEmail("custom@x.dev");
+    expect(appliedProfileId(path)).toBe("p2");
+
+    deleteProfile("p2");
+    // No stale applied id remains, so selection can't fall back to a wrong duplicate.
+    expect(appliedProfileId(path)).toBeNull();
   });
 });

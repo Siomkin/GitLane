@@ -154,8 +154,10 @@ interface AccountsState {
   setRepoAccount: (id: string | null) => Promise<void>;
 }
 
-// Providers GitLane can resolve a real account for (whoami implemented in Rust).
-// Others (Gitea/Forgejo) would only make a no-op round-trip and flash a skeleton.
+// Providers GitLane can resolve a real account for. Keep in sync with the
+// `account()` whoami dispatch in `src-tauri/src/auth_providers.rs` — adding a
+// provider there without listing it here means its identity never resolves in
+// the UI. Others (Gitea/Forgejo) would only make a no-op round-trip + skeleton flash.
 const FORGE_WHOAMI = new Set(["gitlab", "azure-devops"]);
 // Monotonic load generation. A background whoami started by an older
 // loadForgeAuth is dropped (not merged) once a newer load supersedes it, so a
@@ -213,7 +215,10 @@ export const useAccounts = create<AccountsState>((set, get) => ({
 
   loadForgeAuth: async (force = false) => {
     const { forgeAuthLoading, forgeAuth } = get();
-    if (forgeAuthLoading) return;
+    // A non-forced call defers to an in-flight load or an already-loaded list.
+    // A forced refresh supersedes an in-flight probe (the generation counter
+    // drops the older probe's result) so a rapid double-Refresh stays responsive.
+    if (!force && forgeAuthLoading) return;
     if (!force && forgeAuth.length > 0) return;
     const gen = ++forgeAuthGen;
     set({ forgeAuthLoading: true, forgeAuthError: null });

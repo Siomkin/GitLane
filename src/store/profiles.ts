@@ -95,6 +95,34 @@ function setAppliedProfileId(path: string, id: string | null) {
   writeJsonMap(LS_REPO_PROFILE, all);
 }
 
+/** Remove every reference to a deleted profile id from the per-repo applied-id
+ * and custom-email maps, so a stale id can't reselect a wrong duplicate and
+ * orphaned overrides don't linger. */
+function scrubProfileId(id: string) {
+  const applied = readAppliedIds();
+  let appliedChanged = false;
+  for (const path of Object.keys(applied)) {
+    if (applied[path] === id) {
+      delete applied[path];
+      appliedChanged = true;
+    }
+  }
+  if (appliedChanged) writeJsonMap(LS_REPO_PROFILE, applied);
+
+  const overrides = readOverrides();
+  let overridesChanged = false;
+  for (const path of Object.keys(overrides)) {
+    if (overrides[path][id] !== undefined) {
+      const next = { ...overrides[path] };
+      delete next[id];
+      if (Object.keys(next).length === 0) delete overrides[path];
+      else overrides[path] = next;
+      overridesChanged = true;
+    }
+  }
+  if (overridesChanged) writeJsonMap(LS_CUSTOM_EMAIL, overrides);
+}
+
 /** Signing args for `api.setRepoIdentity`. Empty strings unset the key/format
  * so applying a no-signing profile clears any signing a prior one left behind;
  * `false` writes `commit.gpgsign false` so signing is explicitly off. */
@@ -180,6 +208,9 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
       profiles[0] = { ...profiles[0], isDefault: true };
     }
     writeProfiles(profiles);
+    // Drop the deleted id from per-repo applied-id / override maps so selection
+    // can't fall back to a wrong duplicate or re-apply an orphaned override.
+    scrubProfileId(id);
     set({ profiles });
   },
 

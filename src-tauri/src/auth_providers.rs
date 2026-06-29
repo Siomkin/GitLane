@@ -155,6 +155,10 @@ pub fn account(provider: &str) -> Option<ForgeAccount> {
     fetch_account(provider)
 }
 
+// NOTE: the set of providers handled here must stay in sync with `FORGE_WHOAMI`
+// in `src/store/accounts.ts`, which decides which providers the UI resolves an
+// identity for. Adding a case here without updating that set means the identity
+// never loads in the panel.
 fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     match provider {
         "gitlab" => {

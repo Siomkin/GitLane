@@ -74,9 +74,15 @@ export function selectProfile(
   appliedId?: string | null,
 ): ProfileSelection {
   if (!repoIdentity) return { kind: "default" };
+  // Honor the applied profile only while it's still *compatible* with the repo's
+  // current git config — i.e. the author name still matches. git config is the
+  // source of truth, so an external `git config user.name …` change must surface
+  // as a different profile / unmanaged rather than masquerading as the old one.
+  // Email & signing may still diverge per-repo (reported via the custom flags).
   const applied = appliedId ? profiles.find((p) => p.id === appliedId) : undefined;
+  const compatible = applied && applied.name === repoIdentity.name ? applied : undefined;
   const match =
-    applied ??
+    compatible ??
     profiles.find((p) => p.name === repoIdentity.name && p.email === repoIdentity.email) ??
     profiles.find((p) => p.name === repoIdentity.name);
   if (match) {

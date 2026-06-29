@@ -56,6 +56,14 @@ describe("selectProfile", () => {
     });
   });
 
+  it("ignores a stale applied id when the repo's git identity no longer matches it", () => {
+    // appliedId points to Work, but user.name was changed externally → unmanaged,
+    // not masquerading as Work (git config is the source of truth).
+    expect(selectProfile({ name: "Outside Tool", email: "ext@x.dev" }, profiles, "p2")).toEqual({
+      kind: "unmanaged",
+    });
+  });
+
   it("prefers the applied profile id over name matching (duplicate names + custom email)", () => {
     const dupA: GitProfile = { id: "a", label: "Work", name: "Sam Same", email: "work@x.dev", color: "#1" };
     const dupB: GitProfile = { id: "b", label: "Personal", name: "Sam Same", email: "home@x.dev", color: "#2" };
