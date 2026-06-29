@@ -62,10 +62,27 @@ export interface RepoSummary {
   detached: boolean;
 }
 
-/** Commit identity (name + email) pinned for a repo. */
+/** Commit identity pinned for a repo: name + email, plus optional signing
+ * config. Only the signing *reference* (GPG key id or SSH key path/literal) is
+ * ever carried here — never a passphrase or private key. */
 export interface RepoIdentity {
   name: string;
   email: string;
+  /** `user.signingkey` pinned locally, if any. */
+  signingKey?: string;
+  /** `gpg.format` — "openpgp" or "ssh". */
+  gpgFormat?: string;
+  /** `commit.gpgsign` pinned locally, if any. */
+  gpgSign?: boolean;
+}
+
+/** Optional signing config for {@link api.setRepoIdentity}. Tri-state per field
+ * on the Rust side: omitted/`undefined` leaves the local key untouched, an
+ * empty string unsets it, a value writes it. */
+export interface RepoSigningConfig {
+  signingKey?: string;
+  gpgFormat?: string;
+  gpgSign?: boolean;
 }
 
 /** Presence + current branch of a recently-opened repo path (see Rust
@@ -689,13 +706,26 @@ export const gitApi = {
    * `branch`'s upstream in the same git push. */
   publishBranch: (path: string, branch: string, upstream: string, account?: GithubAccountRef | null) =>
     invoke<string>("publish_branch", { path, branch, upstream, account: account ?? null }),
-  /** Write the bound account's identity into the repo's local git config. */
-  setRepoIdentity: (path: string, name: string, email: string) =>
-    invoke<string>("set_repo_identity", { path, name, email }),
+  /** Write a commit identity into the repo's local git config. `signing` is
+   * optional; when given, its fields apply per-key (empty string unsets). */
+  setRepoIdentity: (path: string, name: string, email: string, signing?: RepoSigningConfig) =>
+    invoke<string>("set_repo_identity", {
+      path,
+      name,
+      email,
+      signingKey: signing?.signingKey,
+      gpgFormat: signing?.gpgFormat,
+      gpgSign: signing?.gpgSign,
+    }),
 
   /** Read the identity pinned in the repo's local git config (the durable,
    * build-independent source of truth). `null` = nothing pinned locally. */
   repoIdentity: (path: string) => invoke<RepoIdentity | null>("repo_identity", { path }),
+
+  /** The default commit identity from global git config — the fallback git uses
+   * when nothing is pinned locally. Powers the "Default git identity" profile
+   * option. `null` when no global name/email is set. */
+  defaultGitIdentity: () => invoke<RepoIdentity | null>("default_git_identity"),
 
   /** Remove the pinned identity from local git config (defer to global). */
   clearRepoIdentity: (path: string) => invoke<string>("clear_repo_identity", { path }),

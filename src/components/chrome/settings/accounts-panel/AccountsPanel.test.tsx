@@ -1,0 +1,109 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+const openUrl = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
+
+import type { ForgeAuthStatus } from "@/lib/api";
+import { useAccounts, type Account } from "@/store/accounts";
+import { AccountsPanel } from "./AccountsPanel";
+
+const ghAccount: Account = {
+  id: "gh:github.com:1",
+  forge: "GitHub",
+  provider: "gh",
+  host: "github.com",
+  accountId: "1",
+  login: "octocat",
+  label: "octocat",
+  username: "octocat",
+  name: "Octo Cat",
+  email: "octo@example.com",
+  color: "#5b8def",
+  ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+  active: true,
+};
+
+const gitlabMissing: ForgeAuthStatus = {
+  provider: "gitlab",
+  forge: "GitLab",
+  cli: "glab",
+  authMethod: "GitLab CLI",
+  available: false,
+  authenticated: null,
+  loginCommand: "glab auth login",
+  docsUrl: "https://gitlab.com/gitlab-org/cli",
+  notes: "PR features are not implemented for GitLab.",
+};
+const bitbucketManual: ForgeAuthStatus = {
+  provider: "bitbucket",
+  forge: "Bitbucket",
+  cli: null,
+  authMethod: "API token or git credential helper",
+  available: false,
+  authenticated: null,
+  loginCommand: "Create a Bitbucket API token.",
+  docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
+  notes: "Auth metadata only.",
+};
+
+beforeEach(() => {
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue([]);
+  openUrl.mockReset();
+  useAccounts.setState({
+    accounts: [ghAccount],
+    accountsLoading: false,
+    accountsError: null,
+    forgeAuth: [gitlabMissing, bitbucketManual],
+    forgeAuthError: null,
+  });
+});
+
+describe("AccountsPanel (add-account model)", () => {
+  it("frames accounts as optional and shows connected GitHub with PRs enabled", () => {
+    render(<AccountsPanel />);
+    expect(screen.getByText(/enable pull requests/i)).toBeInTheDocument();
+    expect(screen.getByText("@octocat")).toBeInTheDocument();
+    expect(screen.getByText("PRs enabled")).toBeInTheDocument();
+  });
+
+  it("does not render a permanent card for un-added providers (GitLab only appears via Add account)", () => {
+    render(<AccountsPanel />);
+    // GitLab is not shown until the user opens the picker.
+    expect(screen.queryByText("GitLab")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
+    expect(screen.getByText("GitLab")).toBeInTheDocument();
+    expect(screen.getByText("Bitbucket")).toBeInTheDocument();
+  });
+
+  it("shows the install step for a provider whose CLI is missing", () => {
+    // In jsdom (non-Tauri) external links fall back to window.open.
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
+    fireEvent.click(screen.getByText("GitLab"));
+    expect(screen.getByText("Install the glab CLI")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Install glab" }));
+    expect(openSpy).toHaveBeenCalledWith("https://gitlab.com/gitlab-org/cli", "_blank", "noopener");
+    openSpy.mockRestore();
+  });
+
+  it("shows the actionable API-token walkthrough for Bitbucket", () => {
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
+    fireEvent.click(screen.getByText("Bitbucket"));
+    expect(screen.getByText("Connect with an API token")).toBeInTheDocument();
+    // Concrete steps: the credential-helper command and the prompt fields.
+    expect(screen.getByText("git config --global credential.helper osxkeychain")).toBeInTheDocument();
+    expect(screen.getByText("your API token")).toBeInTheDocument();
+  });
+
+  it("leads with an Add-account empty state when there are no accounts", () => {
+    useAccounts.setState({ accounts: [] });
+    render(<AccountsPanel />);
+    expect(screen.getByText("No accounts yet")).toBeInTheDocument();
+  });
+});

@@ -50,9 +50,11 @@ const PROVIDERS: &[ProviderSpec] = &[
         forge: "Bitbucket",
         cli: None,
         status_args: &[],
-        auth_method: "App password or git credential helper",
-        login_command: "Create a Bitbucket app password and let git store it through your credential helper.",
-        docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/app-passwords/",
+        auth_method: "API token or git credential helper",
+        login_command: "Create a Bitbucket API token and let git store it through your credential helper.",
+        // Atlassian deprecated Bitbucket app passwords; the app-passwords doc now
+        // redirects here, and API tokens are the supported replacement.
+        docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
         notes: "Bitbucket has no bundled CLI probe in GitLane yet. Auth metadata only; PR features are not implemented.",
         require_output: false,
     },
@@ -63,7 +65,10 @@ const PROVIDERS: &[ProviderSpec] = &[
         status_args: &["account", "show", "--output", "none"],
         auth_method: "Azure CLI",
         login_command: "az login && az devops login",
-        docs_url: "https://learn.microsoft.com/en-us/azure/devops/cli/",
+        // The connect path's first step is installing `az`, so point at the
+        // Azure CLI install guide rather than the Azure DevOps CLI extension docs.
+        // Locale-less URL — Learn redirects to the visitor's locale.
+        docs_url: "https://learn.microsoft.com/cli/azure/install-azure-cli?view=azure-cli-latest",
         notes: "Uses Azure CLI sign-in as the auth signal. Azure DevOps PR features are not implemented.",
         require_output: false,
     },

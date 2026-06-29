@@ -141,6 +141,18 @@ pub struct RepoForge {
 pub struct RepoIdentity {
     pub name: String,
     pub email: String,
+    /// `user.signingkey` pinned locally — a GPG key id or an SSH key path /
+    /// literal. The passphrase / private key never lives here: only the
+    /// reference, unlocked at use time by ssh-agent / gpg-agent / the OS
+    /// keychain. Omitted from JSON when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signing_key: Option<String>,
+    /// `gpg.format` — "openpgp" or "ssh" — pinned locally, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpg_format: Option<String>,
+    /// `commit.gpgsign` pinned locally, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpg_sign: Option<bool>,
 }
 
 /// A linked worktree entry for the sidebar's WORKTREES group.

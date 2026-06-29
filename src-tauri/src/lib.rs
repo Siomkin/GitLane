@@ -855,13 +855,35 @@ async fn create_pull_request(
 }
 
 #[tauri::command]
-async fn set_repo_identity(path: String, name: String, email: String) -> Result<String, String> {
-    blocking(move || git::write::set_repo_identity(&path, &name, &email)).await
+async fn set_repo_identity(
+    path: String,
+    name: String,
+    email: String,
+    signing_key: Option<String>,
+    gpg_format: Option<String>,
+    gpg_sign: Option<bool>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::set_repo_identity(
+            &path,
+            &name,
+            &email,
+            signing_key.as_deref(),
+            gpg_format.as_deref(),
+            gpg_sign,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
 fn repo_identity(path: String) -> Result<Option<RepoIdentity>, String> {
     git::read::repo_identity(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn default_git_identity() -> Option<RepoIdentity> {
+    git::read::default_identity()
 }
 
 #[tauri::command]
@@ -1173,6 +1195,7 @@ pub fn run() {
             create_pull_request,
             set_repo_identity,
             repo_identity,
+            default_git_identity,
             clear_repo_identity,
             clone_repo,
             cancel_clone,

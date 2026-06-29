@@ -3,12 +3,13 @@ use super::operands::ensure_operand;
 use super::remotes::is_tag_clobber_rejection;
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, continue_operation,
-    delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, clear_repo_identity,
+    continue_operation, delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
-    reflog_entries, resolve_conflict_file, set_upstream, skip_operation,
+    reflog_entries, resolve_conflict_file, set_repo_identity, set_upstream, skip_operation,
 };
+use crate::git::read::repo_identity;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -71,6 +72,89 @@ impl Drop for TempRepo {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+#[test]
+fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
+    let repo = TempRepo::new("identity-signing");
+    repo.git_ok(&["init", "-q"]);
+
+    // Apply a profile that signs: name/email + signing key, format and gpgsign.
+    set_repo_identity(
+        repo.path(),
+        "Work Dev",
+        "work@example.test",
+        Some("ABCD1234"),
+        Some("openpgp"),
+        Some(true),
+    )
+    .expect("set identity with signing");
+
+    let id = repo_identity(repo.path())
+        .expect("read identity")
+        .expect("identity present");
+    assert_eq!(id.name, "Work Dev");
+    assert_eq!(id.email, "work@example.test");
+    assert_eq!(id.signing_key.as_deref(), Some("ABCD1234"));
+    assert_eq!(id.gpg_format.as_deref(), Some("openpgp"));
+    assert_eq!(id.gpg_sign, Some(true));
+
+    // `None` leaves signing untouched — the legacy name/email editor must not
+    // wipe a key the user (or a prior profile) set.
+    set_repo_identity(repo.path(), "Work Dev", "work@example.test", None, None, None)
+        .expect("re-save name/email only");
+    let id = repo_identity(repo.path()).unwrap().unwrap();
+    assert_eq!(
+        id.signing_key.as_deref(),
+        Some("ABCD1234"),
+        "None must not disturb existing signing"
+    );
+    assert_eq!(id.gpg_sign, Some(true));
+
+    // Switching to a no-signing profile: empty string unsets the key/format,
+    // gpgsign=false is written (so signing is explicitly off, not inherited).
+    set_repo_identity(
+        repo.path(),
+        "Solo",
+        "solo@example.test",
+        Some(""),
+        Some(""),
+        Some(false),
+    )
+    .expect("apply no-signing profile");
+    let id = repo_identity(repo.path()).unwrap().unwrap();
+    assert_eq!(id.signing_key, None, "empty signing key unsets it");
+    assert_eq!(id.gpg_format, None, "empty gpg.format unsets it");
+    assert_eq!(id.gpg_sign, Some(false), "gpgSign=false is written, not unset");
+}
+
+#[test]
+fn clear_repo_identity_removes_name_email_and_signing() {
+    let repo = TempRepo::new("identity-clear");
+    repo.git_ok(&["init", "-q"]);
+    set_repo_identity(
+        repo.path(),
+        "Work",
+        "work@example.test",
+        Some("KEY1"),
+        Some("ssh"),
+        Some(true),
+    )
+    .expect("set identity with signing");
+
+    clear_repo_identity(repo.path()).expect("clear identity");
+
+    // With name/email gone the read returns None; the signing keys are also
+    // unset so a stale key can't outlive the identity it belonged to.
+    assert!(
+        repo_identity(repo.path()).unwrap().is_none(),
+        "identity fully cleared"
+    );
+    let signing = repo.git(&["config", "--local", "--get", "user.signingkey"]);
+    assert!(
+        !signing.status.success(),
+        "user.signingkey should be unset after clear"
+    );
 }
 
 #[test]
