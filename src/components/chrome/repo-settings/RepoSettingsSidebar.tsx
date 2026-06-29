@@ -1,7 +1,7 @@
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
 import type { RepoSettingsSection } from "../../../store/ui";
-import { GitBranchIcon, IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "../../ui/icons";
+import { IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "../../ui/icons";
 
 const NAV: { key: RepoSettingsSection; label: string; Icon: typeof IdCardIcon }[] = [
   { key: "identity", label: "Identity", Icon: IdCardIcon },
@@ -13,13 +13,11 @@ const NAV: { key: RepoSettingsSection; label: string; Icon: typeof IdCardIcon }[
 export const RepoSettingsSidebar = ({
   section,
   repoName,
-  branch,
   onSelect,
   onOpenGlobalSettings,
 }: {
   section: RepoSettingsSection;
   repoName: string;
-  branch: string | null;
   onSelect: (section: RepoSettingsSection) => void;
   onOpenGlobalSettings: () => void;
 }) => (
@@ -78,12 +76,5 @@ export const RepoSettingsSidebar = ({
         </span>
       </button>
     </div>
-
-    {branch && (
-      <div className="flex items-center gap-2 border-t border-black/[0.06] px-5 py-4 text-[12px] text-neutral-400 dark:border-white/[0.07] dark:text-neutral-500">
-        <GitBranchIcon className="h-3.5 w-3.5" />
-        On <span className="font-mono font-medium text-neutral-600 dark:text-neutral-300">{branch}</span>
-      </div>
-    )}
   </div>
 );

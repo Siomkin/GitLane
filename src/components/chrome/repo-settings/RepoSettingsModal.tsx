@@ -41,9 +41,6 @@ export function RepoSettingsModal() {
   if (!open) return null;
 
   const repoName = repoSlug(forge?.webUrl, summary?.workdir);
-  const branch = summary?.detached
-    ? `detached @ ${summary.headOid?.slice(0, 7) ?? "?"}`
-    : summary?.headBranch ?? null;
 
   // The two windows are independent; the "App settings" link hands off to global.
   const goGlobal = () => {
@@ -66,7 +63,6 @@ export function RepoSettingsModal() {
         <RepoSettingsSidebar
           section={section}
           repoName={repoName}
-          branch={branch}
           onSelect={setSection}
           onOpenGlobalSettings={goGlobal}
         />
