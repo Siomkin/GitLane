@@ -198,19 +198,27 @@ const missingModel = (): ProviderPopoverModel => ({
   settings: null,
 });
 
-const errorModel = (): ProviderPopoverModel => ({
-  headerIcon: "warning",
-  headerTone: ROSE,
-  title: "GitHub CLI not found",
-  host: "Provider unavailable",
-  headHref: null,
-  capability: { label: "Error", tone: "text-rose-600 dark:text-rose-400 bg-rose-500/12" },
-  note: "Install the GitHub CLI (gh) to browse pull requests. Push, fetch and pull are unaffected.",
-  primary: { icon: "external", label: "Install gh", suffix: "↗", action: { kind: "open-url", url: "https://cli.github.com" } },
-  githubEyebrow: null,
-  githubLinks: [],
-  settings: null,
-});
+/** GitHub account discovery failed. The cause varies — `gh` not installed, a
+ * version below the capability baseline, or an auth/parse failure — so the copy
+ * stays generic ("unavailable", "install or update") and surfaces the actual
+ * error as the subtitle when one is available, rather than always saying "not
+ * found" / "install". */
+const errorModel = (detail?: string | null): ProviderPopoverModel => {
+  const reason = detail?.trim().replace(/^Error:\s*/i, "");
+  return {
+    headerIcon: "warning",
+    headerTone: ROSE,
+    title: "GitHub CLI unavailable",
+    host: reason || "Provider unavailable",
+    headHref: null,
+    capability: { label: "Error", tone: "text-rose-600 dark:text-rose-400 bg-rose-500/12" },
+    note: "Pull requests need the GitHub CLI (gh). Install or update it to browse them — push, fetch and pull are unaffected.",
+    primary: { icon: "external", label: "Set up gh", suffix: "↗", action: { kind: "open-url", url: "https://cli.github.com" } },
+    githubEyebrow: null,
+    githubLinks: [],
+    settings: null,
+  };
+};
 
 /** Build the popover content for a provider status. GitHub forges show PR +
  * settings shortcuts; recognised non-GitHub forges and unrecognised hosts share
@@ -219,12 +227,15 @@ export const providerPopoverModel = (
   state: ProviderState,
   forge: RepoForge,
   prCount: number,
+  /** The accounts-store error string for the `error` state; surfaced verbatim
+   * (trimmed) so users can tell "install" from "upgrade/refresh". */
+  errorDetail?: string | null,
 ): ProviderPopoverModel => {
   switch (state) {
     case "missing":
       return missingModel();
     case "error":
-      return errorModel();
+      return errorModel(errorDetail);
     case "needs-auth":
       return githubModel(forge, prCount, "needs-auth");
     case "connected":

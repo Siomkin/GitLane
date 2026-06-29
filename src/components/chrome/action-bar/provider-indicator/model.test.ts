@@ -94,11 +94,21 @@ describe("providerPopoverModel", () => {
     expect(m.primary).toMatchObject({ icon: "plus", label: "Add a remote…", action: { kind: "add-remote" } });
   });
 
-  it("error: static rose header, install-gh primary linking to cli.github.com", () => {
+  it("error: static rose header, set-up-gh primary linking to cli.github.com", () => {
     const m = providerPopoverModel("error", forge(), 0);
     expect(m.headerIcon).toBe("warning");
+    expect(m.title).toBe("GitHub CLI unavailable");
     expect(m.headHref).toBeNull();
     expect(m.capability?.label).toBe("Error");
-    expect(m.primary?.action).toEqual({ kind: "open-url", url: "https://cli.github.com" });
+    expect(m.primary).toMatchObject({ label: "Set up gh", action: { kind: "open-url", url: "https://cli.github.com" } });
+  });
+
+  it("error: surfaces the real failure reason as the subtitle (strips an 'Error:' prefix)", () => {
+    const m = providerPopoverModel("error", forge(), 0, "Error: gh version 2.40 is below the 2.95 baseline");
+    expect(m.host).toBe("gh version 2.40 is below the 2.95 baseline");
+  });
+
+  it("error: falls back to a generic subtitle when no detail is given", () => {
+    expect(providerPopoverModel("error", forge(), 0).host).toBe("Provider unavailable");
   });
 });

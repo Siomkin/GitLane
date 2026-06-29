@@ -57,7 +57,7 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
     case "missing":
       return "No remote configured";
     case "error":
-      return "GitHub CLI not found — pull requests unavailable";
+      return "GitHub CLI unavailable — pull requests unavailable";
     case "connected":
       return forge.kind === ForgeKind.GitHub
         ? `${slug} · pull requests enabled`
@@ -77,6 +77,7 @@ export const ProviderIndicator = ({
   state,
   forge,
   prCount,
+  errorDetail,
   className,
   onViewPrs,
   onOpenSettings,
@@ -85,6 +86,8 @@ export const ProviderIndicator = ({
   state: ProviderState;
   forge: RepoForge;
   prCount: number;
+  /** Accounts-store error string, shown in the popover for the `error` state. */
+  errorDetail?: string | null;
   className?: string;
   onViewPrs: () => void;
   onOpenSettings: (tab: SettingsTab) => void;
@@ -107,20 +110,21 @@ export const ProviderIndicator = ({
 
   return (
     <div ref={wrapRef} className={cn("group/repo relative", className)}>
-      {/* Repository-settings shortcut, revealed on hover or keyboard focus (sits
-          left of the button). Hidden-but-focusable so Tab can still reach it; it
-          reveals itself on focus-visible so keyboard users can see what they
-          focused. The footer "Repository settings…" is the always-visible path. */}
+      {/* Repository-settings shortcut — a pointer-only affordance revealed on
+          hover (the design's slide-in link). It's aria-hidden and out of the tab
+          order: keyboard and screen-reader users reach the same action via the
+          popover's "Repository settings…" item, so there's no invisible
+          focusable control to land on. */}
       <button
         type="button"
+        tabIndex={-1}
+        aria-hidden="true"
         onClick={() => onOpenSettings("repo")}
         title="Repository settings — identity & remotes for this repo"
         className={cn(
           "pointer-events-none absolute right-full top-1/2 h-8 -translate-y-1/2 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium text-neutral-600 opacity-0 transition-opacity duration-150 ease-out",
           "hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100",
           "group-hover/repo:pointer-events-auto group-hover/repo:opacity-100",
-          "focus-visible:pointer-events-auto focus-visible:opacity-100",
-          focusRing,
         )}
       >
         Repo settings
@@ -153,7 +157,7 @@ export const ProviderIndicator = ({
 
       {open && (
         <ProviderPopover
-          model={providerPopoverModel(state, forge, prCount)}
+          model={providerPopoverModel(state, forge, prCount, errorDetail)}
           onViewPrs={onViewPrs}
           onOpenSettings={onOpenSettings}
           onClose={close}

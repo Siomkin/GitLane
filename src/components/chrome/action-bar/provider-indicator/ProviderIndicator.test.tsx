@@ -102,10 +102,20 @@ describe("ProviderIndicator", () => {
     expect(screen.getByText("Add a remote…")).toBeInTheDocument();
   });
 
-  it("error: install-gh primary opens the gh CLI page in the browser", () => {
-    const { toggle } = renderIndicator("error");
-    fireEvent.click(toggle);
-    fireEvent.click(screen.getByText("Install gh"));
+  it("error: shows the failure reason and the set-up-gh primary opens the gh CLI page", () => {
+    render(
+      <ProviderIndicator
+        state="error"
+        forge={GH}
+        prCount={0}
+        errorDetail="gh: command not found"
+        onViewPrs={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /remote provider/i }));
+    expect(screen.getByText("gh: command not found")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Set up gh"));
     expect(openUrlMock).toHaveBeenCalledWith("https://cli.github.com");
   });
 

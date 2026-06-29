@@ -263,6 +263,7 @@ export const ActionBar = ({
             state={providerState}
             forge={forge}
             prCount={prCount}
+            errorDetail={accountsError}
             onViewPrs={() => selectTab("pulls")}
             onOpenSettings={openSettings}
             onOpen={closeNav}
