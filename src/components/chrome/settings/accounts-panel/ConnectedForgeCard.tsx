@@ -5,7 +5,7 @@
 // identity (username/email) for these is the GL-27 follow-up (provider whoami).
 
 import type { ForgeAuthStatus } from "../../../../lib/api";
-import { providerInitials } from "./providers";
+import { accountHandle, providerInitials } from "./providers";
 
 export function ConnectedForgeCard({ status }: { status: ForgeAuthStatus }) {
   return (
@@ -16,7 +16,7 @@ export function ConnectedForgeCard({ status }: { status: ForgeAuthStatus }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">
-            {status.account ? `@${status.account.username}` : status.forge}
+            {status.account ? accountHandle(status.account) : status.forge}
           </span>
           {status.account && (
             <span className="text-[11px] text-neutral-400 dark:text-neutral-500">{status.forge}</span>

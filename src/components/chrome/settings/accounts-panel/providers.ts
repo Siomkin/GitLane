@@ -3,7 +3,7 @@
 // user picks it — so this maps a provider to "what's the next step" without the
 // panel rendering a permanent card per provider. No React/IPC here.
 
-import type { ForgeAuthProvider, ForgeAuthStatus } from "../../../../lib/api";
+import type { ForgeAccount, ForgeAuthProvider, ForgeAuthStatus } from "../../../../lib/api";
 
 export type ProviderKey = "github" | ForgeAuthProvider;
 
@@ -45,4 +45,10 @@ export function providerInitials(name: string): string {
 /** Short capability hint shown beside each provider in the picker. */
 export function capabilityHint(meta: ProviderMeta): string {
   return meta.prSupported ? "Full support" : "Auth only — no PRs yet";
+}
+
+/** Display form for a forge account: `@handle` for handle-style identities,
+ * the raw value for email/UPN-style ones (e.g. Azure's AAD account). */
+export function accountHandle(account: ForgeAccount): string {
+  return account.username.includes("@") ? account.username : `@${account.username}`;
 }

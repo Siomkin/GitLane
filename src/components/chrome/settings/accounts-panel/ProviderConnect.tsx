@@ -9,7 +9,7 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { isTauri } from "../../../../lib/platform";
 import type { ForgeAuthStatus } from "../../../../lib/api";
-import { connectState, providerInitials, type ProviderMeta } from "./providers";
+import { accountHandle, connectState, providerInitials, type ProviderMeta } from "./providers";
 import { CopyCommand } from "./CopyCommand";
 
 function openExternal(url: string) {
@@ -242,7 +242,7 @@ function ForgeConnect({ status, refresh }: { status: ForgeAuthStatus; refresh: R
   if (state === "prunsupported") {
     return (
       <StateBlock
-        title={status.account ? `Signed in as @${status.account.username}` : `Signed in to ${cli}`}
+        title={status.account ? `Signed in as ${accountHandle(status.account)}` : `Signed in to ${cli}`}
         body={
           <>
             You’re authenticated, but <span className="font-medium text-neutral-700 dark:text-neutral-200">pull

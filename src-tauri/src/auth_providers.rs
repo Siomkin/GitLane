@@ -156,11 +156,17 @@ fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     match provider {
         "gitlab" => {
             let out = run_bounded("glab", &["api", "user"])?;
-            if !out.status.success() {
-                return None;
-            }
+            out.status.success().then(|| ())?;
             parse_gitlab_user(&String::from_utf8_lossy(&out.stdout))
         }
+        "azure-devops" => {
+            let out = run_bounded("az", &["account", "show", "--output", "json"])?;
+            out.status.success().then(|| ())?;
+            parse_azure_account(&String::from_utf8_lossy(&out.stdout))
+        }
+        // Gitea/Forgejo (`tea`) have no whoami that exposes the username without
+        // reading tea's token-bearing config, which we won't do. They fall back
+        // to a provider-level "signed in" label. Bitbucket has no CLI.
         _ => None,
     }
 }
@@ -182,6 +188,28 @@ fn parse_gitlab_user(json: &str) -> Option<ForgeAccount> {
     Some(ForgeAccount {
         username: user.username,
         name: user.name.filter(|s| !s.is_empty()),
+    })
+}
+
+#[derive(Deserialize)]
+struct AzAccount {
+    user: AzUser,
+}
+#[derive(Deserialize)]
+struct AzUser {
+    name: String,
+}
+
+/// Parse `az account show` JSON into a `ForgeAccount`. `user.name` is the signed
+/// in Azure (AAD) identity — an email / UPN rather than a handle.
+fn parse_azure_account(json: &str) -> Option<ForgeAccount> {
+    let account: AzAccount = serde_json::from_str(json).ok()?;
+    if account.user.name.is_empty() {
+        return None;
+    }
+    Some(ForgeAccount {
+        username: account.user.name,
+        name: None,
     })
 }
 
@@ -286,5 +314,16 @@ mod tests {
         assert_eq!(minimal.name, None);
         assert!(parse_gitlab_user(r#"{"username":""}"#).is_none());
         assert!(parse_gitlab_user("not json").is_none());
+    }
+
+    #[test]
+    fn parses_az_account_user() {
+        let json = r#"{"id":"sub-guid","name":"My Sub","user":{"name":"alex@contoso.com","type":"user"}}"#;
+        let account = parse_azure_account(json).expect("account parsed");
+        assert_eq!(account.username, "alex@contoso.com");
+        assert_eq!(account.name, None);
+
+        assert!(parse_azure_account(r#"{"user":{"name":""}}"#).is_none());
+        assert!(parse_azure_account(r#"{"id":"x"}"#).is_none());
     }
 }

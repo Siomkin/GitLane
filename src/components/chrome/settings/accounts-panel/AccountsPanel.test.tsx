@@ -127,4 +127,23 @@ describe("AccountsPanel (add-account model)", () => {
     expect(screen.getByText("@ada")).toBeInTheDocument();
     expect(screen.getByText("Auth only — no PRs")).toBeInTheDocument();
   });
+
+  it("shows an email/UPN identity (Azure) as-is, not as a double-@ handle", () => {
+    const azureAuthed: ForgeAuthStatus = {
+      provider: "azure-devops",
+      forge: "Azure DevOps",
+      cli: "az",
+      authMethod: "Azure CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "az login && az devops login",
+      docsUrl: "https://learn.microsoft.com/cli/azure/install-azure-cli",
+      notes: "Azure DevOps PR features are not implemented.",
+      account: { username: "alex@contoso.com" },
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [azureAuthed] });
+    render(<AccountsPanel />);
+    expect(screen.getByText("alex@contoso.com")).toBeInTheDocument();
+    expect(screen.queryByText("@alex@contoso.com")).not.toBeInTheDocument();
+  });
 });
