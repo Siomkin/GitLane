@@ -130,11 +130,6 @@ fn status_for(
         }
         None => (false, None),
     };
-    // Only ask the provider who it is when it's actually signed in.
-    let account = match authenticated {
-        Some(true) => fetch_account(spec.provider),
-        _ => None,
-    };
     ForgeAuthStatus {
         provider: spec.provider.to_string(),
         forge: spec.forge.to_string(),
@@ -145,13 +140,21 @@ fn status_for(
         login_command: spec.login_command.to_string(),
         docs_url: spec.docs_url.to_string(),
         notes: spec.notes.to_string(),
-        account,
+        // Account identity is resolved separately (a network whoami) so the
+        // status probe stays fast and the UI can skeleton the identity. See
+        // `account()` / the `forge_account` command.
+        account: None,
     }
 }
 
 /// Fetch the signed-in account for an authenticated provider via its CLI whoami.
-/// Best-effort and provider-specific (only GitLab today); `None` means we can't
-/// resolve it, and the UI falls back to a provider-level "signed in" label.
+/// Best-effort and provider-specific (GitLab + Azure today); `None` means we
+/// can't resolve it, and the UI falls back to a provider-level "signed in"
+/// label. This is the slow, network-touching part — kept out of `statuses()`.
+pub fn account(provider: &str) -> Option<ForgeAccount> {
+    fetch_account(provider)
+}
+
 fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     match provider {
         "gitlab" => {

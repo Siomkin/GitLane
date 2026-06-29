@@ -59,6 +59,7 @@ beforeEach(() => {
     accountsError: null,
     forgeAuth: [gitlabMissing, bitbucketManual],
     forgeAuthError: null,
+    forgeAccountsLoading: [],
   });
 });
 
@@ -126,6 +127,26 @@ describe("AccountsPanel (add-account model)", () => {
     expect(screen.queryByText("No accounts yet")).not.toBeInTheDocument();
     expect(screen.getByText("@ada")).toBeInTheDocument();
     expect(screen.getByText("Auth only — no PRs")).toBeInTheDocument();
+  });
+
+  it("shows the forge card immediately with an identity skeleton while it resolves", () => {
+    const gitlabAuthed: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "https://gitlab.com/gitlab-org/cli",
+      notes: "PR features are not implemented for GitLab.",
+      // No account yet — whoami still in flight.
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed], forgeAccountsLoading: ["gitlab"] });
+    render(<AccountsPanel />);
+    // The card is visible right away (auth known) with a loading identity.
+    expect(screen.getByText("GitLab")).toBeInTheDocument();
+    expect(screen.getByText("Resolving account…")).toBeInTheDocument();
   });
 
   it("shows an email/UPN identity (Azure) as-is, not as a double-@ handle", () => {

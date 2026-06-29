@@ -17,7 +17,8 @@ use watcher::WatcherState;
 
 use git::types::{
     BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame, FileChange,
-    FileDiff, FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus,
+    FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
+    OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
     RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
@@ -695,6 +696,11 @@ async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
     blocking(|| Ok(auth_providers::statuses())).await
 }
 
+#[tauri::command]
+async fn forge_account(provider: String) -> Result<Option<ForgeAccount>, String> {
+    blocking(move || Ok(auth_providers::account(&provider))).await
+}
+
 /// Detect the open repo's remote forge for the toolbar provider indicator.
 /// A cheap synchronous libgit2 read of the configured remotes (no network, no
 /// auth probing) — kept sync like the other `read.rs`-style reads; only
@@ -1187,6 +1193,7 @@ pub fn run() {
             publish_branch,
             github_accounts,
             forge_auth_statuses,
+            forge_account,
             repo_forge,
             list_pull_requests,
             pull_request_detail,

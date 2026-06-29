@@ -29,6 +29,9 @@ export interface ForgeAuthStatus {
 }
 
 export const providersApi = {
-  /** Auth-only status for non-GitHub forge providers. No PR support implied. */
+  /** Auth-only status for non-GitHub forge providers (fast; no identity). */
   forgeAuthStatuses: () => invoke<ForgeAuthStatus[]>("forge_auth_statuses"),
+  /** Resolve the signed-in account for one provider (a network whoami; slow). */
+  forgeAccount: (provider: ForgeAuthProvider) =>
+    invoke<ForgeAccount | null>("forge_account", { provider }),
 };

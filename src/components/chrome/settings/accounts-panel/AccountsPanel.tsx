@@ -21,6 +21,7 @@ export function AccountsPanel() {
   const accountsLoading = useAccounts((s) => s.accountsLoading);
   const accountsError = useAccounts((s) => s.accountsError);
   const forgeAuth = useAccounts((s) => s.forgeAuth);
+  const forgeAccountsLoading = useAccounts((s) => s.forgeAccountsLoading);
   const loadAccounts = useAccounts((s) => s.loadAccounts);
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   const setSettingsTab = useUi((s) => s.setSettingsTab);
@@ -130,7 +131,11 @@ export function AccountsPanel() {
               <ConnectedAccountCard key={account.id} account={account} />
             ))}
             {connectedForges.map((status) => (
-              <ConnectedForgeCard key={status.provider} status={status} />
+              <ConnectedForgeCard
+                key={status.provider}
+                status={status}
+                loading={forgeAccountsLoading.includes(status.provider)}
+              />
             ))}
           </div>
         )}

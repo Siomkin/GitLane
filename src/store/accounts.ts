@@ -124,6 +124,9 @@ interface AccountsState {
   forgeAuth: ForgeAuthStatus[];
   forgeAuthLoading: boolean;
   forgeAuthError: string | null;
+  /** Providers whose real account identity is still being resolved (whoami in
+   * flight) — the connected forge card shows an identity skeleton meanwhile. */
+  forgeAccountsLoading: string[];
   /** The `gh` active account — the default identity for unbound repos. */
   activeAccountId: string | null;
   /** The account bound to the currently open repo (its id/username). */
@@ -158,6 +161,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   forgeAuth: [],
   forgeAuthLoading: false,
   forgeAuthError: null,
+  forgeAccountsLoading: [],
   activeAccountId: null,
   repoAccountId: null,
   repoAccountRef: null,
@@ -206,9 +210,30 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     set({ forgeAuthLoading: true, forgeAuthError: null });
     try {
       const next = await api.forgeAuthStatuses();
-      set({ forgeAuth: next, forgeAuthLoading: false });
+      // Show the authenticated forges immediately; their real identity resolves
+      // in the background (a per-provider network whoami) so the card can render
+      // now with an identity skeleton instead of blocking on the slow call.
+      const pending = next.filter((f) => f.authenticated === true).map((f) => f.provider);
+      set({ forgeAuth: next, forgeAuthLoading: false, forgeAccountsLoading: pending });
+      for (const provider of pending) {
+        void api
+          .forgeAccount(provider)
+          .then((account) => {
+            set((s) => ({
+              forgeAuth: account
+                ? s.forgeAuth.map((f) => (f.provider === provider ? { ...f, account } : f))
+                : s.forgeAuth,
+              forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider),
+            }));
+          })
+          .catch(() => {
+            set((s) => ({
+              forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider),
+            }));
+          });
+      }
     } catch (e) {
-      set({ forgeAuthLoading: false, forgeAuthError: String(e) });
+      set({ forgeAuthLoading: false, forgeAuthError: String(e), forgeAccountsLoading: [] });
     }
   },
 

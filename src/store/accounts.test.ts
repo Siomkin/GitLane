@@ -72,3 +72,43 @@ describe("durable 'No account' across repo reopen", () => {
     expect(useAccounts.getState().repoAccountId).toBe(account.id);
   });
 });
+
+describe("loadForgeAuth — fast auth, background identity", () => {
+  it("lists authenticated forges immediately, then merges the resolved account", async () => {
+    // Keep the whoami pending so the intermediate "resolving" state is observable.
+    let resolveAccount!: (v: { username: string } | null) => void;
+    const pending = new Promise<{ username: string } | null>((r) => {
+      resolveAccount = r;
+    });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "forge_auth_statuses") {
+        return [
+          {
+            provider: "gitlab",
+            forge: "GitLab",
+            cli: "glab",
+            authMethod: "GitLab CLI",
+            available: true,
+            authenticated: true,
+            loginCommand: "glab auth login",
+            docsUrl: "x",
+            notes: "y",
+          },
+        ];
+      }
+      if (cmd === "forge_account") return pending;
+      return null;
+    });
+    useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
+
+    await useAccounts.getState().loadForgeAuth(true);
+    // Immediately after: the forge is known and marked as resolving, no account yet.
+    expect(useAccounts.getState().forgeAccountsLoading).toEqual(["gitlab"]);
+    expect(useAccounts.getState().forgeAuth[0].account).toBeUndefined();
+
+    // Once the background whoami resolves it merges into the matching entry.
+    resolveAccount({ username: "ada" });
+    await vi.waitFor(() => expect(useAccounts.getState().forgeAccountsLoading).toEqual([]));
+    expect(useAccounts.getState().forgeAuth[0].account).toEqual({ username: "ada" });
+  });
+});
