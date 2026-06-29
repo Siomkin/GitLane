@@ -154,6 +154,14 @@ interface AccountsState {
   setRepoAccount: (id: string | null) => Promise<void>;
 }
 
+// Providers GitLane can resolve a real account for (whoami implemented in Rust).
+// Others (Gitea/Forgejo) would only make a no-op round-trip and flash a skeleton.
+const FORGE_WHOAMI = new Set(["gitlab", "azure-devops"]);
+// Monotonic load generation. A background whoami started by an older
+// loadForgeAuth is dropped (not merged) once a newer load supersedes it, so a
+// stale identity can't land on a refreshed / signed-out provider row.
+let forgeAuthGen = 0;
+
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
   accountsLoading: false,
@@ -207,32 +215,43 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const { forgeAuthLoading, forgeAuth } = get();
     if (forgeAuthLoading) return;
     if (!force && forgeAuth.length > 0) return;
+    const gen = ++forgeAuthGen;
     set({ forgeAuthLoading: true, forgeAuthError: null });
     try {
       const next = await api.forgeAuthStatuses();
+      if (gen !== forgeAuthGen) return; // superseded by a newer load
       // Show the authenticated forges immediately; their real identity resolves
       // in the background (a per-provider network whoami) so the card can render
-      // now with an identity skeleton instead of blocking on the slow call.
-      const pending = next.filter((f) => f.authenticated === true).map((f) => f.provider);
+      // now with an identity skeleton instead of blocking on the slow call. Only
+      // providers with a whoami implementation are marked pending.
+      const pending = next
+        .filter((f) => f.authenticated === true && FORGE_WHOAMI.has(f.provider))
+        .map((f) => f.provider);
       set({ forgeAuth: next, forgeAuthLoading: false, forgeAccountsLoading: pending });
       for (const provider of pending) {
+        const done = () =>
+          set((s) => ({ forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider) }));
         void api
           .forgeAccount(provider)
           .then((account) => {
+            if (gen !== forgeAuthGen) return; // a newer refresh replaced this snapshot
             set((s) => ({
+              // Only merge onto a row that is still this provider AND still
+              // authenticated — a refresh may have signed it out meanwhile.
               forgeAuth: account
-                ? s.forgeAuth.map((f) => (f.provider === provider ? { ...f, account } : f))
+                ? s.forgeAuth.map((f) =>
+                    f.provider === provider && f.authenticated ? { ...f, account } : f,
+                  )
                 : s.forgeAuth,
               forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider),
             }));
           })
           .catch(() => {
-            set((s) => ({
-              forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider),
-            }));
+            if (gen === forgeAuthGen) done();
           });
       }
     } catch (e) {
+      if (gen !== forgeAuthGen) return;
       set({ forgeAuthLoading: false, forgeAuthError: String(e), forgeAccountsLoading: [] });
     }
   },

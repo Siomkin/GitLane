@@ -55,6 +55,17 @@ describe("selectProfile", () => {
       kind: "unmanaged",
     });
   });
+
+  it("prefers the applied profile id over name matching (duplicate names + custom email)", () => {
+    const dupA: GitProfile = { id: "a", label: "Work", name: "Sam Same", email: "work@x.dev", color: "#1" };
+    const dupB: GitProfile = { id: "b", label: "Personal", name: "Sam Same", email: "home@x.dev", color: "#2" };
+    const dups = [dupA, dupB];
+    const custom = { name: "Sam Same", email: "custom@x.dev" };
+    // Without an applied id, the name-only fallback picks the first (dupA) — ambiguous.
+    expect(selectProfile(custom, dups)).toMatchObject({ kind: "profile", id: "a", customEmail: true });
+    // With the applied id, the correct profile (dupB) is selected.
+    expect(selectProfile(custom, dups, "b")).toMatchObject({ kind: "profile", id: "b", customEmail: true });
+  });
 });
 
 describe("profileInitials", () => {

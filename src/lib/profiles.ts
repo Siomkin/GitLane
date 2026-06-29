@@ -62,19 +62,23 @@ function sameSigning(
 }
 
 /** Resolve which profile (if any) the repo's pinned identity corresponds to.
- * Matched by author name (email/signing are allowed to diverge per-repo and are
- * reported via `customEmail` / `customSigning`). A name+email exact hit is
- * preferred so duplicate-name profiles disambiguate by email. `null` identity →
- * the default option; no name match → unmanaged. */
+ * `appliedId` (the profile explicitly applied to this repo, persisted by id) is
+ * preferred so duplicate git names — and custom emails that no longer match any
+ * saved email — stay unambiguous. Without it, fall back to a name+email exact
+ * hit, then name only. `null` identity → the default option; no match →
+ * unmanaged. Email/signing divergence is reported via `customEmail` /
+ * `customSigning`. */
 export function selectProfile(
   repoIdentity: RepoIdentity | null,
   profiles: GitProfile[],
+  appliedId?: string | null,
 ): ProfileSelection {
   if (!repoIdentity) return { kind: "default" };
-  const byEmail = profiles.find(
-    (p) => p.name === repoIdentity.name && p.email === repoIdentity.email,
-  );
-  const match = byEmail ?? profiles.find((p) => p.name === repoIdentity.name);
+  const applied = appliedId ? profiles.find((p) => p.id === appliedId) : undefined;
+  const match =
+    applied ??
+    profiles.find((p) => p.name === repoIdentity.name && p.email === repoIdentity.email) ??
+    profiles.find((p) => p.name === repoIdentity.name);
   if (match) {
     return {
       kind: "profile",

@@ -26,6 +26,10 @@ const LS_PROFILES = "gitlane.profiles";
 // regression: re-applying a profile restores the email you edited, instead of
 // silently overwriting it with the profile default.
 const LS_CUSTOM_EMAIL = "gitlane.repoProfileEmail";
+// The profile explicitly applied to a repo, by stable id: { [repoPath]: id }.
+// This is the source of truth for "which profile is selected" so duplicate git
+// names and custom emails never make the panel show/mutate the wrong profile.
+const LS_REPO_PROFILE = "gitlane.repoProfile";
 
 function readJsonMap<T>(key: string): Record<string, T> {
   try {
@@ -76,6 +80,19 @@ function setCustomEmailEntry(path: string, profileId: string, email: string | nu
   if (Object.keys(repo).length === 0) delete all[path];
   else all[path] = repo;
   writeJsonMap(LS_CUSTOM_EMAIL, all);
+}
+
+// Applied-profile-id persistence (the unambiguous "which profile" signal).
+const readAppliedIds = () => readJsonMap<string>(LS_REPO_PROFILE);
+/** The profile id explicitly applied to a repo, or null (none / default). */
+export function appliedProfileId(path: string): string | null {
+  return readAppliedIds()[path] ?? null;
+}
+function setAppliedProfileId(path: string, id: string | null) {
+  const all = readAppliedIds();
+  if (id === null) delete all[path];
+  else all[path] = id;
+  writeJsonMap(LS_REPO_PROFILE, all);
 }
 
 /** Signing args for `api.setRepoIdentity`. Empty strings unset the key/format
@@ -182,6 +199,8 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
         useUi.getState().showToast(String(e), "error");
         return;
       }
+      // Default git identity → no profile applied.
+      setAppliedProfileId(path, null);
       await useAccounts.getState().hydrateRepoIdentity(path);
       useUi.getState().showToast("Using the default git identity for this repo");
       return;
@@ -195,6 +214,8 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
       useUi.getState().showToast(String(e), "error");
       return;
     }
+    // Record the applied profile by id so selection stays unambiguous.
+    setAppliedProfileId(path, id);
     await useAccounts.getState().hydrateRepoIdentity(path);
     useUi.getState().showToast(`This repo commits as ${profile.label}`);
   },
@@ -202,7 +223,7 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
   setCustomEmail: async (email) => {
     const path = repoPath();
     if (!path) return;
-    const sel = selectProfile(useAccounts.getState().repoIdentity, get().profiles);
+    const sel = selectProfile(useAccounts.getState().repoIdentity, get().profiles, appliedProfileId(path));
     if (sel.kind !== "profile") return;
     const profile = get().profiles.find((p) => p.id === sel.id);
     if (!profile) return;
@@ -221,7 +242,7 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
   resetCustomEmail: async () => {
     const path = repoPath();
     if (!path) return;
-    const sel = selectProfile(useAccounts.getState().repoIdentity, get().profiles);
+    const sel = selectProfile(useAccounts.getState().repoIdentity, get().profiles, appliedProfileId(path));
     if (sel.kind !== "profile") return;
     setCustomEmailEntry(path, sel.id, null);
     await get().applyProfile(sel.id);

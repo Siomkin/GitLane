@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
-import { useProfiles } from "../../../../store/profiles";
+import { appliedProfileId, useProfiles } from "../../../../store/profiles";
 import { profileInitials, selectProfile, type GitProfile } from "../../../../lib/profiles";
 import { RadioCard } from "./RadioCard";
 import { ProfileEditor } from "./ProfileEditor";
@@ -50,7 +50,7 @@ export function IdentityPanel() {
     );
   }
 
-  const selection = selectProfile(repoIdentity, profiles);
+  const selection = selectProfile(repoIdentity, profiles, appliedProfileId(summary.path));
   const selectedProfile =
     selection.kind === "profile" ? profiles.find((p) => p.id === selection.id) ?? null : null;
   const customEmail = selection.kind === "profile" && selection.customEmail;

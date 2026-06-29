@@ -117,6 +117,7 @@ export function AccountsPanel() {
             <ProviderConnect
               meta={selectedMeta}
               status={selectedStatus}
+              accountLoading={selected ? forgeAccountsLoading.includes(selected) : false}
               onBack={() => setSelected(null)}
               onRefresh={refresh}
             />

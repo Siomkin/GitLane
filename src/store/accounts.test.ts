@@ -111,4 +111,53 @@ describe("loadForgeAuth — fast auth, background identity", () => {
     await vi.waitFor(() => expect(useAccounts.getState().forgeAccountsLoading).toEqual([]));
     expect(useAccounts.getState().forgeAuth[0].account).toEqual({ username: "ada" });
   });
+
+  it("drops a stale whoami from a superseded refresh (no merge onto a signed-out row)", async () => {
+    let resolveStale!: (v: { username: string }) => void;
+    const stale = new Promise<{ username: string }>((r) => {
+      resolveStale = r;
+    });
+    let statusCall = 0;
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "forge_auth_statuses") {
+        statusCall += 1;
+        const authenticated = statusCall === 1; // signed out on the 2nd refresh
+        return [
+          { provider: "gitlab", forge: "GitLab", cli: "glab", authMethod: "GitLab CLI", available: true, authenticated, loginCommand: "x", docsUrl: "y", notes: "z" },
+        ];
+      }
+      if (cmd === "forge_account") return stale; // only load #1 enqueues a whoami
+      return null;
+    });
+    useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
+
+    await useAccounts.getState().loadForgeAuth(true); // load #1: authed, whoami pending
+    expect(useAccounts.getState().forgeAccountsLoading).toEqual(["gitlab"]);
+    await useAccounts.getState().loadForgeAuth(true); // load #2: signed out, supersedes #1
+    expect(useAccounts.getState().forgeAuth[0].authenticated).toBe(false);
+    expect(useAccounts.getState().forgeAccountsLoading).toEqual([]);
+
+    // The stale #1 whoami resolves — it must not merge onto the now-signed-out row.
+    resolveStale({ username: "ada" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useAccounts.getState().forgeAuth[0].account).toBeUndefined();
+  });
+
+  it("clears the skeleton and keeps the fallback label when the whoami returns null", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "forge_auth_statuses") {
+        return [
+          { provider: "gitlab", forge: "GitLab", cli: "glab", authMethod: "GitLab CLI", available: true, authenticated: true, loginCommand: "x", docsUrl: "y", notes: "z" },
+        ];
+      }
+      if (cmd === "forge_account") return null; // couldn't resolve
+      return null;
+    });
+    useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
+
+    await useAccounts.getState().loadForgeAuth(true);
+    await vi.waitFor(() => expect(useAccounts.getState().forgeAccountsLoading).toEqual([]));
+    expect(useAccounts.getState().forgeAuth[0].account).toBeUndefined();
+  });
 });

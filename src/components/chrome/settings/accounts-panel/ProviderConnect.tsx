@@ -25,12 +25,15 @@ const refreshBtnCls =
 export function ProviderConnect({
   meta,
   status,
+  accountLoading = false,
   onBack,
   onRefresh,
 }: {
   meta: ProviderMeta;
   /** The provider's auth probe — `null` for GitHub (handled by the gh path). */
   status: ForgeAuthStatus | null;
+  /** The background whoami for this provider is in flight (identity resolving). */
+  accountLoading?: boolean;
   onBack: () => void;
   onRefresh: () => void;
 }) {
@@ -81,7 +84,7 @@ export function ProviderConnect({
         {meta.key === "github" ? (
           <GithubConnect refresh={refresh} />
         ) : status ? (
-          <ForgeConnect status={status} refresh={refresh} />
+          <ForgeConnect status={status} accountLoading={accountLoading} refresh={refresh} />
         ) : (
           <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">No status available — press Refresh.</p>
         )}
@@ -153,7 +156,15 @@ function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
   );
 }
 
-function ForgeConnect({ status, refresh }: { status: ForgeAuthStatus; refresh: React.ReactNode }) {
+function ForgeConnect({
+  status,
+  accountLoading,
+  refresh,
+}: {
+  status: ForgeAuthStatus;
+  accountLoading: boolean;
+  refresh: React.ReactNode;
+}) {
   const state = connectState(status);
   const cli = status.cli ?? "";
 
@@ -240,9 +251,16 @@ function ForgeConnect({ status, refresh }: { status: ForgeAuthStatus; refresh: R
   }
 
   if (state === "prunsupported") {
+    const resolving = accountLoading && !status.account;
     return (
       <StateBlock
-        title={status.account ? `Signed in as ${accountHandle(status.account)}` : `Signed in to ${cli}`}
+        title={
+          status.account
+            ? `Signed in as ${accountHandle(status.account)}`
+            : resolving
+              ? "Signed in — resolving account…"
+              : `Signed in to ${cli}`
+        }
         body={
           <>
             You’re authenticated, but <span className="font-medium text-neutral-700 dark:text-neutral-200">pull
@@ -251,6 +269,9 @@ function ForgeConnect({ status, refresh }: { status: ForgeAuthStatus; refresh: R
           </>
         }
       >
+        {resolving && (
+          <span className="h-3 w-40 animate-pulse rounded bg-black/10 dark:bg-white/15" aria-busy="true" />
+        )}
         <p className="text-[11.5px] text-neutral-400 dark:text-neutral-500">{status.notes}</p>
       </StateBlock>
     );
