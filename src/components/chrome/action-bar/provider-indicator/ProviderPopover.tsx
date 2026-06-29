@@ -116,11 +116,11 @@ export const ProviderPopover = ({
   );
 
   return (
-    <div
-      role="dialog"
-      aria-label="Remote provider"
-      className="absolute right-0 top-[calc(100%+6px)] z-50 w-[306px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)] dark:border-white/10 dark:bg-neutral-800"
-    >
+    // Non-modal disclosure region (matches the branch navigator's lightweight
+    // popover): the trigger owns `aria-expanded`, dismissal is outside-click /
+    // Escape via useDismiss, and Tab flows through the rows in DOM order. No
+    // `role="dialog"` — that would promise focus-trapping this doesn't do.
+    <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-[306px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)] dark:border-white/10 dark:bg-neutral-800">
       {/* HEADER — a link to the repo on its host, or a static panel. */}
       {model.headHref ? (
         <button

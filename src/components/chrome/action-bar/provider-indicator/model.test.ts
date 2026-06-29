@@ -39,6 +39,10 @@ describe("providerPopoverModel", () => {
     expect(providerPopoverModel("connected", forge(), 1).primary?.label).toBe("View 1 pull request");
   });
 
+  it("drops the count from the view-PRs primary when there are no open PRs", () => {
+    expect(providerPopoverModel("connected", forge(), 0).primary?.label).toBe("View pull requests");
+  });
+
   it("needs-auth: sign-in pill + key primary, still links to github sections", () => {
     const m = providerPopoverModel("needs-auth", forge(), 0);
     expect(m.capability?.label).toBe("Sign in");

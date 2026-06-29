@@ -80,6 +80,7 @@ export const ProviderIndicator = ({
   className,
   onViewPrs,
   onOpenSettings,
+  onOpen,
 }: {
   state: ProviderState;
   forge: RepoForge;
@@ -87,10 +88,17 @@ export const ProviderIndicator = ({
   className?: string;
   onViewPrs: () => void;
   onOpenSettings: (tab: SettingsTab) => void;
+  /** Fired when the popover opens — lets the toolbar dismiss sibling surfaces
+   * (e.g. the branch navigator) so only one popover is open at a time. */
+  onOpen?: () => void;
 }) => {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const close = () => setOpen(false);
+  const toggle = () => {
+    if (!open) onOpen?.();
+    setOpen((v) => !v);
+  };
   useDismiss(open, close, wrapRef);
 
   const Icon = buttonIcon(state, forge);
@@ -99,22 +107,31 @@ export const ProviderIndicator = ({
 
   return (
     <div ref={wrapRef} className={cn("group/repo relative", className)}>
-      {/* Hover-revealed text link to repository settings (sits left of the button). */}
+      {/* Repository-settings shortcut, revealed on hover or keyboard focus (sits
+          left of the button). Hidden-but-focusable so Tab can still reach it; it
+          reveals itself on focus-visible so keyboard users can see what they
+          focused. The footer "Repository settings…" is the always-visible path. */}
       <button
         type="button"
         onClick={() => onOpenSettings("repo")}
         title="Repository settings — identity & remotes for this repo"
-        className="pointer-events-none absolute right-full top-1/2 h-8 -translate-y-1/2 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium text-neutral-600 opacity-0 transition-opacity duration-150 ease-out hover:bg-black/5 hover:text-neutral-800 group-hover/repo:pointer-events-auto group-hover/repo:opacity-100 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100"
+        className={cn(
+          "pointer-events-none absolute right-full top-1/2 h-8 -translate-y-1/2 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium text-neutral-600 opacity-0 transition-opacity duration-150 ease-out",
+          "hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100",
+          "group-hover/repo:pointer-events-auto group-hover/repo:opacity-100",
+          "focus-visible:pointer-events-auto focus-visible:opacity-100",
+          focusRing,
+        )}
       >
         Repo settings
       </button>
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         title={title}
         aria-label={`Remote provider: ${title}`}
-        aria-haspopup="dialog"
+        aria-haspopup="true"
         aria-expanded={open}
         className={cn(
           "relative grid h-8 w-8 place-items-center rounded-lg transition-colors",

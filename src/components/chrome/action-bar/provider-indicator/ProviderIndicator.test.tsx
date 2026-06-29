@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const openUrlMock = vi.hoisted(() => vi.fn());
@@ -16,9 +16,22 @@ const GH: RepoForge = {
   webUrl: "https://github.com/Siomkin/GitLane",
 };
 
+const GITLAB: RepoForge = {
+  hasRemote: true,
+  kind: ForgeKind.GitLab,
+  forge: "GitLab",
+  host: "gitlab.com",
+  webUrl: "https://gitlab.com/siomkin/gitlane",
+};
+
+// The "In GitLane" footer renders only while the popover is open, so its
+// presence is a reliable open/closed signal now that there's no dialog role.
+const popoverOpen = () => screen.queryByText("In GitLane") !== null;
+
 const renderIndicator = (state: ProviderState, forge: RepoForge = GH, prCount = 7) => {
   const onViewPrs = vi.fn();
   const onOpenSettings = vi.fn();
+  const onOpen = vi.fn();
   render(
     <ProviderIndicator
       state={state}
@@ -26,32 +39,41 @@ const renderIndicator = (state: ProviderState, forge: RepoForge = GH, prCount = 
       prCount={prCount}
       onViewPrs={onViewPrs}
       onOpenSettings={onOpenSettings}
+      onOpen={onOpen}
     />,
   );
   const toggle = screen.getByRole("button", { name: /remote provider/i });
-  return { toggle, onViewPrs, onOpenSettings };
+  return { toggle, onViewPrs, onOpenSettings, onOpen };
 };
 
 beforeEach(() => openUrlMock.mockReset());
 
 describe("ProviderIndicator", () => {
-  it("opens the popover only after the button is clicked", () => {
-    const { toggle } = renderIndicator("connected");
-    expect(screen.queryByRole("dialog")).toBeNull();
+  it("opens the popover only after the button is clicked, firing onOpen", () => {
+    const { toggle, onOpen } = renderIndicator("connected");
+    expect(popoverOpen()).toBe(false);
     fireEvent.click(toggle);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(popoverOpen()).toBe(true);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("dismisses the popover on Escape", () => {
+    const { toggle } = renderIndicator("connected");
+    fireEvent.click(toggle);
+    expect(popoverOpen()).toBe(true);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(popoverOpen()).toBe(false);
   });
 
   it("connected GitHub: shows the PR count, github + settings shortcuts, and routes the primary to the PRs view", () => {
     const { toggle, onViewPrs } = renderIndicator("connected", GH, 7);
     fireEvent.click(toggle);
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Pull requests (7)")).toBeInTheDocument();
-    expect(within(dialog).getByText("Branches")).toBeInTheDocument();
+    expect(screen.getByText("Pull requests (7)")).toBeInTheDocument();
+    expect(screen.getByText("Branches")).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByText("View 7 pull requests"));
+    fireEvent.click(screen.getByText("View 7 pull requests"));
     expect(onViewPrs).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("dialog")).toBeNull(); // closes after acting
+    expect(popoverOpen()).toBe(false); // closes after acting
   });
 
   it("needs-auth: the primary opens the Accounts settings tab", () => {
@@ -61,14 +83,23 @@ describe("ProviderIndicator", () => {
     expect(onOpenSettings).toHaveBeenCalledWith("accounts");
   });
 
+  it("connected GitLab: no-PRs shape — open-on-forge primary, no GitHub shortcuts", () => {
+    const { toggle } = renderIndicator("connected", GITLAB, 0);
+    fireEvent.click(toggle);
+    expect(screen.getByText("siomkin/gitlane")).toBeInTheDocument();
+    expect(screen.getByText("Open on GitLab")).toBeInTheDocument();
+    // No GitHub PR/Issues/settings link rows for a non-GitHub forge.
+    expect(screen.queryByText("Issues")).toBeNull();
+    expect(screen.queryByText("Branches")).toBeNull();
+  });
+
   it("missing: no PR links, and the primary is the add-remote shortcut", () => {
     const missing: RepoForge = { hasRemote: false, kind: null, forge: null, host: null, webUrl: null };
     const { toggle } = renderIndicator("missing", missing, 0);
     fireEvent.click(toggle);
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("No remote")).toBeInTheDocument();
-    expect(within(dialog).queryByText(/Pull requests/)).toBeNull();
-    expect(within(dialog).getByText("Add a remote…")).toBeInTheDocument();
+    expect(screen.getByText("No remote")).toBeInTheDocument();
+    expect(screen.queryByText(/Pull requests/)).toBeNull();
+    expect(screen.getByText("Add a remote…")).toBeInTheDocument();
   });
 
   it("error: install-gh primary opens the gh CLI page in the browser", () => {

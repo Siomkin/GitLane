@@ -145,7 +145,7 @@ const githubModel = (
       note: "",
       primary: {
         icon: "pr",
-        label: `View ${prCount} pull request${prCount === 1 ? "" : "s"}`,
+        label: prCount > 0 ? `View ${prCount} pull request${prCount === 1 ? "" : "s"}` : "View pull requests",
         suffix: "→",
         action: { kind: "view-prs" },
       },

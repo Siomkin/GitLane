@@ -71,6 +71,12 @@ describe("ActionBar layout order", () => {
     expect(screen.queryByRole("button", { name: /remote provider/i })).toBeNull();
   });
 
+  it("still shows the provider indicator for a remote-less repo (the 'missing' state)", () => {
+    useRepo.setState({ forge: { hasRemote: false, kind: null, forge: null, host: null, webUrl: null } });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /remote provider/i })).toBeInTheDocument();
+  });
+
   it("quietly loads GitHub PRs for the toolbar badge before PRs mode opens", () => {
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {

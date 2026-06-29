@@ -106,8 +106,9 @@ export const ActionBar = ({
     : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
 
   // Remote-provider status: forge detection (backend) combined with GitHub auth
-  // state (accounts store). Only GitHub supports PRs today; other forges are
-  // surfaced as "unsupported" with the forge named in the tooltip.
+  // state (accounts store). Only GitHub supports PRs today; recognised non-GitHub
+  // forges (GitLab, Bitbucket, …) are "connected" (repo link works, no PRs), and
+  // only an unrecognised host is "unsupported". See the popover model.
   const providerState: ProviderState | null = forge
     ? deriveProviderState(forge, { accounts, accountsError, accountsLoading, repoAccountRef })
     : null;
@@ -264,9 +265,14 @@ export const ActionBar = ({
             prCount={prCount}
             onViewPrs={() => selectTab("pulls")}
             onOpenSettings={openSettings}
+            onOpen={closeNav}
           />
         )}
-        {forge && providerState && <Separator />}
+        {/* Bare divider — the row's gap-2 already spaces it; the shared Separator's
+            own margin would double that. */}
+        {forge && providerState && (
+          <span className="h-5 w-px flex-none bg-black/10 dark:bg-white/10" aria-hidden />
+        )}
 
         <div className={cn("flex items-center gap-0.5", !(forge && providerState) && "ml-auto")}>
           <ToolbarAction
