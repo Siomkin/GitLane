@@ -242,7 +242,7 @@ function ForgeConnect({ status, refresh }: { status: ForgeAuthStatus; refresh: R
   if (state === "prunsupported") {
     return (
       <StateBlock
-        title={`Signed in to ${cli}`}
+        title={status.account ? `Signed in as @${status.account.username}` : `Signed in to ${cli}`}
         body={
           <>
             You’re authenticated, but <span className="font-medium text-neutral-700 dark:text-neutral-200">pull

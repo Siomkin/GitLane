@@ -5,10 +5,12 @@
 //! users before real provider-specific PR integrations exist.
 
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::git::types::ForgeAuthStatus;
+use serde::Deserialize;
+
+use crate::git::types::{ForgeAccount, ForgeAuthStatus};
 
 /// Upper bound on a single auth probe. Some CLIs (`glab auth status`) validate
 /// the token against the remote API and can hang on a slow/offline network; a
@@ -128,6 +130,11 @@ fn status_for(
         }
         None => (false, None),
     };
+    // Only ask the provider who it is when it's actually signed in.
+    let account = match authenticated {
+        Some(true) => fetch_account(spec.provider),
+        _ => None,
+    };
     ForgeAuthStatus {
         provider: spec.provider.to_string(),
         forge: spec.forge.to_string(),
@@ -138,7 +145,74 @@ fn status_for(
         login_command: spec.login_command.to_string(),
         docs_url: spec.docs_url.to_string(),
         notes: spec.notes.to_string(),
+        account,
     }
+}
+
+/// Fetch the signed-in account for an authenticated provider via its CLI whoami.
+/// Best-effort and provider-specific (only GitLab today); `None` means we can't
+/// resolve it, and the UI falls back to a provider-level "signed in" label.
+fn fetch_account(provider: &str) -> Option<ForgeAccount> {
+    match provider {
+        "gitlab" => {
+            let out = run_bounded("glab", &["api", "user"])?;
+            if !out.status.success() {
+                return None;
+            }
+            parse_gitlab_user(&String::from_utf8_lossy(&out.stdout))
+        }
+        _ => None,
+    }
+}
+
+#[derive(Deserialize)]
+struct GitlabUser {
+    username: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// Parse `glab api user` JSON into a `ForgeAccount`. The endpoint returns the
+/// GitLab `/user` object; we keep only the username and display name.
+fn parse_gitlab_user(json: &str) -> Option<ForgeAccount> {
+    let user: GitlabUser = serde_json::from_str(json).ok()?;
+    if user.username.is_empty() {
+        return None;
+    }
+    Some(ForgeAccount {
+        username: user.username,
+        name: user.name.filter(|s| !s.is_empty()),
+    })
+}
+
+/// Run a CLI bounded by `PROBE_TIMEOUT`, returning its output or `None` on
+/// spawn failure / timeout. A whoami can hit the network (`glab api user`), so a
+/// slow/offline host must not block the Settings probe forever.
+fn run_bounded(cli: &str, args: &[&str]) -> Option<Output> {
+    let mut child = Command::new(cli)
+        .args(args)
+        .env("PATH", crate::shell::path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return None,
+        }
+    }
+    child.wait_with_output().ok()
 }
 
 fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bool>) {
@@ -197,5 +271,20 @@ mod tests {
         assert!(statuses.iter().any(|s| s.provider == "gitlab"));
         assert!(statuses.iter().all(|s| !s.login_command.is_empty()));
         assert!(statuses.iter().all(|s| !s.docs_url.is_empty()));
+    }
+
+    #[test]
+    fn parses_glab_user_into_account() {
+        let json = r#"{"id":42,"username":"ada","name":"Ada Lovelace","state":"active"}"#;
+        let account = parse_gitlab_user(json).expect("account parsed");
+        assert_eq!(account.username, "ada");
+        assert_eq!(account.name.as_deref(), Some("Ada Lovelace"));
+
+        // Username-only (no display name) still resolves; empty/garbage does not.
+        let minimal = parse_gitlab_user(r#"{"username":"solo"}"#).expect("minimal");
+        assert_eq!(minimal.username, "solo");
+        assert_eq!(minimal.name, None);
+        assert!(parse_gitlab_user(r#"{"username":""}"#).is_none());
+        assert!(parse_gitlab_user("not json").is_none());
     }
 }

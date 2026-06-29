@@ -15,13 +15,19 @@ export function ConnectedForgeCard({ status }: { status: ForgeAuthStatus }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">{status.forge}</span>
+          <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">
+            {status.account ? `@${status.account.username}` : status.forge}
+          </span>
+          {status.account && (
+            <span className="text-[11px] text-neutral-400 dark:text-neutral-500">{status.forge}</span>
+          )}
           <span className="grid h-[17px] place-items-center rounded-full bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:bg-white/[0.07] dark:text-neutral-400">
             Auth only — no PRs
           </span>
         </div>
         <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
-          {status.cli ? `Signed in via ${status.cli}` : status.authMethod} · commit, fetch &amp; push use your git
+          {status.account?.name ? `${status.account.name} · ` : ""}
+          {status.cli ? `signed in via ${status.cli}` : status.authMethod} · commit, fetch &amp; push use your git
           profile
         </div>
       </div>

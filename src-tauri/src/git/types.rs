@@ -511,6 +511,19 @@ pub struct ForgeAuthStatus {
     pub login_command: String,
     pub docs_url: String,
     pub notes: String,
+    /// Real account identity, when the provider CLI is authenticated and GitLane
+    /// can fetch it (provider whoami). Identity metadata only — never a token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account: Option<ForgeAccount>,
+}
+
+/// The signed-in account on a non-GitHub provider, from its CLI whoami.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgeAccount {
+    pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// PR author (GitHub login + display name).

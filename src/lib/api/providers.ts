@@ -7,6 +7,13 @@ export type ForgeAuthProvider =
   | "gitea"
   | "forgejo";
 
+/** Real signed-in account on a non-GitHub provider (from its CLI whoami).
+ * Identity metadata only — never a token. */
+export interface ForgeAccount {
+  username: string;
+  name?: string;
+}
+
 export interface ForgeAuthStatus {
   provider: ForgeAuthProvider;
   forge: string;
@@ -17,6 +24,8 @@ export interface ForgeAuthStatus {
   loginCommand: string;
   docsUrl: string;
   notes: string;
+  /** Present only when authenticated and GitLane could resolve the account. */
+  account?: ForgeAccount;
 }
 
 export const providersApi = {
