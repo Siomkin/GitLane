@@ -20,7 +20,7 @@ use git::types::{
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
     OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
-    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
+    RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
 };
 
@@ -710,6 +710,31 @@ fn repo_forge(path: String) -> Result<RepoForge, String> {
     Ok(git::forge::summary(&path))
 }
 
+/// List the repo's configured remotes (Repository settings → Remotes). Cheap
+/// synchronous libgit2 read, like the other `read.rs` reads.
+#[tauri::command]
+fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, String> {
+    git::read::list_remotes(&path)
+}
+
+/// Add a new remote `name` → `url` (`git remote add`).
+#[tauri::command]
+async fn add_remote(path: String, name: String, url: String) -> Result<String, String> {
+    blocking(move || git::write::add_remote(&path, &name, &url)).await
+}
+
+/// Repoint an existing remote at a new `url` (`git remote set-url`).
+#[tauri::command]
+async fn set_remote_url(path: String, name: String, url: String) -> Result<String, String> {
+    blocking(move || git::write::set_remote_url(&path, &name, &url)).await
+}
+
+/// Remove a remote (`git remote remove`).
+#[tauri::command]
+async fn remove_remote(path: String, name: String) -> Result<String, String> {
+    blocking(move || git::write::remove_remote(&path, &name)).await
+}
+
 // These shell out to the `gh` CLI (token resolution + the API call), which
 // blocks for ~1s+. They are `async` and run the blocking work on the blocking
 // thread pool so the webview's main thread stays free — a synchronous command
@@ -1195,6 +1220,10 @@ pub fn run() {
             forge_auth_statuses,
             forge_account,
             repo_forge,
+            list_remotes,
+            add_remote,
+            set_remote_url,
+            remove_remote,
             list_pull_requests,
             pull_request_detail,
             pull_request_checks,

@@ -143,6 +143,18 @@ export interface RepoForge {
   webUrl: string | null;
 }
 
+/** A configured git remote (Repository settings → Remotes). */
+export interface RemoteInfo {
+  /** Remote name (e.g. "origin"). */
+  name: string;
+  /** Fetch URL. */
+  fetchUrl: string;
+  /** Push URL — equals the fetch URL unless a separate push URL is set. */
+  pushUrl: string;
+  /** True for the repo's default push remote. */
+  isDefault: boolean;
+}
+
 export interface BranchInfo {
   name: string;
   kind: "local" | "remote";
@@ -345,6 +357,21 @@ export const gitApi = {
 
   /** Detect the open repo's remote forge for the toolbar provider indicator. */
   repoForge: (path: string) => invoke<RepoForge>("repo_forge", { path }),
+
+  /** List the repo's configured remotes (Repository settings → Remotes). */
+  listRemotes: (path: string) => invoke<RemoteInfo[]>("list_remotes", { path }),
+
+  /** Add a new remote `name` → `url` (`git remote add`). */
+  addRemote: (path: string, name: string, url: string) =>
+    invoke<string>("add_remote", { path, name, url }),
+
+  /** Repoint an existing remote at a new `url` (`git remote set-url`). */
+  setRemoteUrl: (path: string, name: string, url: string) =>
+    invoke<string>("set_remote_url", { path, name, url }),
+
+  /** Remove a remote (`git remote remove`). */
+  removeRemote: (path: string, name: string) =>
+    invoke<string>("remove_remote", { path, name }),
 
   commitGraph: (path: string, limit?: number) =>
     invoke<RepoGraph>("commit_graph", { path, limit: limit ?? null }),
