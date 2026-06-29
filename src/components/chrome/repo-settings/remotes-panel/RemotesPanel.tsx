@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type RemoteInfo } from "../../../../lib/api";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
@@ -27,15 +27,22 @@ export const RemotesPanel = () => {
   const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Synchronous re-entry guard (busy state lags a render) and a generation
+  // counter so a slow list response can't overwrite a newer repo's remotes.
+  const busyRef = useRef(false);
+  const loadGen = useRef(0);
 
   const reload = useCallback(async () => {
     if (!path) return;
+    const gen = ++loadGen.current;
     try {
-      setRemotes(await api.listRemotes(path));
+      const list = await api.listRemotes(path);
+      if (gen !== loadGen.current) return; // superseded (e.g. repo switched)
+      setRemotes(list);
     } catch (e) {
-      showToast(`Couldn't load remotes: ${String(e)}`, "error");
+      if (gen === loadGen.current) showToast(`Couldn't load remotes: ${String(e)}`, "error");
     } finally {
-      setLoading(false);
+      if (gen === loadGen.current) setLoading(false);
     }
   }, [path, showToast]);
 
@@ -44,9 +51,12 @@ export const RemotesPanel = () => {
     void reload();
   }, [reload]);
 
-  // Serialise mutations behind `busy`; reload from git config on success.
-  const run = async (action: () => Promise<unknown>, failure: string) => {
-    if (busy || !path) return;
+  // Serialise mutations; reload from git config and refresh the repo on success.
+  // Returns whether the op succeeded so forms can stay open (keeping the user's
+  // input) on failure instead of dismissing optimistically.
+  const run = async (action: () => Promise<unknown>, failure: string): Promise<boolean> => {
+    if (busyRef.current || !path) return false;
+    busyRef.current = true;
     setBusy(true);
     try {
       await action();
@@ -55,17 +65,20 @@ export const RemotesPanel = () => {
       // gating react immediately — e.g. adding the first GitHub remote flips the
       // toolbar out of "No remote" without waiting on the filesystem watcher.
       void refreshRepo();
+      return true;
     } catch (e) {
       showToast(`${failure}: ${String(e)}`, "error");
+      return false;
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   const handleAdd = (name: string, url: string) =>
-    void run(() => api.addRemote(path!, name, url), `Couldn't add ${name}`);
+    run(() => api.addRemote(path!, name, url), `Couldn't add ${name}`);
   const handleSave = (name: string, url: string) =>
-    void run(() => api.setRemoteUrl(path!, name, url), `Couldn't update ${name}`);
+    run(() => api.setRemoteUrl(path!, name, url), `Couldn't update ${name}`);
   const handleRemove = (remote: RemoteInfo) =>
     requestConfirm({
       title: `Remove remote “${remote.name}”?`,

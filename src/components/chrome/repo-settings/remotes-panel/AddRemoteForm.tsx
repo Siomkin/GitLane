@@ -1,27 +1,31 @@
 import { useState } from "react";
 import { focusRing } from "../../../../lib/ui";
 import { PlusIcon } from "../../../ui/icons";
-import { validateRemoteUrl } from "./remotes";
+import { isValidRemoteName, validateRemoteUrl } from "./remotes";
 import { RemoteUrlField } from "./RemoteUrlField";
 import { RemoteValidityLine } from "./RemoteValidityLine";
 
 const LABEL = "mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500";
 
 /** "Add remote" affordance: a dashed button that expands to a name + URL form
- * with live validation, then calls `onAdd`. Collapses on cancel or after a
- * successful add (the parent reloads the list). */
+ * with live validation, then calls `onAdd`. Collapses only after a *successful*
+ * add — on failure the form stays open with the user's input. */
 export const AddRemoteForm = ({
   busy,
   onAdd,
 }: {
   busy: boolean;
-  onAdd: (name: string, url: string) => void;
+  /** Resolves true when the remote was added; false leaves the form open. */
+  onAdd: (name: string, url: string) => Promise<boolean>;
 }) => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
-  const validity = validateRemoteUrl(url);
-  const canSave = validity.ok && name.trim().length > 0 && !busy;
+
+  const nameTrimmed = name.trim();
+  const nameValid = isValidRemoteName(nameTrimmed);
+  const urlValidity = validateRemoteUrl(url);
+  const canSave = urlValidity.ok && nameValid && !busy;
 
   const reset = () => {
     setOpen(false);
@@ -29,12 +33,18 @@ export const AddRemoteForm = ({
     setUrl("");
   };
 
+  const submit = async () => {
+    if (!canSave) return;
+    if (await onAdd(nameTrimmed, url.trim())) reset();
+  };
+
   if (!open) {
     return (
       <button
         type="button"
+        disabled={busy}
         onClick={() => setOpen(true)}
-        className="flex h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 text-[13.5px] font-medium text-neutral-500 hover:border-black/25 hover:text-neutral-700 dark:border-white/15 dark:text-neutral-400 dark:hover:border-white/25 dark:hover:text-neutral-200"
+        className="flex h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 text-[13.5px] font-medium text-neutral-500 hover:border-black/25 hover:text-neutral-700 disabled:opacity-40 dark:border-white/15 dark:text-neutral-400 dark:hover:border-white/25 dark:hover:text-neutral-200"
       >
         <PlusIcon className="h-4 w-4" />
         Add remote
@@ -53,17 +63,29 @@ export const AddRemoteForm = ({
             spellCheck={false}
             autoFocus
             placeholder="origin"
+            aria-label="Remote name"
+            aria-invalid={nameTrimmed.length > 0 && !nameValid}
             onChange={(e) => setName(e.target.value)}
-            className="h-10 w-full rounded-lg border border-black/10 bg-black/[0.02] px-3 font-mono text-[13px] text-neutral-900 outline-none focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)] dark:border-white/10 dark:bg-white/[0.04] dark:text-white"
+            className={`h-10 w-full rounded-lg border bg-black/[0.02] px-3 font-mono text-[13px] text-neutral-900 outline-none focus:ring-2 focus:ring-[var(--accent-soft)] dark:bg-white/[0.04] dark:text-white ${
+              nameTrimmed.length > 0 && !nameValid
+                ? "border-rose-400/70 focus:border-rose-500"
+                : "border-black/10 focus:border-[color:var(--accent)] dark:border-white/10"
+            }`}
           />
         </label>
         <label className="block">
           <span className={LABEL}>URL</span>
-          <RemoteUrlField value={url} onChange={setUrl} invalid={validity.level === "bad"} ariaLabel="Remote URL" />
+          <RemoteUrlField value={url} onChange={setUrl} invalid={urlValidity.level === "bad"} ariaLabel="Remote URL" />
         </label>
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-3">
-        <RemoteValidityLine validity={validity} />
+        {nameTrimmed.length > 0 && !nameValid ? (
+          <span className="text-[12.5px] font-medium text-rose-600 dark:text-rose-400">
+            Remote name: letters or digits, then only . _ or -
+          </span>
+        ) : (
+          <RemoteValidityLine validity={urlValidity} />
+        )}
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -75,10 +97,7 @@ export const AddRemoteForm = ({
           <button
             type="button"
             disabled={!canSave}
-            onClick={() => {
-              onAdd(name.trim(), url.trim());
-              reset();
-            }}
+            onClick={submit}
             className={`h-9 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
           >
             Add remote

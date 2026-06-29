@@ -21,7 +21,8 @@ export const RemoteRow = ({
 }: {
   remote: RemoteInfo;
   busy: boolean;
-  onSave: (name: string, url: string) => void;
+  /** Resolves true when the URL was saved; false keeps the row in edit mode. */
+  onSave: (name: string, url: string) => Promise<boolean>;
   onRemove: (remote: RemoteInfo) => void;
 }) => {
   const [editing, setEditing] = useState(false);
@@ -69,9 +70,10 @@ export const RemoteRow = ({
           {!editing && (
             <button
               type="button"
+              disabled={busy}
               onClick={startEdit}
               className={cn(
-                "h-8 rounded-lg px-3 text-[12.5px] font-medium text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/10",
+                "h-8 rounded-lg px-3 text-[12.5px] font-medium text-neutral-600 hover:bg-black/5 disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-white/10",
                 focusRing,
               )}
             >
@@ -80,11 +82,12 @@ export const RemoteRow = ({
           )}
           <button
             type="button"
+            disabled={busy}
             onClick={() => onRemove(remote)}
             title={`Remove ${remote.name}`}
             aria-label={`Remove remote ${remote.name}`}
             className={cn(
-              "grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400",
+              "grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 dark:hover:text-rose-400",
               focusRing,
             )}
           >
@@ -129,9 +132,8 @@ export const RemoteRow = ({
               <button
                 type="button"
                 disabled={!validity.ok || busy || draft.trim() === remote.fetchUrl}
-                onClick={() => {
-                  onSave(remote.name, draft.trim());
-                  setEditing(false);
+                onClick={async () => {
+                  if (await onSave(remote.name, draft.trim())) setEditing(false);
                 }}
                 className={cn(
                   "h-9 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40",

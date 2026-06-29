@@ -1804,6 +1804,27 @@ fn set_remote_url_repoints_a_separate_push_url_too() {
 }
 
 #[test]
+fn default_remote_drives_forge_even_when_listed_after_another() {
+    let repo = TempRepo::new("remote-default");
+    repo.git_ok(&["init", "-q"]);
+    // upstream (GitLab) is added first; origin (GitHub) second. origin is the
+    // default push remote, so it must win both the Remotes panel and the toolbar.
+    repo.git_ok(&["remote", "add", "upstream", "https://gitlab.com/up/stream.git"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
+
+    let remotes = crate::git::read::list_remotes(repo.path()).unwrap();
+    let origin = remotes.iter().find(|r| r.name == "origin").unwrap();
+    assert!(origin.is_default, "origin should be the default push remote");
+    assert!(!remotes.iter().find(|r| r.name == "upstream").unwrap().is_default);
+
+    // The toolbar provider reflects the default push remote (GitHub), not the
+    // first-listed remote (GitLab).
+    let forge = crate::git::forge::summary(repo.path());
+    assert_eq!(forge.kind.as_deref(), Some("github"));
+    assert_eq!(forge.host.as_deref(), Some("github.com"));
+}
+
+#[test]
 fn set_remote_url_leaves_push_following_fetch_when_no_push_url() {
     let repo = TempRepo::new("remote-nopush");
     repo.git_ok(&["init", "-q"]);

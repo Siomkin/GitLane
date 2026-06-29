@@ -44,6 +44,11 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   return { empty: false, valid: true, host, path, provider: providerForHost(host) };
 };
 
+/** A user-friendly subset of git's remote-name rules: start with a letter or
+ * digit, then letters/digits/`.`/`_`/`-` (no spaces or other punctuation). Keeps
+ * obviously-bad names out of the add form before the git layer rejects them. */
+export const isValidRemoteName = (raw: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(raw.trim());
+
 /** Only GitHub exposes pull requests today (mirrors the toolbar provider model). */
 export const providerSupportsPrs = (p: RemoteProvider): boolean => p === "github";
 

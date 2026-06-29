@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectRemoteUrl, validateRemoteUrl } from "./remotes";
+import { detectRemoteUrl, isValidRemoteName, validateRemoteUrl } from "./remotes";
 
 describe("detectRemoteUrl", () => {
   it("parses https GitHub URLs (with and without .git)", () => {
@@ -55,5 +55,19 @@ describe("validateRemoteUrl", () => {
     const v = validateRemoteUrl("git@gitlab.com:siomkin/gitlane.git");
     expect(v).toMatchObject({ level: "warn", ok: true });
     expect(v.message).toMatch(/pull requests unavailable/);
+  });
+});
+
+describe("isValidRemoteName", () => {
+  it("accepts ordinary remote names", () => {
+    for (const ok of ["origin", "upstream", "fork-2", "my.remote", "a_b"]) {
+      expect(isValidRemoteName(ok), ok).toBe(true);
+    }
+  });
+
+  it("rejects empty, spaced, and special-character names", () => {
+    for (const bad of ["", "  ", "my remote", "-origin", ".hidden", "a/b", "remote!", "a$b"]) {
+      expect(isValidRemoteName(bad), bad).toBe(false);
+    }
   });
 });
