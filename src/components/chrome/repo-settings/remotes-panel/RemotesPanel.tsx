@@ -18,6 +18,7 @@ const repoLeaf = (workdir: string | null | undefined): string =>
  * refreshes the toolbar provider indicator on its own. */
 export const RemotesPanel = () => {
   const summary = useRepo((s) => s.summary);
+  const refreshRepo = useRepo((s) => s.refresh);
   const repoAccountRef = useAccounts((s) => s.repoAccountRef);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
@@ -50,6 +51,10 @@ export const RemotesPanel = () => {
     try {
       await action();
       await reload();
+      // Refresh the repo's forge/provider state so the toolbar indicator and PR
+      // gating react immediately — e.g. adding the first GitHub remote flips the
+      // toolbar out of "No remote" without waiting on the filesystem watcher.
+      void refreshRepo();
     } catch (e) {
       showToast(`${failure}: ${String(e)}`, "error");
     } finally {

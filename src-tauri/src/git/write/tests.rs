@@ -7,7 +7,8 @@ use super::{
     continue_operation, delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
-    reflog_entries, resolve_conflict_file, set_repo_identity, set_upstream, skip_operation,
+    reflog_entries, resolve_conflict_file, set_remote_url, set_repo_identity, set_upstream,
+    skip_operation,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -1773,5 +1774,53 @@ fn reconflict_file_refuses_unrelated_path_and_keeps_edits() {
     assert_eq!(
         std::fs::read_to_string(repo.0.join("other.txt")).unwrap(),
         "my precious edits\n"
+    );
+}
+
+fn remote_url(repo: &TempRepo, args: &[&str]) -> String {
+    let out = repo.git(args);
+    assert!(out.status.success(), "git {args:?} failed");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn set_remote_url_repoints_a_separate_push_url_too() {
+    let repo = TempRepo::new("remote-pushurl");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/old/repo.git"]);
+    // A *separate* push URL — the case `set-url` (fetch only) would leave stale.
+    repo.git_ok(&["remote", "set-url", "--push", "origin", "https://github.com/old/push.git"]);
+
+    set_remote_url(repo.path(), "origin", "https://github.com/new/repo.git").unwrap();
+
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://github.com/new/repo.git"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "https://github.com/new/repo.git"
+    );
+}
+
+#[test]
+fn set_remote_url_leaves_push_following_fetch_when_no_push_url() {
+    let repo = TempRepo::new("remote-nopush");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/old/repo.git"]);
+
+    set_remote_url(repo.path(), "origin", "https://github.com/new/repo.git").unwrap();
+
+    // No standalone pushurl was created; push transparently follows the fetch URL.
+    assert!(
+        !repo
+            .git(&["config", "--get-all", "remote.origin.pushurl"])
+            .status
+            .success(),
+        "no separate pushurl should be configured"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "https://github.com/new/repo.git"
     );
 }
