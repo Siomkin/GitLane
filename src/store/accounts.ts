@@ -1,10 +1,13 @@
-// Account + commit-identity state for the open repo. Split out of `ui.ts` (the
-// view-chrome store) because it owns a distinct subsystem: the provider-aware
-// GitHub account list, the per-repo account binding that drives PR/push/fetch
-// auth, and the commit identity that is mirrored into the repo's local git
-// config. The repo path is resolved lazily via `useRepo` — exactly the
-// cross-store pattern `pulls.ts` already uses. Server-side token resolution is
-// unchanged: commands receive account metadata, never a token.
+// Account state (Tier 2) for the open repo, plus the current commit-identity
+// *read* (`repoIdentity`). Split out of `ui.ts` (the view-chrome store) because
+// it owns a distinct subsystem: the provider-aware GitHub account list and the
+// per-repo account binding that drives PR/push/fetch auth. Commit identity is
+// *owned* by `profiles.ts` (Tier 1) — it does the writes via git profiles; this
+// store only holds/reconciles the effective `repoIdentity` read back from git
+// config (via `pinRepoIdentity` / `hydrateRepoIdentity`). The repo path is
+// resolved lazily via `useRepo` — the same cross-store pattern `pulls.ts` uses.
+// Server-side token resolution is unchanged: commands receive account metadata,
+// never a token.
 
 import { create } from "zustand";
 
@@ -145,8 +148,15 @@ interface AccountsState {
   /** Resolve the bound account + commit identity for a repo path. Sets the
    * cached identity synchronously, then reconciles from git config. */
   syncRepoAccount: (path: string) => void;
+  /** Optimistically publish the commit identity just written to git config (and
+   * its cache), bumping the identity generation so any in-flight hydrate that
+   * predates this write is dropped. Keeps `repoIdentity` correct in the window
+   * before a reconcile read returns — commits in that window use the right
+   * author. `null` = identity cleared (defer to global). */
+  pinRepoIdentity: (identity: RepoIdentity | null, path: string) => void;
   /** Reconcile `repoIdentity` from the repo's local git config (the durable
-   * source of truth), falling back to the localStorage cache. */
+   * source of truth), falling back to the localStorage cache. Bails if a newer
+   * identity write superseded this hydrate (generation guard). */
   hydrateRepoIdentity: (path: string) => Promise<void>;
   /** Bind the open repo to a PR/push/fetch account (Tier 2). Persists the
    * binding and reloads PRs; never writes the commit identity (that's owned by
@@ -163,6 +173,10 @@ const FORGE_WHOAMI = new Set(["gitlab", "azure-devops"]);
 // loadForgeAuth is dropped (not merged) once a newer load supersedes it, so a
 // stale identity can't land on a refreshed / signed-out provider row.
 let forgeAuthGen = 0;
+// Monotonic commit-identity generation. Bumped on every identity write so an
+// in-flight `hydrateRepoIdentity` that predates a newer write is dropped — a
+// slow reconcile read can't republish a superseded identity.
+let repoIdentityGen = 0;
 
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
@@ -290,14 +304,26 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     void get().hydrateRepoIdentity(path);
   },
 
+  pinRepoIdentity: (identity, path) => {
+    repoIdentityGen += 1;
+    set({ repoIdentity: identity });
+    const identities = readIdentities();
+    if (identity) identities[path] = identity;
+    else delete identities[path];
+    writeIdentities(identities);
+  },
+
   hydrateRepoIdentity: async (path) => {
+    const gen = repoIdentityGen;
     let identity: RepoIdentity | null;
     try {
       identity = await api.repoIdentity(path);
     } catch {
       return; // keep the optimistic localStorage value on read failure
     }
-    // Ignore a stale resolution if the user switched repos meanwhile.
+    // Drop this reconcile if a newer identity write superseded it, or the user
+    // switched repos meanwhile.
+    if (repoIdentityGen !== gen) return;
     if (useRepo.getState().summary?.path !== path) return;
     if (identity) {
       // git config wins; refresh the cache so both agree.

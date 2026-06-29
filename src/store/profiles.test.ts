@@ -114,3 +114,83 @@ describe("useProfiles — custom email persistence across profile switches", () 
     expect(overrides[path]?.p2).toBeUndefined();
   });
 });
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe("useProfiles — identity write races", () => {
+  it("publishes the applied identity optimistically and drops a superseded hydrate", async () => {
+    // The first hydrate read snapshots the config at call time, then hangs, so
+    // it lands *after* a newer apply — it must be dropped by the generation guard.
+    let releaseFirstRead!: () => void;
+    const firstRead = new Promise<void>((r) => {
+      releaseFirstRead = r;
+    });
+    let reads = 0;
+    invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+      const p = args?.path as string;
+      if (cmd === "set_repo_identity") {
+        state.cfg.set(p, { name: args.name as string, email: args.email as string });
+        return "ok";
+      }
+      if (cmd === "repo_identity") {
+        reads += 1;
+        const snapshot = state.cfg.get(p) ?? null; // value at read-issue time
+        if (reads === 1) await firstRead;
+        return snapshot;
+      }
+      return null;
+    });
+
+    const apply1 = useProfiles.getState().applyProfile("p2"); // Work; its hydrate hangs
+    await tick();
+    // Optimistic pin already reflects Work, before any reconcile read returns.
+    expect(useAccounts.getState().repoIdentity?.name).toBe("Stepan Work");
+
+    await useProfiles.getState().applyProfile("p1"); // Personal — supersedes
+    expect(useAccounts.getState().repoIdentity?.email).toBe("personal@example.dev");
+
+    releaseFirstRead(); // the stale Work hydrate finally resolves
+    await apply1;
+    await tick();
+    expect(useAccounts.getState().repoIdentity?.email).toBe("personal@example.dev");
+  });
+
+  it("publishes the cleared identity immediately on switch to Default (before hydrate)", async () => {
+    let releaseRead!: () => void;
+    const slowRead = new Promise<void>((r) => {
+      releaseRead = r;
+    });
+    invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+      const p = args?.path as string;
+      if (cmd === "set_repo_identity") {
+        state.cfg.set(p, { name: args.name as string, email: args.email as string });
+        return "ok";
+      }
+      if (cmd === "clear_repo_identity") {
+        state.cfg.delete(p);
+        return "ok";
+      }
+      if (cmd === "repo_identity") {
+        await slowRead;
+        return state.cfg.get(p) ?? null;
+      }
+      return null;
+    });
+
+    useAccounts.setState({ repoIdentity: { name: "Stepan Work", email: "work@acme.io" } });
+    const clearing = useProfiles.getState().applyProfile(null);
+    await tick();
+    // Identity is cleared right away — a commit in the hydrate window won't pin Work.
+    expect(useAccounts.getState().repoIdentity).toBeNull();
+    releaseRead();
+    await clearing;
+    expect(useAccounts.getState().repoIdentity).toBeNull();
+  });
+
+  it("saveProfile with an unknown id creates a profile instead of dropping it", () => {
+    useProfiles.setState({ profiles: [personal] });
+    const saved = useProfiles.getState().saveProfile({ id: "ghost", label: "Ghost", name: "G", email: "g@x.dev" });
+    expect(saved.label).toBe("Ghost");
+    expect(useProfiles.getState().profiles.some((p) => p.label === "Ghost")).toBe(true);
+  });
+});

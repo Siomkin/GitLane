@@ -17,7 +17,9 @@ import { CommitEmailField } from "./CommitEmailField";
 import { UnmanagedRow } from "./UnmanagedRow";
 import { PrAccountZone } from "./PrAccountZone";
 
-type Prefill = Partial<Pick<GitProfile, "name" | "email" | "signingKey" | "gpgFormat" | "gpgSign">>;
+type Prefill = Partial<
+  Pick<GitProfile, "name" | "email" | "signingKey" | "gpgFormat" | "gpgSign" | "tagGpgSign">
+>;
 type Editing = { kind: "new"; prefill?: Prefill } | { kind: "edit"; id: string } | null;
 
 export function IdentityPanel() {
@@ -163,6 +165,7 @@ export function IdentityPanel() {
                     signingKey: repoIdentity.signingKey,
                     gpgFormat: repoIdentity.gpgFormat === "ssh" ? "ssh" : repoIdentity.gpgFormat === "openpgp" ? "openpgp" : undefined,
                     gpgSign: repoIdentity.gpgSign,
+                    tagGpgSign: repoIdentity.tagGpgSign,
                   },
                 })
               }

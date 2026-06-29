@@ -135,6 +135,20 @@ function signingArgs(profile: GitProfile) {
   };
 }
 
+/** The identity git config holds after applying `profile` with `email` — shaped
+ * to match what `repo_identity` reads back, so the optimistic pin agrees with
+ * the reconcile. */
+function expectedIdentity(profile: GitProfile, email: string): RepoIdentity {
+  return {
+    name: profile.name,
+    email,
+    signingKey: profile.signingKey || undefined,
+    gpgFormat: profile.gpgFormat || undefined,
+    gpgSign: profile.gpgSign ?? false,
+    tagGpgSign: profile.tagGpgSign ?? false,
+  };
+}
+
 function repoPath(): string | null {
   return useRepo.getState().summary?.path ?? null;
 }
@@ -181,15 +195,16 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
 
   saveProfile: (draft) => {
     const profiles = [...get().profiles];
+    const index = draft.id ? profiles.findIndex((p) => p.id === draft.id) : -1;
     let saved: GitProfile;
-    if (draft.id) {
-      const i = profiles.findIndex((p) => p.id === draft.id);
-      saved = { ...profiles[i], ...draft, id: draft.id };
-      if (i >= 0) profiles[i] = saved;
+    if (index >= 0) {
+      saved = { ...profiles[index], ...draft, id: draft.id! };
+      profiles[index] = saved;
     } else {
+      // No id, or an id that no longer exists → create (never silently drop).
       saved = {
         ...draft,
-        id: crypto.randomUUID(),
+        id: draft.id ?? crypto.randomUUID(),
         color: ACCOUNT_COLORS[profiles.length % ACCOUNT_COLORS.length],
         // The first profile created becomes the default-for-new-repos.
         isDefault: profiles.length === 0,
@@ -232,6 +247,9 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
       }
       // Default git identity → no profile applied.
       setAppliedProfileId(path, null);
+      // Publish the cleared identity immediately so a commit in the reconcile
+      // window doesn't pin the previous profile's author.
+      useAccounts.getState().pinRepoIdentity(null, path);
       await useAccounts.getState().hydrateRepoIdentity(path);
       useUi.getState().showToast("Using the default git identity for this repo");
       return;
@@ -247,6 +265,7 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
     }
     // Record the applied profile by id so selection stays unambiguous.
     setAppliedProfileId(path, id);
+    useAccounts.getState().pinRepoIdentity(expectedIdentity(profile, email), path);
     await useAccounts.getState().hydrateRepoIdentity(path);
     useUi.getState().showToast(`This repo commits as ${profile.label}`);
   },
@@ -267,6 +286,7 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
     // Cache the override only after git config actually accepted it, so a failed
     // write is never re-applied when the user later switches back to this profile.
     setCustomEmailEntry(path, sel.id, email);
+    useAccounts.getState().pinRepoIdentity(expectedIdentity(profile, email), path);
     await useAccounts.getState().hydrateRepoIdentity(path);
   },
 
