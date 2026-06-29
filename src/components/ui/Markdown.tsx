@@ -7,32 +7,38 @@ import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform 
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as RehypeSanitizeOptions } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../lib/openExternal";
+
+// Inline images are narrowed to a small raster allowlist with a length cap. SVG is
+// excluded on purpose — `data:image/svg+xml` can carry script/foreignObject — and
+// the cap is on the data-URI *string length* (a deliberately cheap proxy: we don't
+// base64-decode untrusted markdown just to measure it), which keeps the rendered
+// blob roughly bounded so a PR can't wedge the view with a multi-megabyte image.
+// `markdownUrlTransform` and `isTrustedImageSrc` are the two gates; keep both
+// pointed at `isSafeDataImage`.
+const SAFE_DATA_IMAGE = /^data:image\/(png|jpe?g|gif|webp)[;,]/i;
+const MAX_DATA_IMAGE_URI_CHARS = 256 * 1024;
+
+function isSafeDataImage(url: string): boolean {
+  return url.length <= MAX_DATA_IMAGE_URI_CHARS && SAFE_DATA_IMAGE.test(url);
+}
 
 const markdownHtmlSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
   protocols: {
     ...defaultSchema.protocols,
     // `data:` is allowed broadly here only so inline images survive sanitization;
-    // `markdownUrlTransform` is the real gate that narrows it to `data:image/`.
-    // Keep the two in sync — widening one without the other re-opens the hole.
+    // `markdownUrlTransform` is the real gate that narrows it to safe raster
+    // `data:image/*`. Keep the two in sync — widening one without the other
+    // re-opens the hole.
     src: ["http", "https", "data"],
   },
   strip: [...(defaultSchema.strip ?? []), "style"],
   tagNames: (defaultSchema.tagNames ?? []).filter((tag) => tag !== "picture" && tag !== "source"),
 };
 
-function isOpenableHref(href: string): boolean {
-  try {
-    const url = new URL(href);
-    return url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:";
-  } catch {
-    return false;
-  }
-}
-
 const markdownUrlTransform: UrlTransform = (url, key) => {
-  if (key === "src" && url.startsWith("data:image/")) return url;
+  if (key === "src" && isSafeDataImage(url)) return url;
   return defaultUrlTransform(url);
 };
 
@@ -55,7 +61,7 @@ function priorityBadge(src: string, alt: string): string | null {
 // data: URIs and GitHub's user-content CDN are trusted to load directly; any
 // other source renders as a labelled placeholder rather than being fetched.
 function isTrustedImageSrc(src: string): boolean {
-  if (src.startsWith("data:image/")) return true;
+  if (isSafeDataImage(src)) return true;
   try {
     const url = new URL(src);
     if (url.protocol !== "https:") return false;
@@ -93,7 +99,7 @@ const components: Components = {
       href={href}
       onClick={(e) => {
         e.preventDefault();
-        if (href && isOpenableHref(href)) void openUrl(href);
+        if (href) openExternalUrl(href);
       }}
       className="cursor-pointer text-[#3b7ff5] underline underline-offset-2 hover:brightness-110"
     >

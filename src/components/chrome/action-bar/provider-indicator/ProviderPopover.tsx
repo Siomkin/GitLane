@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../../../lib/openExternal";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import type { RepoSettingsSection } from "../../../../store/ui";
@@ -88,7 +88,7 @@ export const ProviderPopover = ({
         onOpenRepoSettings("remotes");
         break;
       case "open-url":
-        void openUrl(action.url);
+        openExternalUrl(action.url);
         break;
     }
     onClose();
@@ -130,7 +130,7 @@ export const ProviderPopover = ({
         <button
           type="button"
           onClick={() => {
-            void openUrl(model.headHref!);
+            openExternalUrl(model.headHref!);
             onClose();
           }}
           title={model.headHref}
