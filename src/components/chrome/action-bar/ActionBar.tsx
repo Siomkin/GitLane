@@ -23,9 +23,8 @@ import {
 import { SegTab } from "./SegTab";
 import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";
-import { ProviderIndicator } from "./ProviderIndicator";
-import { deriveProviderState } from "./provider";
-import type { ProviderState } from "./provider";
+import { ProviderIndicator, deriveProviderState } from "./provider-indicator";
+import type { ProviderState } from "./provider-indicator";
 
 /** Network ops that surface a per-button spinner driven by their command promise. */
 type NetOp = "fetch" | "pull" | "push";
@@ -52,6 +51,7 @@ export const ActionBar = ({
   const pullRequests = usePulls((state) => state.pullRequests);
   const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreateBranch = useUi((state) => state.setCreateBranchOpen);
+  const openSettings = useUi((state) => state.openSettings);
   const toggleTerminal = useUi((state) => state.toggleTerminal);
   const openRecovery = useUi((state) => state.openRecovery);
   const terminalVisible = useUi((state) => state.terminalView !== "hidden");
@@ -171,7 +171,7 @@ export const ActionBar = ({
 
   return (
     <div ref={wrapRef} className="relative flex-none">
-      <div className="flex h-14 items-center gap-3 px-3.5">
+      <div className="flex h-14 items-center gap-2 px-3.5">
         <div className="flex h-8 flex-none items-center rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
           <SegTab
             active={!showPulls}
@@ -256,13 +256,19 @@ export const ActionBar = ({
           </button>
         )}
 
-        <div className="ml-auto flex items-center gap-0.5">
-          {forge && providerState && (
-            <>
-              <ProviderIndicator state={providerState} forge={forge} />
-              <Separator />
-            </>
-          )}
+        {forge && providerState && (
+          <ProviderIndicator
+            className="ml-auto"
+            state={providerState}
+            forge={forge}
+            prCount={prCount}
+            onViewPrs={() => selectTab("pulls")}
+            onOpenSettings={openSettings}
+          />
+        )}
+        {forge && providerState && <Separator />}
+
+        <div className={cn("flex items-center gap-0.5", !(forge && providerState) && "ml-auto")}>
           <ToolbarAction
             label="Fetch"
             icon={<FetchIcon />}

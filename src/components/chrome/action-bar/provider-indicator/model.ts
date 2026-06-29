@@ -1,0 +1,237 @@
+import { ForgeKind } from "../../../../lib/api";
+import type { RepoForge } from "../../../../lib/api";
+import type { ProviderState } from "./state";
+
+/** Glyph keys the popover resolves to real icon components in `ProviderPopover`.
+ * Kept as strings so this module stays pure (no JSX) and unit-testable. */
+export type PopoverIconKey =
+  | "github"
+  | "gitlab"
+  | "bitbucket"
+  | "gitea"
+  | "forgejo"
+  | "azure"
+  | "cloud"
+  | "cloudOff"
+  | "warning"
+  | "pr"
+  | "issue"
+  | "gear"
+  | "branch"
+  | "people"
+  | "webhook"
+  | "key"
+  | "external"
+  | "plus"
+  | "remotes";
+
+/** What the popover's primary button does. Resolved to a handler in the view. */
+export type PopoverAction =
+  | { kind: "view-prs" }
+  | { kind: "sign-in" }
+  | { kind: "add-remote" }
+  | { kind: "open-url"; url: string };
+
+export interface PopoverLinkSpec {
+  icon: PopoverIconKey;
+  label: string;
+  href: string;
+}
+
+export interface PopoverCapability {
+  label: string;
+  /** Colour classes for the pill (the component prepends shape/size). */
+  tone: string;
+}
+
+export interface PopoverPrimary {
+  icon: PopoverIconKey;
+  label: string;
+  /** Trailing affordance glyph ("→", "↗") or "" for none. */
+  suffix: string;
+  action: PopoverAction;
+}
+
+export interface ProviderSettingsSection {
+  /** Eyebrow label, e.g. "Settings on github.com". */
+  eyebrow: string;
+  /** Monospace hint shown beside the eyebrow, e.g. "/settings". */
+  mono: string;
+  links: PopoverLinkSpec[];
+}
+
+/** Fully-resolved content for the provider popover, one shape for every status.
+ * `headHref === null` renders a static (non-link) header; `primary === null`
+ * drops the primary button (e.g. an unrecognised remote with no web URL). */
+export interface ProviderPopoverModel {
+  headerIcon: PopoverIconKey;
+  headerTone: string;
+  title: string;
+  host: string;
+  headHref: string | null;
+  capability: PopoverCapability | null;
+  note: string;
+  primary: PopoverPrimary | null;
+  /** Non-null shows the "On <host>" GitHub links group. */
+  githubEyebrow: string | null;
+  githubLinks: PopoverLinkSpec[];
+  /** Non-null shows the "Settings on <host>" links group. */
+  settings: ProviderSettingsSection | null;
+}
+
+const MUTED = "text-neutral-500 dark:text-neutral-400";
+const STRONG = "text-neutral-700 dark:text-neutral-200";
+const ROSE = "text-rose-600 dark:text-rose-400";
+
+const FORGE_ICON_KEY: Partial<Record<ForgeKind, PopoverIconKey>> = {
+  [ForgeKind.GitHub]: "github",
+  [ForgeKind.GitLab]: "gitlab",
+  [ForgeKind.Bitbucket]: "bitbucket",
+  [ForgeKind.AzureDevOps]: "azure",
+  [ForgeKind.Gitea]: "gitea",
+  [ForgeKind.Forgejo]: "forgejo",
+};
+
+const forgeIconKey = (kind: ForgeKind | null): PopoverIconKey =>
+  (kind && FORGE_ICON_KEY[kind]) || "cloud";
+
+/** `owner/repo` from a web URL (scheme + host + trailing `.git` stripped),
+ * falling back to the host when no path is available. */
+const slugOf = (webUrl: string | null, host: string | null): string => {
+  if (!webUrl) return host ?? "remote";
+  return webUrl.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\.git$/, "") || host || "remote";
+};
+
+const githubSections = (gh: string | null, host: string, prCount: number) => {
+  if (!gh) return { githubEyebrow: null, githubLinks: [], settings: null };
+  return {
+    githubEyebrow: `On ${host}`,
+    githubLinks: [
+      { icon: "pr" as const, label: `Pull requests (${prCount})`, href: `${gh}/pulls` },
+      { icon: "issue" as const, label: "Issues", href: `${gh}/issues` },
+    ],
+    settings: {
+      eyebrow: `Settings on ${host}`,
+      mono: "/settings",
+      links: [
+        { icon: "gear" as const, label: "General", href: `${gh}/settings` },
+        { icon: "branch" as const, label: "Branches", href: `${gh}/settings/branches` },
+        { icon: "people" as const, label: "Collaborators & teams", href: `${gh}/settings/access` },
+        { icon: "webhook" as const, label: "Webhooks", href: `${gh}/settings/hooks` },
+      ],
+    },
+  };
+};
+
+/** A recognised GitHub remote — signed in (`connected`) or not (`needs-auth`). */
+const githubModel = (
+  forge: RepoForge,
+  prCount: number,
+  variant: "connected" | "needs-auth",
+): ProviderPopoverModel => {
+  const host = forge.host ?? "github.com";
+  const base = {
+    headerIcon: "github" as const,
+    headerTone: STRONG,
+    title: slugOf(forge.webUrl, host),
+    host,
+    headHref: forge.webUrl,
+    ...githubSections(forge.webUrl, host, prCount),
+  };
+  if (variant === "connected") {
+    return {
+      ...base,
+      capability: { label: "PRs on", tone: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/12" },
+      note: "",
+      primary: {
+        icon: "pr",
+        label: `View ${prCount} pull request${prCount === 1 ? "" : "s"}`,
+        suffix: "→",
+        action: { kind: "view-prs" },
+      },
+    };
+  }
+  return {
+    ...base,
+    capability: { label: "Sign in", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
+    note: "A GitHub remote, but no account is bound. Sign in to view and open pull requests.",
+    primary: { icon: "key", label: "Sign in to GitHub", suffix: "", action: { kind: "sign-in" } },
+  };
+};
+
+/** A non-GitHub remote: recognised forge (GitLab/Bitbucket/…) or an unrecognised
+ * host. The repo link still works; pull requests do not. */
+const forgeModel = (forge: RepoForge): ProviderPopoverModel => {
+  const host = forge.host ?? "remote";
+  const label = forge.forge ?? forge.host ?? "this remote";
+  return {
+    headerIcon: forgeIconKey(forge.kind),
+    headerTone: MUTED,
+    title: slugOf(forge.webUrl, forge.host),
+    host,
+    headHref: forge.webUrl,
+    capability: {
+      label: "No PRs",
+      tone: "text-neutral-500 dark:text-neutral-400 bg-black/[0.05] dark:bg-white/[0.07]",
+    },
+    note: `Pull requests aren't available for ${label} remotes. Browsing, push, fetch and pull still work.`,
+    primary: forge.webUrl
+      ? { icon: "external", label: `Open on ${label}`, suffix: "↗", action: { kind: "open-url", url: forge.webUrl } }
+      : null,
+    githubEyebrow: null,
+    githubLinks: [],
+    settings: null,
+  };
+};
+
+const missingModel = (): ProviderPopoverModel => ({
+  headerIcon: "cloudOff",
+  headerTone: MUTED,
+  title: "No remote",
+  host: "Local-only repository",
+  headHref: null,
+  capability: null,
+  note: "This repository has no remote. Add one to enable push, fetch and pull requests.",
+  primary: { icon: "plus", label: "Add a remote…", suffix: "", action: { kind: "add-remote" } },
+  githubEyebrow: null,
+  githubLinks: [],
+  settings: null,
+});
+
+const errorModel = (): ProviderPopoverModel => ({
+  headerIcon: "warning",
+  headerTone: ROSE,
+  title: "GitHub CLI not found",
+  host: "Provider unavailable",
+  headHref: null,
+  capability: { label: "Error", tone: "text-rose-600 dark:text-rose-400 bg-rose-500/12" },
+  note: "Install the GitHub CLI (gh) to browse pull requests. Push, fetch and pull are unaffected.",
+  primary: { icon: "external", label: "Install gh", suffix: "↗", action: { kind: "open-url", url: "https://cli.github.com" } },
+  githubEyebrow: null,
+  githubLinks: [],
+  settings: null,
+});
+
+/** Build the popover content for a provider status. GitHub forges show PR +
+ * settings shortcuts; recognised non-GitHub forges and unrecognised hosts share
+ * the "no PRs, open externally" shape; missing/error are static panels. */
+export const providerPopoverModel = (
+  state: ProviderState,
+  forge: RepoForge,
+  prCount: number,
+): ProviderPopoverModel => {
+  switch (state) {
+    case "missing":
+      return missingModel();
+    case "error":
+      return errorModel();
+    case "needs-auth":
+      return githubModel(forge, prCount, "needs-auth");
+    case "connected":
+      return forge.kind === ForgeKind.GitHub
+        ? githubModel(forge, prCount, "connected")
+        : forgeModel(forge);
+    case "unsupported":
+      return forgeModel(forge);
+  }
+};

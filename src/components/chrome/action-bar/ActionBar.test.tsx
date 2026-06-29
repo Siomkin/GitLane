@@ -56,7 +56,7 @@ describe("ActionBar layout order", () => {
 
     const commitsTab = screen.getByRole("button", { name: /Commits/ });
     const branchTrigger = screen.getByTitle(/Branches, worktrees & stashes/);
-    const provider = screen.getByRole("button", { name: /open repository on its provider/i });
+    const provider = screen.getByRole("button", { name: /remote provider/i });
     const fetchBtn = screen.getByTitle("Fetch");
 
     // Segmented control → branch trigger → provider indicator → Fetch.
@@ -68,7 +68,7 @@ describe("ActionBar layout order", () => {
   it("renders no provider indicator when the repo's forge is unknown", () => {
     useRepo.setState({ forge: null });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /open repository on its provider/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /remote provider/i })).toBeNull();
   });
 
   it("quietly loads GitHub PRs for the toolbar badge before PRs mode opens", () => {
