@@ -26,20 +26,28 @@ describe("selectProfile", () => {
     expect(selectProfile(null, profiles)).toEqual({ kind: "default" });
   });
 
-  it("matches a profile exactly on name + email (no custom email)", () => {
-    expect(selectProfile({ name: "Stepan Work", email: "work@acme.io" }, profiles)).toEqual({
-      kind: "profile",
-      id: "p2",
-      customEmail: false,
-    });
+  it("matches a profile exactly on name + email + signing (no overrides)", () => {
+    expect(
+      selectProfile(
+        { name: "Stepan Work", email: "work@acme.io", signingKey: "ABCD1234", gpgFormat: "openpgp", gpgSign: true },
+        profiles,
+      ),
+    ).toEqual({ kind: "profile", id: "p2", customEmail: false, customSigning: false });
   });
 
   it("flags a custom email when the name matches but the email differs", () => {
-    expect(selectProfile({ name: "Stepan Work", email: "stepan@personal.dev" }, profiles)).toEqual({
-      kind: "profile",
-      id: "p2",
-      customEmail: true,
-    });
+    expect(
+      selectProfile(
+        { name: "Stepan Work", email: "stepan@personal.dev", signingKey: "ABCD1234", gpgFormat: "openpgp", gpgSign: true },
+        profiles,
+      ),
+    ).toEqual({ kind: "profile", id: "p2", customEmail: true, customSigning: false });
+  });
+
+  it("flags custom signing when the key/format/sign flag diverges", () => {
+    expect(
+      selectProfile({ name: "Stepan Work", email: "work@acme.io", signingKey: "DIFFERENT" }, profiles),
+    ).toEqual({ kind: "profile", id: "p2", customEmail: false, customSigning: true });
   });
 
   it("reports unmanaged when no profile matches the pinned identity", () => {

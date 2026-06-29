@@ -14,7 +14,13 @@ that owns its concern:
 - `store/repo.ts` — git domain state (repo, graph, branches, worktrees, stashes, working
   changes, selection).
 - `store/pulls.ts` — PR list + per-number detail/checks caches.
-- `store/accounts.ts` — provider-aware GitHub account metadata, per-repo binding, commit identity.
+- `store/accounts.ts` — provider-aware GitHub account metadata + the per-repo **PR/push/fetch
+  account binding** (Tier 2). Does **not** own the commit identity; binding never writes
+  `user.name`/`user.email`.
+- `store/profiles.ts` — **git profiles** (Tier 1): saved reusable commit identities
+  (name/email + optional signing) and how they apply to the open repo's local git config,
+  plus the per-repo+profile custom-email override. Owns commit identity; git config is the
+  source of truth (the effective identity is read back into `accounts.ts`'s `repoIdentity`).
 - `store/ui.ts` — view/chrome state (theme + accent colour, density, panel widths, overlays, filters, drag).
   View prefs persist; transient overlays and git data do not.
 - `store/selection.ts` — **pure** helpers (no Zustand, no IPC).

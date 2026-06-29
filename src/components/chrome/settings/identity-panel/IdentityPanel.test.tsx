@@ -71,4 +71,64 @@ describe("IdentityPanel", () => {
     expect(screen.getByText("New profile", { selector: "div" })).toBeInTheDocument();
     expect(screen.getByLabelText("PROFILE NAME")).toBeInTheDocument();
   });
+
+  it("lets the user set a per-repo custom commit email via setCustomEmail", () => {
+    // A profile is applied (repo identity matches Work) → the commit-email field shows.
+    useAccounts.setState({ repoIdentity: { name: "Stepan Work", email: "work@acme.io" } });
+    render(<IdentityPanel />);
+    expect(screen.getByText("COMMIT EMAIL FOR THIS REPO")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit commit email" }));
+    fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
+      target: { value: "stepan@contractor.dev" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // setCustomEmail writes the override to local git config.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "set_repo_identity",
+      expect.objectContaining({ path, name: "Stepan Work", email: "stepan@contractor.dev" }),
+    );
+  });
+
+  it("surfaces an unmanaged local identity with a save-as-profile path", () => {
+    useAccounts.setState({ repoIdentity: { name: "Outside Tool", email: "ext@elsewhere.dev" } });
+    render(<IdentityPanel />);
+    expect(screen.getByText("Unmanaged local identity")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save as profile" }));
+    // Opens the editor prefilled with the unmanaged identity's name.
+    expect(screen.getByLabelText("NAME")).toHaveValue("Outside Tool");
+    expect(screen.getByLabelText("EMAIL")).toHaveValue("ext@elsewhere.dev");
+  });
+
+  it("binds a PR account from Zone B without touching the commit identity", () => {
+    useAccounts.setState({
+      accounts: [
+        {
+          id: "gh:github.com:1",
+          forge: "GitHub",
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "octocat",
+          label: "octocat",
+          username: "octocat",
+          name: "Octo Cat",
+          email: "octo@example.com",
+          color: "#5b8def",
+          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+          active: true,
+        },
+      ],
+      repoAccountId: null,
+    });
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+    invokeMock.mockClear();
+    fireEvent.click(screen.getByRole("radio", { name: "@octocat" }));
+    expect(useAccounts.getState().repoAccountId).toBe("gh:github.com:1");
+    // Binding a PR account must not write the commit identity.
+    const identityWrites = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity",
+    );
+    expect(identityWrites).toHaveLength(0);
+  });
 });

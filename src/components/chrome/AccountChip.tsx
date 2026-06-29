@@ -1,6 +1,8 @@
-// Title-bar identity chip: shows the account the current repo commits/fetches
-// as, and opens a popover to switch it (or jump to account management). The
-// per-repo binding lives in the accounts store.
+// Title-bar PR-account chip (Tier 2): shows the provider account this repo uses
+// for pull requests / push / fetch auth, and opens a popover to switch it (or
+// jump to account management). This does NOT set the commit identity — who the
+// repo commits as is a git profile, chosen in Settings → Identity. The per-repo
+// binding lives in the accounts store.
 
 import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
@@ -34,7 +36,7 @@ export function AccountChip() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Identity for this repository"
+        title="Pull-request account for this repository"
         className="flex items-center gap-1.5 h-8 pl-1 pr-2.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
       >
         {bound ? (
@@ -50,7 +52,7 @@ export function AccountChip() {
           </span>
         )}
         <span className="max-w-[120px] truncate text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
-          {bound ? `@${bound.username}` : "Set identity"}
+          {bound ? `@${bound.username}` : "PR account"}
         </span>
       </button>
 
@@ -58,7 +60,7 @@ export function AccountChip() {
         <div className="absolute right-0 top-[34px] z-[70] w-[280px] overflow-hidden rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-800 shadow-[0_18px_44px_-8px_rgba(0,0,0,0.42)]">
           <div className="border-b border-black/10 dark:border-white/10 px-3.5 py-2.5">
             <div className="text-[11px] font-semibold tracking-wider text-neutral-400">
-              IDENTITY FOR THIS REPOSITORY
+              PULL-REQUEST ACCOUNT
             </div>
             <div className="mt-0.5 truncate text-[12px] text-neutral-600 dark:text-neutral-300">
               {repoLabel(summary.workdir ?? summary.path)}
@@ -74,8 +76,8 @@ export function AccountChip() {
                   —
                 </span>
               }
-              title="No identity (read-only)"
-              subtitle="Use the repo / global git config"
+              title="No account"
+              subtitle="Pull requests off for this repo"
             />
             {accounts.map((a) => (
               <Row

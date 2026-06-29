@@ -137,10 +137,10 @@ interface AccountsState {
   /** Reconcile `repoIdentity` from the repo's local git config (the durable
    * source of truth), falling back to the localStorage cache. */
   hydrateRepoIdentity: (path: string) => Promise<void>;
-  /** Bind the open repo to an account: persist, prefill + write identity, reload PRs. */
+  /** Bind the open repo to a PR/push/fetch account (Tier 2). Persists the
+   * binding and reloads PRs; never writes the commit identity (that's owned by
+   * git profiles / `useProfiles`). `null` unbinds (PRs off for this repo). */
   setRepoAccount: (id: string | null) => Promise<void>;
-  /** Edit the open repo's commit identity (name/email); persist + write to git config. */
-  editRepoIdentity: (name: string, email: string) => Promise<boolean>;
 }
 
 export const useAccounts = create<AccountsState>((set, get) => ({
@@ -267,44 +267,14 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       else delete bindings[path];
       writeBindings(bindings);
     }
-    if (path && account) {
-      // Picking an account prefills the commit identity from it; the user can
-      // then edit the email (e.g. a public address) in the Identity tab.
-      const ok = await get().editRepoIdentity(account.name, account.email);
-      if (ok) useUi.getState().showToast(`This repo will commit & fetch as @${account.username}`);
-    } else if (path) {
-      // "No identity" — drop the pinned identity and defer to global git
-      // config. Clear both the cache and the local git config so the choice is
-      // durable and won't be re-hydrated from a stale value on the next open.
-      const identities = readIdentities();
-      delete identities[path];
-      writeIdentities(identities);
-      set({ repoIdentity: null });
-      try {
-        await api.clearRepoIdentity(path);
-      } catch (e) {
-        useUi.getState().showToast(String(e), "error");
-      }
-      useUi.getState().showToast("Identity cleared");
+    // Binding an account drives PR / push / fetch auth ONLY — it must never
+    // touch the commit identity. Who the repo commits as is owned by git
+    // profiles (`useProfiles`); a PR account (Tier 2) and a git profile
+    // (Tier 1) are independent, so picking an account here leaves the applied
+    // profile's `user.name` / `user.email` untouched. See GL-27 / GL-63.
+    if (account) {
+      useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }
     void usePulls.getState().loadPullRequests();
-  },
-
-  editRepoIdentity: async (name, email) => {
-    const path = useRepo.getState().summary?.path ?? null;
-    const identity: RepoIdentity = { name: name.trim(), email: email.trim() };
-    set({ repoIdentity: identity });
-    if (!path) return true;
-    const identities = readIdentities();
-    identities[path] = identity;
-    writeIdentities(identities);
-    try {
-      // Mirror to the repo's local git config so CLI / other tools agree.
-      await api.setRepoIdentity(path, identity.name, identity.email);
-      return true;
-    } catch (e) {
-      useUi.getState().showToast(String(e), "error");
-      return false;
-    }
   },
 }));

@@ -15,22 +15,28 @@ const fieldLabelCls =
 
 export function ProfileEditor({
   profile,
+  prefill,
   onSave,
   onCancel,
   onSetDefault,
+  onDelete,
 }: {
   /** The profile being edited, or `null` to create a new one. */
   profile: GitProfile | null;
+  /** Seed values for a new profile (e.g. adopting an unmanaged local identity). */
+  prefill?: Partial<Pick<GitProfile, "name" | "email" | "signingKey" | "gpgFormat" | "gpgSign">>;
   onSave: (draft: ProfileDraft) => void;
   onCancel: () => void;
   onSetDefault?: () => void;
+  onDelete?: () => void;
 }) {
+  const seed = profile ?? prefill;
   const [label, setLabel] = useState(profile?.label ?? "");
-  const [name, setName] = useState(profile?.name ?? "");
-  const [email, setEmail] = useState(profile?.email ?? "");
-  const [signingKey, setSigningKey] = useState(profile?.signingKey ?? "");
-  const [gpgFormat, setGpgFormat] = useState<"openpgp" | "ssh">(profile?.gpgFormat ?? "openpgp");
-  const [gpgSign, setGpgSign] = useState(profile?.gpgSign ?? false);
+  const [name, setName] = useState(seed?.name ?? "");
+  const [email, setEmail] = useState(seed?.email ?? "");
+  const [signingKey, setSigningKey] = useState(seed?.signingKey ?? "");
+  const [gpgFormat, setGpgFormat] = useState<"openpgp" | "ssh">(seed?.gpgFormat ?? "openpgp");
+  const [gpgSign, setGpgSign] = useState(seed?.gpgSign ?? false);
   const labelId = useId();
   const nameId = useId();
   const emailId = useId();
@@ -210,20 +216,36 @@ export function ProfileEditor({
         >
           Cancel
         </button>
-        {onSetDefault && (
-          <button
-            onClick={onSetDefault}
-            className={cn(
-              "ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-semibold text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition",
-              focusRing,
-            )}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-              <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.3l6.5-.9z" />
-            </svg>
-            Set as default
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {onSetDefault && (
+            <button
+              onClick={onSetDefault}
+              className={cn(
+                "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-semibold text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition",
+                focusRing,
+              )}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.3l6.5-.9z" />
+              </svg>
+              Set as default
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className={cn(
+                "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition",
+                focusRing,
+              )}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              </svg>
+              Delete
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

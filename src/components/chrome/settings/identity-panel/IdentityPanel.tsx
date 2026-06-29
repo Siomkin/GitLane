@@ -12,10 +12,12 @@ import { useProfiles } from "../../../../store/profiles";
 import { profileInitials, selectProfile, type GitProfile } from "../../../../lib/profiles";
 import { RadioCard } from "./RadioCard";
 import { ProfileEditor } from "./ProfileEditor";
-import { CustomEmailNotice } from "./CustomEmailNotice";
+import { CommitEmailField } from "./CommitEmailField";
+import { UnmanagedRow } from "./UnmanagedRow";
 import { PrAccountZone } from "./PrAccountZone";
 
-type Editing = { kind: "new" } | { kind: "edit"; id: string } | null;
+type Prefill = Partial<Pick<GitProfile, "name" | "email" | "signingKey" | "gpgFormat" | "gpgSign">>;
+type Editing = { kind: "new"; prefill?: Prefill } | { kind: "edit"; id: string } | null;
 
 export function IdentityPanel() {
   const summary = useRepo((s) => s.summary);
@@ -27,6 +29,8 @@ export function IdentityPanel() {
   const applyProfile = useProfiles((s) => s.applyProfile);
   const saveProfile = useProfiles((s) => s.saveProfile);
   const setDefaultProfile = useProfiles((s) => s.setDefaultProfile);
+  const deleteProfile = useProfiles((s) => s.deleteProfile);
+  const setCustomEmail = useProfiles((s) => s.setCustomEmail);
   const resetCustomEmail = useProfiles((s) => s.resetCustomEmail);
   const [editing, setEditing] = useState<Editing>(null);
 
@@ -126,6 +130,10 @@ export function IdentityPanel() {
                   setDefaultProfile(p.id);
                   setEditing(null);
                 }}
+                onDelete={() => {
+                  deleteProfile(p.id);
+                  setEditing(null);
+                }}
               />
             ) : (
               <ProfileRowView
@@ -133,6 +141,9 @@ export function IdentityPanel() {
                 profile={p}
                 selected={selection.kind === "profile" && selection.id === p.id}
                 custom={customEmail && selectedProfile?.id === p.id}
+                customSigning={
+                  selection.kind === "profile" && selection.id === p.id && selection.customSigning
+                }
                 customEmailValue={repoIdentity?.email}
                 onSelect={() => void applyProfile(p.id)}
                 onEdit={() => setEditing({ kind: "edit", id: p.id })}
@@ -140,9 +151,34 @@ export function IdentityPanel() {
             ),
           )}
 
+          {/* Local identity matching no saved profile */}
+          {selection.kind === "unmanaged" && repoIdentity && (
+            <UnmanagedRow
+              identity={repoIdentity}
+              onSaveAsProfile={() =>
+                setEditing({
+                  kind: "new",
+                  prefill: {
+                    name: repoIdentity.name,
+                    email: repoIdentity.email,
+                    signingKey: repoIdentity.signingKey,
+                    gpgFormat: repoIdentity.gpgFormat === "ssh" ? "ssh" : repoIdentity.gpgFormat === "openpgp" ? "openpgp" : undefined,
+                    gpgSign: repoIdentity.gpgSign,
+                  },
+                })
+              }
+              onUseDefault={() => void applyProfile(null)}
+            />
+          )}
+
           {/* New profile editor */}
           {editing?.kind === "new" && (
-            <ProfileEditor profile={null} onSave={onSave(undefined)} onCancel={() => setEditing(null)} />
+            <ProfileEditor
+              profile={null}
+              prefill={editing.prefill}
+              onSave={onSave(undefined)}
+              onCancel={() => setEditing(null)}
+            />
           )}
         </div>
 
@@ -158,10 +194,13 @@ export function IdentityPanel() {
           </button>
         )}
 
-        {customEmail && selectedProfile && (
-          <CustomEmailNotice
+        {selection.kind === "profile" && selectedProfile && (
+          <CommitEmailField
             profileLabel={selectedProfile.label}
             profileEmail={selectedProfile.email}
+            currentEmail={repoIdentity?.email ?? selectedProfile.email}
+            custom={customEmail}
+            onSave={(email) => void setCustomEmail(email)}
             onReset={() => void resetCustomEmail()}
           />
         )}
@@ -177,6 +216,7 @@ function ProfileRowView({
   profile,
   selected,
   custom,
+  customSigning,
   customEmailValue,
   onSelect,
   onEdit,
@@ -184,6 +224,7 @@ function ProfileRowView({
   profile: GitProfile;
   selected: boolean;
   custom: boolean;
+  customSigning: boolean;
   customEmailValue?: string;
   onSelect: () => void;
   onEdit: () => void;
@@ -226,6 +267,11 @@ function ProfileRowView({
           {custom && (
             <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-[color:var(--accent)] bg-[var(--accent-soft)]">
               custom email
+            </span>
+          )}
+          {customSigning && (
+            <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/12" title="Repo signing config differs from this profile">
+              custom signing
             </span>
           )}
         </>

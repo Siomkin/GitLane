@@ -36,28 +36,50 @@ export interface ProfileDraft {
 
 /** Which option in the Identity panel reflects the repo's current local config.
  * - `default` — nothing pinned locally; the repo uses the global git identity.
- * - `profile` — a saved profile is applied; `customEmail` is true when the repo
- *   overrides that profile's email with a hand-edited one.
+ * - `profile` — a saved profile is applied; `customEmail` / `customSigning` are
+ *   true when the repo diverges from that profile's email / signing config.
  * - `unmanaged` — a local identity is pinned that matches no saved profile. */
 export type ProfileSelection =
   | { kind: "default" }
-  | { kind: "profile"; id: string; customEmail: boolean }
+  | { kind: "profile"; id: string; customEmail: boolean; customSigning: boolean }
   | { kind: "unmanaged" };
 
+/** Compare the signing config (key + format + sign flag) of a profile against a
+ * pinned identity, normalising "unset" (undefined / empty / false) so e.g. no
+ * key equals an empty key. */
+function sameSigning(
+  a: Pick<GitProfile, "signingKey" | "gpgFormat" | "gpgSign">,
+  b: Pick<RepoIdentity, "signingKey" | "gpgFormat" | "gpgSign">,
+): boolean {
+  return (
+    (a.signingKey || "") === (b.signingKey || "") &&
+    (a.gpgFormat || "") === (b.gpgFormat || "") &&
+    Boolean(a.gpgSign) === Boolean(b.gpgSign)
+  );
+}
+
 /** Resolve which profile (if any) the repo's pinned identity corresponds to.
- * An exact name+email hit is the profile with no override; a name-only hit means
- * the email was customised for this repo. `null` identity → the default option. */
+ * Matched by author name (email/signing are allowed to diverge per-repo and are
+ * reported via `customEmail` / `customSigning`). A name+email exact hit is
+ * preferred so duplicate-name profiles disambiguate by email. `null` identity →
+ * the default option; no name match → unmanaged. */
 export function selectProfile(
   repoIdentity: RepoIdentity | null,
   profiles: GitProfile[],
 ): ProfileSelection {
   if (!repoIdentity) return { kind: "default" };
-  const exact = profiles.find(
+  const byEmail = profiles.find(
     (p) => p.name === repoIdentity.name && p.email === repoIdentity.email,
   );
-  if (exact) return { kind: "profile", id: exact.id, customEmail: false };
-  const byName = profiles.find((p) => p.name === repoIdentity.name);
-  if (byName) return { kind: "profile", id: byName.id, customEmail: true };
+  const match = byEmail ?? profiles.find((p) => p.name === repoIdentity.name);
+  if (match) {
+    return {
+      kind: "profile",
+      id: match.id,
+      customEmail: match.email !== repoIdentity.email,
+      customSigning: !sameSigning(match, repoIdentity),
+    };
+  }
   return { kind: "unmanaged" };
 }
 
