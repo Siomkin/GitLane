@@ -4,7 +4,7 @@
 // cached commits — reliable structured data (signature.isValid), never inferred
 // from local state.
 import { useEffect, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../lib/openExternal";
 import { cn } from "../../lib/cn";
 import type { PrCommitView, PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
@@ -103,7 +103,7 @@ function CommitRow({ commit }: { commit: PrCommitView }) {
       {commit.url && (
         <button
           type="button"
-          onClick={() => void openUrl(commit.url)}
+          onClick={() => openExternalUrl(commit.url)}
           title="Open commit on GitHub"
           aria-label="Open commit on GitHub"
           className="grid h-7 w-7 flex-none place-items-center rounded-md text-neutral-400 transition-colors hover:bg-black/[0.05] hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:hover:bg-white/[0.08] dark:hover:text-neutral-200"

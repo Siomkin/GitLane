@@ -4,6 +4,12 @@ import { Markdown } from "./Markdown";
 
 const { openUrl } = vi.hoisted(() => ({ openUrl: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
+// Render as if inside the Tauri webview so external links route through the
+// opener plugin (the helper falls back to window.open in a plain browser).
+vi.mock("../../lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/platform")>()),
+  isTauri: true,
+}));
 
 afterEach(() => {
   openUrl.mockClear();
@@ -76,6 +82,28 @@ describe("Markdown", () => {
     const images = Array.from(container.querySelectorAll("img")).map((img) => img.getAttribute("alt"));
     expect(images).toEqual(["trusted", "inline"]);
     expect(screen.getByText("blocked").tagName).toBe("SPAN");
+  });
+
+  it("blocks SVG and oversized data-image URIs but keeps small raster ones", () => {
+    const oversized = `data:image/png;base64,${"A".repeat(300 * 1024)}`;
+    const { container } = render(
+      <Markdown
+        content={`![svg](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)
+
+![huge](${oversized})
+
+![png](data:image/png;base64,aGVsbG8=)
+
+![jpeg](data:image/jpeg;base64,/9j/4AAQ==)
+
+![webp](data:image/webp;base64,UklGRg==)`}
+      />,
+    );
+
+    const images = Array.from(container.querySelectorAll("img")).map((img) => img.getAttribute("alt"));
+    expect(images).toEqual(["png", "jpeg", "webp"]);
+    expect(screen.getByText("svg").tagName).toBe("SPAN");
+    expect(screen.getByText("huge").tagName).toBe("SPAN");
   });
 
   it("renders Shields priority badges locally without loading the remote image", () => {

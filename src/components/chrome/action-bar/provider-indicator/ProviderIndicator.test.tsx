@@ -3,6 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const openUrlMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
+// Render as if inside the Tauri webview so external links route through the
+// opener plugin (the helper falls back to window.open in a plain browser).
+vi.mock("../../../../lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../../lib/platform")>()),
+  isTauri: true,
+}));
 
 import { ForgeKind, type RepoForge } from "@/lib/api";
 import { ProviderIndicator } from "./ProviderIndicator";

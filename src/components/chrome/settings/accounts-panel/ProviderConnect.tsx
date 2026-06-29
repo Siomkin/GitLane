@@ -4,18 +4,12 @@
 // account. GitHub is the only full-support path; everything else is honest
 // about auth-only / no-PRs.
 
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
-import { isTauri } from "../../../../lib/platform";
+import { openExternalUrl } from "../../../../lib/openExternal";
 import type { ForgeAuthStatus } from "../../../../lib/api";
 import { accountHandle, connectState, providerInitials, type ProviderMeta } from "./providers";
 import { CopyCommand } from "./CopyCommand";
-
-function openExternal(url: string) {
-  if (isTauri) void openUrl(url);
-  else window.open(url, "_blank", "noopener");
-}
 
 const linkCls =
   "inline-flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--accent)] hover:underline";
@@ -148,7 +142,7 @@ function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
       <CopyCommand command="gh auth login" />
       <div className="flex items-center gap-2">
         {refresh}
-        <button onClick={() => openExternal("https://cli.github.com")} className={cn(linkCls, "px-1")}>
+        <button onClick={() => openExternalUrl("https://cli.github.com")} className={cn(linkCls, "px-1")}>
           Install gh
         </button>
       </div>
@@ -181,7 +175,7 @@ function ForgeConnect({
       >
         <div className="flex items-center gap-2">
           <button
-            onClick={() => openExternal(status.docsUrl)}
+            onClick={() => openExternalUrl(status.docsUrl)}
             className={cn(
               "inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[12.5px] font-semibold text-white transition hover:brightness-110",
               focusRing,
@@ -213,7 +207,7 @@ function ForgeConnect({
               Create an API token with the <code className="font-mono text-[11.5px]">read:repository:bitbucket</code>{" "}
               scope (add <code className="font-mono text-[11.5px]">write:repository:bitbucket</code> to push).
             </div>
-            <button onClick={() => openExternal(status.docsUrl)} className={cn(linkCls, "mt-1.5")}>
+            <button onClick={() => openExternalUrl(status.docsUrl)} className={cn(linkCls, "mt-1.5")}>
               <ExternalIcon />
               Create an API token
             </button>
@@ -291,7 +285,7 @@ function ForgeConnect({
       <CopyCommand command={status.loginCommand} />
       <div className="flex items-center gap-3">
         {refresh}
-        <button onClick={() => openExternal(status.docsUrl)} className={linkCls}>
+        <button onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
           Learn more
         </button>
       </div>

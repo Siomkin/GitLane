@@ -1,10 +1,10 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../../../lib/openExternal";
 import { focusRing } from "../../../../lib/ui";
 import { cn } from "../../../../lib/cn";
 import type { ReactNode } from "react";
 
 /** A single external-link row in the provider popover (GitHub PRs/Issues, repo
- * settings shortcuts). Opens in the system browser via `openUrl`, then closes
+ * settings shortcuts). Opens in the system browser via `openExternalUrl`, then closes
  * the popover. Styled as the design's `<a>` rows — leading glyph, label, a
  * trailing `↗`. */
 export const PopoverLinkRow = ({
@@ -21,7 +21,7 @@ export const PopoverLinkRow = ({
   <button
     type="button"
     onClick={() => {
-      void openUrl(href);
+      openExternalUrl(href);
       onClose();
     }}
     title={href}

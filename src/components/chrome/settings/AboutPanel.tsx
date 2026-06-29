@@ -5,8 +5,8 @@
 
 import { useEffect, useState } from "react";
 import { getTauriVersion, getIdentifier } from "@tauri-apps/api/app";
-import { openUrl } from "@tauri-apps/plugin-opener";
 
+import { openExternalUrl } from "../../../lib/openExternal";
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
 import { isLinux, isMac, isTauri, isWindows } from "../../../lib/platform";
@@ -23,11 +23,6 @@ const LINKS: { label: string; url: string }[] = [
 ];
 
 const platformLabel = isMac ? "macOS" : isWindows ? "Windows" : isLinux ? "Linux" : "—";
-
-function openExternal(url: string) {
-  if (isTauri) void openUrl(url);
-  else window.open(url, "_blank", "noopener");
-}
 
 /** The GitLane swimlane mark on a gradient tile (from the About design). */
 function AppMark() {
@@ -121,7 +116,7 @@ export const AboutPanel = () => {
 
       <div className="mt-6 flex items-center gap-5 text-[12.5px] font-medium text-neutral-500 dark:text-neutral-400">
         {LINKS.map((l) => (
-          <button key={l.label} onClick={() => openExternal(l.url)} className={cn("transition-colors hover:text-[color:var(--accent)]", focusRing)}>
+          <button key={l.label} onClick={() => openExternalUrl(l.url)} className={cn("transition-colors hover:text-[color:var(--accent)]", focusRing)}>
             {l.label}
           </button>
         ))}

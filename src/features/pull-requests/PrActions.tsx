@@ -4,7 +4,7 @@
 // Write actions are gated by a confirm dialog and toast gh's result.
 
 import { useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl } from "../../lib/openExternal";
 import { cn } from "../../lib/cn";
 import type { MergeMethod } from "../../lib/api";
 import type { PullRequest } from "../../lib/prs";
@@ -37,7 +37,7 @@ export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
       <button
         title="Open on GitHub"
         onClick={() => {
-          if (pr.url) void openUrl(pr.url);
+          if (pr.url) openExternalUrl(pr.url);
           else showToast("No GitHub URL for this PR", "error");
         }}
         className={utilBtn}

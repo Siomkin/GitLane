@@ -107,6 +107,41 @@ rule is stricter than "use a plugin":
 4. Keep token material, refresh tokens, OAuth device codes, and recovery data out
    of JS-visible APIs and persistent JSON stores.
 
+## Content Security Policy
+
+`app.security.csp` in `src-tauri/tauri.conf.json` is an explicit allowlist rather
+than the previous image-only directive:
+
+```
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' data: asset: https://asset.localhost https://*.githubusercontent.com;
+font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost;
+object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
+```
+
+Rationale:
+
+- This is defense-in-depth, not a fix for a live sink. Markdown HTML is already
+  sanitized (`rehype-sanitize`) and external navigation is centralized in
+  `src/lib/openExternal.ts`; the CSP is the browser-enforced backstop if a future
+  change introduces an injection sink.
+- `script-src 'self'`: the production bundle emits only an external module script;
+  there are no inline `<script>` tags. Tauri appends its own nonce/hash for the
+  injected IPC bootstrap at compile time, so no `'unsafe-inline'` is needed.
+- `style-src 'self' 'unsafe-inline'`: required for runtime inline `style={}`
+  attributes. Safe here because the bundle has no inline `<style>` tags for Tauri
+  to nonce (a nonce would otherwise nullify `'unsafe-inline'`).
+- `connect-src 'self' ipc: http://ipc.localhost`: the IPC bridge endpoints Tauri
+  needs. `img-src` keeps the existing markdown image policy (GitHub user-content +
+  `data:`/`asset:`).
+- `object-src/base-uri/frame-ancestors/form-action` are locked down because the
+  app uses none of them.
+
+Pending verification (defense-in-depth, not blocking): confirm the effective
+policy in a packaged build / `tauri dev` via Web Inspector — Tauri may transform
+the CSP at build time. If inline `style={}` attributes are refused in a packaged
+build, the documented mitigation is adding `style-src-attr 'unsafe-inline'`.
+
 ## Follow-up work
 
 - GL-47: audit Tauri v2 plugins against this decision record.
