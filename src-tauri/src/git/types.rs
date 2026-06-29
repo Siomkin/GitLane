@@ -141,6 +141,36 @@ pub struct RepoForge {
 pub struct RepoIdentity {
     pub name: String,
     pub email: String,
+    /// `user.signingkey` pinned locally — a GPG key id or an SSH key path /
+    /// literal. The passphrase / private key never lives here: only the
+    /// reference, unlocked at use time by ssh-agent / gpg-agent / the OS
+    /// keychain. Omitted from JSON when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signing_key: Option<String>,
+    /// `gpg.format` — "openpgp" or "ssh" — pinned locally, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpg_format: Option<String>,
+    /// `commit.gpgsign` pinned locally, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpg_sign: Option<bool>,
+    /// `tag.gpgsign` pinned locally, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_gpg_sign: Option<bool>,
+}
+
+/// A signing key the user already has, offered by the profile editor's key
+/// picker. References only — a GPG key id or an SSH public-key path — never
+/// private key material or a passphrase.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SigningKey {
+    /// The value written to `user.signingkey`: a GPG long key id, or an SSH
+    /// public-key path.
+    pub value: String,
+    /// Human-readable label — the GPG uid, or the SSH key type + comment.
+    pub label: String,
+    /// `gpg.format` for this key: "openpgp" or "ssh".
+    pub format: String,
 }
 
 /// A linked worktree entry for the sidebar's WORKTREES group.
@@ -481,6 +511,19 @@ pub struct ForgeAuthStatus {
     pub login_command: String,
     pub docs_url: String,
     pub notes: String,
+    /// Real account identity, when the provider CLI is authenticated and GitLane
+    /// can fetch it (provider whoami). Identity metadata only — never a token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account: Option<ForgeAccount>,
+}
+
+/// The signed-in account on a non-GitHub provider, from its CLI whoami.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgeAccount {
+    pub username: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 /// PR author (GitHub login + display name).

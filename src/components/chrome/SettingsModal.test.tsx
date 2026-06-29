@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -39,10 +39,11 @@ describe("SettingsModal", () => {
     expect(accountsNav).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    // Scope to the nav — the Accounts panel also has an in-text "Identity" link.
+    fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "Identity" }));
     expect(useUi.getState().settingsTab).toBe("repo");
     expect(
-      screen.getByText("Open a repository to choose the account it commits, fetches, and pushes as."),
+      screen.getByText("Open a repository to choose the git profile it commits, fetches, and pushes as."),
     ).toBeInTheDocument();
   });
 

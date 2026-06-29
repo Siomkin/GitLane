@@ -1,10 +1,13 @@
-// Account + commit-identity state for the open repo. Split out of `ui.ts` (the
-// view-chrome store) because it owns a distinct subsystem: the provider-aware
-// GitHub account list, the per-repo account binding that drives PR/push/fetch
-// auth, and the commit identity that is mirrored into the repo's local git
-// config. The repo path is resolved lazily via `useRepo` — exactly the
-// cross-store pattern `pulls.ts` already uses. Server-side token resolution is
-// unchanged: commands receive account metadata, never a token.
+// Account state (Tier 2) for the open repo, plus the current commit-identity
+// *read* (`repoIdentity`). Split out of `ui.ts` (the view-chrome store) because
+// it owns a distinct subsystem: the provider-aware GitHub account list and the
+// per-repo account binding that drives PR/push/fetch auth. Commit identity is
+// *owned* by `profiles.ts` (Tier 1) — it does the writes via git profiles; this
+// store only holds/reconciles the effective `repoIdentity` read back from git
+// config (via `pinRepoIdentity` / `hydrateRepoIdentity`). The repo path is
+// resolved lazily via `useRepo` — the same cross-store pattern `pulls.ts` uses.
+// Server-side token resolution is unchanged: commands receive account metadata,
+// never a token.
 
 import { create } from "zustand";
 
@@ -42,7 +45,15 @@ interface RepoAccountBinding extends GithubAccountRef {
   version: 2;
 }
 
-type StoredRepoAccountBinding = RepoAccountBinding | string;
+/** Explicit "no PR account for this repo". Persisted (rather than deleting the
+ * entry) so the choice is durable — on reopen it stays unbound instead of
+ * silently falling back to the active `gh` account. */
+interface RepoAccountUnbound {
+  version: 2;
+  unbound: true;
+}
+
+type StoredRepoAccountBinding = RepoAccountBinding | RepoAccountUnbound | string;
 
 // Per-repo account binding: { [repoPath]: RepoAccountBinding } drives PR/push auth.
 // Legacy string values are migrated only after they resolve against loaded accounts.
@@ -116,6 +127,9 @@ interface AccountsState {
   forgeAuth: ForgeAuthStatus[];
   forgeAuthLoading: boolean;
   forgeAuthError: string | null;
+  /** Providers whose real account identity is still being resolved (whoami in
+   * flight) — the connected forge card shows an identity skeleton meanwhile. */
+  forgeAccountsLoading: string[];
   /** The `gh` active account — the default identity for unbound repos. */
   activeAccountId: string | null;
   /** The account bound to the currently open repo (its id/username). */
@@ -134,14 +148,35 @@ interface AccountsState {
   /** Resolve the bound account + commit identity for a repo path. Sets the
    * cached identity synchronously, then reconciles from git config. */
   syncRepoAccount: (path: string) => void;
+  /** Optimistically publish the commit identity just written to git config (and
+   * its cache), bumping the identity generation so any in-flight hydrate that
+   * predates this write is dropped. Keeps `repoIdentity` correct in the window
+   * before a reconcile read returns — commits in that window use the right
+   * author. `null` = identity cleared (defer to global). */
+  pinRepoIdentity: (identity: RepoIdentity | null, path: string) => void;
   /** Reconcile `repoIdentity` from the repo's local git config (the durable
-   * source of truth), falling back to the localStorage cache. */
+   * source of truth), falling back to the localStorage cache. Bails if a newer
+   * identity write superseded this hydrate (generation guard). */
   hydrateRepoIdentity: (path: string) => Promise<void>;
-  /** Bind the open repo to an account: persist, prefill + write identity, reload PRs. */
+  /** Bind the open repo to a PR/push/fetch account (Tier 2). Persists the
+   * binding and reloads PRs; never writes the commit identity (that's owned by
+   * git profiles / `useProfiles`). `null` unbinds (PRs off for this repo). */
   setRepoAccount: (id: string | null) => Promise<void>;
-  /** Edit the open repo's commit identity (name/email); persist + write to git config. */
-  editRepoIdentity: (name: string, email: string) => Promise<boolean>;
 }
+
+// Providers GitLane can resolve a real account for. Keep in sync with the
+// `account()` whoami dispatch in `src-tauri/src/auth_providers.rs` — adding a
+// provider there without listing it here means its identity never resolves in
+// the UI. Others (Gitea/Forgejo) would only make a no-op round-trip + skeleton flash.
+const FORGE_WHOAMI = new Set(["gitlab", "azure-devops"]);
+// Monotonic load generation. A background whoami started by an older
+// loadForgeAuth is dropped (not merged) once a newer load supersedes it, so a
+// stale identity can't land on a refreshed / signed-out provider row.
+let forgeAuthGen = 0;
+// Monotonic commit-identity generation. Bumped on every identity write so an
+// in-flight `hydrateRepoIdentity` that predates a newer write is dropped — a
+// slow reconcile read can't republish a superseded identity.
+let repoIdentityGen = 0;
 
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
@@ -150,6 +185,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   forgeAuth: [],
   forgeAuthLoading: false,
   forgeAuthError: null,
+  forgeAccountsLoading: [],
   activeAccountId: null,
   repoAccountId: null,
   repoAccountRef: null,
@@ -193,14 +229,49 @@ export const useAccounts = create<AccountsState>((set, get) => ({
 
   loadForgeAuth: async (force = false) => {
     const { forgeAuthLoading, forgeAuth } = get();
-    if (forgeAuthLoading) return;
+    // A non-forced call defers to an in-flight load or an already-loaded list.
+    // A forced refresh supersedes an in-flight probe (the generation counter
+    // drops the older probe's result) so a rapid double-Refresh stays responsive.
+    if (!force && forgeAuthLoading) return;
     if (!force && forgeAuth.length > 0) return;
+    const gen = ++forgeAuthGen;
     set({ forgeAuthLoading: true, forgeAuthError: null });
     try {
       const next = await api.forgeAuthStatuses();
-      set({ forgeAuth: next, forgeAuthLoading: false });
+      if (gen !== forgeAuthGen) return; // superseded by a newer load
+      // Show the authenticated forges immediately; their real identity resolves
+      // in the background (a per-provider network whoami) so the card can render
+      // now with an identity skeleton instead of blocking on the slow call. Only
+      // providers with a whoami implementation are marked pending.
+      const pending = next
+        .filter((f) => f.authenticated === true && FORGE_WHOAMI.has(f.provider))
+        .map((f) => f.provider);
+      set({ forgeAuth: next, forgeAuthLoading: false, forgeAccountsLoading: pending });
+      for (const provider of pending) {
+        const done = () =>
+          set((s) => ({ forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider) }));
+        void api
+          .forgeAccount(provider)
+          .then((account) => {
+            if (gen !== forgeAuthGen) return; // a newer refresh replaced this snapshot
+            set((s) => ({
+              // Only merge onto a row that is still this provider AND still
+              // authenticated — a refresh may have signed it out meanwhile.
+              forgeAuth: account
+                ? s.forgeAuth.map((f) =>
+                    f.provider === provider && f.authenticated ? { ...f, account } : f,
+                  )
+                : s.forgeAuth,
+              forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider),
+            }));
+          })
+          .catch(() => {
+            if (gen === forgeAuthGen) done();
+          });
+      }
     } catch (e) {
-      set({ forgeAuthLoading: false, forgeAuthError: String(e) });
+      if (gen !== forgeAuthGen) return;
+      set({ forgeAuthLoading: false, forgeAuthError: String(e), forgeAccountsLoading: [] });
     }
   },
 
@@ -215,9 +286,12 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         writeBindings(bindings);
       }
     } else if (bound && bound.version === 2) {
-      const key = accountKey(bound);
-      selected = get().accounts.find((a) => a.id === key) ?? null;
+      if (!("unbound" in bound)) {
+        selected = get().accounts.find((a) => a.id === accountKey(bound)) ?? null;
+      }
+      // else: explicit "No account" — leave unbound (no active-account fallback).
     } else if (!bound) {
+      // Never configured → default to the active gh account for convenience.
       selected = get().accounts.find((a) => a.id === get().activeAccountId) ?? null;
     }
     set({
@@ -230,14 +304,26 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     void get().hydrateRepoIdentity(path);
   },
 
+  pinRepoIdentity: (identity, path) => {
+    repoIdentityGen += 1;
+    set({ repoIdentity: identity });
+    const identities = readIdentities();
+    if (identity) identities[path] = identity;
+    else delete identities[path];
+    writeIdentities(identities);
+  },
+
   hydrateRepoIdentity: async (path) => {
+    const gen = repoIdentityGen;
     let identity: RepoIdentity | null;
     try {
       identity = await api.repoIdentity(path);
     } catch {
       return; // keep the optimistic localStorage value on read failure
     }
-    // Ignore a stale resolution if the user switched repos meanwhile.
+    // Drop this reconcile if a newer identity write superseded it, or the user
+    // switched repos meanwhile.
+    if (repoIdentityGen !== gen) return;
     if (useRepo.getState().summary?.path !== path) return;
     if (identity) {
       // git config wins; refresh the cache so both agree.
@@ -263,48 +349,19 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const path = useRepo.getState().summary?.path ?? null;
     if (path) {
       const bindings = readBindings();
-      if (account) bindings[path] = bindingFromAccount(account);
-      else delete bindings[path];
+      // Persist an explicit unbound marker (not a delete) so "No account" is
+      // durable across reopen instead of reverting to the active gh account.
+      bindings[path] = account ? bindingFromAccount(account) : { version: 2, unbound: true };
       writeBindings(bindings);
     }
-    if (path && account) {
-      // Picking an account prefills the commit identity from it; the user can
-      // then edit the email (e.g. a public address) in the Identity tab.
-      const ok = await get().editRepoIdentity(account.name, account.email);
-      if (ok) useUi.getState().showToast(`This repo will commit & fetch as @${account.username}`);
-    } else if (path) {
-      // "No identity" — drop the pinned identity and defer to global git
-      // config. Clear both the cache and the local git config so the choice is
-      // durable and won't be re-hydrated from a stale value on the next open.
-      const identities = readIdentities();
-      delete identities[path];
-      writeIdentities(identities);
-      set({ repoIdentity: null });
-      try {
-        await api.clearRepoIdentity(path);
-      } catch (e) {
-        useUi.getState().showToast(String(e), "error");
-      }
-      useUi.getState().showToast("Identity cleared");
+    // Binding an account drives PR / push / fetch auth ONLY — it must never
+    // touch the commit identity. Who the repo commits as is owned by git
+    // profiles (`useProfiles`); a PR account (Tier 2) and a git profile
+    // (Tier 1) are independent, so picking an account here leaves the applied
+    // profile's `user.name` / `user.email` untouched. See GL-27 / GL-63.
+    if (account) {
+      useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }
     void usePulls.getState().loadPullRequests();
-  },
-
-  editRepoIdentity: async (name, email) => {
-    const path = useRepo.getState().summary?.path ?? null;
-    const identity: RepoIdentity = { name: name.trim(), email: email.trim() };
-    set({ repoIdentity: identity });
-    if (!path) return true;
-    const identities = readIdentities();
-    identities[path] = identity;
-    writeIdentities(identities);
-    try {
-      // Mirror to the repo's local git config so CLI / other tools agree.
-      await api.setRepoIdentity(path, identity.name, identity.email);
-      return true;
-    } catch (e) {
-      useUi.getState().showToast(String(e), "error");
-      return false;
-    }
   },
 }));

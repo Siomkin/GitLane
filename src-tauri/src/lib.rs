@@ -6,6 +6,7 @@
 mod auth_providers;
 mod git;
 mod shell;
+mod signing_keys;
 mod terminal;
 mod terminal_agents;
 mod watcher;
@@ -16,9 +17,10 @@ use watcher::WatcherState;
 
 use git::types::{
     BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame, FileChange,
-    FileDiff, FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus,
+    FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
+    OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
-    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges,
+    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
 };
 
@@ -694,6 +696,11 @@ async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
     blocking(|| Ok(auth_providers::statuses())).await
 }
 
+#[tauri::command]
+async fn forge_account(provider: String) -> Result<Option<ForgeAccount>, String> {
+    blocking(move || Ok(auth_providers::account(&provider))).await
+}
+
 /// Detect the open repo's remote forge for the toolbar provider indicator.
 /// A cheap synchronous libgit2 read of the configured remotes (no network, no
 /// auth probing) — kept sync like the other `read.rs`-style reads; only
@@ -855,13 +862,42 @@ async fn create_pull_request(
 }
 
 #[tauri::command]
-async fn set_repo_identity(path: String, name: String, email: String) -> Result<String, String> {
-    blocking(move || git::write::set_repo_identity(&path, &name, &email)).await
+async fn set_repo_identity(
+    path: String,
+    name: String,
+    email: String,
+    signing_key: Option<String>,
+    gpg_format: Option<String>,
+    gpg_sign: Option<bool>,
+    tag_gpg_sign: Option<bool>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::set_repo_identity(
+            &path,
+            &name,
+            &email,
+            signing_key.as_deref(),
+            gpg_format.as_deref(),
+            gpg_sign,
+            tag_gpg_sign,
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+async fn list_signing_keys() -> Result<Vec<SigningKey>, String> {
+    blocking(|| Ok(signing_keys::list())).await
 }
 
 #[tauri::command]
 fn repo_identity(path: String) -> Result<Option<RepoIdentity>, String> {
     git::read::repo_identity(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn default_git_identity() -> Option<RepoIdentity> {
+    git::read::default_identity()
 }
 
 #[tauri::command]
@@ -1157,6 +1193,7 @@ pub fn run() {
             publish_branch,
             github_accounts,
             forge_auth_statuses,
+            forge_account,
             repo_forge,
             list_pull_requests,
             pull_request_detail,
@@ -1173,6 +1210,8 @@ pub fn run() {
             create_pull_request,
             set_repo_identity,
             repo_identity,
+            default_git_identity,
+            list_signing_keys,
             clear_repo_identity,
             clone_repo,
             cancel_clone,

@@ -14,8 +14,8 @@ import { useUpdates } from "../../store/updates";
 import { GitLaneMarkIcon } from "../ui/icons";
 import { TerminalAgentsSettings } from "../../features/terminal/TerminalAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
-import { AccountsPanel } from "./settings/AccountsPanel";
-import { RepoIdentityPanel } from "./settings/RepoIdentityPanel";
+import { AccountsPanel } from "./settings/accounts-panel";
+import { IdentityPanel } from "./settings/identity-panel";
 import { AboutPanel } from "./settings/AboutPanel";
 
 const TITLE_ID = "settings-modal-title";
@@ -132,7 +132,7 @@ export function SettingsModal() {
             {tab === "accounts" && <AccountsPanel />}
             {tab === "terminal" && <TerminalAgentsSettings />}
             {tab === "about" && <AboutPanel />}
-            {tab === "repo" && <RepoIdentityPanel />}
+            {tab === "repo" && <IdentityPanel />}
           </div>
         </div>
       </div>
