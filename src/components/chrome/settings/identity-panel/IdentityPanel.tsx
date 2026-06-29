@@ -10,6 +10,7 @@ import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
 import { appliedProfileId, useProfiles } from "../../../../store/profiles";
 import { profileInitials, selectProfile, type GitProfile } from "../../../../lib/profiles";
+import { GitBranchIcon } from "../../../ui/icons";
 import { RadioCard } from "./RadioCard";
 import { ProfileEditor } from "./ProfileEditor";
 import { CommitEmailField } from "./CommitEmailField";
@@ -100,13 +101,7 @@ export function IdentityPanel() {
             label="Default git identity"
             avatar={
               <span className="w-[38px] h-[38px] shrink-0 rounded-[11px] grid place-items-center bg-black/[0.06] dark:bg-white/[0.08] text-neutral-500 dark:text-neutral-300">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-                  <circle cx="6" cy="6" r="2.4" />
-                  <circle cx="6" cy="18" r="2.4" />
-                  <circle cx="18" cy="12" r="2.4" />
-                  <path d="M6 8.4v7.2" />
-                  <path d="M18 9.6c0 4-6 1.6-6 6" />
-                </svg>
+                <GitBranchIcon className="w-[18px] h-[18px]" />
               </span>
             }
             title="Default git identity"

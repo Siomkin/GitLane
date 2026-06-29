@@ -12,20 +12,8 @@ import { useUi } from "../../store/ui";
 import { useAccounts } from "../../store/accounts";
 import { appliedProfileId, useProfiles } from "../../store/profiles";
 import { profileInitials, selectProfile } from "../../lib/profiles";
-import { CheckIcon } from "../ui/icons";
+import { CheckIcon, GitBranchIcon } from "../ui/icons";
 import { repoLabel } from "../../lib/paths";
-
-function DefaultIdentityIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <circle cx="6" cy="6" r="2.4" />
-      <circle cx="6" cy="18" r="2.4" />
-      <circle cx="18" cy="12" r="2.4" />
-      <path d="M6 8.4v7.2" />
-      <path d="M18 9.6c0 4-6 1.6-6 6" />
-    </svg>
-  );
-}
 
 export function IdentityChip() {
   const summary = useRepo((s) => s.summary);
@@ -84,7 +72,7 @@ export function IdentityChip() {
           </span>
         ) : (
           <span className="grid h-6 w-6 place-items-center rounded-full bg-black/[0.05] text-neutral-400 dark:bg-white/[0.06] dark:text-neutral-400">
-            <DefaultIdentityIcon className="h-3.5 w-3.5" />
+            <GitBranchIcon className="h-3.5 w-3.5" />
           </span>
         )}
         <span className="max-w-[120px] truncate text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
@@ -107,7 +95,7 @@ export function IdentityChip() {
               onClick={() => apply(null)}
               avatar={
                 <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-400 dark:bg-white/[0.06]">
-                  <DefaultIdentityIcon className="h-3.5 w-3.5" />
+                  <GitBranchIcon className="h-3.5 w-3.5" />
                 </span>
               }
               title="Default git identity"
@@ -160,7 +148,7 @@ export function IdentityChip() {
             }}
             className="flex w-full items-center gap-2 border-t border-black/10 px-3.5 py-2.5 text-left text-[12px] text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100"
           >
-            <DefaultIdentityIcon className="h-3.5 w-3.5" /> Identity settings…
+            <GitBranchIcon className="h-3.5 w-3.5" /> Identity settings…
           </button>
         </div>
       )}
