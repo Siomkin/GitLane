@@ -13,7 +13,11 @@ export function PrAccountZone() {
   const accounts = useAccounts((s) => s.accounts);
   const repoAccountId = useAccounts((s) => s.repoAccountId);
   const setRepoAccount = useAccounts((s) => s.setRepoAccount);
-  const setSettingsTab = useUi((s) => s.setSettingsTab);
+  // This panel lives in the repo-scoped Repository settings window, so opening
+  // the global Accounts tab means closing this window and opening global
+  // Settings — not just flipping the (hidden) global tab state.
+  const openSettings = useUi((s) => s.openSettings);
+  const closeRepoSettings = useUi((s) => s.closeRepoSettings);
   const [picking, setPicking] = useState(false);
   const account = accounts.find((a) => a.id === repoAccountId) ?? null;
 
@@ -73,7 +77,10 @@ export function PrAccountZone() {
           </div>
           {accounts.length === 0 && (
             <button
-              onClick={() => setSettingsTab("accounts")}
+              onClick={() => {
+                closeRepoSettings();
+                openSettings("accounts");
+              }}
               className={cn(
                 "mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-[color:var(--accent)] hover:bg-[var(--accent-soft)]",
                 focusRing,
