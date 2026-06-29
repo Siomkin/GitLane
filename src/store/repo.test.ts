@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { useRepo } from "./repo";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
+import { useUi } from "./ui";
 import { ForgeKind } from "../lib/api";
 import type { PullRequest } from "../lib/prs";
 import type {
@@ -133,6 +134,143 @@ describe("repo store — discardFile", () => {
     await useRepo.getState().discardFile("src/a.ts", false);
 
     expect(useRepo.getState().selectedFile).toBeNull();
+  });
+});
+
+describe("repo store — advanced write guards", () => {
+  it("blocks stageFile for a visible path outside sparse checkout", async () => {
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1 }],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+    });
+
+    try {
+      await useRepo.getState().stageFile("docs/hidden.txt");
+
+      expect(invokeMock).not.toHaveBeenCalledWith("stage_file", expect.anything());
+      expect(showToast).toHaveBeenCalledWith(
+        "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+        "error",
+      );
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
+  });
+
+  it("blocks patch-level staging for a guarded sparse path", async () => {
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1 }],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+    });
+
+    try {
+      await useRepo.getState().applyHunk("docs/hidden.txt", false, 0, "@@ -1 +1 @@", "-one\n+two");
+      await useRepo.getState().applyLine(
+        "docs/hidden.txt",
+        false,
+        0,
+        0,
+        { kind: "add", oldNo: null, newNo: 1, content: "two" },
+      );
+
+      expect(invokeMock).not.toHaveBeenCalledWith("apply_hunk", expect.anything());
+      expect(invokeMock).not.toHaveBeenCalledWith("apply_line", expect.anything());
+      expect(showToast).toHaveBeenCalledWith(
+        "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+        "error",
+      );
+      expect(showToast).toHaveBeenCalledTimes(2);
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
+  });
+
+  it("allows stash when sparse checkout is only informational", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0 }],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "stash":
+          return Promise.resolve("Saved working directory");
+        case "open_repo":
+          return Promise.resolve(summary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+        default:
+          return Promise.resolve([]);
+      }
+    });
+
+    await useRepo.getState().stash();
+
+    expect(invokeMock).toHaveBeenCalledWith("stash", { path: "/repo" });
+  });
+
+  it("blocks stash when a dirty submodule row is present", async () => {
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [
+          {
+            path: "deps/child",
+            status: "M",
+            add: 0,
+            del: 0,
+            advanced: { kind: "submodule", message: "Submodule: modified files inside submodule" },
+          },
+        ],
+        conflicted: [],
+      },
+    });
+
+    try {
+      await useRepo.getState().stash();
+
+      expect(invokeMock).not.toHaveBeenCalledWith("stash", expect.anything());
+      expect(showToast).toHaveBeenCalledWith(
+        "Submodule: modified files inside submodule. Use the terminal for submodule updates.",
+        "error",
+      );
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
   });
 });
 

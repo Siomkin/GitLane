@@ -181,6 +181,7 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             status,
             add,
             del,
+            advanced: None,
         });
     }
 

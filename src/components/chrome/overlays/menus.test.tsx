@@ -114,6 +114,28 @@ describe("WipContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Unstage all changes" })).not.toBeInTheDocument();
   });
 
+  it("disables guarded bulk actions", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [
+          {
+            ...file("deps/child"),
+            advanced: { kind: "submodule", message: "Submodule: modified files inside submodule" },
+          },
+        ],
+        conflicted: [],
+      },
+    });
+    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    render(<WipContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Stash all changes" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Discard all changes" })).toBeDisabled();
+    expect(screen.getAllByText("Submodule: modified files inside submodule. Use the terminal for submodule updates.")).toHaveLength(3);
+  });
+
   it("shows Unstage all only when there are staged files", () => {
     useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [] } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });

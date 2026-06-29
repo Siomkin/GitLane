@@ -6,6 +6,7 @@
 //! `git::status::*` IPC-facing surface stable while focused siblings own shared
 //! diff conversion, working-tree reads, commit reads, and range reads.
 
+mod advanced;
 mod commit;
 mod compare;
 mod diff;

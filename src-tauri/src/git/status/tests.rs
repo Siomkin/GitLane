@@ -1,5 +1,7 @@
-use super::{commit_file_diff, compare_file_diff, compare_refs, file_blame, file_history};
 use super::diff::DIFF_LINE_LIMIT;
+use super::{
+    commit_file_diff, compare_file_diff, compare_refs, file_blame, file_history, working_changes,
+};
 use git2::{Repository, Signature};
 use std::fs;
 use std::path::Path;
@@ -75,8 +77,12 @@ fn diff_skips_no_newline_eofnl_markers() {
     let lines: Vec<_> = diff.hunks.iter().flat_map(|h| &h.lines).collect();
 
     // The real content change is present...
-    assert!(lines.iter().any(|l| l.kind == "del" && l.content == "three"));
-    assert!(lines.iter().any(|l| l.kind == "add" && l.content == "THREE"));
+    assert!(lines
+        .iter()
+        .any(|l| l.kind == "del" && l.content == "three"));
+    assert!(lines
+        .iter()
+        .any(|l| l.kind == "add" && l.content == "THREE"));
     // ...and the EOFNL marker pseudo-lines are dropped (no stray rows leak in).
     let allowed = ["one", "two", "three", "THREE"];
     assert!(
@@ -135,7 +141,10 @@ fn file_history_follows_detected_renames_backward() {
     let page = file_history(dir.to_str().unwrap(), "new name.txt", None, Some(10)).unwrap();
     assert_eq!(page.entries.len(), 2);
     assert_eq!(page.entries[0].status, "R");
-    assert_eq!(page.entries[0].previous_path.as_deref(), Some("old name.txt"));
+    assert_eq!(
+        page.entries[0].previous_path.as_deref(),
+        Some("old name.txt")
+    );
     assert_eq!(page.entries[1].path, "old name.txt");
 
     let _ = fs::remove_dir_all(&dir);
@@ -225,4 +234,193 @@ fn compare_refs_against_working_tree() {
     assert!(!diff.hunks.is_empty());
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn working_changes_reports_sparse_checkout_state() {
+    let dir = std::env::temp_dir().join("gitlane-sparse-checkout-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+
+    let mut config = repo.config().unwrap();
+    config.set_bool("core.sparseCheckout", true).unwrap();
+    config.set_bool("core.sparseCheckoutCone", true).unwrap();
+    fs::create_dir_all(dir.join(".git/info")).unwrap();
+    fs::write(
+        dir.join(".git/info/sparse-checkout"),
+        "src/\n!src/generated/\n",
+    )
+    .unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    assert!(changes.advanced.sparse_checkout.enabled);
+    assert_eq!(
+        changes.advanced.sparse_checkout.mode.as_deref(),
+        Some("cone")
+    );
+    assert_eq!(changes.advanced.sparse_checkout.patterns[0], "src/");
+    assert!(changes.advanced.sparse_checkout.enabled);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn working_changes_reports_lfs_state() {
+    let dir = std::env::temp_dir().join("gitlane-lfs-state-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    fs::write(
+        dir.join(".gitattributes"),
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("asset.bin"),
+        "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 123\n",
+    )
+    .unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    assert!(changes.advanced.lfs.detected);
+    assert_eq!(changes.advanced.lfs.patterns, vec!["*.bin"]);
+    assert!(changes
+        .advanced
+        .lfs
+        .issues
+        .iter()
+        .any(|issue| issue.contains("asset.bin")));
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn working_changes_does_not_warn_for_unused_lfs_patterns() {
+    let dir = std::env::temp_dir().join("gitlane-lfs-unused-pattern-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    fs::write(
+        dir.join(".gitattributes"),
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    )
+    .unwrap();
+    commit(
+        &repo,
+        &dir,
+        ".gitattributes",
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    );
+    commit(&repo, &dir, "regular.txt", "one\n");
+    fs::write(dir.join("regular.txt"), "one\ntwo\n").unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    assert!(changes.advanced.lfs.detected);
+    assert!(changes.advanced.lfs.issues.is_empty());
+    assert!(changes.advanced.lfs.issues.is_empty());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn working_changes_ignores_unrelated_lfs_pointer_files() {
+    let dir = std::env::temp_dir().join("gitlane-lfs-unrelated-pointer-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    fs::write(
+        dir.join(".gitattributes"),
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    )
+    .unwrap();
+    commit(
+        &repo,
+        &dir,
+        ".gitattributes",
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n",
+    );
+    commit(&repo, &dir, "regular.txt", "one\n");
+    fs::write(dir.join("regular.txt"), "one\ntwo\n").unwrap();
+    fs::write(
+        dir.join("note.txt"),
+        "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 123\n",
+    )
+    .unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    assert!(changes.advanced.lfs.detected);
+    assert!(changes.advanced.lfs.issues.is_empty());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn working_changes_reports_submodule_state() {
+    let child_dir = std::env::temp_dir().join("gitlane-submodule-child-test");
+    let parent_dir = std::env::temp_dir().join("gitlane-submodule-parent-test");
+    let _ = fs::remove_dir_all(&child_dir);
+    let _ = fs::remove_dir_all(&parent_dir);
+    fs::create_dir_all(&child_dir).unwrap();
+    fs::create_dir_all(&parent_dir).unwrap();
+    let child = Repository::init(&child_dir).unwrap();
+    commit(&child, &child_dir, "child.txt", "one\n");
+    let parent = Repository::init(&parent_dir).unwrap();
+    commit(&parent, &parent_dir, "parent.txt", "one\n");
+
+    let url = child_dir.to_string_lossy().to_string();
+    {
+        let mut submodule = parent
+            .submodule(&url, Path::new("deps/child"), true)
+            .unwrap();
+        fs::remove_dir_all(parent_dir.join("deps/child")).unwrap();
+        Repository::clone(&url, parent_dir.join("deps/child")).unwrap();
+        submodule.add_to_index(false).unwrap();
+        submodule.add_finalize().unwrap();
+    }
+
+    let changes = working_changes(parent_dir.to_str().unwrap()).unwrap();
+    assert_eq!(changes.advanced.submodules.len(), 1);
+    assert_eq!(changes.advanced.submodules[0].path, "deps/child");
+    assert!(changes.advanced.submodules[0].dirty);
+
+    let _ = fs::remove_dir_all(&child_dir);
+    let _ = fs::remove_dir_all(&parent_dir);
+}
+
+#[test]
+fn working_changes_does_not_guard_clean_submodules() {
+    let child_dir = std::env::temp_dir().join("gitlane-clean-submodule-child-test");
+    let parent_dir = std::env::temp_dir().join("gitlane-clean-submodule-parent-test");
+    let _ = fs::remove_dir_all(&child_dir);
+    let _ = fs::remove_dir_all(&parent_dir);
+    fs::create_dir_all(&child_dir).unwrap();
+    fs::create_dir_all(&parent_dir).unwrap();
+    let child = Repository::init(&child_dir).unwrap();
+    commit(&child, &child_dir, "child.txt", "one\n");
+    let parent = Repository::init(&parent_dir).unwrap();
+    commit(&parent, &parent_dir, "parent.txt", "one\n");
+
+    let url = child_dir.to_string_lossy().to_string();
+    {
+        let mut submodule = parent
+            .submodule(&url, Path::new("deps/child"), true)
+            .unwrap();
+        fs::remove_dir_all(parent_dir.join("deps/child")).unwrap();
+        Repository::clone(&url, parent_dir.join("deps/child")).unwrap();
+        submodule.add_to_index(false).unwrap();
+        submodule.add_finalize().unwrap();
+    }
+    commit_index(&parent, "add submodule");
+    fs::write(parent_dir.join("parent.txt"), "one\ntwo\n").unwrap();
+
+    let changes = working_changes(parent_dir.to_str().unwrap()).unwrap();
+    assert_eq!(changes.advanced.submodules.len(), 1);
+    assert_eq!(changes.advanced.submodules[0].status, "clean");
+    assert!(!changes.advanced.submodules[0].dirty);
+
+    let _ = fs::remove_dir_all(&child_dir);
+    let _ = fs::remove_dir_all(&parent_dir);
 }

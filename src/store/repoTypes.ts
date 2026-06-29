@@ -17,6 +17,7 @@ import type {
   WorktreeInfo,
 } from "../lib/api";
 import type { RecentRepo } from "./repoSession";
+import { emptyAdvancedState } from "../lib/advancedRepoState";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
 
@@ -402,7 +403,12 @@ export type RepoDataState = Pick<
   | "error"
 >;
 
-export const emptyChanges: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
+export const emptyChanges: WorkingChanges = {
+  staged: [],
+  unstaged: [],
+  conflicted: [],
+  advanced: emptyAdvancedState,
+};
 
 export function createInitialRepoData(
   openPaths: string[],

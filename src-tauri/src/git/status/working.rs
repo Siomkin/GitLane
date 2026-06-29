@@ -5,6 +5,7 @@ use git2::{DiffOptions, Repository, Status};
 use crate::git::read::open;
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
 
+use super::advanced::{advanced_state, annotate_advanced_files};
 use super::diff::{diffs_to_changes, diffs_to_files, DIFF_LINE_LIMIT};
 
 /// Resolve the HEAD commit's tree, if any (a fresh repo with no commits has
@@ -74,6 +75,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 status: "C".to_string(),
                 add: 0,
                 del: 0,
+                advanced: None,
             });
             continue;
         }
@@ -112,6 +114,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 status: st.to_string(),
                 add,
                 del,
+                advanced: None,
             });
         }
 
@@ -163,14 +166,26 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 status: st.to_string(),
                 add,
                 del,
+                advanced: None,
             });
         }
     }
+
+    let changed_paths: Vec<String> = staged
+        .iter()
+        .chain(unstaged.iter())
+        .chain(conflicted.iter())
+        .map(|change| change.path.clone())
+        .collect();
+    let advanced = advanced_state(&repo, &changed_paths);
+    annotate_advanced_files(&repo, &mut staged, &advanced);
+    annotate_advanced_files(&repo, &mut unstaged, &advanced);
 
     Ok(WorkingChanges {
         staged,
         unstaged,
         conflicted,
+        advanced,
     })
 }
 

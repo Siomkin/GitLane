@@ -1,4 +1,5 @@
 import { api, type RepoSummary } from "../lib/api";
+import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "../lib/advancedRepoState";
 import { splitCommitMessage } from "../lib/commitMessage";
 import { useAccounts } from "./accounts";
 import { takePendingRefresh } from "./repoRequests";
@@ -67,6 +68,20 @@ async function runMaybeConflict(
 function flushPendingRefresh(get: RepoGet) {
   const scope = takePendingRefresh();
   if (scope) void get().refresh({ prs: false, quiet: true, scope });
+}
+
+function toastAdvancedGuard(message: string | null): boolean {
+  if (!message) return false;
+  useUi.getState().showToast(message, "error");
+  return true;
+}
+
+function guardedPathMessage(get: RepoGet, path: string): string | null {
+  const { changes } = get();
+  return fileWriteGuard(
+    [...changes.unstaged, ...changes.staged].find((file) => file.path === path),
+    changes,
+  );
 }
 
 export function createRepoWriteActions(
@@ -368,7 +383,11 @@ export function createRepoWriteActions(
         return `Force-pushed ${branch} (with lease)`;
       }),
 
-    discardAll: () => runOp(get, async (summary) => api.discardAll(summary.path)),
+    discardAll: () => {
+      const guard = guardedAdvancedWriteMessage(get().changes);
+      if (guard) return Promise.reject(new Error(guard));
+      return runOp(get, async (summary) => api.discardAll(summary.path));
+    },
 
     createWorktreeAt: async (worktreePath, reference) => {
       const { summary } = get();
@@ -409,6 +428,7 @@ export function createRepoWriteActions(
     stageFile: async (path) => {
       const { summary } = get();
       if (!summary) return;
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         await api.stageFile(summary.path, path);
         await get().refresh();
@@ -421,6 +441,7 @@ export function createRepoWriteActions(
     unstageFile: async (path) => {
       const { summary } = get();
       if (!summary) return;
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         await api.unstageFile(summary.path, path);
         await get().refresh();
@@ -433,6 +454,7 @@ export function createRepoWriteActions(
     applyHunk: async (path, staged, hunkIndex, expectedHeader, expectedBody) => {
       const { summary } = get();
       if (!summary) return;
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         const message = await api.applyHunk(
           summary.path,
@@ -462,6 +484,7 @@ export function createRepoWriteActions(
     applyLine: async (path, staged, hunkIndex, lineIndex, line) => {
       const { summary } = get();
       if (!summary) return;
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         const message = await api.applyLine(summary.path, path, staged, hunkIndex, lineIndex, line);
         await get().refresh();
@@ -484,6 +507,7 @@ export function createRepoWriteActions(
     discardFile: async (path, staged) => {
       const { summary } = get();
       if (!summary) return;
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         const message = await api.discardFile(summary.path, path, staged);
         await get().refresh();
@@ -505,6 +529,8 @@ export function createRepoWriteActions(
     stageAll: async () => {
       const { summary } = get();
       if (!summary) return;
+      const { changes } = get();
+      if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(changes.unstaged, changes), changes))) return;
       try {
         await api.stageAll(summary.path);
         await get().refresh();
@@ -516,6 +542,8 @@ export function createRepoWriteActions(
     unstageAll: async () => {
       const { summary } = get();
       if (!summary) return;
+      const { changes } = get();
+      if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(changes.staged, changes), changes))) return;
       try {
         await api.unstageAll(summary.path);
         await get().refresh();
@@ -549,6 +577,9 @@ export function createRepoWriteActions(
     commitSelected: async (message, excludePaths, amend = false) => {
       const { summary } = get();
       if (!summary) return;
+      const { changes } = get();
+      const included = changes.staged.filter((file) => !excludePaths.includes(file.path));
+      if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(included, changes), changes))) return;
       const identity = useAccounts.getState().repoIdentity;
       try {
         // Files unchecked in the modal are dropped from this commit by unstaging
@@ -568,6 +599,7 @@ export function createRepoWriteActions(
     stash: async () => {
       const { summary } = get();
       if (!summary) return;
+      if (toastAdvancedGuard(guardedAdvancedWriteMessage(get().changes))) return;
       try {
         await api.stash(summary.path);
         await get().refresh();

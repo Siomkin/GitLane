@@ -7,6 +7,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { type FileChange } from "../../lib/api";
+import { fileWriteGuard, findGuardedFile } from "../../lib/advancedRepoState";
 import { cn } from "../../lib/cn";
 import { fullCommitMessage } from "../../lib/commitMessage";
 import { basename, dirname } from "../../lib/paths";
@@ -33,7 +34,8 @@ export const CommitModal = () => {
   const excluded = useUi((s) => s.commitExcluded);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
   const showToast = useUi((s) => s.showToast);
-  const staged = useRepo((s) => s.changes.staged);
+  const changes = useRepo((s) => s.changes);
+  const staged = changes.staged;
   const summary = useRepo((s) => s.summary);
   const graph = useRepo((s) => s.graph);
   const commitSelected = useRepo((s) => s.commitSelected);
@@ -68,8 +70,11 @@ export const CommitModal = () => {
 
   const branch = summary?.headBranch ?? "HEAD";
   const excludedPaths = staged.filter((f) => excluded[f.path]).map((f) => f.path);
-  const includedCount = staged.length - excludedPaths.length;
-  const canCommit = includedCount > 0 && msg.trim().length > 0;
+  const included = staged.filter((f) => !excluded[f.path]);
+  const includedGuarded = findGuardedFile(included, changes);
+  const commitBlocked = fileWriteGuard(includedGuarded, changes);
+  const includedCount = included.length;
+  const canCommit = includedCount > 0 && msg.trim().length > 0 && !commitBlocked;
 
   const doCommit = () => {
     if (!canCommit) return;
@@ -156,6 +161,11 @@ export const CommitModal = () => {
         )}
 
         <div className="shrink-0 space-y-2.5 border-t border-black/5 px-4 pb-3 pt-3 dark:border-white/5">
+          {commitBlocked && (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
+              {commitBlocked}
+            </div>
+          )}
           {canAmend && (
             <button
               type="button"
@@ -208,6 +218,7 @@ export const CommitModal = () => {
               <button
                 onClick={doCommit}
                 disabled={!canCommit}
+                title={commitBlocked ?? undefined}
                 className={cn(
                   "h-9 rounded-lg px-4 text-[13px] font-medium",
                   canCommit
@@ -275,17 +286,24 @@ const ListView = ({ staged }: { staged: FileChange[] }) => {
         return (
           <div
             key={f.path}
-            className="flex h-10 items-center gap-2.5 rounded-lg px-2.5 hover:bg-black/5 dark:hover:bg-white/5"
+            className="flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
           >
             <span onClick={() => toggle(f.path)}>
               <Checkbox on={on} />
             </span>
             <StatusBadge status={f.status} />
             <FileIcon path={f.path} size={16} />
-            <span className="truncate text-[13px] text-neutral-700 dark:text-neutral-200">
-              {basename(f.path)}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] text-neutral-700 dark:text-neutral-200">
+                {basename(f.path)}
+              </span>
+              <span className="block truncate text-[11px] text-neutral-400">{dirname(f.path)}</span>
+              {f.advanced && (
+                <span className="block truncate text-[10.5px] font-medium text-amber-600 dark:text-amber-400">
+                  {f.advanced.message}
+                </span>
+              )}
             </span>
-            <span className="truncate text-[11px] text-neutral-400">{dirname(f.path)}</span>
             <span className="ml-auto shrink-0 font-mono text-xs">
               <span className="text-[color:var(--accent)]">+{f.add}</span>{" "}
               <span className="text-rose-500">−{f.del}</span>

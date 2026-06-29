@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type BranchInfo, type DestructivePreview } from "@/lib/api";
+import {
+  fileWriteGuard,
+  findGuardedFile,
+  guardedAdvancedWriteMessage,
+} from "@/lib/advancedRepoState";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import {
   buildGraphActionSpecs,
@@ -870,10 +875,15 @@ export function FileContextMenu() {
   const discardFile = useRepo((s) => s.discardFile);
   const openFileHistory = useRepo((s) => s.openFileHistory);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
+  const changes = useRepo((s) => s.changes);
   if (!menu) return null;
 
   const { path, discard } = menu;
   const fileName = basename(path);
+  const fileGuard = fileWriteGuard(
+    [...changes.unstaged, ...changes.staged].find((file) => file.path === path),
+    changes,
+  );
   // Absolute path = repo root + repo-relative path (workdir has no trailing slash).
   const fullPath = workdir ? `${workdir.replace(/\/+$/, "")}/${path}` : path;
 
@@ -909,6 +919,8 @@ export function FileContextMenu() {
       label: staged ? "Unstage & discard changes" : "Discard changes",
       icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
+      disabled: !!fileGuard,
+      disabledReason: fileGuard ?? undefined,
       sep: true,
       onClick: () =>
         requestConfirm({
@@ -944,21 +956,47 @@ export function WipContextMenu() {
 
   const hasStaged = changes.staged.length > 0;
   const hasUnstaged = changes.unstaged.length > 0;
+  const stageAllGuard = fileWriteGuard(findGuardedFile(changes.unstaged, changes), changes);
+  const unstageAllGuard = fileWriteGuard(findGuardedFile(changes.staged, changes), changes);
+  const bulkGuard = guardedAdvancedWriteMessage(changes);
 
   const items: MenuItem[] = [
     { label: "Commit…", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); openCommit(); } },
   ];
   if (hasUnstaged) {
-    items.push({ label: "Stage all changes", icon: <PlusIcon className="h-4 w-4" />, sep: true, onClick: () => { close(); void stageAll(); } });
+    items.push({
+      label: "Stage all changes",
+      icon: <PlusIcon className="h-4 w-4" />,
+      sep: true,
+      disabled: !!stageAllGuard,
+      disabledReason: stageAllGuard ?? undefined,
+      onClick: () => { close(); void stageAll(); },
+    });
   }
   if (hasStaged) {
-    items.push({ label: "Unstage all changes", icon: <MinusIcon className="h-4 w-4" />, sep: !hasUnstaged, onClick: () => { close(); void unstageAll(); } });
+    items.push({
+      label: "Unstage all changes",
+      icon: <MinusIcon className="h-4 w-4" />,
+      sep: !hasUnstaged,
+      disabled: !!unstageAllGuard,
+      disabledReason: unstageAllGuard ?? undefined,
+      onClick: () => { close(); void unstageAll(); },
+    });
   }
-  items.push({ label: "Stash all changes", icon: <StashIcon className="h-4 w-4" />, sep: true, onClick: () => { close(); void stash(); } });
+  items.push({
+    label: "Stash all changes",
+    icon: <StashIcon className="h-4 w-4" />,
+    sep: true,
+    disabled: !!bulkGuard,
+    disabledReason: bulkGuard ?? undefined,
+    onClick: () => { close(); void stash(); },
+  });
   items.push({
     label: "Discard all changes",
     icon: <TrashIcon className="h-4 w-4" />,
     danger: true,
+    disabled: !!bulkGuard,
+    disabledReason: bulkGuard ?? undefined,
     sep: true,
     onClick: () =>
       void previewConfirm({
