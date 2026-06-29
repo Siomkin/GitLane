@@ -24,7 +24,8 @@ export function AccountsPanel() {
   const forgeAccountsLoading = useAccounts((s) => s.forgeAccountsLoading);
   const loadAccounts = useAccounts((s) => s.loadAccounts);
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
-  const setSettingsTab = useUi((s) => s.setSettingsTab);
+  const closeSettings = useUi((s) => s.closeSettings);
+  const openRepoSettings = useUi((s) => s.openRepoSettings);
 
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<ProviderKey | null>(null);
@@ -65,7 +66,10 @@ export function AccountsPanel() {
             Accounts are <span className="font-semibold text-neutral-800 dark:text-neutral-100">optional</span> — they
             enable pull requests. Commit, fetch &amp; push work with just a git profile in{" "}
             <button
-              onClick={() => setSettingsTab("repo")}
+              onClick={() => {
+                closeSettings();
+                openRepoSettings("identity");
+              }}
               className={cn(
                 "font-semibold text-neutral-800 underline underline-offset-2 hover:text-neutral-900 dark:text-neutral-100 dark:hover:text-white",
                 focusRing,

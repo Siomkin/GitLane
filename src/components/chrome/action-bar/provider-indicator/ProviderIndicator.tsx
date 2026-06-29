@@ -4,7 +4,7 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { ForgeKind } from "../../../../lib/api";
 import type { RepoForge } from "../../../../lib/api";
-import type { SettingsTab } from "../../../../store/ui";
+import type { RepoSettingsSection } from "../../../../store/ui";
 import { useDismiss } from "../../../../hooks/useDismiss";
 import {
   AzureDevOpsIcon,
@@ -80,7 +80,8 @@ export const ProviderIndicator = ({
   errorDetail,
   className,
   onViewPrs,
-  onOpenSettings,
+  onSignIn,
+  onOpenRepoSettings,
   onOpen,
 }: {
   state: ProviderState;
@@ -90,7 +91,10 @@ export const ProviderIndicator = ({
   errorDetail?: string | null;
   className?: string;
   onViewPrs: () => void;
-  onOpenSettings: (tab: SettingsTab) => void;
+  /** Open the global Accounts settings (bind a GitHub account). */
+  onSignIn: () => void;
+  /** Open the repo-scoped Repository settings window at a section. */
+  onOpenRepoSettings: (section: RepoSettingsSection) => void;
   /** Fired when the popover opens — lets the toolbar dismiss sibling surfaces
    * (e.g. the branch navigator) so only one popover is open at a time. */
   onOpen?: () => void;
@@ -119,7 +123,7 @@ export const ProviderIndicator = ({
         type="button"
         tabIndex={-1}
         aria-hidden="true"
-        onClick={() => onOpenSettings("repo")}
+        onClick={() => onOpenRepoSettings("identity")}
         title="Repository settings — identity & remotes for this repo"
         className={cn(
           "pointer-events-none absolute right-full top-1/2 h-8 -translate-y-1/2 whitespace-nowrap rounded-lg px-2.5 text-[13px] font-medium text-neutral-600 opacity-0 transition-opacity duration-150 ease-out",
@@ -159,7 +163,8 @@ export const ProviderIndicator = ({
         <ProviderPopover
           model={providerPopoverModel(state, forge, prCount, errorDetail)}
           onViewPrs={onViewPrs}
-          onOpenSettings={onOpenSettings}
+          onSignIn={onSignIn}
+          onOpenRepoSettings={onOpenRepoSettings}
           onClose={close}
         />
       )}

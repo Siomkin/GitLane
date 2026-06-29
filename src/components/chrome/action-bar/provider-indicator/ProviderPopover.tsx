@@ -2,7 +2,7 @@ import type { ComponentType } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
-import type { SettingsTab } from "../../../../store/ui";
+import type { RepoSettingsSection } from "../../../../store/ui";
 import {
   AzureDevOpsIcon,
   BitbucketIcon,
@@ -63,12 +63,16 @@ const eyebrow = "px-3 text-[10px] font-semibold uppercase tracking-wider text-ne
 export const ProviderPopover = ({
   model,
   onViewPrs,
-  onOpenSettings,
+  onSignIn,
+  onOpenRepoSettings,
   onClose,
 }: {
   model: ProviderPopoverModel;
   onViewPrs: () => void;
-  onOpenSettings: (tab: SettingsTab) => void;
+  /** Open the global Accounts settings to bind a GitHub account. */
+  onSignIn: () => void;
+  /** Open the repo-scoped Repository settings window at a section. */
+  onOpenRepoSettings: (section: RepoSettingsSection) => void;
   onClose: () => void;
 }) => {
   const runPrimary = () => {
@@ -78,10 +82,10 @@ export const ProviderPopover = ({
         onViewPrs();
         break;
       case "sign-in":
-        onOpenSettings("accounts");
+        onSignIn();
         break;
       case "add-remote":
-        onOpenSettings("repo");
+        onOpenRepoSettings("remotes");
         break;
       case "open-url":
         void openUrl(action.url);
@@ -224,7 +228,7 @@ export const ProviderPopover = ({
         <button
           type="button"
           onClick={() => {
-            onOpenSettings("repo");
+            onOpenRepoSettings("identity");
             onClose();
           }}
           className={cn(
@@ -240,7 +244,7 @@ export const ProviderPopover = ({
         <button
           type="button"
           onClick={() => {
-            onOpenSettings("repo");
+            onOpenRepoSettings("remotes");
             onClose();
           }}
           className={cn(

@@ -15,7 +15,12 @@ import { resolveTheme, systemPrefersDark } from "../lib/theme";
 export type { AccentColor };
 export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
-export type SettingsTab = "general" | "accounts" | "repo" | "terminal" | "about";
+export type SettingsTab = "general" | "accounts" | "terminal" | "about";
+
+/** Sections of the repo-scoped Repository settings window — split out of the
+ * global Settings modal so per-repo config (identity, remotes) is its own
+ * window opened from the toolbar, not a tab under the title-bar gear. */
+export type RepoSettingsSection = "identity" | "remotes";
 /** Commit-list kind filter in the History view: everything, regular (non-merge)
  * commits, merges, or commits carrying a tag. */
 export type HistFilter = "all" | "commits" | "merges" | "tags";
@@ -209,6 +214,10 @@ interface UiState {
 
   settingsOpen: boolean;
   settingsTab: SettingsTab;
+  /** Repo-scoped Repository settings window (identity / remotes), independent of
+   * the global Settings modal so both can be reasoned about separately. */
+  repoSettingsOpen: boolean;
+  repoSettingsSection: RepoSettingsSection;
   addAccountOpen: boolean;
   /** Repository-onboarding overlay (clone / init / open) raised from the tab
    * strip while a repo is already open. Transient (not persisted). */
@@ -321,6 +330,10 @@ interface UiState {
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
   setSettingsTab: (tab: SettingsTab) => void;
+  /** Open the repo-scoped Repository settings window (default: last section). */
+  openRepoSettings: (section?: RepoSettingsSection) => void;
+  closeRepoSettings: () => void;
+  setRepoSettingsSection: (section: RepoSettingsSection) => void;
   setAddAccountOpen: (open: boolean) => void;
   /** Raise / dismiss the repository-onboarding overlay from within an open repo. */
   openOnboarding: () => void;
@@ -447,6 +460,8 @@ export const useUi = create<UiState>()(
 
   settingsOpen: false,
   settingsTab: "general",
+  repoSettingsOpen: false,
+  repoSettingsSection: "identity",
   addAccountOpen: false,
   onboardingOpen: false,
 
@@ -532,6 +547,10 @@ export const useUi = create<UiState>()(
 
   openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
   closeSettings: () => set({ settingsOpen: false, addAccountOpen: false }),
+  openRepoSettings: (section) =>
+    set((s) => ({ repoSettingsOpen: true, repoSettingsSection: section ?? s.repoSettingsSection })),
+  closeRepoSettings: () => set({ repoSettingsOpen: false }),
+  setRepoSettingsSection: (section) => set({ repoSettingsSection: section }),
   openOnboarding: () => set({ onboardingOpen: true }),
   closeOnboarding: () => set({ onboardingOpen: false }),
   setSettingsTab: (tab) => set({ settingsTab: tab }),

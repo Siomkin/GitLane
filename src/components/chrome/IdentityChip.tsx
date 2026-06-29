@@ -26,6 +26,7 @@ export function IdentityChip() {
   const loadDefaultIdentity = useProfiles((s) => s.loadDefaultIdentity);
   const applyProfile = useProfiles((s) => s.applyProfile);
   const openSettings = useUi((s) => s.openSettings);
+  const openRepoSettings = useUi((s) => s.openRepoSettings);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), ref);
@@ -144,7 +145,7 @@ export function IdentityChip() {
           <button
             onClick={() => {
               setOpen(false);
-              openSettings("repo");
+              openRepoSettings("identity");
             }}
             className="flex w-full items-center gap-2 border-t border-black/10 px-3.5 py-2.5 text-left text-[12px] text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100"
           >

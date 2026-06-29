@@ -357,6 +357,27 @@ export function RemotesIcon(props: IconProps) {
   );
 }
 
+export function IdCardIcon(props: IconProps) {
+  // An ID card — the repo "commit identity" section.
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="11" r="2" />
+      <path d="M14 9h4M14 13h4M5 16h7" />
+    </IconBase>
+  );
+}
+
+export function RepoBookIcon(props: IconProps) {
+  // A book spine — the Repository settings header mark.
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </IconBase>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <IconBase strokeWidth="2" {...props}>

@@ -18,6 +18,7 @@ import {
 } from "./components/chrome/overlays";
 import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { SettingsModal } from "./components/chrome/SettingsModal";
+import { RepoSettingsModal } from "./components/chrome/repo-settings";
 import { TitleBar } from "./components/chrome/TitleBar";
 import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
 import { RepoOnboarding } from "./features/onboarding";
@@ -239,6 +240,7 @@ const App = () => {
       {onboardingOpen && summary && <RepoOnboarding onClose={closeOnboarding} />}
 
       <SettingsModal />
+      <RepoSettingsModal />
       <ActionMenu />
       <BranchContextMenu />
       <CommitContextMenu />

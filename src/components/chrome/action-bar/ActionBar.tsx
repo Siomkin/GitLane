@@ -52,6 +52,7 @@ export const ActionBar = ({
   const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreateBranch = useUi((state) => state.setCreateBranchOpen);
   const openSettings = useUi((state) => state.openSettings);
+  const openRepoSettings = useUi((state) => state.openRepoSettings);
   const toggleTerminal = useUi((state) => state.toggleTerminal);
   const openRecovery = useUi((state) => state.openRecovery);
   const terminalVisible = useUi((state) => state.terminalView !== "hidden");
@@ -265,7 +266,8 @@ export const ActionBar = ({
             prCount={prCount}
             errorDetail={accountsError}
             onViewPrs={() => selectTab("pulls")}
-            onOpenSettings={openSettings}
+            onSignIn={() => openSettings("accounts")}
+            onOpenRepoSettings={openRepoSettings}
             onOpen={closeNav}
           />
         )}

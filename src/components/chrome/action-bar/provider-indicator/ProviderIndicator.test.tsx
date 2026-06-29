@@ -30,7 +30,8 @@ const popoverOpen = () => screen.queryByText("In GitLane") !== null;
 
 const renderIndicator = (state: ProviderState, forge: RepoForge = GH, prCount = 7) => {
   const onViewPrs = vi.fn();
-  const onOpenSettings = vi.fn();
+  const onSignIn = vi.fn();
+  const onOpenRepoSettings = vi.fn();
   const onOpen = vi.fn();
   render(
     <ProviderIndicator
@@ -38,12 +39,13 @@ const renderIndicator = (state: ProviderState, forge: RepoForge = GH, prCount = 
       forge={forge}
       prCount={prCount}
       onViewPrs={onViewPrs}
-      onOpenSettings={onOpenSettings}
+      onSignIn={onSignIn}
+      onOpenRepoSettings={onOpenRepoSettings}
       onOpen={onOpen}
     />,
   );
   const toggle = screen.getByRole("button", { name: /remote provider/i });
-  return { toggle, onViewPrs, onOpenSettings, onOpen };
+  return { toggle, onViewPrs, onSignIn, onOpenRepoSettings, onOpen };
 };
 
 beforeEach(() => openUrlMock.mockReset());
@@ -76,11 +78,11 @@ describe("ProviderIndicator", () => {
     expect(popoverOpen()).toBe(false); // closes after acting
   });
 
-  it("needs-auth: the primary opens the Accounts settings tab", () => {
-    const { toggle, onOpenSettings } = renderIndicator("needs-auth");
+  it("needs-auth: the primary opens the Accounts settings (sign in)", () => {
+    const { toggle, onSignIn } = renderIndicator("needs-auth");
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText("Sign in to GitHub"));
-    expect(onOpenSettings).toHaveBeenCalledWith("accounts");
+    expect(onSignIn).toHaveBeenCalledTimes(1);
   });
 
   it("connected GitLab: no-PRs shape — open-on-forge primary, no GitHub shortcuts", () => {
@@ -110,7 +112,8 @@ describe("ProviderIndicator", () => {
         prCount={0}
         errorDetail="gh: command not found"
         onViewPrs={vi.fn()}
-        onOpenSettings={vi.fn()}
+        onSignIn={vi.fn()}
+        onOpenRepoSettings={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /remote provider/i }));
@@ -119,13 +122,17 @@ describe("ProviderIndicator", () => {
     expect(openUrlMock).toHaveBeenCalledWith("https://cli.github.com");
   });
 
-  it("the hover 'Repo settings' link and footer both open repo settings", () => {
-    const { onOpenSettings } = renderIndicator("connected");
+  it("the hover 'Repo settings' link and footer open the repo settings window", () => {
+    const { onOpenRepoSettings } = renderIndicator("connected");
     fireEvent.click(screen.getByText("Repo settings"));
-    expect(onOpenSettings).toHaveBeenLastCalledWith("repo");
+    expect(onOpenRepoSettings).toHaveBeenLastCalledWith("identity");
 
     fireEvent.click(screen.getByRole("button", { name: /remote provider/i }));
     fireEvent.click(screen.getByText("Repository settings…"));
-    expect(onOpenSettings).toHaveBeenLastCalledWith("repo");
+    expect(onOpenRepoSettings).toHaveBeenLastCalledWith("identity");
+
+    fireEvent.click(screen.getByRole("button", { name: /remote provider/i }));
+    fireEvent.click(screen.getByText("Manage remotes…"));
+    expect(onOpenRepoSettings).toHaveBeenLastCalledWith("remotes");
   });
 });
