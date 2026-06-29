@@ -12,6 +12,7 @@ import { useAccounts } from "../../../../store/accounts";
 import { InlineCode } from "../../../ui/InlineCode";
 import { PROVIDERS, type ProviderKey } from "./providers";
 import { ConnectedAccountCard } from "./ConnectedAccountCard";
+import { ConnectedForgeCard } from "./ConnectedForgeCard";
 import { AddAccountPicker } from "./AddAccountPicker";
 import { ProviderConnect } from "./ProviderConnect";
 
@@ -48,6 +49,10 @@ export function AccountsPanel() {
   const selectedMeta = PROVIDERS.find((p) => p.key === selected) ?? null;
   const selectedStatus =
     selected && selected !== "github" ? forgeAuth.find((f) => f.provider === selected) ?? null : null;
+  // Authenticated non-GitHub providers are "connected" (auth-only) and listed
+  // alongside GitHub — being signed in is what makes them appear, same as gh.
+  const connectedForges = forgeAuth.filter((f) => f.authenticated === true);
+  const nothingConnected = accounts.length === 0 && connectedForges.length === 0;
 
   return (
     <>
@@ -117,12 +122,15 @@ export function AccountsPanel() {
           ) : (
             <AddAccountPicker onPick={setSelected} onClose={closeAdding} />
           )
-        ) : accounts.length === 0 && !accountsLoading && !accountsError ? (
+        ) : nothingConnected && !accountsLoading && !accountsError ? (
           <EmptyState onAdd={startAdding} />
         ) : (
           <div className="flex flex-col gap-2.5">
             {accounts.map((account) => (
               <ConnectedAccountCard key={account.id} account={account} />
+            ))}
+            {connectedForges.map((status) => (
+              <ConnectedForgeCard key={status.provider} status={status} />
             ))}
           </div>
         )}

@@ -106,4 +106,24 @@ describe("AccountsPanel (add-account model)", () => {
     render(<AccountsPanel />);
     expect(screen.getByText("No accounts yet")).toBeInTheDocument();
   });
+
+  it("lists an authenticated provider as an auth-only connected account", () => {
+    const gitlabAuthed: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "https://gitlab.com/gitlab-org/cli",
+      notes: "PR features are not implemented for GitLab.",
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed] });
+    render(<AccountsPanel />);
+    // Signed-in GitLab appears as connected (auth-only), not the empty state.
+    expect(screen.queryByText("No accounts yet")).not.toBeInTheDocument();
+    expect(screen.getByText("GitLab")).toBeInTheDocument();
+    expect(screen.getByText("Auth only — no PRs")).toBeInTheDocument();
+  });
 });
