@@ -25,12 +25,14 @@ pub fn default_identity() -> Option<RepoIdentity> {
         .filter(|s| !s.is_empty());
     let gpg_format = cfg.get_string("gpg.format").ok().filter(|s| !s.is_empty());
     let gpg_sign = cfg.get_bool("commit.gpgsign").ok();
+    let tag_gpg_sign = cfg.get_bool("tag.gpgsign").ok();
     Some(RepoIdentity {
         name,
         email,
         signing_key,
         gpg_format,
         gpg_sign,
+        tag_gpg_sign,
     })
 }
 
@@ -67,12 +69,14 @@ pub fn repo_identity(path: &str) -> Result<Option<RepoIdentity>, git2::Error> {
                 .ok()
                 .filter(|s| !s.is_empty());
             let gpg_sign = local.get_bool("commit.gpgsign").ok();
+            let tag_gpg_sign = local.get_bool("tag.gpgsign").ok();
             Ok(Some(RepoIdentity {
                 name,
                 email,
                 signing_key,
                 gpg_format,
                 gpg_sign,
+                tag_gpg_sign,
             }))
         }
         _ => Ok(None),

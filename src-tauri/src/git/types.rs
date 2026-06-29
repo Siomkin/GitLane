@@ -153,6 +153,24 @@ pub struct RepoIdentity {
     /// `commit.gpgsign` pinned locally, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpg_sign: Option<bool>,
+    /// `tag.gpgsign` pinned locally, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_gpg_sign: Option<bool>,
+}
+
+/// A signing key the user already has, offered by the profile editor's key
+/// picker. References only — a GPG key id or an SSH public-key path — never
+/// private key material or a passphrase.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SigningKey {
+    /// The value written to `user.signingkey`: a GPG long key id, or an SSH
+    /// public-key path.
+    pub value: String,
+    /// Human-readable label — the GPG uid, or the SSH key type + comment.
+    pub label: String,
+    /// `gpg.format` for this key: "openpgp" or "ssh".
+    pub format: String,
 }
 
 /// A linked worktree entry for the sidebar's WORKTREES group.

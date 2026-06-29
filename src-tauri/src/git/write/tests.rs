@@ -79,13 +79,14 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
     let repo = TempRepo::new("identity-signing");
     repo.git_ok(&["init", "-q"]);
 
-    // Apply a profile that signs: name/email + signing key, format and gpgsign.
+    // Apply a profile that signs: name/email + signing key, format, gpgsign, tags.
     set_repo_identity(
         repo.path(),
         "Work Dev",
         "work@example.test",
         Some("ABCD1234"),
         Some("openpgp"),
+        Some(true),
         Some(true),
     )
     .expect("set identity with signing");
@@ -98,10 +99,11 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
     assert_eq!(id.signing_key.as_deref(), Some("ABCD1234"));
     assert_eq!(id.gpg_format.as_deref(), Some("openpgp"));
     assert_eq!(id.gpg_sign, Some(true));
+    assert_eq!(id.tag_gpg_sign, Some(true));
 
     // `None` leaves signing untouched — the legacy name/email editor must not
     // wipe a key the user (or a prior profile) set.
-    set_repo_identity(repo.path(), "Work Dev", "work@example.test", None, None, None)
+    set_repo_identity(repo.path(), "Work Dev", "work@example.test", None, None, None, None)
         .expect("re-save name/email only");
     let id = repo_identity(repo.path()).unwrap().unwrap();
     assert_eq!(
@@ -120,12 +122,14 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
         Some(""),
         Some(""),
         Some(false),
+        Some(false),
     )
     .expect("apply no-signing profile");
     let id = repo_identity(repo.path()).unwrap().unwrap();
     assert_eq!(id.signing_key, None, "empty signing key unsets it");
     assert_eq!(id.gpg_format, None, "empty gpg.format unsets it");
     assert_eq!(id.gpg_sign, Some(false), "gpgSign=false is written, not unset");
+    assert_eq!(id.tag_gpg_sign, Some(false), "tag.gpgsign=false is written");
 }
 
 #[test]
@@ -138,6 +142,7 @@ fn clear_repo_identity_removes_name_email_and_signing() {
         "work@example.test",
         Some("KEY1"),
         Some("ssh"),
+        Some(true),
         Some(true),
     )
     .expect("set identity with signing");

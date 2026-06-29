@@ -17,6 +17,7 @@ export interface GitProfile {
   signingKey?: string;
   gpgFormat?: "openpgp" | "ssh";
   gpgSign?: boolean;
+  tagGpgSign?: boolean;
   color: string;
   /** The profile suggested for repos with nothing pinned (the starred one). */
   isDefault?: boolean;
@@ -32,6 +33,7 @@ export interface ProfileDraft {
   signingKey?: string;
   gpgFormat?: "openpgp" | "ssh";
   gpgSign?: boolean;
+  tagGpgSign?: boolean;
 }
 
 /** Which option in the Identity panel reflects the repo's current local config.
@@ -48,13 +50,14 @@ export type ProfileSelection =
  * pinned identity, normalising "unset" (undefined / empty / false) so e.g. no
  * key equals an empty key. */
 function sameSigning(
-  a: Pick<GitProfile, "signingKey" | "gpgFormat" | "gpgSign">,
-  b: Pick<RepoIdentity, "signingKey" | "gpgFormat" | "gpgSign">,
+  a: Pick<GitProfile, "signingKey" | "gpgFormat" | "gpgSign" | "tagGpgSign">,
+  b: Pick<RepoIdentity, "signingKey" | "gpgFormat" | "gpgSign" | "tagGpgSign">,
 ): boolean {
   return (
     (a.signingKey || "") === (b.signingKey || "") &&
     (a.gpgFormat || "") === (b.gpgFormat || "") &&
-    Boolean(a.gpgSign) === Boolean(b.gpgSign)
+    Boolean(a.gpgSign) === Boolean(b.gpgSign) &&
+    Boolean(a.tagGpgSign) === Boolean(b.tagGpgSign)
   );
 }
 

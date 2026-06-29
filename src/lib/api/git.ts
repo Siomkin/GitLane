@@ -74,6 +74,8 @@ export interface RepoIdentity {
   gpgFormat?: string;
   /** `commit.gpgsign` pinned locally, if any. */
   gpgSign?: boolean;
+  /** `tag.gpgsign` pinned locally, if any. */
+  tagGpgSign?: boolean;
 }
 
 /** Optional signing config for {@link api.setRepoIdentity}. Tri-state per field
@@ -83,6 +85,17 @@ export interface RepoSigningConfig {
   signingKey?: string;
   gpgFormat?: string;
   gpgSign?: boolean;
+  tagGpgSign?: boolean;
+}
+
+/** A signing key the user already has, for the profile editor's key picker.
+ * Reference only — a GPG key id or SSH public-key path, never private material. */
+export interface SigningKey {
+  /** Written to `user.signingkey` — a GPG key id or SSH public-key path. */
+  value: string;
+  /** GPG uid, or SSH key type + comment. */
+  label: string;
+  format: "openpgp" | "ssh";
 }
 
 /** Presence + current branch of a recently-opened repo path (see Rust
@@ -716,7 +729,12 @@ export const gitApi = {
       signingKey: signing?.signingKey,
       gpgFormat: signing?.gpgFormat,
       gpgSign: signing?.gpgSign,
+      tagGpgSign: signing?.tagGpgSign,
     }),
+
+  /** Signing keys the user already has (GPG secret keys + SSH public keys) for
+   * the profile editor's key picker. References only — never private material. */
+  listSigningKeys: () => invoke<SigningKey[]>("list_signing_keys"),
 
   /** Read the identity pinned in the repo's local git config (the durable,
    * build-independent source of truth). `null` = nothing pinned locally. */

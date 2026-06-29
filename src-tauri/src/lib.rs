@@ -6,6 +6,7 @@
 mod auth_providers;
 mod git;
 mod shell;
+mod signing_keys;
 mod terminal;
 mod terminal_agents;
 mod watcher;
@@ -18,7 +19,7 @@ use git::types::{
     BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame, FileChange,
     FileDiff, FileHistoryPage, ForgeAuthStatus, GithubAccount, GithubAccountRef, OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
-    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, StashEntry, WorkingChanges,
+    RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
 };
 
@@ -862,6 +863,7 @@ async fn set_repo_identity(
     signing_key: Option<String>,
     gpg_format: Option<String>,
     gpg_sign: Option<bool>,
+    tag_gpg_sign: Option<bool>,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::set_repo_identity(
@@ -871,9 +873,15 @@ async fn set_repo_identity(
             signing_key.as_deref(),
             gpg_format.as_deref(),
             gpg_sign,
+            tag_gpg_sign,
         )
     })
     .await
+}
+
+#[tauri::command]
+async fn list_signing_keys() -> Result<Vec<SigningKey>, String> {
+    blocking(|| Ok(signing_keys::list())).await
 }
 
 #[tauri::command]
@@ -1196,6 +1204,7 @@ pub fn run() {
             set_repo_identity,
             repo_identity,
             default_git_identity,
+            list_signing_keys,
             clear_repo_identity,
             clone_repo,
             cancel_clone,

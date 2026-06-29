@@ -86,6 +86,7 @@ function signingArgs(profile: GitProfile) {
     signingKey: profile.signingKey ?? "",
     gpgFormat: profile.gpgFormat ?? "",
     gpgSign: profile.gpgSign ?? false,
+    tagGpgSign: profile.tagGpgSign ?? false,
   };
 }
 

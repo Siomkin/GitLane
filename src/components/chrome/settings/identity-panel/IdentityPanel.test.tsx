@@ -127,6 +127,18 @@ describe("IdentityPanel", () => {
     expect(saved?.signingKey).toBeUndefined();
   });
 
+  it("saves a profile that signs tags (tag.gpgsign)", () => {
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "New profile" }));
+    fireEvent.change(screen.getByLabelText("PROFILE NAME"), { target: { value: "Tag signer" } });
+    fireEvent.change(screen.getByLabelText("NAME"), { target: { value: "Dev" } });
+    fireEvent.change(screen.getByLabelText("EMAIL"), { target: { value: "dev@example.com" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Sign tags" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    const saved = useProfiles.getState().profiles.find((p) => p.label === "Tag signer");
+    expect(saved?.tagGpgSign).toBe(true);
+  });
+
   it("binds a PR account from Zone B without touching the commit identity", () => {
     useAccounts.setState({
       accounts: [
