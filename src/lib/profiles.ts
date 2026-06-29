@@ -81,10 +81,14 @@ export function selectProfile(
   // Email & signing may still diverge per-repo (reported via the custom flags).
   const applied = appliedId ? profiles.find((p) => p.id === appliedId) : undefined;
   const compatible = applied && applied.name === repoIdentity.name ? applied : undefined;
-  const match =
-    compatible ??
-    profiles.find((p) => p.name === repoIdentity.name && p.email === repoIdentity.email) ??
-    profiles.find((p) => p.name === repoIdentity.name);
+  const byEmail = profiles.find(
+    (p) => p.name === repoIdentity.name && p.email === repoIdentity.email,
+  );
+  // Name-only is only safe when it's unambiguous — if several saved profiles
+  // share the current author name and nothing else pins the choice (applied id
+  // or exact email), the identity is unmanaged rather than an arbitrary guess.
+  const sameName = profiles.filter((p) => p.name === repoIdentity.name);
+  const match = compatible ?? byEmail ?? (sameName.length === 1 ? sameName[0] : undefined);
   if (match) {
     return {
       kind: "profile",

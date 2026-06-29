@@ -141,7 +141,7 @@ export function IdentityChip() {
           <button
             onClick={() => {
               setOpen(false);
-              openSettings("repo");
+              openSettings("accounts");
             }}
             className="flex w-full items-center gap-2 border-t border-black/10 px-3.5 py-2.5 text-left hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
           >

@@ -144,6 +144,45 @@ describe("loadForgeAuth — fast auth, background identity", () => {
     expect(useAccounts.getState().forgeAuth[0].account).toBeUndefined();
   });
 
+  it("a forced refresh supersedes an in-flight status probe", async () => {
+    let resolveFirst!: (v: unknown) => void;
+    const firstProbe = new Promise((r) => {
+      resolveFirst = r;
+    });
+    let call = 0;
+    const row = (forge: string, authenticated: boolean) => ({
+      provider: "gitlab",
+      forge,
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated,
+      loginCommand: "x",
+      docsUrl: "y",
+      notes: "z",
+    });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "forge_auth_statuses") {
+        call += 1;
+        return call === 1 ? firstProbe : [row("GitLab (latest)", false)];
+      }
+      return null;
+    });
+    useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
+
+    const p1 = useAccounts.getState().loadForgeAuth(true); // in-flight (pending probe)
+    const p2 = useAccounts.getState().loadForgeAuth(true); // forced — supersedes #1
+    await p2;
+    expect(useAccounts.getState().forgeAuth[0].forge).toBe("GitLab (latest)");
+    expect(useAccounts.getState().forgeAuthLoading).toBe(false);
+
+    // The superseded #1 probe finally resolves — it must not clobber the latest.
+    resolveFirst([row("GitLab (stale)", true)]);
+    await p1;
+    await Promise.resolve();
+    expect(useAccounts.getState().forgeAuth[0].forge).toBe("GitLab (latest)");
+  });
+
   it("clears the skeleton and keeps the fallback label when the whoami returns null", async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "forge_auth_statuses") {

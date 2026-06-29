@@ -109,5 +109,8 @@ describe("useProfiles — custom email persistence across profile switches", () 
     deleteProfile("p2");
     // No stale applied id remains, so selection can't fall back to a wrong duplicate.
     expect(appliedProfileId(path)).toBeNull();
+    // The orphaned custom-email override is scrubbed too.
+    const overrides = JSON.parse(localStorage.getItem("gitlane.repoProfileEmail") ?? "{}");
+    expect(overrides[path]?.p2).toBeUndefined();
   });
 });

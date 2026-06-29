@@ -69,10 +69,17 @@ describe("selectProfile", () => {
     const dupB: GitProfile = { id: "b", label: "Personal", name: "Sam Same", email: "home@x.dev", color: "#2" };
     const dups = [dupA, dupB];
     const custom = { name: "Sam Same", email: "custom@x.dev" };
-    // Without an applied id, the name-only fallback picks the first (dupA) — ambiguous.
-    expect(selectProfile(custom, dups)).toMatchObject({ kind: "profile", id: "a", customEmail: true });
+    // Without an applied id, duplicate names + a custom email are ambiguous, so
+    // the identity is unmanaged rather than an arbitrary guess.
+    expect(selectProfile(custom, dups)).toEqual({ kind: "unmanaged" });
     // With the applied id, the correct profile (dupB) is selected.
     expect(selectProfile(custom, dups, "b")).toMatchObject({ kind: "profile", id: "b", customEmail: true });
+    // An exact email still disambiguates without an applied id.
+    expect(selectProfile({ name: "Sam Same", email: "home@x.dev" }, dups)).toMatchObject({
+      kind: "profile",
+      id: "b",
+      customEmail: false,
+    });
   });
 });
 

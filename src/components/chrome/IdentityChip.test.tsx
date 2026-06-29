@@ -29,7 +29,9 @@ beforeEach(() => {
     repoAccountId: null,
     repoIdentity: { name: "Stepan Work", email: "work@acme.io" },
   });
-  useProfiles.setState({ profiles: [], defaultIdentity: null });
+  // Seed state directly (not only localStorage) so the label doesn't depend on
+  // the mount effect's timing.
+  useProfiles.setState({ profiles: [personal, work], defaultIdentity: null });
 });
 
 describe("IdentityChip", () => {
