@@ -42,7 +42,15 @@ interface RepoAccountBinding extends GithubAccountRef {
   version: 2;
 }
 
-type StoredRepoAccountBinding = RepoAccountBinding | string;
+/** Explicit "no PR account for this repo". Persisted (rather than deleting the
+ * entry) so the choice is durable — on reopen it stays unbound instead of
+ * silently falling back to the active `gh` account. */
+interface RepoAccountUnbound {
+  version: 2;
+  unbound: true;
+}
+
+type StoredRepoAccountBinding = RepoAccountBinding | RepoAccountUnbound | string;
 
 // Per-repo account binding: { [repoPath]: RepoAccountBinding } drives PR/push auth.
 // Legacy string values are migrated only after they resolve against loaded accounts.
@@ -215,9 +223,12 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         writeBindings(bindings);
       }
     } else if (bound && bound.version === 2) {
-      const key = accountKey(bound);
-      selected = get().accounts.find((a) => a.id === key) ?? null;
+      if (!("unbound" in bound)) {
+        selected = get().accounts.find((a) => a.id === accountKey(bound)) ?? null;
+      }
+      // else: explicit "No account" — leave unbound (no active-account fallback).
     } else if (!bound) {
+      // Never configured → default to the active gh account for convenience.
       selected = get().accounts.find((a) => a.id === get().activeAccountId) ?? null;
     }
     set({
@@ -263,8 +274,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const path = useRepo.getState().summary?.path ?? null;
     if (path) {
       const bindings = readBindings();
-      if (account) bindings[path] = bindingFromAccount(account);
-      else delete bindings[path];
+      // Persist an explicit unbound marker (not a delete) so "No account" is
+      // durable across reopen instead of reverting to the active gh account.
+      bindings[path] = account ? bindingFromAccount(account) : { version: 2, unbound: true };
       writeBindings(bindings);
     }
     // Binding an account drives PR / push / fetch auth ONLY — it must never

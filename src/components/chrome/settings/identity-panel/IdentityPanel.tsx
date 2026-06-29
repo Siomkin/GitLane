@@ -55,11 +55,15 @@ export function IdentityPanel() {
     selection.kind === "profile" ? profiles.find((p) => p.id === selection.id) ?? null : null;
   const customEmail = selection.kind === "profile" && selection.customEmail;
 
-  const onSave = (id: string | undefined) => (draft: Parameters<typeof saveProfile>[0]) => {
-    saveProfile(draft);
+  const handleSave = (draft: Parameters<typeof saveProfile>[0]) => {
+    const wasAppliedEdit =
+      editing?.kind === "edit" && selection.kind === "profile" && selection.id === editing.id;
+    const wasAdoption = editing?.kind === "new" && Boolean(editing.prefill);
+    const saved = saveProfile(draft);
     setEditing(null);
-    // Keep local git config in sync if the edited profile is the applied one.
-    if (id && selection.kind === "profile" && selection.id === id) void applyProfile(id);
+    // Apply when editing the currently-applied profile (keep git config in sync)
+    // or adopting an unmanaged identity into a new profile (select it now).
+    if (wasAppliedEdit || wasAdoption) void applyProfile(saved.id);
   };
 
   return (
@@ -124,7 +128,7 @@ export function IdentityPanel() {
               <ProfileEditor
                 key={p.id}
                 profile={p}
-                onSave={onSave(p.id)}
+                onSave={handleSave}
                 onCancel={() => setEditing(null)}
                 onSetDefault={() => {
                   setDefaultProfile(p.id);
@@ -176,7 +180,7 @@ export function IdentityPanel() {
             <ProfileEditor
               profile={null}
               prefill={editing.prefill}
-              onSave={onSave(undefined)}
+              onSave={handleSave}
               onCancel={() => setEditing(null)}
             />
           )}
@@ -248,11 +252,14 @@ function ProfileRowView({
       badges={
         <>
           {profile.isDefault && (
-            <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-amber-600 dark:text-amber-400" title="Default profile for new repos">
+            <span
+              className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-amber-600 dark:text-amber-400"
+              title="Your suggested profile — pick it to apply (not auto-applied yet)"
+            >
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
                 <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.3l6.5-.9z" />
               </svg>
-              Default
+              Suggested
             </span>
           )}
           {profile.signingKey && (

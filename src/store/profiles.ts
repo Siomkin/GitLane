@@ -102,8 +102,9 @@ interface ProfilesState {
   loadProfiles: () => void;
   /** Load the global git identity for the Default option. */
   loadDefaultIdentity: () => Promise<void>;
-  /** Create (no `id`) or update (with `id`) a profile; persists. */
-  saveProfile: (draft: ProfileDraft) => void;
+  /** Create (no `id`) or update (with `id`) a profile; persists. Returns the
+   * saved profile (with its generated id) so callers can apply it. */
+  saveProfile: (draft: ProfileDraft) => GitProfile;
   /** Delete a profile by id; persists. Does not touch any repo's config. */
   deleteProfile: (id: string) => void;
   /** Mark a profile the default-for-new-repos (clears the flag on others). */
@@ -134,20 +135,24 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
 
   saveProfile: (draft) => {
     const profiles = [...get().profiles];
+    let saved: GitProfile;
     if (draft.id) {
       const i = profiles.findIndex((p) => p.id === draft.id);
-      if (i >= 0) profiles[i] = { ...profiles[i], ...draft, id: draft.id };
+      saved = { ...profiles[i], ...draft, id: draft.id };
+      if (i >= 0) profiles[i] = saved;
     } else {
-      profiles.push({
+      saved = {
         ...draft,
         id: crypto.randomUUID(),
         color: ACCOUNT_COLORS[profiles.length % ACCOUNT_COLORS.length],
         // The first profile created becomes the default-for-new-repos.
         isDefault: profiles.length === 0,
-      });
+      };
+      profiles.push(saved);
     }
     writeProfiles(profiles);
     set({ profiles });
+    return saved;
   },
 
   deleteProfile: (id) => {
@@ -200,13 +205,15 @@ export const useProfiles = create<ProfilesState>((set, get) => ({
     if (sel.kind !== "profile") return;
     const profile = get().profiles.find((p) => p.id === sel.id);
     if (!profile) return;
-    setCustomEmailEntry(path, sel.id, email);
     try {
       await api.setRepoIdentity(path, profile.name, email, signingArgs(profile));
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
       return;
     }
+    // Cache the override only after git config actually accepted it, so a failed
+    // write is never re-applied when the user later switches back to this profile.
+    setCustomEmailEntry(path, sel.id, email);
     await useAccounts.getState().hydrateRepoIdentity(path);
   },
 

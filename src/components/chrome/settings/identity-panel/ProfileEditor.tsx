@@ -54,7 +54,9 @@ export function ProfileEditor({
       email: email.trim(),
       signingKey: hasKey ? signingKey.trim() : undefined,
       gpgFormat: hasKey ? gpgFormat : undefined,
-      gpgSign: hasKey ? gpgSign : false,
+      // Independent of the key: git can sign with the user's default key when
+      // no explicit signingKey is set (commit.gpgsign without user.signingkey).
+      gpgSign,
     });
   };
 
@@ -174,12 +176,10 @@ export function ProfileEditor({
           role="switch"
           aria-checked={gpgSign}
           aria-label="Sign commits"
-          disabled={!hasKey}
           onClick={() => setGpgSign((v) => !v)}
           className={cn(
             "shrink-0 w-9 h-5 rounded-full p-0.5 flex transition-colors",
             gpgSign ? "bg-[var(--accent)] justify-end" : "bg-black/15 dark:bg-white/20 justify-start",
-            !hasKey && "opacity-40 cursor-not-allowed",
             focusRing,
           )}
         >
@@ -190,7 +190,9 @@ export function ProfileEditor({
             Sign commits <span className="font-mono text-[11.5px] text-neutral-400 dark:text-neutral-500">commit.gpgsign</span>
           </div>
           <div className="text-[11.5px] text-neutral-500 dark:text-neutral-400">
-            Signing fields write to local git config so signed commits keep working.
+            {hasKey
+              ? "Signing fields write to local git config so signed commits keep working."
+              : "With no key set, git signs with your default signing key."}
           </div>
         </div>
       </div>

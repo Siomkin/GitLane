@@ -130,9 +130,15 @@ missing account does not silently switch identity.
 The account ref crosses IPC, but **tokens never do**. The backend resolves the token
 immediately before the operation through `GithubService`/`GhProvider`, passes it to the
 child process via `GH_TOKEN`, and drops it. Repository/account host mismatches fail before
-PR operations or authenticated fetch/push. The bound account also drives commit identity:
-`set_repo_identity` writes its name/email into the repo's local git config, and `commit` can
-pin author/committer per commit.
+PR operations or authenticated fetch/push.
+
+**Two-tier identity model.** The bound account is Tier 2 — it drives **PR / push / fetch
+auth only** and does **not** set the commit identity. Who the repo commits as is a Tier 1
+**git profile** (a reusable name/email + optional signing), applied to the repo's local git
+config via `set_repo_identity` (`commit` can also pin author/committer per commit). A repo is
+fully usable (commit/fetch/push) with just a profile and no account. Profiles live in
+`src/store/profiles.ts`; the account binding lives in `src/store/accounts.ts`. The two are
+independent — picking an account never rewrites `user.name`/`user.email`.
 
 ### Frontend state — Zustand stores (split by concern)
 
@@ -143,9 +149,13 @@ Split so churn in one domain never re-renders another:
   All async actions call through `lib/api`.
 - `src/store/pulls.ts` — **pull-request state**: the PR list plus per-number detail/checks
   caches (split out so PR consumers don't re-render on graph churn).
-- `src/store/accounts.ts` — **account & commit-identity state**: the `gh` account list, the
-  per-repo account binding that drives PR/push/fetch auth, and the commit identity mirrored
-  into local git config.
+- `src/store/accounts.ts` — **account state (Tier 2)**: the `gh` account list and the per-repo
+  account binding that drives PR/push/fetch auth. Does **not** own commit identity; an explicit
+  "no account" is persisted (durable) rather than deleted.
+- `src/store/profiles.ts` — **git profiles (Tier 1)**: saved reusable commit identities
+  (name/email + optional signing) and how they apply to the open repo's local git config, plus
+  the per-repo+profile custom-email override. Git config is the source of truth; the effective
+  identity is read back into `accounts.ts`'s `repoIdentity`.
 - `src/store/ui.ts` — **view & chrome state**: theme (dark/light/system) + accent colour,
   density, panel widths, collapsed
   groups, overlays (action/context/commit/stash menus, dialogs), PR filter/tab, and the

@@ -99,6 +99,34 @@ describe("IdentityPanel", () => {
     expect(screen.getByLabelText("EMAIL")).toHaveValue("ext@elsewhere.dev");
   });
 
+  it("adopts the unmanaged identity by applying the new profile on save", () => {
+    useAccounts.setState({ repoIdentity: { name: "Outside Tool", email: "ext@elsewhere.dev" } });
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Save as profile" }));
+    fireEvent.change(screen.getByLabelText("PROFILE NAME"), { target: { value: "Adopted" } });
+    invokeMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    // Saving adopts it — the new profile is applied to the repo's local config.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "set_repo_identity",
+      expect.objectContaining({ path, name: "Outside Tool", email: "ext@elsewhere.dev" }),
+    );
+  });
+
+  it("saves a sign-with-default-key profile (gpgSign independent of a signing key)", () => {
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "New profile" }));
+    fireEvent.change(screen.getByLabelText("PROFILE NAME"), { target: { value: "Default-key signer" } });
+    fireEvent.change(screen.getByLabelText("NAME"), { target: { value: "Dev" } });
+    fireEvent.change(screen.getByLabelText("EMAIL"), { target: { value: "dev@example.com" } });
+    // Turn on signing without entering a key.
+    fireEvent.click(screen.getByRole("switch", { name: "Sign commits" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+    const saved = useProfiles.getState().profiles.find((p) => p.label === "Default-key signer");
+    expect(saved?.gpgSign).toBe(true);
+    expect(saved?.signingKey).toBeUndefined();
+  });
+
   it("binds a PR account from Zone B without touching the commit identity", () => {
     useAccounts.setState({
       accounts: [

@@ -54,3 +54,21 @@ describe("setRepoAccount — Tier 2 binding never touches commit identity", () =
     expect(identityCmds(invokeMock.mock.calls)).toHaveLength(0);
   });
 });
+
+describe("durable 'No account' across repo reopen", () => {
+  it("explicit unbind stays unbound on reopen instead of reverting to the active account", async () => {
+    useAccounts.setState({ activeAccountId: account.id });
+    await useAccounts.getState().setRepoAccount(null);
+    // Simulate closing and reopening the repo.
+    useAccounts.setState({ repoAccountId: account.id, repoAccountRef: account.ref });
+    useAccounts.getState().syncRepoAccount(path);
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+    expect(useAccounts.getState().repoAccountRef).toBeNull();
+  });
+
+  it("a never-configured repo still defaults to the active account", () => {
+    useAccounts.setState({ activeAccountId: account.id });
+    useAccounts.getState().syncRepoAccount("some/other/repo");
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+  });
+});
