@@ -38,6 +38,30 @@ describe("WorkingInspector", () => {
     expect(screen.getByRole("button", { name: "Start commit" })).toBeEnabled();
   });
 
+  it("disables staging for a visible path outside sparse checkout", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [staged("docs/hidden.txt")],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+      selectedFile: { path: "docs/hidden.txt", source: "unstaged" },
+    });
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+
+    const stage = screen.getByRole("button", { name: "Stage file" });
+    expect(stage).toBeDisabled();
+    expect(stage).toHaveAttribute(
+      "title",
+      "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+    );
+  });
+
   it("right-clicking an unstaged row opens the file context menu for that path", () => {
     useRepo.setState({
       changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [] },
@@ -105,6 +129,27 @@ describe("FileContextMenu", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
+  });
+
+  it("disables discard for a guarded working file", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [staged("docs/hidden.txt")],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+    });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "docs/hidden.txt", discard: { staged: false } } });
+    render(<FileContextMenu />);
+
+    const discard = screen.getByRole("menuitem", { name: "Discard changes" });
+    expect(discard).toBeDisabled();
+    expect(screen.getByText("Outside sparse checkout. Expand the sparse checkout or use git add --sparse.")).toBeInTheDocument();
   });
 
   it("omits the discard item for a committed file (copy-only menu)", () => {

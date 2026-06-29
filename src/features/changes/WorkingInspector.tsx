@@ -1,8 +1,14 @@
 import { useEffect, type MouseEvent } from "react";
-import type { FileChange } from "../../lib/api";
+import type { FileChange, WorkingChanges } from "../../lib/api";
+import {
+  advancedNotices,
+  fileWriteGuard,
+  findGuardedFile,
+} from "../../lib/advancedRepoState";
 import { cn } from "../../lib/cn";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
+import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
 import { FileRow } from "./FileRow";
 
 /** Inspector for working changes — lists unstaged/staged files with inline
@@ -20,6 +26,12 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const openFileMenu = useUi((state) => state.openFileMenu);
   const fileMenu = useUi((state) => state.fileMenu);
   const total = changes.staged.length + changes.unstaged.length;
+  const notices = advancedNotices(changes);
+  const unstagedGuarded = findGuardedFile(changes.unstaged, changes);
+  const stagedGuarded = findGuardedFile(changes.staged, changes);
+  const stageAllBlocked = fileWriteGuard(unstagedGuarded, changes);
+  const unstageAllBlocked = fileWriteGuard(stagedGuarded, changes);
+  const commitBlocked = fileWriteGuard(stagedGuarded, changes);
   // Unmerged paths whose owning operation isn't currently driving the conflict
   // workspace (e.g. `git am`/`bisect`, or a transient detection failure). Shown
   // read-only here so they never vanish from the UI — resolution still happens
@@ -94,6 +106,8 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           </div>
         )}
 
+        <AdvancedRepoBanner notices={notices} variant="card" />
+
         <FileSection
           title="Unstaged"
           files={changes.unstaged}
@@ -101,6 +115,8 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           tone="stage"
           allLabel="Stage all"
           onAll={stageAll}
+          allDisabledReason={stageAllBlocked}
+          changes={changes}
           onAction={stageFile}
           onSelect={(p) => openFile(p, "unstaged")}
           onContextMenu={(f, e) => openMenu(f, false, e)}
@@ -113,6 +129,8 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           tone="unstage"
           allLabel="Unstage all"
           onAll={unstageAll}
+          allDisabledReason={unstageAllBlocked}
+          changes={changes}
           onAction={unstageFile}
           onSelect={(p) => openFile(p, "staged")}
           onContextMenu={(f, e) => openMenu(f, true, e)}
@@ -124,15 +142,21 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
         <button
           className={cn(
             "h-10 w-full rounded-lg text-[13px] font-medium",
-            changes.staged.length > 0
+            changes.staged.length > 0 && !commitBlocked
               ? "bg-[var(--accent)] text-white hover:brightness-110"
               : "cursor-not-allowed bg-black/[0.06] text-neutral-400 dark:bg-white/10",
           )}
-          disabled={changes.staged.length === 0}
+          disabled={changes.staged.length === 0 || !!commitBlocked}
+          title={commitBlocked ?? undefined}
           onClick={openCommit}
         >
-          Start commit
+          {commitBlocked ? "Commit blocked" : "Start commit"}
         </button>
+        {commitBlocked && (
+          <p className="mt-2 text-[11.5px] leading-4 text-amber-600 dark:text-amber-400">
+            {commitBlocked}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -145,6 +169,8 @@ function FileSection({
   tone,
   allLabel,
   onAll,
+  allDisabledReason,
+  changes,
   onAction,
   onSelect,
   onContextMenu,
@@ -156,6 +182,8 @@ function FileSection({
   tone: "stage" | "unstage";
   allLabel: string;
   onAll: () => void;
+  allDisabledReason?: string | null;
+  changes: WorkingChanges;
   onAction: (path: string) => void;
   onSelect: (path: string) => void;
   onContextMenu: (file: FileChange, e: MouseEvent) => void;
@@ -170,8 +198,10 @@ function FileSection({
         </span>
         {files.length > 0 && (
           <button
-            className="h-7 rounded-lg border border-black/10 px-3 text-[12px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
-            onClick={onAll}
+            className="h-7 rounded-lg border border-black/10 px-3 text-[12px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            onClick={allDisabledReason ? undefined : onAll}
+            disabled={!!allDisabledReason}
+            title={allDisabledReason ?? allLabel}
           >
             {allLabel}
           </button>
@@ -189,7 +219,11 @@ function FileSection({
               menuActive={menuPath === file.path}
               onClick={() => onSelect(file.path)}
               onContextMenu={(e) => onContextMenu(file, e)}
-              action={{ tone, onAction: () => onAction(file.path) }}
+              action={{
+                tone,
+                onAction: () => onAction(file.path),
+                disabledReason: fileWriteGuard(file, changes),
+              }}
             />
           ))}
         </div>

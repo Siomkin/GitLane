@@ -31,10 +31,11 @@ export function FileRow({
   /** This row is the open context menu's target — ringed so it's clear which
    * file the menu acts on while focus sits in the floating menu. */
   menuActive?: boolean;
-  action?: { tone: "stage" | "unstage"; onAction: () => void };
+  action?: { tone: "stage" | "unstage"; onAction: () => void; disabledReason?: string | null };
   compact?: boolean;
 }) {
   const actionLabel = action?.tone === "stage" ? "Stage file" : "Unstage file";
+  const actionDisabled = !!action?.disabledReason;
 
   return (
     <div className="group relative select-none" onContextMenu={onContextMenu}>
@@ -43,7 +44,7 @@ export function FileRow({
         className={cn(
           "flex w-full items-center gap-2.5 rounded-lg px-2 text-left hover:bg-black/5 dark:hover:bg-white/5",
           focusRing,
-          compact ? "h-11" : "h-12",
+          file.advanced ? "h-14" : compact ? "h-11" : "h-12",
           active && "bg-[var(--accent-soft)]",
           menuActive && "bg-[var(--accent-soft)] ring-1 ring-inset ring-[color:var(--accent)]",
         )}
@@ -58,6 +59,11 @@ export function FileRow({
               file list), so the location is clear, matching the working-changes
               rows. */}
           <span className="block truncate text-[11px] text-neutral-400">{dirname(file.path)}</span>
+          {file.advanced && (
+            <span className="mt-0.5 block truncate text-[10.5px] font-medium text-amber-600 dark:text-amber-400">
+              {file.advanced.message}
+            </span>
+          )}
         </span>
         <span
           className={cn(
@@ -74,13 +80,15 @@ export function FileRow({
         <button
           type="button"
           aria-label={actionLabel}
-          title={actionLabel}
-          onClick={action.onAction}
+          title={action.disabledReason ?? actionLabel}
+          onClick={actionDisabled ? undefined : action.onAction}
+          disabled={actionDisabled}
           className={cn(
             "absolute right-2 top-1/2 h-8 -translate-y-1/2 rounded-lg px-3 text-[12px] font-medium leading-8",
             "opacity-0 transition-opacity pointer-events-none",
-            "group-hover:pointer-events-auto group-hover:opacity-100",
-            "focus-visible:pointer-events-auto focus-visible:opacity-100",
+            actionDisabled
+              ? "group-hover:pointer-events-auto group-hover:opacity-55 focus-visible:pointer-events-auto focus-visible:opacity-55 disabled:cursor-not-allowed"
+              : "group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
             focusRing,
             action.tone === "stage"
               ? "bg-[var(--accent)] text-white hover:brightness-110"

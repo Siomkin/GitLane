@@ -295,6 +295,15 @@ pub struct DestructivePreview {
     pub warnings: Vec<String>,
 }
 
+/// Per-path advanced repository state that would be misleading as a plain file
+/// change.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAdvancedState {
+    pub kind: String,
+    pub message: String,
+}
+
 /// A single changed file in a diff (working tree, index, or a commit).
 /// `status` is a one-letter git code: M(odified) A(dded) D(eleted) R(enamed)
 /// C(opied) T(ypechange) U(ntracked) or `?` when unknown.
@@ -305,6 +314,50 @@ pub struct FileChange {
     pub status: String,
     pub add: usize,
     pub del: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advanced: Option<FileAdvancedState>,
+}
+
+/// Status of one configured submodule in the superproject.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmoduleState {
+    pub path: String,
+    pub name: String,
+    pub url: Option<String>,
+    pub status: String,
+    pub details: Vec<String>,
+    pub dirty: bool,
+    pub initialized: bool,
+}
+
+/// Git LFS presence and local-tooling state. GitLane does not manage LFS yet;
+/// this tells the UI when plain file operations need caution.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LfsState {
+    pub detected: bool,
+    pub installed: Option<bool>,
+    pub issues: Vec<String>,
+    pub patterns: Vec<String>,
+}
+
+/// Sparse checkout visibility state for status/diff/history surfaces.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SparseCheckoutState {
+    pub enabled: bool,
+    pub mode: Option<String>,
+    pub patterns: Vec<String>,
+}
+
+/// Advanced repository features that are read-only indicators for now.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedRepoState {
+    pub submodules: Vec<SubmoduleState>,
+    pub lfs: LfsState,
+    pub sparse_checkout: SparseCheckoutState,
 }
 
 /// The working-tree status split into staged (index vs HEAD) and unstaged
@@ -319,6 +372,7 @@ pub struct WorkingChanges {
     /// unresolved — but surfaced here so they stay visible even when operation
     /// detection misses them (`git am`/`bisect`, a transient detection failure).
     pub conflicted: Vec<FileChange>,
+    pub advanced: AdvancedRepoState,
 }
 
 /// One line inside a diff hunk. `kind` is "ctx" | "add" | "del". Line numbers

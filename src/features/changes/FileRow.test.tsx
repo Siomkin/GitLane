@@ -62,6 +62,22 @@ describe("FileRow", () => {
     expect(screen.getByRole("button", { name: "Unstage file" })).toBeInTheDocument();
   });
 
+  it("keeps disabled guarded actions hidden until row hover", () => {
+    render(
+      <FileRow
+        file={file}
+        active={false}
+        onClick={() => {}}
+        action={{ tone: "stage", onAction: () => {}, disabledReason: "Submodule path" }}
+      />,
+    );
+    const action = screen.getByRole("button", { name: "Stage file" });
+    expect(action).toBeDisabled();
+    expect(action.className).toContain("opacity-0");
+    expect(action.className).toContain("group-hover:opacity-55");
+    expect(action.className).not.toContain("disabled:opacity");
+  });
+
   it("activates the action from the keyboard (Enter)", async () => {
     const onAction = vi.fn();
     const user = userEvent.setup();

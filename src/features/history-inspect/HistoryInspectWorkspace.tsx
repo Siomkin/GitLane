@@ -1,4 +1,6 @@
 import { useRepo } from "../../store/repo";
+import { advancedNotices } from "../../lib/advancedRepoState";
+import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
 import { InspectHeader } from "./InspectHeader";
 import { FileHistoryView } from "./FileHistoryView";
 import { BlameView } from "./BlameView";
@@ -10,8 +12,10 @@ import { CompareView } from "./CompareView";
 export function HistoryInspectWorkspace() {
   const compare = useRepo((s) => s.compare);
   const history = useRepo((s) => s.fileHistory);
+  const changes = useRepo((s) => s.changes);
   const closeCompare = useRepo((s) => s.closeCompare);
   const closeFileHistory = useRepo((s) => s.closeFileHistory);
+  const notices = advancedNotices(changes);
 
   if (!compare && !history) return null;
 
@@ -40,6 +44,7 @@ export function HistoryInspectWorkspace() {
       {compare ? (
         <>
           <InspectHeader mode="compare" title="Compare" onBack={closeCompare} />
+          <AdvancedRepoBanner notices={notices} />
           <CompareView />
         </>
       ) : history ? (
@@ -53,6 +58,7 @@ export function HistoryInspectWorkspace() {
             onHistory={goHistory}
             onBlame={goBlame}
           />
+          <AdvancedRepoBanner notices={notices} />
           {history.mode === "blame" ? <BlameView /> : <FileHistoryView onBlameRevision={blameRevision} />}
         </>
       ) : null}

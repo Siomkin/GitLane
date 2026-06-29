@@ -231,11 +231,46 @@ export interface StashContextCommit {
 /** One-letter git status code emitted by the Rust layer (status.rs). */
 export type FileStatus = "M" | "A" | "D" | "R" | "C" | "T" | "U";
 
+export interface FileAdvancedState {
+  kind: "submodule" | "sparse";
+  message: string;
+}
+
 export interface FileChange {
   path: string;
   status: FileStatus;
   add: number;
   del: number;
+  advanced?: FileAdvancedState;
+}
+
+export interface SubmoduleState {
+  path: string;
+  name: string;
+  url?: string | null;
+  status: string;
+  details: string[];
+  dirty: boolean;
+  initialized: boolean;
+}
+
+export interface LfsState {
+  detected: boolean;
+  installed: boolean | null;
+  issues: string[];
+  patterns: string[];
+}
+
+export interface SparseCheckoutState {
+  enabled: boolean;
+  mode: string | null;
+  patterns: string[];
+}
+
+export interface AdvancedRepoState {
+  submodules: SubmoduleState[];
+  lfs: LfsState;
+  sparseCheckout: SparseCheckoutState;
 }
 
 export interface WorkingChanges {
@@ -246,6 +281,7 @@ export interface WorkingChanges {
    * surfaced separately so they stay visible even when the owning operation
    * isn't detected. */
   conflicted: FileChange[];
+  advanced?: AdvancedRepoState;
 }
 
 /** The active in-progress operation that can stop on conflicts. "none" when the

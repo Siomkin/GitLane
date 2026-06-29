@@ -128,6 +128,34 @@ describe("ReviewWorkspace — virtualized diff", () => {
     );
   });
 
+  it("does not expose patch staging for guarded advanced files", () => {
+    const applyHunk = vi.fn(async () => {});
+    const applyLine = vi.fn(async () => {});
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "docs/hidden.txt", source: "unstaged" },
+      fileDiff: { ...bigDiff(3), path: "docs/hidden.txt" },
+      diffLoading: false,
+      changes: {
+        staged: [],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 3, del: 0 }],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+      applyHunk,
+      applyLine,
+    });
+
+    render(<ReviewWorkspace />);
+
+    expect(screen.queryByRole("button", { name: "Stage hunk" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stage line" })).not.toBeInTheDocument();
+  });
+
   it("stages a changed line through the repo store action", () => {
     const applyLine = vi.fn(async () => {});
     const fileDiff = bigDiff(3);

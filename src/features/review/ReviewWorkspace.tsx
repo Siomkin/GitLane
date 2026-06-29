@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { fileWriteGuard } from "../../lib/advancedRepoState";
 import { basename, dirname } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
@@ -62,8 +63,9 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
       ? changes[selectedFile.source].find((f) => f.path === selectedFile.path)
       : undefined;
   const wholeFileOnly = changeFile?.status === "R" || changeFile?.status === "C";
+  const writeGuard = fileWriteGuard(changeFile, changes);
   const hunkAction =
-    selectedFile && selectedFile.source !== "commit" && !wholeFileOnly
+    selectedFile && selectedFile.source !== "commit" && !wholeFileOnly && !writeGuard
       ? {
           source: selectedFile.source,
           onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) =>

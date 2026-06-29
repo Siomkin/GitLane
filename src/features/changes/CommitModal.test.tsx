@@ -69,4 +69,28 @@ describe("CommitModal", () => {
 
     expect(treePane).toHaveStyle({ width: "410px" });
   });
+
+  it("disables commit when an included staged file is guarded", () => {
+    useRepo.setState({
+      changes: {
+        staged: [
+          {
+            path: "deps/child",
+            status: "M",
+            add: 0,
+            del: 0,
+            advanced: { kind: "submodule", message: "Submodule: modified files inside submodule" },
+          },
+        ],
+        unstaged: [],
+        conflicted: [],
+      },
+    });
+    useUi.setState({ commitMsg: "Update dependency" });
+
+    render(<CommitModal />);
+
+    expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
+    expect(screen.getByText("Submodule: modified files inside submodule. Use the terminal for submodule updates.")).toBeInTheDocument();
+  });
 });
