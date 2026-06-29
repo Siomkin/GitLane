@@ -16,7 +16,10 @@ export interface RemoteUrlInfo {
 }
 
 const providerForHost = (host: string): RemoteProvider => {
-  if (host.includes("github")) return "github";
+  // GitHub detection is exact (github.com / *.github.com) to match the backend's
+  // classify_host — a host that merely contains "github" (e.g. github.corp.example
+  // GHE) isn't github.com, so it must not claim PR support the toolbar would deny.
+  if (host === "github.com" || host.endsWith(".github.com")) return "github";
   if (host.includes("gitlab")) return "gitlab";
   if (host.includes("bitbucket")) return "bitbucket";
   if (host.includes("dev.azure") || host.includes("visualstudio")) return "azure";

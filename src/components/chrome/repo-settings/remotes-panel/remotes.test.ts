@@ -29,6 +29,11 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("https://git.internal.example/team/app.git").provider).toBe("other");
   });
 
+  it("treats a host that merely contains 'github' as other (exact match, like the backend)", () => {
+    expect(detectRemoteUrl("https://github.corp.example/team/app.git").provider).toBe("other");
+    expect(detectRemoteUrl("https://ci.github.com/team/app.git").provider).toBe("github");
+  });
+
   it("rejects empty and malformed URLs", () => {
     expect(detectRemoteUrl("")).toMatchObject({ empty: true, valid: false });
     expect(detectRemoteUrl("not a url")).toMatchObject({ empty: false, valid: false });

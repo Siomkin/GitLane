@@ -26,6 +26,7 @@ export const RemotesPanel = () => {
 
   const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Synchronous re-entry guard (busy state lags a render) and a generation
   // counter so a slow list response can't overwrite a newer repo's remotes.
@@ -39,15 +40,25 @@ export const RemotesPanel = () => {
       const list = await api.listRemotes(path);
       if (gen !== loadGen.current) return; // superseded (e.g. repo switched)
       setRemotes(list);
+      setError(null);
     } catch (e) {
-      if (gen === loadGen.current) showToast(`Couldn't load remotes: ${String(e)}`, "error");
+      // Drop the stale list and surface an error rather than rendering the
+      // previous repo's remotes (or a misleading "No remotes configured").
+      if (gen === loadGen.current) {
+        setRemotes([]);
+        setError(String(e));
+      }
     } finally {
       if (gen === loadGen.current) setLoading(false);
     }
-  }, [path, showToast]);
+  }, [path]);
 
+  // On repo switch, clear the previous repo's list immediately so a slow (or
+  // failing) load for the new repo can't leave stale rows on screen.
   useEffect(() => {
     setLoading(true);
+    setRemotes([]);
+    setError(null);
     void reload();
   }, [reload]);
 
@@ -56,10 +67,14 @@ export const RemotesPanel = () => {
   // input) on failure instead of dismissing optimistically.
   const run = async (action: () => Promise<unknown>, failure: string): Promise<boolean> => {
     if (busyRef.current || !path) return false;
+    const startPath = path;
     busyRef.current = true;
     setBusy(true);
     try {
       await action();
+      // The repo may have switched while git ran — don't reload the old repo's
+      // list into the new repo's view; the path-change effect already loaded it.
+      if (useRepo.getState().summary?.path !== startPath) return true;
       await reload();
       // Refresh the repo's forge/provider state so the toolbar indicator and PR
       // gating react immediately — e.g. adding the first GitHub remote flips the
@@ -107,6 +122,11 @@ export const RemotesPanel = () => {
         <div className="mt-7 flex items-center gap-2 text-[13px] text-neutral-500 dark:text-neutral-400">
           <Spinner className="h-4 w-4" /> Loading remotes…
         </div>
+      ) : error ? (
+        <div className="mt-7 rounded-xl border border-rose-500/20 bg-rose-500/[0.06] p-5 text-[13px] text-rose-700 dark:text-rose-300">
+          Couldn't load remotes for this repository.
+          <div className="mt-1 font-mono text-[12px] text-rose-600/80 dark:text-rose-400/80">{error}</div>
+        </div>
       ) : remotes.length === 0 ? (
         <div className="mt-7 rounded-xl border border-black/[0.07] bg-black/[0.02] p-5 text-[13px] text-neutral-500 dark:border-white/[0.08] dark:bg-black/20 dark:text-neutral-400">
           No remotes configured. Add one to enable fetch, push, and pull requests.
@@ -119,7 +139,7 @@ export const RemotesPanel = () => {
         )
       )}
 
-      {!loading && (
+      {!loading && !error && (
         <>
           <div className="mt-8 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
             Configured remotes

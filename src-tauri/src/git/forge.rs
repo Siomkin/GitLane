@@ -182,9 +182,12 @@ fn remote_path(url: &str) -> Option<String> {
 
 pub fn detect(path: &str) -> Option<RemoteForge> {
     let repo = Repository::discover(path).ok()?;
-    let remotes = repo.remotes().ok()?;
-    for name in remotes.iter().filter_map(|entry| entry.ok().flatten()) {
-        let Ok(remote) = repo.find_remote(name) else {
+    // Default push remote first (same ordering as `summary`), so error
+    // classification reflects the remote that actually drives the operation
+    // rather than whichever remote happens to be listed first in config.
+    let default = default_remote_name(&repo);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
             continue;
         };
         for url in [remote.url().ok(), remote.pushurl().ok().flatten()]

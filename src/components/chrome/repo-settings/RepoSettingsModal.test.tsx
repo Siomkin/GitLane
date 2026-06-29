@@ -55,4 +55,12 @@ describe("RepoSettingsModal", () => {
     expect(useUi.getState().repoSettingsOpen).toBe(false);
     expect(useUi.getState().settingsOpen).toBe(true);
   });
+
+  it("does not self-dismiss while a confirm overlay (e.g. remove remote) is open", () => {
+    useUi.setState({ confirm: { title: "Remove remote?", onConfirm: () => {} } });
+    render(<RepoSettingsModal />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(document.body);
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+  });
 });

@@ -1825,6 +1825,19 @@ fn default_remote_drives_forge_even_when_listed_after_another() {
 }
 
 #[test]
+fn forge_detect_prefers_the_default_remote() {
+    let repo = TempRepo::new("detect-default");
+    repo.git_ok(&["init", "-q"]);
+    // upstream (GitLab) first, origin (GitHub, the default) second.
+    repo.git_ok(&["remote", "add", "upstream", "https://gitlab.com/up/stream.git"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
+
+    // `detect` (used for gh error classification) reflects the default remote.
+    let forge = crate::git::forge::detect(repo.path()).unwrap();
+    assert_eq!(forge.kind, crate::git::forge::ForgeKind::GitHub);
+}
+
+#[test]
 fn set_remote_url_leaves_push_following_fetch_when_no_push_url() {
     let repo = TempRepo::new("remote-nopush");
     repo.git_ok(&["init", "-q"]);
