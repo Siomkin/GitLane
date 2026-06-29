@@ -67,7 +67,7 @@ export function SettingsModal() {
           </div>
           <div className="flex flex-1 flex-col gap-0.5 overflow-auto">
             {Object.entries(groups).map(([group, items]) => (
-              <div key={group}>
+              <div key={group} className="flex flex-col gap-1">
                 <div className="px-[11px] pb-1.5 pt-3 text-[10.5px] font-bold tracking-[0.06em] text-neutral-400">
                   {group}
                 </div>

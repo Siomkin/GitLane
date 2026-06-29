@@ -46,7 +46,7 @@ export const RepoSettingsSidebar = ({
             onClick={() => onSelect(key)}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "mb-0.5 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium",
+              "mb-1 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium",
               active
                 ? "bg-black/[0.06] text-neutral-900 dark:bg-white/[0.08] dark:text-white"
                 : "text-neutral-500 hover:bg-black/[0.03] hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.04] dark:hover:text-neutral-200",
@@ -65,7 +65,7 @@ export const RepoSettingsSidebar = ({
       <button
         onClick={onOpenGlobalSettings}
         className={cn(
-          "group mb-0.5 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium text-neutral-500 hover:bg-black/[0.03] hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.04] dark:hover:text-neutral-200",
+          "group mb-1 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium text-neutral-500 hover:bg-black/[0.03] hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.04] dark:hover:text-neutral-200",
           focusRing,
         )}
       >
