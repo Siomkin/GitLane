@@ -1,8 +1,9 @@
-// Settings modal shell: owns the dialog chrome and the sidebar navigation, and
-// routes the active tab to one of the domain panels under `settings/`. It holds
-// no settings-domain logic itself — each panel owns its own presentation and
-// store wiring (General appearance, Accounts, Repository Identity, Terminal
-// Agents). Open/active-tab state comes from `useUi`.
+// Global settings modal shell: owns the dialog chrome and sidebar navigation,
+// and routes the active tab to one of the global panels under `settings/`
+// (Appearance, Accounts, Terminal Agents, About). It holds no settings-domain
+// logic itself — each panel owns its presentation and store wiring. Per-repo
+// config (Identity, Remotes) lives in the separate `RepoSettingsModal`, opened
+// from the toolbar. Open/active-tab state comes from `useUi`.
 
 import { useRef } from "react";
 import { cn } from "../../lib/cn";
@@ -15,7 +16,6 @@ import { GitLaneMarkIcon } from "../ui/icons";
 import { TerminalAgentsSettings } from "../../features/terminal/TerminalAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
 import { AccountsPanel } from "./settings/accounts-panel";
-import { IdentityPanel } from "./settings/identity-panel";
 import { AboutPanel } from "./settings/AboutPanel";
 
 const TITLE_ID = "settings-modal-title";
@@ -25,7 +25,6 @@ const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "accounts", group: "GLOBAL", label: "Accounts" },
   { key: "terminal", group: "GLOBAL", label: "Terminal Agents" },
   { key: "about", group: "GLOBAL", label: "About" },
-  { key: "repo", group: "THIS REPOSITORY", label: "Identity" },
 ];
 
 export function SettingsModal() {
@@ -68,7 +67,7 @@ export function SettingsModal() {
           </div>
           <div className="flex flex-1 flex-col gap-0.5 overflow-auto">
             {Object.entries(groups).map(([group, items]) => (
-              <div key={group}>
+              <div key={group} className="flex flex-col gap-1">
                 <div className="px-[11px] pb-1.5 pt-3 text-[10.5px] font-bold tracking-[0.06em] text-neutral-400">
                   {group}
                 </div>
@@ -132,7 +131,6 @@ export function SettingsModal() {
             {tab === "accounts" && <AccountsPanel />}
             {tab === "terminal" && <TerminalAgentsSettings />}
             {tab === "about" && <AboutPanel />}
-            {tab === "repo" && <IdentityPanel />}
           </div>
         </div>
       </div>

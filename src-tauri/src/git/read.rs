@@ -9,6 +9,7 @@
 mod branches;
 mod identity;
 mod recents;
+mod remotes;
 mod repo;
 #[cfg(test)]
 mod tests;
@@ -16,4 +17,5 @@ mod tests;
 pub use branches::{branches, can_fast_forward};
 pub use identity::{default_identity, repo_identity};
 pub use recents::recents_status;
+pub use remotes::list_remotes;
 pub use repo::{commit_graph, open, summary};

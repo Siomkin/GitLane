@@ -133,6 +133,23 @@ pub struct RepoForge {
     pub web_url: Option<String>,
 }
 
+/// A single configured git remote, for the Repository settings → Remotes panel.
+/// Pure libgit2 read of `.git/config`; provider classification of the URL is
+/// done on the frontend (shared with the add/edit validation).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteInfo {
+    /// Remote name (e.g. "origin").
+    pub name: String,
+    /// Fetch URL.
+    pub fetch_url: String,
+    /// Push URL — equals the fetch URL unless a separate `pushurl` is set.
+    pub push_url: String,
+    /// True for the repo's default push remote (the current branch's upstream
+    /// remote, else "origin", else the first remote).
+    pub is_default: bool,
+}
+
 /// The commit identity pinned in a repo's *local* git config (`user.name` /
 /// `user.email`). `None` from the read side means nothing is pinned locally and
 /// the repo defers to global git config.

@@ -5,6 +5,42 @@ use super::operands::ensure_operand;
 
 const TAG_FETCH_REFSPEC: &str = "refs/tags/*:refs/tags/*";
 
+/// Add a new remote `name` pointing at `url` (`git remote add`).
+pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
+    ensure_operand(name)?;
+    ensure_operand(url)?;
+    run_git(repo, &["remote", "add", name, url])
+}
+
+/// Repoint an existing remote at a new `url`. `git remote set-url` updates only
+/// the *fetch* URL; when a separate push URL is configured we repoint that too,
+/// so editing a remote doesn't silently leave pushes going to the old host. (When
+/// no separate push URL exists, push follows the fetch URL, so nothing else is
+/// needed.)
+pub fn set_remote_url(repo: &str, name: &str, url: &str) -> Result<String, String> {
+    ensure_operand(name)?;
+    ensure_operand(url)?;
+    let fetch = run_git(repo, &["remote", "set-url", name, url])?;
+    if has_push_url(repo, name) {
+        let push = run_git(repo, &["remote", "set-url", "--push", name, url])?;
+        return Ok(join_git_outputs(&fetch, &push));
+    }
+    Ok(fetch)
+}
+
+/// Whether `remote.<name>.pushurl` is set (a push URL distinct from the fetch
+/// URL). `git config --get-all` exits non-zero when the key is absent.
+fn has_push_url(repo: &str, name: &str) -> bool {
+    let key = format!("remote.{name}.pushurl");
+    run_git(repo, &["config", "--get-all", &key]).is_ok()
+}
+
+/// Remove a remote and its remote-tracking refs (`git remote remove`).
+pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
+    ensure_operand(name)?;
+    run_git(repo, &["remote", "remove", name])
+}
+
 /// Pull from the upstream remote without creating a merge commit. Divergence
 /// fails explicitly so the user can choose merge or rebase from the graph.
 pub fn pull(repo: &str) -> Result<String, String> {

@@ -1,5 +1,5 @@
-import { ForgeKind } from "../../../lib/api";
-import type { RepoForge } from "../../../lib/api";
+import { ForgeKind } from "../../../../lib/api";
+import type { RepoForge } from "../../../../lib/api";
 
 /** Remote-provider indicator states (mirrors the design's `provider` tweak). */
 export type ProviderState = "connected" | "needs-auth" | "unsupported" | "missing" | "error";

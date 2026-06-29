@@ -60,36 +60,39 @@ pub fn summary(path: &str) -> RepoForge {
     let mut first_host: Option<String> = None;
     let mut first_web: Option<String> = None;
     if let Ok(repo) = Repository::discover(path) {
-        if let Ok(remotes) = repo.remotes() {
-            for name in remotes.iter().filter_map(|entry| entry.ok().flatten()) {
-                let Ok(remote) = repo.find_remote(name) else {
+        // The default push remote comes first, so it drives the reported provider
+        // — matching the Remotes panel and the "default push remote drives
+        // pull-request availability" copy. The remaining remotes stay in config
+        // order as a fallback (e.g. an unrecognised default + a recognised peer).
+        let default = default_remote_name(&repo);
+        for name in ordered_remote_names(&repo, default.as_deref()) {
+            let Ok(remote) = repo.find_remote(&name) else {
+                continue;
+            };
+            for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+                .into_iter()
+                .flatten()
+            {
+                if url.trim().is_empty() {
+                    continue;
+                }
+                has_remote = true;
+                let Some(host) = remote_host(url) else {
                     continue;
                 };
-                for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-                    .into_iter()
-                    .flatten()
-                {
-                    if url.trim().is_empty() {
-                        continue;
-                    }
-                    has_remote = true;
-                    let Some(host) = remote_host(url) else {
-                        continue;
+                let web = remote_path(url).map(|p| format!("https://{host}/{p}"));
+                if first_host.is_none() {
+                    first_host = Some(host.clone());
+                    first_web = web.clone();
+                }
+                if let Some(kind) = classify_host(&host) {
+                    return RepoForge {
+                        has_remote: true,
+                        kind: Some(kind.key().to_string()),
+                        forge: Some(kind.label().to_string()),
+                        host: Some(host),
+                        web_url: web,
                     };
-                    let web = remote_path(url).map(|p| format!("https://{host}/{p}"));
-                    if first_host.is_none() {
-                        first_host = Some(host.clone());
-                        first_web = web.clone();
-                    }
-                    if let Some(kind) = classify_host(&host) {
-                        return RepoForge {
-                            has_remote: true,
-                            kind: Some(kind.key().to_string()),
-                            forge: Some(kind.label().to_string()),
-                            host: Some(host),
-                            web_url: web,
-                        };
-                    }
                 }
             }
         }
@@ -101,6 +104,54 @@ pub fn summary(path: &str) -> RepoForge {
         host: first_host,
         web_url: first_web,
     }
+}
+
+/// Remote names with the default push remote first, then the rest in config
+/// order.
+fn ordered_remote_names(repo: &Repository, default: Option<&str>) -> Vec<String> {
+    let Ok(names) = repo.remotes() else {
+        return Vec::new();
+    };
+    let mut all: Vec<String> = (0..names.len())
+        .filter_map(|i| names.get(i).ok().flatten().map(|s| s.to_string()))
+        .collect();
+    if let Some(d) = default {
+        if let Some(pos) = all.iter().position(|n| n == d) {
+            let item = all.remove(pos);
+            all.insert(0, item);
+        }
+    }
+    all
+}
+
+/// The repo's default push remote name: the current branch's upstream remote,
+/// else "origin" if configured, else the first remote. Shared by the toolbar
+/// provider detection and the Remotes panel's `list_remotes`, so both agree on
+/// which remote is "default".
+pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
+    if let Ok(head) = repo.head() {
+        if let Ok(branch) = head.shorthand() {
+            if let Ok(buf) = repo.branch_upstream_remote(&format!("refs/heads/{branch}")) {
+                if let Ok(name) = std::str::from_utf8(&buf) {
+                    if !name.is_empty() {
+                        return Some(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    let names = repo.remotes().ok()?;
+    for i in 0..names.len() {
+        if matches!(names.get(i), Ok(Some("origin"))) {
+            return Some("origin".to_string());
+        }
+    }
+    for i in 0..names.len() {
+        if let Ok(Some(name)) = names.get(i) {
+            return Some(name.to_string());
+        }
+    }
+    None
 }
 
 /// Extract the `owner/repo` path from a remote URL (scheme/host stripped,
@@ -131,9 +182,12 @@ fn remote_path(url: &str) -> Option<String> {
 
 pub fn detect(path: &str) -> Option<RemoteForge> {
     let repo = Repository::discover(path).ok()?;
-    let remotes = repo.remotes().ok()?;
-    for name in remotes.iter().filter_map(|entry| entry.ok().flatten()) {
-        let Ok(remote) = repo.find_remote(name) else {
+    // Default push remote first (same ordering as `summary`), so error
+    // classification reflects the remote that actually drives the operation
+    // rather than whichever remote happens to be listed first in config.
+    let default = default_remote_name(&repo);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
             continue;
         };
         for url in [remote.url().ok(), remote.pushurl().ok().flatten()]

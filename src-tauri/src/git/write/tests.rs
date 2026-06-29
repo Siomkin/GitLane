@@ -7,7 +7,8 @@ use super::{
     continue_operation, delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
-    reflog_entries, resolve_conflict_file, set_repo_identity, set_upstream, skip_operation,
+    reflog_entries, resolve_conflict_file, set_remote_url, set_repo_identity, set_upstream,
+    skip_operation,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -1773,5 +1774,87 @@ fn reconflict_file_refuses_unrelated_path_and_keeps_edits() {
     assert_eq!(
         std::fs::read_to_string(repo.0.join("other.txt")).unwrap(),
         "my precious edits\n"
+    );
+}
+
+fn remote_url(repo: &TempRepo, args: &[&str]) -> String {
+    let out = repo.git(args);
+    assert!(out.status.success(), "git {args:?} failed");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn set_remote_url_repoints_a_separate_push_url_too() {
+    let repo = TempRepo::new("remote-pushurl");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/old/repo.git"]);
+    // A *separate* push URL — the case `set-url` (fetch only) would leave stale.
+    repo.git_ok(&["remote", "set-url", "--push", "origin", "https://github.com/old/push.git"]);
+
+    set_remote_url(repo.path(), "origin", "https://github.com/new/repo.git").unwrap();
+
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://github.com/new/repo.git"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "https://github.com/new/repo.git"
+    );
+}
+
+#[test]
+fn default_remote_drives_forge_even_when_listed_after_another() {
+    let repo = TempRepo::new("remote-default");
+    repo.git_ok(&["init", "-q"]);
+    // upstream (GitLab) is added first; origin (GitHub) second. origin is the
+    // default push remote, so it must win both the Remotes panel and the toolbar.
+    repo.git_ok(&["remote", "add", "upstream", "https://gitlab.com/up/stream.git"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
+
+    let remotes = crate::git::read::list_remotes(repo.path()).unwrap();
+    let origin = remotes.iter().find(|r| r.name == "origin").unwrap();
+    assert!(origin.is_default, "origin should be the default push remote");
+    assert!(!remotes.iter().find(|r| r.name == "upstream").unwrap().is_default);
+
+    // The toolbar provider reflects the default push remote (GitHub), not the
+    // first-listed remote (GitLab).
+    let forge = crate::git::forge::summary(repo.path());
+    assert_eq!(forge.kind.as_deref(), Some("github"));
+    assert_eq!(forge.host.as_deref(), Some("github.com"));
+}
+
+#[test]
+fn forge_detect_prefers_the_default_remote() {
+    let repo = TempRepo::new("detect-default");
+    repo.git_ok(&["init", "-q"]);
+    // upstream (GitLab) first, origin (GitHub, the default) second.
+    repo.git_ok(&["remote", "add", "upstream", "https://gitlab.com/up/stream.git"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
+
+    // `detect` (used for gh error classification) reflects the default remote.
+    let forge = crate::git::forge::detect(repo.path()).unwrap();
+    assert_eq!(forge.kind, crate::git::forge::ForgeKind::GitHub);
+}
+
+#[test]
+fn set_remote_url_leaves_push_following_fetch_when_no_push_url() {
+    let repo = TempRepo::new("remote-nopush");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/old/repo.git"]);
+
+    set_remote_url(repo.path(), "origin", "https://github.com/new/repo.git").unwrap();
+
+    // No standalone pushurl was created; push transparently follows the fetch URL.
+    assert!(
+        !repo
+            .git(&["config", "--get-all", "remote.origin.pushurl"])
+            .status
+            .success(),
+        "no separate pushurl should be configured"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "https://github.com/new/repo.git"
     );
 }

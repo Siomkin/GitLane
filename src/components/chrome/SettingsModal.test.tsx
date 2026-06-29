@@ -39,12 +39,15 @@ describe("SettingsModal", () => {
     expect(accountsNav).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
 
-    // Scope to the nav — the Accounts panel also has an in-text "Identity" link.
-    fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "Identity" }));
-    expect(useUi.getState().settingsTab).toBe("repo");
-    expect(
-      screen.getByText("Open a repository to choose the git profile it commits, fetches, and pushes as."),
-    ).toBeInTheDocument();
+    // Per-repo Identity is now its own window (RepoSettingsModal), so the global
+    // nav only carries GLOBAL tabs — switch to another to confirm routing.
+    fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "About" }));
+    expect(useUi.getState().settingsTab).toBe("about");
+  });
+
+  it("no longer exposes an Identity tab in the global nav (it moved to repo settings)", () => {
+    render(<SettingsModal />);
+    expect(within(screen.getByRole("navigation")).queryByRole("button", { name: "Identity" })).toBeNull();
   });
 
   it("closes on the close button", () => {

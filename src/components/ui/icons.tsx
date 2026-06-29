@@ -293,6 +293,91 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function IssueIcon(props: IconProps) {
+  // Open-issue glyph: ring with a filled centre dot (the dot opts out of the
+  // base stroke/fill so it reads as solid).
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+    </IconBase>
+  );
+}
+
+export function PeopleIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </IconBase>
+  );
+}
+
+export function WebhookIcon(props: IconProps) {
+  // Two interlocking arcs — the "link / hook" mark used for repo webhooks.
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </IconBase>
+  );
+}
+
+export function KeyIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="m10.8 12.2 8.2-8.2" />
+      <path d="m15 6 3 3" />
+      <path d="m18 3 3 3" />
+    </IconBase>
+  );
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 10 14" />
+      <path d="M19 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h6" />
+    </IconBase>
+  );
+}
+
+export function RemotesIcon(props: IconProps) {
+  // A cloud with a download arrow — "manage remotes" (pull a remote down).
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.34 9.5 4 4 0 0 0 7 17.5" />
+      <path d="M12 12v6" />
+      <path d="m9.5 15.5 2.5 2.5 2.5-2.5" />
+    </IconBase>
+  );
+}
+
+export function IdCardIcon(props: IconProps) {
+  // An ID card — the repo "commit identity" section.
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="11" r="2" />
+      <path d="M14 9h4M14 13h4M5 16h7" />
+    </IconBase>
+  );
+}
+
+export function RepoBookIcon(props: IconProps) {
+  // A book spine — the Repository settings header mark.
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </IconBase>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <IconBase strokeWidth="2" {...props}>
