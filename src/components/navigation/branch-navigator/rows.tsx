@@ -6,7 +6,6 @@ import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { FolderIcon, StashIcon, TreeIcon } from "@/components/ui/icons";
-import { worktreeLabel } from "@/lib/worktrees";
 import type { RowKind } from "./refs";
 import type { WorktreeItem } from "./useNavigatorSections";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
@@ -141,13 +140,13 @@ export function WorktreeRow({
   wt,
   oid,
   isActive,
+  label,
   dimmed = false,
   query = "",
 }: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
   const reveal = useRevealNavigate();
   const open = useOpenWorktree();
   const openWorktreeMenu = useUi((s) => s.openWorktreeMenu);
-  const label = worktreeLabel(wt);
   const tip = useTruncatedTooltip(label);
   // Primary action: switch to the worktree. The already-open one can't be
   // switched to, so it just scrolls the graph to its tip.

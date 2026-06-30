@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { BranchSyncState, StashEntry, WorktreeInfo } from "@/lib/api";
-import { isActiveWorktreePath } from "@/lib/worktrees";
+import { isActiveWorktreePath, worktreeLabel } from "@/lib/worktrees";
 import { useRepo } from "@/store/repo";
 import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
 
@@ -23,6 +23,9 @@ export interface WorktreeItem {
   match: boolean;
   /** This worktree backs the currently open repo tab (the "you are here" row). */
   isActive: boolean;
+  /** Row label: the branch, or a distinguishing directory name when detached
+   * (disambiguated against sibling worktrees — see {@link worktreeLabel}). */
+  label: string;
 }
 
 /** A stash row paired with its match flag. */
@@ -110,6 +113,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     // search for a path fragment should surface the worktree.
     match: matches(wt.branch ?? wt.name) || matches(wt.path),
     isActive: isActiveWorktreePath(summary, wt.path),
+    label: worktreeLabel(wt, worktrees),
   }));
   const stashItems = stashes.map((s) => ({ stash: s, match: matches(s.message) }));
 

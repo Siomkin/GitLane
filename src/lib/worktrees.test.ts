@@ -5,6 +5,7 @@ import {
   isActiveWorktreePath,
   worktreeIndicatorView,
   worktreeLabel,
+  worktreeName,
 } from "./worktrees";
 
 const summary = (over: Partial<RepoSummary> = {}): RepoSummary => ({
@@ -54,10 +55,32 @@ describe("activeWorktree", () => {
   });
 });
 
+// Two codex-style worktrees: every one is nested under <id>/<repo>, so the leaf
+// directory is the repo name ("GitLane") for all of them.
+const codexMain = wt({ name: "GitLane", path: "/Volumes/Dev/GitLane", branch: "main", isMain: true });
+const codexA = wt({ name: "GitLane", path: "/Users/me/.codex/worktrees/1e75/GitLane", branch: null, isMain: false });
+const codexB = wt({ name: "GitLane", path: "/Users/me/.codex/worktrees/2f88/GitLane", branch: null, isMain: false });
+
+describe("worktreeName", () => {
+  it("uses the plain leaf when it's unique", () => {
+    expect(worktreeName(linked, [main, linked, detachedLinked])).toBe("repo-wt-feature");
+  });
+  it("falls back to <parent>/<leaf> when the leaf collides with another worktree", () => {
+    expect(worktreeName(codexA, [codexMain, codexA, codexB])).toBe("1e75/GitLane");
+    expect(worktreeName(codexB, [codexMain, codexA, codexB])).toBe("2f88/GitLane");
+  });
+  it("keeps the main worktree's plain leaf even when a linked one collides", () => {
+    expect(worktreeName(codexMain, [codexMain, codexA])).toBe("GitLane");
+  });
+});
+
 describe("worktreeLabel", () => {
   it("prefers the branch, falling back to the directory name when detached", () => {
-    expect(worktreeLabel(linked)).toBe("feature/x");
-    expect(worktreeLabel(detachedLinked)).toBe("repo-wt-detached");
+    expect(worktreeLabel(linked, [main, linked])).toBe("feature/x");
+    expect(worktreeLabel(detachedLinked, [main, detachedLinked])).toBe("repo-wt-detached");
+  });
+  it("uses the disambiguated name for a detached codex worktree", () => {
+    expect(worktreeLabel(codexA, [codexMain, codexA, codexB])).toBe("1e75/GitLane");
   });
 });
 
@@ -79,6 +102,15 @@ describe("worktreeIndicatorView", () => {
       kind: "active",
       name: "repo-wt-feature",
       path: "/repo-wt-feature",
+    });
+  });
+
+  it("disambiguates the active name for a codex worktree whose leaf is the repo name", () => {
+    const s = summary({ workdir: "/Users/me/.codex/worktrees/1e75/GitLane", path: "/Users/me/.codex/worktrees/1e75/GitLane" });
+    expect(worktreeIndicatorView([codexMain, codexA, codexB], s)).toEqual({
+      kind: "active",
+      name: "1e75/GitLane",
+      path: "/Users/me/.codex/worktrees/1e75/GitLane",
     });
   });
 });

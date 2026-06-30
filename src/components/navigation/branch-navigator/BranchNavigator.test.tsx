@@ -136,6 +136,22 @@ describe("BranchNavigator", () => {
     expect(useUi.getState().navOpen).toBe(false);
   });
 
+  it("disambiguates codex worktrees that share the repo name as their directory", () => {
+    useRepo.setState({
+      summary: { path: "/Volumes/Dev/GitLane", workdir: "/Volumes/Dev/GitLane", headBranch: "main", headOid: "c1", detached: false },
+      worktrees: [
+        { name: "GitLane", path: "/Volumes/Dev/GitLane", branch: "main", isMain: true },
+        { name: "GitLane", path: "/Users/me/.codex/worktrees/1e75/GitLane", branch: null, isMain: false },
+      ],
+    });
+    render(<BranchNavigator />);
+
+    // The detached codex worktree's leaf is "GitLane" (the repo name), so the row
+    // falls back to "<parent>/<leaf>" to stay distinguishable; the main keeps its branch.
+    expect(screen.getByRole("button", { name: "Open worktree 1e75/GitLane" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
+  });
+
   it("surfaces a failed worktree switch as an error toast", async () => {
     const openWorktree = vi.fn().mockRejectedValue(new Error("worktree gone"));
     useRepo.setState({

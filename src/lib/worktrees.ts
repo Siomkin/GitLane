@@ -31,10 +31,26 @@ export function activeWorktree(
   return worktrees.find((wt) => isActiveWorktreePath(summary, wt.path)) ?? null;
 }
 
+/** A distinguishing directory label for a worktree. The leaf segment is normally
+ * enough, but some tools (e.g. codex) nest every worktree under `<id>/<repo>`, so
+ * every one has the repo name as its leaf (`.codex/worktrees/1e75/GitLane`). When
+ * a linked worktree's leaf collides with another worktree's, fall back to
+ * `<parent>/<leaf>` (e.g. "1e75/GitLane") so siblings stay distinguishable. The
+ * main worktree always keeps its plain leaf. */
+export function worktreeName(wt: WorktreeInfo, worktrees: WorktreeInfo[]): string {
+  if (!wt.isMain && worktrees.some((w) => w.path !== wt.path && w.name === wt.name)) {
+    const segments = trimTrailingSlash(wt.path).split("/").filter(Boolean);
+    if (segments.length >= 2) {
+      return `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
+    }
+  }
+  return wt.name;
+}
+
 /** Display label for a worktree row/chip: its checked-out branch, falling back
- * to the leaf directory name when detached. */
-export function worktreeLabel(wt: WorktreeInfo): string {
-  return wt.branch ?? wt.name;
+ * to the distinguishing directory name (see {@link worktreeName}) when detached. */
+export function worktreeLabel(wt: WorktreeInfo, worktrees: WorktreeInfo[]): string {
+  return wt.branch ?? worktreeName(wt, worktrees);
 }
 
 /** What the toolbar's worktree indicator should show.
@@ -54,7 +70,7 @@ export function worktreeIndicatorView(
 ): WorktreeIndicator {
   const active = activeWorktree(worktrees, summary);
   if (active && !active.isMain) {
-    return { kind: "active", name: active.name, path: active.path };
+    return { kind: "active", name: worktreeName(active, worktrees), path: active.path };
   }
   return { kind: "none" };
 }
