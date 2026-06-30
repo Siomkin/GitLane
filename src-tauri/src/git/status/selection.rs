@@ -125,6 +125,12 @@ fn collect_touches(repo: &Repository, ordered: &[Commit]) -> Result<HashMap<Stri
             };
             let anc = blob_in(parent_tree.as_ref(), &path);
             let new = blob_in(Some(&tree), &path);
+            // A mode-only delta (e.g. chmod) leaves the blob unchanged; skip it so
+            // the list agrees with `touch_for_file` (which also skips it) and a
+            // content-less change isn't reported.
+            if anc == new {
+                continue;
+            }
             match touched.get_mut(&path) {
                 None => {
                     touched.insert(path, Touch { base: anc, head: new, gapped: false });

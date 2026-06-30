@@ -7,14 +7,18 @@
 import { api } from "../lib/api";
 import type { RepoGet, RepoSet } from "./repoTypes";
 
-/** True when the live `selectionDiff` still targets exactly `commits` in `repo`. */
+/** True when the live `selectionDiff` still targets exactly `commits` in `repo`.
+ * Compared as a **set**, not by order: the union is order-independent (the
+ * backend re-sorts by ancestry), and `refresh` can re-publish the same set in a
+ * different order — an order-sensitive check would make this in-flight fetch bail
+ * and leave the inspector stuck on `loading: true`. */
 function stillTargets(get: RepoGet, repoPath: string, commits: string[]): boolean {
   const cur = get().selectionDiff;
   return (
     get().summary?.path === repoPath &&
     !!cur &&
     cur.commits.length === commits.length &&
-    cur.commits.every((id, i) => id === commits[i])
+    cur.commits.every((id) => commits.includes(id))
   );
 }
 

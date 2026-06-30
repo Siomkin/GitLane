@@ -4,6 +4,14 @@ import { computeSelection } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
 
+/** Order-independent identity of a multi-commit selection. The union is
+ * order-independent (the backend re-sorts by ancestry) and `refresh` can
+ * re-publish the same set reordered, so a stale-response guard must compare the
+ * *set* — an order-sensitive key would make a slow per-file fetch bail and leave
+ * the diff pane stuck on `loading`. */
+const selectionKey = (commits?: string[] | null): string | null =>
+  commits ? [...commits].sort().join(",") : null;
+
 export function createRepoSelectionActions(
   set: RepoSet,
   get: RepoGet,
@@ -91,16 +99,19 @@ export function createRepoSelectionActions(
       }
 
       if (!focus) return;
+      const repoPath = summary.path;
+      // Don't let a single-commit fetch publish into a newer selection or a
+      // different repo (a slow reject after a repo switch must not flash a stale
+      // error onto the new repo's view).
+      const fresh = () =>
+        get().summary?.path === repoPath && !get().selectionDiff && get().selectedCommit === focus;
       set({ diffLoading: true });
       try {
-        const files = await api.commitFiles(summary.path, focus);
-        // Don't let a single-commit fetch publish into a newer selection.
-        if (get().selectionDiff || get().selectedCommit !== focus) return;
+        const files = await api.commitFiles(repoPath, focus);
+        if (!fresh()) return;
         set({ commitFiles: files, diffLoading: false });
       } catch (e) {
-        // Same guard on the failure path: a stale error must not surface after
-        // the selection moved on.
-        if (get().selectionDiff || get().selectedCommit !== focus) return;
+        if (!fresh()) return;
         set({ diffLoading: false, error: String(e) });
       }
     },
@@ -131,11 +142,11 @@ export function createRepoSelectionActions(
       // `selectedFile`, but switching between two multi-selections that share a
       // file path keeps the path — so also pin the union's commit set, or a slow
       // response could publish the wrong selection's merged diff for that file.
-      const selKey = selectionDiff?.commits.join(",") ?? null;
+      const selKey = selectionKey(selectionDiff?.commits);
       const fresh = () =>
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
-        (get().selectionDiff?.commits.join(",") ?? null) === selKey;
+        selectionKey(get().selectionDiff?.commits) === selKey;
       set({ selectedFile: { path, source }, diffLoading: true, error: null });
       try {
         // In a multi-commit selection a committed file's diff is the merged
@@ -159,11 +170,11 @@ export function createRepoSelectionActions(
       if (!summary || !selectedFile) return;
       const { path, source } = selectedFile;
       const repoPath = summary.path;
-      const selKey = selectionDiff?.commits.join(",") ?? null;
+      const selKey = selectionKey(selectionDiff?.commits);
       const fresh = () =>
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
-        (get().selectionDiff?.commits.join(",") ?? null) === selKey;
+        selectionKey(get().selectionDiff?.commits) === selKey;
       set({ diffLoading: true });
       try {
         const fileDiff =

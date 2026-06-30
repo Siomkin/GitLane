@@ -1420,6 +1420,37 @@ describe("repo store — merged selection (GL-69)", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("selection_diff", expect.anything());
   });
 
+  it("still publishes the union if a refresh reorders the same selection mid-fetch", async () => {
+    // The stuck-loading regression: a background refresh re-publishes the same
+    // commit *set* in a different order while the union fetch is in flight. The
+    // resolved fetch must still publish (set-based guard), not bail on order.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" })],
+      head: "a",
+    };
+    useRepo.setState({ graph, selectedCommit: null, selectedCommits: [], selectionAnchor: null, selectionDiff: null });
+    const slow = deferred<unknown>();
+    const files = [{ path: "u.ts", status: "M", add: 1, del: 0, binary: false }];
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "selection_diff" ? slow.promise : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().selectCommitMulti("a", {}); // single
+    const pending = useRepo.getState().selectCommitMulti("b", { additive: true }); // [a,b] — union in flight
+    // A refresh re-publishes the same set reordered (focus-first), no re-fetch.
+    useRepo.setState({
+      selectedCommits: ["b", "a"],
+      selectionDiff: { commits: ["b", "a"], files: [], loading: true, error: null },
+    });
+    slow.resolve(files);
+    await pending;
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(diff.loading).toBe(false); // not stuck
+    expect(diff.files).toEqual(files); // published despite the reorder
+  });
+
   it("publishes only the latest union when selections change rapidly", async () => {
     const graph: RepoGraph = {
       ...emptyGraph,
