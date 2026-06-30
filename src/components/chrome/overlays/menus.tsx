@@ -33,6 +33,7 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { defaultPublishTarget } from "@/lib/branchSync";
+import { isActiveWorktreePath } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import type { RepoState } from "@/store/repoTypes";
@@ -1078,17 +1079,17 @@ export function TagContextMenu() {
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
 }
 
-/** Right-click menu on a navigator worktree row. "Open worktree" switches the
- * app to that checkout (loads it as a repo tab) — distinct from the row's plain
- * click, which only scrolls the current graph to the worktree's tip. The active
- * worktree only offers "Copy path" (it's already open; nothing to open/remove). */
+/** Right-click menu on a navigator worktree row. The row's left-click is the
+ * primary "switch to this worktree" action now (GL-22); this menu carries the
+ * secondary actions — "Open worktree" (same switch, for discoverability), copy
+ * path, and remove. The active worktree only offers "Copy path" (it's already
+ * open; nothing to open/remove). */
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);
-  const workdir = useRepo((s) => s.summary?.workdir ?? null);
-  const repoPath = useRepo((s) => s.summary?.path ?? null);
+  const summary = useRepo((s) => s.summary);
   const openWorktree = useRepo((s) => s.openWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
@@ -1098,10 +1099,9 @@ export function WorktreeContextMenu() {
   // Removing the worktree backing the open tab would delete its directory out
   // from under the app, leaving the refresh pointing at a gone path. `isMain`
   // only flags the *primary* worktree, so when the app is opened on a linked
-  // worktree it isn't enough — also match the open repo's own path/workdir.
-  const trim = (p: string) => p.replace(/\/+$/, "");
-  const isActiveWorktree =
-    (!!workdir && trim(path) === trim(workdir)) || (!!repoPath && trim(path) === trim(repoPath));
+  // worktree it isn't enough — also match the open repo's own path/workdir
+  // (the shared helper does both).
+  const isActiveWorktree = isActiveWorktreePath(summary, path);
   const items: MenuItem[] = [];
   // The active worktree is already open, so opening it again is a no-op; only
   // offer the switch for the others.

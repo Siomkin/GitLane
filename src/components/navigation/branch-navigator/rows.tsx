@@ -5,11 +5,12 @@ import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
 import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
-import { StashIcon, TreeIcon } from "@/components/ui/icons";
+import { FolderIcon, StashIcon, TreeIcon } from "@/components/ui/icons";
+import { worktreeLabel } from "@/lib/worktrees";
 import type { RowKind } from "./refs";
 import type { WorktreeItem } from "./useNavigatorSections";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
-import { useRevealNavigate, useRevealStashNavigate } from "./useRowActions";
+import { useOpenWorktree, useRevealNavigate, useRevealStashNavigate } from "./useRowActions";
 
 /** A labelled section (Local / Remotes / Tags / Worktrees / Stashes). */
 export function Section({ label, children }: { label: string; children: ReactNode }) {
@@ -130,8 +131,12 @@ export function BranchRow({
   );
 }
 
-/** A worktree row — navigate to its branch tip when that tip is in the graph;
- * right-click to open the worktree as a tab or copy its path. */
+/** A worktree row — two lines so sibling worktrees are distinguishable: the
+ * checked-out branch (or directory name when detached) over its absolute path.
+ * Left-click is the primary action: switch the app to that worktree (it loads as
+ * the open repo). The already-open ("current") worktree can't be switched to, so
+ * its click just scrolls the graph to its tip. Right-click opens the worktree
+ * menu (copy path / remove). The leading badges separate current / main / linked. */
 export function WorktreeRow({
   wt,
   oid,
@@ -139,32 +144,60 @@ export function WorktreeRow({
   dimmed = false,
   query = "",
 }: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
-  const navigate = useRevealNavigate();
+  const reveal = useRevealNavigate();
+  const open = useOpenWorktree();
   const openWorktreeMenu = useUi((s) => s.openWorktreeMenu);
-  const label = wt.branch ?? wt.name;
+  const label = worktreeLabel(wt);
   const tip = useTruncatedTooltip(label);
+  // Primary action: switch to the worktree. The already-open one can't be
+  // switched to, so it just scrolls the graph to its tip.
+  const activate = () => (isActive ? reveal(oid) : open(wt.path));
   return (
     <div
       {...tip}
+      role="button"
+      tabIndex={0}
+      aria-label={isActive ? `Current worktree ${label}` : `Open worktree ${label}`}
       className={cn(
-        "flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] transition-opacity",
+        "group flex min-h-[2.75rem] cursor-pointer flex-col justify-center gap-0.5 rounded-lg px-2 py-1 text-[13px] transition-opacity",
         isActive
           ? "bg-[var(--accent-soft)] font-medium text-[color:var(--accent)]"
           : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
         dimmed && DIM_CLASS,
       )}
-      onClick={() => navigate(oid)}
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate();
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         openWorktreeMenu({ x: e.clientX, y: e.clientY, path: wt.path, name: label, isMain: wt.isMain });
       }}
     >
-      <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
-      <span data-truncate className="min-w-0 flex-1 truncate">
-        <HighlightMatch text={label} query={query} />
-      </span>
-      {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
-      {wt.isMain && <span className="shrink-0 text-[10px] font-medium text-neutral-400">main</span>}
+      <div className="flex items-center gap-2">
+        <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
+        <span data-truncate className="min-w-0 flex-1 truncate">
+          <HighlightMatch text={label} query={query} />
+        </span>
+        {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
+        {wt.isMain && <span className="shrink-0 text-[10px] font-medium text-neutral-400">main</span>}
+        {!isActive && (
+          // Make the left-click action explicit: a faint open glyph that lights
+          // up on hover/focus signals the row switches to the worktree.
+          <FolderIcon
+            aria-hidden
+            className="h-3.5 w-3.5 shrink-0 text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+          />
+        )}
+      </div>
+      {/* Absolute path as secondary text (+ full path on hover) so sibling
+          worktrees that share a branch-less label stay distinguishable. */}
+      <div className="truncate pl-[1.375rem] text-[11px] font-normal text-neutral-400" title={wt.path}>
+        {wt.path}
+      </div>
     </div>
   );
 }

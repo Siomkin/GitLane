@@ -88,6 +88,14 @@ describe("useNavigatorSections", () => {
     expect(render("v1.0").tags[0].match).toBe(true);
   });
 
+  it("matches a worktree by a fragment of its path (shown as the row's secondary text)", () => {
+    seed({ worktrees: [{ name: "wt", path: "/work/acme-wt-feature", branch: "feature/search", isMain: false }] });
+    // "acme-wt" appears only in the path — not the branch or directory name.
+    const s = render("acme-wt");
+    expect(s.worktrees).toHaveLength(1);
+    expect(s.worktrees[0].match).toBe(true);
+  });
+
   it("flags a local branch checked out in a non-active worktree with that worktree's name", () => {
     const s = render("");
     // feature/search is checked out in the linked worktree "wt" (path /wt).
