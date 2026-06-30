@@ -167,3 +167,16 @@ fn branch_sync_reports_unknown_when_ahead_behind_cannot_be_computed() {
         ("unknown".into(), Some("origin/main".into()), 0, 0)
     );
 }
+
+#[test]
+fn worktree_join_rejects_escapes_and_accepts_safe_paths() {
+    use super::worktree_join;
+    let wd = Path::new("/work/repo");
+    // Safe relative paths join under the worktree.
+    assert_eq!(worktree_join(wd, "a/b.png").unwrap(), wd.join("a/b.png"));
+    assert_eq!(worktree_join(wd, "deep/nested/x.bin").unwrap(), wd.join("deep/nested/x.bin"));
+    // Traversal / absolute / drive-prefix paths are rejected.
+    assert!(worktree_join(wd, "../escape").is_err());
+    assert!(worktree_join(wd, "a/../../escape").is_err());
+    assert!(worktree_join(wd, "/etc/hosts").is_err());
+}

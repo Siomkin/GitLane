@@ -8,7 +8,7 @@ import { CommitModal } from "./CommitModal";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-const staged = (path: string): FileChange => ({ path, status: "M", add: 12, del: 3 });
+const staged = (path: string): FileChange => ({ path, status: "M", add: 12, del: 3, binary: false });
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -79,6 +79,7 @@ describe("CommitModal", () => {
             status: "M",
             add: 0,
             del: 0,
+            binary: false,
             advanced: { kind: "submodule", message: "Submodule: modified files inside submodule" },
           },
         ],

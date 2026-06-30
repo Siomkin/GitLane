@@ -2,7 +2,7 @@
 
 use git2::{DiffOptions, Repository, Status};
 
-use crate::git::read::open;
+use crate::git::read::{open, worktree_join};
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
 
 use super::advanced::{advanced_state, annotate_advanced_files};
@@ -40,7 +40,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         // line counts are grouped under one path instead of split add/del.
         diff.find_similar(None)?;
         for fc in diffs_to_changes(&diff)? {
-            staged_counts.insert(fc.path.clone(), (fc.add, fc.del));
+            staged_counts.insert(fc.path.clone(), (fc.add, fc.del, fc.binary));
         }
     }
 
@@ -50,7 +50,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         o.include_untracked(true).recurse_untracked_dirs(true);
         let diff = repo.diff_index_to_workdir(None, Some(&mut o))?;
         for fc in diffs_to_changes(&diff)? {
-            unstaged_counts.insert(fc.path.clone(), (fc.add, fc.del));
+            unstaged_counts.insert(fc.path.clone(), (fc.add, fc.del, fc.binary));
         }
     }
 
@@ -75,6 +75,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 status: "C".to_string(),
                 add: 0,
                 del: 0,
+                binary: false,
                 advanced: None,
             });
             continue;
@@ -108,12 +109,13 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                         .map(|x| x.to_string_lossy().to_string())
                 })
                 .unwrap_or_else(|| entry_path.clone());
-            let (add, del) = staged_counts.get(&p).copied().unwrap_or((0, 0));
+            let (add, del, binary) = staged_counts.get(&p).copied().unwrap_or((0, 0, false));
             staged.push(FileChange {
                 path: p,
                 status: st.to_string(),
                 add,
                 del,
+                binary,
                 advanced: None,
             });
         }
@@ -142,10 +144,12 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                         .map(|x| x.to_string_lossy().to_string())
                 })
                 .unwrap_or_else(|| entry_path.clone());
-            let (mut add, del) = unstaged_counts.get(&p).copied().unwrap_or((0, 0));
+            let (mut add, del, mut binary) = unstaged_counts.get(&p).copied().unwrap_or((0, 0, false));
             // Untracked files don't appear in the index-to-workdir diff stats
             // above unless include_untracked content was diffed; ensure a
-            // sensible count by reading the file when needed.
+            // sensible count by reading the file when needed. The same probe
+            // also classifies the file as binary (a NUL byte), since libgit2
+            // hasn't examined untracked content to set its own binary flag.
             if st == "U" && add == 0 && del == 0 {
                 if let Some(wd) = repo.workdir() {
                     // Bound the probe so a huge untracked file can't block this
@@ -155,8 +159,12 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                     const MAX_PROBE: u64 = 1 << 20; // 1 MiB
                     if let Ok(file) = std::fs::File::open(wd.join(&p)) {
                         let mut buf = Vec::new();
-                        if file.take(MAX_PROBE).read_to_end(&mut buf).is_ok() && !buf.contains(&0) {
-                            add = String::from_utf8_lossy(&buf).lines().count();
+                        if file.take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
+                            if buf.contains(&0) {
+                                binary = true;
+                            } else {
+                                add = String::from_utf8_lossy(&buf).lines().count();
+                            }
                         }
                     }
                 }
@@ -166,6 +174,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 status: st.to_string(),
                 add,
                 del,
+                binary,
                 advanced: None,
             });
         }
@@ -242,11 +251,7 @@ pub fn file_diff(
     Ok(result.unwrap_or_else(|| FileDiff {
         path: file.to_string(),
         status: "M".to_string(),
-        add: 0,
-        del: 0,
-        binary: false,
-        hunks: Vec::new(),
-        truncated: false,
+        ..Default::default()
     }))
 }
 
@@ -255,17 +260,24 @@ pub fn file_diff(
 /// produce hunks for untracked content (see [`file_diff`]).
 fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<FileDiff> {
     let workdir = repo.workdir()?;
-    let bytes = std::fs::read(workdir.join(file)).ok()?;
+    // `file` is IPC-supplied (the `file_diff` command), so reject traversal and
+    // never follow a symlink / read a non-regular entry — same guard as
+    // `read_binary_blob` / `conflict_file`.
+    let full = worktree_join(workdir, file).ok()?;
+    if !std::fs::symlink_metadata(&full).ok()?.file_type().is_file() {
+        return None;
+    }
+    let bytes = std::fs::read(&full).ok()?;
 
     if bytes.contains(&0) {
         return Some(FileDiff {
             path: file.to_string(),
             status: "U".to_string(),
-            add: 0,
-            del: 0,
             binary: true,
-            hunks: Vec::new(),
-            truncated: false,
+            // The whole file is "new" for an untracked add; surface its size so
+            // the binary card shows "— → {size}" instead of an empty diff.
+            new_size: Some(bytes.len() as u64),
+            ..Default::default()
         });
     }
 
@@ -298,9 +310,8 @@ fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<Fi
         path: file.to_string(),
         status: "U".to_string(),
         add: count,
-        del: 0,
-        binary: false,
         hunks,
         truncated,
+        ..Default::default()
     })
 }

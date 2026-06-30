@@ -132,8 +132,8 @@ describe("repo store — file history", () => {
 describe("repo store — compare", () => {
   const compareResult = {
     files: [
-      { path: "src/a.ts", status: "M", add: 2, del: 1 },
-      { path: "src/b.ts", status: "A", add: 9, del: 0 },
+      { path: "src/a.ts", status: "M", add: 2, del: 1, binary: false },
+      { path: "src/b.ts", status: "A", add: 9, del: 0, binary: false },
     ],
     add: 11,
     del: 1,
@@ -233,7 +233,7 @@ describe("repo store — compare", () => {
     // Working tree changed: now only one file differs.
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "compare_refs")
-        return Promise.resolve({ files: [{ path: "src/b.ts", status: "M", add: 1, del: 0 }], add: 1, del: 0, ahead: 0, behind: 0 });
+        return Promise.resolve({ files: [{ path: "src/b.ts", status: "M", add: 1, del: 0, binary: false }], add: 1, del: 0, ahead: 0, behind: 0 });
       if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
       return Promise.resolve(null);
     });

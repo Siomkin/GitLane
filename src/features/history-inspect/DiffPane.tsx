@@ -1,5 +1,6 @@
 import type { FileDiff } from "../../lib/api";
 import { UnifiedDiffBody } from "../review/DiffBody";
+import { BinaryDiff } from "../review/BinaryDiff";
 
 /** Shared diff pane for the file-history and compare views: a loading skeleton,
  * error/empty/binary states, then the unified diff with a "show full" affordance
@@ -38,7 +39,7 @@ export function DiffPane({
     return <div className="grid h-full place-content-center text-sm text-neutral-400">{emptyLabel}</div>;
   }
   if (diff.binary) {
-    return <div className="grid h-full place-content-center text-sm text-neutral-400">Binary file — no text diff.</div>;
+    return <BinaryDiff diff={diff} className="h-full overflow-auto" />;
   }
   return (
     <div className="p-3.5">

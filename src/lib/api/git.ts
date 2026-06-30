@@ -241,6 +241,9 @@ export interface FileChange {
   status: FileStatus;
   add: number;
   del: number;
+  /** True when git treats the change as binary (no line stats); lets file lists
+   * mark it as binary instead of showing a misleading "+0 −0". */
+  binary: boolean;
   advanced?: FileAdvancedState;
 }
 
@@ -334,6 +337,26 @@ export interface FileDiff {
   hunks: DiffHunk[];
   /** True when the backend capped the diff at the line limit; the UI offers a
    * "show full diff" that re-fetches with `full: true`. */
+  truncated: boolean;
+  /** Byte size of the old / new side of a **binary** change, so the UI can show
+   * "old → new (±delta)" instead of "+0 −0". Absent when that side doesn't exist
+   * (added has no old, deleted no new) or for text diffs. */
+  oldSize?: number;
+  newSize?: number;
+  /** Blob oids for a **binary** change, passed to {@link gitApi.readBinaryBlob}
+   * to fetch bytes for an image preview. Absent when the side doesn't exist or
+   * libgit2 left no oid — notably the working-tree side of an unstaged diff,
+   * whose bytes are read from disk by `path` instead. */
+  oldOid?: string;
+  newOid?: string;
+}
+
+/** Raw bytes of one blob / working-tree file for an inline preview (see Rust
+ * `BinaryBlob`). `base64` is absent when the content exceeded the preview cap
+ * (then `truncated` is true and only `size` is meaningful). */
+export interface BinaryBlob {
+  base64?: string;
+  size: number;
   truncated: boolean;
 }
 
@@ -621,6 +644,21 @@ export const gitApi = {
   /** Changed files in a commit (vs its first parent). */
   commitFiles: (path: string, oid: string) =>
     invoke<FileChange[]>("commit_files", { path, oid }),
+
+  /** Read a binary blob's bytes (base64) for an inline preview. Pass `oid` for a
+   * committed/staged blob; pass `file` (repo-relative, `oid` omitted) to read the
+   * working-tree copy — the side an unstaged diff leaves without a blob oid. */
+  readBinaryBlob: (
+    path: string,
+    source: { oid?: string | null; file?: string | null },
+    maxBytes?: number,
+  ) =>
+    invoke<BinaryBlob>("read_binary_blob", {
+      path,
+      oid: source.oid ?? null,
+      file: source.file ?? null,
+      maxBytes: maxBytes ?? null,
+    }),
 
   /** Diff for one file within a commit (vs its first parent). `full` bypasses
    * the backend line cap (for an explicit "show full diff"). */

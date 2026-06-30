@@ -307,13 +307,16 @@ pub struct FileAdvancedState {
 /// A single changed file in a diff (working tree, index, or a commit).
 /// `status` is a one-letter git code: M(odified) A(dded) D(eleted) R(enamed)
 /// C(opied) T(ypechange) U(ntracked) or `?` when unknown.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
     pub status: String,
     pub add: usize,
     pub del: usize,
+    /// True when git treats this delta as binary (no line stats / text hunks).
+    /// Lets file lists mark it as binary instead of showing a misleading "+0 −0".
+    pub binary: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advanced: Option<FileAdvancedState>,
 }
@@ -395,7 +398,7 @@ pub struct DiffHunk {
 }
 
 /// A full file diff returned to the diff/review viewer.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileDiff {
     pub path: String,
@@ -406,6 +409,34 @@ pub struct FileDiff {
     pub hunks: Vec<DiffHunk>,
     /// True when the diff was capped at the line limit and `hunks` holds only
     /// the first portion of the change (the frontend offers "show full diff").
+    pub truncated: bool,
+    /// Byte size of the file on the old / new side of a **binary** change, so the
+    /// UI can show "old → new (±delta)" in place of a meaningless "+0 −0". `None`
+    /// when that side is absent (added has no old, deleted has no new) or for text
+    /// diffs (whose change is already expressed as line hunks).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_size: Option<u64>,
+    /// Blob oids for a **binary** change, used to fetch bytes for an image
+    /// preview ([`super::status::read_binary_blob`]). `None` when the side is
+    /// absent or libgit2 left no blob oid — notably the working-tree side of an
+    /// unstaged diff, whose content the frontend reads from disk by `path`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_oid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_oid: Option<String>,
+}
+
+/// Raw bytes of one blob / working-tree file, base64-encoded for an inline
+/// preview (images today). Returned by `read_binary_blob`; large blobs come back
+/// with `base64: None` + `truncated: true` so the UI shows size only.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryBlob {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base64: Option<String>,
+    pub size: u64,
     pub truncated: bool,
 }
 

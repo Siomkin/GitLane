@@ -85,10 +85,6 @@ pub fn compare_file_diff(
     Ok(files.pop().unwrap_or_else(|| FileDiff {
         path: file.to_string(),
         status: "M".to_string(),
-        add: 0,
-        del: 0,
-        binary: false,
-        hunks: Vec::new(),
-        truncated: false,
+        ..Default::default()
     }))
 }

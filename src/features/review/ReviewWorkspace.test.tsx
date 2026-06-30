@@ -138,7 +138,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
       diffLoading: false,
       changes: {
         staged: [],
-        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 3, del: 0 }],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 3, del: 0, binary: false }],
         conflicted: [],
         advanced: {
           submodules: [],
@@ -171,6 +171,18 @@ describe("ReviewWorkspace — virtualized diff", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Stage line" })[0]);
 
     expect(applyLine).toHaveBeenCalledWith("src/huge.ts", false, 0, 0, fileDiff.hunks[0].lines[0]);
+  });
+
+  it("hides the Unified/Split toggle and shows the binary card for a binary file", () => {
+    useRepo.setState({
+      fileDiff: { path: "docs/spec.pdf", status: "A", add: 0, del: 0, binary: true, truncated: false, hunks: [] },
+      diffLoading: false,
+    });
+    render(<ReviewWorkspace />);
+    // The toggle is meaningless for a binary file (renders a card, not hunks).
+    expect(screen.queryByRole("button", { name: "Unified" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Split" })).not.toBeInTheDocument();
+    expect(screen.getByText("PDF document")).toBeInTheDocument();
   });
 
   it("stages a changed line from split view", () => {

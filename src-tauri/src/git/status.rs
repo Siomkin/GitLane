@@ -7,6 +7,7 @@
 //! diff conversion, working-tree reads, commit reads, and range reads.
 
 mod advanced;
+mod blob;
 mod commit;
 mod compare;
 mod diff;
@@ -16,6 +17,7 @@ mod range;
 mod tests;
 mod working;
 
+pub use blob::read_binary_blob;
 pub use commit::{commit_file_diff, commit_files};
 pub use compare::{compare_file_diff, compare_refs};
 pub use history::{file_blame, file_history};

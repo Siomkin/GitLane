@@ -6,7 +6,9 @@ import type { PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { StatusPill } from "@/components/ui/StatusBadge";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { UnifiedDiffBody } from "../review/DiffBody";
+import { BinaryDiff } from "../review/BinaryDiff";
 import { HandToAgentBar } from "../review/comments";
 
 export function PrDiffTab({ pr }: { pr: PullRequest }) {
@@ -54,13 +56,13 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
                 <span className="text-neutral-400">{dir ? `${dir}/` : ""}</span>
                 <span className="font-medium text-neutral-800 dark:text-neutral-100">{name}</span>
               </div>
-              <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px]">
-                <span className="text-emerald-500">+{file.add}</span>
-                <span className="text-rose-500">−{file.del}</span>
-              </span>
+              <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="shrink-0 text-[11px]" />
             </div>
             {file.binary ? (
-              <div className="px-4 py-3 text-[12px] italic text-neutral-400">Binary file</div>
+              // GitHub patches carry no byte sizes, so this shows the type +
+              // change-kind card (no image preview) rather than the old "Binary
+              // file" text.
+              <BinaryDiff diff={file} />
             ) : (
               <UnifiedDiffBody hunks={file.hunks} file={file.path} surface={surface} />
             )}

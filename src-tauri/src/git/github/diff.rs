@@ -41,12 +41,10 @@ fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
             files.push(FileDiff {
                 path,
                 status: "M".to_string(),
-                add: 0,
-                del: 0,
-                binary: false,
-                hunks: Vec::new(),
-                // GitHub patches arrive already bounded by gh's own diff limits.
-                truncated: false,
+                // GitHub patches arrive already bounded by gh's own diff limits;
+                // byte sizes aren't carried in a unified patch, so the binary
+                // size fields stay `None` (the card degrades to type + kind only).
+                ..Default::default()
             });
             continue;
         }

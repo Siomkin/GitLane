@@ -1,6 +1,6 @@
 //! Worktree content reads for conflicted text files.
 
-use crate::git::read::open;
+use crate::git::read::{open, worktree_join};
 use crate::git::types::ConflictFileContent;
 
 /// The worktree copy of a conflicted text file, including git's merge markers,
@@ -14,19 +14,7 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
     // `file` crosses the IPC boundary; reject absolute paths and `..`/prefix
     // traversal so a read can never escape the worktree (conflicted paths come
     // from git's index, which already forbids these — validated defensively).
-    let rel = std::path::Path::new(file);
-    if rel.is_absolute()
-        || rel.components().any(|c| {
-            matches!(
-                c,
-                std::path::Component::ParentDir | std::path::Component::Prefix(_)
-            )
-        })
-    {
-        return Err(git2::Error::from_str(&format!(
-            "refusing unsafe path outside the worktree: {file:?}"
-        )));
-    }
+    let full = worktree_join(workdir, file)?;
     // Only a genuine unmerged path may be read here — not any safe relative file.
     let conflicted = repo.index()?.conflicts()?.flatten().any(|c| {
         c.our
@@ -42,7 +30,6 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
             "{file:?} is not a conflicted path"
         )));
     }
-    let full = workdir.join(rel);
     // Never follow a symlink (or read a non-regular entry like a submodule
     // directory): a conflicted symlink's worktree entry can point outside the
     // repo (e.g. `link -> /etc/passwd`), and `fs::read` would follow it past the

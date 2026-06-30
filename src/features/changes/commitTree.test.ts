@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { FileChange } from "../../lib/api";
 import { buildRows, type Row } from "./commitTree";
 
-const fc = (path: string): FileChange => ({ path, status: "M", add: 0, del: 0 });
+const fc = (path: string): FileChange => ({ path, status: "M", add: 0, del: 0, binary: false });
 const all = () => true;
 const none = () => false;
 

@@ -13,6 +13,7 @@ const file = (path: string, add: number, del: number): FileChange => ({
   status: "M",
   add,
   del,
+  binary: false,
 });
 
 const diffFor = (path: string): FileDiff => ({

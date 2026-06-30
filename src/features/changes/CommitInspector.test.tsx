@@ -39,7 +39,7 @@ const stash: StashEntry = {
   context: [],
 };
 
-const file: FileChange = { path: "src/stashed.ts", status: "M", add: 3, del: 1 };
+const file: FileChange = { path: "src/stashed.ts", status: "M", add: 3, del: 1, binary: false };
 
 beforeEach(() => {
   useRepo.setState({

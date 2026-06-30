@@ -80,56 +80,81 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
             .unwrap_or_default();
 
         let status = status_letter(delta.status()).to_string();
+
+        // Generating the patch is what makes libgit2 load blob content and decide
+        // binariness (and fill in valid file sizes); a raw tree diff leaves the
+        // flag unset, so read `is_binary` *after* this. Binary deltas come back as
+        // `None` (no text patch) with the flag now set on the delta.
+        let patch = Patch::from_diff(diff, idx)?;
         let binary = delta.flags().is_binary();
+
+        // For binary deltas the only "change" we can surface is each side's byte
+        // size + the blob oid to fetch its bytes for a preview. Presence keys off
+        // the delta status (added has no old side, deleted no new) rather than the
+        // oid, since libgit2 leaves the working-tree side's oid zero even when the
+        // file is present — `size()` is still valid there (it stats the file).
+        let (old_size, new_size, old_oid, new_oid) = if binary {
+            let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
+            let new_present = delta.status() != Delta::Deleted;
+            let old = delta.old_file();
+            let new = delta.new_file();
+            (
+                old_present.then(|| old.size()),
+                new_present.then(|| new.size()),
+                (old_present && !old.id().is_zero()).then(|| old.id().to_string()),
+                (new_present && !new.id().is_zero()).then(|| new.id().to_string()),
+            )
+        } else {
+            (None, None, None, None)
+        };
 
         let mut add = 0usize;
         let mut del = 0usize;
         let mut hunks = Vec::new();
         let mut truncated = false;
 
-        if !binary {
-            // `Patch::from_diff` returns `None` for binary / unmodified deltas.
-            if let Some(patch) = Patch::from_diff(diff, idx)? {
-                // Accurate add/del totals regardless of the content cap below, so
-                // the +/- pills reflect the whole change even when truncated.
-                let (_ctx, additions, deletions) = patch.line_stats()?;
-                add = additions;
-                del = deletions;
+        // `patch` is `None` for binary deltas, so this whole block is skipped for
+        // them — no line stats, no hunks.
+        if let Some(patch) = patch {
+            // Accurate add/del totals regardless of the content cap below, so
+            // the +/- pills reflect the whole change even when truncated.
+            let (_ctx, additions, deletions) = patch.line_stats()?;
+            add = additions;
+            del = deletions;
 
-                let num_hunks = patch.num_hunks();
-                let mut collected = 0usize;
-                for h in 0..num_hunks {
-                    let (hunk, line_count) = patch.hunk(h)?;
-                    let header = {
-                        let raw = String::from_utf8_lossy(hunk.header());
-                        raw.trim_end_matches('\n')
-                            .trim_end_matches('\r')
-                            .to_string()
-                    };
-                    let mut lines = Vec::new();
-                    for l in 0..line_count {
-                        let dl = patch.line_in_hunk(h, l)?;
-                        // Skip libgit2's "\ No newline at end of file" marker
-                        // pseudo-lines (origins '=' / '>' / '<'); content lines
-                        // always use ' ' / '+' / '-'. The staging backend filters
-                        // these markers too, so emitting them would misalign the
-                        // line indices and hunk-body comparison used for staging.
-                        if matches!(dl.origin(), '=' | '>' | '<') {
-                            continue;
-                        }
-                        if collected >= limit {
-                            truncated = true;
-                            break;
-                        }
-                        lines.push(line_for(&dl));
-                        collected += 1;
+            let num_hunks = patch.num_hunks();
+            let mut collected = 0usize;
+            for h in 0..num_hunks {
+                let (hunk, line_count) = patch.hunk(h)?;
+                let header = {
+                    let raw = String::from_utf8_lossy(hunk.header());
+                    raw.trim_end_matches('\n')
+                        .trim_end_matches('\r')
+                        .to_string()
+                };
+                let mut lines = Vec::new();
+                for l in 0..line_count {
+                    let dl = patch.line_in_hunk(h, l)?;
+                    // Skip libgit2's "\ No newline at end of file" marker
+                    // pseudo-lines (origins '=' / '>' / '<'); content lines
+                    // always use ' ' / '+' / '-'. The staging backend filters
+                    // these markers too, so emitting them would misalign the
+                    // line indices and hunk-body comparison used for staging.
+                    if matches!(dl.origin(), '=' | '>' | '<') {
+                        continue;
                     }
-                    if !lines.is_empty() {
-                        hunks.push(DiffHunk { header, lines });
-                    }
-                    if truncated {
+                    if collected >= limit {
+                        truncated = true;
                         break;
                     }
+                    lines.push(line_for(&dl));
+                    collected += 1;
+                }
+                if !lines.is_empty() {
+                    hunks.push(DiffHunk { header, lines });
+                }
+                if truncated {
+                    break;
                 }
             }
         }
@@ -142,6 +167,10 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
             binary,
             hunks,
             truncated,
+            old_size,
+            new_size,
+            old_oid,
+            new_oid,
         });
     }
 
@@ -166,14 +195,17 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             .unwrap_or_default();
         let status = status_letter(delta.status()).to_string();
 
+        // Build the patch first so libgit2 sets the binary flag (a raw tree diff
+        // leaves it unknown); binary deltas yield `None` and stay at 0/0 counts.
+        let patch = Patch::from_diff(diff, idx)?;
+        let binary = delta.flags().is_binary();
+
         let mut add = 0usize;
         let mut del = 0usize;
-        if !delta.flags().is_binary() {
-            if let Some(patch) = Patch::from_diff(diff, idx)? {
-                let (_ctx, additions, deletions) = patch.line_stats()?;
-                add = additions;
-                del = deletions;
-            }
+        if let Some(patch) = patch {
+            let (_ctx, additions, deletions) = patch.line_stats()?;
+            add = additions;
+            del = deletions;
         }
 
         out.push(FileChange {
@@ -181,6 +213,7 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             status,
             add,
             del,
+            binary,
             advanced: None,
         });
     }

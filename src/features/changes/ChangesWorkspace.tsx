@@ -9,8 +9,10 @@ import { useRepo, type ChangeSource } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
 import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
 import { UnifiedDiffBody } from "../review/DiffBody";
+import { BinaryDiff } from "../review/BinaryDiff";
 import { HandToAgentBar } from "../review/comments";
 import { StatusPill } from "@/components/ui/StatusBadge";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 
 // Working-tree notes are scoped per source (so a staged diff's refs don't share
 // with the unstaged diff's); a file's surface is `work:<source>` and the bar
@@ -205,8 +207,7 @@ function ReviewFileSection({
           <strong className="font-semibold text-neutral-800 dark:text-neutral-100">{basename(file.path)}</strong>
         </span>
         <StatusPill status={file.status} />
-        <span className="font-mono text-[11px] text-[color:var(--accent)]">+{file.add}</span>
-        <span className="font-mono text-[11px] text-rose-500">−{file.del}</span>
+        <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-[11px]" />
         {file.advanced && (
           <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-700 dark:text-amber-300">
             {file.advanced.message}
@@ -236,11 +237,13 @@ function ReviewFileSection({
         <div className="bg-white dark:bg-neutral-800">
           {loading ? (
             <div className="px-4 py-3 text-xs text-neutral-400">Loading diff…</div>
+          ) : diff && diff.binary ? (
+            <BinaryDiff diff={diff} />
           ) : diff && !diff.binary ? (
             <UnifiedDiffBody hunks={diff.hunks} file={file.path} surface={workSurface(source)} />
           ) : (
             <div className="px-4 py-3 text-xs text-neutral-400">
-              {diff === null ? "Couldn't load diff." : diff?.binary ? "Binary file" : "No visible diff."}
+              {diff === null ? "Couldn't load diff." : "No visible diff."}
             </div>
           )}
         </div>
