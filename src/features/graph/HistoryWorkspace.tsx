@@ -15,6 +15,7 @@ import { LoadMoreRow } from "./LoadMoreRow";
 import { ColumnHandle } from "./ColumnHandle";
 import { HistorySkeleton } from "./HistorySkeleton";
 import { LoadError } from "../../components/ui/Loading";
+import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 // GL-23: minimum rows ahead of the trailing load-more row at which a near-bottom
@@ -216,17 +217,29 @@ export const HistoryWorkspace = () => {
         ) : (
         <div className="relative" style={{ height: surfaceHeight, minWidth: graphColW + 320 }}>
           {graph && (
-            <GraphLayer
-              viewportTop={viewportTop}
-              viewportHeight={viewportHeight}
-              hasWip={hasWip}
-              rowHeight={rowHeight}
-              graphWidth={graphColW}
-              branchOffset={0}
-              visualRowByGraphRow={rowModel.visualRowByGraphRow}
-              stashConnectors={rowModel.stashConnectors}
-              matchedIds={matchedIds}
-            />
+            // The lane canvas is decorative: a paint crash degrades to nothing
+            // (the commit rows below stay fully interactive) rather than taking
+            // down the whole history view. Retries when a new graph payload lands.
+            <ErrorBoundary
+              resetKeys={[graph]}
+              fallback={() => (
+                <span role="status" className="sr-only">
+                  Commit graph unavailable
+                </span>
+              )}
+            >
+              <GraphLayer
+                viewportTop={viewportTop}
+                viewportHeight={viewportHeight}
+                hasWip={hasWip}
+                rowHeight={rowHeight}
+                graphWidth={graphColW}
+                branchOffset={0}
+                visualRowByGraphRow={rowModel.visualRowByGraphRow}
+                stashConnectors={rowModel.stashConnectors}
+                matchedIds={matchedIds}
+              />
+            </ErrorBoundary>
           )}
           <ColumnHandle left={graphColW} onResize={resizeGraphColumn} />
 

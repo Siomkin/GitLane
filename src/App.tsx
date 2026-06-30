@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
+import { ErrorFallback } from "./components/ui/ErrorFallback";
 import {
   ActionMenu,
   BranchContextMenu,
@@ -145,7 +147,26 @@ const App = () => {
 
   const backToGraph = () => setLeftTab("history");
 
-  const center = inConflict ? (
+  // Discriminant of which center workspace is showing — used as the boundary's
+  // reset key so navigating to a different view (or repo) clears a contained
+  // crash without an explicit retry.
+  const centerKey = inConflict
+    ? "conflict"
+    : showPulls
+      ? "pulls"
+      : compare || fileHistory
+        ? "inspect"
+        : stackedReview
+          ? "stacked"
+          : leftTab === "changes"
+            ? changesAll
+              ? "changes"
+              : "review"
+            : selectedFile?.source === "commit"
+              ? "review-commit"
+              : "history";
+
+  const centerInner = inConflict ? (
     <ConflictWorkspace />
   ) : showPulls ? (
     <PullRequestDetail />
@@ -163,6 +184,25 @@ const App = () => {
     <ReviewWorkspace />
   ) : (
     <HistoryWorkspace />
+  );
+
+  // Every center workspace mounts through here, so one boundary contains a
+  // render-time crash in any of them (History/Changes/Review/PR/Conflict/…) to
+  // the center pane — the toolbar, side panels, and terminal stay interactive.
+  const center = (
+    <ErrorBoundary
+      resetKeys={[summary?.path, centerKey]}
+      fallback={({ error, reset }) => (
+        <ErrorFallback
+          message={`Something went wrong in this view.\n${error.message}`}
+          onRetry={reset}
+          secondary={{ label: "Back to graph", onClick: backToGraph }}
+          className="h-full rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800"
+        />
+      )}
+    >
+      {centerInner}
+    </ErrorBoundary>
   );
 
   // `all` picks the stacked multi-file review; otherwise the single-file view
@@ -227,8 +267,16 @@ const App = () => {
                 </>
               )}
             </div>
-            {/* Floating terminal overlay — overlays the grid without resizing it. */}
-            <TerminalLayer />
+            {/* Floating terminal overlay — overlays the grid without resizing it.
+                Boundaried so a PTY/render crash drops only the terminal. */}
+            <ErrorBoundary
+              resetKeys={[summary?.path]}
+              fallback={({ reset }) => (
+                <ErrorFallback message="The terminal panel hit an error." onRetry={reset} />
+              )}
+            >
+              <TerminalLayer />
+            </ErrorBoundary>
           </div>
         </>
       ) : (
