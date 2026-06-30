@@ -5,7 +5,7 @@ import { relativeCommitDate, type SelectionCommitRow } from "./mergedSelection";
  * (newest first): author initials, summary, "<age> · <author>", short SHA. */
 export function SelectionCommitList({ rows }: { rows: SelectionCommitRow[] }) {
   return (
-    <div className="max-h-48 overflow-auto rounded-xl border border-black/5 dark:border-white/5">
+    <div className="max-h-48 shrink-0 overflow-auto rounded-xl border border-black/5 dark:border-white/5">
       {rows.map((row) => (
         <div
           key={row.id}
