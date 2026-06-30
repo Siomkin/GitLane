@@ -1395,6 +1395,43 @@ describe("repo store — merged selection (GL-69)", () => {
     expect(invokeMock).toHaveBeenCalledWith("selection_diff", { path: "/repo", oids: ["a", "b"] });
   });
 
+  it("retries the union on refresh when the cached one had an error", async () => {
+    // A transient selection_diff failure must not survive ordinary re-syncs.
+    useRepo.setState({
+      selectedCommit: "a",
+      selectedCommits: ["a", "b"],
+      selectionDiff: { commits: ["a", "b"], files: [], loading: false, error: "boom" },
+    });
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" })],
+      head: "a",
+    };
+    const freshFiles = [{ path: "ok.ts", status: "M", add: 1, del: 0, binary: false }];
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(summary);
+        case "commit_graph":
+          return Promise.resolve(graph);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+        case "selection_diff":
+          return Promise.resolve(freshFiles);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().refresh({ prs: false, quiet: true });
+    await flush();
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(diff.error).toBeNull(); // the stale error was cleared
+    expect(diff.files).toEqual(freshFiles); // and the union retried successfully
+    expect(invokeMock).toHaveBeenCalledWith("selection_diff", { path: "/repo", oids: ["a", "b"] });
+  });
+
   it("drops selectionDiff when a refresh collapses the selection to one commit", async () => {
     useRepo.setState({
       selectedCommit: "a",

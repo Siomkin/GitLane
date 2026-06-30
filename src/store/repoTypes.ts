@@ -80,8 +80,9 @@ export interface FileHistoryState {
  * contiguous or not (the backend `selection_diff` composes it). */
 export interface SelectionDiffState {
   /** Selected commit ids (selection order — graph slice for a shift-range, click
-   * order for additive); the union source. The backend re-sorts by committer
-   * time, so the order stored here doesn't affect the merged result. */
+   * order for additive); the union source. The backend re-orders by ancestry
+   * (then committer time for unrelated commits), so the order stored here doesn't
+   * affect the merged result. */
   commits: string[];
   /** Union of files changed across the selection (net status + counts). */
   files: FileChange[];

@@ -573,14 +573,18 @@ export function createRepoLifecycleActions(
         // oid); a changed set is reloaded; a collapse to ≤1 commit drops it.
         const prevDiff = get().selectionDiff;
         const multiNow = selectedCommits.length > 1;
-        const sameUnion =
+        const sameSet =
           multiNow &&
           !!prevDiff &&
           prevDiff.commits.length === selectedCommits.length &&
           selectedCommits.every((id) => prevDiff.commits.includes(id));
+        // Reuse the cached union only when the set is unchanged *and* it
+        // succeeded — a stored error (or an in-flight load that errored) must be
+        // retried on refresh, not carried forward until the user re-selects.
+        const reuseUnion = sameSet && !prevDiff!.error;
         const selectionDiff = !multiNow
           ? null
-          : sameUnion
+          : reuseUnion
             ? // Same commit *set*: keep the files (immutable by oid) but adopt the
               // refreshed order so `selectionDiff.commits` can't drift from
               // `selectedCommits`.
@@ -629,9 +633,10 @@ export function createRepoLifecycleActions(
           ...(gone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
-        // The multi-selection changed across the refresh (commits dropped/added):
-        // reload its merged union. Fire-and-forget so it doesn't delay the queue.
-        if (multiNow && !sameUnion) void loadSelectionUnion(set, get, nextSummary.path, selectedCommits);
+        // The union needs (re)loading whenever we didn't reuse a healthy cached
+        // one — set changed, or a prior error to retry. Fire-and-forget so it
+        // doesn't delay the queue.
+        if (multiNow && !reuseUnion) void loadSelectionUnion(set, get, nextSummary.path, selectedCommits);
         // A full refresh can move branch/commit tips, so re-run any open
         // comparison (ref-to-ref as well as working-tree) to keep it truthful.
         if (get().compare) void get().refreshCompare();

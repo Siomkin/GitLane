@@ -14,8 +14,11 @@ export function reviewSurface(
   selectionCommits: string[] | null,
 ): string {
   if (selectedFile?.source === "commit") {
+    // Sort the oids: the surface identity must be order-independent, since a
+    // refresh re-publishes the same selection focus-first and additive picks
+    // differ from graph order — otherwise comments detach when the order shifts.
     return selectionCommits && selectionCommits.length > 0
-      ? `selection:${selectionCommits.join(",")}`
+      ? `selection:${[...selectionCommits].sort().join(",")}`
       : `commit:${selectedCommit ?? ""}`;
   }
   return `work:${selectedFile?.source ?? "unstaged"}`;

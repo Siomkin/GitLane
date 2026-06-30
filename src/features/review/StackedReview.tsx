@@ -55,8 +55,10 @@ export function StackedReview() {
   const selection = review?.selection ?? null;
   const path = summary?.path ?? null;
   // Notes are scoped to this review (a commit, a base..head range, or a selection).
+  // The selection key is sorted so it's order-independent (matches reviewSurface,
+  // and survives a refresh that reorders the same set).
   const surface = selection
-    ? `selection:${selection.join(",")}`
+    ? `selection:${[...selection].sort().join(",")}`
     : range
       ? `range:${range.base}..${range.head}`
       : `commit:${oid ?? ""}`;

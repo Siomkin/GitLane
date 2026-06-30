@@ -14,6 +14,14 @@ describe("reviewSurface", () => {
     );
   });
 
+  it("keys the selection independent of commit order (notes survive a reorder)", () => {
+    // A refresh re-publishes the same set focus-first; the surface must not change.
+    const a = reviewSurface({ source: "commit" }, "x", ["abc123", "def456"]);
+    const b = reviewSurface({ source: "commit" }, "x", ["def456", "abc123"]);
+    expect(a).toBe(b);
+    expect(a).toBe("selection:abc123,def456");
+  });
+
   it("scopes working-tree files to their staged/unstaged source", () => {
     expect(reviewSurface({ source: "staged" }, null, null)).toBe("work:staged");
     expect(reviewSurface({ source: "unstaged" }, null, null)).toBe("work:unstaged");
