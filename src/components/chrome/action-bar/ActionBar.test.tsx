@@ -235,11 +235,25 @@ describe("ActionBar worktree indicator", () => {
     });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
 
+    // Icon-only chip: the worktree name is carried by the accessible label and
+    // tooltip (the branch trigger to its left already shows the ref), not inline.
     const chip = screen.getByRole("button", { name: /Current worktree repo-wt/ });
-    expect(chip).toHaveTextContent("repo-wt");
     expect(chip).toHaveAttribute("title", expect.stringContaining("/work/repo-wt"));
 
     fireEvent.click(chip);
     expect(useUi.getState().navOpen).toBe(true);
+  });
+
+  it("switches straight back to the main checkout from the back button", () => {
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "/work/repo-wt", workdir: "/work/repo-wt" },
+      worktrees: [MAIN_WT, LINKED_WT],
+      openWorktree,
+    });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to main checkout" }));
+    expect(openWorktree).toHaveBeenCalledWith("/repo");
   });
 });
