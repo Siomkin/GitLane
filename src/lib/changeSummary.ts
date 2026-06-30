@@ -43,23 +43,35 @@ function bucketFor(status: string): Bucket {
 // worktree-delete). Deleted is most significant, then added, then modified.
 const RANK: Record<Bucket, number> = { conflicted: 3, deleted: 2, added: 1, modified: 0 };
 
-export function summarizeChanges(changes: WorkingChanges): ChangeSummary {
-  const byPath = new Map<string, Bucket>();
+// Keep the highest-ranked bucket seen for a path (e.g. staged-add +
+// worktree-delete nets to deleted).
+function rankInto(byPath: Map<string, Bucket>, path: string, bucket: Bucket) {
+  const current = byPath.get(path);
+  if (current === undefined || RANK[bucket] > RANK[current]) byPath.set(path, bucket);
+}
 
-  const consider = (file: FileChange, bucket: Bucket) => {
-    const current = byPath.get(file.path);
-    if (current === undefined || RANK[bucket] > RANK[current]) {
-      byPath.set(file.path, bucket);
-    }
-  };
-
-  for (const file of changes.staged) consider(file, bucketFor(file.status));
-  for (const file of changes.unstaged) consider(file, bucketFor(file.status));
-  for (const file of changes.conflicted ?? []) consider(file, "conflicted");
-
+function countBuckets(byPath: Map<string, Bucket>): ChangeSummary {
   const summary: ChangeSummary = { added: 0, modified: 0, deleted: 0, conflicted: 0 };
   for (const bucket of byPath.values()) summary[bucket] += 1;
   return summary;
+}
+
+export function summarizeChanges(changes: WorkingChanges): ChangeSummary {
+  const byPath = new Map<string, Bucket>();
+  for (const file of changes.staged) rankInto(byPath, file.path, bucketFor(file.status));
+  for (const file of changes.unstaged) rankInto(byPath, file.path, bucketFor(file.status));
+  for (const file of changes.conflicted ?? []) rankInto(byPath, file.path, "conflicted");
+  return countBuckets(byPath);
+}
+
+/** Bucket a flat changed-file list (e.g. a commit range's net `diffRange`) into
+ * the same added/modified/deleted/conflicted counts. A range diff already
+ * carries one net entry per path; the per-path ranking is kept so a list with
+ * an accidental duplicate path is still counted once. */
+export function summarizeFiles(files: FileChange[]): ChangeSummary {
+  const byPath = new Map<string, Bucket>();
+  for (const file of files) rankInto(byPath, file.path, bucketFor(file.status));
+  return countBuckets(byPath);
 }
 
 /** Total distinct changed files — the sum of every bucket. */

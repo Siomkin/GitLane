@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { FileChange, WorkingChanges } from "./api";
-import { changeTotal, summarizeChanges } from "./changeSummary";
+import { changeTotal, summarizeChanges, summarizeFiles } from "./changeSummary";
 
 const file = (path: string, status: FileChange["status"]): FileChange => ({
   path,
@@ -61,5 +61,27 @@ describe("summarizeChanges", () => {
 
   it("changeTotal sums every bucket", () => {
     expect(changeTotal({ added: 2, modified: 14, deleted: 1, conflicted: 0 })).toBe(17);
+  });
+});
+
+describe("summarizeFiles", () => {
+  it("buckets a flat range diff's net statuses (rename/typechange → modified)", () => {
+    const summary = summarizeFiles([
+      file("new.ts", "A"),
+      file("edit.ts", "M"),
+      file("moved.ts", "R"),
+      file("kind.ts", "T"),
+      file("gone.ts", "D"),
+    ]);
+    expect(summary).toEqual({ added: 1, modified: 3, deleted: 1, conflicted: 0 });
+  });
+
+  it("counts a duplicated path once, keeping the higher-ranked status", () => {
+    const summary = summarizeFiles([file("x", "A"), file("x", "D")]);
+    expect(summary).toEqual({ added: 0, modified: 0, deleted: 1, conflicted: 0 });
+  });
+
+  it("is empty for an empty list", () => {
+    expect(summarizeFiles([])).toEqual({ added: 0, modified: 0, deleted: 0, conflicted: 0 });
   });
 });

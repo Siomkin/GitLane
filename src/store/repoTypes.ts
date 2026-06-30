@@ -74,6 +74,22 @@ export interface FileHistoryState {
   blameSelectedOid: string | null;
 }
 
+/** The merged diff of a multi-commit selection (GL-68). Present only while more
+ * than one commit is selected; `range` drives the aggregated view for a
+ * contiguous first-parent run (`base..head`), and is null when the selection
+ * isn't such a run — the inspector then shows the "not a contiguous range" hint
+ * (the non-contiguous union is GL-69's follow-up). */
+export interface SelectionDiffState {
+  /** Selected commit ids in graph/display order (newest first). */
+  commits: string[];
+  /** The contiguous range driving the merged file list, or null. */
+  range: { base: string; head: string } | null;
+  /** Union of files changed across the range (net status + counts). */
+  files: FileChange[];
+  loading: boolean;
+  error: string | null;
+}
+
 /** Which two endpoints a compare view is showing. */
 export type CompareScope = "upstream" | "branch" | "commit" | "working";
 
@@ -129,6 +145,9 @@ export interface RepoState {
    * non-null the app surfaces the dedicated conflict-resolution workspace. */
   operation: OperationState | null;
   commitFiles: FileChange[];
+  /** The merged diff for a multi-commit selection (GL-68), or null when a single
+   * commit (or none) is selected — then [`commitFiles`] drives the inspector. */
+  selectionDiff: SelectionDiffState | null;
   fileHistory: FileHistoryState | null;
   /** The active compare surface (branch/commit/working diff), or null. */
   compare: CompareState | null;
@@ -396,6 +415,7 @@ export type RepoDataState = Pick<
   | "changes"
   | "operation"
   | "commitFiles"
+  | "selectionDiff"
   | "fileHistory"
   | "compare"
   | "selectedFile"
@@ -439,6 +459,7 @@ export function createInitialRepoData(
     changes: emptyChanges,
     operation: null,
     commitFiles: [],
+    selectionDiff: null,
     fileHistory: null,
     compare: null,
     selectedFile: null,

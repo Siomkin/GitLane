@@ -143,6 +143,7 @@ export function createRepoLifecycleActions(
         // history/compare view mounted against the new (or null) summary.
         fileHistory: null,
         compare: null,
+        selectionDiff: null,
         graphLimit: INITIAL_GRAPH_LIMIT,
         loadingMoreHistory: false,
       });
@@ -277,7 +278,9 @@ export function createRepoLifecycleActions(
           selectedCommit,
           selectedCommits: honorPrior ? get().selectedCommits : selectedCommit ? [selectedCommit] : [],
           selectionAnchor: honorPrior ? get().selectionAnchor : selectedCommit,
-          ...(honorPrior ? {} : { commitFiles: [], revealTarget: null }),
+          // Honoring the prior selection keeps its merged diff (immutable by oid);
+          // collapsing to a single default commit drops it.
+          ...(honorPrior ? {} : { commitFiles: [], selectionDiff: null, revealTarget: null }),
           graphLimit: INITIAL_GRAPH_LIMIT,
           graphLoading: false,
           loading: false,
@@ -335,6 +338,7 @@ export function createRepoLifecycleActions(
           changes: emptyChanges,
           operation: null,
           commitFiles: [],
+          selectionDiff: null,
           selectedCommit: null,
           selectedCommits: [],
           selectionAnchor: null,
@@ -379,6 +383,7 @@ export function createRepoLifecycleActions(
         changes: emptyChanges,
         operation: null,
         commitFiles: [],
+        selectionDiff: null,
         selectedCommit: null,
         selectedCommits: [],
         selectionAnchor: null,
