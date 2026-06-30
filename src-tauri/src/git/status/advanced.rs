@@ -323,20 +323,29 @@ fn sparse_checkout_state(repo: &Repository) -> SparseCheckoutState {
         .and_then(|cfg| cfg.get_bool("core.sparseCheckoutCone").ok())
         .map(|cone| if cone { "cone" } else { "pattern" }.to_string());
 
-    let patterns = if enabled {
+    let (patterns, truncated) = if enabled {
         sparse_patterns(repo)
     } else {
-        Vec::new()
+        (Vec::new(), false)
     };
 
     SparseCheckoutState {
         enabled,
         mode,
         patterns,
+        truncated,
     }
 }
 
-fn sparse_patterns(repo: &Repository) -> Vec<String> {
+/// Upper bound on sparse patterns shipped to the frontend. Realistic cone
+/// checkouts stay well under this; the cap only guards against a pathological
+/// sparse-checkout file inflating every status payload. Beyond it the list is
+/// reported as `truncated` so the frontend stops trusting it for write guards.
+const SPARSE_PATTERN_CAP: usize = 256;
+
+/// Returns the (possibly capped) sparse-checkout patterns and whether the file
+/// held more than `SPARSE_PATTERN_CAP` of them.
+fn sparse_patterns(repo: &Repository) -> (Vec<String>, bool) {
     let gitdir = repo.path();
     let common_dir = PathBuf::from(repo.commondir());
     let candidates = [
@@ -348,14 +357,16 @@ fn sparse_patterns(repo: &Repository) -> Vec<String> {
         let Ok(contents) = std::fs::read_to_string(candidate) else {
             continue;
         };
-        return contents
+        let mut patterns: Vec<String> = contents
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .take(12)
             .map(str::to_string)
             .collect();
+        let truncated = patterns.len() > SPARSE_PATTERN_CAP;
+        patterns.truncate(SPARSE_PATTERN_CAP);
+        return (patterns, truncated);
     }
 
-    Vec::new()
+    (Vec::new(), false)
 }

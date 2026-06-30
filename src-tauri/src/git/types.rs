@@ -352,6 +352,12 @@ pub struct SparseCheckoutState {
     pub enabled: bool,
     pub mode: Option<String>,
     pub patterns: Vec<String>,
+    /// True when `patterns` is a prefix of a longer sparse-checkout file (capped
+    /// for payload size). The frontend must not treat a non-match against a
+    /// truncated list as "outside sparse checkout" — a later, unsent pattern may
+    /// include the path — so it falls back to the authoritative per-file
+    /// skip-worktree annotation instead of pattern matching.
+    pub truncated: bool,
 }
 
 /// Advanced repository features that are read-only indicators for now.

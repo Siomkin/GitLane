@@ -275,7 +275,32 @@ fn working_changes_reports_sparse_checkout_state() {
         Some("cone")
     );
     assert_eq!(changes.advanced.sparse_checkout.patterns[0], "src/");
-    assert!(changes.advanced.sparse_checkout.enabled);
+    assert!(!changes.advanced.sparse_checkout.truncated);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn working_changes_flags_truncated_sparse_pattern_list() {
+    let dir = std::env::temp_dir().join("gitlane-sparse-truncated-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+
+    let mut config = repo.config().unwrap();
+    config.set_bool("core.sparseCheckout", true).unwrap();
+    fs::create_dir_all(dir.join(".git/info")).unwrap();
+    // More patterns than the cap so the list is reported as a truncated prefix.
+    let body: String = (0..300).map(|i| format!("dir{i}/\n")).collect();
+    fs::write(dir.join(".git/info/sparse-checkout"), body).unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    let sparse = &changes.advanced.sparse_checkout;
+    assert!(sparse.enabled);
+    assert!(sparse.truncated);
+    assert_eq!(sparse.patterns.len(), 256);
+    assert_eq!(sparse.patterns[0], "dir0/");
 
     let _ = fs::remove_dir_all(&dir);
 }
