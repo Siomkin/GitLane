@@ -1,7 +1,16 @@
 import { api } from "../lib/api";
+import { loadSelectionUnion } from "./repoSelectionDiff";
 import { computeSelection } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
+
+/** Order-independent identity of a multi-commit selection. The union is
+ * order-independent (the backend re-sorts by ancestry) and `refresh` can
+ * re-publish the same set reordered, so a stale-response guard must compare the
+ * *set* — an order-sensitive key would make a slow per-file fetch bail and leave
+ * the diff pane stuck on `loading`. */
+const selectionKey = (commits?: string[] | null): string | null =>
+  commits ? [...commits].sort().join(",") : null;
 
 export function createRepoSelectionActions(
   set: RepoSet,
@@ -61,6 +70,11 @@ export function createRepoSelectionActions(
         mods,
       );
 
+      // More than one commit selected → the inspector shows a merged ("union")
+      // diff across the whole selection (GL-68/GL-69): the net change per file,
+      // for any selection (contiguous or not — the backend composes it).
+      const multi = selectedCommits.length > 1;
+
       set({
         selectedCommit: focus,
         selectedCommits,
@@ -71,19 +85,38 @@ export function createRepoSelectionActions(
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
+        selectionDiff: multi
+          ? { commits: selectedCommits, files: [], loading: true, error: null }
+          : null,
         error: null,
       });
-      if (!summary || !focus) return;
+      if (!summary) return;
+
+      if (multi) {
+        // Fetch the union behind a stale-response guard (shared with `refresh`).
+        await loadSelectionUnion(set, get, summary.path, selectedCommits);
+        return;
+      }
+
+      if (!focus) return;
+      const repoPath = summary.path;
+      // Don't let a single-commit fetch publish into a newer selection or a
+      // different repo (a slow reject after a repo switch must not flash a stale
+      // error onto the new repo's view).
+      const fresh = () =>
+        get().summary?.path === repoPath && !get().selectionDiff && get().selectedCommit === focus;
       set({ diffLoading: true });
       try {
-        const files = await api.commitFiles(summary.path, focus);
+        const files = await api.commitFiles(repoPath, focus);
+        if (!fresh()) return;
         set({ commitFiles: files, diffLoading: false });
       } catch (e) {
+        if (!fresh()) return;
         set({ diffLoading: false, error: String(e) });
       }
     },
 
-    clearSelection: () => set({ selectedCommits: [], selectionAnchor: null }),
+    clearSelection: () => set({ selectedCommits: [], selectionAnchor: null, selectionDiff: null }),
 
     // Select the WIP node — like selecting a commit, but it inspects the working
     // changes in the right panel instead of opening the changes/review view.
@@ -95,40 +128,66 @@ export function createRepoSelectionActions(
         selectedCommit: null,
         selectedCommits: [],
         selectionAnchor: null,
+        selectionDiff: null,
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
       }),
 
     selectFile: async (path, source) => {
-      const { summary, selectedCommit } = get();
+      const { summary, selectedCommit, selectionDiff } = get();
       if (!summary) return;
+      const repoPath = summary.path;
+      // Selection identity at request time. A selection change nulls
+      // `selectedFile`, but switching between two multi-selections that share a
+      // file path keeps the path — so also pin the union's commit set, or a slow
+      // response could publish the wrong selection's merged diff for that file.
+      const selKey = selectionKey(selectionDiff?.commits);
+      const fresh = () =>
+        get().summary?.path === repoPath &&
+        get().selectedFile?.path === path &&
+        selectionKey(get().selectionDiff?.commits) === selKey;
       set({ selectedFile: { path, source }, diffLoading: true, error: null });
       try {
+        // In a multi-commit selection a committed file's diff is the merged
+        // ("union") diff across the whole selection, not the focus commit (GL-69).
         const fileDiff =
-          source === "commit" && selectedCommit
-            ? await api.commitFileDiff(summary.path, selectedCommit, path)
-            : await api.fileDiff(summary.path, path, source === "staged");
+          source === "commit" && selectionDiff
+            ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path)
+            : source === "commit" && selectedCommit
+              ? await api.commitFileDiff(repoPath, selectedCommit, path)
+              : await api.fileDiff(repoPath, path, source === "staged");
+        if (!fresh()) return;
         set({ fileDiff, diffLoading: false });
       } catch (e) {
+        if (!fresh()) return;
         set({ diffLoading: false, error: String(e) });
       }
     },
 
     loadFullFileDiff: async () => {
-      const { summary, selectedFile, selectedCommit } = get();
+      const { summary, selectedFile, selectedCommit, selectionDiff } = get();
       if (!summary || !selectedFile) return;
       const { path, source } = selectedFile;
+      const repoPath = summary.path;
+      const selKey = selectionKey(selectionDiff?.commits);
+      const fresh = () =>
+        get().summary?.path === repoPath &&
+        get().selectedFile?.path === path &&
+        selectionKey(get().selectionDiff?.commits) === selKey;
       set({ diffLoading: true });
       try {
         const fileDiff =
-          source === "commit" && selectedCommit
-            ? await api.commitFileDiff(summary.path, selectedCommit, path, true)
-            : await api.fileDiff(summary.path, path, source === "staged", true);
-        // Guard against a selection change while the larger diff was building.
-        if (get().selectedFile?.path !== path) return;
+          source === "commit" && selectionDiff
+            ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path, true)
+            : source === "commit" && selectedCommit
+              ? await api.commitFileDiff(repoPath, selectedCommit, path, true)
+              : await api.fileDiff(repoPath, path, source === "staged", true);
+        // Guard against a selection/file change while the larger diff was building.
+        if (!fresh()) return;
         set({ fileDiff, diffLoading: false });
       } catch (e) {
+        if (!fresh()) return;
         set({ diffLoading: false, error: String(e) });
       }
     },

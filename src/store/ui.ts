@@ -250,13 +250,17 @@ interface UiState {
   createBranchStart: string | null;
   /** When set, the center pane shows a stacked all-files review for this oid
    * (a commit or a stash commit), or — when `range` is set — the combined diff
-   * of the base..head range. */
+   * of the base..head range, or — when `selection` is set — the merged ("union")
+   * diff across a multi-commit selection. */
   stackedReview: {
     oid: string;
     title: string;
     /** When present, fetch via diffRange/diffRangeFile instead of the single-oid
      * commit helpers. `oid` is reused as the head of the range for titling. */
     range?: { base: string; head: string };
+    /** When present, fetch via selectionDiff/selectionDiffFile — the merged diff
+     * across these commit oids (GL-69). `oid` is reused as a stable cache key. */
+    selection?: string[];
   } | null;
 
   prFilter: PrFilter;
@@ -370,6 +374,8 @@ interface UiState {
   openStackedReview: (oid: string, title: string) => void;
   /** Open the stacked review for a commit range (base..head combined diff). */
   openRangeReview: (base: string, head: string, title: string) => void;
+  /** Open the stacked review for the merged diff across a multi-commit selection. */
+  openSelectionReview: (commits: string[], title: string) => void;
   closeStackedReview: () => void;
 
   setPrFilter: (filter: PrFilter) => void;
@@ -602,6 +608,8 @@ export const useUi = create<UiState>()(
   openStackedReview: (oid, title) => set({ ...noMenus, stackedReview: { oid, title } }),
   openRangeReview: (base, head, title) =>
     set({ ...noMenus, stackedReview: { oid: head, title, range: { base, head } } }),
+  openSelectionReview: (commits, title) =>
+    set({ ...noMenus, stackedReview: { oid: commits[0] ?? "", title, selection: commits } }),
   closeStackedReview: () => set({ stackedReview: null }),
 
   setPrFilter: (filter) => {

@@ -26,6 +26,7 @@ import {
   type LineRowComments,
 } from "./comments";
 import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diffRows";
+import { reviewSurface } from "./reviewSurface";
 import { hunkBody, hunkPatchUnavailableReason, lineStagePatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { StatusPill } from "@/components/ui/StatusBadge";
@@ -49,15 +50,15 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const applyLine = useRepo((state) => state.applyLine);
   const clearSelectedFile = useRepo((state) => state.clearSelectedFile);
   const selectedCommit = useRepo((state) => state.selectedCommit);
+  const selectionDiff = useRepo((state) => state.selectionDiff);
   const changes = useRepo((state) => state.changes);
   const [mode, setMode] = useState<DiffMode>("unified");
   // Notes are scoped to the diff surface — and, for the working tree, to the
   // staged vs unstaged source — so a comment never reattaches to the same file
-  // viewed in a different diff (the staged and unstaged sides have distinct refs).
-  const surface =
-    selectedFile?.source === "commit"
-      ? `commit:${selectedCommit ?? ""}`
-      : `work:${selectedFile?.source ?? "unstaged"}`;
+  // viewed in a different diff. A committed file shown as part of a multi-commit
+  // selection scopes to the whole selection (matching StackedReview), not the
+  // focus commit, since the diff is the union — not that one commit's.
+  const surface = reviewSurface(selectedFile, selectedCommit, selectionDiff?.commits ?? null);
   // A rename/copy comes back from a single-file (pathspec) diff as an added patch,
   // so partial-staging would split the rename — offer only whole-file staging.
   const changeFile =

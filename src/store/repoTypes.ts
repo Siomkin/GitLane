@@ -74,6 +74,22 @@ export interface FileHistoryState {
   blameSelectedOid: string | null;
 }
 
+/** The merged ("union") diff of a multi-commit selection (GL-68/GL-69). Present
+ * only while more than one commit is selected. `files` is the union of changes
+ * across the whole selection — the net change per file — for any selection,
+ * contiguous or not (the backend `selection_diff` composes it). */
+export interface SelectionDiffState {
+  /** Selected commit ids (selection order — graph slice for a shift-range, click
+   * order for additive); the union source. The backend re-orders by ancestry
+   * (then committer time for unrelated commits), so the order stored here doesn't
+   * affect the merged result. */
+  commits: string[];
+  /** Union of files changed across the selection (net status + counts). */
+  files: FileChange[];
+  loading: boolean;
+  error: string | null;
+}
+
 /** Which two endpoints a compare view is showing. */
 export type CompareScope = "upstream" | "branch" | "commit" | "working";
 
@@ -129,6 +145,9 @@ export interface RepoState {
    * non-null the app surfaces the dedicated conflict-resolution workspace. */
   operation: OperationState | null;
   commitFiles: FileChange[];
+  /** The merged diff for a multi-commit selection (GL-68), or null when a single
+   * commit (or none) is selected — then [`commitFiles`] drives the inspector. */
+  selectionDiff: SelectionDiffState | null;
   fileHistory: FileHistoryState | null;
   /** The active compare surface (branch/commit/working diff), or null. */
   compare: CompareState | null;
@@ -396,6 +415,7 @@ export type RepoDataState = Pick<
   | "changes"
   | "operation"
   | "commitFiles"
+  | "selectionDiff"
   | "fileHistory"
   | "compare"
   | "selectedFile"
@@ -439,6 +459,7 @@ export function createInitialRepoData(
     changes: emptyChanges,
     operation: null,
     commitFiles: [],
+    selectionDiff: null,
     fileHistory: null,
     compare: null,
     selectedFile: null,

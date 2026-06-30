@@ -55,6 +55,49 @@ fn line_for(line: &git2::DiffLine) -> DiffLine {
 /// an explicit "show full diff" that re-requests it uncapped.
 pub const DIFF_LINE_LIMIT: usize = 20_000;
 
+/// Render one `Patch` (from a tree diff or a blob pair) into accurate add/del
+/// totals plus capped hunks. `add`/`del` come from `line_stats` so the +/− pills
+/// stay truthful even when `hunks` is truncated at `limit`. Skips libgit2's
+/// "\ No newline" pseudo-lines so the line indices match the staging backend.
+pub(super) fn render_patch(
+    patch: &Patch,
+    limit: usize,
+) -> Result<(usize, usize, Vec<DiffHunk>, bool), git2::Error> {
+    let (_ctx, add, del) = patch.line_stats()?;
+
+    let mut hunks = Vec::new();
+    let mut truncated = false;
+    let mut collected = 0usize;
+    for h in 0..patch.num_hunks() {
+        let (hunk, line_count) = patch.hunk(h)?;
+        let header = {
+            let raw = String::from_utf8_lossy(hunk.header());
+            raw.trim_end_matches('\n').trim_end_matches('\r').to_string()
+        };
+        let mut lines = Vec::new();
+        for l in 0..line_count {
+            let dl = patch.line_in_hunk(h, l)?;
+            if matches!(dl.origin(), '=' | '>' | '<') {
+                continue;
+            }
+            if collected >= limit {
+                truncated = true;
+                break;
+            }
+            lines.push(line_for(&dl));
+            collected += 1;
+        }
+        if !lines.is_empty() {
+            hunks.push(DiffHunk { header, lines });
+        }
+        if truncated {
+            break;
+        }
+    }
+
+    Ok((add, del, hunks, truncated))
+}
+
 /// Convert a `git2::Diff` into one `FileDiff` per delta, capping each file's
 /// rendered lines at `limit` (`usize::MAX` for an uncapped "show full" request).
 ///
@@ -108,56 +151,11 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
             (None, None, None, None)
         };
 
-        let mut add = 0usize;
-        let mut del = 0usize;
-        let mut hunks = Vec::new();
-        let mut truncated = false;
-
-        // `patch` is `None` for binary deltas, so this whole block is skipped for
-        // them — no line stats, no hunks.
-        if let Some(patch) = patch {
-            // Accurate add/del totals regardless of the content cap below, so
-            // the +/- pills reflect the whole change even when truncated.
-            let (_ctx, additions, deletions) = patch.line_stats()?;
-            add = additions;
-            del = deletions;
-
-            let num_hunks = patch.num_hunks();
-            let mut collected = 0usize;
-            for h in 0..num_hunks {
-                let (hunk, line_count) = patch.hunk(h)?;
-                let header = {
-                    let raw = String::from_utf8_lossy(hunk.header());
-                    raw.trim_end_matches('\n')
-                        .trim_end_matches('\r')
-                        .to_string()
-                };
-                let mut lines = Vec::new();
-                for l in 0..line_count {
-                    let dl = patch.line_in_hunk(h, l)?;
-                    // Skip libgit2's "\ No newline at end of file" marker
-                    // pseudo-lines (origins '=' / '>' / '<'); content lines
-                    // always use ' ' / '+' / '-'. The staging backend filters
-                    // these markers too, so emitting them would misalign the
-                    // line indices and hunk-body comparison used for staging.
-                    if matches!(dl.origin(), '=' | '>' | '<') {
-                        continue;
-                    }
-                    if collected >= limit {
-                        truncated = true;
-                        break;
-                    }
-                    lines.push(line_for(&dl));
-                    collected += 1;
-                }
-                if !lines.is_empty() {
-                    hunks.push(DiffHunk { header, lines });
-                }
-                if truncated {
-                    break;
-                }
-            }
-        }
+        // `patch` is `None` for binary deltas, so they stay at 0/0 with no hunks.
+        let (add, del, hunks, truncated) = match patch {
+            Some(patch) => render_patch(&patch, limit)?,
+            None => (0, 0, Vec::new(), false),
+        };
 
         out.push(FileDiff {
             path,

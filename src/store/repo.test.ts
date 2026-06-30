@@ -1346,3 +1346,200 @@ describe("repo store — openWorktree", () => {
     expect(useRepo.getState().selectedCommit).toBe("tip");
   });
 });
+
+describe("repo store — merged selection (GL-69)", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("re-fetches the union when a refresh trims the multi-selection", async () => {
+    // Start with a 3-commit union; the refresh's graph drops commit "c".
+    useRepo.setState({
+      selectedCommit: "a",
+      selectedCommits: ["a", "b", "c"],
+      selectionDiff: {
+        commits: ["a", "b", "c"],
+        files: [{ path: "stale.ts", status: "M", add: 1, del: 0, binary: false }],
+        loading: false,
+        error: null,
+      },
+    });
+    const trimmedGraph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" })],
+      head: "a",
+    };
+    const freshFiles = [{ path: "fresh.ts", status: "A", add: 2, del: 0, binary: false }];
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(summary);
+        case "commit_graph":
+          return Promise.resolve(trimmedGraph);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+        case "selection_diff":
+          return Promise.resolve(freshFiles);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().refresh({ prs: false, quiet: true });
+    await flush(); // the union re-fetch is fire-and-forget
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(useRepo.getState().selectedCommits).toEqual(["a", "b"]);
+    expect(diff.commits).toEqual(["a", "b"]);
+    expect(diff.files).toEqual(freshFiles);
+    expect(diff.loading).toBe(false);
+    // The union was reloaded for the trimmed set, not the stale [a,b,c].
+    expect(invokeMock).toHaveBeenCalledWith("selection_diff", { path: "/repo", oids: ["a", "b"] });
+  });
+
+  it("retries the union on refresh when the cached one had an error", async () => {
+    // A transient selection_diff failure must not survive ordinary re-syncs.
+    useRepo.setState({
+      selectedCommit: "a",
+      selectedCommits: ["a", "b"],
+      selectionDiff: { commits: ["a", "b"], files: [], loading: false, error: "boom" },
+    });
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" })],
+      head: "a",
+    };
+    const freshFiles = [{ path: "ok.ts", status: "M", add: 1, del: 0, binary: false }];
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(summary);
+        case "commit_graph":
+          return Promise.resolve(graph);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+        case "selection_diff":
+          return Promise.resolve(freshFiles);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().refresh({ prs: false, quiet: true });
+    await flush();
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(diff.error).toBeNull(); // the stale error was cleared
+    expect(diff.files).toEqual(freshFiles); // and the union retried successfully
+    expect(invokeMock).toHaveBeenCalledWith("selection_diff", { path: "/repo", oids: ["a", "b"] });
+  });
+
+  it("drops selectionDiff when a refresh collapses the selection to one commit", async () => {
+    useRepo.setState({
+      selectedCommit: "a",
+      selectedCommits: ["a", "b"],
+      selectionDiff: { commits: ["a", "b"], files: [], loading: false, error: null },
+    });
+    const oneLeft: RepoGraph = { ...emptyGraph, commits: [node({ id: "a", shortId: "a" })], head: "a" };
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "open_repo"
+        ? Promise.resolve(summary)
+        : cmd === "commit_graph"
+          ? Promise.resolve(oneLeft)
+          : cmd === "working_changes"
+            ? Promise.resolve({ staged: [], unstaged: [], conflicted: [] })
+            : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().refresh({ prs: false, quiet: true });
+    await flush();
+
+    expect(useRepo.getState().selectedCommits).toEqual(["a"]);
+    expect(useRepo.getState().selectionDiff).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith("selection_diff", expect.anything());
+  });
+
+  it("still publishes the union if a refresh reorders the same selection mid-fetch", async () => {
+    // The stuck-loading regression: a background refresh re-publishes the same
+    // commit *set* in a different order while the union fetch is in flight. The
+    // resolved fetch must still publish (set-based guard), not bail on order.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" })],
+      head: "a",
+    };
+    useRepo.setState({ graph, selectedCommit: null, selectedCommits: [], selectionAnchor: null, selectionDiff: null });
+    const slow = deferred<unknown>();
+    const files = [{ path: "u.ts", status: "M", add: 1, del: 0, binary: false }];
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "selection_diff" ? slow.promise : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().selectCommitMulti("a", {}); // single
+    const pending = useRepo.getState().selectCommitMulti("b", { additive: true }); // [a,b] — union in flight
+    // A refresh re-publishes the same set reordered (focus-first), no re-fetch.
+    useRepo.setState({
+      selectedCommits: ["b", "a"],
+      selectionDiff: { commits: ["b", "a"], files: [], loading: true, error: null },
+    });
+    slow.resolve(files);
+    await pending;
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(diff.loading).toBe(false); // not stuck
+    expect(diff.files).toEqual(files); // published despite the reorder
+  });
+
+  it("publishes only the latest union when selections change rapidly", async () => {
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" }), node({ id: "c", shortId: "c" })],
+      head: "a",
+    };
+    useRepo.setState({ graph, selectedCommit: null, selectedCommits: [], selectionAnchor: null, selectionDiff: null });
+
+    const slow = deferred<unknown>();
+    const filesAB = [{ path: "ab.ts", status: "M", add: 1, del: 0, binary: false }];
+    const filesABC = [{ path: "abc.ts", status: "A", add: 2, del: 0, binary: false }];
+    let selectionCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "selection_diff") {
+        selectionCalls += 1;
+        // First union ([a,b]) is slow; the second ([a,b,c]) resolves immediately.
+        return selectionCalls === 1 ? slow.promise : Promise.resolve(filesABC);
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().selectCommitMulti("a", {}); // single
+    const pending = useRepo.getState().selectCommitMulti("b", { additive: true }); // [a,b] — slow union
+    await useRepo.getState().selectCommitMulti("c", { additive: true }); // [a,b,c] — fast union publishes
+    slow.resolve(filesAB); // the stale [a,b] union lands late
+    await pending;
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(diff.commits).toEqual(["a", "b", "c"]);
+    expect(diff.files).toEqual(filesABC); // the stale [a,b] result was discarded
+  });
+
+  it("selectFile ignores a stale union diff after the selection set changes", async () => {
+    useRepo.setState({
+      selectedCommits: ["a", "b"],
+      selectionDiff: { commits: ["a", "b"], files: [], loading: false, error: null },
+      selectedFile: null,
+      fileDiff: null,
+    });
+    const slow = deferred<unknown>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "selection_diff_file" ? slow.promise : defaultInvoke(cmd),
+    );
+
+    const pending = useRepo.getState().selectFile("x.ts", "commit");
+    // A new multi-selection lands (same file path, different commit set) before
+    // the in-flight per-file diff resolves.
+    useRepo.setState({ selectionDiff: { commits: ["a", "c"], files: [], loading: false, error: null } });
+    slow.resolve({ path: "x.ts", status: "M", add: 9, del: 9, binary: false, hunks: [], truncated: false });
+    await pending;
+
+    // The stale diff must not publish over the newer selection.
+    expect(useRepo.getState().fileDiff).toBeNull();
+  });
+});
