@@ -7,6 +7,14 @@
 // interface (in `git.ts` / `github.ts`) stays the *type* source of truth so its
 // rich field docs survive. The `assertEqual` guards at the bottom fail the build
 // if the two ever diverge — so a field added to one must be added to the other.
+//
+// Unknown fields are *stripped*, not rejected: these objects use Zod's default
+// `.strip()` (no `.strict()`) deliberately. A newer backend that adds a field
+// must not throw on an older frontend — forward-compat is preferred over
+// fail-fast here. Drift that actually matters (a field a consumer relies on)
+// still can't slip through: `assertEqual` fails the build when schema and
+// interface diverge. The strip only silences backend-only additions the
+// frontend doesn't read yet, which is the safe direction to be lenient in.
 
 import { z } from "zod";
 import type {

@@ -3,11 +3,15 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 interface ErrorBoundaryProps {
   children: ReactNode;
   /** Renders the fallback for a caught render/commit error. `reset()` clears the
-   * boundary so `children` re-mount and the failed subtree retries. */
+   * error so `children` render again and the failed subtree retries. It clears
+   * state only — it does not change a React key, so a child that throws on every
+   * render re-enters the fallback immediately unless its props/`resetKeys`
+   * change. */
   fallback: (args: { error: Error; reset: () => void }) => ReactNode;
-  /** Re-mount `children` (clearing the error) whenever any entry changes by
+  /** Clear the error and re-render `children` whenever any entry changes by
    * identity — pass the values that select what's rendered (repo path, active
-   * tab, PR number) so navigating away from a crashed view recovers on its own. */
+   * tab, PR number, selected entity) so navigating away from a crashed view
+   * recovers on its own. */
   resetKeys?: readonly unknown[];
   /** Side channel for logging/telemetry. Must not throw. */
   onError?: (error: Error, info: ErrorInfo) => void;
@@ -36,7 +40,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidUpdate(prev: ErrorBoundaryProps) {
     // Clear a caught error when the caller's reset keys change, so switching
-    // repo/tab/PR re-mounts the subtree without an explicit retry click.
+    // repo/tab/PR/entity re-renders the subtree without an explicit retry click.
     if (this.state.error && !shallowEqual(prev.resetKeys, this.props.resetKeys)) {
       this.setState({ error: null });
     }

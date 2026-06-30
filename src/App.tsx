@@ -68,6 +68,7 @@ const App = () => {
   const refresh = useRepo((state) => state.refresh);
   const loadAccounts = useAccounts((state) => state.loadAccounts);
   const stackedReview = useUi((state) => state.stackedReview);
+  const prSelected = useUi((state) => state.prSelected);
   const changesAll = useUi((state) => state.changesAll);
   const setChangesAll = useUi((state) => state.setChangesAll);
   const theme = useResolvedTheme();
@@ -189,9 +190,29 @@ const App = () => {
   // Every center workspace mounts through here, so one boundary contains a
   // render-time crash in any of them (History/Changes/Review/PR/Conflict/…) to
   // the center pane — the toolbar, side panels, and terminal stay interactive.
+  // Scope note: this catches *render/commit-time* throws only. An async/IPC
+  // failure (e.g. an IpcValidationError from a store action) is caught in the
+  // store and surfaced through the global `error` banner above — it never reaches
+  // this fallback. So GL-56 (this boundary) and GL-57 (IPC validation) meet only
+  // when bad data slips past validation and crashes a render.
+  //
+  // The reset keys carry both the view *kind* (`centerKey`) and the per-view
+  // *content* discriminant, so a crash contained in one PR/file/diff clears when
+  // you navigate to another within the same kind — not only on a repo or
+  // kind switch. The boundary only acts on these while it's actually errored
+  // (componentDidUpdate), so the extra entries are inert in the happy path.
   const center = (
     <ErrorBoundary
-      resetKeys={[summary?.path, centerKey]}
+      resetKeys={[
+        summary?.path,
+        centerKey,
+        prSelected,
+        selectedFile?.path,
+        compare?.base,
+        compare?.head,
+        fileHistory?.path,
+        stackedReview?.oid,
+      ]}
       fallback={({ error, reset }) => (
         <ErrorFallback
           message={`Something went wrong in this view.\n${error.message}`}
