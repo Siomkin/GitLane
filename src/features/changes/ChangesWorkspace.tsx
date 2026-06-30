@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type FileChange, type FileDiff, type WorkingChanges } from "../../lib/api";
 import { advancedNotices, fileWriteGuard, findGuardedFile } from "../../lib/advancedRepoState";
 import { cn } from "../../lib/cn";
+import { summarizeChanges } from "../../lib/changeSummary";
 import { control } from "../../lib/ui";
 import { basename, dirname } from "../../lib/paths";
 import { useLazyDiffs } from "../../hooks/useLazyDiffs";
@@ -14,6 +15,7 @@ import { BinaryDiff } from "../review/BinaryDiff";
 import { HandToAgentBar } from "../review/comments";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
+import { ChangeTypeCounts } from "./ChangeTypeCounts";
 
 // Working-tree notes are scoped per source (so a staged diff's refs don't share
 // with the unstaged diff's); a file's surface is `work:<source>` and the bar
@@ -97,6 +99,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
         <span className="text-[14px] font-semibold text-neutral-800 dark:text-neutral-100">
           Reviewing {total} changed {total === 1 ? "file" : "files"}
         </span>
+        <ChangeTypeCounts summary={summarizeChanges(changes)} className="flex-none" />
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-neutral-400">Tick a file to stage it</span>
           <button

@@ -963,6 +963,54 @@ fn apply_hunk_stages_deleted_file_hunk() {
 }
 
 #[test]
+fn stage_files_stages_a_folder_including_a_deletion() {
+    let repo = TempRepo::new("stage-files-folder");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::create_dir_all(repo.0.join("src/app")).unwrap();
+    std::fs::write(repo.0.join("src/app/keep.txt"), "one\n").unwrap();
+    std::fs::write(repo.0.join("src/app/gone.txt"), "bye\n").unwrap();
+    std::fs::write(repo.0.join("root.txt"), "root\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+
+    // A folder with an edit + a deletion, plus an unrelated edit outside it.
+    std::fs::write(repo.0.join("src/app/keep.txt"), "ONE\n").unwrap();
+    std::fs::remove_file(repo.0.join("src/app/gone.txt")).unwrap();
+    std::fs::write(repo.0.join("root.txt"), "ROOT\n").unwrap();
+
+    // Roll up just the folder's files (the bulk-stage callback passes explicit paths).
+    stage_files(
+        repo.path(),
+        &["src/app/keep.txt".into(), "src/app/gone.txt".into()],
+    )
+    .expect("stage the folder's files");
+
+    let staged = repo.git(&["diff", "--cached", "--name-status"]);
+    let staged_text = String::from_utf8_lossy(&staged.stdout);
+    // The folder's edit and deletion are both staged (-A reaches removals too)…
+    assert!(staged_text.contains("M\tsrc/app/keep.txt"), "{staged_text}");
+    assert!(staged_text.contains("D\tsrc/app/gone.txt"), "{staged_text}");
+    // …and the file outside the folder is left in the working tree.
+    assert!(!staged_text.contains("root.txt"), "{staged_text}");
+}
+
+#[test]
+fn stage_files_with_no_paths_is_a_noop() {
+    let repo = TempRepo::new("stage-files-empty");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("root.txt"), "root\n").unwrap();
+
+    // Empty set returns Ok without invoking git (mirrors unstage_files).
+    assert_eq!(stage_files(repo.path(), &[]).unwrap(), "");
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty());
+}
+
+#[test]
 fn apply_hunk_rejects_stale_hunk_header() {
     let repo = TempRepo::new("stale-hunk");
     repo.git_ok(&["init", "-q"]);

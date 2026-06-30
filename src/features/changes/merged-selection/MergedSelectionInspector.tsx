@@ -1,10 +1,9 @@
 import { useState, type MouseEvent } from "react";
-import { cn } from "../../../lib/cn";
 import { summarizeFiles } from "../../../lib/changeSummary";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
 import { ChangeTypeCounts } from "../ChangeTypeCounts";
-import { MergedFileList, type FileListView } from "./MergedFileList";
+import { ChangedFileList, FileViewToggle, type FileListView } from "../file-list";
 import { SelectionCommitList } from "./SelectionCommitList";
 import { mergedCommitRows, selectionCountLabel } from "./mergedSelection";
 
@@ -75,7 +74,7 @@ export function MergedSelectionInspector() {
       {files.length > 0 && (
         <div className="flex items-center justify-between">
           <ChangeTypeCounts summary={summarizeFiles(files)} />
-          <Segmented view={view} onChange={setView} />
+          <FileViewToggle view={view} onChange={setView} />
         </div>
       )}
 
@@ -86,7 +85,7 @@ export function MergedSelectionInspector() {
       ) : files.length === 0 ? (
         <p className="px-1 text-[13px] text-neutral-400">No file changes across the selection.</p>
       ) : (
-        <MergedFileList
+        <ChangedFileList
           files={files}
           view={view}
           activePath={activePath}
@@ -94,28 +93,6 @@ export function MergedSelectionInspector() {
           onContextMenu={onContextMenu}
         />
       )}
-    </div>
-  );
-}
-
-/** Path / Tree segmented toggle for the file list — matches the diff view's
- * Unified/Split control idiom. */
-function Segmented({ view, onChange }: { view: FileListView; onChange: (view: FileListView) => void }) {
-  const btn = (active: boolean) =>
-    cn(
-      "px-2.5 h-6 rounded-md",
-      active
-        ? "bg-white dark:bg-neutral-700 shadow-sm font-medium text-neutral-800 dark:text-neutral-100"
-        : "text-neutral-500 dark:text-neutral-400",
-    );
-  return (
-    <div className="flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]">
-      <button className={btn(view === "path")} onClick={() => onChange("path")}>
-        Path
-      </button>
-      <button className={btn(view === "tree")} onClick={() => onChange("tree")}>
-        Tree
-      </button>
     </div>
   );
 }

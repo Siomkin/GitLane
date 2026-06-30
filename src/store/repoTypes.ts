@@ -349,6 +349,10 @@ export interface RepoState {
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;
+  /** Stage every file under a directory at once (Tree-view folder roll-up). */
+  stagePaths: (paths: string[]) => Promise<void>;
+  /** Unstage every file under a directory at once (Tree-view folder roll-up). */
+  unstagePaths: (paths: string[]) => Promise<void>;
   /** Stage one hunk from an unstaged diff, or unstage one hunk from a staged diff. */
   applyHunk: (
     path: string,

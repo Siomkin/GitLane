@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "../../lib/api";
 import { useRepo } from "../../store/repo";
@@ -105,6 +106,22 @@ describe("CommitInspector", () => {
     // Inline feedback replaces the old toast + separate button.
     expect(screen.getByText("Copied")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Copy SHA" })).not.toBeInTheDocument();
+  });
+
+  it("offers a Path/Tree toggle that groups the changed files under a directory header", async () => {
+    const user = userEvent.setup();
+    render(<CommitInspector />);
+
+    // Path mode by default: the basename is listed; no bare "src" directory row
+    // (the flat row shows the dirname as "src/").
+    expect(screen.getByText("stashed.ts")).toBeInTheDocument();
+    expect(screen.queryByText("src")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Tree" }));
+
+    // Tree mode adds the collapsible directory header while keeping the file.
+    expect(screen.getByText("src")).toBeInTheDocument();
+    expect(screen.getByText("stashed.ts")).toBeInTheDocument();
   });
 
   it("synthesises stash metadata from the graph node when the stash list hasn't loaded", () => {

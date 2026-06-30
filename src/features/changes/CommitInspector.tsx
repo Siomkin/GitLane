@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import type { CommitNode, StashEntry } from "../../lib/api";
 import { CheckIcon, StashIcon } from "../../components/ui/icons";
 import { cn } from "../../lib/cn";
+import { summarizeFiles } from "../../lib/changeSummary";
 import { fullCommitMessage, splitCommitMessage } from "../../lib/commitMessage";
 import { useRepo } from "../../store/repo";
 import { isCommitReachableFromRemote } from "../../store/selection";
 import { useUi } from "../../store/ui";
 import { CommitBody } from "./CommitBody";
+import { ChangeTypeCounts } from "./ChangeTypeCounts";
+import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
 import { initials } from "./commitMeta";
-import { FileRow } from "./FileRow";
 
 /** Inspector for a selected commit — metadata, the (collapsible) message,
  * author block, and the list of changed files with a "review all" entry. */
@@ -27,6 +29,7 @@ export function CommitInspector() {
   const requestPrompt = useUi((state) => state.requestPrompt);
   const fileMenu = useUi((state) => state.fileMenu);
   const showToast = useUi((state) => state.showToast);
+  const [view, setView] = useState<FileListView>("path");
   // Transient "Copied" state for the SHA pill (replaces the separate button +
   // toast with inline feedback). Cleared after a short beat.
   const [copied, setCopied] = useState(false);
@@ -175,26 +178,27 @@ export function CommitInspector() {
           </button>
         )}
       </div>
+      {commitFiles.length > 0 && (
+        <div className="flex items-center justify-between">
+          <ChangeTypeCounts summary={summarizeFiles(commitFiles)} />
+          <FileViewToggle view={view} onChange={setView} />
+        </div>
+      )}
       {commitFiles.length === 0 ? (
         <div className="px-1 py-1 text-[13px] text-neutral-400">No file list loaded.</div>
       ) : (
-        <div className="space-y-0.5">
-          {commitFiles.map((file) => (
-            <FileRow
-              key={file.path}
-              file={file}
-              compact
-              active={selectedFile?.source === "commit" && selectedFile.path === file.path}
-              menuActive={!fileMenu?.discard && fileMenu?.path === file.path}
-              onClick={() => selectFile(file.path, "commit")}
-              onContextMenu={(e) => {
-                // Committed files: copy-only menu (no working-tree discard).
-                e.preventDefault();
-                openFileMenu({ x: e.clientX, y: e.clientY, path: file.path });
-              }}
-            />
-          ))}
-        </div>
+        <ChangedFileList
+          files={commitFiles}
+          view={view}
+          activePath={selectedFile?.source === "commit" ? selectedFile.path : null}
+          menuActivePath={!fileMenu?.discard ? fileMenu?.path ?? null : null}
+          onSelect={(path) => selectFile(path, "commit")}
+          onContextMenu={(path, e) => {
+            // Committed files: copy-only menu (no working-tree discard).
+            e.preventDefault();
+            openFileMenu({ x: e.clientX, y: e.clientY, path });
+          }}
+        />
       )}
     </div>
   );

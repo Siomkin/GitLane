@@ -818,6 +818,10 @@ export const gitApi = {
       expectedNewNo: line.newNo,
     }),
 
+  /** Stage several files atomically (one `git add -A`). */
+  stageFiles: (path: string, files: string[]) =>
+    invoke<string>("stage_files", { path, files }),
+
   /** Unstage several files atomically (one `git restore --staged`). */
   unstageFiles: (path: string, files: string[]) =>
     invoke<string>("unstage_files", { path, files }),

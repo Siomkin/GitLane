@@ -592,6 +592,11 @@ async fn apply_line(
 }
 
 #[tauri::command]
+async fn stage_files(path: String, files: Vec<String>) -> Result<String, String> {
+    blocking(move || git::write::stage_files(&path, &files)).await
+}
+
+#[tauri::command]
 async fn unstage_files(path: String, files: Vec<String>) -> Result<String, String> {
     blocking(move || git::write::unstage_files(&path, &files)).await
 }
@@ -1257,6 +1262,7 @@ pub fn run() {
             unstage_file,
             apply_hunk,
             apply_line,
+            stage_files,
             unstage_files,
             discard_file,
             stage_all,
