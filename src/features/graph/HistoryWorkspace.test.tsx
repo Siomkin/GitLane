@@ -392,6 +392,143 @@ describe("HistoryWorkspace — virtualized history", () => {
     );
   });
 
+  // GL-23: scrolling near the trailing load-more row should keep paging in older
+  // history on its own, so long-history exploration doesn't need a click per page.
+  const truncatedHistory = (length: number): RepoGraph => ({
+    commits: Array.from({ length }, (_, row) =>
+      commit({ id: `c${row}`, shortId: `c${row}`, summary: `commit ${row}`, row }),
+    ),
+    edges: [],
+    laneCount: 1,
+    head: "c0",
+    truncated: true,
+  });
+  const scrollNearBottom = (atRow = 400) => {
+    const scroller = screen.getByTestId("history-scroll");
+    Object.defineProperty(scroller, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: atRow * compactRowHeight,
+    });
+    fireEvent.scroll(scroller);
+    return scroller;
+  };
+  const graphCalls = () =>
+    invokeMock.mock.calls.filter(([command]) => command === "commit_graph");
+
+  it("auto-requests the next page when the trailing boundary scrolls into view", async () => {
+    useRepo.setState({ graph: truncatedHistory(300), graphLimit: 2_000 });
+    invokeMock.mockResolvedValueOnce({ ...truncatedHistory(300), truncated: false });
+
+    render(<HistoryWorkspace />);
+    // The top of the window is nowhere near the trailing row — nothing auto-loads.
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
+
+    scrollNearBottom();
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_graph", { path: "/r", limit: 4_000 }),
+    );
+  });
+
+  it("never dispatches a duplicate page request while one is already in flight", async () => {
+    useRepo.setState({ graph: truncatedHistory(300), graphLimit: 2_000 });
+    // The first page request hangs so loadingMoreHistory stays true across the
+    // repeated near-bottom scrolls below.
+    let resolveGraph: (value: RepoGraph) => void = () => {};
+    invokeMock.mockImplementation((command: string) =>
+      command === "commit_graph"
+        ? new Promise<RepoGraph>((resolve) => {
+            resolveGraph = resolve;
+          })
+        : Promise.resolve([]),
+    );
+
+    render(<HistoryWorkspace />);
+    scrollNearBottom();
+    await waitFor(() => expect(useRepo.getState().loadingMoreHistory).toBe(true));
+
+    // Two more near-bottom scrolls while the first request is outstanding.
+    scrollNearBottom();
+    scrollNearBottom();
+    expect(graphCalls()).toHaveLength(1);
+
+    // Settling the in-flight page clears the flag and, since the result is no
+    // longer truncated, leaves the single request as the only one dispatched.
+    resolveGraph({ ...truncatedHistory(300), truncated: false });
+    await waitFor(() => expect(useRepo.getState().loadingMoreHistory).toBe(false));
+    expect(graphCalls()).toHaveLength(1);
+  });
+
+  it("keeps auto-paging on each near-bottom scroll while history stays truncated", async () => {
+    useRepo.setState({ graph: truncatedHistory(300), graphLimit: 2_000 });
+    // The first page (limit 4,000) is still truncated, so reaching the new bottom
+    // pages again to limit 6,000, where the history finally completes.
+    invokeMock.mockImplementation((command: string, args?: { limit?: number }) =>
+      command !== "commit_graph"
+        ? Promise.resolve([])
+        : Promise.resolve(
+            args?.limit === 4_000
+              ? truncatedHistory(800)
+              : { ...truncatedHistory(800), truncated: false },
+          ),
+    );
+
+    render(<HistoryWorkspace />);
+    scrollNearBottom(350);
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_graph", { path: "/r", limit: 4_000 }),
+    );
+    await waitFor(() => expect(useRepo.getState().graph?.commits.length).toBe(800));
+
+    // The window grew to 800 rows, so the old scroll spot is no longer near the
+    // end — paging only resumes once the user scrolls to the new bottom.
+    scrollNearBottom(850);
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_graph", { path: "/r", limit: 6_000 }),
+    );
+  });
+
+  it("does not auto-page when the graph is not truncated", async () => {
+    useRepo.setState({
+      graph: { ...truncatedHistory(300), truncated: false },
+      graphLimit: 2_000,
+    });
+
+    render(<HistoryWorkspace />);
+    scrollNearBottom();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(graphCalls()).toHaveLength(0);
+  });
+
+  it("does not auto-page while a search filter is active (avoids a confusing jump)", async () => {
+    useRepo.setState({ graph: truncatedHistory(300), graphLimit: 2_000 });
+    useUi.setState({ histSearchOpen: true, histQuery: "commit 1" });
+
+    render(<HistoryWorkspace />);
+    scrollNearBottom();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(graphCalls()).toHaveLength(0);
+    // The manual fallback is still offered while filtering.
+    expect(screen.getByRole("button", { name: "Load more commits" })).toBeInTheDocument();
+  });
+
+  it("does not auto-page when only a kind filter is active (empty query)", async () => {
+    // `isFiltering` treats a non-"all" kind filter as filtering even with no
+    // query, so the same anti-jump guard applies as for a text search.
+    useRepo.setState({ graph: truncatedHistory(300), graphLimit: 2_000 });
+    useUi.setState({ histFilterOpen: true, histFilter: "merges", histQuery: "" });
+
+    render(<HistoryWorkspace />);
+    scrollNearBottom();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(graphCalls()).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Load more commits" })).toBeInTheDocument();
+  });
+
   it("reveals a commit across a virtual boundary and consumes the request", async () => {
     const commits = Array.from({ length: 1_000 }, (_, row) =>
       commit({
