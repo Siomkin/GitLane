@@ -1420,6 +1420,38 @@ describe("repo store — merged selection (GL-69)", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("selection_diff", expect.anything());
   });
 
+  it("publishes only the latest union when selections change rapidly", async () => {
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a" }), node({ id: "b", shortId: "b" }), node({ id: "c", shortId: "c" })],
+      head: "a",
+    };
+    useRepo.setState({ graph, selectedCommit: null, selectedCommits: [], selectionAnchor: null, selectionDiff: null });
+
+    const slow = deferred<unknown>();
+    const filesAB = [{ path: "ab.ts", status: "M", add: 1, del: 0, binary: false }];
+    const filesABC = [{ path: "abc.ts", status: "A", add: 2, del: 0, binary: false }];
+    let selectionCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "selection_diff") {
+        selectionCalls += 1;
+        // First union ([a,b]) is slow; the second ([a,b,c]) resolves immediately.
+        return selectionCalls === 1 ? slow.promise : Promise.resolve(filesABC);
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().selectCommitMulti("a", {}); // single
+    const pending = useRepo.getState().selectCommitMulti("b", { additive: true }); // [a,b] — slow union
+    await useRepo.getState().selectCommitMulti("c", { additive: true }); // [a,b,c] — fast union publishes
+    slow.resolve(filesAB); // the stale [a,b] union lands late
+    await pending;
+
+    const diff = useRepo.getState().selectionDiff!;
+    expect(diff.commits).toEqual(["a", "b", "c"]);
+    expect(diff.files).toEqual(filesABC); // the stale [a,b] result was discarded
+  });
+
   it("selectFile ignores a stale union diff after the selection set changes", async () => {
     useRepo.setState({
       selectedCommits: ["a", "b"],

@@ -581,7 +581,10 @@ export function createRepoLifecycleActions(
         const selectionDiff = !multiNow
           ? null
           : sameUnion
-            ? prevDiff
+            ? // Same commit *set*: keep the files (immutable by oid) but adopt the
+              // refreshed order so `selectionDiff.commits` can't drift from
+              // `selectedCommits`.
+              { ...prevDiff!, commits: selectedCommits }
             : { commits: selectedCommits, files: [], loading: true, error: null };
         // Drop a selected working-tree file that no longer has changes (e.g. it
         // was committed/discarded outside the app) so the diff pane can't go stale.

@@ -46,7 +46,12 @@ export function MergedSelectionInspector() {
         <h1 className="text-[17px] font-semibold text-neutral-800 dark:text-neutral-100">
           {selectionCountLabel(count)}
         </h1>
-        <p className="mt-0.5 text-xs text-neutral-400">Viewing merged diff of {count} commits</p>
+        <p className="mt-0.5 text-xs text-neutral-400">
+          Viewing merged diff of {count} commits
+          {/* The list can only show commits in the loaded graph window; note any
+              selected commit that isn't, so the count never silently disagrees. */}
+          {rows.length < count ? ` · ${count - rows.length} not shown` : ""}
+        </p>
       </div>
 
       <SelectionCommitList rows={rows} />

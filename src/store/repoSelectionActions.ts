@@ -98,6 +98,9 @@ export function createRepoSelectionActions(
         if (get().selectionDiff || get().selectedCommit !== focus) return;
         set({ commitFiles: files, diffLoading: false });
       } catch (e) {
+        // Same guard on the failure path: a stale error must not surface after
+        // the selection moved on.
+        if (get().selectionDiff || get().selectedCommit !== focus) return;
         set({ diffLoading: false, error: String(e) });
       }
     },

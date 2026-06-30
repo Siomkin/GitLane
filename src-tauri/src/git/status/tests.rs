@@ -33,6 +33,18 @@ fn commit_bytes(repo: &Repository, dir: &Path, name: &str, content: &[u8]) -> gi
         .unwrap()
 }
 
+fn commit_at(repo: &Repository, dir: &Path, name: &str, content: &str, secs: i64) -> git2::Oid {
+    fs::write(dir.join(name), content).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new(name)).unwrap();
+    index.write().unwrap();
+    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+    let sig = Signature::new("Bench", "bench@example.test", &git2::Time::new(secs, 0)).unwrap();
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents).unwrap()
+}
+
 fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
     let mut index = repo.index().unwrap();
     index.write().unwrap();
@@ -737,6 +749,68 @@ fn selection_diff_excludes_unselected_edits_to_a_shared_file() {
     // The file list agrees on the net status.
     let files = selection_diff(path, &oids).unwrap();
     assert_eq!(files.iter().find(|f| f.path == "f.txt").unwrap().status, "M");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_orders_by_ancestry_not_timestamp() {
+    // Skewed history: the parent commit A has a LATER timestamp than its child B
+    // (e.g. after a rebase). Timestamp order would put B before A and mis-derive
+    // the base; ancestry order must keep A→B so the net is "1\n" → "1\n2\n3\n".
+    let dir = std::env::temp_dir().join("gitlane-selection-skew-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit_at(&repo, &dir, "f.txt", "1\n", 1000); // base (parent of A)
+    let a = commit_at(&repo, &dir, "f.txt", "1\n2\n", 3000).to_string(); // adds "2", LATER time
+    let b = commit_at(&repo, &dir, "f.txt", "1\n2\n3\n", 1500).to_string(); // child of A, EARLIER time
+    let path = dir.to_str().unwrap();
+
+    let diff = selection_diff_file(path, &[a, b], "f.txt", false).unwrap();
+    assert_eq!(diff.status, "M");
+    let adds: Vec<&str> = diff
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| l.kind == "add")
+        .map(|l| l.content.as_str())
+        .collect();
+    assert!(adds.contains(&"2"), "missing +2 (wrong base from timestamp order?): {adds:?}");
+    assert!(adds.contains(&"3"), "missing +3: {adds:?}");
+    let dels: Vec<&str> = diff
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| l.kind == "del")
+        .map(|l| l.content.as_str())
+        .collect();
+    assert!(dels.is_empty(), "spurious deletions (wrong base?): {dels:?}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_gapped_uncomposable_file_fails_closed() {
+    // A gapped chain that can't compose (binary blobs) must NOT show a blob-range
+    // diff (which would include the intervening unselected edit). The file still
+    // appears in the list, but its per-file merged diff fails closed.
+    let dir = std::env::temp_dir().join("gitlane-selection-gap-binary-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit_bytes(&repo, &dir, "img.bin", &[0u8, 1, 2, 0]); // base (parent of A)
+    let a = commit_bytes(&repo, &dir, "img.bin", &[0u8, 2, 2, 0]).to_string(); // selected
+    commit_bytes(&repo, &dir, "img.bin", &[0u8, 3, 3, 0]); // UNSELECTED, between
+    let c = commit_bytes(&repo, &dir, "img.bin", &[0u8, 3, 3, 9, 0]).to_string(); // selected
+    let path = dir.to_str().unwrap();
+    let oids = [a, c];
+
+    // The change isn't hidden from the list...
+    let files = selection_diff(path, &oids).unwrap();
+    assert!(files.iter().any(|f| f.path == "img.bin"));
+    // ...but the exact per-file merged diff fails closed rather than mislead.
+    assert!(selection_diff_file(path, &oids, "img.bin", false).is_err());
 
     let _ = fs::remove_dir_all(&dir);
 }
