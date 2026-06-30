@@ -20,10 +20,13 @@ export function createRepoRemoteActions(
     if (!summary) throw new Error("No repository");
     return summary.path;
   };
+  // `async` so the `repoPath()` guard surfaces as a rejected promise, not a
+  // synchronous throw — matching every other store action (callers `await` these
+  // inside a try/catch).
   return {
-    listRemotes: () => api.listRemotes(repoPath()),
-    addRemote: (name, url) => api.addRemote(repoPath(), name, url),
-    setRemoteUrl: (name, url) => api.setRemoteUrl(repoPath(), name, url),
-    removeRemote: (name) => api.removeRemote(repoPath(), name),
+    listRemotes: async () => api.listRemotes(repoPath()),
+    addRemote: async (name, url) => api.addRemote(repoPath(), name, url),
+    setRemoteUrl: async (name, url) => api.setRemoteUrl(repoPath(), name, url),
+    removeRemote: async (name) => api.removeRemote(repoPath(), name),
   };
 }
