@@ -5,6 +5,7 @@ import { fileWriteGuard } from "../../lib/advancedRepoState";
 import { basename, dirname } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
 import { FileIcon } from "@/components/ui/icons";
+import { BinaryDiff } from "./BinaryDiff";
 import {
   DiffTruncatedNotice,
   HunkCardHeader,
@@ -28,6 +29,7 @@ import { flattenSplit, flattenUnified, toSplitRows, type SplitRow } from "./diff
 import { hunkBody, hunkPatchUnavailableReason, lineStagePatchUnavailableReason } from "./hunkActions";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { StatusPill } from "@/components/ui/StatusBadge";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 
 type DiffMode = "split" | "unified";
 
@@ -90,7 +92,7 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
       ) : !fileDiff ? (
         <EmptyDiff title="Select a file to view its diff" />
       ) : fileDiff.binary ? (
-        <EmptyDiff title="Binary file" />
+        <BinaryDiff diff={fileDiff} className="min-h-0 flex-1 overflow-auto" />
       ) : mode === "split" ? (
         <SplitDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       ) : (
@@ -123,20 +125,23 @@ function ReviewHeader({
           <span className="text-[14px] font-semibold text-neutral-800 dark:text-neutral-100">{basename(file.path)}</span>
           <span className="min-w-0 truncate text-[12px] text-neutral-400">{dirname(file.path)}</span>
           <StatusPill status={file.status} />
-          <span className="font-mono text-xs text-[color:var(--accent)]">+{file.add}</span>
-          <span className="font-mono text-xs text-rose-500">−{file.del}</span>
+          <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-xs" />
         </>
       )}
-      <div className="ml-auto flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
-        <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
-          Unified
-        </button>
-        <button className={modeButton(mode === "split")} onClick={() => onModeChange("split")}>
-          Split
-        </button>
-      </div>
+      {/* Unified/Split is meaningless for a binary file (it renders an image /
+          size card, not line hunks), so hide the toggle there. */}
+      {!file?.binary && (
+        <div className="ml-auto flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
+          <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
+            Unified
+          </button>
+          <button className={modeButton(mode === "split")} onClick={() => onModeChange("split")}>
+            Split
+          </button>
+        </div>
+      )}
       <button
-        className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
+        className="ml-auto flex items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
         onClick={onBack}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">

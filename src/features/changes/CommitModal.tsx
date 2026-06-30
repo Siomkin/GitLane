@@ -16,6 +16,7 @@ import { useUi } from "../../store/ui";
 import { CheckIcon, FileIcon } from "@/components/ui/icons";
 import { Resizer } from "@/components/ui/Resizer";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { DiffPreview } from "./DiffPreview";
 import { buildRows } from "./commitTree";
 import { isCommitReachableFromRemote } from "@/store/selection";
@@ -304,10 +305,7 @@ const ListView = ({ staged }: { staged: FileChange[] }) => {
                 </span>
               )}
             </span>
-            <span className="ml-auto shrink-0 font-mono text-xs">
-              <span className="text-[color:var(--accent)]">+{f.add}</span>{" "}
-              <span className="text-rose-500">−{f.del}</span>
-            </span>
+            <ChangeCounts add={f.add} del={f.del} binary={f.binary} className="ml-auto shrink-0 text-xs" />
           </div>
         );
       })}
@@ -398,10 +396,7 @@ const TreeView = ({ staged, repoPath }: { staged: FileChange[]; repoPath: string
               </span>
               <FileIcon path={row.file.path} size={16} />
               <span className="flex-1 truncate text-[13px]">{basename(row.file.path)}</span>
-              <span className="shrink-0 font-mono text-[11px]">
-                <span className="text-[color:var(--accent)]">+{row.file.add}</span>{" "}
-                <span className="text-rose-500">−{row.file.del}</span>
-              </span>
+              <ChangeCounts add={row.file.add} del={row.file.del} binary={row.file.binary} className="shrink-0 text-[11px]" />
             </div>
           ),
         )}

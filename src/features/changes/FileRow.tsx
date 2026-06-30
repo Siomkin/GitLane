@@ -5,6 +5,7 @@ import { focusRing } from "../../lib/ui";
 import { basename, dirname } from "../../lib/paths";
 import { FileIcon } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 
 /** The shared file row: working changes (with a stage/unstage action) and
  * commit changed-file lists (no action).
@@ -67,12 +68,11 @@ export function FileRow({
         </span>
         <span
           className={cn(
-            "flex shrink-0 items-center gap-2 font-mono text-xs transition-opacity",
+            "flex shrink-0 items-center gap-2 text-xs transition-opacity",
             action && "group-hover:opacity-0",
           )}
         >
-          <span className="text-[color:var(--accent)]">+{file.add}</span>
-          <span className="text-rose-500">−{file.del}</span>
+          <ChangeCounts add={file.add} del={file.del} binary={file.binary} />
           <StatusBadge status={file.status} />
         </span>
       </button>

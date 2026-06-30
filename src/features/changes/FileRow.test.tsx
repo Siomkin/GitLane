@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { FileChange } from "../../lib/api";
 import { FileRow } from "./FileRow";
 
-const file: FileChange = { path: "src/lib/paths.ts", status: "M", add: 3, del: 1 };
+const file: FileChange = { path: "src/lib/paths.ts", status: "M", add: 3, del: 1, binary: false };
 
 // del is rendered with a Unicode minus (U+2212); accept either glyph.
 const isDelCount = (t: string) => /^[-−]1$/.test(t);
@@ -27,6 +27,13 @@ describe("FileRow", () => {
     expect(screen.getByText("+3")).toBeInTheDocument();
     expect(screen.getByText(isDelCount)).toBeInTheDocument();
     expect(screen.getByText("M")).toBeInTheDocument();
+  });
+
+  it("shows a 'binary' tag instead of +0 −0 for a binary file", () => {
+    const bin: FileChange = { path: "assets/logo.png", status: "A", add: 0, del: 0, binary: true };
+    render(<FileRow file={bin} active={false} onClick={() => {}} />);
+    expect(screen.getByText("binary")).toBeInTheDocument();
+    expect(screen.queryByText("+0")).not.toBeInTheDocument();
   });
 
   it("fires onClick when the row is clicked", async () => {

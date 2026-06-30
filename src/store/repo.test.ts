@@ -66,8 +66,8 @@ describe("repo store — discardFile", () => {
     // (rather than leave the pane on a now-empty unstaged diff).
     useRepo.setState({
       changes: {
-        staged: [{ path: "src/a.ts", status: "M", add: 1, del: 0 }],
-        unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0 }],
+        staged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+        unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0, binary: false }],
         conflicted: [],
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
@@ -84,7 +84,7 @@ describe("repo store — discardFile", () => {
         case "working_changes":
           // The unstaged side is gone; the file remains staged.
           return Promise.resolve({
-            staged: [{ path: "src/a.ts", status: "M", add: 1, del: 0 }],
+            staged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
             unstaged: [],
           });
         case "file_diff":
@@ -109,7 +109,7 @@ describe("repo store — discardFile", () => {
     useRepo.setState({
       changes: {
         staged: [],
-        unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0 }],
+        unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0, binary: false }],
         conflicted: [],
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
@@ -145,7 +145,7 @@ describe("repo store — advanced write guards", () => {
     useRepo.setState({
       changes: {
         staged: [],
-        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1 }],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1, binary: false }],
         conflicted: [],
         advanced: {
           submodules: [],
@@ -175,7 +175,7 @@ describe("repo store — advanced write guards", () => {
     useRepo.setState({
       changes: {
         staged: [],
-        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1 }],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1, binary: false }],
         conflicted: [],
         advanced: {
           submodules: [],
@@ -211,7 +211,7 @@ describe("repo store — advanced write guards", () => {
     useRepo.setState({
       changes: {
         staged: [],
-        unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0 }],
+        unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false }],
         conflicted: [],
         advanced: {
           submodules: [],
@@ -253,6 +253,7 @@ describe("repo store — advanced write guards", () => {
             status: "M",
             add: 0,
             del: 0,
+            binary: false,
             advanced: { kind: "submodule", message: "Submodule: modified files inside submodule" },
           },
         ],
@@ -488,7 +489,7 @@ describe("repo store — loadRepo failed open", () => {
       { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "abc1234", baseTimestamp: 0, context: [] },
     ];
     const prevChanges: WorkingChanges = {
-      staged: [{ path: "a.ts", status: "M", add: 1, del: 0 }],
+      staged: [{ path: "a.ts", status: "M", add: 1, del: 0, binary: false }],
       unstaged: [],
       conflicted: [],
     };
@@ -800,7 +801,7 @@ describe("repo store — loadRepo progressive open", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "open_repo") return Promise.resolve(summary);
       if (cmd === "commit_graph") return graphDeferred.promise;
-      if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0 }]);
+      if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0, binary: false }]);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
       return Promise.resolve([]);
     });
@@ -840,7 +841,7 @@ describe("repo store — loadRepo progressive open", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "open_repo") return Promise.resolve(summary);
       if (cmd === "commit_graph") return graphDeferred.promise;
-      if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0 }]);
+      if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0, binary: false }]);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
       return Promise.resolve([]);
     });
@@ -1218,7 +1219,7 @@ describe("repo store — conflict actions", () => {
         return Promise.resolve({
           staged: [],
           unstaged: [],
-          conflicted: [{ path: "f.txt", status: "C", add: 0, del: 0 }],
+          conflicted: [{ path: "f.txt", status: "C", add: 0, del: 0, binary: false }],
         });
       if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
       return Promise.resolve([]);
@@ -1282,7 +1283,7 @@ describe("repo store — openWorktree", () => {
         case "working_changes":
           return Promise.resolve({
             staged: [],
-            unstaged: [{ path: "a.ts", status: "M", add: 1, del: 0 }],
+            unstaged: [{ path: "a.ts", status: "M", add: 1, del: 0, binary: false }],
             conflicted: [],
           });
         default:

@@ -16,7 +16,8 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame, FileChange,
+    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame,
+    FileChange,
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
     OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
@@ -402,6 +403,27 @@ fn file_diff(
 #[tauri::command]
 fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, String> {
     git::status::commit_files(&path, &oid).map_err(|e| e.to_string())
+}
+
+/// Read a binary blob's bytes (base64) for an inline preview. `oid` selects a
+/// committed/staged blob; omit it (with `file` set) to read the working-tree
+/// file by path — the side libgit2 leaves without a blob oid in an unstaged diff.
+///
+/// Reads up to a few MiB off disk/ODB and base64-encodes it, so it runs on the
+/// blocking pool (like `commit_graph`) to keep the webview thread responsive when
+/// several image panes load at once.
+#[tauri::command]
+async fn read_binary_blob(
+    path: String,
+    oid: Option<String>,
+    file: Option<String>,
+    max_bytes: Option<u64>,
+) -> Result<BinaryBlob, String> {
+    blocking(move || {
+        git::status::read_binary_blob(&path, oid.as_deref(), file.as_deref(), max_bytes)
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1188,6 +1210,7 @@ pub fn run() {
             working_changes,
             file_diff,
             commit_files,
+            read_binary_blob,
             commit_file_diff,
             diff_range,
             diff_range_file,

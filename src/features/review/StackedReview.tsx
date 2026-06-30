@@ -9,9 +9,11 @@ import { useLazyDiffs } from "../../hooks/useLazyDiffs";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { FileIcon } from "@/components/ui/icons";
+import { BinaryDiff } from "./BinaryDiff";
 import { DiffTruncatedNotice, UnifiedDiffBody } from "./DiffBody";
 import { HandToAgentBar } from "./comments";
 import { StatusPill } from "@/components/ui/StatusBadge";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 
 /** Changed-line count above which a file starts collapsed, so a lockfile-sized
  * diff doesn't mount thousands of rows (or get fetched) until asked for. */
@@ -178,13 +180,14 @@ export function StackedReview() {
                     <strong className="font-semibold text-neutral-800 dark:text-neutral-100">{basename(file.path)}</strong>
                   </span>
                   <StatusPill status={file.status} />
-                  <span className="font-mono text-[11px] text-[color:var(--accent)]">+{file.add}</span>
-                  <span className="font-mono text-[11px] text-rose-500">−{file.del}</span>
+                  <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-[11px]" />
                 </button>
                 {open && (
                   <div className="bg-white dark:bg-neutral-800">
                     {diff === undefined ? (
                       <div className="px-4 py-3 text-xs text-neutral-400">Loading diff…</div>
+                    ) : diff && diff.binary ? (
+                      <BinaryDiff diff={diff} />
                     ) : diff && !diff.binary ? (
                       <>
                         <UnifiedDiffBody hunks={diff.hunks} file={file.path} surface={surface} />
@@ -198,7 +201,7 @@ export function StackedReview() {
                       </>
                     ) : (
                       <div className="px-4 py-3 text-xs text-neutral-400">
-                        {diff === null ? "Couldn't load diff." : diff?.binary ? "Binary file" : "No visible diff."}
+                        {diff === null ? "Couldn't load diff." : "No visible diff."}
                       </div>
                     )}
                   </div>

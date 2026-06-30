@@ -67,6 +67,7 @@ describe("advancedRepoState", () => {
           status: "M",
           add: 0,
           del: 0,
+          binary: false,
           advanced: { kind: "submodule", message: "Submodule: not initialized" },
         },
       ],
@@ -90,6 +91,7 @@ describe("advancedRepoState", () => {
           status: "M",
           add: 1,
           del: 1,
+          binary: false,
           advanced: { kind: "sparse", message: "Outside sparse checkout" },
         },
       ],
@@ -108,8 +110,8 @@ describe("advancedRepoState", () => {
     const changes: WorkingChanges = {
       staged: [],
       unstaged: [
-        { path: "docs/hidden.txt", status: "M", add: 1, del: 1 },
-        { path: "src/visible.txt", status: "M", add: 1, del: 0 },
+        { path: "docs/hidden.txt", status: "M", add: 1, del: 1, binary: false },
+        { path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false },
       ],
       conflicted: [],
       advanced: {
@@ -131,7 +133,7 @@ describe("advancedRepoState", () => {
   it("accepts cone sparse checkout directory patterns", () => {
     const changes: WorkingChanges = {
       staged: [],
-      unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0 }],
+      unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false }],
       conflicted: [],
       advanced: {
         submodules: [],
@@ -146,7 +148,7 @@ describe("advancedRepoState", () => {
   it("does not block writes only because repo-level notices are present", () => {
     const changes: WorkingChanges = {
       staged: [],
-      unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0 }],
+      unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false }],
       conflicted: [],
       advanced: {
         submodules: [],
@@ -162,7 +164,7 @@ describe("advancedRepoState", () => {
   it("keeps LFS issues informational unless a file has an explicit guard", () => {
     const changes: WorkingChanges = {
       staged: [],
-      unstaged: [{ path: "asset.bin", status: "M", add: 1, del: 0 }],
+      unstaged: [{ path: "asset.bin", status: "M", add: 1, del: 0, binary: false }],
       conflicted: [],
       advanced: {
         submodules: [],

@@ -7,6 +7,7 @@ import { api, type FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { basename, dirname } from "../../lib/paths";
 import { UnifiedDiffBody } from "../review/DiffBody";
+import { BinaryDiff } from "../review/BinaryDiff";
 
 export const DiffPreview = ({
   repoPath,
@@ -48,12 +49,12 @@ export const DiffPreview = ({
       <div className="min-h-0 flex-1 overflow-auto">
         {loading ? (
           <div className="px-3 py-3 text-[12px] text-neutral-400">Loading diff…</div>
+        ) : diff && diff.binary ? (
+          <BinaryDiff diff={diff} />
         ) : diff && !diff.binary ? (
           <UnifiedDiffBody hunks={diff.hunks} />
         ) : (
-          <div className="px-3 py-3 text-[12px] text-neutral-400">
-            {diff?.binary ? "Binary file" : "No diff"}
-          </div>
+          <div className="px-3 py-3 text-[12px] text-neutral-400">No diff</div>
         )}
       </div>
     </div>

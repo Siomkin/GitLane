@@ -6,7 +6,7 @@ import { useUi } from "../../store/ui";
 import { FileContextMenu } from "../../components/chrome/overlays";
 import { WorkingInspector } from "./WorkingInspector";
 
-const staged = (path: string): FileChange => ({ path, status: "M", add: 1, del: 0 });
+const staged = (path: string): FileChange => ({ path, status: "M", add: 1, del: 0, binary: false });
 
 beforeEach(() => {
   // Reset the git-domain slice this component reads to a clean, empty tree.
@@ -88,7 +88,7 @@ describe("WorkingInspector", () => {
     // A rename's FileChange carries only the new path, so discard would half-undo
     // it — the menu opens copy-only (no discard target).
     useRepo.setState({
-      changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0 }], unstaged: [], conflicted: [] },
+      changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0, binary: false }], unstaged: [], conflicted: [] },
       selectedFile: { path: "src/new.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);

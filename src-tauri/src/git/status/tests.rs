@@ -1,12 +1,26 @@
 use super::diff::DIFF_LINE_LIMIT;
 use super::{
-    commit_file_diff, compare_file_diff, compare_refs, file_blame, file_history, working_changes,
+    commit_file_diff, commit_files, compare_file_diff, compare_refs, file_blame, file_diff,
+    file_history, read_binary_blob, working_changes,
 };
 use git2::{Repository, Signature};
 use std::fs;
 use std::path::Path;
 
 fn commit(repo: &Repository, dir: &Path, name: &str, content: &str) -> git2::Oid {
+    fs::write(dir.join(name), content).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new(name)).unwrap();
+    index.write().unwrap();
+    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+    let sig = Signature::now("Bench", "bench@example.test").unwrap();
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents)
+        .unwrap()
+}
+
+fn commit_bytes(repo: &Repository, dir: &Path, name: &str, content: &[u8]) -> git2::Oid {
     fs::write(dir.join(name), content).unwrap();
     let mut index = repo.index().unwrap();
     index.add_path(Path::new(name)).unwrap();
@@ -423,4 +437,136 @@ fn working_changes_does_not_guard_clean_submodules() {
 
     let _ = fs::remove_dir_all(&child_dir);
     let _ = fs::remove_dir_all(&parent_dir);
+}
+
+#[test]
+fn binary_diff_surfaces_size_oids_and_bytes() {
+    let dir = std::env::temp_dir().join("gitlane-binary-diff-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let path = dir.to_str().unwrap();
+
+    // A binary blob (NUL bytes ⇒ libgit2 flags it binary) added, then modified to
+    // a different size so both the size delta and both oids are exercised.
+    let v1: Vec<u8> = vec![0u8, 1, 2, 3, 0, 255, 10, 0];
+    let v2: Vec<u8> = vec![0u8, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 255];
+    let add_oid = commit_bytes(&repo, &dir, "img.bin", &v1).to_string();
+    let mod_oid = commit_bytes(&repo, &dir, "img.bin", &v2).to_string();
+
+    // File list marks it binary instead of "+0 −0".
+    let files = commit_files(path, &add_oid).unwrap();
+    let entry = files.iter().find(|f| f.path == "img.bin").unwrap();
+    assert!(entry.binary);
+    assert_eq!((entry.add, entry.del), (0, 0));
+
+    // Added: only the new side exists (size + oid present, old side absent).
+    let added = commit_file_diff(path, &add_oid, "img.bin", false).unwrap();
+    assert!(added.binary);
+    assert_eq!(added.new_size, Some(v1.len() as u64));
+    assert_eq!(added.old_size, None);
+    assert!(added.new_oid.is_some());
+    assert_eq!(added.old_oid, None);
+
+    // Modified: both sides exist, so the card can show "old → new (±delta)".
+    let modified = commit_file_diff(path, &mod_oid, "img.bin", false).unwrap();
+    assert!(modified.binary);
+    assert_eq!(modified.old_size, Some(v1.len() as u64));
+    assert_eq!(modified.new_size, Some(v2.len() as u64));
+    let new_oid = modified.new_oid.clone().unwrap();
+    assert!(modified.old_oid.is_some());
+
+    // read_binary_blob round-trips the new-side bytes for the image preview.
+    use base64::Engine as _;
+    let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();
+    assert!(!blob.truncated);
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(blob.base64.unwrap())
+        .unwrap();
+    assert_eq!(decoded, v2);
+
+    // A cap below the blob size returns size only, no inline bytes.
+    let capped = read_binary_blob(path, Some(&new_oid), None, Some(1)).unwrap();
+    assert!(capped.truncated);
+    assert_eq!(capped.base64, None);
+    assert_eq!(capped.size, v2.len() as u64);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn untracked_binary_file_is_flagged_in_working_changes() {
+    let dir = std::env::temp_dir().join("gitlane-binary-untracked-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+
+    // An untracked file with a NUL byte — libgit2 hasn't examined its content, so
+    // the working-changes probe is what classifies it as binary.
+    fs::write(dir.join("blob.bin"), [0u8, 1, 2, 0, 3]).unwrap();
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "blob.bin")
+        .unwrap();
+    assert!(entry.binary);
+    assert_eq!((entry.add, entry.del), (0, 0));
+
+    // read_binary_blob reads the working-tree file by path (no oid for an
+    // untracked blob), so the preview still works.
+    let blob = read_binary_blob(dir.to_str().unwrap(), None, Some("blob.bin"), None).unwrap();
+    assert_eq!(blob.size, 5);
+    assert!(blob.base64.is_some());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn untracked_image_is_flagged_binary_and_previewable() {
+    let dir = std::env::temp_dir().join("gitlane-binary-image-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let path = dir.to_str().unwrap();
+
+    // A real PNG header (signature + IHDR) — like git, the probe flags it binary
+    // off the embedded NUL bytes, so this covers the "real image" untracked case,
+    // not just a synthetic NUL blob.
+    let png: &[u8] =
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x02\x00\x00\x00\x02\x08\x02\x00\x00\x00";
+    fs::write(dir.join("pic.png"), png).unwrap();
+
+    let changes = working_changes(path).unwrap();
+    let entry = changes.unstaged.iter().find(|f| f.path == "pic.png").unwrap();
+    assert!(entry.binary);
+
+    // The single-file diff goes through the untracked fallback → a binary card
+    // with the new size, no synthesized text hunks.
+    let diff = file_diff(path, "pic.png", false, false).unwrap();
+    assert!(diff.binary);
+    assert_eq!(diff.new_size, Some(png.len() as u64));
+    assert!(diff.hunks.is_empty());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn read_binary_blob_rejects_path_traversal() {
+    let dir = std::env::temp_dir().join("gitlane-binary-traversal-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let path = dir.to_str().unwrap();
+
+    // A frontend-supplied `file` may not escape the worktree.
+    assert!(read_binary_blob(path, None, Some("../escape.txt"), None).is_err());
+    assert!(read_binary_blob(path, None, Some("a/../../escape.txt"), None).is_err());
+    assert!(read_binary_blob(path, None, Some("/etc/hosts"), None).is_err());
+
+    let _ = fs::remove_dir_all(&dir);
 }

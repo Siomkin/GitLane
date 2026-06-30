@@ -1,5 +1,7 @@
 //! Repository opening, summary, and graph entry points.
 
+use std::path::{Component, Path, PathBuf};
+
 use git2::Repository;
 
 use crate::git::graph;
@@ -8,6 +10,25 @@ use crate::git::types::{RepoGraph, RepoSummary};
 /// Open the repository containing `path` (searches upward for `.git`).
 pub fn open(path: &str) -> Result<Repository, git2::Error> {
     Repository::discover(path)
+}
+
+/// Join an IPC-supplied relative `file` onto `workdir`, rejecting any path that
+/// could escape the worktree (absolute, `..`, or a Windows drive prefix). The
+/// `file` arg crosses the IPC boundary and is ultimately chosen by the frontend,
+/// so every worktree read validates it defensively. Callers still decide how to
+/// treat the *target* (e.g. reject symlinks / non-regular entries) after joining.
+pub fn worktree_join(workdir: &Path, file: &str) -> Result<PathBuf, git2::Error> {
+    let rel = Path::new(file);
+    if rel.is_absolute()
+        || rel
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(git2::Error::from_str(&format!(
+            "refusing unsafe path outside the worktree: {file:?}"
+        )));
+    }
+    Ok(workdir.join(rel))
 }
 
 /// High-level state for the title bar / status area.

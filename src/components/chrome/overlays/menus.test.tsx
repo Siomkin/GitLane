@@ -75,7 +75,7 @@ const remoteBranch = (name: string) => ({
   upstream: null,
 });
 
-const file = (path: string) => ({ path, status: "M" as const, add: 1, del: 0 });
+const file = (path: string) => ({ path, status: "M" as const, add: 1, del: 0, binary: false });
 
 // Grouped menus tuck many actions into accordion rows; open one by clicking its
 // parent, then its children render inline. Single-open: opening one collapses

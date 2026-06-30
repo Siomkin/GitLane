@@ -101,7 +101,7 @@ const c1 = commit({ id: "c1", shortId: "c1", summary: "alpha fix", row: 0 });
 const c2 = commit({ id: "c2", shortId: "c2", summary: "beta feature", row: 1, parents: ["c1"] });
 const c3 = commit({ id: "c3", shortId: "c3", summary: "gamma chore", row: 2, parents: ["c2"] });
 const graph: RepoGraph = { commits: [c1, c2, c3], edges: [], laneCount: 1, head: "c3", truncated: false };
-const file: FileChange = { path: "a.ts", status: "M", add: 1, del: 0 };
+const file: FileChange = { path: "a.ts", status: "M", add: 1, del: 0, binary: false };
 const stash: StashEntry = { index: 0, message: "my stash", oid: "s1", timestamp: 0, baseOid: "c2", baseTimestamp: 0, context: [] };
 const compactRowHeight = rowHeightFor("Compact");
 
