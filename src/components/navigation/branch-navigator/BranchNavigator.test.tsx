@@ -152,6 +152,30 @@ describe("BranchNavigator", () => {
     expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
   });
 
+  it("opens the worktree menu from the visible kebab without switching to the worktree", () => {
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      worktrees: [
+        { name: "r", path: "/r", branch: "main", isMain: true },
+        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
+      ],
+      openWorktree,
+    });
+    render(<BranchNavigator />);
+
+    // The kebab surfaces the same menu as right-click (open / copy path / remove).
+    fireEvent.click(screen.getByRole("button", { name: "Worktree actions for feature/search" }));
+
+    // It opens the menu with the row's payload and does NOT also trigger the
+    // row's switch-to-worktree click.
+    expect(useUi.getState().worktreeMenu).toMatchObject({
+      path: "/work/r-wt",
+      name: "feature/search",
+      isMain: false,
+    });
+    expect(openWorktree).not.toHaveBeenCalled();
+  });
+
   it("surfaces a failed worktree switch as an error toast", async () => {
     const openWorktree = vi.fn().mockRejectedValue(new Error("worktree gone"));
     useRepo.setState({

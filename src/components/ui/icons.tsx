@@ -293,6 +293,14 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M19 12H5M12 19l-7-7 7-7" />
+    </IconBase>
+  );
+}
+
 export function IssueIcon(props: IconProps) {
   // Open-issue glyph: ring with a filled centre dot (the dot opts out of the
   // base stroke/fill so it reads as solid).
@@ -433,6 +441,16 @@ export function HashIcon(props: IconProps) {
   return (
     <IconBase {...props}>
       <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />
+    </IconBase>
+  );
+}
+
+export function MoreVerticalIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
     </IconBase>
   );
 }
