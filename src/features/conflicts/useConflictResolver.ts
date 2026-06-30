@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+// eslint-disable-next-line no-restricted-imports -- feature hook owning the conflict-resolution flow (architecture-rules-react.md §1)
 import { api, type ConflictFileContent } from "../../lib/api";
 import type { OperationState } from "../../store/repo";
 import { useUi } from "../../store/ui";

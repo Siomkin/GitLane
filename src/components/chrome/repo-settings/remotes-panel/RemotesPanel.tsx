@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+// eslint-disable-next-line no-restricted-imports -- known exception: the remotes settings panel calls remote read/writes directly; pending a remotes store action (architecture-rules-react.md §1)
 import { api, type RemoteInfo } from "../../../../lib/api";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";

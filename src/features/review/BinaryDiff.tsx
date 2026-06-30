@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import type { BinaryFileKind } from "../../lib/binaryFile";
 import { binaryFileKind, changeVerb, formatBytes, formatDelta } from "../../lib/binaryFile";
+// eslint-disable-next-line no-restricted-imports -- local binary-blob image preview probe (architecture-rules-react.md §1)
 import { api, type FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { useRepo } from "../../store/repo";

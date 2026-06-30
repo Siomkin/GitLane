@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+// eslint-disable-next-line no-restricted-imports -- local per-file diff fetch via useLazyDiffs, disposable probe (architecture-rules-react.md §1)
 import { api, type FileChange, type FileDiff, type WorkingChanges } from "../../lib/api";
 import { advancedNotices, fileWriteGuard, findGuardedFile } from "../../lib/advancedRepoState";
 import { cn } from "../../lib/cn";

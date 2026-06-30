@@ -64,6 +64,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Lint (eslint — architecture import boundaries)
+        run: bun run lint
+
       - name: Build frontend (tsc --noEmit + vite build)
         run: bun run build
 

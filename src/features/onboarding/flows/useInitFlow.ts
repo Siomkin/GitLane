@@ -5,6 +5,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+// eslint-disable-next-line no-restricted-imports -- feature hook owning the init flow (architecture-rules-react.md §1)
 import { api } from "../../../lib/api";
 import {
   type GitignoreTemplate,

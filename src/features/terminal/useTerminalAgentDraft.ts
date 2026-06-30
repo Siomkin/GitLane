@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useUi } from "../../store/ui";
 import { useTerminalAgents } from "../../store/terminalAgents";
+// eslint-disable-next-line no-restricted-imports -- feature hook owning the terminal-agent probe (architecture-rules-react.md §1)
 import { api, type TerminalAgent } from "../../lib/api";
 import {
   type AgentCheck,
