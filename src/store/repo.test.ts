@@ -13,6 +13,7 @@ import { ForgeKind } from "../lib/api";
 import type { PullRequest } from "../lib/prs";
 import type {
   BranchInfo,
+  CommitNode,
   RepoForge,
   RepoGraph,
   RepoSummary,
@@ -36,6 +37,32 @@ const emptyGraph: RepoGraph = {
   head: null,
   truncated: false,
 };
+
+// Default invoke result for any command a test doesn't mock explicitly. Most
+// reads return a list, but `working_changes` is a WorkingChanges object — now
+// that lib/api validates the IPC shape (GL-57), a catch-all `[]` is rejected at
+// the seam, so route the fall-through through here.
+const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
+const defaultInvoke = (cmd: string) =>
+  Promise.resolve(cmd === "working_changes" ? EMPTY_CHANGES : []);
+
+// Build a complete CommitNode for graph fixtures. lib/api now validates the
+// commit_graph shape (GL-57), so a partial inline node is rejected at the seam.
+const node = (over: Partial<CommitNode>): CommitNode => ({
+  id: "c",
+  shortId: "c",
+  summary: "",
+  body: "",
+  authorName: "",
+  authorEmail: "",
+  timestamp: 0,
+  parents: [],
+  lane: 0,
+  row: 0,
+  color: 0,
+  refs: [],
+  ...over,
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -91,7 +118,7 @@ describe("repo store — discardFile", () => {
           return Promise.resolve({ path: "src/a.ts", status: "M", binary: false, hunks: [] });
         default:
           // list_branches / list_worktrees / list_stashes / PR fan-out, etc.
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -127,7 +154,7 @@ describe("repo store — discardFile", () => {
           // Nothing left — `refresh` should clear the stale selection.
           return Promise.resolve({ staged: [], unstaged: [] });
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -231,7 +258,7 @@ describe("repo store — advanced write guards", () => {
         case "working_changes":
           return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -289,7 +316,7 @@ describe("repo store — large history", () => {
       selectedCommits: ["selected"],
     });
     invokeMock.mockResolvedValueOnce({
-      commits: [{ id: "selected" }],
+      commits: [node({ id: "selected" })],
       edges: [],
       laneCount: 1,
       head: "selected",
@@ -322,7 +349,7 @@ describe("repo store — large history", () => {
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
       if (cmd === "operation_status")
         return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
@@ -338,7 +365,7 @@ describe("repo store — large history", () => {
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
       if (cmd === "operation_status")
         return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
@@ -362,7 +389,7 @@ describe("repo store — large history", () => {
       }
       if (cmd === "open_repo") return Promise.resolve(summary);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     const loadMore = useRepo.getState().loadMoreHistory();
@@ -370,7 +397,8 @@ describe("repo store — large history", () => {
     slowLoadMore.resolve({ ...emptyGraph, head: "stale" });
     await loadMore;
 
-    expect(useRepo.getState().graph).toBe(refreshedGraph);
+    // commitGraph returns a validated copy (GL-57), so compare by value.
+    expect(useRepo.getState().graph).toEqual(refreshedGraph);
     expect(useRepo.getState().graphLimit).toBe(2_000);
     expect(useRepo.getState().loadingMoreHistory).toBe(false);
   });
@@ -560,7 +588,7 @@ describe("repo store — loadRepo progressive open", () => {
         default:
           // list_branches / list_worktrees / list_stashes / working_changes /
           // list_pull_requests / repo_identity / watch_repo.
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -585,9 +613,9 @@ describe("repo store — loadRepo progressive open", () => {
       ...emptyGraph,
       head: "real-tip",
       commits: [
-        { id: "s0", stash: { index: 0, message: "WIP" } },
-        { id: "real-tip" },
-      ] as unknown as RepoGraph["commits"],
+        node({ id: "s0", stash: { index: 0, message: "WIP" } }),
+        node({ id: "real-tip" }),
+      ],
     };
     invokeMock.mockImplementation((cmd: string) => {
       switch (cmd) {
@@ -598,7 +626,7 @@ describe("repo store — loadRepo progressive open", () => {
         case "working_changes":
           return Promise.resolve({ staged: [], unstaged: [] });
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -617,7 +645,7 @@ describe("repo store — loadRepo progressive open", () => {
         case "list_branches":
           return Promise.reject(new Error("branches boom"));
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -639,7 +667,7 @@ describe("repo store — loadRepo progressive open", () => {
         case "working_changes":
           return Promise.reject(new Error("status boom"));
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -659,7 +687,7 @@ describe("repo store — loadRepo progressive open", () => {
         case "list_stashes":
           return Promise.reject(new Error("stashes boom"));
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -687,7 +715,7 @@ describe("repo store — loadRepo progressive open", () => {
           : Promise.reject(new Error("bad pick"));
       }
       if (cmd === "commit_graph") return graphA.promise;
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     // Open A; park it on the (still-pending) graph load.
@@ -709,7 +737,7 @@ describe("repo store — loadRepo progressive open", () => {
     graphA.resolve(emptyGraph);
     await openA;
     await new Promise((resolve) => setTimeout(resolve));
-    expect(useRepo.getState().graph).toBe(emptyGraph);
+    expect(useRepo.getState().graph).toEqual(emptyGraph);
     expect(useRepo.getState().graphLoading).toBe(false);
     expect(useRepo.getState().loading).toBe(false);
   });
@@ -736,7 +764,7 @@ describe("repo store — loadRepo progressive open", () => {
       }
       if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     // Pick A (its open hangs), then immediately pick B (opens fast → becomes active).
@@ -750,7 +778,7 @@ describe("repo store — loadRepo progressive open", () => {
     await loadA;
     await new Promise((resolve) => setTimeout(resolve));
     expect(useRepo.getState().summary).toBe(summaryB);
-    expect(useRepo.getState().graph).toBe(emptyGraph);
+    expect(useRepo.getState().graph).toEqual(emptyGraph);
   });
 
   it("does not error on the active repo when an older failed open rejects late", async () => {
@@ -768,7 +796,7 @@ describe("repo store — loadRepo progressive open", () => {
       }
       if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     // Pick a bad repo whose open hangs, then pick B which opens and becomes active.
@@ -803,7 +831,7 @@ describe("repo store — loadRepo progressive open", () => {
       if (cmd === "commit_graph") return graphDeferred.promise;
       if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0, binary: false }]);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ openPaths: ["/repo"] });
 
@@ -843,7 +871,7 @@ describe("repo store — loadRepo progressive open", () => {
       if (cmd === "commit_graph") return graphDeferred.promise;
       if (cmd === "commit_files") return Promise.resolve([{ path: "f.ts", status: "M", add: 1, del: 0, binary: false }]);
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ openPaths: ["/repo"] });
 
@@ -871,7 +899,7 @@ describe("repo store — loadRepo progressive open", () => {
       if (cmd === "commit_graph") return Promise.resolve(truncatedGraph);
       if (cmd === "list_branches") return branchesDeferred.promise;
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ openPaths: ["/repo"], branches: [] });
 
@@ -902,7 +930,7 @@ describe("repo store — loadRepo progressive open", () => {
         return Promise.resolve(emptyGraph);
       }
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ summary, graph: emptyGraph, loading: false });
 
@@ -939,7 +967,7 @@ describe("repo store — loadRepo progressive open", () => {
         return args.path === "/repo" ? slowGraph.promise : Promise.resolve(emptyGraph);
       }
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ summary, graph: emptyGraph, loading: false, openPaths: ["/repo", "/b"] });
 
@@ -979,7 +1007,7 @@ describe("repo store — loadRepo progressive open", () => {
         return Promise.resolve(undefined);
       }
       if (cmd === "commit_graph") return graphDeferred.promise;
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     const open = useRepo.getState().loadRepo("/repo");
@@ -996,7 +1024,7 @@ describe("repo store — loadRepo progressive open", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "open_repo") return Promise.resolve(summary);
       if (cmd === "commit_graph") return Promise.reject(new Error("graph boom"));
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     await useRepo.getState().loadRepo("/repo");
@@ -1019,7 +1047,7 @@ describe("repo store — loadRepo progressive open", () => {
         return graphCalls === 1 ? graphDeferred.promise : Promise.resolve(emptyGraph);
       }
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ openPaths: ["/repo"] });
 
@@ -1045,7 +1073,7 @@ describe("repo store — loadRepo progressive open", () => {
       if (cmd === "open_repo") return Promise.resolve(summary);
       if (cmd === "commit_graph") return graphDeferred.promise;
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ openPaths: ["/repo"] });
 
@@ -1077,7 +1105,7 @@ describe("repo store — loadRepo progressive open", () => {
       }
       if (cmd === "commit_graph") return graphDeferred.promise;
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     useRepo.setState({ openPaths: ["/repo", "/other"] });
 
@@ -1111,7 +1139,7 @@ describe("repo store — fastForwardTo", () => {
         case "working_changes":
           return Promise.resolve({ staged: [], unstaged: [] });
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
   }
@@ -1175,7 +1203,7 @@ describe("repo store — conflict actions", () => {
     // in-progress hunk choices instead of clearing them.
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "accept_conflict_side") return Promise.reject(new Error("index.lock"));
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     const ok = await useRepo.getState().acceptConflictSide("src/a.ts", "ours");
     expect(ok).toBe(false);
@@ -1187,7 +1215,7 @@ describe("repo store — conflict actions", () => {
       if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
       if (cmd === "operation_status")
         return Promise.resolve({ kind: "cherry-pick", canSkip: true, conflicts: [] });
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
     const ok = await useRepo.getState().resolveConflictFile("src/a.ts", "merged\n");
     expect(ok).toBe(true);
@@ -1201,7 +1229,7 @@ describe("repo store — conflict actions", () => {
       if (cmd === "working_changes")
         return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
       if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
@@ -1222,7 +1250,7 @@ describe("repo store — conflict actions", () => {
           conflicted: [{ path: "f.txt", status: "C", add: 0, del: 0, binary: false }],
         });
       if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
@@ -1241,7 +1269,7 @@ describe("repo store — conflict actions", () => {
     });
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "continue_operation") return slow.promise;
-      return Promise.resolve([]);
+      return defaultInvoke(cmd);
     });
 
     const pending = useRepo.getState().continueOperation();
@@ -1270,7 +1298,7 @@ describe("repo store — openWorktree", () => {
   const graphWithTip: RepoGraph = {
     ...emptyGraph,
     head: "tip",
-    commits: [{ id: "tip" }] as unknown as RepoGraph["commits"],
+    commits: [node({ id: "tip" })],
   };
 
   it("surfaces the WIP node when the opened worktree is dirty", async () => {
@@ -1287,7 +1315,7 @@ describe("repo store — openWorktree", () => {
             conflicted: [],
           });
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
@@ -1308,7 +1336,7 @@ describe("repo store — openWorktree", () => {
         case "working_changes":
           return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
         default:
-          return Promise.resolve([]);
+          return defaultInvoke(cmd);
       }
     });
 
