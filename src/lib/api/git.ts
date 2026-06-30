@@ -268,6 +268,12 @@ export interface SparseCheckoutState {
   enabled: boolean;
   mode: string | null;
   patterns: string[];
+  /** True when `patterns` was capped and is a prefix of a longer sparse-checkout
+   * file. A non-match against a truncated list is inconclusive (a later, unsent
+   * pattern may include the path), so write guards must not block on it. The
+   * Rust struct always serializes this; optional only for backward-compatible
+   * fixtures that predate the field. */
+  truncated?: boolean;
 }
 
 export interface AdvancedRepoState {

@@ -3,7 +3,7 @@ import type { AdvancedRepoState, FileChange, WorkingChanges } from "./api";
 export const emptyAdvancedState: AdvancedRepoState = {
   submodules: [],
   lfs: { detected: false, installed: null, issues: [], patterns: [] },
-  sparseCheckout: { enabled: false, mode: null, patterns: [] },
+  sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
 };
 
 export const advancedState = (changes: WorkingChanges): AdvancedRepoState =>
@@ -26,6 +26,13 @@ export const advancedNotices = (changes: WorkingChanges): string[] => {
   }
   if (advanced.sparseCheckout.enabled) {
     notices.push("Sparse checkout is enabled. The working tree is limited to selected paths; committed files outside the sparse set can still appear in history.");
+    if (advanced.sparseCheckout.truncated) {
+      // The pattern list was capped (see fileWriteGuard): GitLane can't verify
+      // every path against it, so its outside-checkout warnings become
+      // best-effort. Say so, and reassure that git itself still enforces the
+      // sparse rules when the change is actually staged/committed.
+      notices.push("This sparse checkout has more patterns than GitLane inspects, so some outside-checkout warnings may be missing. Git still applies the sparse rules when you stage or commit.");
+    }
   }
 
   return notices;
@@ -51,8 +58,17 @@ export const fileWriteGuard = (
 
   // libgit2 can omit visible-but-outside-sparse paths from status, so the UI
   // also checks sparse patterns before offering write actions for visible rows.
+  // Skip this when the backend truncated the pattern list: a non-match is then
+  // inconclusive (a later, unsent pattern may include the path), and the
+  // authoritative skip-worktree annotation above already blocks tracked
+  // outside-sparse files. Blocking here on a partial list would falsely reject
+  // valid stage/commit for files included by a pattern we never received.
   const sparse = advancedState(changes).sparseCheckout;
-  if (sparse.enabled && !pathIsInSparseCheckout(file.path, sparse.patterns)) {
+  if (
+    sparse.enabled &&
+    !sparse.truncated &&
+    !pathIsInSparseCheckout(file.path, sparse.patterns)
+  ) {
     return "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.";
   }
 

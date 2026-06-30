@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { WorkingChanges } from "./api";
+import type { FileChange, WorkingChanges } from "./api";
 import {
   advancedFileGuard,
   advancedNotices,
@@ -38,6 +38,41 @@ describe("advancedRepoState", () => {
     expect(advancedNotices(changes)).toEqual([
       "1 submodule has changes. Use git submodule commands or the terminal to update submodule internals.",
       "Git LFS is needed for changed or missing LFS-managed files, but git-lfs was not found on PATH.",
+      "Sparse checkout is enabled. The working tree is limited to selected paths; committed files outside the sparse set can still appear in history.",
+    ]);
+  });
+
+  it("warns that sparse guards are best-effort when the pattern list is truncated", () => {
+    const changes: WorkingChanges = {
+      staged: [],
+      unstaged: [],
+      conflicted: [],
+      advanced: {
+        submodules: [],
+        lfs: { detected: false, installed: null, issues: [], patterns: [] },
+        sparseCheckout: { enabled: true, mode: "pattern", patterns: ["/src/"], truncated: true },
+      },
+    };
+
+    expect(advancedNotices(changes)).toEqual([
+      "Sparse checkout is enabled. The working tree is limited to selected paths; committed files outside the sparse set can still appear in history.",
+      "This sparse checkout has more patterns than GitLane inspects, so some outside-checkout warnings may be missing. Git still applies the sparse rules when you stage or commit.",
+    ]);
+  });
+
+  it("omits the truncation notice when the pattern list is complete", () => {
+    const changes: WorkingChanges = {
+      staged: [],
+      unstaged: [],
+      conflicted: [],
+      advanced: {
+        submodules: [],
+        lfs: { detected: false, installed: null, issues: [], patterns: [] },
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/src/"], truncated: false },
+      },
+    };
+
+    expect(advancedNotices(changes)).toEqual([
       "Sparse checkout is enabled. The working tree is limited to selected paths; committed files outside the sparse set can still appear in history.",
     ]);
   });
@@ -126,6 +161,58 @@ describe("advancedRepoState", () => {
     );
     expect(fileWriteGuard(changes.unstaged[1], changes)).toBeNull();
     expect(guardedAdvancedWriteMessage(changes)).toBe(
+      "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+    );
+  });
+
+  it("does not block valid writes when the backend truncated the pattern list", () => {
+    // The backend capped a long sparse-checkout file, so a path missing from the
+    // partial set may still be included by a pattern we never received. Blocking
+    // it would falsely reject a stage/commit that git would accept.
+    const insideButUnsent: FileChange = {
+      path: "packages/forty-second/file.ts",
+      status: "M",
+      add: 1,
+      del: 0,
+      binary: false,
+    };
+    const authoritativelyOutside: FileChange = {
+      path: "docs/hidden.txt",
+      status: "M",
+      add: 1,
+      del: 0,
+      binary: false,
+      // Backend skip-worktree annotation — authoritative regardless of truncation.
+      advanced: { kind: "sparse", message: "Outside sparse checkout" },
+    };
+    const changes: WorkingChanges = {
+      staged: [],
+      unstaged: [insideButUnsent, authoritativelyOutside],
+      conflicted: [],
+      advanced: {
+        submodules: [],
+        lfs: { detected: false, installed: null, issues: [], patterns: [] },
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/src/"], truncated: true },
+      },
+    };
+
+    // Not blocked despite not matching the partial pattern list…
+    expect(fileWriteGuard(insideButUnsent, changes)).toBeNull();
+    // …while the authoritative backend annotation still blocks.
+    expect(fileWriteGuard(authoritativelyOutside, changes)).toBe(
+      "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+    );
+
+    // The same partial list reported as complete *would* block it — proving the
+    // truncated flag is what relaxes the guard.
+    const completeChanges: WorkingChanges = {
+      ...changes,
+      advanced: {
+        ...changes.advanced!,
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/src/"], truncated: false },
+      },
+    };
+    expect(fileWriteGuard(insideButUnsent, completeChanges)).toBe(
       "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
     );
   });
