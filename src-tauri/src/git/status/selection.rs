@@ -8,6 +8,14 @@
 //! file added then deleted within the selection nets to nothing, add+modify nets
 //! to add, modify+delete to delete — the cumulative effect of exactly the picked
 //! commits. Renames aren't tracked across the union (they surface as add+delete).
+//!
+//! Caveats:
+//! - **First parent only.** A merge commit's contribution is its diff vs its
+//!   first parent (like `commit_files`), so changes visible only through a merge's
+//!   other parents aren't part of the union.
+//! - **Cost is linear in the selection.** One `diff_tree_to_tree` per selected
+//!   commit; this runs on the blocking pool, but a very large pick (dozens of
+//!   commits) is correspondingly slower.
 
 use std::collections::HashMap;
 use std::path::Path;

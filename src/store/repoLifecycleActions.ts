@@ -13,6 +13,7 @@ import {
   openIntentIsCurrent,
   takePendingRefresh,
 } from "./repoRequests";
+import { loadSelectionUnion } from "./repoSelectionDiff";
 import { persistRecents, persistSession, readLastPath, upsertRecent } from "./repoSession";
 import { useUi } from "./ui";
 import {
@@ -567,6 +568,21 @@ export function createRepoLifecycleActions(
           get().selectionAnchor && liveIds.has(get().selectionAnchor!)
             ? get().selectionAnchor
             : selectedCommit;
+        // Reconcile the merged-selection union with the (possibly trimmed)
+        // selection: an unchanged commit *set* keeps its files (immutable by
+        // oid); a changed set is reloaded; a collapse to ≤1 commit drops it.
+        const prevDiff = get().selectionDiff;
+        const multiNow = selectedCommits.length > 1;
+        const sameUnion =
+          multiNow &&
+          !!prevDiff &&
+          prevDiff.commits.length === selectedCommits.length &&
+          selectedCommits.every((id) => prevDiff.commits.includes(id));
+        const selectionDiff = !multiNow
+          ? null
+          : sameUnion
+            ? prevDiff
+            : { commits: selectedCommits, files: [], loading: true, error: null };
         // Drop a selected working-tree file that no longer has changes (e.g. it
         // was committed/discarded outside the app) so the diff pane can't go stale.
         const sel = get().selectedFile;
@@ -599,6 +615,7 @@ export function createRepoLifecycleActions(
           selectedCommit,
           selectedCommits,
           selectionAnchor,
+          selectionDiff,
           commitFiles,
           loading: false,
           // A refresh can supersede the initial open's graph request (e.g. a
@@ -609,6 +626,9 @@ export function createRepoLifecycleActions(
           ...(gone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
+        // The multi-selection changed across the refresh (commits dropped/added):
+        // reload its merged union. Fire-and-forget so it doesn't delay the queue.
+        if (multiNow && !sameUnion) void loadSelectionUnion(set, get, nextSummary.path, selectedCommits);
         // A full refresh can move branch/commit tips, so re-run any open
         // comparison (ref-to-ref as well as working-tree) to keep it truthful.
         if (get().compare) void get().refreshCompare();
