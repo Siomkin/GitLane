@@ -227,13 +227,13 @@ describe("HistoryWorkspace — search highlight/dim", () => {
     useRepo.setState({ changes: { staged: [file], unstaged: [], conflicted: [] }, stashes: [stash] });
     // Inert: WIP + stash render at full strength.
     const { unmount } = render(<HistoryWorkspace />);
-    expect(screen.getByText("// WIP").closest("button")!.className).not.toMatch(/opacity-25/);
+    expect(screen.getByText("WIP").closest("button")!.className).not.toMatch(/opacity-25/);
     expect(screen.getByText("my stash").closest("button")!.className).not.toMatch(/opacity-25/);
     unmount();
     // Searching: neither is a commit match, so both fade with the rest.
     useUi.setState({ histSearchOpen: true, histQuery: "beta" });
     render(<HistoryWorkspace />);
-    expect(screen.getByText("// WIP").closest("button")!.className).toMatch(/opacity-25/);
+    expect(screen.getByText("WIP").closest("button")!.className).toMatch(/opacity-25/);
     expect(screen.getByText("my stash").closest("button")!.className).toMatch(/opacity-25/);
   });
 

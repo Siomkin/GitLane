@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
 import { currentBranchSyncView, defaultPublishTarget } from "../../../lib/branchSync";
 import { ForgeKind } from "../../../lib/api";
+import { changeTotal, summarizeChanges } from "../../../lib/changeSummary";
 import { useDismiss } from "../../../hooks/useDismiss";
 import { focusRing } from "../../../lib/ui";
 import type { LeftTab } from "../../../lib/ui";
@@ -89,10 +90,10 @@ export const ActionBar = ({
     }
   };
 
-  // Count conflicted paths too, so a conflict-only worktree (no staged/unstaged
-  // changes, no detected operation) still flags work needing attention.
-  const workCount =
-    changes.staged.length + changes.unstaged.length + (changes.conflicted?.length ?? 0);
+  // Distinct changed files (conflicts included), so the toolbar badge agrees
+  // with the WIP row's per-type breakdown — a path staged *and* edited in the
+  // worktree counts once, not twice.
+  const workCount = changeTotal(summarizeChanges(changes));
   // Badge counts only open PRs — the list is fetched `--state all`, but a tab
   // badge should reflect what needs attention, not merged/closed history.
   const prCount = pullRequests.filter((pr) => pr.state === "open").length;
