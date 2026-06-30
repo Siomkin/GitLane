@@ -9,6 +9,7 @@ import type {
   FileHistoryEntry,
   OperationKind,
   ReflogEntry,
+  RemoteInfo,
   RepoForge,
   RepoGraph,
   RepoSummary,
@@ -346,6 +347,15 @@ export interface RepoState {
   fetch: () => Promise<void>;
   pull: () => Promise<void>;
   push: () => Promise<void>;
+  // ---- remotes (Repository settings → Remotes) ----
+  /** List the open repo's configured remotes. */
+  listRemotes: () => Promise<RemoteInfo[]>;
+  /** Add a remote `name` → `url` (`git remote add`). */
+  addRemote: (name: string, url: string) => Promise<string>;
+  /** Repoint remote `name` at `url` (`git remote set-url`). */
+  setRemoteUrl: (name: string, url: string) => Promise<string>;
+  /** Remove remote `name` (`git remote remove`). */
+  removeRemote: (name: string) => Promise<string>;
   // ---- conflict resolution (active operation) ----
   // Each per-file action resolves to whether the git write succeeded; callers
   // gate local-state cleanup on `true` so a failed write never clears decisions.
