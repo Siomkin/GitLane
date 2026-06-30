@@ -44,8 +44,8 @@ const precedes = (a: Element, b: Element) =>
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
-  useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()] });
-  useUi.setState({ prompt: null });
+  useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()], worktrees: [] });
+  useUi.setState({ prompt: null, navOpen: false });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({ accounts: [], accountsError: null, accountsLoading: false, repoAccountRef: null });
 });
@@ -208,5 +208,38 @@ describe("ActionBar layout order", () => {
     expect(screen.getByText(/detached @/)).toBeInTheDocument();
     expect(screen.getByTitle(/Pull unavailable. Detached HEAD/)).toBeDisabled();
     expect(screen.getByTitle(/Push unavailable. Detached HEAD/)).toBeDisabled();
+  });
+});
+
+describe("ActionBar worktree indicator", () => {
+  const MAIN_WT = { name: "repo", path: "/repo", branch: "main", isMain: true };
+  const LINKED_WT = { name: "repo-wt", path: "/work/repo-wt", branch: "feature", isMain: false };
+
+  it("renders no worktree chip when the repo has only the main worktree", () => {
+    useRepo.setState({ worktrees: [MAIN_WT] });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /worktree/i })).toBeNull();
+  });
+
+  it("renders no worktree chip when the main worktree is open, even though linked ones exist", () => {
+    // Linked worktrees are discoverable in the navigator; no permanent toolbar badge.
+    useRepo.setState({ worktrees: [MAIN_WT, LINKED_WT] });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /worktree/i })).toBeNull();
+  });
+
+  it("identifies the open repo as a linked worktree, exposes its path, and opens the navigator", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "/work/repo-wt", workdir: "/work/repo-wt" },
+      worktrees: [MAIN_WT, LINKED_WT],
+    });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    const chip = screen.getByRole("button", { name: /Current worktree repo-wt/ });
+    expect(chip).toHaveTextContent("repo-wt");
+    expect(chip).toHaveAttribute("title", expect.stringContaining("/work/repo-wt"));
+
+    fireEvent.click(chip);
+    expect(useUi.getState().navOpen).toBe(true);
   });
 });

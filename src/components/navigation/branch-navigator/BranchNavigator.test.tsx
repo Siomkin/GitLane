@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BranchInfo, CommitNode, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -112,6 +112,61 @@ describe("BranchNavigator", () => {
     expect(screen.getByText("No matches")).toBeInTheDocument();
     expect(screen.queryByText("main")).not.toBeInTheDocument();
     expect(screen.queryByText("feature/search")).not.toBeInTheDocument();
+  });
+
+  it("shows worktrees with their path, flags the open one, and switches to a linked one on click", () => {
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      worktrees: [
+        { name: "r", path: "/r", branch: "main", isMain: true },
+        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
+      ],
+      openWorktree,
+    });
+    render(<BranchNavigator />);
+
+    // The absolute path is shown as secondary text so sibling worktrees are
+    // distinguishable; the open ("current") worktree is flagged.
+    expect(screen.getByText("/work/r-wt")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
+
+    // Left-click on a non-active worktree switches the app to it and closes the nav.
+    fireEvent.click(screen.getByRole("button", { name: "Open worktree feature/search" }));
+    expect(openWorktree).toHaveBeenCalledWith("/work/r-wt");
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("disambiguates codex worktrees that share the repo name as their directory", () => {
+    useRepo.setState({
+      summary: { path: "/Volumes/Dev/GitLane", workdir: "/Volumes/Dev/GitLane", headBranch: "main", headOid: "c1", detached: false },
+      worktrees: [
+        { name: "GitLane", path: "/Volumes/Dev/GitLane", branch: "main", isMain: true },
+        { name: "GitLane", path: "/Users/me/.codex/worktrees/1e75/GitLane", branch: null, isMain: false },
+      ],
+    });
+    render(<BranchNavigator />);
+
+    // The detached codex worktree's leaf is "GitLane" (the repo name), so the row
+    // falls back to "<parent>/<leaf>" to stay distinguishable; the main keeps its branch.
+    expect(screen.getByRole("button", { name: "Open worktree 1e75/GitLane" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
+  });
+
+  it("surfaces a failed worktree switch as an error toast", async () => {
+    const openWorktree = vi.fn().mockRejectedValue(new Error("worktree gone"));
+    useRepo.setState({
+      worktrees: [
+        { name: "r", path: "/r", branch: "main", isMain: true },
+        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
+      ],
+      openWorktree,
+    });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open worktree feature/search" }));
+
+    await waitFor(() => expect(useUi.getState().toast?.message).toContain("worktree gone"));
+    expect(useUi.getState().toast?.tone).toBe("error");
   });
 
   it("clicking a stash reveals it in history without opening its file review", () => {

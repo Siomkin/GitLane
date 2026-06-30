@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { BranchSyncState, StashEntry, WorktreeInfo } from "@/lib/api";
+import { isActiveWorktreePath, worktreeLabel } from "@/lib/worktrees";
 import { useRepo } from "@/store/repo";
 import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
 
@@ -22,6 +23,9 @@ export interface WorktreeItem {
   match: boolean;
   /** This worktree backs the currently open repo tab (the "you are here" row). */
   isActive: boolean;
+  /** Row label: the branch, or a distinguishing directory name when detached
+   * (disambiguated against sibling worktrees — see {@link worktreeLabel}). */
+  label: string;
 }
 
 /** A stash row paired with its match flag. */
@@ -69,20 +73,15 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const allTags = useMemo(() => collectTags(graph?.commits ?? []), [graph?.commits]);
   const head = summary?.headBranch ?? null;
 
-  // The worktree backing the open tab — matched on both workdir and the
-  // canonical repo path (they diverge for a bare repo), mirroring the worktree
-  // context menu's active-worktree check.
-  const trimPath = (p: string) => p.replace(/\/+$/, "");
-  const activeWorkdir = summary?.workdir ? trimPath(summary.workdir) : null;
-  const activeRepoPath = summary?.path ? trimPath(summary.path) : null;
-  const isActiveWtPath = (p: string) =>
-    trimPath(p) === activeWorkdir || trimPath(p) === activeRepoPath;
+  // The worktree backing the open tab is resolved by the shared helper
+  // (`isActiveWorktreePath`), the single source of that derivation across the
+  // navigator, the worktree context menu, and the toolbar indicator.
   // Map each branch checked out in a *non-active* worktree to that worktree's
   // name, so the Local list can flag it: such a branch can't be checked out or
   // deleted here while another worktree holds it.
   const branchWorktree = new Map<string, string>();
   for (const wt of worktrees) {
-    if (wt.branch && !isActiveWtPath(wt.path)) branchWorktree.set(wt.branch, wt.name);
+    if (wt.branch && !isActiveWorktreePath(summary, wt.path)) branchWorktree.set(wt.branch, wt.name);
   }
 
   const locals = branches
@@ -110,8 +109,11 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     oid: wt.branch
       ? (branches.find((b) => b.name === wt.branch)?.target ?? oidByName.get(wt.branch))
       : undefined,
-    match: matches(wt.branch ?? wt.name),
-    isActive: isActiveWtPath(wt.path),
+    // Match the path too — it's shown as the row's secondary text now, so a
+    // search for a path fragment should surface the worktree.
+    match: matches(wt.branch ?? wt.name) || matches(wt.path),
+    isActive: isActiveWorktreePath(summary, wt.path),
+    label: worktreeLabel(wt, worktrees),
   }));
   const stashItems = stashes.map((s) => ({ stash: s, match: matches(s.message) }));
 

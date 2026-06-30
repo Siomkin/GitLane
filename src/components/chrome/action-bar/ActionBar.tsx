@@ -23,6 +23,7 @@ import {
 import { SegTab } from "./SegTab";
 import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";
+import { WorktreeIndicator } from "./WorktreeIndicator";
 import { ProviderIndicator, deriveProviderState } from "./provider-indicator";
 import type { ProviderState } from "./provider-indicator";
 
@@ -237,6 +238,8 @@ export const ActionBar = ({
             </div>
           )}
         </div>
+
+        <WorktreeIndicator />
 
         {openPr && (
           <button
