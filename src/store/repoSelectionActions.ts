@@ -1,5 +1,5 @@
 import { api } from "../lib/api";
-import { buildCommitBatchPlan, computeSelection } from "./selection";
+import { computeSelection } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
 
@@ -61,12 +61,10 @@ export function createRepoSelectionActions(
         mods,
       );
 
-      // More than one commit selected → the inspector shows a merged diff across
-      // the whole selection (GL-68). A contiguous first-parent run yields a
-      // base..head range to diff; otherwise `range` is null and the inspector
-      // shows the "not a contiguous range" hint (the non-contiguous union is GL-69).
+      // More than one commit selected → the inspector shows a merged ("union")
+      // diff across the whole selection (GL-68/GL-69): the net change per file,
+      // for any selection (contiguous or not — the backend composes it).
       const multi = selectedCommits.length > 1;
-      const range = multi ? buildCommitBatchPlan(graph, selectedCommits).compareRange : null;
 
       set({
         selectedCommit: focus,
@@ -79,29 +77,26 @@ export function createRepoSelectionActions(
         fileDiff: null,
         commitFiles: [],
         selectionDiff: multi
-          ? { commits: selectedCommits, range, files: [], loading: !!range, error: null }
+          ? { commits: selectedCommits, files: [], loading: true, error: null }
           : null,
         error: null,
       });
       if (!summary) return;
 
       if (multi) {
-        // Non-contiguous selection: nothing to fetch — the inspector renders the
-        // hint until GL-69 supplies a unioned diff for the arbitrary case.
-        if (!range) return;
-        const { base, head } = range;
-        // A rapid re-selection must not let an older range's files publish over
-        // a newer selection (or a different repo).
+        // A rapid re-selection must not let an older selection's files publish
+        // over a newer one (or a different repo).
         const fresh = () => {
           const cur = get().selectionDiff;
           return (
             get().summary?.path === summary.path &&
-            cur?.range?.base === base &&
-            cur.range.head === head
+            !!cur &&
+            cur.commits.length === selectedCommits.length &&
+            cur.commits.every((id, i) => id === selectedCommits[i])
           );
         };
         try {
-          const files = await api.diffRange(summary.path, base, head);
+          const files = await api.selectionDiff(summary.path, selectedCommits);
           if (!fresh()) return;
           set((s) => (s.selectionDiff ? { selectionDiff: { ...s.selectionDiff, files, loading: false } } : {}));
         } catch (e) {
@@ -148,12 +143,11 @@ export function createRepoSelectionActions(
       if (!summary) return;
       set({ selectedFile: { path, source }, diffLoading: true, error: null });
       try {
-        // In a multi-commit selection a committed file's diff comes from the
-        // merged range (base..head), not the focus commit (GL-68).
-        const range = selectionDiff?.range;
+        // In a multi-commit selection a committed file's diff is the merged
+        // ("union") diff across the whole selection, not the focus commit (GL-69).
         const fileDiff =
-          source === "commit" && range
-            ? await api.diffRangeFile(summary.path, range.base, range.head, path)
+          source === "commit" && selectionDiff
+            ? await api.selectionDiffFile(summary.path, selectionDiff.commits, path)
             : source === "commit" && selectedCommit
               ? await api.commitFileDiff(summary.path, selectedCommit, path)
               : await api.fileDiff(summary.path, path, source === "staged");
@@ -169,10 +163,9 @@ export function createRepoSelectionActions(
       const { path, source } = selectedFile;
       set({ diffLoading: true });
       try {
-        const range = selectionDiff?.range;
         const fileDiff =
-          source === "commit" && range
-            ? await api.diffRangeFile(summary.path, range.base, range.head, path, true)
+          source === "commit" && selectionDiff
+            ? await api.selectionDiffFile(summary.path, selectionDiff.commits, path, true)
             : source === "commit" && selectedCommit
               ? await api.commitFileDiff(summary.path, selectedCommit, path, true)
               : await api.fileDiff(summary.path, path, source === "staged", true);

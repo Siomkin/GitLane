@@ -505,6 +505,28 @@ async fn compare_file_diff(
     .await
 }
 
+/// Merged ("union") diff across a multi-commit selection (GL-69): the net change
+/// per file across an arbitrary `oids` set. Walks one tree diff per selected
+/// commit, so it runs on the blocking pool like the other range reads.
+#[tauri::command]
+async fn selection_diff(path: String, oids: Vec<String>) -> Result<Vec<FileChange>, String> {
+    blocking(move || git::status::selection_diff(&path, &oids).map_err(|e| e.to_string())).await
+}
+
+#[tauri::command]
+async fn selection_diff_file(
+    path: String,
+    oids: Vec<String>,
+    file: String,
+    full: Option<bool>,
+) -> Result<FileDiff, String> {
+    blocking(move || {
+        git::status::selection_diff_file(&path, &oids, &file, full.unwrap_or(false))
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn stage_file(path: String, file: String) -> Result<String, String> {
     blocking(move || git::write::stage_file(&path, &file)).await
@@ -1214,6 +1236,8 @@ pub fn run() {
             commit_file_diff,
             diff_range,
             diff_range_file,
+            selection_diff,
+            selection_diff_file,
             file_history,
             file_blame,
             compare_refs,

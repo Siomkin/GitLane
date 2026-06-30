@@ -695,6 +695,27 @@ export const gitApi = {
       "diff_range_file",
     ),
 
+  /** Merged ("union") changed files across a multi-commit selection (GL-69): the
+   * net change per file across `oids` (in any order), with status + counts. For
+   * each file the net is computed from its state before the earliest selected
+   * commit that touches it to its state after the latest one. */
+  selectionDiff: (path: string, oids: string[]) =>
+    invoke<FileChange[]>("selection_diff", { path, oids }),
+
+  /** Merged diff for one file across a multi-commit selection (see
+   * {@link selectionDiff}). `full` bypasses the backend line cap. */
+  selectionDiffFile: async (
+    path: string,
+    oids: string[],
+    file: string,
+    full?: boolean,
+  ): Promise<FileDiff> =>
+    parse(
+      fileDiffSchema,
+      await invoke("selection_diff_file", { path, oids, file, full: full ?? null }),
+      "selection_diff_file",
+    ),
+
   /** Bounded newest-first history for a repository-relative file path. */
   fileHistory: (path: string, file: string, offset?: number, limit?: number) =>
     invoke<FileHistoryPage>("file_history", {

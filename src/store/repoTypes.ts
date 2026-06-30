@@ -74,17 +74,14 @@ export interface FileHistoryState {
   blameSelectedOid: string | null;
 }
 
-/** The merged diff of a multi-commit selection (GL-68). Present only while more
- * than one commit is selected; `range` drives the aggregated view for a
- * contiguous first-parent run (`base..head`), and is null when the selection
- * isn't such a run — the inspector then shows the "not a contiguous range" hint
- * (the non-contiguous union is GL-69's follow-up). */
+/** The merged ("union") diff of a multi-commit selection (GL-68/GL-69). Present
+ * only while more than one commit is selected. `files` is the union of changes
+ * across the whole selection — the net change per file — for any selection,
+ * contiguous or not (the backend `selection_diff` composes it). */
 export interface SelectionDiffState {
-  /** Selected commit ids in graph/display order (newest first). */
+  /** Selected commit ids in graph/display order (newest first); the union source. */
   commits: string[];
-  /** The contiguous range driving the merged file list, or null. */
-  range: { base: string; head: string } | null;
-  /** Union of files changed across the range (net status + counts). */
+  /** Union of files changed across the selection (net status + counts). */
   files: FileChange[];
   loading: boolean;
   error: string | null;

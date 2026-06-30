@@ -52,9 +52,14 @@ export function StackedReview() {
 
   const oid = review?.oid ?? null;
   const range = review?.range ?? null;
+  const selection = review?.selection ?? null;
   const path = summary?.path ?? null;
-  // Notes are scoped to this review (a specific commit or base..head range).
-  const surface = range ? `range:${range.base}..${range.head}` : `commit:${oid ?? ""}`;
+  // Notes are scoped to this review (a commit, a base..head range, or a selection).
+  const surface = selection
+    ? `selection:${selection.join(",")}`
+    : range
+      ? `range:${range.base}..${range.head}`
+      : `commit:${oid ?? ""}`;
 
   // Fetch the file list for this oid/range; reset the diff cache + collapse.
   useEffect(() => {
@@ -65,10 +70,13 @@ export function StackedReview() {
     setFullFiles(new Set());
     (async () => {
       try {
-        // Range mode diffs base..head; otherwise it's a single commit/stash.
-        const list = range
-          ? await api.diffRange(path, range.base, range.head)
-          : await api.commitFiles(path, oid);
+        // Selection mode unions a multi-commit pick; range mode diffs base..head;
+        // otherwise it's a single commit/stash.
+        const list = selection
+          ? await api.selectionDiff(path, selection)
+          : range
+            ? await api.diffRange(path, range.base, range.head)
+            : await api.commitFiles(path, oid);
         if (!cancelled) {
           setFiles(list);
           // Large/generated files start collapsed so they aren't fetched or
@@ -89,7 +97,7 @@ export function StackedReview() {
     return () => {
       cancelled = true;
     };
-  }, [oid, range, path, reset]);
+  }, [oid, range, selection, path, reset]);
 
   // Lazily fetch the diff of each *open* file once the list is in (bounded
   // concurrency lives in useLazyDiffs). Collapsed large/generated files are not
@@ -104,14 +112,16 @@ export function StackedReview() {
           return {
             key: diffKeyFor(f.path),
             fetch: () =>
-              range
-                ? api.diffRangeFile(path, range.base, range.head, f.path, full)
-                : api.commitFileDiff(path, oid, f.path, full),
+              selection
+                ? api.selectionDiffFile(path, selection, f.path, full)
+                : range
+                  ? api.diffRangeFile(path, range.base, range.head, f.path, full)
+                  : api.commitFileDiff(path, oid, f.path, full),
           };
         }),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- diffKeyFor derives from fullFiles
-  }, [files, collapsed, fullFiles, path, oid, range, ensure]);
+  }, [files, collapsed, fullFiles, path, oid, range, selection, ensure]);
 
   // Only the file list gates the view; each file's diff then streams into its
   // own section, so the first files are reviewable before the slowest resolves.

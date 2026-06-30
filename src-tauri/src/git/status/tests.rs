@@ -1,7 +1,7 @@
 use super::diff::DIFF_LINE_LIMIT;
 use super::{
     commit_file_diff, commit_files, compare_file_diff, compare_refs, file_blame, file_diff,
-    file_history, read_binary_blob, working_changes,
+    file_history, read_binary_blob, selection_diff, selection_diff_file, working_changes,
 };
 use git2::{Repository, Signature};
 use std::fs;
@@ -42,6 +42,14 @@ fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
     let parents: Vec<&git2::Commit> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
         .unwrap()
+}
+
+fn remove_commit(repo: &Repository, dir: &Path, name: &str) -> git2::Oid {
+    fs::remove_file(dir.join(name)).unwrap();
+    let mut index = repo.index().unwrap();
+    index.remove_path(Path::new(name)).unwrap();
+    index.write().unwrap();
+    commit_index(repo, &format!("remove {name}"))
 }
 
 #[test]
@@ -592,6 +600,134 @@ fn read_binary_blob_rejects_path_traversal() {
     assert!(read_binary_blob(path, None, Some("../escape.txt"), None).is_err());
     assert!(read_binary_blob(path, None, Some("a/../../escape.txt"), None).is_err());
     assert!(read_binary_blob(path, None, Some("/etc/hosts"), None).is_err());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+// ---- GL-69: merged ("union") diff across a multi-commit selection ----
+
+#[test]
+fn selection_diff_nets_add_then_delete_to_nothing() {
+    let dir = std::env::temp_dir().join("gitlane-selection-add-del-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let add = commit(&repo, &dir, "temp.txt", "scratch\n").to_string();
+    let del = remove_commit(&repo, &dir, "temp.txt").to_string();
+    let path = dir.to_str().unwrap();
+
+    // Added then deleted within the selection → the file drops out entirely.
+    let files = selection_diff(path, &[add, del]).unwrap();
+    assert!(
+        files.iter().all(|f| f.path != "temp.txt"),
+        "temp.txt should net to no change: {:?}",
+        files.iter().map(|f| &f.path).collect::<Vec<_>>()
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_nets_add_then_modify_to_add() {
+    let dir = std::env::temp_dir().join("gitlane-selection-add-mod-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let add = commit(&repo, &dir, "f.txt", "one\n").to_string();
+    let modify = commit(&repo, &dir, "f.txt", "one\ntwo\n").to_string();
+    let path = dir.to_str().unwrap();
+    let oids = [add, modify];
+
+    // The earliest touch added the file, so the net status is "A" with the final
+    // content — not "M".
+    let files = selection_diff(path, &oids).unwrap();
+    let entry = files.iter().find(|f| f.path == "f.txt").unwrap();
+    assert_eq!(entry.status, "A");
+
+    let diff = selection_diff_file(path, &oids, "f.txt", false).unwrap();
+    assert_eq!(diff.status, "A");
+    let adds: Vec<&str> = diff
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| l.kind == "add")
+        .map(|l| l.content.as_str())
+        .collect();
+    assert_eq!(adds, vec!["one", "two"]);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_nets_modify_then_delete_to_delete() {
+    let dir = std::env::temp_dir().join("gitlane-selection-mod-del-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "g.txt", "a\nb\n");
+    let modify = commit(&repo, &dir, "g.txt", "a\nB\n").to_string();
+    let del = remove_commit(&repo, &dir, "g.txt").to_string();
+    let path = dir.to_str().unwrap();
+
+    // Net from the pre-selection state ("a\nb\n") to absent → a deletion.
+    let files = selection_diff(path, &[modify, del]).unwrap();
+    let entry = files.iter().find(|f| f.path == "g.txt").unwrap();
+    assert_eq!(entry.status, "D");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_unions_disjoint_commits_excluding_unselected() {
+    let dir = std::env::temp_dir().join("gitlane-selection-disjoint-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let a = commit(&repo, &dir, "fa.txt", "a\n").to_string();
+    // fb.txt is committed *between* the two picks but left unselected.
+    commit(&repo, &dir, "fb.txt", "b\n");
+    let c = commit(&repo, &dir, "fc.txt", "c\n").to_string();
+    let path = dir.to_str().unwrap();
+
+    let files = selection_diff(path, &[a, c]).unwrap();
+    let names: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    assert!(names.contains(&"fa.txt"));
+    assert!(names.contains(&"fc.txt"));
+    assert!(!names.contains(&"fb.txt"), "unselected commit must not leak in: {names:?}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_handles_binary_files() {
+    let dir = std::env::temp_dir().join("gitlane-selection-binary-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+    let v1: Vec<u8> = vec![0u8, 1, 2, 0];
+    let v2: Vec<u8> = vec![0u8, 9, 8, 7, 6, 0];
+    let add = commit_bytes(&repo, &dir, "img.bin", &v1).to_string();
+    let modify = commit_bytes(&repo, &dir, "img.bin", &v2).to_string();
+    let path = dir.to_str().unwrap();
+    let oids = [add, modify];
+
+    let files = selection_diff(path, &oids).unwrap();
+    let entry = files.iter().find(|f| f.path == "img.bin").unwrap();
+    assert!(entry.binary);
+    assert_eq!(entry.status, "A");
+    assert_eq!((entry.add, entry.del), (0, 0));
+
+    // Added then modified → still added; the binary card shows only the new side.
+    let diff = selection_diff_file(path, &oids, "img.bin", false).unwrap();
+    assert!(diff.binary);
+    assert_eq!(diff.status, "A");
+    assert_eq!(diff.new_size, Some(v2.len() as u64));
+    assert_eq!(diff.old_size, None);
+    assert!(diff.hunks.is_empty());
 
     let _ = fs::remove_dir_all(&dir);
 }

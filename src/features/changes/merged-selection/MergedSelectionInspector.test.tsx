@@ -47,12 +47,11 @@ beforeEach(() => {
 });
 
 describe("MergedSelectionInspector", () => {
-  it("renders the count header, commit list and merged file list for a contiguous selection", () => {
+  it("renders the count header, commit list and merged file list", () => {
     useRepo.setState({
       selectedCommits: ["c3", "c2", "c1"],
       selectionDiff: {
         commits: ["c3", "c2", "c1"],
-        range: { base: "c0", head: "c3" },
         files: [file("src/app.ts", "M"), file("src/new.ts", "A")],
         loading: false,
         error: null,
@@ -72,13 +71,14 @@ describe("MergedSelectionInspector", () => {
     expect(screen.getByRole("button", { name: "Tree" })).toBeInTheDocument();
   });
 
-  it("shows the non-contiguous hint and no file list when the selection has no range", () => {
+  it("renders the merged list for a non-contiguous selection too (no hint)", () => {
+    // A gapped pick (c3 + c1, skipping c2) still merges — the union is computed
+    // by the backend, so the inspector shows the file list, never a hint.
     useRepo.setState({
       selectedCommits: ["c3", "c1"],
       selectionDiff: {
         commits: ["c3", "c1"],
-        range: null,
-        files: [],
+        files: [file("src/app.ts", "M")],
         loading: false,
         error: null,
       },
@@ -87,8 +87,20 @@ describe("MergedSelectionInspector", () => {
     render(<MergedSelectionInspector />);
 
     expect(screen.getByText("2 commits selected")).toBeInTheDocument();
-    expect(screen.getByText(/isn't a contiguous range/i)).toBeInTheDocument();
+    expect(screen.getByText("app.ts")).toBeInTheDocument();
+    expect(screen.getByText("review all →")).toBeInTheDocument();
+    expect(screen.queryByText(/contiguous range/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a loading placeholder until the union arrives", () => {
+    useRepo.setState({
+      selectedCommits: ["c3", "c1"],
+      selectionDiff: { commits: ["c3", "c1"], files: [], loading: true, error: null },
+    });
+
+    render(<MergedSelectionInspector />);
+
+    expect(screen.getByText("Loading merged diff…")).toBeInTheDocument();
     expect(screen.queryByText("review all →")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Tree" })).not.toBeInTheDocument();
   });
 });

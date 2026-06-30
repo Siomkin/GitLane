@@ -8,33 +8,30 @@ import { MergedFileList, type FileListView } from "./MergedFileList";
 import { SelectionCommitList } from "./SelectionCommitList";
 import { mergedCommitRows, selectionCountLabel } from "./mergedSelection";
 
-/** Inspector shown when more than one commit is selected (GL-68): the merged
- * diff across the whole selection — the selected-commit list plus the union of
- * files changed across a contiguous `base..head` range. When the selection is
- * not a contiguous first-parent run it shows a calm hint instead (the
- * non-contiguous union is GL-69). */
+/** Inspector shown when more than one commit is selected (GL-68/GL-69): the
+ * merged ("union") diff across the whole selection — the selected-commit list
+ * plus the net change per file across every selected commit. Works for any
+ * selection (contiguous or not); the backend `selection_diff` composes it. */
 export function MergedSelectionInspector() {
   const graph = useRepo((s) => s.graph);
   const selectedCommits = useRepo((s) => s.selectedCommits);
   const selectionDiff = useRepo((s) => s.selectionDiff);
   const selectedFile = useRepo((s) => s.selectedFile);
   const selectFile = useRepo((s) => s.selectFile);
-  const openRangeReview = useUi((s) => s.openRangeReview);
+  const openSelectionReview = useUi((s) => s.openSelectionReview);
   const openFileMenu = useUi((s) => s.openFileMenu);
   const [view, setView] = useState<FileListView>("path");
 
   const count = selectedCommits.length;
   const rows = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits);
-  const range = selectionDiff?.range ?? null;
   const files = selectionDiff?.files ?? [];
   const loading = selectionDiff?.loading ?? false;
   const error = selectionDiff?.error ?? null;
   const activePath = selectedFile?.source === "commit" ? selectedFile.path : null;
 
   const reviewAll = () => {
-    if (!range) return;
     const label = `Reviewing ${files.length} file${files.length === 1 ? "" : "s"} · ${count} commits`;
-    openRangeReview(range.base, range.head, label);
+    openSelectionReview(selectionDiff?.commits ?? selectedCommits, label);
   };
   // Committed files: a copy-only menu (no working-tree discard), matching the
   // single-commit inspector.
@@ -56,49 +53,41 @@ export function MergedSelectionInspector() {
 
       <div className="h-px bg-black/5 dark:bg-white/5" />
 
-      {!range ? (
-        <p className="px-1 text-[13px] leading-relaxed text-neutral-400">
-          This selection isn't a contiguous range, so its changes can't be merged into one diff yet.
-        </p>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+          Changed files{files.length > 0 ? ` (${files.length})` : ""}
+        </span>
+        {files.length > 0 && (
+          <button
+            className="text-xs font-medium text-[color:var(--accent)] hover:underline"
+            onClick={reviewAll}
+          >
+            review all →
+          </button>
+        )}
+      </div>
+
+      {files.length > 0 && (
+        <div className="flex items-center justify-between">
+          <ChangeTypeCounts summary={summarizeFiles(files)} />
+          <Segmented view={view} onChange={setView} />
+        </div>
+      )}
+
+      {error ? (
+        <p className="px-1 text-[13px] text-rose-500">{error}</p>
+      ) : loading ? (
+        <p className="px-1 text-[13px] text-neutral-400">Loading merged diff…</p>
+      ) : files.length === 0 ? (
+        <p className="px-1 text-[13px] text-neutral-400">No file changes across the selection.</p>
       ) : (
-        <>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-              Changed files{files.length > 0 ? ` (${files.length})` : ""}
-            </span>
-            {files.length > 0 && (
-              <button
-                className="text-xs font-medium text-[color:var(--accent)] hover:underline"
-                onClick={reviewAll}
-              >
-                review all →
-              </button>
-            )}
-          </div>
-
-          {files.length > 0 && (
-            <div className="flex items-center justify-between">
-              <ChangeTypeCounts summary={summarizeFiles(files)} />
-              <Segmented view={view} onChange={setView} />
-            </div>
-          )}
-
-          {error ? (
-            <p className="px-1 text-[13px] text-rose-500">{error}</p>
-          ) : loading ? (
-            <p className="px-1 text-[13px] text-neutral-400">Loading merged diff…</p>
-          ) : files.length === 0 ? (
-            <p className="px-1 text-[13px] text-neutral-400">No file changes across the selection.</p>
-          ) : (
-            <MergedFileList
-              files={files}
-              view={view}
-              activePath={activePath}
-              onSelect={(path) => selectFile(path, "commit")}
-              onContextMenu={onContextMenu}
-            />
-          )}
-        </>
+        <MergedFileList
+          files={files}
+          view={view}
+          activePath={activePath}
+          onSelect={(path) => selectFile(path, "commit")}
+          onContextMenu={onContextMenu}
+        />
       )}
     </div>
   );
