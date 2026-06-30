@@ -1,6 +1,8 @@
 import { cn } from "../../lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useUi } from "../../store/ui";
+import { ChangeTypeCounts } from "../changes/ChangeTypeCounts";
+import type { ChangeSummary } from "../../lib/changeSummary";
 
 /** The synthetic "uncommitted changes" row pinned to the top of history when
  * the working tree is dirty. Clicking it selects the WIP (the right inspector
@@ -11,7 +13,7 @@ export function WipRow({
   graphColW,
   selected,
   dimmed,
-  changeCount,
+  summary,
   onSelect,
 }: {
   top: number;
@@ -20,7 +22,8 @@ export function WipRow({
   selected: boolean;
   /** A commit search is active — the WIP is never a commit match, so fade it. */
   dimmed: boolean;
-  changeCount: number;
+  /** Working-tree changes split by type, painted as "+a ~m −d" beside the badge. */
+  summary: ChangeSummary;
   onSelect: () => void;
 }) {
   const openWipMenu = useUi((s) => s.openWipMenu);
@@ -43,30 +46,13 @@ export function WipRow({
       <div className="shrink-0" style={{ width: graphColW }} />
       <div className="z-10 flex min-w-0 flex-1 items-center gap-1.5 px-3.5">
         <span className="flex h-[22px] items-center whitespace-nowrap rounded-md bg-amber-100 px-2 font-mono text-[11px] font-semibold text-amber-700 dark:bg-amber-400/15 dark:text-amber-300">
-          // WIP
+          WIP
         </span>
-        <span className="flex items-center gap-1 text-[12px] text-amber-600 dark:text-amber-300/80">
-          <PencilIcon />
-          {changeCount}
-        </span>
+        <ChangeTypeCounts summary={summary} />
       </div>
       <div className="z-10 flex shrink-0 items-center justify-end pl-3 pr-4 text-xs text-neutral-400">
         now
       </div>
     </button>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

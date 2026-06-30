@@ -16,6 +16,7 @@ import { ColumnHandle } from "./ColumnHandle";
 import { HistorySkeleton } from "./HistorySkeleton";
 import { LoadError } from "../../components/ui/Loading";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
+import { changeTotal, summarizeChanges } from "../../lib/changeSummary";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 // GL-23: minimum rows ahead of the trailing load-more row at which a near-bottom
@@ -54,9 +55,8 @@ export const HistoryWorkspace = () => {
   // Include conflicted paths so a worktree with only unmerged files (e.g. a
   // `git am`/`stash apply` conflict with no detected operation) still shows the
   // WIP row, keeping the read-only Conflicts section reachable.
-  const activeTabChangeCount =
-    changes.staged.length + changes.unstaged.length + (changes.conflicted?.length ?? 0);
-  const hasWip = activeTabChangeCount > 0;
+  const changeSummary = useMemo(() => summarizeChanges(changes), [changes]);
+  const hasWip = changeTotal(changeSummary) > 0;
   const rowModel = useMemo(
     () => buildHistoryRows({ graph, stashes, hasWip }),
     [graph, stashes, hasWip],
@@ -282,7 +282,7 @@ export const HistoryWorkspace = () => {
                   graphColW={graphColW}
                   selected={wipSelected}
                   dimmed={filtering}
-                  changeCount={activeTabChangeCount}
+                  summary={changeSummary}
                   onSelect={selectWip}
                 />
               );
