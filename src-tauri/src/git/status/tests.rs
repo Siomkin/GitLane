@@ -702,6 +702,46 @@ fn selection_diff_unions_disjoint_commits_excluding_unselected() {
 }
 
 #[test]
+fn selection_diff_excludes_unselected_edits_to_a_shared_file() {
+    // The "sandwiched" case: selected A and C both edit f.txt, and an *unselected*
+    // commit B edits it in between. The merged diff must reflect only A's and C's
+    // edits — B's change must not leak in.
+    let dir = std::env::temp_dir().join("gitlane-selection-gap-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "f.txt", "1\n2\n3\n4\n5\n"); // base (parent of A)
+    let a = commit(&repo, &dir, "f.txt", "A\n2\n3\n4\n5\n").to_string(); // selected: line 1
+    commit(&repo, &dir, "f.txt", "A\n2\nB\n4\n5\n"); // UNSELECTED: line 3
+    let c = commit(&repo, &dir, "f.txt", "A\n2\nB\n4\nC\n").to_string(); // selected: line 5
+    let path = dir.to_str().unwrap();
+    let oids = [a, c];
+
+    let diff = selection_diff_file(path, &oids, "f.txt", false).unwrap();
+    assert_eq!(diff.status, "M");
+    let lines: Vec<(&str, &str)> = diff
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .map(|l| (l.kind.as_str(), l.content.as_str()))
+        .collect();
+    // The selected edits are present...
+    assert!(lines.contains(&("add", "A")), "missing A edit: {lines:?}");
+    assert!(lines.contains(&("add", "C")), "missing C edit: {lines:?}");
+    assert!(lines.contains(&("del", "1")));
+    assert!(lines.contains(&("del", "5")));
+    // ...and the unselected commit's edit (line 3 → "B") never appears.
+    assert!(!lines.iter().any(|(_, c)| *c == "B"), "unselected edit leaked: {lines:?}");
+    assert!(!lines.contains(&("del", "3")), "line 3 was wrongly changed: {lines:?}");
+
+    // The file list agrees on the net status.
+    let files = selection_diff(path, &oids).unwrap();
+    assert_eq!(files.iter().find(|f| f.path == "f.txt").unwrap().status, "M");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn selection_diff_handles_binary_files() {
     let dir = std::env::temp_dir().join("gitlane-selection-binary-test");
     let _ = fs::remove_dir_all(&dir);

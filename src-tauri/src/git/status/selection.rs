@@ -1,18 +1,31 @@
 //! Merged ("union") diff across an arbitrary multi-commit selection (GL-69).
 //!
 //! GL-68 covers a contiguous first-parent run with a single `base..head` range.
-//! This generalises to a gapped / cross-lane selection: for each file the net
-//! change is the diff from the file's state *just before the earliest selected
-//! commit that touches it* (that commit's first-parent blob) to its state
-//! *after the latest selected commit that touches it* (that commit's blob). So a
-//! file added then deleted within the selection nets to nothing, add+modify nets
-//! to add, modify+delete to delete — the cumulative effect of exactly the picked
-//! commits. Renames aren't tracked across the union (they surface as add+delete).
+//! This generalises to a gapped / cross-lane selection: the net change per file
+//! is the cumulative effect of **exactly the picked commits**, so a file added
+//! then deleted within the selection nets to nothing, add+modify nets to add,
+//! modify+delete to delete.
+//!
+//! For a file whose selected touches are *connected* — every selected commit
+//! that touches it builds directly on the previous selected one (no unselected
+//! commit edited it in between) — the net is simply the diff from the file's
+//! blob before the earliest selected touch to its blob at the latest. This is
+//! the common case (all contiguous selections, plus gapped selections where the
+//! skipped commits don't touch the file) and stays an oid-level blob diff.
+//!
+//! When an **unselected** commit edits a file *between* two selected touches
+//! (a "gap"), that intermediate blob would otherwise leak into the result. Such
+//! files are instead **composed**: each selected commit's change to the file is
+//! replayed in order via a 3-way merge, so the unselected edit is excluded.
 //!
 //! Caveats:
 //! - **First parent only.** A merge commit's contribution is its diff vs its
-//!   first parent (like `commit_files`), so changes visible only through a merge's
-//!   other parents aren't part of the union.
+//!   first parent (like `commit_files`), so changes visible only through a
+//!   merge's other parents aren't part of the union.
+//! - **Composition is text-only.** A gapped file whose selected chain involves
+//!   an add/delete or a binary blob, or whose composition doesn't auto-merge,
+//!   falls back to the blob-range (which can include the intervening edit) — a
+//!   rare case noted here rather than special-cased further.
 //! - **Cost is linear in the selection.** One `diff_tree_to_tree` per selected
 //!   commit; this runs on the blocking pool, but a very large pick (dozens of
 //!   commits) is correspondingly slower.
@@ -20,7 +33,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use git2::{Commit, DiffOptions, Oid, Patch, Repository};
+use git2::{merge_file, Commit, DiffOptions, MergeFileInput, Oid, Patch, Repository};
 
 use crate::git::read::open;
 use crate::git::types::{FileChange, FileDiff};
@@ -30,6 +43,15 @@ use super::diff::{render_patch, DIFF_LINE_LIMIT};
 /// Net `(old, new)` blob oids for one file across the selection — `None` on a
 /// side means the file is absent there (added / deleted).
 type BlobPair = (Option<Oid>, Option<Oid>);
+
+/// Per-file accumulation over the selection. `gapped` marks a file an unselected
+/// commit edited between two selected touches, so its net needs composing rather
+/// than a plain `base..head` blob diff.
+struct Touch {
+    base: Option<Oid>,
+    head: Option<Oid>,
+    gapped: bool,
+}
 
 /// Resolve the selected oids to commits ordered **oldest first**. Committer time
 /// defines "earliest/latest touch"; ties keep the caller's order so the result
@@ -58,12 +80,10 @@ fn status_for(old: bool, new: bool) -> &'static str {
 }
 
 /// Walk the ordered selection and record, per touched file, the parent blob of
-/// the earliest touch (`old`) and the blob of the latest touch (`new`).
-fn collect_touches(
-    repo: &Repository,
-    ordered: &[Commit],
-) -> Result<HashMap<String, BlobPair>, git2::Error> {
-    let mut touched: HashMap<String, BlobPair> = HashMap::new();
+/// the earliest touch (`base`), the blob of the latest touch (`head`), and
+/// whether an unselected commit edited it in between (`gapped`).
+fn collect_touches(repo: &Repository, ordered: &[Commit]) -> Result<HashMap<String, Touch>, git2::Error> {
+    let mut touched: HashMap<String, Touch> = HashMap::new();
     for commit in ordered {
         let tree = commit.tree()?;
         let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
@@ -74,37 +94,53 @@ fn collect_touches(
                 Some(p) => p.to_string_lossy().to_string(),
                 None => continue,
             };
-            let new_blob = blob_in(Some(&tree), &path);
-            // First touch pins `old` to that commit's first-parent blob; every
-            // touch overwrites `new`, so it ends at the latest commit's blob.
-            touched
-                .entry(path.clone())
-                .or_insert_with(|| (blob_in(parent_tree.as_ref(), &path), None))
-                .1 = new_blob;
+            let anc = blob_in(parent_tree.as_ref(), &path);
+            let new = blob_in(Some(&tree), &path);
+            match touched.get_mut(&path) {
+                None => {
+                    touched.insert(path, Touch { base: anc, head: new, gapped: false });
+                }
+                Some(t) => {
+                    // This commit's parent blob differs from the running result →
+                    // an unselected commit changed the file since the last touch.
+                    if t.head != anc {
+                        t.gapped = true;
+                    }
+                    t.head = new;
+                }
+            }
         }
     }
     Ok(touched)
 }
 
-/// Net `(old, new)` blob pair for a single file (used by the per-file diff so it
-/// doesn't materialise every touched path).
-fn touch_for_file(ordered: &[Commit], file: &str) -> Result<BlobPair, git2::Error> {
-    let mut pair: BlobPair = (None, None);
-    let mut seen = false;
+/// Net `(base, head)` blob pair for a single file plus whether it's gapped (used
+/// by the per-file diff so it doesn't materialise every touched path).
+fn touch_for_file(ordered: &[Commit], file: &str) -> Result<(BlobPair, bool), git2::Error> {
+    let mut base: Option<Oid> = None;
+    let mut head: Option<Oid> = None;
+    let mut started = false;
+    let mut gapped = false;
     for commit in ordered {
         let tree = commit.tree()?;
         let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+        let anc = blob_in(parent_tree.as_ref(), file);
         let cur = blob_in(Some(&tree), file);
-        let par = blob_in(parent_tree.as_ref(), file);
-        if cur != par {
-            if !seen {
-                pair.0 = par;
-                seen = true;
+        if anc == cur {
+            continue; // this commit doesn't touch the file
+        }
+        if !started {
+            base = anc;
+            head = cur;
+            started = true;
+        } else {
+            if head != anc {
+                gapped = true;
             }
-            pair.1 = cur;
+            head = cur;
         }
     }
-    Ok(pair)
+    Ok(((base, head), gapped))
 }
 
 /// libgit2's `git2::Patch::from_blobs` wrapper takes non-optional `&Blob`, so it
@@ -183,6 +219,82 @@ fn file_diff(repo: &Repository, path: &str, (old, new): BlobPair, limit: usize) 
     Ok(FileDiff { path: path.to_string(), status, add, del, hunks, truncated, ..Default::default() })
 }
 
+/// 3-way merge three text buffers, returning the merged bytes only when it
+/// auto-merges (a conflict means the selected edits genuinely overlap — the
+/// caller falls back rather than emit conflict markers into a diff).
+fn merge_text(ancestor: &[u8], ours: &[u8], theirs: &[u8], path: &str) -> Option<Vec<u8>> {
+    let mut a = MergeFileInput::new();
+    a.content(ancestor).path(path);
+    let mut o = MergeFileInput::new();
+    o.content(ours).path(path);
+    let mut t = MergeFileInput::new();
+    t.content(theirs).path(path);
+    let res = merge_file(&a, &o, &t, None).ok()?;
+    res.is_automergeable().then(|| res.content().to_vec())
+}
+
+/// Compose **only the selected commits'** changes to `file` into `(base, new)`
+/// text buffers, excluding any unselected edit. Each selected touch is replayed
+/// onto the running result: connected touches apply cleanly, a gap is resolved
+/// by 3-way merging that commit's change onto the composed-so-far content.
+/// Returns `None` (caller falls back to the blob-range) when the chain isn't
+/// pure text — an add/delete side or a binary blob — or a compose step
+/// conflicts, since those can't be composed at the blob level.
+fn compose_text(repo: &Repository, ordered: &[Commit], file: &str) -> Result<Option<(Vec<u8>, Vec<u8>)>, git2::Error> {
+    let mut base: Option<Vec<u8>> = None;
+    let mut acc: Vec<u8> = Vec::new();
+    for commit in ordered {
+        let tree = commit.tree()?;
+        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+        let anc_oid = blob_in(parent_tree.as_ref(), file);
+        let new_oid = blob_in(Some(&tree), file);
+        if anc_oid == new_oid {
+            continue; // this commit doesn't touch the file
+        }
+        // Only pure text modifications compose; add/delete or binary in the
+        // chain can't be replayed at the blob level.
+        let (anc_oid, new_oid) = match (anc_oid, new_oid) {
+            (Some(a), Some(n)) => (a, n),
+            _ => return Ok(None),
+        };
+        let anc_blob = repo.find_blob(anc_oid)?;
+        let new_blob = repo.find_blob(new_oid)?;
+        if anc_blob.is_binary() || new_blob.is_binary() {
+            return Ok(None);
+        }
+        let anc_bytes = anc_blob.content().to_vec();
+        let new_bytes = new_blob.content().to_vec();
+        if base.is_none() {
+            base = Some(anc_bytes.clone());
+            acc = anc_bytes.clone();
+        }
+        if acc == anc_bytes {
+            acc = new_bytes; // connected (or first) touch: apply directly
+        } else {
+            match merge_text(&anc_bytes, &acc, &new_bytes, file) {
+                Some(merged) => acc = merged,
+                None => return Ok(None),
+            }
+        }
+    }
+    Ok(base.map(|b| (b, acc)))
+}
+
+fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::Error> {
+    let mut opts = DiffOptions::new();
+    let patch = diff_bytes(Some(base), Some(new), path, &mut opts)?;
+    let (_ctx, add, del) = patch.line_stats()?;
+    Ok(FileChange { path: path.to_string(), status: "M".to_string(), add, del, binary: false, advanced: None })
+}
+
+fn text_diff(path: &str, base: &[u8], new: &[u8], limit: usize) -> Result<FileDiff, git2::Error> {
+    let mut opts = DiffOptions::new();
+    opts.context_lines(3);
+    let patch = diff_bytes(Some(base), Some(new), path, &mut opts)?;
+    let (add, del, hunks, truncated) = render_patch(&patch, limit)?;
+    Ok(FileDiff { path: path.to_string(), status: "M".to_string(), add, del, hunks, truncated, ..Default::default() })
+}
+
 /// Net changed files across the merged selection (`oids` in any order). Files
 /// with no net change (added then deleted, or reverted) are dropped.
 pub fn selection_diff(path: &str, oids: &[String]) -> Result<Vec<FileChange>, git2::Error> {
@@ -191,11 +303,21 @@ pub fn selection_diff(path: &str, oids: &[String]) -> Result<Vec<FileChange>, gi
     let touched = collect_touches(&repo, &ordered)?;
 
     let mut out = Vec::new();
-    for (file, pair) in touched {
-        if pair.0 == pair.1 {
+    for (file, t) in touched {
+        if t.gapped {
+            // Exclude the intervening unselected edit by composing the selected
+            // deltas; falls through to the blob-range when not compose-eligible.
+            if let Some((base, acc)) = compose_text(&repo, &ordered, &file)? {
+                if base != acc {
+                    out.push(text_change(&file, &base, &acc)?);
+                }
+                continue;
+            }
+        }
+        if t.base == t.head {
             continue; // no net change (incl. add+delete within the selection)
         }
-        out.push(file_change(&repo, &file, pair)?);
+        out.push(file_change(&repo, &file, (t.base, t.head))?);
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
@@ -210,7 +332,12 @@ pub fn selection_diff_file(
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
     let ordered = ordered_commits(&repo, oids)?;
-    let pair = touch_for_file(&ordered, file)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
+    let (pair, gapped) = touch_for_file(&ordered, file)?;
+    if gapped {
+        if let Some((base, acc)) = compose_text(&repo, &ordered, file)? {
+            return text_diff(file, &base, &acc, limit);
+        }
+    }
     file_diff(&repo, file, pair, limit)
 }
