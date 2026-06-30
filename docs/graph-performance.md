@@ -87,7 +87,7 @@ GL-5 structural result:
 | --- | --- |
 | DOM | Visible rows plus 8-row overscan per side; independent of total commits. |
 | Canvas | Same bounded viewport plus overscan; backing height is independent of total history height. |
-| Incremental history | Start at 2,000 and add 2,000 per explicit “Load more commits” action; preserve selection and the enlarged limit across refreshes. |
+| Incremental history | Start at 2,000 and add 2,000 per page; scrolling near the trailing row auto-pages (GL-23, one request in flight, paused while a search filter is active), with the manual “Load more commits” row as the accessible fallback. Preserve selection and the enlarged limit across refreshes. |
 | Watcher file/index event | `working_changes` only. Graph-affecting metadata upgrades the debounced burst to a full refresh; ambiguous directory-level FSEvents compare a lightweight HEAD/ref fingerprint first. |
 | Scroll | Target 55–60 FPS; no persistent tasks above 16–32 ms. |
 | Selection/context menu | Under 100 ms. |
