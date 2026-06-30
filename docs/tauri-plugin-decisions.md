@@ -52,7 +52,7 @@ and the reason is documented in this file.
 | Window State | Installed | Keep. Scope remains window geometry/state only. |
 | Updater | Installed | Keep under GL-24. Updates must remain signed and configured in `tauri.conf.json`. |
 | Process | Installed | Keep only `process:allow-restart` for updater relaunch. Do not grant `allow-exit` without a product need. |
-| Store | Recommended for GL-26 non-secret app data only | Use for durable settings if the settings migration needs file-backed app data. Never store tokens, OAuth codes, refresh tokens, keychain handles, or provider credentials. Prefer Rust-owned storage when data influences native/provider behavior. |
+| Store | Deferred — prefer Rust-owned app-data | Not currently needed: terminal agents already use Rust-owned app-data (`terminal_agents.rs`), the preferred home for durable non-secret app metadata (see the persistence inventory below). Adopt the Store plugin only if a settings migration genuinely needs frontend-written, file-backed storage. Never store tokens, OAuth codes, refresh tokens, keychain handles, or provider credentials. |
 | Stronghold | Deferred to GL-49 / GL-3 | Evaluate only for future native GitHub provider secret storage. If adopted, secret create/read/use must be Rust-side; do not expose a JS path that can retrieve token material. |
 | Deep Link | Deferred to GL-50 | Add only when auth callbacks or app links have a concrete flow. Desktop schemes must be configured deliberately; do not reserve schemes speculatively. |
 | Single Instance | Deferred with Deep Link | Add with deep-link work if duplicate app launches would lose auth/app-link events. Register it before deep-link handling, per Tauri's desktop guidance. |
@@ -86,6 +86,47 @@ Use this checklist for any future Tauri plugin change:
    targeted tests for logic, and a manual app check for IPC or platform behavior.
 8. Update this decision record with the new installed/deferred/avoid decision
    and rationale.
+
+## Persistence inventory and data classification
+
+This table is the inventory of record for what GitLane persists, where, and why —
+and the rule for placing **new** data. It pairs with the non-negotiable secret rule
+above and the secret-storage posture below.
+
+Categories: **UI preference** (view chrome, no privacy impact), **app metadata**
+(non-secret app config/state), **repo metadata** (data about the open repo or its
+identity), **account refs** (frontend-safe provider bindings, never tokens), and
+**secret** (token/credential material — never persisted by GitLane).
+
+| Stored item | Location | Category | Contents | Sensitivity |
+| --- | --- | --- | --- | --- |
+| `gitlane.ui` | `localStorage` (Zustand persist) | UI preference | theme/accent, density, panel widths, collapsed groups, PR filter/tab | none |
+| `gitlane.openPaths`, `gitlane.lastPath` | `localStorage` | repo metadata | absolute paths of opened repos + last repo | low — reveals local filesystem paths on a shared machine |
+| `gitlane.repoAccounts` | `localStorage` | account refs | per-repo `{ provider, host, accountId, login }` | low — metadata only, no token |
+| `gitlane.repoIdentity` | `localStorage` | repo metadata | cached commit identity (name/email), reconciled against repo-local git config | low — git config is the source of truth; this is a cache |
+| `terminal-agents.json` | Tauri app-data dir (Rust-owned) | app metadata | terminal agent command definitions | none |
+| repo-local `.git/config` | repo, via `set_repo_identity` | repo metadata | `user.name` / `user.email` / signing | low — git is the source of truth, not a GitLane store |
+| window geometry | `tauri-plugin-window-state` | UI preference | main window size/position | none |
+| GitHub token / SSO | `gh`-owned (keyring/config) | secret | tokens, refresh/SSO state | **secret — never persisted by GitLane; resolved server-side per operation** |
+
+### Where new data goes
+
+- **UI-only preference** (no privacy or native-behavior impact): `localStorage` via
+  the `gitlane.ui` Zustand store is fine.
+- **App metadata** that must be durable, file-backed, or that influences
+  native/provider behavior: Rust-owned app-data, following `terminal_agents.rs`.
+  This is preferred over `localStorage` and over adding the Store plugin. A
+  telemetry `installId` and a telemetry enabled/disabled flag, if such a feature is
+  ever built, belong here — and disabling telemetry must stop heartbeat requests
+  **without** regenerating the `installId`.
+- **Repo metadata / account refs**: keep frontend-safe — no token, no machine
+  fingerprint. `localStorage` is acceptable; migrate to Rust app-data only if a
+  concrete privacy requirement appears (e.g. hiding opened repo paths on shared
+  machines).
+- **Secrets**: never in `localStorage`, Zustand, IPC payloads, app-data JSON, logs,
+  or serialized Tauri window/app state. Native credentials, if GitLane ever owns
+  them, must be Rust-side in an OS-secure backend (evaluated under GL-49) and must
+  not cross IPC — only derived status does. See the secret-storage posture below.
 
 ## Secret-storage posture
 
@@ -145,7 +186,8 @@ build, the documented mitigation is adding `style-src-attr 'unsafe-inline'`.
 ## Follow-up work
 
 - GL-47: audit Tauri v2 plugins against this decision record.
-- GL-48: define app-data and secret-storage rules for settings/native auth.
+- GL-48: define app-data and secret-storage rules for settings/native auth —
+  addressed by the persistence inventory and classification table above.
 - GL-49: spike secure native credential storage for a future native GitHub provider.
 - GL-50: evaluate deep-link and single-instance support for auth and app links.
 - GL-51: keep the architecture rules linked to this allow/defer/avoid record.
