@@ -221,18 +221,14 @@ describe("ActionBar worktree indicator", () => {
     expect(screen.queryByRole("button", { name: /worktree/i })).toBeNull();
   });
 
-  it("advertises a linked-worktree count when the main worktree is open, opening the navigator", () => {
+  it("renders no worktree chip when the main worktree is open, even though linked ones exist", () => {
+    // Linked worktrees are discoverable in the navigator; no permanent toolbar badge.
     useRepo.setState({ worktrees: [MAIN_WT, LINKED_WT] });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
-
-    const chip = screen.getByRole("button", { name: /1 linked worktree\. Show worktrees/ });
-    expect(chip).toHaveTextContent("1");
-
-    fireEvent.click(chip);
-    expect(useUi.getState().navOpen).toBe(true);
+    expect(screen.queryByRole("button", { name: /worktree/i })).toBeNull();
   });
 
-  it("identifies the open repo as a linked worktree and exposes its path via the tooltip", () => {
+  it("identifies the open repo as a linked worktree, exposes its path, and opens the navigator", () => {
     useRepo.setState({
       summary: { ...SUMMARY, path: "/work/repo-wt", workdir: "/work/repo-wt" },
       worktrees: [MAIN_WT, LINKED_WT],
@@ -242,5 +238,8 @@ describe("ActionBar worktree indicator", () => {
     const chip = screen.getByRole("button", { name: /Current worktree repo-wt/ });
     expect(chip).toHaveTextContent("repo-wt");
     expect(chip).toHaveAttribute("title", expect.stringContaining("/work/repo-wt"));
+
+    fireEvent.click(chip);
+    expect(useUi.getState().navOpen).toBe(true);
   });
 });

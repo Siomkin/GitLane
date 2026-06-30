@@ -178,15 +178,7 @@ export function WorktreeRow({
       }}
     >
       <div className="flex items-center gap-2">
-        {wt.isMain ? (
-          // The main worktree is the repo root, not a linked checkout, and it's
-          // always present — so the worktree-fork glyph would just be permanent
-          // noise here. Keep an aligned spacer so labels/paths still line up with
-          // the linked rows below.
-          <span aria-hidden className="h-3.5 w-3.5 shrink-0" />
-        ) : (
-          <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
-        )}
+        <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
         <span data-truncate className="min-w-0 flex-1 truncate">
           <HighlightMatch text={label} query={query} />
         </span>

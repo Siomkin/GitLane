@@ -3,7 +3,6 @@ import type { RepoSummary, WorktreeInfo } from "@/lib/api";
 import {
   activeWorktree,
   isActiveWorktreePath,
-  linkedWorktrees,
   worktreeIndicatorView,
   worktreeLabel,
 } from "./worktrees";
@@ -55,12 +54,6 @@ describe("activeWorktree", () => {
   });
 });
 
-describe("linkedWorktrees", () => {
-  it("excludes the primary worktree", () => {
-    expect(linkedWorktrees([main, linked, detachedLinked])).toEqual([linked, detachedLinked]);
-  });
-});
-
 describe("worktreeLabel", () => {
   it("prefers the branch, falling back to the directory name when detached", () => {
     expect(worktreeLabel(linked)).toBe("feature/x");
@@ -74,10 +67,10 @@ describe("worktreeIndicatorView", () => {
     expect(worktreeIndicatorView([], summary())).toEqual({ kind: "none" });
   });
 
-  it("is 'count' when the main worktree is open but linked ones exist", () => {
+  it("is 'none' when the main worktree is open, even though linked ones exist", () => {
+    // No permanent count badge — linked worktrees live in the navigator.
     expect(worktreeIndicatorView([main, linked, detachedLinked], summary({ workdir: "/repo" }))).toEqual({
-      kind: "count",
-      linkedCount: 2,
+      kind: "none",
     });
   });
 
@@ -86,7 +79,6 @@ describe("worktreeIndicatorView", () => {
       kind: "active",
       name: "repo-wt-feature",
       path: "/repo-wt-feature",
-      linkedCount: 1,
     });
   });
 });

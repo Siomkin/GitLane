@@ -31,12 +31,6 @@ export function activeWorktree(
   return worktrees.find((wt) => isActiveWorktreePath(summary, wt.path)) ?? null;
 }
 
-/** Linked (non-primary) worktrees — the ones whose existence the main UI should
- * advertise. The primary worktree is always present and isn't "extra". */
-export function linkedWorktrees(worktrees: WorktreeInfo[]): WorktreeInfo[] {
-  return worktrees.filter((wt) => !wt.isMain);
-}
-
 /** Display label for a worktree row/chip: its checked-out branch, falling back
  * to the leaf directory name when detached. */
 export function worktreeLabel(wt: WorktreeInfo): string {
@@ -45,23 +39,22 @@ export function worktreeLabel(wt: WorktreeInfo): string {
 
 /** What the toolbar's worktree indicator should show.
  * - `active`: the open repo is itself a linked worktree → name it + its path.
- * - `count`: linked worktrees exist but the open repo isn't one (e.g. the main
- *   worktree is open) → just advertise how many.
- * - `none`: no linked worktrees → render nothing. */
+ *   This is the only state worth a permanent toolbar chip — it's the "you are
+ *   here" signal that you're not in the main checkout.
+ * - `none`: render nothing. When the main worktree is open, linked worktrees
+ *   still exist but don't earn an ever-present badge (it'd just sit there all
+ *   the time) — they're listed in the branch/worktree navigator instead. */
 export type WorktreeIndicator =
-  | { kind: "active"; name: string; path: string; linkedCount: number }
-  | { kind: "count"; linkedCount: number }
+  | { kind: "active"; name: string; path: string }
   | { kind: "none" };
 
 export function worktreeIndicatorView(
   worktrees: WorktreeInfo[],
   summary: RepoSummary | null,
 ): WorktreeIndicator {
-  const linkedCount = linkedWorktrees(worktrees).length;
   const active = activeWorktree(worktrees, summary);
   if (active && !active.isMain) {
-    return { kind: "active", name: active.name, path: active.path, linkedCount };
+    return { kind: "active", name: active.name, path: active.path };
   }
-  if (linkedCount > 0) return { kind: "count", linkedCount };
   return { kind: "none" };
 }
