@@ -4,6 +4,14 @@ Frontend-specific rules. Read [architecture-rules.md](architecture-rules.md) fir
 **IPC contract** (Rule 1) governs how the frontend talks to Rust (`invoke()` only via
 `lib/api`, never from a component).
 
+> **Rule tiers — know what enforces each rule.**
+> - **Tier 1 — invariants:** the import boundaries in §1–2, mechanically enforced by
+>   `eslint.config.js` (GL-58) and `tsc`. Breaking one fails CI.
+> - **Tier 2 — architecture:** error boundaries and IPC validation (GL-56/57) and the
+>   decomposition guidance in §4. Reviewer-enforced; breaking one should fail review.
+> - **Tier 3 — style:** taste (e.g. arrow-vs-`function`, see §2). Neither linted nor
+>   mandated — internal consistency is the only ask.
+
 ---
 
 ## 1. State — Zustand, split by concern
@@ -52,22 +60,29 @@ that owns its concern:
 Anything else is a smell: move the call into a store action or feature hook before adding more
 UI around it.
 
+These boundaries are **lint-enforced** (`eslint.config.js`, GL-58): raw `invoke` only in
+`src/lib/api/*`, and the `api` object only in stores, `lib/api`, or a site that opts out with an
+explicit `// eslint-disable-next-line no-restricted-imports -- <reason>` — which is exactly how
+a feature-hook or component-probe exception above documents itself.
+
 ## 2. Components & styling
 
 - **Placement mirrors role:**
   - `components/ui/` — reusable, **domain-free** primitives (no store imports, no git
-    concepts). If it knows about commits or PRs, it doesn't belong here.
+    concepts). If it knows about commits or PRs, it doesn't belong here. Lint-enforced
+    (`eslint.config.js`, GL-58): no `store`/`features`/`lib/api` imports.
   - `chrome/` — window chrome + overlays. `navigation/` — branch navigator + PR list.
   - `features/<vertical>/` — cohesive feature workspaces (graph, changes, review,
     pull-requests, terminal). New feature UI gets its own `features/` folder, not a dump in
     `chrome/`.
-- **New or touched components and hooks are arrow-function consts**, not `function`
-  declarations:
-  `export const ActionBar = (props) => { … }`, `export const useRepoForge = (path) => { … }`.
-  Existing legacy `function` components should be converted when the file is already being
-  materially edited. The icon library `components/ui/icons.tsx` is the pre-existing exception:
-  a uniform file of `function *Icon` data exports. Match a file's established style, don't mix
-  two declaration styles within one file.
+- **Components and hooks may be `function` declarations *or* arrow-function consts** —
+  both are idiomatic here and neither is enforced (Tier 3). `function Foo()` is the
+  de-facto house style across the feature layer (`features/*`, which is `function`-first
+  better than 2:1); arrow consts are common in `chrome/` and `components/ui/`. The one
+  firm rule is **consistency within a file**: match the style already established in the
+  file you're editing and don't mix the two in one (`components/ui/icons.tsx`, a uniform
+  file of `function *Icon` data exports, is the clearest single-style example). Don't do a
+  drive-by conversion of a file from one style to the other.
 - **Default to one component per file; group a cluster into a folder module.** A file that
   holds a container *plus* its sub-components *plus* a `derive/map/view` helper is the smell —
   split it into a folder up front, not after it grows. The precedents are
@@ -144,14 +159,16 @@ A file is too big when it has **more than one axis of change** — when a PR-lay
 styling change, and a data-fetch change would all edit the same function. Judge by
 responsibilities, not lines:
 
-| File | Lines | Verdict | Why |
-|------|-------|---------|-----|
-| `store/repo.ts` | thin composer + slices | **Keep one git-domain store; split by responsibility, never by line count** | `repo.ts` is a thin `create()` composing typed action slices (`repoLifecycleActions`/`repoSelectionActions`/`repoWriteActions` over `repoTypes`) plus pure `selection.ts`-style siblings — `repoSession.ts` (localStorage tab persistence) and `repoRequests.ts` (graph-generation/open-intent tokens + the deferred-refresh queue). These are same-domain slices, **not** reactive micro-stores, so cross-store `getState()` chatter is still avoided. New graph-request guards, selection math, persistence helpers, operation labels, or batch-action rules move to such modules with tests instead of making the store body absorb every concept. |
-| `features/changes/RightPanel.tsx` | ~380 | **Should split** | Holds *two* unrelated inspectors (`WorkingInspector` staging + `CommitInspector` commit-review) under a layout-slot name → two axes of change. Internal sub-components are clean; the file isn't. Contrast `PullRequestDetail` (below). |
-| `components/ui/icons.tsx` | ~460 | **Fine — it's data** | 22 prop-only SVG icon exports. No logic, one axis of change. |
-| `features/pull-requests/PullRequestDetail.tsx` | ~110 | **Fine — thin container** | Selects the active PR, drives the detail fetch, gates the body on load state. Each tab body is its *own* fetch/render responsibility, so they live in sibling files (`PrHeader`, `PrInfoTab`, `PrDiffTab`, `PrChecksTab`, `PrCommitsTab`) — once a tab grew its own `useEffect` + store slice, co-location would have been four axes of change in one file. |
-| `features/terminal/TerminalPanel.tsx` | ~450 | **Look harder** | A single ~330-line `TerminalLayer` function (multiple concerns) + 5 inline icon components that belong in `icons.tsx`. This is the real smell — a *function* doing too much, not a long file. |
-| `chrome/action-bar/` (folder) | — | **The component-split precedent** | Container `ActionBar.tsx` + one file per sub-component (`SegTab`/`ToolbarAction`/`ProviderIndicator`/`Separator`) + pure `provider.ts` (+ co-located `provider.test.ts`) + `index.ts` barrel. The default shape for any non-trivial toolbar/panel — built split from the start, not refactored later. |
+Judge by the *pattern*, not a line count (counts rot — these rows deliberately carry none):
+
+| Pattern | Verdict | Why |
+|---------|---------|-----|
+| A git-domain store that's a thin `create()` composing **same-domain** action slices | **Keep it as one store — split a store by *domain*, never by line count** | `repo.ts` is a thin composer over typed slices (`repoLifecycleActions`/`repoSelectionActions`/`repoWriteActions` + `repoTypes`) plus pure siblings (`repoSession.ts` tab persistence, `repoRequests.ts` graph-generation/open-intent tokens + the deferred-refresh queue). Same-domain slices, **not** reactive micro-stores, so cross-store `getState()` chatter is still avoided. New graph-request guards, selection math, persistence helpers, operation labels, or batch rules go to such modules with tests — not into the store body. |
+| A prop-only **data** file (e.g. the SVG icon set) | **Fine — one axis of change** | No logic; it changes only when the data does. `components/ui/icons.tsx` is a long file of prop-only icon exports and is right as one file. |
+| A **thin container** that selects state and dispatches to self-fetching sibling views | **Fine** | Each sub-view owns its fetch/render, so it gets its own file and the container keeps only the dispatch. `PullRequestDetail` → `Pr*Tab.tsx` (`PrInfoTab`/`PrDiffTab`/`PrChecksTab`/`PrCommitsTab`) is the model; the working-tree inspector likewise lives in `WorkingInspector`/`CommitInspector`, not one `RightPanel` file. |
+| One file holding **two unrelated** views under a single layout-slot name | **Split** | Two axes of change even when each view's internals are clean — a staging inspector and a commit-review inspector don't belong in one file. |
+| A single **function** doing fetch + map + paint | **The real smell — extract** | A long file made of many small focused pieces is fine; a long *function* doing too much is not. Push fetch into a store/hook, mapping into `lib/`, leave it rendering (the toolkit below). |
+| A non-trivial toolbar/panel | **Folder module — the default shape** | Container + one file per sub-component + a hook + pure `.ts` + co-located test + `index.ts`, built split from the start. Precedents: `chrome/action-bar/`, `navigation/branch-navigator/`. |
 
 > The real smell is **a single function/component doing too much**, not a long file made of
 > many small, focused pieces.
@@ -171,7 +188,7 @@ responsibilities, not lines:
 > it has a distinct *reason to change* (its data source) independent of its siblings, so
 > keeping N of them in one file means N axes of change in one file. This is exactly how
 > `PullRequestDetail` regressed: four tab bodies (`InfoTab`/`DiffTab`/`ChecksTab`/`CommitsTab`),
-> each with its own `loadPr*` effect, accumulated in one 510-line file before being split into
+> each with its own `loadPr*` effect, accumulated in one oversized file before being split into
 > `Pr*Tab.tsx` siblings. Reused-elsewhere is **not** the only promotion trigger (§-toolkit item
 > 5) — a self-fetching tab gets its own file even if it's used once.
 
@@ -253,8 +270,6 @@ Before approving a React change, ask these in order:
 
 ## Anti-patterns (frontend)
 
-- ❌ New `function Foo()` component/hook declarations — components and hooks are arrow consts
-  (`const Foo = () => …`); see §2 (only `icons.tsx` keeps its legacy `function` style).
 - ❌ A container file that also defines its sub-components *and* a `derive/map/view` helper
   inline — split into a folder module (container + per-component files + hook + pure `.ts` +
   co-located test + `index.ts`), like `chrome/action-bar/`.

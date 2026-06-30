@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type RemoteInfo } from "../../../../lib/api";
+import type { RemoteInfo } from "../../../../lib/api";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
 import { useUi } from "../../../../store/ui";
@@ -19,6 +19,10 @@ const repoLeaf = (workdir: string | null | undefined): string =>
 export const RemotesPanel = () => {
   const summary = useRepo((s) => s.summary);
   const refreshRepo = useRepo((s) => s.refresh);
+  const listRemotes = useRepo((s) => s.listRemotes);
+  const addRemote = useRepo((s) => s.addRemote);
+  const setRemoteUrl = useRepo((s) => s.setRemoteUrl);
+  const removeRemote = useRepo((s) => s.removeRemote);
   const repoAccountRef = useAccounts((s) => s.repoAccountRef);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
@@ -37,7 +41,7 @@ export const RemotesPanel = () => {
     if (!path) return;
     const gen = ++loadGen.current;
     try {
-      const list = await api.listRemotes(path);
+      const list = await listRemotes();
       if (gen !== loadGen.current) return; // superseded (e.g. repo switched)
       setRemotes(list);
       setError(null);
@@ -51,7 +55,7 @@ export const RemotesPanel = () => {
     } finally {
       if (gen === loadGen.current) setLoading(false);
     }
-  }, [path]);
+  }, [path, listRemotes]);
 
   // On repo switch, clear the previous repo's list immediately so a slow (or
   // failing) load for the new repo can't leave stale rows on screen.
@@ -91,9 +95,9 @@ export const RemotesPanel = () => {
   };
 
   const handleAdd = (name: string, url: string) =>
-    run(() => api.addRemote(path!, name, url), `Couldn't add ${name}`);
+    run(() => addRemote(name, url), `Couldn't add ${name}`);
   const handleSave = (name: string, url: string) =>
-    run(() => api.setRemoteUrl(path!, name, url), `Couldn't update ${name}`);
+    run(() => setRemoteUrl(name, url), `Couldn't update ${name}`);
   const handleRemove = (remote: RemoteInfo) =>
     requestConfirm({
       title: `Remove remote “${remote.name}”?`,
@@ -101,7 +105,7 @@ export const RemotesPanel = () => {
         "It will be removed from this repository. Tracking branches that reference it stay until pruned.",
       confirmLabel: "Remove remote",
       danger: true,
-      onConfirm: () => void run(() => api.removeRemote(path!, remote.name), `Couldn't remove ${remote.name}`),
+      onConfirm: () => void run(() => removeRemote(remote.name), `Couldn't remove ${remote.name}`),
     });
 
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0];

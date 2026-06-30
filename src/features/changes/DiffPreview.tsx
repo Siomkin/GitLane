@@ -3,6 +3,7 @@
 // just dispatches the active path to it.
 
 import { useEffect, useState } from "react";
+// eslint-disable-next-line no-restricted-imports -- local disposable staged-diff preview probe (architecture-rules-react.md §1)
 import { api, type FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { basename, dirname } from "../../lib/paths";

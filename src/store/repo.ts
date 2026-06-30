@@ -4,6 +4,7 @@
 import { create } from "zustand";
 import { createRepoConflictActions } from "./repoConflictActions";
 import { createRepoLifecycleActions } from "./repoLifecycleActions";
+import { createRepoRemoteActions } from "./repoRemoteActions";
 import { createRepoSelectionActions } from "./repoSelectionActions";
 import { createInitialRepoData, type RepoState } from "./repoTypes";
 import { readOpenPaths, readRecents } from "./repoSession";
@@ -24,6 +25,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   ...createRepoLifecycleActions(set, get),
   ...createRepoSelectionActions(set, get),
   ...createRepoWriteActions(set, get),
+  ...createRepoRemoteActions(set, get),
   ...createRepoConflictActions(set, get),
   clearError: () => set({ error: null }),
 }));

@@ -293,6 +293,10 @@ describe("repo store — compare", () => {
       title: "t",
     });
 
+    // The per-file diff is fetched fire-and-forget so the file list paints
+    // immediately; drain the in-flight fetch before asserting its failure.
+    await new Promise((resolve) => setTimeout(resolve));
+
     const cmp = useRepo.getState().compare!;
     expect(cmp.diffError).toContain("bad object");
     expect(cmp.error).toBeNull();

@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FileDiff } from "./git";
+import { parse } from "./validate";
+import { pullRequestDetailSchema } from "./schemas";
 
 export type GithubAuthProvider = "gh" | "native";
 
@@ -144,8 +146,16 @@ export const githubApi = {
     invoke<PullRequestSummary[]>("list_pull_requests", { path, account: account ?? null }),
 
   /** Detail (body, files, comment count) for one pull request — no checks. */
-  pullRequestDetail: (path: string, number: number, account?: GithubAccountRef | null) =>
-    invoke<PullRequestDetail>("pull_request_detail", { path, number, account: account ?? null }),
+  pullRequestDetail: async (
+    path: string,
+    number: number,
+    account?: GithubAccountRef | null,
+  ): Promise<PullRequestDetail> =>
+    parse(
+      pullRequestDetailSchema,
+      await invoke("pull_request_detail", { path, number, account: account ?? null }),
+      "pull_request_detail",
+    ),
 
   /** CI/status checks for a PR (the slow field), loaded lazily on demand. */
   pullRequestChecks: (path: string, number: number, account?: GithubAccountRef | null) =>

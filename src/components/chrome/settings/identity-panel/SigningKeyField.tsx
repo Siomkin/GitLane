@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
+// eslint-disable-next-line no-restricted-imports -- local signing-keys read probe for the key picker (architecture-rules-react.md §1)
 import { api, type SigningKey } from "../../../../lib/api";
 
 const MANUAL = "__manual__";

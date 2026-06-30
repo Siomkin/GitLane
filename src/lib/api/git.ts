@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { GithubAccountRef } from "./github";
+import { parse } from "./validate";
+import { fileDiffSchema, repoGraphSchema, workingChangesSchema } from "./schemas";
 
 export type RefKind = "branch" | "remote" | "tag" | "head";
 
@@ -438,8 +440,8 @@ export const gitApi = {
   removeRemote: (path: string, name: string) =>
     invoke<string>("remove_remote", { path, name }),
 
-  commitGraph: (path: string, limit?: number) =>
-    invoke<RepoGraph>("commit_graph", { path, limit: limit ?? null }),
+  commitGraph: async (path: string, limit?: number): Promise<RepoGraph> =>
+    parse(repoGraphSchema, await invoke("commit_graph", { path, limit: limit ?? null }), "commit_graph"),
 
   listBranches: (path: string) =>
     invoke<BranchInfo[]>("list_branches", { path }),
@@ -634,18 +636,16 @@ export const gitApi = {
 
   // ---- working tree / staging ----
 
-  workingChanges: async (path: string): Promise<WorkingChanges> => {
-    const r = await invoke<WorkingChanges>("working_changes", { path });
-    // The backend always sends `conflicted`, but normalize defensively so every
-    // consumer can rely on the field being present (a defensive `?? []` once,
-    // here, instead of scattered across every reader).
-    return { ...r, conflicted: r.conflicted ?? [] };
-  },
+  workingChanges: async (path: string): Promise<WorkingChanges> =>
+    // The schema defaults `conflicted` to [] (the long-standing defensive
+    // contract, so every consumer can rely on the field) and rejects any other
+    // shape drift with a clear IpcValidationError.
+    parse(workingChangesSchema, await invoke("working_changes", { path }), "working_changes"),
 
   /** Diff for a working-tree file. `staged` true → index vs HEAD; false → worktree vs index.
    * `full` bypasses the backend line cap (for an explicit "show full diff"). */
-  fileDiff: (path: string, file: string, staged: boolean, full?: boolean) =>
-    invoke<FileDiff>("file_diff", { path, file, staged, full: full ?? null }),
+  fileDiff: async (path: string, file: string, staged: boolean, full?: boolean): Promise<FileDiff> =>
+    parse(fileDiffSchema, await invoke("file_diff", { path, file, staged, full: full ?? null }), "file_diff"),
 
   /** Changed files in a commit (vs its first parent). */
   commitFiles: (path: string, oid: string) =>
@@ -668,8 +668,12 @@ export const gitApi = {
 
   /** Diff for one file within a commit (vs its first parent). `full` bypasses
    * the backend line cap (for an explicit "show full diff"). */
-  commitFileDiff: (path: string, oid: string, file: string, full?: boolean) =>
-    invoke<FileDiff>("commit_file_diff", { path, oid, file, full: full ?? null }),
+  commitFileDiff: async (path: string, oid: string, file: string, full?: boolean): Promise<FileDiff> =>
+    parse(
+      fileDiffSchema,
+      await invoke("commit_file_diff", { path, oid, file, full: full ?? null }),
+      "commit_file_diff",
+    ),
 
   /** Changed files across a range base..head (either side accepts any
    * commit-ish: a SHA, "HEAD", a branch). */
@@ -678,8 +682,18 @@ export const gitApi = {
 
   /** Diff for one file across a range base..head. `full` bypasses the backend
    * line cap (for an explicit "show full diff"). */
-  diffRangeFile: (path: string, base: string, head: string, file: string, full?: boolean) =>
-    invoke<FileDiff>("diff_range_file", { path, base, head, file, full: full ?? null }),
+  diffRangeFile: async (
+    path: string,
+    base: string,
+    head: string,
+    file: string,
+    full?: boolean,
+  ): Promise<FileDiff> =>
+    parse(
+      fileDiffSchema,
+      await invoke("diff_range_file", { path, base, head, file, full: full ?? null }),
+      "diff_range_file",
+    ),
 
   /** Bounded newest-first history for a repository-relative file path. */
   fileHistory: (path: string, file: string, offset?: number, limit?: number) =>
@@ -705,20 +719,18 @@ export const gitApi = {
     invoke<CompareResult>("compare_refs", { path, base, head: head ?? null }),
 
   /** Full diff for one file within a comparison (see [`compareRefs`]). */
-  compareFileDiff: (
+  compareFileDiff: async (
     path: string,
     base: string,
     head: string | null,
     file: string,
     full?: boolean,
-  ) =>
-    invoke<FileDiff>("compare_file_diff", {
-      path,
-      base,
-      head: head ?? null,
-      file,
-      full: full ?? null,
-    }),
+  ): Promise<FileDiff> =>
+    parse(
+      fileDiffSchema,
+      await invoke("compare_file_diff", { path, base, head: head ?? null, file, full: full ?? null }),
+      "compare_file_diff",
+    ),
 
   stageFile: (path: string, file: string) =>
     invoke<string>("stage_file", { path, file }),

@@ -183,6 +183,45 @@ policy in a packaged build / `tauri dev` via Web Inspector — Tauri may transfo
 the CSP at build time. If inline `style={}` attributes are refused in a packaged
 build, the documented mitigation is adding `style-src-attr 'unsafe-inline'`.
 
+## IPC boundary validation (GL-57)
+
+The `lib/api/*` wrappers historically blind-cast `invoke<T>(...) as T` with no
+runtime check, so a serde-struct ↔ TS-interface drift (a renamed field, a new
+nullable, a changed shape) compiled clean on both sides and failed only at runtime
+in front of a user. GL-55's audit flagged this as the single load-bearing risk in
+the architecture.
+
+**Decision: approach A — runtime schema validation at the seam — using `zod`.**
+
+- **New dependency:** `zod` (runtime `dependencies`). It is a pure-TS validation
+  library: no native capability, no Tauri plugin, no storage, no subprocess, and it
+  never touches secrets — so it sits outside the native-plugin allow/defer/avoid
+  matrix above, but is recorded here because every JS dependency is logged in this
+  file (see `CLAUDE.md`).
+- **What it does:** `lib/api/schemas.ts` holds zod schemas for the high-traffic /
+  highest-risk responses, and `lib/api/validate.ts` parses each `invoke` result
+  through its schema, throwing a named `IpcValidationError` (command + offending
+  field paths) at the boundary instead of letting an `undefined` access crash a
+  component deep in the tree. These errors are contained by the feature error
+  boundaries from GL-56.
+- **Covered commands:** `commit_graph`, `working_changes`, `file_diff` (plus the
+  `commit_file_diff` / `diff_range_file` / `compare_file_diff` variants that share
+  the `FileDiff` shape), and `pull_request_detail`. Extend coverage to a new command
+  by adding its schema and parsing the result in the wrapper.
+- **Type source of truth:** the hand-written, documented interfaces in `git.ts` /
+  `github.ts` stay the *type* source of truth (their field docs are valuable); the
+  schema is the *runtime* source of truth. A compile-time `assertEqual` guard in
+  `schemas.ts` fails the build if the two diverge, so a field added to one must be
+  added to the other.
+
+**Why not approach B (codegen TS from Rust via `ts-rs`/`specta`):** B removes the
+TS↔Rust drift at the source but adds Rust derive macros across `git/types.rs` plus a
+generation step in the build, and — crucially — does **not** validate the runtime
+payload shape, which is the actual user-facing failure mode here. A is self-contained
+on the TS side, directly testable in the existing vitest harness, and pairs with the
+GL-56 boundaries. B stays a complementary future option (B closes drift at compile
+time; A guards the runtime shape); it is not required now.
+
 ## Follow-up work
 
 - GL-47: audit Tauri v2 plugins against this decision record.
@@ -191,3 +230,5 @@ build, the documented mitigation is adding `style-src-attr 'unsafe-inline'`.
 - GL-49: spike secure native credential storage for a future native GitHub provider.
 - GL-50: evaluate deep-link and single-instance support for auth and app links.
 - GL-51: keep the architecture rules linked to this allow/defer/avoid record.
+- GL-57: validate the IPC boundary at the `lib/api` seam (zod, approach A) — done;
+  Rust→TS codegen (ts-rs/specta) remains an optional compile-time complement.

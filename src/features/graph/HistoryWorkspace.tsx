@@ -15,6 +15,7 @@ import { LoadMoreRow } from "./LoadMoreRow";
 import { ColumnHandle } from "./ColumnHandle";
 import { HistorySkeleton } from "./HistorySkeleton";
 import { LoadError } from "../../components/ui/Loading";
+import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 // GL-23: minimum rows ahead of the trailing load-more row at which a near-bottom
@@ -216,17 +217,37 @@ export const HistoryWorkspace = () => {
         ) : (
         <div className="relative" style={{ height: surfaceHeight, minWidth: graphColW + 320 }}>
           {graph && (
-            <GraphLayer
-              viewportTop={viewportTop}
-              viewportHeight={viewportHeight}
-              hasWip={hasWip}
-              rowHeight={rowHeight}
-              graphWidth={graphColW}
-              branchOffset={0}
-              visualRowByGraphRow={rowModel.visualRowByGraphRow}
-              stashConnectors={rowModel.stashConnectors}
-              matchedIds={matchedIds}
-            />
+            // The lane canvas is decorative: a paint crash degrades to just the
+            // lanes (the commit rows below stay fully interactive) rather than
+            // taking down the whole history view. The fallback is a subtle badge
+            // pinned to the graph gutter — `pointer-events-none` so it can never
+            // intercept a row click — giving sighted users a visible degraded
+            // state, not only the screen-reader cue. Retries when a new graph
+            // payload lands.
+            <ErrorBoundary
+              resetKeys={[graph]}
+              fallback={() => (
+                <div
+                  role="status"
+                  className="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-50/90 px-2 py-1 text-[11px] font-medium text-amber-700 shadow-sm dark:border-amber-400/25 dark:bg-amber-950/80 dark:text-amber-300"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+                  Commit graph unavailable
+                </div>
+              )}
+            >
+              <GraphLayer
+                viewportTop={viewportTop}
+                viewportHeight={viewportHeight}
+                hasWip={hasWip}
+                rowHeight={rowHeight}
+                graphWidth={graphColW}
+                branchOffset={0}
+                visualRowByGraphRow={rowModel.visualRowByGraphRow}
+                stashConnectors={rowModel.stashConnectors}
+                matchedIds={matchedIds}
+              />
+            </ErrorBoundary>
           )}
           <ColumnHandle left={graphColW} onResize={resizeGraphColumn} />
 

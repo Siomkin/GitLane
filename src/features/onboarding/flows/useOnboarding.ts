@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+// eslint-disable-next-line no-restricted-imports -- feature hook owning the onboarding flow (architecture-rules-react.md §1)
 import { api } from "../../../lib/api";
 import { useRepo } from "../../../store/repo";
 import type { RecentRepo } from "../../../store/repoSession";

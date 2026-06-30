@@ -3,6 +3,7 @@
 // on a commit and by the stash viewer.
 
 import { useEffect, useRef, useState } from "react";
+// eslint-disable-next-line no-restricted-imports -- local read-only multi-file review fetch, disposable probe (architecture-rules-react.md §1)
 import { api, type FileChange } from "../../lib/api";
 import { basename, dirname } from "../../lib/paths";
 import { useLazyDiffs } from "../../hooks/useLazyDiffs";
