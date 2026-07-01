@@ -12,7 +12,6 @@ import { useUi } from "../../store/ui";
 import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
-import { FileRow } from "./FileRow";
 
 /** Inspector for working changes — lists unstaged/staged files with inline
  * stage/unstage actions and the Start-commit button that raises the modal. */
@@ -111,11 +110,15 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
             <div className="mb-1.5 px-1 text-[12px] text-neutral-400">
               Unresolved paths git still considers conflicted. Resolve them in the conflict view or your terminal.
             </div>
-            <div className="space-y-0.5">
-              {conflicted.map((file) => (
-                <FileRow key={file.path} file={file} active={false} onClick={() => {}} />
-              ))}
-            </div>
+            {/* Read-only (no stage/unstage) but honours the Path/Tree toggle so
+                the layout stays consistent with the sections below. */}
+            <ChangedFileList
+              files={conflicted}
+              view={view}
+              compact={false}
+              activePath={null}
+              onSelect={() => {}}
+            />
           </div>
         )}
 

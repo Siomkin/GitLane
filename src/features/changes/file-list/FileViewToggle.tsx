@@ -20,10 +20,20 @@ export function FileViewToggle({
     );
   return (
     <div className="flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]">
-      <button type="button" className={btn(view === "path")} onClick={() => onChange("path")}>
+      <button
+        type="button"
+        aria-pressed={view === "path"}
+        className={btn(view === "path")}
+        onClick={() => onChange("path")}
+      >
         Path
       </button>
-      <button type="button" className={btn(view === "tree")} onClick={() => onChange("tree")}>
+      <button
+        type="button"
+        aria-pressed={view === "tree"}
+        className={btn(view === "tree")}
+        onClick={() => onChange("tree")}
+      >
         Tree
       </button>
     </div>
