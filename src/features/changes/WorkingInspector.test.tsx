@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { FileChange } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
@@ -96,6 +97,27 @@ describe("WorkingInspector", () => {
     const menu = useUi.getState().fileMenu;
     expect(menu?.path).toBe("src/new.ts");
     expect(menu?.discard).toBeUndefined();
+  });
+
+  it("groups working files into a tree and stages a whole folder from the roll-up", async () => {
+    const stagePaths = vi.fn();
+    useRepo.setState({
+      changes: { staged: [], unstaged: [staged("src/a.ts"), staged("src/b.ts")], conflicted: [] },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+      stagePaths,
+    });
+    const user = userEvent.setup();
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+
+    await user.click(screen.getByRole("button", { name: "Tree" }));
+
+    // Both files now sit under one directory header.
+    const header = screen.getByText("src").closest(".group") as HTMLElement;
+    expect(header).toBeTruthy();
+
+    // The folder roll-up stages every file under it in one action.
+    await user.click(within(header).getByRole("button", { name: "Stage" }));
+    expect(stagePaths).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
   });
 
   it("rings the row whose context menu is open", () => {

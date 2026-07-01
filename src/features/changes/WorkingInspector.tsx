@@ -1,4 +1,4 @@
-import { useEffect, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import type { FileChange, WorkingChanges } from "../../lib/api";
 import {
   advancedNotices,
@@ -6,10 +6,12 @@ import {
   findGuardedFile,
 } from "../../lib/advancedRepoState";
 import { cn } from "../../lib/cn";
+import { summarizeChanges } from "../../lib/changeSummary";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
-import { FileRow } from "./FileRow";
+import { ChangeTypeCounts } from "./ChangeTypeCounts";
+import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
 
 /** Inspector for working changes — lists unstaged/staged files with inline
  * stage/unstage actions and the Start-commit button that raises the modal. */
@@ -19,9 +21,12 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const selectFile = useRepo((state) => state.selectFile);
   const stageFile = useRepo((state) => state.stageFile);
   const unstageFile = useRepo((state) => state.unstageFile);
+  const stagePaths = useRepo((state) => state.stagePaths);
+  const unstagePaths = useRepo((state) => state.unstagePaths);
   const stageAll = useRepo((state) => state.stageAll);
   const unstageAll = useRepo((state) => state.unstageAll);
   const summary = useRepo((state) => state.summary);
+  const [view, setView] = useState<FileListView>("path");
   const openCommit = useUi((state) => state.openCommit);
   const openFileMenu = useUi((state) => state.openFileMenu);
   const fileMenu = useUi((state) => state.fileMenu);
@@ -88,6 +93,13 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           )}
         </div>
 
+        {total > 0 && (
+          <div className="flex items-center justify-between">
+            <ChangeTypeCounts summary={summarizeChanges(changes)} />
+            <FileViewToggle view={view} onChange={setView} />
+          </div>
+        )}
+
         {conflicted.length > 0 && (
           <div>
             <div className="mb-1 flex items-center justify-between">
@@ -98,11 +110,15 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
             <div className="mb-1.5 px-1 text-[12px] text-neutral-400">
               Unresolved paths git still considers conflicted. Resolve them in the conflict view or your terminal.
             </div>
-            <div className="space-y-0.5">
-              {conflicted.map((file) => (
-                <FileRow key={file.path} file={file} active={false} onClick={() => {}} />
-              ))}
-            </div>
+            {/* Read-only (no stage/unstage) but honours the Path/Tree toggle so
+                the layout stays consistent with the sections below. */}
+            <ChangedFileList
+              files={conflicted}
+              view={view}
+              compact={false}
+              activePath={null}
+              onSelect={() => {}}
+            />
           </div>
         )}
 
@@ -111,6 +127,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
         <FileSection
           title="Unstaged"
           files={changes.unstaged}
+          view={view}
           selectedPath={selectedPath}
           tone="stage"
           allLabel="Stage all"
@@ -118,6 +135,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           allDisabledReason={stageAllBlocked}
           changes={changes}
           onAction={stageFile}
+          onDirAction={stagePaths}
           onSelect={(p) => openFile(p, "unstaged")}
           onContextMenu={(f, e) => openMenu(f, false, e)}
           menuPath={menuPathFor(false)}
@@ -125,6 +143,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
         <FileSection
           title="Staged"
           files={changes.staged}
+          view={view}
           selectedPath={selectedPath}
           tone="unstage"
           allLabel="Unstage all"
@@ -132,6 +151,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           allDisabledReason={unstageAllBlocked}
           changes={changes}
           onAction={unstageFile}
+          onDirAction={unstagePaths}
           onSelect={(p) => openFile(p, "staged")}
           onContextMenu={(f, e) => openMenu(f, true, e)}
           menuPath={menuPathFor(true)}
@@ -165,6 +185,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 function FileSection({
   title,
   files,
+  view,
   selectedPath,
   tone,
   allLabel,
@@ -172,12 +193,14 @@ function FileSection({
   allDisabledReason,
   changes,
   onAction,
+  onDirAction,
   onSelect,
   onContextMenu,
   menuPath,
 }: {
   title: string;
   files: FileChange[];
+  view: FileListView;
   selectedPath: string | null;
   tone: "stage" | "unstage";
   allLabel: string;
@@ -185,11 +208,19 @@ function FileSection({
   allDisabledReason?: string | null;
   changes: WorkingChanges;
   onAction: (path: string) => void;
+  /** Stage/unstage every file under a Tree-view directory at once. */
+  onDirAction: (paths: string[]) => void;
   onSelect: (path: string) => void;
   onContextMenu: (file: FileChange, e: MouseEvent) => void;
   /** Path of the row whose context menu is open (highlighted), or null. */
   menuPath: string | null;
 }) {
+  // Block a folder roll-up when any file under it is guarded (advanced repo
+  // state), mirroring the per-file guard the rows already apply.
+  const dirBlocked = (paths: string[]) => {
+    const set = new Set(paths);
+    return fileWriteGuard(findGuardedFile(files.filter((f) => set.has(f.path)), changes), changes);
+  };
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between">
@@ -210,23 +241,28 @@ function FileSection({
       {files.length === 0 ? (
         <div className="px-1 py-1 text-[13px] text-neutral-400">No files.</div>
       ) : (
-        <div className="space-y-0.5">
-          {files.map((file) => (
-            <FileRow
-              key={file.path}
-              file={file}
-              active={selectedPath === file.path}
-              menuActive={menuPath === file.path}
-              onClick={() => onSelect(file.path)}
-              onContextMenu={(e) => onContextMenu(file, e)}
-              action={{
-                tone,
-                onAction: () => onAction(file.path),
-                disabledReason: fileWriteGuard(file, changes),
-              }}
-            />
-          ))}
-        </div>
+        <ChangedFileList
+          files={files}
+          view={view}
+          compact={false}
+          activePath={selectedPath}
+          menuActivePath={menuPath}
+          onSelect={onSelect}
+          onContextMenu={(path, e) => {
+            const file = files.find((f) => f.path === path);
+            if (file) onContextMenu(file, e);
+          }}
+          rowAction={(file) => ({
+            tone,
+            onAction: () => onAction(file.path),
+            disabledReason: fileWriteGuard(file, changes),
+          })}
+          dirAction={(paths) => ({
+            tone,
+            onAction: () => onDirAction(paths),
+            disabledReason: dirBlocked(paths),
+          })}
+        />
       )}
     </div>
   );

@@ -425,6 +425,18 @@ fn previous_new_no(lines: &[PatchLine], start: usize) -> Option<u32> {
     lines[..start].iter().rev().find_map(|line| line.new_no)
 }
 
+/// Stage several files in one atomic invocation (`git add -A -- A B…`, also staging
+/// deletions) so a folder roll-up can't leave some of the set unstaged. Paths
+/// follow `--`, so a dash-prefixed path cannot be parsed as a flag.
+pub fn stage_files(repo: &str, files: &[String]) -> Result<String, String> {
+    if files.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["add", "-A", "--"];
+    args.extend(files.iter().map(String::as_str));
+    run_git(repo, &args)
+}
+
 /// Unstage several files in one atomic invocation (`git restore --staged -- A B…`)
 /// so a partial failure can't leave some of the set staged. Paths follow `--`, so
 /// a dash-prefixed path cannot be parsed as a flag.

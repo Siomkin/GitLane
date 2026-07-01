@@ -129,27 +129,33 @@ function ReviewHeader({
           <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-xs" />
         </>
       )}
-      {/* Unified/Split is meaningless for a binary file (it renders an image /
-          size card, not line hunks), so hide the toggle there. */}
-      {!file?.binary && (
-        <div className="ml-auto flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
-          <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
-            Unified
-          </button>
-          <button className={modeButton(mode === "split")} onClick={() => onModeChange("split")}>
-            Split
-          </button>
-        </div>
-      )}
-      <button
-        className="ml-auto flex items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
-        onClick={onBack}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
-          <path d="m15 18-6-6 6-6" />
-        </svg>
-        Graph
-      </button>
+      {/* Unified/Split + Graph are one right-aligned group: a single `ml-auto`
+          on the wrapper pushes both to the far right. Two competing `ml-auto`
+          siblings would instead split the free space, drifting the toggle
+          inward and shifting its position with the filename width. Binary files
+          hide the toggle (they render an image/size card, not line hunks) —
+          Graph stays put because the wrapper owns the margin. */}
+      <div className="ml-auto flex items-center gap-2.5">
+        {!file?.binary && (
+          <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
+            <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
+              Unified
+            </button>
+            <button className={modeButton(mode === "split")} onClick={() => onModeChange("split")}>
+              Split
+            </button>
+          </div>
+        )}
+        <button
+          className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
+          onClick={onBack}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+          Graph
+        </button>
+      </div>
     </div>
   );
 }

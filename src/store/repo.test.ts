@@ -302,6 +302,86 @@ describe("repo store — advanced write guards", () => {
   });
 });
 
+describe("repo store — folder roll-up staging", () => {
+  // Reads that `refresh()` performs after a write; return valid shapes so the
+  // post-action refresh doesn't fail the IPC-shape validation (GL-57).
+  const refreshInvoke = (cmd: string) => {
+    switch (cmd) {
+      case "open_repo":
+        return Promise.resolve(summary);
+      case "commit_graph":
+        return Promise.resolve(emptyGraph);
+      case "working_changes":
+        return Promise.resolve(EMPTY_CHANGES);
+      default:
+        return defaultInvoke(cmd);
+    }
+  };
+
+  it("stagePaths stages the folder's files in one call and refreshes", async () => {
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().stagePaths(["src/a.ts", "src/b.ts"]);
+
+    expect(invokeMock).toHaveBeenCalledWith("stage_files", {
+      path: "/repo",
+      files: ["src/a.ts", "src/b.ts"],
+    });
+    // The single refresh that follows the write.
+    expect(invokeMock).toHaveBeenCalledWith("working_changes", expect.anything());
+  });
+
+  it("unstagePaths unstages the folder's files in one call", async () => {
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().unstagePaths(["src/a.ts", "src/b.ts"]);
+
+    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
+      path: "/repo",
+      files: ["src/a.ts", "src/b.ts"],
+    });
+  });
+
+  it("no-ops without a call when the path list is empty", async () => {
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().stagePaths([]);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
+  });
+
+  it("blocks stagePaths when any file is outside the sparse checkout", async () => {
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1, binary: false }],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    try {
+      await useRepo.getState().stagePaths(["docs/hidden.txt"]);
+
+      expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
+      expect(showToast).toHaveBeenCalledWith(
+        "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+        "error",
+      );
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
+  });
+});
+
 describe("repo store — large history", () => {
   it("loads the next graph page and preserves the larger limit", async () => {
     useRepo.setState({

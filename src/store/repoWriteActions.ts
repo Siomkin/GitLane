@@ -124,6 +124,8 @@ export function createRepoWriteActions(
   | "checkoutDetached"
   | "stageFile"
   | "unstageFile"
+  | "stagePaths"
+  | "unstagePaths"
   | "applyHunk"
   | "applyLine"
   | "discardFile"
@@ -477,6 +479,35 @@ export function createRepoWriteActions(
         await api.unstageFile(summary.path, path);
         await get().refresh();
         await get().selectFile(path, "unstaged");
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    // Folder roll-up: stage/unstage a whole directory's files at once (one git
+    // invocation, one refresh). Unlike the single-file actions these don't move
+    // the selection — a folder action shouldn't hijack which file is being viewed.
+    stagePaths: async (paths) => {
+      const { summary } = get();
+      if (!summary || paths.length === 0) return;
+      const blocked = paths.map((p) => guardedPathMessage(get, p)).find(Boolean) ?? null;
+      if (toastAdvancedGuard(blocked)) return;
+      try {
+        await api.stageFiles(summary.path, paths);
+        await get().refresh();
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    unstagePaths: async (paths) => {
+      const { summary } = get();
+      if (!summary || paths.length === 0) return;
+      const blocked = paths.map((p) => guardedPathMessage(get, p)).find(Boolean) ?? null;
+      if (toastAdvancedGuard(blocked)) return;
+      try {
+        await api.unstageFiles(summary.path, paths);
+        await get().refresh();
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
