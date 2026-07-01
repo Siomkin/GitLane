@@ -34,7 +34,7 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { defaultPublishTarget } from "@/lib/branchSync";
-import { isActiveWorktreePath } from "@/lib/worktrees";
+import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import type { RepoState } from "@/store/repoTypes";
@@ -1118,7 +1118,9 @@ export function WorktreeContextMenu() {
   const { path, name, isMain } = menu;
   // The branch checked out in this worktree (null when detached) — the handoff
   // subject. Offered only when it has a branch and there's somewhere to send it.
-  const wtBranch = worktrees.find((w) => w.path === path)?.branch ?? null;
+  // Normalize the path compare (trailing slash) to match the handoff helpers.
+  const wtBranch =
+    worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(path))?.branch ?? null;
   // Removing the worktree backing the open tab would delete its directory out
   // from under the app, leaving the refresh pointing at a gone path. `isMain`
   // only flags the *primary* worktree, so when the app is opened on a linked

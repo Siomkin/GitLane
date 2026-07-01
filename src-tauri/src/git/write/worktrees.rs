@@ -209,6 +209,18 @@ pub fn move_branch_to_worktree(
     let to = to_worktree_path;
     let dest_label = to.trim_end_matches('/').rsplit('/').next().unwrap_or(to);
 
+    // Refuse a worktree mid-conflict up front: `git stash push` fails on unmerged
+    // index entries with an opaque error, and moving a branch into/out of an
+    // unresolved merge would strand that operation. Fail with a clear message.
+    if has_unmerged(from) {
+        return Err("The source worktree has unresolved conflicts. Resolve them first.".to_string());
+    }
+    if has_unmerged(to) {
+        return Err(
+            "The destination worktree has unresolved conflicts. Resolve them first.".to_string(),
+        );
+    }
+
     let source_status = run_git(from, &["status", "--porcelain"])?;
     let source_changes = source_status.lines().filter(|l| !l.trim().is_empty()).count();
     let source_dirty = source_changes > 0;
@@ -226,9 +238,28 @@ pub fn move_branch_to_worktree(
     };
 
     // 2. Stash the destination's own uncommitted work so the branch can be
-    //    checked out into a clean tree; it is re-applied in step 6.
-    let dest_stash = if is_dirty(to)? {
-        Some(push_stash(to, "GitLane: destination changes")?)
+    //    checked out into a clean tree; it is re-applied in step 6. If this fails
+    //    after the source was stashed, restore the source first — otherwise its
+    //    edits are stranded in a stash while the branch hasn't moved (GL-74 P2).
+    let dest_dirty = match is_dirty(to) {
+        Ok(dirty) => dirty,
+        Err(e) => {
+            if let Some(o) = &source_stash {
+                restore_stash(from, o);
+            }
+            return Err(e);
+        }
+    };
+    let dest_stash = if dest_dirty {
+        match push_stash(to, "GitLane: destination changes") {
+            Ok(oid) => Some(oid),
+            Err(e) => {
+                if let Some(o) = &source_stash {
+                    restore_stash(from, o);
+                }
+                return Err(e);
+            }
+        }
     } else {
         None
     };

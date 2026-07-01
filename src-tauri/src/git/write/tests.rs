@@ -573,9 +573,17 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
         status.conflicts
     );
 
-    // Resolve + stage, then finish the carry.
+    // Resolve + stage the conflict.
     std::fs::write(repo.0.join("file.txt"), "resolved\n").unwrap();
     repo.git_ok(&["add", "file.txt"]);
+    // GL-74 P1: staging the last conflict clears the index conflicts, but the
+    // carry must STAY active (its recovery stash is still on the stack) so the
+    // frontend's worktree refresh doesn't drop "Finish carry" before it can run.
+    let resolved = crate::git::conflicts::operation_status(repo.path()).expect("status resolved");
+    assert_eq!(resolved.kind, "carry", "carry must survive resolving the last conflict");
+    assert!(resolved.conflicts.is_empty(), "no conflicts remain once staged");
+
+    // Finish the carry.
     let done = continue_operation(repo.path(), "carry", None, None).expect("continue carry");
     assert!(done.contains("Carried"), "unexpected continue message: {done}");
 
@@ -615,6 +623,62 @@ fn abort_carry_discards_the_merge_but_preserves_the_stash() {
         1,
         "abort should preserve the destination's stashed changes"
     );
+}
+
+#[test]
+fn stale_handoff_marker_is_swept_when_its_stashes_are_gone() {
+    let (repo, _linked, _msg) = handoff_into_conflict("handoff-stale");
+    assert_eq!(
+        crate::git::conflicts::operation_status(repo.path())
+            .unwrap()
+            .kind,
+        "carry"
+    );
+
+    // The carry's recovery stash disappears (finished/aborted/dropped outside the
+    // app), leaving only the marker. A stale marker must self-heal to "none" and
+    // not keep claiming (or later mislabel) the worktree as a carry.
+    repo.git(&["stash", "clear"]);
+    assert_eq!(
+        crate::git::conflicts::operation_status(repo.path())
+            .unwrap()
+            .kind,
+        "none",
+        "a marker whose stashes are gone must not report a carry"
+    );
+    // The marker file was swept, so a subsequent read is also clean.
+    assert_eq!(
+        crate::git::conflicts::operation_status(repo.path())
+            .unwrap()
+            .kind,
+        "none"
+    );
+}
+
+#[test]
+fn move_branch_to_worktree_refuses_a_source_with_unresolved_conflicts() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-unmerged");
+    let l = linked.0.as_path();
+    // Leave the linked (source) worktree mid-conflict: commit a change on feature,
+    // a divergent one on a sibling, then merge → unresolved conflict on feature.
+    std::fs::write(l.join("file.txt"), "AAA\n").unwrap();
+    git_ok_at(l, &["commit", "-q", "-am", "A"]);
+    git_ok_at(l, &["checkout", "-q", "-b", "sibling", "HEAD~1"]);
+    std::fs::write(l.join("file.txt"), "BBB\n").unwrap();
+    git_ok_at(l, &["commit", "-q", "-am", "B"]);
+    git_ok_at(l, &["checkout", "-q", "feature"]);
+    let merge = git_at(l, &["merge", "sibling"]);
+    assert!(!merge.status.success(), "merge should conflict for the test setup");
+
+    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+        .expect_err("a source mid-conflict should be refused up front");
+    assert!(
+        err.contains("unresolved conflicts"),
+        "error should explain the conflict, got: {err}"
+    );
+    // Nothing was stashed or moved by the refused handoff.
+    let stashes = repo.git(&["stash", "list"]);
+    assert!(String::from_utf8_lossy(&stashes.stdout).trim().is_empty());
 }
 
 #[test]

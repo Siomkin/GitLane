@@ -76,7 +76,7 @@ export const ConflictWorkspace = () => {
   const theirsSub = rebasing
     ? "your commit (theirs)"
     : carrying
-      ? "your changes (theirs)"
+      ? "carried changes (theirs)"
       : "incoming (theirs)";
 
   // Parse the selected text file's conflicted content into hunks (the editor is

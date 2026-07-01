@@ -374,9 +374,9 @@ export function createRepoWriteActions(
         carry,
       );
       // Land on the destination — the branch (and any carried work, or a conflict
-      // to resolve) lives there now. loadRepo republishes the graph and reads
-      // operation_status, so a carry conflict opens the conflict workspace for the
-      // destination.
+      // to resolve) lives there now. loadRepo owns the loading lifecycle + open
+      // intent, republishes the graph, and reads operation_status, so a carry
+      // conflict opens the conflict workspace for the destination.
       await get().loadRepo(toWorktreePath);
       return message;
     },
