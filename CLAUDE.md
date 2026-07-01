@@ -25,6 +25,9 @@ bun run test                # frontend unit/render tests (vitest, jsdom)
 bun run test:watch          # vitest in watch mode
 ```
 
+Releases are tag-driven — push `vX.Y.Z` for a stable release or `vX.Y.Z-beta.N`
+for the beta channel; see [`docs/release-channels.md`](docs/release-channels.md).
+
 GitHub / PR features require `gh` **2.95.0 or newer**. The backend checks a
 non-secret capability baseline before GitHub operations: `gh version`,
 `gh auth status --json hosts`, `gh auth token --hostname <host> --user <login>`,

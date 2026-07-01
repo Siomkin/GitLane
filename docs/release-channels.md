@@ -60,16 +60,18 @@ The updater never downgrades, so last-published is safe but has one edge: if you
 publish an **out-of-order lower** version — say a `v0.2.1` stable hotfix after a
 higher `v0.3.0-beta.1` — the manifest points at the lower version and testers on
 the higher pre-release see no update until the next **higher** release rolls it
-forward. Avoid shipping a lower tag after a higher pre-release, or re-run the
-release of the higher one to restore the manifest.
+forward. Avoid shipping a lower tag after a higher pre-release, or re-publish the
+higher one via `workflow_dispatch` (with its tag) to roll the manifest back to it.
 
 ## Operational notes
 
 - **A failed platform leg does not roll the beta manifest.** `publish-beta-manifest`
   depends on the whole `release-app` matrix succeeding, so if one platform fails,
   the beta channel keeps its previous (complete) manifest rather than publishing a
-  partial one. Fix the cause and re-run the release to roll it forward — the
-  versioned release may already exist, so re-running is safe (`--clobber`).
+  partial one. Fix the cause, then re-run the failed job(s) from that Actions run
+  (you can't re-push an existing tag; a `workflow_dispatch` with the tag input
+  also works). The versioned release may already exist, so re-running is safe
+  (`--clobber`).
 - **A transient `gh` failure** in the roll step leaves the manifest stale, with a
   red workflow step as the only signal; re-run that job to recover.
 
