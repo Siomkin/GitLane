@@ -66,6 +66,18 @@ describe("mergeOperationStatus", () => {
     expect(next?.canSkip).toBe(true);
     expect(next?.files.map((f) => f.path)).toEqual(["new.ts"]);
   });
+
+  it("recognises the GL-74 carry kind and keeps it after conflicts clear", () => {
+    const fresh = mergeOperationStatus(null, status({ kind: "carry", conflicts: [conflict("a.ts")] }));
+    expect(fresh?.kind).toBe("carry");
+    expect(fresh?.files.map((f) => f.path)).toEqual(["a.ts"]);
+    // Staging the last carry conflict clears the index conflicts, but the backend
+    // still reports "carry" while the recovery stashes live — the file flips to
+    // resolved (so "Finish carry" stays enabled) instead of dropping the op (P1).
+    const resolved = mergeOperationStatus(fresh, status({ kind: "carry", conflicts: [] }));
+    expect(resolved?.kind).toBe("carry");
+    expect(resolved?.files.find((f) => f.path === "a.ts")?.resolved).toBe(true);
+  });
 });
 
 describe("operationLabel", () => {
@@ -74,5 +86,6 @@ describe("operationLabel", () => {
     expect(operationLabel("rebase")).toBe("Rebase");
     expect(operationLabel("cherry-pick")).toBe("Cherry-pick");
     expect(operationLabel("revert")).toBe("Revert");
+    expect(operationLabel("carry")).toBe("Carry");
   });
 });

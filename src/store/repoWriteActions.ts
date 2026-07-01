@@ -113,7 +113,7 @@ export function createRepoWriteActions(
   | "deleteTag"
   | "pushTag"
   | "removeWorktree"
-  | "moveBranchToCurrentWorktree"
+  | "moveBranchToWorktree"
   | "deleteBranchWithWorktree"
   | "deleteRemoteBranch"
   | "forcePush"
@@ -363,8 +363,39 @@ export function createRepoWriteActions(
     removeWorktree: (worktreePath, force = false) =>
       runOp(get, async (summary) => api.removeWorktree(summary.path, worktreePath, force)),
 
-    moveBranchToCurrentWorktree: (branch, fromWorktreePath) =>
-      runOp(get, async (summary) => api.moveBranchToWorktree(summary.path, branch, fromWorktreePath)),
+    moveBranchToWorktree: async (branch, fromWorktreePath, toWorktreePath, carry) => {
+      const { summary, loading } = get();
+      if (!summary) throw new Error("No repository");
+      // Guard against a double-submit: the handoff (stash → detach → checkout →
+      // pop) is slow and the IPC runs before loadRepo raises `loading`, so a second
+      // trigger could launch a concurrent move on the shared stash. Hold `loading`
+      // across the IPC ourselves; loadRepo takes it over on success.
+      if (loading) throw new Error("Another operation is in progress");
+      set({ loading: true, error: null });
+      try {
+        const message = await api.moveBranchToWorktree(
+          summary.path,
+          branch,
+          fromWorktreePath,
+          toWorktreePath,
+          carry,
+        );
+        // Land on the destination — the branch (and any carried work, or a
+        // conflict to resolve) lives there now. loadRepo owns the loading lifecycle
+        // + open intent, republishes the graph, and reads operation_status, so a
+        // carry conflict opens the conflict workspace for the destination.
+        await get().loadRepo(toWorktreePath);
+        return message;
+      } catch (e) {
+        flushPendingRefresh(get);
+        throw e;
+      } finally {
+        // Safety net: on success loadRepo already cleared `loading`; if it didn't
+        // (IPC threw, or loadRepo failed to open the destination) don't strand the
+        // spinner.
+        if (get().loading) set({ loading: false });
+      }
+    },
 
     deleteBranchWithWorktree: (branch, fromWorktreePath) =>
       runOp(get, async (summary) =>

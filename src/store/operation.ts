@@ -24,9 +24,16 @@ export function mergeOperationStatus(
   status: OperationStatus,
 ): OperationState | null {
   // Tolerate an absent/odd payload (e.g. a `none` state) — only a real
-  // merge/sequencer kind produces an operation; anything else clears it.
+  // merge/sequencer kind (or GL-74's "carry") produces an operation; anything
+  // else clears it.
   const kind = status?.kind;
-  if (kind !== "merge" && kind !== "rebase" && kind !== "cherry-pick" && kind !== "revert") {
+  if (
+    kind !== "merge" &&
+    kind !== "rebase" &&
+    kind !== "cherry-pick" &&
+    kind !== "revert" &&
+    kind !== "carry"
+  ) {
     return null;
   }
   const conflicts = Array.isArray(status.conflicts) ? status.conflicts : [];
@@ -67,5 +74,7 @@ export function operationLabel(kind: OperationState["kind"]): string {
       return "Cherry-pick";
     case "revert":
       return "Revert";
+    case "carry":
+      return "Carry";
   }
 }

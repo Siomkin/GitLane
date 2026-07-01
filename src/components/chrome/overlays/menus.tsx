@@ -14,6 +14,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
+import { handoffDestinationOptions, promptWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -33,7 +34,7 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { defaultPublishTarget } from "@/lib/branchSync";
-import { isActiveWorktreePath } from "@/lib/worktrees";
+import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import type { RepoState } from "@/store/repoTypes";
@@ -417,7 +418,7 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const moveBranchToCurrentWorktree = useRepo((s) => s.moveBranchToCurrentWorktree);
+  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const deleteBranchWithWorktree = useRepo((s) => s.deleteBranchWithWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
@@ -584,14 +585,32 @@ export function BranchContextMenu() {
     const children: MenuItem[] = [
       { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); showToast("Copied path"); } },
     ];
-    if (isLocal && !isCurrent) {
-      children.push({ label: "Local checkout (move here)", onClick: () => act(() => moveBranchToCurrentWorktree(b, existingWt.path)) });
+    // Only offer the hand-off when a valid destination actually exists (bare /
+    // prunable worktrees are filtered out), so it's never a dead click.
+    if (isLocal && !isCurrent && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
+      children.push({
+        label: "Hand off to…",
+        onClick: () =>
+          promptWorktreeHandoff({
+            branch: b,
+            sourcePath: existingWt.path,
+            worktrees,
+            // The branch lives in another worktree, not the open repo, so its
+            // uncommitted state isn't known here — carry conditionally.
+            sourceChanges: null,
+            requestPrompt,
+            requestConfirm,
+            run,
+            moveBranchToWorktree,
+            onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
+          }),
+      });
     }
     if (!existingWtInfo?.isMain) {
       children.push({
         label: "Remove worktree",
         danger: true,
-        onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path)) }),
+        onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.${existingWtInfo?.locked ? " This worktree is locked; removing it will override the lock." : ""}`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path, existingWtInfo?.locked ?? false)) }),
       });
     }
     groups.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });
@@ -1088,14 +1107,24 @@ export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
+  const requestPrompt = useUi((s) => s.requestPrompt);
   const showToast = useUi((s) => s.showToast);
   const summary = useRepo((s) => s.summary);
+  const worktrees = useRepo((s) => s.worktrees);
+  const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
+  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const run = useBranchOp();
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
+  // The live worktree entry — its branch is the handoff subject, and `locked`
+  // decides whether removal needs a lock-override (`--force --force`). Normalize
+  // the path compare (trailing slash) to match the handoff helpers.
+  const wtEntry = worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(path));
+  const wtBranch = wtEntry?.branch ?? null;
+  const wtLocked = wtEntry?.locked ?? false;
   // Removing the worktree backing the open tab would delete its directory out
   // from under the app, leaving the refresh pointing at a gone path. `isMain`
   // only flags the *primary* worktree, so when the app is opened on a linked
@@ -1113,6 +1142,30 @@ export function WorktreeContextMenu() {
         close();
         void openWorktree(path).catch((e) => showToast(String(e), "error"));
       },
+    });
+  }
+  // Hand the worktree's branch (and its uncommitted work) off to another
+  // workspace (GL-74). Only when it has a branch and a *valid* destination exists
+  // (bare / prunable worktrees are filtered out) — never a dead click.
+  if (wtBranch && handoffDestinationOptions(worktrees, path).length > 0) {
+    const sourceChanges = isActiveWorktree
+      ? changes.staged.length + changes.unstaged.length + changes.conflicted.length
+      : null;
+    items.push({
+      label: "Hand off branch to…",
+      icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />,
+      onClick: () =>
+        promptWorktreeHandoff({
+          branch: wtBranch,
+          sourcePath: path,
+          worktrees,
+          sourceChanges,
+          requestPrompt,
+          requestConfirm,
+          run,
+          moveBranchToWorktree,
+          onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
+        }),
     });
   }
   items.push({
@@ -1136,10 +1189,14 @@ export function WorktreeContextMenu() {
       onClick: () =>
         requestConfirm({
           title: `Remove worktree ${name}?`,
-          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.`,
+          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.${
+            wtLocked ? " This worktree is locked; removing it will override the lock." : ""
+          }`,
           confirmLabel: "Remove worktree",
           danger: true,
-          onConfirm: () => void run(() => removeWorktree(path)),
+          // A locked worktree needs a forced removal (`--force --force` on the
+          // backend); an ordinary one stays unforced so git's dirty check applies.
+          onConfirm: () => void run(() => removeWorktree(path, wtLocked)),
         }),
     });
   }

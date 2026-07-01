@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 const realRemoveBranch = useRepo.getState().removeBranch;
 const realCreateWorktreeAt = useRepo.getState().createWorktreeAt;
 const realPublishBranch = useRepo.getState().publishBranch;
-const realMoveBranchToCurrentWorktree = useRepo.getState().moveBranchToCurrentWorktree;
+const realMoveBranchToWorktree = useRepo.getState().moveBranchToWorktree;
 const realDeleteBranchWithWorktree = useRepo.getState().deleteBranchWithWorktree;
 const realRemoveWorktree = useRepo.getState().removeWorktree;
 const realOpenWorktree = useRepo.getState().openWorktree;
@@ -41,7 +41,7 @@ beforeEach(() => {
     removeBranch: realRemoveBranch,
     createWorktreeAt: realCreateWorktreeAt,
     publishBranch: realPublishBranch,
-    moveBranchToCurrentWorktree: realMoveBranchToCurrentWorktree,
+    moveBranchToWorktree: realMoveBranchToWorktree,
     deleteBranchWithWorktree: realDeleteBranchWithWorktree,
     removeWorktree: realRemoveWorktree,
     openWorktree: realOpenWorktree,
@@ -395,13 +395,16 @@ describe("BranchContextMenu", () => {
   // `git branch -D` refuses a branch checked out in a linked worktree. Rather
   // than a two-step (remove worktree, then delete), the menu offers one combined
   // action; the plain disabled Delete is gone for the linked-worktree case.
-  it("promotes Open worktree + groups Local checkout/Remove under Worktree for a linked worktree", () => {
-    const moveBranchToCurrentWorktree = vi.fn().mockResolvedValue("Moved feature to local checkout");
+  it("promotes Open worktree + offers Hand off / Remove under Worktree for a linked worktree", () => {
+    const moveBranchToWorktree = vi.fn().mockResolvedValue("Handed off feature to repo");
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("feature")],
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
-      moveBranchToCurrentWorktree,
+      worktrees: [
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+      ],
+      moveBranchToWorktree,
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
@@ -409,11 +412,37 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
     // Checkout stays hidden: offering it would only produce a git worktree error.
     expect(screen.queryByRole("menuitem", { name: "Checkout feature" })).not.toBeInTheDocument();
-    // Worktree group holds the move + remove actions.
+    // Worktree group holds the hand-off + remove actions.
     openGroup("Worktree");
     expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Local checkout (move here)" }));
-    expect(moveBranchToCurrentWorktree).toHaveBeenCalledWith("feature", "/work/repo-feature");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hand off to…" }));
+    // The picker opens with the branch's *other* worktrees as destinations (the
+    // source worktree is filtered out), then a detach confirm runs the move.
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.title).toBe("Hand off feature to…");
+    expect(prompt?.options?.map((o) => o.value)).toEqual(["/work/repo"]);
+    prompt!.onSubmit("/work/repo");
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.title).toBe("Hand off feature to main?");
+    confirm!.onConfirm();
+    expect(moveBranchToWorktree).toHaveBeenCalledWith("feature", "/work/repo-feature", "/work/repo", true);
+  });
+
+  // "Hand off to…" is hidden when no *valid* destination exists — the only other
+  // worktree here is the bare main repo, which can't receive a checkout.
+  it("hides Hand off when the only other worktree is bare", () => {
+    useRepo.setState({
+      summary: { path: "/work/bare.git", workdir: "/work/bare.git", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [
+        { name: "bare.git", path: "/work/bare.git", branch: null, isMain: true, bare: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    openGroup("Worktree");
+    expect(screen.queryByRole("menuitem", { name: "Hand off to…" })).not.toBeInTheDocument();
   });
 
   // The combined action previews the delete (so unmerged commits are surfaced),
@@ -463,9 +492,31 @@ describe("BranchContextMenu", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     confirm!.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature");
+    // Unlocked worktree → unforced removal (git's dirty check still applies).
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", false);
     // The branch is untouched — the combined delete must not fire.
     expect(deleteBranchWithWorktree).not.toHaveBeenCalled();
+  });
+
+  // A locked worktree needs a forced removal (`--force --force` on the backend);
+  // the confirm surfaces the lock and the call forces it.
+  it("forces removal of a locked worktree and warns in the confirm", () => {
+    const removeWorktree = vi.fn().mockResolvedValue("Removed worktree");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, locked: true }],
+      removeWorktree,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Worktree");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.message).toMatch(/locked/i);
+    confirm!.onConfirm();
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", true);
   });
 
   // Git refuses to remove the main worktree, so a branch checked out there keeps

@@ -88,8 +88,19 @@ async fn move_branch_to_worktree(
     path: String,
     branch: String,
     from_worktree_path: String,
+    to_worktree_path: String,
+    carry: bool,
 ) -> Result<String, String> {
-    blocking(move || git::write::move_branch_to_worktree(&path, &branch, &from_worktree_path)).await
+    blocking(move || {
+        git::write::move_branch_to_worktree(
+            &path,
+            &branch,
+            &from_worktree_path,
+            &to_worktree_path,
+            carry,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
