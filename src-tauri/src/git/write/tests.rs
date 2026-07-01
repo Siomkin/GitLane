@@ -8,7 +8,7 @@ use super::{
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
     reflog_entries, remove_worktree, resolve_conflict_file, set_remote_url, set_repo_identity,
-    set_upstream, skip_operation, worktrees,
+    set_upstream, skip_operation, stage_files, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
