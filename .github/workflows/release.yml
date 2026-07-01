@@ -75,7 +75,7 @@ jobs:
           # Allow an optional SemVer pre-release suffix (e.g. v0.2.0-beta.1) so
           # beta/rc builds can ship on the beta channel (GL-76); a bare
           # vMAJOR.MINOR.PATCH is still the stable form.
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
             echo "Invalid release tag: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, e.g. v0.2.0-beta.1)"
             exit 1
           fi
