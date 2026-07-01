@@ -139,15 +139,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Runner assignment: the macOS + Linux legs build on self-hosted runners
+        # (Mac mini `mac-gitlane`, Ubuntu host `linux-gitlane`) to save the 10x-billed
+        # macOS minutes and the heavy Linux Tauri compile. Windows stays GitHub-hosted.
+        # These legs only run on tag / workflow_dispatch (maintainer-only), so
+        # self-hosted is safe even once the repo is public. The Mac runner is started
+        # on-demand (`./run.sh`) before a release; the Linux runner is an always-on
+        # systemd service. Start the Mac runner BEFORE pushing the tag or the mac legs
+        # sit queued waiting for it.
         include:
           - name: linux
-            runner: ubuntu-24.04
+            runner: [self-hosted, Linux, X64]
             args: ""
           - name: macos-arm64
-            runner: macos-latest
+            runner: [self-hosted, macOS, ARM64]
             args: "--target aarch64-apple-darwin"
           - name: macos-x86_64
-            runner: macos-latest
+            runner: [self-hosted, macOS, ARM64]
             args: "--target x86_64-apple-darwin"
           - name: windows
             runner: windows-latest
@@ -170,7 +178,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - name: Install Linux Tauri dependencies
-        if: matrix.name == 'linux'
+        # Only GitHub-hosted Linux needs this. The self-hosted `linux-gitlane` runner
+        # runs as an unprivileged, sudo-less user with these deps preinstalled on the
+        # host, so `sudo apt-get` there would fail — runner.environment gates it out.
+        if: matrix.name == 'linux' && runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
