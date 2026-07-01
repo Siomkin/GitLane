@@ -19,14 +19,17 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
     // Per-entry attribute flags, reset at each `worktree` boundary. `bare`
     // (main is a bare repo) and `prunable` (directory gone) both mean the entry
     // has no usable working tree — a branch can't be checked out into it.
+    // `locked` means git refuses removal without `--force --force`.
     let mut bare = false;
     let mut prunable = false;
+    let mut locked = false;
     let mut first = true;
 
     let mut flush = |path: &mut Option<String>,
                      branch: &mut Option<String>,
                      bare: &mut bool,
                      prunable: &mut bool,
+                     locked: &mut bool,
                      first: &mut bool| {
         if let Some(p) = path.take() {
             let name = p.rsplit('/').next().unwrap_or(&p).to_string();
@@ -37,17 +40,19 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
                 is_main: std::mem::replace(first, false),
                 bare: std::mem::replace(bare, false),
                 prunable: std::mem::replace(prunable, false),
+                locked: std::mem::replace(locked, false),
             });
         } else {
             *branch = None;
             *bare = false;
             *prunable = false;
+            *locked = false;
         }
     };
 
     for line in raw.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
-            flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut first);
+            flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut locked, &mut first);
             path = Some(p.trim().to_string());
         } else if let Some(b) = line.strip_prefix("branch ") {
             branch = Some(b.trim().trim_start_matches("refs/heads/").to_string());
@@ -55,9 +60,11 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
             bare = true;
         } else if line == "prunable" || line.starts_with("prunable ") {
             prunable = true;
+        } else if line == "locked" || line.starts_with("locked ") {
+            locked = true;
         }
     }
-    flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut first);
+    flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut locked, &mut first);
     Ok(out)
 }
 
@@ -79,17 +86,35 @@ pub fn add_worktree(
 }
 
 /// Remove a linked worktree (`git worktree remove <path>`). `force` adds
-/// `--force`, dropping git's dirty/locked safety check. Git refuses to remove the
-/// main worktree, surfacing its own error; the frontend also hides the action there.
+/// `--force`, dropping git's dirty-worktree safety check. A *locked* worktree
+/// needs a **second** `--force` (git refuses `-f` alone: "cannot remove a locked
+/// working tree; use 'remove -f -f'"), so when the caller forces the removal and
+/// the target is locked we pass `-f -f`. Git refuses to remove the main worktree,
+/// surfacing its own error; the frontend also hides the action there.
 pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<String, String> {
     ensure_operand(worktree_path)?;
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");
+        // Only the caller-forced path may override a lock — an unforced remove
+        // still surfaces git's "locked working tree" error so the UI can prompt.
+        if worktree_is_locked(repo, worktree_path) {
+            args.push("--force");
+        }
     }
     args.push(worktree_path);
     run_git(repo, &args)?;
     Ok(format!("Removed worktree {worktree_path}"))
+}
+
+/// Whether the worktree at `path` is locked, from live `git worktree list` state.
+/// A read failure returns false (we then let git's own error surface).
+fn worktree_is_locked(repo: &str, path: &str) -> bool {
+    worktrees(repo)
+        .ok()
+        .into_iter()
+        .flatten()
+        .any(|w| same_path(&w.path, path) && w.locked)
 }
 
 /// Compare two worktree paths on their resolved real path: git's porcelain

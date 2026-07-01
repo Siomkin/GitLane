@@ -212,6 +212,9 @@ export interface WorktreeInfo {
   /** Prunable — the worktree's directory is gone/stale; not a usable checkout
    * target. Optional for fixtures; the backend always sends it. */
   prunable?: boolean;
+  /** Locked (`git worktree lock`) — removal needs `--force --force`. Optional for
+   * fixtures; the backend always sends it. */
+  locked?: boolean;
 }
 
 export interface StashEntry {

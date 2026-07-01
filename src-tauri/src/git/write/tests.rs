@@ -7,8 +7,8 @@ use super::{
     continue_operation, delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
-    reflog_entries, resolve_conflict_file, set_remote_url, set_repo_identity, set_upstream,
-    skip_operation, worktrees,
+    reflog_entries, remove_worktree, resolve_conflict_file, set_remote_url, set_repo_identity,
+    set_upstream, skip_operation, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -739,6 +739,40 @@ fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destinat
         String::from_utf8_lossy(&source_head.stdout).trim(),
         "feature",
         "source must still be on its branch after a refused handoff"
+    );
+}
+
+#[test]
+fn remove_worktree_force_overrides_a_lock() {
+    let repo = TempRepo::new("wt-locked");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("f.txt"), "x\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-locked");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    repo.git_ok(&["worktree", "lock", linked.as_str()]);
+
+    // `worktrees()` flags the lock.
+    let list = worktrees(repo.path()).expect("list worktrees");
+    assert!(
+        list.iter().any(|w| !w.is_main && w.locked),
+        "the linked worktree should be flagged locked: {list:?}"
+    );
+
+    // An unforced remove refuses (git's "locked working tree" error); a forced
+    // remove overrides the lock because the backend supplies the second --force.
+    assert!(
+        remove_worktree(repo.path(), linked.as_str(), false).is_err(),
+        "an unforced remove must not silently override a lock"
+    );
+    remove_worktree(repo.path(), linked.as_str(), true).expect("force-remove a locked worktree");
+    assert!(
+        !linked.0.exists(),
+        "the locked worktree directory should be gone after a forced remove"
     );
 }
 

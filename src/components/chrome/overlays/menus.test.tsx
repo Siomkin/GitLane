@@ -475,9 +475,31 @@ describe("BranchContextMenu", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     confirm!.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature");
+    // Unlocked worktree → unforced removal (git's dirty check still applies).
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", false);
     // The branch is untouched — the combined delete must not fire.
     expect(deleteBranchWithWorktree).not.toHaveBeenCalled();
+  });
+
+  // A locked worktree needs a forced removal (`--force --force` on the backend);
+  // the confirm surfaces the lock and the call forces it.
+  it("forces removal of a locked worktree and warns in the confirm", () => {
+    const removeWorktree = vi.fn().mockResolvedValue("Removed worktree");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, locked: true }],
+      removeWorktree,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Worktree");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.message).toMatch(/locked/i);
+    confirm!.onConfirm();
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", true);
   });
 
   // Git refuses to remove the main worktree, so a branch checked out there keeps

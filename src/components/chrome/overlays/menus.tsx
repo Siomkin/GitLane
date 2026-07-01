@@ -607,7 +607,7 @@ export function BranchContextMenu() {
       children.push({
         label: "Remove worktree",
         danger: true,
-        onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path)) }),
+        onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.${existingWtInfo?.locked ? " This worktree is locked; removing it will override the lock." : ""}`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path, existingWtInfo?.locked ?? false)) }),
       });
     }
     groups.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });
@@ -1116,11 +1116,12 @@ export function WorktreeContextMenu() {
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
-  // The branch checked out in this worktree (null when detached) — the handoff
-  // subject. Offered only when it has a branch and there's somewhere to send it.
-  // Normalize the path compare (trailing slash) to match the handoff helpers.
-  const wtBranch =
-    worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(path))?.branch ?? null;
+  // The live worktree entry — its branch is the handoff subject, and `locked`
+  // decides whether removal needs a lock-override (`--force --force`). Normalize
+  // the path compare (trailing slash) to match the handoff helpers.
+  const wtEntry = worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(path));
+  const wtBranch = wtEntry?.branch ?? null;
+  const wtLocked = wtEntry?.locked ?? false;
   // Removing the worktree backing the open tab would delete its directory out
   // from under the app, leaving the refresh pointing at a gone path. `isMain`
   // only flags the *primary* worktree, so when the app is opened on a linked
@@ -1183,10 +1184,14 @@ export function WorktreeContextMenu() {
       onClick: () =>
         requestConfirm({
           title: `Remove worktree ${name}?`,
-          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.`,
+          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.${
+            wtLocked ? " This worktree is locked; removing it will override the lock." : ""
+          }`,
           confirmLabel: "Remove worktree",
           danger: true,
-          onConfirm: () => void run(() => removeWorktree(path)),
+          // A locked worktree needs a forced removal (`--force --force` on the
+          // backend); an ordinary one stays unforced so git's dirty check applies.
+          onConfirm: () => void run(() => removeWorktree(path, wtLocked)),
         }),
     });
   }

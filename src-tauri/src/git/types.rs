@@ -209,6 +209,9 @@ pub struct WorktreeInfo {
     /// True when the worktree is prunable — its directory is gone/stale
     /// (`prunable` attribute). Also not a usable checkout target.
     pub prunable: bool,
+    /// True when the worktree is locked (`locked [reason]` attribute). git
+    /// refuses to remove a locked worktree without `--force --force`.
+    pub locked: bool,
 }
 
 /// A stash entry for the sidebar's STASHES group.
