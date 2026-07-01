@@ -37,6 +37,11 @@ preflight fails the release otherwise.
 The tag's pre-release suffix (a `-` after `X.Y.Z`) is what the workflow keys on:
 it flips `prerelease: true` and appends the beta `--config`.
 
+Supported tag shapes are `vX.Y.Z` and `vX.Y.Z-<suffix>`, where `<suffix>` is
+dot-separated alphanumerics — e.g. `-beta.1`, `-rc.2`. The preflight regex does
+**not** allow extra hyphens inside the suffix (`v1.0.0-alpha-beta` is rejected),
+so stick to the `-beta.N` / `-rc.N` convention.
+
 ## The rolling beta manifest
 
 After **every** release, the `publish-beta-manifest` job copies that release's
@@ -44,11 +49,41 @@ After **every** release, the `publish-beta-manifest` job copies that release's
 URL that `/latest/` can't provide for pre-releases. The `beta` release hosts
 only the manifest — its artifact URLs point back at the versioned releases.
 
-It runs for stable tags too, on purpose: the beta channel tracks the newest
-build of **any** type, so once a stable ships and no newer beta exists, a beta
-tester is offered the stable next (`0.2.0 > 0.2.0-beta.x`) and graduates off the
-beta channel. The updater only moves forward, so a chronologically older
-manifest entry never downgrades anyone.
+It runs for stable tags too, on purpose, so beta testers can graduate. The
+manifest is set to the **most recently published** release, whatever its type —
+it tracks *last-published*, not *highest-semver*. In the normal case where
+versions ship in increasing order the beta channel therefore always points at
+the newest build, and when a stable ships after the last beta, testers are
+offered it (`0.2.0 > 0.2.0-beta.x`) and move to stable.
+
+The updater never downgrades, so last-published is safe but has one edge: if you
+publish an **out-of-order lower** version — say a `v0.2.1` stable hotfix after a
+higher `v0.3.0-beta.1` — the manifest points at the lower version and testers on
+the higher pre-release see no update until the next **higher** release rolls it
+forward. Avoid shipping a lower tag after a higher pre-release, or re-run the
+release of the higher one to restore the manifest.
+
+## Operational notes
+
+- **A failed platform leg does not roll the beta manifest.** `publish-beta-manifest`
+  depends on the whole `release-app` matrix succeeding, so if one platform fails,
+  the beta channel keeps its previous (complete) manifest rather than publishing a
+  partial one. Fix the cause and re-run the release to roll it forward — the
+  versioned release may already exist, so re-running is safe (`--clobber`).
+- **A transient `gh` failure** in the roll step leaves the manifest stale, with a
+  red workflow step as the only signal; re-run that job to recover.
+
+### Verifying the first beta
+
+After tagging `vX.Y.Z-beta.N`:
+
+1. All four matrix legs succeed with `--config …/tauri.beta.conf.json` — in
+   particular the **Windows** leg (its `--config` path mixes `\` and `/`, which
+   Windows tolerates, but it's worth eyeballing the first time).
+2. `releases/download/beta/latest.json` exists and its asset URLs resolve.
+3. A freshly installed beta build's update check hits the beta endpoint, not
+   `/latest/`.
+4. After a later stable `vX.Y.Z`, a tester on `X.Y.Z-beta.N` is offered `X.Y.Z`.
 
 ## Not yet implemented
 

@@ -219,14 +219,16 @@ jobs:
           generateReleaseNotes: true
           releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
 
-  # Roll the beta channel's manifest after every release so beta testers always
-  # track the newest build. GitHub's `/latest/` alias can't serve a pre-release,
-  # so the beta channel is a fixed `beta` release holding a rolling latest.json at
-  # a stable URL (releases/download/beta/latest.json). It intentionally runs for
-  # BOTH beta and stable tags: when a stable ships and no newer beta exists, the
-  # tester is offered the stable next (semver: 0.2.0 > 0.2.0-beta.x) — i.e. they
-  # graduate off beta. The updater only moves forward, so a chronologically older
-  # manifest entry never downgrades anyone. (GL-76)
+  # Roll the beta channel's manifest after every release. GitHub's `/latest/`
+  # alias can't serve a pre-release, so the beta channel is a fixed `beta` release
+  # holding a rolling latest.json at a stable URL
+  # (releases/download/beta/latest.json). It runs for BOTH beta and stable tags so
+  # testers can graduate: the manifest is set to the LAST-PUBLISHED release, not
+  # the highest semver. Normal increasing-order releases keep it on the newest
+  # build; a stable shipped after the last beta is offered to testers
+  # (0.2.0 > 0.2.0-beta.x). The updater never downgrades, so an out-of-order lower
+  # tag just leaves higher-pre-release testers unchanged until the next higher
+  # release rolls it forward. See docs/release-channels.md. (GL-76)
   publish-beta-manifest:
     name: Roll the beta channel manifest
     needs: [preflight, release-app]
