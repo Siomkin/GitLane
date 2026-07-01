@@ -18,7 +18,11 @@ fn finish(status: ExitStatus, stdout: &str, stderr: &str, args: &[&str]) -> Resu
             .code()
             .map(|c| format!("exit code {c}"))
             .unwrap_or_else(|| "a signal".to_string());
-        Err(format!("git {} failed ({how})", args.join(" ")))
+        // Name only the subcommand (first couple of args), never the full argv —
+        // later positions can carry a remote URL with embedded credentials or a
+        // commit message, and git gave us nothing else to echo.
+        let op = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
+        Err(format!("git {op} failed ({how})"))
     } else {
         Err(combined)
     }
@@ -141,6 +145,21 @@ mod tests {
         let err = finish(exit(1), "", "", &["stash", "push"]).unwrap_err();
         assert!(!err.is_empty(), "error must not be empty");
         assert!(err.contains("stash push"), "error should name the command: {err}");
+    }
+
+    #[test]
+    fn fallback_names_only_the_subcommand_not_sensitive_args() {
+        // When git is silent we only echo the first couple of args, so a remote
+        // URL with embedded credentials never leaks into the surfaced error.
+        let err = finish(
+            exit(128),
+            "",
+            "",
+            &["remote", "set-url", "origin", "https://user:secret@example.com/r.git"],
+        )
+        .unwrap_err();
+        assert!(err.contains("remote set-url"), "should name the op: {err}");
+        assert!(!err.contains("secret"), "must not echo credentials: {err}");
     }
 
     #[test]
