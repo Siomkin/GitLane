@@ -14,7 +14,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
-import { promptWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { handoffDestinationOptions, promptWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -585,7 +585,9 @@ export function BranchContextMenu() {
     const children: MenuItem[] = [
       { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); showToast("Copied path"); } },
     ];
-    if (isLocal && !isCurrent) {
+    // Only offer the hand-off when a valid destination actually exists (bare /
+    // prunable worktrees are filtered out), so it's never a dead click.
+    if (isLocal && !isCurrent && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
       children.push({
         label: "Hand off to…",
         onClick: () =>
@@ -600,6 +602,7 @@ export function BranchContextMenu() {
             requestConfirm,
             run,
             moveBranchToWorktree,
+            onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
           }),
       });
     }
@@ -1142,8 +1145,9 @@ export function WorktreeContextMenu() {
     });
   }
   // Hand the worktree's branch (and its uncommitted work) off to another
-  // workspace (GL-74). Only when it has a branch and a destination exists.
-  if (wtBranch && worktrees.length > 1) {
+  // workspace (GL-74). Only when it has a branch and a *valid* destination exists
+  // (bare / prunable worktrees are filtered out) — never a dead click.
+  if (wtBranch && handoffDestinationOptions(worktrees, path).length > 0) {
     const sourceChanges = isActiveWorktree
       ? changes.staged.length + changes.unstaged.length + changes.conflicted.length
       : null;
@@ -1160,6 +1164,7 @@ export function WorktreeContextMenu() {
           requestConfirm,
           run,
           moveBranchToWorktree,
+          onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
         }),
     });
   }

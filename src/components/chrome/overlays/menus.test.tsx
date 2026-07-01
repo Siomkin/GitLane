@@ -428,6 +428,23 @@ describe("BranchContextMenu", () => {
     expect(moveBranchToWorktree).toHaveBeenCalledWith("feature", "/work/repo-feature", "/work/repo", true);
   });
 
+  // "Hand off to…" is hidden when no *valid* destination exists — the only other
+  // worktree here is the bare main repo, which can't receive a checkout.
+  it("hides Hand off when the only other worktree is bare", () => {
+    useRepo.setState({
+      summary: { path: "/work/bare.git", workdir: "/work/bare.git", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [
+        { name: "bare.git", path: "/work/bare.git", branch: null, isMain: true, bare: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    openGroup("Worktree");
+    expect(screen.queryByRole("menuitem", { name: "Hand off to…" })).not.toBeInTheDocument();
+  });
+
   // The combined action previews the delete (so unmerged commits are surfaced),
   // then on confirm removes the worktree and deletes the branch in one step.
   it("previews then removes the worktree and deletes the branch on confirm", async () => {

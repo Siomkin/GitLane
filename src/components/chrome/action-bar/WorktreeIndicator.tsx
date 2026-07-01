@@ -3,7 +3,7 @@ import { focusRing } from "../../../lib/ui";
 import { worktreeIndicatorView } from "../../../lib/worktrees";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
-import { promptWorktreeHandoff } from "../../../lib/worktreeHandoff";
+import { handoffDestinationOptions, promptWorktreeHandoff } from "../../../lib/worktreeHandoff";
 import { ArrowLeftIcon, TreeIcon } from "../../ui/icons";
 
 /** Toolbar cluster shown only when the open repo is itself a linked worktree
@@ -48,7 +48,9 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
   // destination. `view.path` is this (active) worktree; it's the open repo, so
   // its change count is known.
   const branch = summary?.headBranch ?? null;
-  const canHandoff = !!branch && worktrees.length > 1;
+  // Only show the affordance when a valid destination actually exists (bare /
+  // prunable worktrees are filtered out), so it's never a dead click.
+  const canHandoff = !!branch && handoffDestinationOptions(worktrees, view.path).length > 0;
   const handoff = () => {
     if (!branch) return;
     promptWorktreeHandoff({
@@ -64,6 +66,7 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
           .then((m) => showToast(m))
           .catch((e) => showToast(String(e), "error")),
       moveBranchToWorktree,
+      onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
     });
   };
 

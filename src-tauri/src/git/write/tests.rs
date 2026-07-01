@@ -540,6 +540,44 @@ fn move_branch_to_worktree_reapplies_dirty_destination() {
     );
 }
 
+#[test]
+fn move_branch_to_worktree_restores_the_source_stash_when_dest_stash_fails() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-destfail");
+    // Source (linked) is dirty → its changes are stashed first.
+    std::fs::write(linked.0.join("file.txt"), "carried\n").unwrap();
+    // Destination (main) is dirty → its stash will be attempted, but we sabotage
+    // it by holding the destination's index lock: `git status` still reads (so we
+    // reach the stash step), but `git stash push` there fails on the lock.
+    std::fs::write(repo.0.join("file.txt"), "dest wip\n").unwrap();
+    let lock = repo.0.join(".git").join("index.lock");
+    std::fs::write(&lock, b"").unwrap();
+
+    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+        .expect_err("a failed destination stash should abort the handoff");
+    let _ = std::fs::remove_file(&lock); // let the TempRepo Drop clean up
+    assert!(!err.is_empty(), "expected a git error, got empty");
+
+    // The source's carried changes were restored (not stranded in a stash), and the
+    // structural move never happened.
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("file.txt")).unwrap(),
+        "carried\n",
+        "the source's changes must be restored on rollback"
+    );
+    assert!(!is_detached(&linked.0), "source must not be detached after a rollback");
+    let current = repo.git(&["branch", "--show-current"]);
+    assert_eq!(
+        String::from_utf8_lossy(&current.stdout).trim(),
+        "main",
+        "the destination must not have switched branches"
+    );
+    let stashes = repo.git(&["stash", "list"]);
+    assert!(
+        String::from_utf8_lossy(&stashes.stdout).trim().is_empty(),
+        "no stash should linger after the rollback"
+    );
+}
+
 /// Set up a handoff whose destination re-apply genuinely conflicts: `feature`
 /// changes file.txt one way (committed), the destination has an uncommitted change
 /// to the same file the other way. Returns the repo (its linked worktree is kept
