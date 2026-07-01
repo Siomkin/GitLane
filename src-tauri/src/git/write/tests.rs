@@ -8,7 +8,7 @@ use super::{
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
     reflog_entries, resolve_conflict_file, set_remote_url, set_repo_identity, set_upstream,
-    skip_operation,
+    skip_operation, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -679,6 +679,67 @@ fn move_branch_to_worktree_refuses_a_source_with_unresolved_conflicts() {
     // Nothing was stashed or moved by the refused handoff.
     let stashes = repo.git(&["stash", "list"]);
     assert!(String::from_utf8_lossy(&stashes.stdout).trim().is_empty());
+}
+
+#[test]
+fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destination() {
+    // The bare-repo + per-branch-worktree layout: `git worktree list` reports the
+    // bare repo (no working tree) and any prunable (deleted) worktree. Neither can
+    // receive a branch checkout, so `worktrees()` must flag them and the handoff
+    // must refuse a bare destination up front (before detaching the source).
+    let seed = TempRepo::new("wt-attrs-seed");
+    seed.git_ok(&["init", "-q"]);
+    seed.git_ok(&["config", "user.name", "GitLane Test"]);
+    seed.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(seed.0.join("f.txt"), "x\n").unwrap();
+    seed.git_ok(&["add", "f.txt"]);
+    seed.git_ok(&["commit", "-q", "-m", "init"]);
+    seed.git_ok(&["branch", "feature"]);
+
+    let bare = TempRepo::new("wt-attrs-bare");
+    let clone = Command::new("git")
+        .args(["clone", "-q", "--bare", seed.path(), bare.path()])
+        .output()
+        .expect("git clone --bare");
+    assert!(
+        clone.status.success(),
+        "bare clone failed: {}",
+        String::from_utf8_lossy(&clone.stderr)
+    );
+
+    let linked = LinkedDir::new("wt-attrs-linked");
+    git_ok_at(bare.0.as_path(), &["worktree", "add", "-q", linked.as_str(), "feature"]);
+    let gone = LinkedDir::new("wt-attrs-gone");
+    git_ok_at(bare.0.as_path(), &["worktree", "add", "-q", "--detach", gone.as_str()]);
+    std::fs::remove_dir_all(&gone.0).unwrap(); // now prunable
+
+    let list = worktrees(bare.path()).expect("list worktrees");
+    let main_entry = list.iter().find(|w| w.is_main).expect("main entry");
+    assert!(main_entry.bare, "the bare main should be flagged bare");
+    let feature = list
+        .iter()
+        .find(|w| w.branch.as_deref() == Some("feature"))
+        .expect("feature worktree");
+    assert!(
+        !feature.bare && !feature.prunable,
+        "the linked feature worktree is a valid target"
+    );
+    assert!(
+        list.iter().any(|w| w.prunable),
+        "the deleted worktree should be flagged prunable"
+    );
+
+    // Handing the feature branch off *into the bare repo* is refused up front.
+    let err = move_branch_to_worktree(bare.path(), "feature", linked.as_str(), bare.path(), true)
+        .expect_err("handoff into a bare repo should be refused");
+    assert!(err.contains("bare repository"), "got: {err}");
+    // The source was not detached by the refused handoff.
+    let source_head = git_at(&linked.0, &["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    assert_eq!(
+        String::from_utf8_lossy(&source_head.stdout).trim(),
+        "feature",
+        "source must still be on its branch after a refused handoff"
+    );
 }
 
 #[test]

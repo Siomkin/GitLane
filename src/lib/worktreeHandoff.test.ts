@@ -33,6 +33,14 @@ describe("handoffDestinationOptions", () => {
   it("returns nothing when the source is the only worktree", () => {
     expect(handoffDestinationOptions([feature], feature.path)).toEqual([]);
   });
+
+  it("excludes bare and prunable worktrees (no working tree to check out into)", () => {
+    const bare = wt({ path: "/work/bare.git", branch: null, isMain: true, bare: true });
+    const missing = wt({ path: "/work/gone", branch: null, isMain: false, prunable: true });
+    const opts = handoffDestinationOptions([bare, main, feature, missing], feature.path);
+    // Only the valid main checkout survives — bare + prunable are filtered out.
+    expect(opts.map((o) => o.value)).toEqual(["/work/repo"]);
+  });
 });
 
 describe("promptWorktreeHandoff", () => {

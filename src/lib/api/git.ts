@@ -206,6 +206,12 @@ export interface WorktreeInfo {
   path: string;
   branch: string | null;
   isMain: boolean;
+  /** Bare repository (no working tree) — can't be a handoff destination. Optional
+   * for backward-compatible fixtures; the backend always sends it. */
+  bare?: boolean;
+  /** Prunable — the worktree's directory is gone/stale; not a usable checkout
+   * target. Optional for fixtures; the backend always sends it. */
+  prunable?: boolean;
 }
 
 export interface StashEntry {

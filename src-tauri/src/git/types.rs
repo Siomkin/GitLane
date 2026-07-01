@@ -202,6 +202,13 @@ pub struct WorktreeInfo {
     pub branch: Option<String>,
     /// True for the primary (main) worktree.
     pub is_main: bool,
+    /// True when this is a bare repository (`git worktree list --porcelain`
+    /// `bare` attribute) — it has no working tree, so a branch can't be checked
+    /// out into it (it can't be a handoff destination).
+    pub bare: bool,
+    /// True when the worktree is prunable — its directory is gone/stale
+    /// (`prunable` attribute). Also not a usable checkout target.
+    pub prunable: bool,
 }
 
 /// A stash entry for the sidebar's STASHES group.

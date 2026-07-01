@@ -20,7 +20,15 @@ export function handoffDestinationOptions(
 ): PromptOption[] {
   const source = trimTrailingSlash(sourcePath);
   return worktrees
-    .filter((wt) => trimTrailingSlash(wt.path) !== source)
+    .filter(
+      (wt) =>
+        trimTrailingSlash(wt.path) !== source &&
+        // A bare repo or a prunable (missing) worktree has no working tree to
+        // check the branch out into — git would reject the handoff checkout, so
+        // don't offer them as destinations (common in bare + per-branch layouts).
+        !wt.bare &&
+        !wt.prunable,
+    )
     .map((wt) => ({
       value: wt.path,
       label: worktreeLabel(wt, worktrees),

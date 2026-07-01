@@ -16,9 +16,18 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
     let mut out = Vec::new();
     let mut path: Option<String> = None;
     let mut branch: Option<String> = None;
+    // Per-entry attribute flags, reset at each `worktree` boundary. `bare`
+    // (main is a bare repo) and `prunable` (directory gone) both mean the entry
+    // has no usable working tree — a branch can't be checked out into it.
+    let mut bare = false;
+    let mut prunable = false;
     let mut first = true;
 
-    let mut flush = |path: &mut Option<String>, branch: &mut Option<String>, first: &mut bool| {
+    let mut flush = |path: &mut Option<String>,
+                     branch: &mut Option<String>,
+                     bare: &mut bool,
+                     prunable: &mut bool,
+                     first: &mut bool| {
         if let Some(p) = path.take() {
             let name = p.rsplit('/').next().unwrap_or(&p).to_string();
             out.push(WorktreeInfo {
@@ -26,21 +35,29 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
                 path: p,
                 branch: branch.take(),
                 is_main: std::mem::replace(first, false),
+                bare: std::mem::replace(bare, false),
+                prunable: std::mem::replace(prunable, false),
             });
         } else {
             *branch = None;
+            *bare = false;
+            *prunable = false;
         }
     };
 
     for line in raw.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
-            flush(&mut path, &mut branch, &mut first);
+            flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut first);
             path = Some(p.trim().to_string());
         } else if let Some(b) = line.strip_prefix("branch ") {
             branch = Some(b.trim().trim_start_matches("refs/heads/").to_string());
+        } else if line == "bare" {
+            bare = true;
+        } else if line == "prunable" || line.starts_with("prunable ") {
+            prunable = true;
         }
     }
-    flush(&mut path, &mut branch, &mut first);
+    flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut first);
     Ok(out)
 }
 
@@ -107,18 +124,26 @@ fn ensure_worktree_has_branch(repo: &str, from_worktree_path: &str, branch: &str
     }
 }
 
-/// The destination must be a real, registered worktree of this repo and distinct
-/// from the source — verified against live state before we detach anything.
+/// The destination must be a real, registered worktree of this repo, distinct
+/// from the source, and one a branch can actually be checked out into — verified
+/// against live state before we detach anything. A bare repo (no working tree) or
+/// a prunable worktree (directory gone) would fail the checkout after we'd already
+/// detached the source, so reject them up front with a clear message.
 fn ensure_worktree_registered(repo: &str, to: &str, from: &str) -> Result<(), String> {
     if same_path(to, from) {
         return Err("The destination is the same worktree as the source.".into());
     }
-    if worktrees(repo)?.iter().any(|w| same_path(&w.path, to)) {
-        Ok(())
-    } else {
-        Err(format!(
+    match worktrees(repo)?.into_iter().find(|w| same_path(&w.path, to)) {
+        Some(w) if w.bare => Err(
+            "The destination is a bare repository — it has no working tree to check the branch out into.".into(),
+        ),
+        Some(w) if w.prunable => {
+            Err("The destination worktree's directory is missing. Refresh and try again.".into())
+        }
+        Some(_) => Ok(()),
+        None => Err(format!(
             "No worktree is registered at {to}. Refresh and try again."
-        ))
+        )),
     }
 }
 
