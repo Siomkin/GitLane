@@ -72,8 +72,11 @@ jobs:
             echo "Missing release tag."
             exit 1
           fi
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid release tag: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH)"
+          # Allow an optional SemVer pre-release suffix (e.g. v0.2.0-beta.1) so
+          # beta/rc builds can ship on the beta channel (GL-76); a bare
+          # vMAJOR.MINOR.PATCH is still the stable form.
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, e.g. v0.2.0-beta.1)"
             exit 1
           fi
 
@@ -200,11 +203,54 @@ jobs:
           # `if: secrets.APPLE_CERTIFICATE != ''` step via $GITHUB_ENV).
         with:
           tauriScript: bun tauri
-          args: ${{ matrix.args }}
+          # A pre-release tag (contains a "-", e.g. v0.2.0-beta.1) builds beta
+          # artifacts: `--config` swaps the updater endpoint to the beta-channel
+          # manifest (GL-76). Absolute path (via github.workspace) so it resolves
+          # regardless of the tauri CLI's working dir. Stable tags build unchanged.
+          args: ${{ matrix.args }}${{ contains(needs.preflight.outputs.release_tag, '-') && format(' --config {0}/src-tauri/tauri.beta.conf.json', github.workspace) || '' }}
           tagName: ${{ needs.preflight.outputs.release_tag }}
           releaseName: GitLane ${{ needs.preflight.outputs.release_tag }}
           releaseBody: "Desktop builds for GitLane."
           releaseDraft: false
-          prerelease: false
+          # Pre-release tags publish a GitHub pre-release, so the `/latest/` alias
+          # (the stable updater endpoint) keeps ignoring them; the beta channel is
+          # served separately by the publish-beta-manifest job below.
+          prerelease: ${{ contains(needs.preflight.outputs.release_tag, '-') }}
           generateReleaseNotes: true
           releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
+
+  # Roll the beta channel's manifest after every release so beta testers always
+  # track the newest build. GitHub's `/latest/` alias can't serve a pre-release,
+  # so the beta channel is a fixed `beta` release holding a rolling latest.json at
+  # a stable URL (releases/download/beta/latest.json). It intentionally runs for
+  # BOTH beta and stable tags: when a stable ships and no newer beta exists, the
+  # tester is offered the stable next (semver: 0.2.0 > 0.2.0-beta.x) — i.e. they
+  # graduate off beta. The updater only moves forward, so a chronologically older
+  # manifest entry never downgrades anyone. (GL-76)
+  publish-beta-manifest:
+    name: Roll the beta channel manifest
+    needs: [preflight, release-app]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Copy latest.json onto the rolling `beta` release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # Validated to ^v…(-prerelease)? in preflight, so it's shell-safe; still
+          # passed via env rather than inlined into the run script.
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          # Pull the merged manifest the matrix legs just published to the
+          # versioned release; its asset URLs point back at that release, so the
+          # copy on `beta` keeps resolving to the right artifacts.
+          gh release download "$TAG" --pattern latest.json --clobber
+          if ! gh release view beta >/dev/null 2>&1; then
+            gh release create beta \
+              --prerelease \
+              --title "GitLane beta channel" \
+              --notes "Rolling updater manifest for the beta channel. Artifacts live on the versioned releases — do not download from here."
+          fi
+          gh release upload beta latest.json --clobber
