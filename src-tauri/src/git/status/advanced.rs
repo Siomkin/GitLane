@@ -1,7 +1,6 @@
 //! Best-effort detection of advanced repository states surfaced with status.
 
 use std::collections::HashMap;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use git2::{IndexEntryExtendedFlag, Repository, SubmoduleIgnore, SubmoduleStatus};
@@ -302,12 +301,23 @@ fn looks_like_lfs_pointer(path: &Path) -> bool {
 fn command_exists(name: &str) -> bool {
     std::env::split_paths(&crate::shell::path())
         .map(|dir| dir.join(name))
-        .any(|candidate| {
-            candidate
-                .metadata()
-                .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-                .unwrap_or(false)
-        })
+        .any(|candidate| is_executable_file(&candidate))
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(path: &Path) -> bool {
+    // Windows has no executable bit, and this lookup uses the bare command name
+    // (no PATHEXT expansion), so fall back to a plain file check — mirroring the
+    // gating in terminal_agents::is_executable.
+    path.is_file()
 }
 
 fn sparse_checkout_state(repo: &Repository) -> SparseCheckoutState {
