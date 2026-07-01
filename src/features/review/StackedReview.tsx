@@ -36,6 +36,7 @@ export function StackedReview() {
   const closeStackedReview = useUi((s) => s.closeStackedReview);
   const summary = useRepo((s) => s.summary);
   const selectedFile = useRepo((s) => s.selectedFile);
+  const clearSelectedFile = useRepo((s) => s.clearSelectedFile);
   const [files, setFiles] = useState<FileChange[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -145,6 +146,16 @@ export function StackedReview() {
 
   if (!review) return null;
 
+  // "Graph" returns to the commit graph. Closing the stacked review alone isn't
+  // enough: the file that was open before "review all" is still selected, so the
+  // center-pane dispatcher (App.tsx) — which checks `stackedReview` before
+  // `selectedFile` — would fall back to the single-file review instead of the
+  // graph. Clear that selection too; the commit itself stays selected.
+  const backToGraph = () => {
+    clearSelectedFile();
+    closeStackedReview();
+  };
+
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
       <div className="flex h-12 flex-none items-center gap-3 border-b border-black/5 dark:border-white/5 px-4">
@@ -152,7 +163,7 @@ export function StackedReview() {
         <ChangeTypeCounts summary={summarizeFiles(files)} className="flex-none" />
         <button
           className="ml-auto flex flex-none items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
-          onClick={closeStackedReview}
+          onClick={backToGraph}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path d="m15 18-6-6 6-6" />

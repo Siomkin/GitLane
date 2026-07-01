@@ -8,6 +8,11 @@ import { StackedReview } from "./StackedReview";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+// jsdom has no layout engine, so `scrollIntoView` is undefined. StackedReview
+// calls it in an effect when a committed file is selected (to bring that file's
+// section into view), so stub it to keep that path from throwing.
+Element.prototype.scrollIntoView = vi.fn();
+
 const file = (path: string, add: number, del: number): FileChange => ({
   path,
   status: "M",
@@ -126,5 +131,24 @@ describe("StackedReview — progressive load + collapse", () => {
       }),
     );
     await waitFor(() => expect(container.textContent).toContain("FULLDIFFMARKER"));
+  });
+});
+
+describe("StackedReview — back to graph", () => {
+  it("clears the open file so 'Graph' returns to the graph, not the single-file review", async () => {
+    // Reproduce the reported flow: a committed file was open (single-file
+    // review) before "review all". The center-pane dispatcher checks
+    // `stackedReview` before `selectedFile`, so closing the stacked review
+    // alone would resurface the single-file review instead of the graph.
+    useRepo.setState({ selectedFile: { path: "src/small.ts", source: "commit" } });
+
+    render(<StackedReview />);
+    await screen.findByText("small.ts");
+
+    fireEvent.click(screen.getByRole("button", { name: /graph/i }));
+
+    // Both must be cleared so the dispatcher falls through to the graph.
+    expect(useUi.getState().stackedReview).toBeNull();
+    expect(useRepo.getState().selectedFile).toBeNull();
   });
 });
