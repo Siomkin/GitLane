@@ -296,8 +296,9 @@ export interface WorkingChanges {
 }
 
 /** The active in-progress operation that can stop on conflicts. "none" when the
- * repo is clean / no operation is underway. */
-export type OperationKind = "merge" | "rebase" | "cherry-pick" | "revert" | "none";
+ * repo is clean / no operation is underway. "carry" is GitLane's worktree-handoff
+ * carry (GL-74) — a stash re-apply left conflicts with no git sequencer state. */
+export type OperationKind = "merge" | "rebase" | "cherry-pick" | "revert" | "carry" | "none";
 
 /** One conflicted (unmerged) path. */
 export interface ConflictFile {
@@ -454,9 +455,25 @@ export const gitApi = {
   addWorktree: (path: string, worktreePath: string, reference?: string) =>
     invoke<string>("add_worktree", { path, worktreePath, reference: reference ?? null }),
 
-  /** Detach `branch` from another linked worktree, then check it out here. */
-  moveBranchToWorktree: (path: string, branch: string, fromWorktreePath: string) =>
-    invoke<string>("move_branch_to_worktree", { path, branch, fromWorktreePath }),
+  /** Hand `branch` off from one worktree to another (GL-74): detach the source,
+   * check the branch out in `toWorktreePath`, and — when `carry` — bring the
+   * source's uncommitted changes along in a stash. The destination's own
+   * uncommitted work is preserved across the switch; a conflicting re-apply routes
+   * into the conflict workspace as a `"carry"` operation. */
+  moveBranchToWorktree: (
+    path: string,
+    branch: string,
+    fromWorktreePath: string,
+    toWorktreePath: string,
+    carry: boolean,
+  ) =>
+    invoke<string>("move_branch_to_worktree", {
+      path,
+      branch,
+      fromWorktreePath,
+      toWorktreePath,
+      carry,
+    }),
 
   /** Remove the linked worktree at `fromWorktreePath`, then delete `branch`. */
   deleteBranchWithWorktree: (path: string, branch: string, fromWorktreePath: string) =>

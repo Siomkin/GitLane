@@ -3,6 +3,7 @@ import { focusRing } from "../../../lib/ui";
 import { worktreeIndicatorView } from "../../../lib/worktrees";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
+import { promptWorktreeHandoff } from "../../../lib/worktreeHandoff";
 import { ArrowLeftIcon, TreeIcon } from "../../ui/icons";
 
 /** Toolbar cluster shown only when the open repo is itself a linked worktree
@@ -22,8 +23,12 @@ import { ArrowLeftIcon, TreeIcon } from "../../ui/icons";
 export const WorktreeIndicator = ({ className }: { className?: string }) => {
   const summary = useRepo((s) => s.summary);
   const worktrees = useRepo((s) => s.worktrees);
+  const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
+  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const openNav = useUi((s) => s.openNav);
+  const requestPrompt = useUi((s) => s.requestPrompt);
+  const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);
 
   const view = worktreeIndicatorView(worktrees, summary);
@@ -35,6 +40,31 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
   const backToMain = () => {
     if (!mainWt) return;
     void openWorktree(mainWt.path).catch((e) => showToast(String(e), "error"));
+  };
+
+  // Hand this worktree's branch (and its uncommitted work) off to another
+  // workspace (GL-74) — the reverse of "back to main" when you want the branch,
+  // not yourself, to move. Only when a branch is checked out and there's a
+  // destination. `view.path` is this (active) worktree; it's the open repo, so
+  // its change count is known.
+  const branch = summary?.headBranch ?? null;
+  const canHandoff = !!branch && worktrees.length > 1;
+  const handoff = () => {
+    if (!branch) return;
+    promptWorktreeHandoff({
+      branch,
+      sourcePath: view.path,
+      worktrees,
+      sourceChanges:
+        changes.staged.length + changes.unstaged.length + changes.conflicted.length,
+      requestPrompt,
+      requestConfirm,
+      run: (op) =>
+        void op()
+          .then((m) => showToast(m))
+          .catch((e) => showToast(String(e), "error")),
+      moveBranchToWorktree,
+    });
   };
 
   return (
@@ -52,6 +82,33 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
           )}
         >
           <ArrowLeftIcon className="h-4 w-4" />
+        </button>
+      )}
+      {canHandoff && (
+        <button
+          type="button"
+          onClick={handoff}
+          title={`Hand off ${branch} to another workspace`}
+          aria-label={`Hand off ${branch} to another workspace`}
+          className={cn(
+            "grid h-8 w-8 place-items-center rounded-lg border text-neutral-500",
+            "border-black/10 bg-white/40 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-300 dark:hover:bg-white/[0.06]",
+            focusRing,
+          )}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <path d="M10 17l5-5-5-5" />
+            <path d="M15 12H3" />
+          </svg>
         </button>
       )}
       <button

@@ -2,6 +2,9 @@ import { operationLabel } from "../../store/operation";
 import type { ActiveOperationKind } from "../../store/repo";
 
 const abortBody = (kind: ActiveOperationKind) => {
+  if (kind === "carry") {
+    return "This discards the conflicted changes and restores the branch to its tip. Your carried work is preserved in a stash, so nothing is lost — you can re-apply it later.";
+  }
   const verb = operationLabel(kind).toLowerCase();
   return `This runs git ${kind} --abort and restores your branch to where it was before the ${verb} started. Your staged resolutions will be discarded.`;
 };

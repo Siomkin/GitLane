@@ -1,6 +1,9 @@
 //! Conflict-resolution writes and sequencer controls.
 
+use crate::git::handoff;
+
 use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics};
+use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 
 // ---- Conflict resolution (merge / rebase / cherry-pick / revert) ----
 //
@@ -189,6 +192,11 @@ pub fn continue_operation(
     name: Option<&str>,
     email: Option<&str>,
 ) -> Result<String, String> {
+    // A worktree-handoff carry (GL-74) isn't a git sequencer — finishing it drops
+    // the kept stashes and clears the marker rather than running `--continue`.
+    if kind == handoff::CARRY_KIND {
+        return continue_carry(repo);
+    }
     let mut pre: Vec<String> = Vec::new();
     if let (Some(n), Some(e)) = (name, email) {
         if !n.is_empty() && !e.is_empty() {
@@ -219,6 +227,9 @@ pub fn continue_operation(
 /// Abort the active operation, restoring the pre-operation state. `kind` is the
 /// operation key from `git::conflicts::operation_status`.
 pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
+    if kind == handoff::CARRY_KIND {
+        return abort_carry(repo);
+    }
     let sub: &[&str] = match kind {
         "merge" => &["merge", "--abort"],
         "rebase" => &["rebase", "--abort"],
@@ -228,6 +239,35 @@ pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
     };
     run_git(repo, sub)?;
     Ok(format!("Aborted {kind}"))
+}
+
+/// Finish a worktree-handoff carry once its conflicts are resolved and staged:
+/// drop the stashes the handoff kept for recovery, then clear the marker. The
+/// resolved changes stay in the working tree — that's the whole point of the
+/// carry. Refuses while any unmerged path remains (the workspace also gates this).
+fn continue_carry(repo: &str) -> Result<String, String> {
+    if !run_git(repo, &["ls-files", "-u"])?.trim().is_empty() {
+        return Err("Resolve and stage the remaining conflicts before finishing the carry.".into());
+    }
+    let git_dir = worktree_git_dir(repo)?;
+    if let Some(marker) = handoff::read_marker(&git_dir) {
+        for oid in marker.lines().map(str::trim).filter(|line| !line.is_empty()) {
+            drop_stash_by_oid(repo, oid)?;
+        }
+    }
+    handoff::clear_marker(&git_dir);
+    Ok("Carried changes applied".to_string())
+}
+
+/// Abort a worktree-handoff carry: discard the conflicted re-application back to
+/// the branch tip and clear the marker. The kept stashes are left on the stack
+/// (they were recorded in the marker), so the carried work is preserved and can
+/// be re-applied — nothing is dropped here.
+fn abort_carry(repo: &str) -> Result<String, String> {
+    let git_dir = worktree_git_dir(repo)?;
+    run_git(repo, &["reset", "--hard", "HEAD"])?;
+    handoff::clear_marker(&git_dir);
+    Ok("Discarded the carry — your changes are preserved in a stash".to_string())
 }
 
 /// Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).

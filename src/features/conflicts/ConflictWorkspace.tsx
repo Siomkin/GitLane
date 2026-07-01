@@ -64,12 +64,20 @@ export const ConflictWorkspace = () => {
   // `--ours`/`--theirs`, so the side *labels* must be operation-aware or a user
   // mid-rebase picks the opposite of what they intend.
   const rebasing = operation?.kind === "rebase";
+  // A handoff carry (GL-74) re-applies the destination's own uncommitted changes
+  // onto the handed-off branch: "ours" (stage 2) is that branch, "theirs" (stage
+  // 3) is the destination's prior changes being replayed.
+  const carrying = operation?.kind === "carry";
   const oursSub = rebasing
     ? "rebased onto (ours)"
     : headBranch
       ? `${headBranch} (ours)`
       : "current (ours)";
-  const theirsSub = rebasing ? "your commit (theirs)" : "incoming (theirs)";
+  const theirsSub = rebasing
+    ? "your commit (theirs)"
+    : carrying
+      ? "your changes (theirs)"
+      : "incoming (theirs)";
 
   // Parse the selected text file's conflicted content into hunks (the editor is
   // a painter over these). Non-text / unloaded files yield no regions.

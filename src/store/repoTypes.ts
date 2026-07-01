@@ -288,8 +288,16 @@ export interface RepoState {
   pushTag: (name: string) => Promise<string>;
   /** Remove a linked worktree (`force` drops the dirty/locked check). */
   removeWorktree: (worktreePath: string, force?: boolean) => Promise<string>;
-  /** Move a branch checked out in a linked worktree back to the current checkout. */
-  moveBranchToCurrentWorktree: (branch: string, fromWorktreePath: string) => Promise<string>;
+  /** Hand a branch off from one worktree to another (GL-74): detach the source,
+   * check the branch out in `toWorktreePath`, and — when `carry` — bring the
+   * source's uncommitted work along. Lands the app on the destination; a
+   * conflicting carry opens the conflict workspace there. */
+  moveBranchToWorktree: (
+    branch: string,
+    fromWorktreePath: string,
+    toWorktreePath: string,
+    carry: boolean,
+  ) => Promise<string>;
   /** Remove the linked worktree holding `branch`, then delete the branch — the
    * one-step path when a branch's Delete is locked by its worktree. */
   deleteBranchWithWorktree: (branch: string, fromWorktreePath: string) => Promise<string>;

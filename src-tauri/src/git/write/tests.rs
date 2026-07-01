@@ -209,9 +209,12 @@ fn move_branch_to_worktree_detaches_source_then_checks_out_branch() {
     let linked_str = linked.to_str().unwrap();
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
 
-    let result = move_branch_to_worktree(repo.path(), "feature", linked_str)
+    let result = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false)
         .expect("move branch from linked worktree");
-    assert_eq!(result, "Moved feature to local checkout");
+    assert!(
+        result.starts_with("Moved feature to "),
+        "unexpected message: {result}"
+    );
 
     let current = repo.git(&["branch", "--show-current"]);
     assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "feature");
@@ -387,7 +390,7 @@ fn move_branch_to_worktree_refuses_when_path_no_longer_holds_the_branch() {
         .expect("git detaches the linked worktree");
     assert!(detach.status.success());
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked_str)
+    let err = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false)
         .expect_err("a stale worktree path should abort the move");
     assert!(err.contains("feature"), "error should name the branch, got: {err}");
     // The current worktree was not switched onto the branch.
@@ -396,6 +399,222 @@ fn move_branch_to_worktree_refuses_when_path_no_longer_holds_the_branch() {
 
     let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
     let _ = std::fs::remove_dir_all(&linked);
+}
+
+// ---- GL-74 worktree handoff: carry + destination picker + conflict routing ----
+
+/// A throwaway linked-worktree directory (lives outside the repo dir, so it needs
+/// its own cleanup) that removes itself on drop.
+struct LinkedDir(PathBuf);
+impl LinkedDir {
+    fn new(tag: &str) -> Self {
+        static SEQ: AtomicU32 = AtomicU32::new(0);
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "gitlane-{tag}-linked-{}-{n}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        LinkedDir(dir)
+    }
+    fn as_str(&self) -> &str {
+        self.0.to_str().unwrap()
+    }
+}
+impl Drop for LinkedDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn git_at(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+    Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("git launches in tests")
+}
+
+fn git_ok_at(dir: &std::path::Path, args: &[&str]) {
+    let out = git_at(dir, args);
+    assert!(
+        out.status.success(),
+        "git {:?} failed\nstderr:\n{}",
+        args,
+        String::from_utf8_lossy(&out.stderr),
+    );
+}
+
+/// A repo on `main` (file.txt = "base") with a `feature` branch checked out in a
+/// fresh linked worktree — the common starting point for the handoff tests.
+fn repo_with_feature_worktree(tag: &str) -> (TempRepo, LinkedDir) {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = LinkedDir::new(tag);
+    repo.git_ok(&["worktree", "add", "-q", linked.as_str(), "feature"]);
+    (repo, linked)
+}
+
+fn is_detached(dir: &std::path::Path) -> bool {
+    !git_at(dir, &["symbolic-ref", "--quiet", "HEAD"])
+        .status
+        .success()
+}
+
+#[test]
+fn move_branch_to_worktree_carries_dirty_source_changes() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-carry");
+    // The AI-worktree case: uncommitted work in the linked (source) worktree.
+    std::fs::write(linked.0.join("file.txt"), "carried\n").unwrap();
+    std::fs::write(linked.0.join("new.txt"), "brand new\n").unwrap(); // untracked rides along
+
+    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+        .expect("carry handoff");
+    assert!(msg.contains("feature"), "message should name the branch: {msg}");
+
+    // The destination (main worktree) is now on feature with the carried work.
+    let current = repo.git(&["branch", "--show-current"]);
+    assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "feature");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+        "carried\n"
+    );
+    assert!(repo.0.join("new.txt").exists(), "untracked file should carry");
+    // Source worktree left detached; no stashes linger.
+    assert!(is_detached(&linked.0), "source worktree should be detached");
+    let stashes = repo.git(&["stash", "list"]);
+    assert!(
+        String::from_utf8_lossy(&stashes.stdout).trim().is_empty(),
+        "carry should drop its stashes on success"
+    );
+}
+
+#[test]
+fn move_branch_to_worktree_refuses_dirty_source_without_carry() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-nocarry");
+    std::fs::write(linked.0.join("file.txt"), "dirty\n").unwrap();
+
+    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), false)
+        .expect_err("a dirty source without carry should be refused");
+    assert!(err.contains("uncommitted"), "error should explain: {err}");
+
+    // Nothing moved or stashed: source still on feature, destination still on main.
+    assert!(!is_detached(&linked.0), "source must not be detached");
+    let current = repo.git(&["branch", "--show-current"]);
+    assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "main");
+    let stashes = repo.git(&["stash", "list"]);
+    assert!(String::from_utf8_lossy(&stashes.stdout).trim().is_empty());
+}
+
+#[test]
+fn move_branch_to_worktree_reapplies_dirty_destination() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-dirtydest");
+    // Destination (main worktree) carries its own uncommitted work on a file that
+    // doesn't diverge between branches, so it re-applies cleanly after the switch.
+    std::fs::write(repo.0.join("dest-wip.txt"), "dest work\n").unwrap();
+
+    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+        .expect("handoff onto a dirty destination");
+    assert!(msg.contains("feature"), "message should name the branch: {msg}");
+
+    let current = repo.git(&["branch", "--show-current"]);
+    assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "feature");
+    // The destination's own prior work survives the switch.
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("dest-wip.txt")).unwrap(),
+        "dest work\n"
+    );
+    let stashes = repo.git(&["stash", "list"]);
+    assert!(
+        String::from_utf8_lossy(&stashes.stdout).trim().is_empty(),
+        "a clean re-apply should drop the destination stash"
+    );
+}
+
+/// Set up a handoff whose destination re-apply genuinely conflicts: `feature`
+/// changes file.txt one way (committed), the destination has an uncommitted change
+/// to the same file the other way. Returns the repo (its linked worktree is kept
+/// alive by the returned guard).
+fn handoff_into_conflict(tag: &str) -> (TempRepo, LinkedDir, String) {
+    let (repo, linked) = repo_with_feature_worktree(tag);
+    // Give feature a divergent commit to file.txt (done inside the linked worktree
+    // so the source stays clean).
+    std::fs::write(linked.0.join("file.txt"), "feature\n").unwrap();
+    git_ok_at(&linked.0, &["commit", "-q", "-am", "feature change"]);
+    // Destination has a conflicting uncommitted change to the same file.
+    std::fs::write(repo.0.join("file.txt"), "destination wip\n").unwrap();
+
+    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+        .expect("handoff should land structurally even when the carry conflicts");
+    (repo, linked, msg)
+}
+
+#[test]
+fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
+    let (repo, _linked, msg) = handoff_into_conflict("handoff-conflict");
+    assert!(msg.contains("resolve"), "message should ask to resolve: {msg}");
+
+    // The conflict surfaces as a "carry" operation (marker + unmerged entries).
+    let status = crate::git::conflicts::operation_status(repo.path()).expect("operation status");
+    assert_eq!(status.kind, "carry");
+    assert!(!status.can_skip);
+    assert!(
+        status.conflicts.iter().any(|c| c.path == "file.txt"),
+        "file.txt should be conflicted: {:?}",
+        status.conflicts
+    );
+
+    // Resolve + stage, then finish the carry.
+    std::fs::write(repo.0.join("file.txt"), "resolved\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    let done = continue_operation(repo.path(), "carry", None, None).expect("continue carry");
+    assert!(done.contains("Carried"), "unexpected continue message: {done}");
+
+    // Marker cleared (no operation) and the kept stash dropped.
+    let after = crate::git::conflicts::operation_status(repo.path()).expect("status after");
+    assert_eq!(after.kind, "none");
+    let stashes = repo.git(&["stash", "list"]);
+    assert!(
+        String::from_utf8_lossy(&stashes.stdout).trim().is_empty(),
+        "continue should drop the kept stash"
+    );
+}
+
+#[test]
+fn abort_carry_discards_the_merge_but_preserves_the_stash() {
+    let (repo, _linked, _msg) = handoff_into_conflict("handoff-abort");
+    assert_eq!(
+        crate::git::conflicts::operation_status(repo.path())
+            .unwrap()
+            .kind,
+        "carry"
+    );
+
+    let done = abort_operation(repo.path(), "carry").expect("abort carry");
+    assert!(done.contains("preserved"), "unexpected abort message: {done}");
+
+    // Operation cleared; working tree back at the branch tip; the stash kept.
+    let after = crate::git::conflicts::operation_status(repo.path()).expect("status after abort");
+    assert_eq!(after.kind, "none");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+        "feature\n"
+    );
+    let stashes = repo.git(&["stash", "list"]);
+    assert_eq!(
+        String::from_utf8_lossy(&stashes.stdout).lines().count(),
+        1,
+        "abort should preserve the destination's stashed changes"
+    );
 }
 
 #[test]

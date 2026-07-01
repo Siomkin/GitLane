@@ -14,6 +14,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
+import { promptWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -417,7 +418,7 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const moveBranchToCurrentWorktree = useRepo((s) => s.moveBranchToCurrentWorktree);
+  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const deleteBranchWithWorktree = useRepo((s) => s.deleteBranchWithWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
@@ -585,7 +586,22 @@ export function BranchContextMenu() {
       { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); showToast("Copied path"); } },
     ];
     if (isLocal && !isCurrent) {
-      children.push({ label: "Local checkout (move here)", onClick: () => act(() => moveBranchToCurrentWorktree(b, existingWt.path)) });
+      children.push({
+        label: "Hand off to…",
+        onClick: () =>
+          promptWorktreeHandoff({
+            branch: b,
+            sourcePath: existingWt.path,
+            worktrees,
+            // The branch lives in another worktree, not the open repo, so its
+            // uncommitted state isn't known here — carry conditionally.
+            sourceChanges: null,
+            requestPrompt,
+            requestConfirm,
+            run,
+            moveBranchToWorktree,
+          }),
+      });
     }
     if (!existingWtInfo?.isMain) {
       children.push({
@@ -1088,14 +1104,21 @@ export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
+  const requestPrompt = useUi((s) => s.requestPrompt);
   const showToast = useUi((s) => s.showToast);
   const summary = useRepo((s) => s.summary);
+  const worktrees = useRepo((s) => s.worktrees);
+  const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
+  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const run = useBranchOp();
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
+  // The branch checked out in this worktree (null when detached) — the handoff
+  // subject. Offered only when it has a branch and there's somewhere to send it.
+  const wtBranch = worktrees.find((w) => w.path === path)?.branch ?? null;
   // Removing the worktree backing the open tab would delete its directory out
   // from under the app, leaving the refresh pointing at a gone path. `isMain`
   // only flags the *primary* worktree, so when the app is opened on a linked
@@ -1113,6 +1136,28 @@ export function WorktreeContextMenu() {
         close();
         void openWorktree(path).catch((e) => showToast(String(e), "error"));
       },
+    });
+  }
+  // Hand the worktree's branch (and its uncommitted work) off to another
+  // workspace (GL-74). Only when it has a branch and a destination exists.
+  if (wtBranch && worktrees.length > 1) {
+    const sourceChanges = isActiveWorktree
+      ? changes.staged.length + changes.unstaged.length + changes.conflicted.length
+      : null;
+    items.push({
+      label: "Hand off branch to…",
+      icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />,
+      onClick: () =>
+        promptWorktreeHandoff({
+          branch: wtBranch,
+          sourcePath: path,
+          worktrees,
+          sourceChanges,
+          requestPrompt,
+          requestConfirm,
+          run,
+          moveBranchToWorktree,
+        }),
     });
   }
   items.push({

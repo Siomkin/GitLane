@@ -113,7 +113,7 @@ export function createRepoWriteActions(
   | "deleteTag"
   | "pushTag"
   | "removeWorktree"
-  | "moveBranchToCurrentWorktree"
+  | "moveBranchToWorktree"
   | "deleteBranchWithWorktree"
   | "deleteRemoteBranch"
   | "forcePush"
@@ -363,8 +363,23 @@ export function createRepoWriteActions(
     removeWorktree: (worktreePath, force = false) =>
       runOp(get, async (summary) => api.removeWorktree(summary.path, worktreePath, force)),
 
-    moveBranchToCurrentWorktree: (branch, fromWorktreePath) =>
-      runOp(get, async (summary) => api.moveBranchToWorktree(summary.path, branch, fromWorktreePath)),
+    moveBranchToWorktree: async (branch, fromWorktreePath, toWorktreePath, carry) => {
+      const { summary } = get();
+      if (!summary) throw new Error("No repository");
+      const message = await api.moveBranchToWorktree(
+        summary.path,
+        branch,
+        fromWorktreePath,
+        toWorktreePath,
+        carry,
+      );
+      // Land on the destination — the branch (and any carried work, or a conflict
+      // to resolve) lives there now. loadRepo republishes the graph and reads
+      // operation_status, so a carry conflict opens the conflict workspace for the
+      // destination.
+      await get().loadRepo(toWorktreePath);
+      return message;
+    },
 
     deleteBranchWithWorktree: (branch, fromWorktreePath) =>
       runOp(get, async (summary) =>
