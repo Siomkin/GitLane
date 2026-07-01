@@ -19,7 +19,11 @@ export function FileViewToggle({
         : "text-neutral-500 dark:text-neutral-400",
     );
   return (
-    <div className="flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]">
+    <div
+      role="group"
+      aria-label="File list view"
+      className="flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]"
+    >
       <button
         type="button"
         aria-pressed={view === "path"}

@@ -93,7 +93,10 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           )}
         </div>
 
-        {total > 0 && (
+        {/* Show the toggle whenever any list is populated — including a
+            conflict-only tree mid-merge (conflicts are excluded from `total`,
+            but the conflicts list below still honours the Path/Tree view). */}
+        {(total > 0 || conflicted.length > 0) && (
           <div className="flex items-center justify-between">
             <ChangeTypeCounts summary={summarizeChanges(changes)} />
             <FileViewToggle view={view} onChange={setView} />
