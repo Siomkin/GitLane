@@ -120,6 +120,30 @@ describe("WorkingInspector", () => {
     expect(stagePaths).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
   });
 
+  it("shows the Path/Tree toggle for a conflict-only tree and groups conflicts under a folder", async () => {
+    // Mid-merge the staged/unstaged lists can be empty while conflicts remain;
+    // the toggle must still appear (it drives the read-only conflicts list) and
+    // Tree view must group them — GL-28 review follow-up.
+    const conflict = (path: string): FileChange => ({ path, status: "C", add: 0, del: 0, binary: false });
+    useRepo.setState({
+      changes: { staged: [], unstaged: [], conflicted: [conflict("src/a.ts"), conflict("src/b.ts")] },
+      selectedFile: null,
+    });
+    const user = userEvent.setup();
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+
+    const pathBtn = screen.getByRole("button", { name: "Path" });
+    const treeBtn = screen.getByRole("button", { name: "Tree" });
+    expect(pathBtn).toHaveAttribute("aria-pressed", "true");
+    expect(treeBtn).toHaveAttribute("aria-pressed", "false");
+
+    // Switching to Tree regroups the conflicts under one directory header (in
+    // Path view "src" only appears as per-row dirnames).
+    await user.click(treeBtn);
+    expect(treeBtn).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("src")).toBeInTheDocument();
+  });
+
   it("rings the row whose context menu is open", () => {
     useRepo.setState({
       changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [] },

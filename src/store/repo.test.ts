@@ -380,6 +380,45 @@ describe("repo store — folder roll-up staging", () => {
       useUi.setState({ showToast: originalShowToast });
     }
   });
+
+  it("unstagePaths no-ops without a call when the path list is empty", async () => {
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().unstagePaths([]);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("unstage_files", expect.anything());
+  });
+
+  it("blocks unstagePaths when a staged file is outside the sparse checkout", async () => {
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      changes: {
+        staged: [{ path: "docs/hidden.txt", status: "M", add: 1, del: 1, binary: false }],
+        unstaged: [],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    try {
+      await useRepo.getState().unstagePaths(["docs/hidden.txt"]);
+
+      expect(invokeMock).not.toHaveBeenCalledWith("unstage_files", expect.anything());
+      expect(showToast).toHaveBeenCalledWith(
+        "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+        "error",
+      );
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
+  });
 });
 
 describe("repo store — large history", () => {
