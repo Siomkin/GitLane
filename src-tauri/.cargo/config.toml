@@ -1,0 +1,18 @@
+# Cargo config for the GitLane Rust crate.
+#
+# Use the `mold` linker on Linux to shorten the build's single-threaded link
+# phase. (The compile phase is already parallel across all cores — cargo's
+# default `-j` is the logical CPU count — so this only targets the serial tail,
+# and helps incremental relinks most.)
+#
+# Scoped to the GNU/Linux target so macOS (aarch64/x86_64-apple-darwin) and
+# Windows (x86_64-pc-windows-msvc) builds are unaffected and keep their default
+# linkers.
+#
+# REQUIRES `mold` on PATH for Linux builds — install before this is relied on:
+#   - CI: preinstalled on the self-hosted `linux-gitlane` runner (`apt-get install -y mold`).
+#   - Local Linux devs: `sudo apt-get install mold`.
+# Ubuntu 24.04's gcc (13/14) supports `-fuse-ld=mold`. Without mold on PATH a
+# Linux link fails with "cannot find mold"; macOS/Windows are never affected.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
