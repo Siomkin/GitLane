@@ -12,7 +12,7 @@ import { useAccounts } from "../../../../store/accounts";
 import { appliedProfileId, useProfiles } from "../../../../store/profiles";
 import { profileInitials, selectProfile, type GitProfile } from "../../../../lib/profiles";
 import { useUi, type ProfilesIntent } from "../../../../store/ui";
-import { GitBranchIcon } from "../../../ui/icons";
+import { ArrowUpRightIcon, GitBranchIcon } from "../../../ui/icons";
 import { RadioCard } from "./RadioCard";
 import { CommitEmailField } from "./CommitEmailField";
 import { UnmanagedRow } from "./UnmanagedRow";
@@ -69,11 +69,12 @@ export function CommitAsZone() {
             openProfilesSettings();
           }}
           className={cn(
-            "text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
+            "inline-flex items-center gap-1 text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
             focusRing,
           )}
         >
-          Manage profiles ↗
+          Manage profiles
+          <ArrowUpRightIcon className="h-3 w-3" />
         </button>
       </div>
       <p className="mt-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
@@ -292,9 +293,10 @@ function ProfileOptionRow({
             onEdit();
           }}
           title="Edit this profile in Settings → Profiles"
-          className="shrink-0 text-[12px] font-medium px-2.5 h-8 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
+          className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium px-2.5 h-8 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
         >
-          Edit ↗
+          Edit
+          <ArrowUpRightIcon className="h-3 w-3" />
         </button>
       }
     />

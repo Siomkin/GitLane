@@ -1,7 +1,7 @@
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
 import type { RepoSettingsSection } from "../../../store/ui";
-import { IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "../../ui/icons";
+import { ArrowUpRightIcon, IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "../../ui/icons";
 
 const NAV: { key: RepoSettingsSection; label: string; Icon: typeof IdCardIcon }[] = [
   { key: "identity", label: "Identity", Icon: IdCardIcon },
@@ -71,9 +71,7 @@ export const RepoSettingsSidebar = ({
       >
         <SettingsIcon className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
         <span className="flex-1 text-left">App settings</span>
-        <span className="text-[15px] text-neutral-300 group-hover:text-neutral-400 dark:text-neutral-600 dark:group-hover:text-neutral-500">
-          ↗
-        </span>
+        <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-neutral-300 group-hover:text-neutral-400 dark:text-neutral-600 dark:group-hover:text-neutral-500" />
       </button>
     </div>
   </div>

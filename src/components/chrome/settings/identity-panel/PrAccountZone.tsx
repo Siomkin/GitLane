@@ -8,6 +8,7 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { useAccounts } from "../../../../store/accounts";
 import { useUi } from "../../../../store/ui";
+import { ArrowUpRightIcon } from "../../../ui/icons";
 
 export function PrAccountZone() {
   const accounts = useAccounts((s) => s.accounts);
@@ -46,11 +47,12 @@ export function PrAccountZone() {
         <button
           onClick={manageAccounts}
           className={cn(
-            "text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
+            "inline-flex items-center gap-1 text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
             focusRing,
           )}
         >
-          Manage accounts ↗
+          Manage accounts
+          <ArrowUpRightIcon className="h-3 w-3" />
         </button>
       </div>
       <p className="mt-1.5 text-[12px] text-neutral-400 dark:text-neutral-500 text-pretty max-w-[460px]">

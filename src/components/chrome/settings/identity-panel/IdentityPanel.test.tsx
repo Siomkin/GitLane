@@ -87,7 +87,7 @@ describe("IdentityPanel", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
     // Creation lives on the Profiles page, not in the picker.
     expect(screen.queryByRole("button", { name: "New profile" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Manage profiles ↗" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage profiles" }));
     // The repo window closes and the global Profiles panel opens, list view.
     expect(useUi.getState().repoSettingsOpen).toBe(false);
     expect(useUi.getState().settingsOpen).toBe(true);
@@ -98,7 +98,7 @@ describe("IdentityPanel", () => {
   it("hands profile editing off to Settings → Profiles with the profile id", () => {
     render(<IdentityPanel />);
     fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Edit ↗" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(useUi.getState().repoSettingsOpen).toBe(false);
     expect(useUi.getState().settingsTab).toBe("profiles");
     expect(useUi.getState().profilesIntent).toEqual({ kind: "edit", id: "p2" });

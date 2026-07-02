@@ -57,7 +57,7 @@ export function RepoSettingsModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby={TITLE_ID}
-        className="flex h-[620px] max-h-[92vh] w-[900px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-900"
+        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-900"
       >
         <h2 id={TITLE_ID} className="sr-only">
           Repository settings

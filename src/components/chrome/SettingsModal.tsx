@@ -59,7 +59,7 @@ export function SettingsModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby={TITLE_ID}
-        className="flex h-[620px] max-h-[92vh] w-[900px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
       >
         <nav className="flex w-[232px] flex-none flex-col border-r border-black/10 bg-black/[0.03] px-3 py-[18px] dark:border-white/10 dark:bg-white/[0.04]">
           <div className="flex items-center gap-[11px] px-2 pb-4">

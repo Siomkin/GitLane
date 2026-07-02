@@ -354,6 +354,17 @@ export function ExternalLinkIcon(props: IconProps) {
   );
 }
 
+export function ArrowUpRightIcon(props: IconProps) {
+  // Inline "opens elsewhere" affordance. Always use this instead of the "↗"
+  // text glyph — Windows font fallback renders U+2197 as a legacy color emoji.
+  return (
+    <IconBase strokeWidth="2" {...props}>
+      <path d="M7 17 17 7" />
+      <path d="M8 7h9v9" />
+    </IconBase>
+  );
+}
+
 export function RemotesIcon(props: IconProps) {
   // A cloud with a download arrow — "manage remotes" (pull a remote down).
   return (
