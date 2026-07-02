@@ -69,7 +69,7 @@ export function ProviderConnect({
           </span>
         ) : (
           <span className="ml-auto inline-flex h-[18px] items-center rounded-full bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:bg-white/[0.07] dark:text-neutral-400">
-            Sign-in only — PR support coming
+            Sign-in only
           </span>
         )}
       </div>

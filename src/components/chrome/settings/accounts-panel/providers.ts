@@ -44,7 +44,16 @@ export function providerInitials(name: string): string {
 
 /** Short capability hint shown beside each provider in the picker. */
 export function capabilityHint(meta: ProviderMeta): string {
-  return meta.prSupported ? "Full support" : "Sign-in only — PR support coming";
+  return meta.prSupported ? "Full support" : "Sign-in only";
+}
+
+/** One-line CLI status for a picker row: which CLI drives this provider and
+ * whether it's installed / signed in. `null` while the probe hasn't landed. */
+export function cliStatusLine(status: ForgeAuthStatus | undefined): string | null {
+  if (!status) return null;
+  if (status.cli === null) return "No CLI — manual setup";
+  if (!status.available) return `${status.cli} CLI not installed`;
+  return status.authenticated ? `Signed in via ${status.cli}` : `${status.cli} installed — not signed in`;
 }
 
 /** Display form for a forge account: `@handle` for handle-style identities,

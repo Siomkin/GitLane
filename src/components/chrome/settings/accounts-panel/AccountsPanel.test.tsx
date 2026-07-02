@@ -168,6 +168,41 @@ describe("AccountsPanel (add-account model)", () => {
     expect(screen.getByText("Signed in — resolving account…")).toBeInTheDocument();
   });
 
+  it("shows CLI status per provider in the add-account picker", () => {
+    const gitlabAuthed: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "https://gitlab.com/gitlab-org/cli",
+      notes: "PR features are not implemented for GitLab.",
+      account: { username: "ada", name: "Ada Lovelace" },
+    };
+    const giteaMissing: ForgeAuthStatus = {
+      provider: "gitea",
+      forge: "Gitea",
+      cli: "tea",
+      authMethod: "tea CLI",
+      available: false,
+      authenticated: false,
+      loginCommand: "tea login add",
+      docsUrl: "https://gitea.com",
+      notes: "",
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed, giteaMissing] });
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getAllByRole("button", { name: /Add account/ })[0]);
+    // Each provider row says which CLI drives it and whether it's usable now.
+    expect(screen.getByText("Signed in via glab")).toBeInTheDocument();
+    expect(screen.getByText("tea CLI not installed")).toBeInTheDocument();
+    expect(screen.getByText("gh installed — not signed in")).toBeInTheDocument();
+    // The capability badge is the short form.
+    expect(screen.getAllByText("Sign-in only").length).toBeGreaterThan(0);
+  });
+
   it("shows an email/UPN identity (Azure) as-is, not as a double-@ handle", () => {
     const azureAuthed: ForgeAuthStatus = {
       provider: "azure-devops",
