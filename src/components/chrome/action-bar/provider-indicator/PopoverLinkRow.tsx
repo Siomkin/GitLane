@@ -1,12 +1,13 @@
 import { openExternalUrl } from "../../../../lib/openExternal";
 import { focusRing } from "../../../../lib/ui";
 import { cn } from "../../../../lib/cn";
+import { ArrowUpRightIcon } from "../../../ui/icons";
 import type { ReactNode } from "react";
 
 /** A single external-link row in the provider popover (GitHub PRs/Issues, repo
  * settings shortcuts). Opens in the system browser via `openExternalUrl`, then closes
  * the popover. Styled as the design's `<a>` rows — leading glyph, label, a
- * trailing `↗`. */
+ * trailing open-elsewhere arrow. */
 export const PopoverLinkRow = ({
   icon,
   label,
@@ -33,6 +34,6 @@ export const PopoverLinkRow = ({
   >
     <span className="shrink-0 text-neutral-400">{icon}</span>
     <span className="flex-1 truncate">{label}</span>
-    <span className="text-[12px] text-neutral-300 dark:text-neutral-600">↗</span>
+    <ArrowUpRightIcon className="h-3 w-3 shrink-0 text-neutral-300 dark:text-neutral-600" />
   </button>
 );

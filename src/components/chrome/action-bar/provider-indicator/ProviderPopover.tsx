@@ -4,6 +4,7 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import type { RepoSettingsSection } from "../../../../store/ui";
 import {
+  ArrowUpRightIcon,
   AzureDevOpsIcon,
   BitbucketIcon,
   BranchIcon,
@@ -102,7 +103,7 @@ export const ProviderPopover = ({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 truncate text-[13.5px] font-semibold text-neutral-900 dark:text-white">
           {model.title}
-          {model.headHref && <span className="text-[11px] text-neutral-400">↗</span>}
+          {model.headHref && <ArrowUpRightIcon className="h-3 w-3 shrink-0 text-neutral-400" />}
         </div>
         <div className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{model.host}</div>
       </div>
@@ -169,8 +170,14 @@ export const ProviderPopover = ({
               <Glyph icon={model.primary.icon} className="h-4 w-4" />
             </span>
             <span className="flex-1 truncate text-left">{model.primary.label}</span>
-            {model.primary.suffix && (
-              <span className="text-[12px] text-[color:var(--accent)]">{model.primary.suffix}</span>
+            {/* "↗" renders as an SVG — the text glyph falls back to a legacy
+                color emoji on Windows. Other suffixes ("→") render as text. */}
+            {model.primary.suffix === "↗" ? (
+              <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-[color:var(--accent)]" />
+            ) : (
+              model.primary.suffix && (
+                <span className="text-[12px] text-[color:var(--accent)]">{model.primary.suffix}</span>
+              )
             )}
           </button>
         </div>

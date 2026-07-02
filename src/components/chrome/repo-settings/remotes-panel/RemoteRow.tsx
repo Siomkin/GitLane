@@ -57,6 +57,13 @@ export const RemoteRow = ({
           {info.host ?? "unknown host"}
         </span>
         <span
+          title={
+            prs
+              ? remote.isDefault
+                ? "This remote drives pull requests and PR auth — the bound account must match its host."
+                : "This provider supports PRs, but pull requests follow the PR remote (the default)."
+              : undefined
+          }
           className={cn(
             "inline-flex h-6 items-center rounded-md px-2 text-[11.5px] font-medium",
             prs
@@ -64,7 +71,9 @@ export const RemoteRow = ({
               : "bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400",
           )}
         >
-          {prs ? "PRs on" : "No PRs"}
+          {/* The default remote is what the PR tab and provider auth follow —
+              name it, instead of the ambiguous "PRs on". */}
+          {prs ? (remote.isDefault ? "PR remote" : "PRs on") : "No PRs"}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {!editing && (

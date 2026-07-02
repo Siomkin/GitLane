@@ -34,8 +34,10 @@ export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): Pro
   // Stay optimistic while the account list is still loading, so the indicator
   // doesn't flash an amber "needs-auth" dot before the accounts arrive.
   if (ctx.accountsLoading && ctx.accounts.length === 0) return "connected";
-  const host = forge.host ?? "github.com";
-  const bound = ctx.repoAccountRef?.host === host;
-  const hasAccount = ctx.accounts.some((a) => a.host === host);
+  // Case-insensitive like the backend's normalize_host (and lib/prRemote), so
+  // a mixed-case remote URL host doesn't read as "needs-auth".
+  const host = (forge.host ?? "github.com").toLowerCase();
+  const bound = ctx.repoAccountRef?.host.toLowerCase() === host;
+  const hasAccount = ctx.accounts.some((a) => a.host.toLowerCase() === host);
   return bound || hasAccount ? "connected" : "needs-auth";
 };
