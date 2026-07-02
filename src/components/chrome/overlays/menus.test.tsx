@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
 import { BranchRow } from "../../navigation/branch-navigator/rows";
-import { BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
+import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
 // BranchContextMenu probes `api.canFastForward` (→ invoke) from an effect when a
 // branch other than HEAD is selected, so the IPC boundary must be mocked. Reject
@@ -23,6 +23,9 @@ const realDeleteBranchWithWorktree = useRepo.getState().deleteBranchWithWorktree
 const realRemoveWorktree = useRepo.getState().removeWorktree;
 const realOpenWorktree = useRepo.getState().openWorktree;
 const realOpenCompare = useRepo.getState().openCompare;
+const realCheckoutBranch = useRepo.getState().checkoutBranch;
+const realRebaseOnto = useRepo.getState().rebaseOnto;
+const realResetCurrentTo = useRepo.getState().resetCurrentTo;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -46,14 +49,19 @@ beforeEach(() => {
     removeWorktree: realRemoveWorktree,
     openWorktree: realOpenWorktree,
     openCompare: realOpenCompare,
+    checkoutBranch: realCheckoutBranch,
+    rebaseOnto: realRebaseOnto,
+    resetCurrentTo: realResetCurrentTo,
   });
   useUi.setState({
     wipMenu: null,
     tagMenu: null,
     worktreeMenu: null,
     contextMenu: null,
+    actionMenu: null,
     confirm: null,
     prompt: null,
+    toast: null,
     createBranchOpen: false,
     createBranchStart: null,
   });
@@ -619,6 +627,120 @@ describe("BranchContextMenu", () => {
       expect(useUi.getState().toast?.message).toContain("HEAD changed"),
     );
     expect(useUi.getState().confirm).toBeNull();
+  });
+});
+
+// The drag-drop action menu. The prior bug (GL-102) was that `rebase-source` /
+// `reset-source` existed in the policy for commit/remote targets and in
+// `GraphActionKind`, but the local-target `switch` didn't handle them — so the
+// only rebase offered on a branch drop moved the *target*, inverting intent.
+// These tests pin the local-target handlers to the direction the label promises,
+// which the pure `graphActions` spec test cannot see.
+describe("ActionMenu", () => {
+  const localSummary = {
+    path: "/work/repo",
+    workdir: "/work/repo",
+    headBranch: "main",
+    headOid: "head",
+    detached: false,
+  };
+
+  const openActionMenu = (fromName: string, toName: string) =>
+    useUi.setState({
+      actionMenu: {
+        x: 10,
+        y: 10,
+        from: { name: fromName, kind: "local" },
+        to: { kind: "local", name: toName },
+      },
+    });
+
+  it("rebase-source checks out the dragged branch, then rebases it onto the drop target", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      checkoutBranch,
+      rebaseOnto,
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    // The accessible name is prefixed by the icon glyph and suffixed by the
+    // `sub` line, so match the label substring rather than anchoring.
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
+
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main"));
+    expect(checkoutBranch).toHaveBeenCalledWith("feature");
+    // The dragged branch moves — the drop target is never checked out or rebased.
+    expect(checkoutBranch).not.toHaveBeenCalledWith("main");
+    expect(rebaseOnto).not.toHaveBeenCalledWith("feature");
+  });
+
+  it("rebase-target checks out the drop target, then rebases it onto the dragged branch", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto feature");
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      checkoutBranch,
+      rebaseOnto,
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto feature/ }));
+
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature"));
+    expect(checkoutBranch).toHaveBeenCalledWith("main");
+  });
+
+  it("reset-source previews then resets the dragged branch to the drop target on confirm", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    const resetCurrentTo = vi.fn().mockResolvedValue("Reset to main");
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      checkoutBranch,
+      resetCurrentTo,
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reset feature to main/ }));
+
+    // Preview is anchored on the branch being reset (feature), not HEAD.
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    expect(invokeMock).toHaveBeenCalledWith(
+      "preview_reset",
+      expect.objectContaining({ target: "main", mode: "mixed", source: "feature" }),
+    );
+
+    useUi.getState().confirm!.onConfirm();
+    await waitFor(() => expect(resetCurrentTo).toHaveBeenCalledWith("main", "mixed"));
+    expect(checkoutBranch).toHaveBeenCalledWith("feature");
+  });
+
+  it("does not offer source-direction moves when a remote ref is dragged onto a local branch", () => {
+    useRepo.setState({
+      summary: localSummary,
+      branches: [remoteBranch("origin/feature"), localBranch("main")],
+    });
+    useUi.setState({
+      actionMenu: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      },
+    });
+    render(<ActionMenu />);
+
+    // Remote source only feeds the local target: it is never itself moved.
+    expect(screen.queryByRole("menuitem", { name: /Rebase origin\/feature onto main/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Reset origin\/feature to main/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ })).toBeInTheDocument();
   });
 });
 
