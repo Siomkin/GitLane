@@ -219,7 +219,9 @@ fn is_env_assignment(token: &str) -> bool {
 /// True when `name` resolves on the user's PATH. This intentionally uses Rust
 /// path lookups instead of shelling out to platform-specific lookup commands,
 /// so probing works on non-Unix hosts and remains a pure lookup with no side
-/// effects from metacharacters in a user-configured command.
+/// effects from metacharacters in a user-configured command. The PATH scan
+/// (with Windows PATHEXT expansion) lives in [`shell::command_on_path`],
+/// shared with the git-lfs presence check in `git::status`.
 fn which(name: &str) -> bool {
     if name.is_empty() {
         return false;
@@ -227,52 +229,10 @@ fn which(name: &str) -> bool {
 
     let path = Path::new(name);
     if path.is_absolute() || name.contains('/') || name.contains('\\') {
-        return executable_exists(path);
+        return shell::executable_exists(path);
     }
 
-    std::env::split_paths(&shell::path()).any(|dir| {
-        executable_names(name)
-            .into_iter()
-            .any(|candidate| executable_exists(&dir.join(candidate)))
-    })
-}
-
-fn executable_exists(path: &Path) -> bool {
-    path.is_file() && is_executable(path)
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    fs::metadata(path)
-        .map(|meta| meta.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable(path: &Path) -> bool {
-    path.is_file()
-}
-
-fn executable_names(name: &str) -> Vec<String> {
-    #[cfg(windows)]
-    {
-        if Path::new(name).extension().is_some() {
-            return vec![name.to_string()];
-        }
-        let pathext =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-        return pathext
-            .split(';')
-            .filter(|ext| !ext.is_empty())
-            .map(|ext| format!("{name}{ext}"))
-            .collect();
-    }
-
-    #[cfg(not(windows))]
-    {
-        vec![name.to_string()]
-    }
+    shell::command_on_path(name)
 }
 
 #[cfg(test)]
