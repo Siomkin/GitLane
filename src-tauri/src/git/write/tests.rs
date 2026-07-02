@@ -1,6 +1,6 @@
 use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution, worktree_path};
 use super::operands::ensure_operand;
-use super::remotes::is_tag_clobber_rejection;
+use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, clear_repo_identity,
@@ -227,6 +227,46 @@ fn delete_remote_tag_removes_only_the_tag_on_the_remote() {
         local.status.success(),
         "local tag ref is not touched by the remote delete"
     );
+}
+
+#[test]
+fn delete_remote_tag_tolerates_a_tag_that_was_never_pushed() {
+    let repo = TempRepo::new("delete-remote-tag-unpushed");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "one\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
+    repo.git_ok(&["tag", "--no-sign", "v9"]);
+
+    let remote = TempRepo::new("delete-remote-tag-unpushed-origin");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", remote.path()]);
+
+    // "Delete everywhere" on a local-only tag: absence upstream is the desired
+    // end state, so this must not fail (the combined delete then proceeds to
+    // the local half). How git reports it varies by transport — file remotes
+    // exit 0 with a "deleting a non-existent ref" warning, smart-HTTP servers
+    // reject with "remote ref does not exist" (mapped to Ok by the tolerance
+    // tested below) — so assert the behavior, not the message.
+    delete_remote_tag(repo.path(), "origin", "v9", None)
+        .expect("missing remote ref is not a failure");
+
+    let local = repo.git(&["show-ref", "--verify", "refs/tags/v9"]);
+    assert!(local.status.success(), "local tag is untouched");
+}
+
+#[test]
+fn missing_remote_ref_rejection_is_recognized() {
+    // The smart-HTTP wording (GitHub et al.) that delete_remote_tag maps to Ok.
+    assert!(is_missing_remote_ref(
+        "error: unable to delete 'refs/tags/v9': remote ref does not exist\nerror: failed to push some refs to 'https://github.com/o/r.git'"
+    ));
+    // Genuine failures must still surface.
+    assert!(!is_missing_remote_ref(
+        "error: failed to push some refs to 'https://github.com/o/r.git' (protected tag)"
+    ));
 }
 
 #[test]

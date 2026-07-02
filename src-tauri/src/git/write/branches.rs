@@ -132,6 +132,8 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
 /// plain `git tag` to a *signed* (annotated) tag — and, with no `-m`, make git
 /// launch an editor for the message inside this GUI subprocess and fail. A
 /// lightweight tag carries no message or tagger, so there is nothing to sign.
+/// (`--no-sign` needs git ≥ 2.23, well below the 2.43+ this app already
+/// assumes elsewhere.)
 pub fn create_tag(repo: &str, name: &str, sha: Option<&str>) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_opt(sha)?;
