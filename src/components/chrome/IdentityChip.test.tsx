@@ -42,13 +42,15 @@ describe("IdentityChip", () => {
     expect(screen.getByTitle("Commit identity for this repository")).toHaveTextContent("Work");
   });
 
-  it("opens a profile quick-switch with the PR account as its own section", () => {
+  it("opens a status card: only the current picks, no switcher lists", () => {
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    // Commit-as shows the applied profile only — other profiles aren't listed.
     expect(screen.getByText("COMMIT AS")).toBeInTheDocument();
-    expect(screen.getByText("Default git identity")).toBeInTheDocument();
-    expect(screen.getByText("Personal")).toBeInTheDocument();
-    // The account section is always visible below the (scroll-capped) profiles.
+    // "Work" appears twice: the chip trigger and the popover's current-pick row.
+    expect(screen.getAllByText("Work")).toHaveLength(2);
+    expect(screen.getByText("Stepan Work · work@acme.io")).toBeInTheDocument();
+    expect(screen.queryByText("Personal")).toBeNull();
     expect(screen.getByText("PULL REQUESTS AS")).toBeInTheDocument();
     expect(screen.getByText("No account")).toBeInTheDocument();
   });
@@ -80,18 +82,22 @@ describe("IdentityChip", () => {
     expect(screen.getByText("@octocat")).toBeInTheDocument();
     expect(screen.getByText("github.com · PRs enabled")).toBeInTheDocument();
     // Changing happens on the Identity settings page.
-    fireEvent.click(screen.getByTitle("Change on the Identity settings page"));
+    fireEvent.click(screen.getByText("@octocat"));
     expect(useUi.getState().repoSettingsOpen).toBe(true);
     expect(useUi.getState().repoSettingsSection).toBe("identity");
   });
 
-  it("applies a profile on click (writes the commit identity)", () => {
+  it("never writes git config from the popover — rows open Identity settings", () => {
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
-    fireEvent.click(screen.getByText("Personal"));
-    expect(invokeMock).toHaveBeenCalledWith(
-      "set_repo_identity",
-      expect.objectContaining({ path, name: "Stepan Personal", email: "personal@x.dev" }),
+    invokeMock.mockClear();
+    // The commit-as status row (first of the two Identity-settings rows).
+    fireEvent.click(screen.getAllByTitle("Change on the Identity settings page")[0]);
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+    expect(useUi.getState().repoSettingsSection).toBe("identity");
+    const identityWrites = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity",
     );
+    expect(identityWrites).toHaveLength(0);
   });
 });
