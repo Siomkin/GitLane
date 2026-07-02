@@ -9,6 +9,7 @@ import type { GitProfile } from "@/lib/profiles";
 import { useRepo } from "@/store/repo";
 import { useAccounts } from "@/store/accounts";
 import { useProfiles } from "@/store/profiles";
+import { useUi } from "@/store/ui";
 import { IdentityChip } from "./IdentityChip";
 
 const path = "repo-under-test";
@@ -32,6 +33,7 @@ beforeEach(() => {
   // Seed state directly (not only localStorage) so the label doesn't depend on
   // the mount effect's timing.
   useProfiles.setState({ profiles: [personal, work], defaultIdentity: null });
+  useUi.setState({ repoSettingsOpen: false, repoSettingsSection: "remotes" });
 });
 
 describe("IdentityChip", () => {
@@ -51,7 +53,7 @@ describe("IdentityChip", () => {
     expect(screen.getByText("No account")).toBeInTheDocument();
   });
 
-  it("quick-switches the PR account inline from its section", () => {
+  it("shows the current PR account display-only and links to Identity settings", () => {
     useAccounts.setState({
       accounts: [
         {
@@ -70,20 +72,17 @@ describe("IdentityChip", () => {
           active: true,
         },
       ],
-      repoAccountId: null,
+      repoAccountId: "gh:github.com:1",
     });
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
-    // Collapsed row shows the current binding; expanding it lists accounts.
-    fireEvent.click(screen.getByText("Change"));
-    invokeMock.mockClear();
-    fireEvent.click(screen.getByText("@octocat"));
-    expect(useAccounts.getState().repoAccountId).toBe("gh:github.com:1");
-    // Binding a PR account must not write the commit identity.
-    const identityWrites = invokeMock.mock.calls.filter(
-      ([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity",
-    );
-    expect(identityWrites).toHaveLength(0);
+    // The current binding is shown, not an inline switcher.
+    expect(screen.getByText("@octocat")).toBeInTheDocument();
+    expect(screen.getByText("github.com · PRs enabled")).toBeInTheDocument();
+    // Changing happens on the Identity settings page.
+    fireEvent.click(screen.getByTitle("Change on the Identity settings page"));
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+    expect(useUi.getState().repoSettingsSection).toBe("identity");
   });
 
   it("applies a profile on click (writes the commit identity)", () => {
