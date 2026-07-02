@@ -17,32 +17,33 @@ const commit = (sha = "abcdef0123456789"): GraphDropTarget => ({
 });
 
 describe("buildGraphActionSpecs", () => {
-  it("offers local-target integration and both directions of every move", () => {
+  it("moves the dragged branch onto a local target — only the source direction", () => {
     const specs = buildGraphActionSpecs(local("feature"), branch("main"), {
       targetToSource: true,
       sourceToTarget: true,
     });
+    // The dragged branch (feature) is the actor; the target (main) is never
+    // rebased/reset here, so no *-target variant appears.
     expect(specs.map((x) => x.kind)).toEqual([
-      "fast-forward-target",
       "fast-forward-source",
       "merge-target",
       "rebase-source",
-      "rebase-target",
       "reset-source",
-      "reset-target",
     ]);
   });
 
-  it("keeps the rebase directions straight: source variant moves the dragged branch", () => {
+  it("labels every local-target action as moving the dragged branch, never the target", () => {
     const specs = buildGraphActionSpecs(local("feature"), branch("main"), {
       targetToSource: false,
       sourceToTarget: false,
     });
     const label = (kind: string) => specs.find((x) => x.kind === kind)?.label;
     expect(label("rebase-source")).toBe("Rebase feature onto main");
-    expect(label("rebase-target")).toBe("Rebase main onto feature");
     expect(label("reset-source")).toBe("Reset feature to main");
-    expect(label("reset-target")).toBe("Reset main to feature");
+    expect(label("merge-target")).toBe("Merge feature into main");
+    // The reverse-direction variants must not be offered for a local drag.
+    expect(specs.some((x) => x.kind === "rebase-target")).toBe(false);
+    expect(specs.some((x) => x.kind === "reset-target")).toBe(false);
   });
 
   it("lets a remote ref feed a local target but never offers moving the remote", () => {

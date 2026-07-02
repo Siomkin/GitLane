@@ -239,10 +239,13 @@ export function ActionMenu() {
     if (!menu || !repoPath) return;
     let alive = true;
     // The rev the source could move onto: a local/remote ref by name, a commit
-    // by sha. Only a local target can itself be moved forward (targetToSource).
+    // by sha.
     const targetRef = menu.to.kind === "commit" ? menu.to.sha : menu.to.name;
     Promise.all([
-      menu.to.kind === "local"
+      // targetToSource (moving the drop target forward) is only ever offered for
+      // a remote ref dropped on a local branch — a local source moves the source,
+      // so its reverse direction is never read. Skip the probe otherwise.
+      menu.to.kind === "local" && menu.from.kind === "remote"
         ? api.canFastForward(repoPath, menu.from.name, menu.to.name)
         : Promise.resolve(false),
       menu.from.kind === "local"
