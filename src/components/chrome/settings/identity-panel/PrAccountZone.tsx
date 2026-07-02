@@ -2,11 +2,21 @@
 // git-profile zone: a repo is fully usable (commit/fetch/push) without one.
 // Binding here drives PR/push/fetch auth ONLY — never the commit identity
 // (setRepoAccount is identity-free; commit author is the git profile in Zone A).
+//
+// Selection is scoped to the repo's PR remote (the default remote that drives
+// the provider indicator and PR tab): accounts on a different host are shown
+// but disabled with the reason, a known non-GitHub forge states that PRs
+// aren't supported instead of offering accounts that can never work, and a
+// bound account whose host no longer matches is flagged. The backend's
+// HostMismatch check stays as the safety net — this moves the error from
+// operation time to selection time.
 
 import { useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
-import { useAccounts } from "../../../../store/accounts";
+import { ForgeKind } from "../../../../lib/api";
+import { useAccounts, type Account } from "../../../../store/accounts";
+import { useRepo } from "../../../../store/repo";
 import { useUi } from "../../../../store/ui";
 import { ArrowUpRightIcon } from "../../../ui/icons";
 
@@ -14,6 +24,7 @@ export function PrAccountZone() {
   const accounts = useAccounts((s) => s.accounts);
   const repoAccountId = useAccounts((s) => s.repoAccountId);
   const setRepoAccount = useAccounts((s) => s.setRepoAccount);
+  const forge = useRepo((s) => s.forge);
   // This panel lives in the repo-scoped Repository settings window, so opening
   // the global Accounts tab means closing this window and opening global
   // Settings — not just flipping the (hidden) global tab state.
@@ -22,15 +33,23 @@ export function PrAccountZone() {
   const [picking, setPicking] = useState(false);
   const account = accounts.find((a) => a.id === repoAccountId) ?? null;
 
-  const pick = (id: string | null) => {
-    void setRepoAccount(id);
-    setPicking(false);
-  };
+  // The PR remote's host scopes which accounts can work here. Unknown forge /
+  // not-yet-loaded state falls back to unfiltered (the backend still guards).
+  const prHost = forge?.host?.toLowerCase() ?? null;
+  const hostMatches = (a: Account) => prHost === null || a.host.toLowerCase() === prHost;
+  const unsupportedForge =
+    forge?.hasRemote && forge.kind !== null && forge.kind !== ForgeKind.GitHub ? forge.forge ?? forge.kind : null;
+  const boundMismatch = account !== null && !hostMatches(account);
 
   // Accounts (like profiles) are a global library — hand off to Settings → Accounts.
   const manageAccounts = () => {
     closeRepoSettings();
     openSettings("accounts");
+  };
+
+  const pick = (id: string | null) => {
+    void setRepoAccount(id);
+    setPicking(false);
   };
 
   return (
@@ -60,7 +79,23 @@ export function PrAccountZone() {
         provider auth, never <span className="font-mono text-[11px]">git log</span>.
       </p>
 
-      {picking ? (
+      {unsupportedForge ? (
+        <div className="mt-3 flex items-center gap-3 p-3 rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02]">
+          <span className="w-9 h-9 shrink-0 rounded-[10px] grid place-items-center bg-black/[0.04] dark:bg-white/[0.06] text-neutral-400 dark:text-neutral-500">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+              <path d="M17.5 19a4.5 4.5 0 1 0-.7-8.95 6 6 0 0 0-11.65 1.6A3.75 3.75 0 0 0 6 19z" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
+              Pull requests aren&apos;t supported for {unsupportedForge} yet
+            </div>
+            <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400 text-pretty">
+              Commit, fetch &amp; push still work via your git profile — no account needed.
+            </div>
+          </div>
+        </div>
+      ) : picking ? (
         <div className="mt-3 rounded-xl border border-black/[0.08] bg-black/[0.015] p-2 dark:border-white/[0.1] dark:bg-white/[0.02]">
           <div role="radiogroup" aria-label="Pull-request account for this repo" className="flex flex-col gap-1">
             <AccountRow
@@ -75,25 +110,44 @@ export function PrAccountZone() {
               title="No account"
               subtitle="Pull requests off for this repo"
             />
-            {accounts.map((a) => (
-              <AccountRow
-                key={a.id}
-                selected={repoAccountId === a.id}
-                onSelect={() => pick(a.id)}
-                label={`@${a.username}`}
-                avatar={
-                  <span
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[11px] font-bold text-white"
-                    style={{ background: a.color }}
-                  >
-                    {a.username.slice(0, 2).toUpperCase()}
-                  </span>
-                }
-                title={`@${a.username}`}
-                subtitle={`${a.host} · authenticates PRs only`}
-              />
-            ))}
+            {accounts.map((a) => {
+              const usable = hostMatches(a);
+              return (
+                <AccountRow
+                  key={a.id}
+                  selected={repoAccountId === a.id}
+                  onSelect={() => pick(a.id)}
+                  disabled={!usable}
+                  label={`@${a.username}`}
+                  avatar={
+                    <span
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[11px] font-bold text-white"
+                      style={{ background: a.color }}
+                    >
+                      {a.username.slice(0, 2).toUpperCase()}
+                    </span>
+                  }
+                  title={`@${a.username}`}
+                  subtitle={
+                    usable
+                      ? `${a.host} · authenticates PRs only`
+                      : `${a.host} · different host than this repo's remote (${forge?.host})`
+                  }
+                />
+              );
+            })}
           </div>
+          {prHost !== null && accounts.length > 0 && !accounts.some(hostMatches) && (
+            <button
+              onClick={manageAccounts}
+              className={cn(
+                "mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-[color:var(--accent)] hover:bg-[var(--accent-soft)]",
+                focusRing,
+              )}
+            >
+              No accounts for {forge?.host} — add one in Accounts
+            </button>
+          )}
           {accounts.length === 0 && (
             <button
               onClick={manageAccounts}
@@ -118,13 +172,24 @@ export function PrAccountZone() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[13px] font-semibold text-neutral-900 dark:text-white">@{account.username}</span>
               <span className="text-[11.5px] text-neutral-500 dark:text-neutral-400">{account.host}</span>
-              <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/12">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                PRs enabled
-              </span>
+              {boundMismatch ? (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/12"
+                  title={`This account is for ${account.host}; the repo's remote is ${forge?.host}. PR operations will fail until they match.`}
+                >
+                  host mismatch
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/12">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  PRs enabled
+                </span>
+              )}
             </div>
             <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400 text-pretty">
-              Authenticates pull requests for this repo — not your commits.
+              {boundMismatch
+                ? `This repo's remote is on ${forge?.host} — pick an account for that host.`
+                : "Authenticates pull requests for this repo — not your commits."}
             </div>
           </div>
           <button
@@ -174,6 +239,7 @@ function AccountRow({
   title,
   subtitle,
   label,
+  disabled = false,
 }: {
   selected: boolean;
   onSelect: () => void;
@@ -181,16 +247,23 @@ function AccountRow({
   title: string;
   subtitle: string;
   label: string;
+  /** Host doesn't match the repo's PR remote — visible but not selectable. */
+  disabled?: boolean;
 }) {
   return (
     <button
       role="radio"
       aria-checked={selected}
       aria-label={label}
+      disabled={disabled}
       onClick={onSelect}
       className={cn(
         "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition",
-        selected ? "bg-[var(--accent-soft)]" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : selected
+            ? "bg-[var(--accent-soft)]"
+            : "hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
         focusRing,
       )}
     >

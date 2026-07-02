@@ -4,14 +4,42 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { useAccounts } from "@/store/accounts";
+import type { RepoForge } from "@/lib/api";
+import { useAccounts, type Account } from "@/store/accounts";
+import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { PrAccountZone } from "./PrAccountZone";
+
+const ghAccount = (over: Partial<Account>): Account => ({
+  id: "gh:github.com:1",
+  forge: "GitHub",
+  provider: "gh",
+  host: "github.com",
+  accountId: "1",
+  login: "octocat",
+  label: "octocat",
+  username: "octocat",
+  name: "Octo Cat",
+  email: "octo@example.com",
+  color: "#5b8def",
+  ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+  active: true,
+  ...over,
+});
+
+const githubForge: RepoForge = {
+  hasRemote: true,
+  kind: "github",
+  forge: "GitHub",
+  host: "github.com",
+  webUrl: "https://github.com/o/r",
+};
 
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
   useAccounts.setState({ accounts: [], repoAccountId: null });
+  useRepo.setState({ forge: null });
   useUi.setState({ repoSettingsOpen: true, settingsOpen: false, settingsTab: "general" });
 });
 
@@ -25,5 +53,58 @@ describe("PrAccountZone", () => {
     expect(useUi.getState().repoSettingsOpen).toBe(false);
     expect(useUi.getState().settingsOpen).toBe(true);
     expect(useUi.getState().settingsTab).toBe("accounts");
+  });
+
+  it("disables accounts on a different host than the repo's PR remote", () => {
+    useRepo.setState({ forge: githubForge });
+    useAccounts.setState({
+      accounts: [
+        ghAccount({}),
+        ghAccount({
+          id: "gh:ghe.corp:2",
+          host: "ghe.corp",
+          accountId: "2",
+          login: "worker",
+          username: "worker",
+          ref: { provider: "gh", host: "ghe.corp", accountId: "2", login: "worker" },
+        }),
+      ],
+    });
+    render(<PrAccountZone />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+    // Matching host stays selectable; the other host is visible but disabled.
+    expect(screen.getByRole("radio", { name: "@octocat" })).toBeEnabled();
+    const mismatched = screen.getByRole("radio", { name: "@worker" });
+    expect(mismatched).toBeDisabled();
+    expect(screen.getByText(/different host than this repo's remote/)).toBeInTheDocument();
+    // Picking the disabled row must not bind.
+    fireEvent.click(mismatched);
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+  });
+
+  it("offers an Accounts CTA when no connected account matches the PR remote's host", () => {
+    useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
+    useAccounts.setState({ accounts: [ghAccount({})] });
+    render(<PrAccountZone />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+    expect(screen.getByText(/No accounts for ghe.corp/)).toBeInTheDocument();
+  });
+
+  it("states PRs are unsupported for a known non-GitHub forge instead of offering accounts", () => {
+    useRepo.setState({
+      forge: { hasRemote: true, kind: "gitlab", forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/o/r" },
+    });
+    useAccounts.setState({ accounts: [ghAccount({})] });
+    render(<PrAccountZone />);
+    expect(screen.getByText("Pull requests aren't supported for GitLab yet")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect account" })).toBeNull();
+  });
+
+  it("flags a bound account whose host no longer matches the PR remote", () => {
+    useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
+    useAccounts.setState({ accounts: [ghAccount({})], repoAccountId: "gh:github.com:1" });
+    render(<PrAccountZone />);
+    expect(screen.getByText("host mismatch")).toBeInTheDocument();
+    expect(screen.queryByText("PRs enabled")).toBeNull();
   });
 });
