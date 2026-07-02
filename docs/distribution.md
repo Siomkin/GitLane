@@ -11,7 +11,7 @@ Common to all platforms: the `.sig` files next to release assets are minisign
 signatures for the built-in Tauri updater (GL-24), not user-facing downloads.
 Per-format install instructions live in the
 [README install section](../README.md#install); the release page body links
-there.
+there, and the gitlane.space install section mirrors it (GL-93).
 
 ## Linux
 
@@ -31,8 +31,8 @@ Every release ships three Linux artifacts, built by the self-hosted
 
 | Channel | Decision | Rationale |
 | --- | --- | --- |
-| **AUR** (`gitlane-bin`) | **Publish** — follow-up ticket | Cheap: a PKGBUILD that repackages the release `.deb`. Covers Arch users with one command; no extra build infrastructure. Stable tags only. |
-| **Flathub** | **Spike first** — follow-up ticket | The channel users most expect (one-click install + automatic updates on Fedora/Ubuntu/SteamOS), but a git client is unusually host-dependent for a Flatpak — see below. Don't commit until the spike answers go/no-go. |
+| **AUR** (`gitlane-bin`) | **Publish** — GL-88 | Cheap: a PKGBUILD that repackages the release `.deb`. Covers Arch users with one command; no extra build infrastructure. Stable tags only. |
+| **Flathub** | **Spike first** — GL-89 | The channel users most expect (one-click install + automatic updates on Fedora/Ubuntu/SteamOS), but a git client is unusually host-dependent for a Flatpak — see below. Don't commit until the spike answers go/no-go. |
 | **apt repo / Fedora copr** | **Not now** | Standing repo infrastructure (hosting, GPG signing, per-distro maintenance) isn't justified at current scale; the direct `.deb`/`.rpm` download already serves those users. Revisit if install friction shows up in issues. |
 
 ### Why Flathub needs a spike, not a manifest
@@ -50,7 +50,7 @@ Every release ships three Linux artifacts, built by the self-hosted
   be disabled in the Flatpak build (build-time config or `FLATPAK_ID`
   detection). The beta channel would not exist on Flathub.
 
-### AUR sketch (for the follow-up)
+### AUR sketch (for GL-88)
 
 `gitlane-bin`: PKGBUILD downloads the release `.deb`, extracts with `bsdtar`,
 installs app + desktop entry + icons; `provides=(gitlane)`,
@@ -76,8 +76,8 @@ quarantine, so existing users are unaffected.
 
 | Channel | Decision | Rationale |
 | --- | --- | --- |
-| **Developer ID signing + notarization** | **Do** — follow-up ticket, blocked on Apple Developer Program enrollment (~$99/yr) | Removes the Gatekeeper block entirely; the macOS analog of GL-82. `release.yml` already documents the exact `APPLE_*` secret wiring; drop `signingIdentity: "-"` when it lands. The cert import (`security import`) needs the GUI session the runner already requires for DMG bundling (GL-78) — verify on the mini. |
-| **Homebrew cask** (`brew install --cask gitlane`) | **Publish after notarization** — follow-up ticket | The de-facto macOS channel for developer tools. Unsigned casks get flagged/rejected in homebrew/cask, so it lands after signing. Set `auto_updates true` so `brew upgrade` doesn't fight the built-in updater. |
+| **Developer ID signing + notarization** | **Do** — GL-90, blocked on Apple Developer Program enrollment (~$99/yr) | Removes the Gatekeeper block entirely; the macOS analog of GL-82. `release.yml` already documents the exact `APPLE_*` secret wiring; drop `signingIdentity: "-"` when it lands. The cert import (`security import`) needs the GUI session the runner already requires for DMG bundling (GL-78) — verify on the mini. |
+| **Homebrew cask** (`brew install --cask gitlane`) | **Publish after notarization** — GL-91 (queues behind GL-90) | The de-facto macOS channel for developer tools. Unsigned casks get flagged/rejected in homebrew/cask, so it lands after signing. Set `auto_updates true` so `brew upgrade` doesn't fight the built-in updater. |
 | **Mac App Store** | **No** | The App Store sandbox forbids the host-git model (spawning the user's `git`/`gh`, arbitrary filesystem access) — incompatible with GitLane's core design. |
 
 ## Windows
@@ -96,6 +96,6 @@ updates don't retrigger SmartScreen.
 
 | Channel | Decision | Rationale |
 | --- | --- | --- |
-| **winget** (`winget install GitLane`) | **Publish after GL-82** — follow-up ticket | The de-facto Windows channel; free (manifest PR into microsoft/winget-pkgs), automatable per stable release via the winget-releaser GitHub Action. winget accepts unsigned installers, but validation, Defender scanning, and user trust are much smoother signed — so it queues behind GL-82. |
+| **winget** (`winget install GitLane`) | **Publish after GL-82** — GL-92 | The de-facto Windows channel; free (manifest PR into microsoft/winget-pkgs), automatable per stable release via the winget-releaser GitHub Action. winget accepts unsigned installers, but validation, Defender scanning, and user trust are much smoother signed — so it queues behind GL-82. |
 | **Scoop / Chocolatey** | **Not now** | Community buckets are cheap but each is another manifest to keep current; winget covers the mainstream case. Revisit on demand. |
 | **MSI** | **Not now** — revisit for stable tags only if enterprise demand appears | The WiX version limit only bites pre-release identifiers, so a stable-only MSI leg is possible; no demand yet to justify the second installer. |
