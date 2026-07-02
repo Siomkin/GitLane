@@ -1,8 +1,9 @@
 // Title-bar identity chip. Leads with the repo's COMMIT IDENTITY — the git
 // profile you commit as (Tier 1) — because that's the primary concept after the
 // two-tier reframe. The pull-request account (Tier 2) is shown as a subordinate
-// line in the popover. Quick-switch profiles here; full management (incl. the PR
-// account binding and signing) lives in Settings → Identity.
+// line in the popover. Quick-switching profiles here is a repo *binding* action
+// (like Repository settings → Identity); the profile library itself is managed
+// globally in Settings → Profiles.
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
@@ -26,6 +27,7 @@ export function IdentityChip() {
   const loadDefaultIdentity = useProfiles((s) => s.loadDefaultIdentity);
   const applyProfile = useProfiles((s) => s.applyProfile);
   const openSettings = useUi((s) => s.openSettings);
+  const openProfilesSettings = useUi((s) => s.openProfilesSettings);
   const openRepoSettings = useUi((s) => s.openRepoSettings);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -120,9 +122,15 @@ export function IdentityChip() {
               />
             ))}
             {profiles.length === 0 && (
-              <div className="px-3.5 py-3 text-[11.5px] leading-relaxed text-neutral-400">
-                No saved profiles yet. Create one in Identity settings.
-              </div>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  openProfilesSettings({ kind: "new" });
+                }}
+                className="block w-full px-3.5 py-3 text-left text-[11.5px] leading-relaxed text-neutral-400 hover:bg-black/5 hover:text-neutral-600 dark:hover:bg-white/5 dark:hover:text-neutral-300"
+              >
+                No saved profiles yet — create one in Settings → Profiles.
+              </button>
             )}
           </div>
 

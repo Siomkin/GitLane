@@ -44,7 +44,7 @@ export function providerInitials(name: string): string {
 
 /** Short capability hint shown beside each provider in the picker. */
 export function capabilityHint(meta: ProviderMeta): string {
-  return meta.prSupported ? "Full support" : "Auth only — no PRs yet";
+  return meta.prSupported ? "Full support" : "Sign-in only — PR support coming";
 }
 
 /** Display form for a forge account: `@handle` for handle-style identities,

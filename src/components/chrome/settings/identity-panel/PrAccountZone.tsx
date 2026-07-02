@@ -26,15 +26,32 @@ export function PrAccountZone() {
     setPicking(false);
   };
 
+  // Accounts (like profiles) are a global library — hand off to Settings → Accounts.
+  const manageAccounts = () => {
+    closeRepoSettings();
+    openSettings("accounts");
+  };
+
   return (
     <div className="mt-7 pt-6 border-t border-black/[0.07] dark:border-white/[0.08]">
-      <div className="flex items-center gap-2">
-        <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
-          PULL-REQUEST ACCOUNT
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
+            OPEN PULL REQUESTS AS · ACCOUNT
+          </div>
+          <span className="px-1.5 h-[16px] grid place-items-center rounded text-[9.5px] font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 bg-black/[0.04] dark:bg-white/[0.06]">
+            Optional
+          </span>
         </div>
-        <span className="px-1.5 h-[16px] grid place-items-center rounded text-[9.5px] font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500 bg-black/[0.04] dark:bg-white/[0.06]">
-          Optional
-        </span>
+        <button
+          onClick={manageAccounts}
+          className={cn(
+            "text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
+            focusRing,
+          )}
+        >
+          Manage accounts ↗
+        </button>
       </div>
       <p className="mt-1.5 text-[12px] text-neutral-400 dark:text-neutral-500 text-pretty max-w-[460px]">
         Who you authenticate as for pull requests — separate from your commit author. Only affects PRs &amp;
@@ -77,10 +94,7 @@ export function PrAccountZone() {
           </div>
           {accounts.length === 0 && (
             <button
-              onClick={() => {
-                closeRepoSettings();
-                openSettings("accounts");
-              }}
+              onClick={manageAccounts}
               className={cn(
                 "mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-medium text-[color:var(--accent)] hover:bg-[var(--accent-soft)]",
                 focusRing,

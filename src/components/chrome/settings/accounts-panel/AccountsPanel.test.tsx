@@ -126,7 +126,7 @@ describe("AccountsPanel (add-account model)", () => {
     // Signed-in GitLab appears as connected (auth-only) with the real username.
     expect(screen.queryByText("No accounts yet")).not.toBeInTheDocument();
     expect(screen.getByText("@ada")).toBeInTheDocument();
-    expect(screen.getByText("Auth only — no PRs")).toBeInTheDocument();
+    expect(screen.getByText("Sign-in only")).toBeInTheDocument();
   });
 
   it("shows the forge card immediately with an identity skeleton while it resolves", () => {

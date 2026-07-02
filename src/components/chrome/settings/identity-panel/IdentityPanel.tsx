@@ -1,26 +1,24 @@
-// Settings → Identity. Tier 1 of GitLane's identity model: a reusable git
-// profile (name + email + optional signing) is all you need to commit, fetch &
-// push — no provider account required. Zone A owns profiles + the default git
-// identity; Zone B is the optional pull-request account. Faithful port of the
-// "Settings — Identity & Accounts" design (IdentityPanel component).
+// Repository settings → Identity. The per-repo *binding* layer of the two-tier
+// identity model: pick who this repo commits as (Zone A — a git profile, or the
+// default git identity) and who it opens pull requests as (Zone B — an optional
+// provider account). The libraries themselves are global: profiles are managed
+// in Settings → Profiles, accounts in Settings → Accounts; creating or editing
+// from here hands off to those panels. The only mutation owned here besides the
+// pick is the per-repo custom commit email, which is genuinely repo-scoped.
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { cn } from "../../../../lib/cn";
+import { focusRing } from "../../../../lib/ui";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
 import { appliedProfileId, useProfiles } from "../../../../store/profiles";
 import { profileInitials, selectProfile, type GitProfile } from "../../../../lib/profiles";
+import { useUi, type ProfilesIntent } from "../../../../store/ui";
 import { GitBranchIcon } from "../../../ui/icons";
 import { RadioCard } from "./RadioCard";
-import { ProfileEditor } from "./ProfileEditor";
 import { CommitEmailField } from "./CommitEmailField";
 import { UnmanagedRow } from "./UnmanagedRow";
 import { PrAccountZone } from "./PrAccountZone";
-
-type Prefill = Partial<
-  Pick<GitProfile, "name" | "email" | "signingKey" | "gpgFormat" | "gpgSign" | "tagGpgSign">
->;
-type Editing = { kind: "new"; prefill?: Prefill } | { kind: "edit"; id: string } | null;
 
 export function IdentityPanel() {
   const summary = useRepo((s) => s.summary);
@@ -30,17 +28,21 @@ export function IdentityPanel() {
   const loadProfiles = useProfiles((s) => s.loadProfiles);
   const loadDefaultIdentity = useProfiles((s) => s.loadDefaultIdentity);
   const applyProfile = useProfiles((s) => s.applyProfile);
-  const saveProfile = useProfiles((s) => s.saveProfile);
-  const setDefaultProfile = useProfiles((s) => s.setDefaultProfile);
-  const deleteProfile = useProfiles((s) => s.deleteProfile);
   const setCustomEmail = useProfiles((s) => s.setCustomEmail);
   const resetCustomEmail = useProfiles((s) => s.resetCustomEmail);
-  const [editing, setEditing] = useState<Editing>(null);
+  const closeRepoSettings = useUi((s) => s.closeRepoSettings);
+  const openProfilesSettings = useUi((s) => s.openProfilesSettings);
 
   useEffect(() => {
     loadProfiles();
     void loadDefaultIdentity();
   }, [loadProfiles, loadDefaultIdentity]);
+
+  // Profile create/edit lives in the global Profiles panel — hand off to it.
+  const editInProfiles = (intent: ProfilesIntent) => {
+    closeRepoSettings();
+    openProfilesSettings(intent);
+  };
 
   if (!summary) {
     return (
@@ -58,44 +60,41 @@ export function IdentityPanel() {
     selection.kind === "profile" ? profiles.find((p) => p.id === selection.id) ?? null : null;
   const customEmail = selection.kind === "profile" && selection.customEmail;
 
-  const handleSave = (draft: Parameters<typeof saveProfile>[0]) => {
-    const wasAppliedEdit =
-      editing?.kind === "edit" && selection.kind === "profile" && selection.id === editing.id;
-    const wasAdoption = editing?.kind === "new" && Boolean(editing.prefill);
-    const saved = saveProfile(draft);
-    setEditing(null);
-    // Apply when editing the currently-applied profile (keep git config in sync)
-    // or adopting an unmanaged identity into a new profile (select it now).
-    if (wasAppliedEdit || wasAdoption) void applyProfile(saved.id);
-  };
-
   return (
     <>
       {/* HEADER */}
       <h2 className="text-[19px] font-bold tracking-tight text-neutral-900 dark:text-white">Identity</h2>
       <p className="mt-1.5 text-[13px] leading-snug text-neutral-600 dark:text-neutral-300 text-pretty max-w-[480px]">
-        A <span className="font-semibold text-neutral-800 dark:text-neutral-100">git profile</span> is all you need to
-        commit, fetch &amp; push. Accounts are optional — they add pull requests.
+        Pick who this repo <span className="font-semibold text-neutral-800 dark:text-neutral-100">commits as</span> (a
+        git profile) and, optionally, who it{" "}
+        <span className="font-semibold text-neutral-800 dark:text-neutral-100">opens pull requests as</span> (an
+        account). Both are managed globally in App settings — here you only choose.
       </p>
 
-      {/* ZONE A — COMMIT IDENTITY / GIT PROFILE */}
+      {/* ZONE A — COMMIT AS (git profile pick) */}
       <div className="mt-7">
         <div className="flex items-baseline justify-between gap-3">
           <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
-            COMMIT IDENTITY · GIT PROFILE
+            COMMIT AS · GIT PROFILE
           </div>
-          <div className="text-[11.5px] text-neutral-400 dark:text-neutral-500">
-            Who shows up in <span className="font-mono text-[11px]">git log</span>
-          </div>
+          <button
+            onClick={() => editInProfiles({ kind: "new" })}
+            className={cn(
+              "text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
+              focusRing,
+            )}
+          >
+            Manage profiles ↗
+          </button>
         </div>
         <p className="mt-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
           Pick a saved profile to apply to this repo — it writes{" "}
           <span className="font-mono text-[12px] text-neutral-600 dark:text-neutral-300">user.name</span> /{" "}
           <span className="font-mono text-[12px] text-neutral-600 dark:text-neutral-300">user.email</span> to local git
-          config.
+          config, so that's who shows up in <span className="font-mono text-[12px]">git log</span>.
         </p>
 
-        <div className="mt-3.5 flex flex-col gap-2" role="radiogroup" aria-label="Commit identity">
+        <div className="mt-3.5 flex flex-col gap-2" role="radiogroup" aria-label="Commit as">
           {/* Default git identity */}
           <RadioCard
             selected={selection.kind === "default"}
@@ -120,44 +119,27 @@ export function IdentityPanel() {
           />
 
           {/* Saved profiles */}
-          {profiles.map((p) =>
-            editing?.kind === "edit" && editing.id === p.id ? (
-              <ProfileEditor
-                key={p.id}
-                profile={p}
-                onSave={handleSave}
-                onCancel={() => setEditing(null)}
-                onSetDefault={() => {
-                  setDefaultProfile(p.id);
-                  setEditing(null);
-                }}
-                onDelete={() => {
-                  deleteProfile(p.id);
-                  setEditing(null);
-                }}
-              />
-            ) : (
-              <ProfileRowView
-                key={p.id}
-                profile={p}
-                selected={selection.kind === "profile" && selection.id === p.id}
-                custom={customEmail && selectedProfile?.id === p.id}
-                customSigning={
-                  selection.kind === "profile" && selection.id === p.id && selection.customSigning
-                }
-                customEmailValue={repoIdentity?.email}
-                onSelect={() => void applyProfile(p.id)}
-                onEdit={() => setEditing({ kind: "edit", id: p.id })}
-              />
-            ),
-          )}
+          {profiles.map((p) => (
+            <ProfileRowView
+              key={p.id}
+              profile={p}
+              selected={selection.kind === "profile" && selection.id === p.id}
+              custom={customEmail && selectedProfile?.id === p.id}
+              customSigning={
+                selection.kind === "profile" && selection.id === p.id && selection.customSigning
+              }
+              customEmailValue={repoIdentity?.email}
+              onSelect={() => void applyProfile(p.id)}
+              onEdit={() => editInProfiles({ kind: "edit", id: p.id })}
+            />
+          ))}
 
           {/* Local identity matching no saved profile */}
           {selection.kind === "unmanaged" && repoIdentity && (
             <UnmanagedRow
               identity={repoIdentity}
               onSaveAsProfile={() =>
-                setEditing({
+                editInProfiles({
                   kind: "new",
                   prefill: {
                     name: repoIdentity.name,
@@ -172,29 +154,17 @@ export function IdentityPanel() {
               onUseDefault={() => void applyProfile(null)}
             />
           )}
-
-          {/* New profile editor */}
-          {editing?.kind === "new" && (
-            <ProfileEditor
-              profile={null}
-              prefill={editing.prefill}
-              onSave={handleSave}
-              onCancel={() => setEditing(null)}
-            />
-          )}
         </div>
 
-        {editing?.kind !== "new" && (
-          <button
-            onClick={() => setEditing({ kind: "new" })}
-            className="mt-2 flex items-center gap-2 h-10 px-3 rounded-xl border border-dashed border-black/15 dark:border-white/[0.14] text-[13px] font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:border-black/25 dark:hover:border-white/25 transition w-full justify-center"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New profile
-          </button>
-        )}
+        <button
+          onClick={() => editInProfiles({ kind: "new" })}
+          className="mt-2 flex items-center gap-2 h-10 px-3 rounded-xl border border-dashed border-black/15 dark:border-white/[0.14] text-[13px] font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:border-black/25 dark:hover:border-white/25 transition w-full justify-center"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          New profile
+        </button>
 
         {selection.kind === "profile" && selectedProfile && (
           <CommitEmailField
@@ -208,7 +178,7 @@ export function IdentityPanel() {
         )}
       </div>
 
-      {/* ZONE B — PULL-REQUEST ACCOUNT */}
+      {/* ZONE B — OPEN PULL REQUESTS AS (account pick) */}
       <PrAccountZone />
     </>
   );
@@ -293,9 +263,10 @@ function ProfileRowView({
             e.stopPropagation();
             onEdit();
           }}
+          title="Edit this profile in Settings → Profiles"
           className="shrink-0 text-[12px] font-medium px-2.5 h-8 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
         >
-          Edit
+          Edit ↗
         </button>
       }
     />

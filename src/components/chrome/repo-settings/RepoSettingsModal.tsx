@@ -1,7 +1,9 @@
 // Repository settings: a repo-scoped window (Identity · Remotes) split out of the
 // global Settings modal. Reached from the toolbar provider indicator (hover
 // "Repo settings" link + popover "In GitLane" group), never the title-bar gear.
-// Identity reuses the rich profiles panel; Remotes is its own panel.
+// Identity is the per-repo *binding* panel (pick a profile / PR account); the
+// profile and account libraries are managed in global Settings. Remotes is its
+// own panel.
 
 import { useRef } from "react";
 import { cn } from "../../../lib/cn";

@@ -16,7 +16,25 @@ import { resolveTheme, systemPrefersDark } from "../lib/theme";
 export type { AccentColor };
 export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
-export type SettingsTab = "general" | "accounts" | "terminal" | "about";
+export type SettingsTab = "general" | "profiles" | "accounts" | "terminal" | "about";
+
+/** Seed values handed to the global Profiles editor when a repo-scoped surface
+ * starts a create (e.g. adopting an unmanaged local identity). */
+export interface ProfilePrefill {
+  name?: string;
+  email?: string;
+  signingKey?: string;
+  gpgFormat?: "openpgp" | "ssh";
+  gpgSign?: boolean;
+  tagGpgSign?: boolean;
+}
+
+/** A pending editor request for Settings → Profiles, set by repo-scoped
+ * surfaces (the repo Identity panel, the title-bar chip) when they hand off
+ * profile creation/editing to the global panel. Consumed once on mount. */
+export type ProfilesIntent =
+  | { kind: "new"; prefill?: ProfilePrefill }
+  | { kind: "edit"; id: string };
 
 /** Sections of the repo-scoped Repository settings window — split out of the
  * global Settings modal so per-repo config (identity, remotes) is its own
@@ -219,6 +237,8 @@ interface UiState {
    * the global Settings modal so both can be reasoned about separately. */
   repoSettingsOpen: boolean;
   repoSettingsSection: RepoSettingsSection;
+  /** Pending Settings → Profiles editor request (transient, consumed on mount). */
+  profilesIntent: ProfilesIntent | null;
   addAccountOpen: boolean;
   /** Repository-onboarding overlay (clone / init / open) raised from the tab
    * strip while a repo is already open. Transient (not persisted). */
@@ -335,6 +355,11 @@ interface UiState {
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
   setSettingsTab: (tab: SettingsTab) => void;
+  /** Open global Settings → Profiles, optionally queueing an editor intent
+   * (new/edit) for the panel to consume. */
+  openProfilesSettings: (intent?: ProfilesIntent) => void;
+  /** Clear the pending Profiles editor request once the panel has consumed it. */
+  clearProfilesIntent: () => void;
   /** Open the repo-scoped Repository settings window (default: last section). */
   openRepoSettings: (section?: RepoSettingsSection) => void;
   closeRepoSettings: () => void;
@@ -469,6 +494,7 @@ export const useUi = create<UiState>()(
   settingsTab: "general",
   repoSettingsOpen: false,
   repoSettingsSection: "identity",
+  profilesIntent: null,
   addAccountOpen: false,
   onboardingOpen: false,
 
@@ -553,7 +579,7 @@ export const useUi = create<UiState>()(
     set((s) => ({ collapsed: { ...s.collapsed, [key]: !s.collapsed[key] } })),
 
   openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
-  closeSettings: () => set({ settingsOpen: false, addAccountOpen: false }),
+  closeSettings: () => set({ settingsOpen: false, addAccountOpen: false, profilesIntent: null }),
   openRepoSettings: (section) =>
     set((s) => ({ repoSettingsOpen: true, repoSettingsSection: section ?? s.repoSettingsSection })),
   closeRepoSettings: () => set({ repoSettingsOpen: false }),
@@ -561,6 +587,9 @@ export const useUi = create<UiState>()(
   openOnboarding: () => set({ onboardingOpen: true }),
   closeOnboarding: () => set({ onboardingOpen: false }),
   setSettingsTab: (tab) => set({ settingsTab: tab }),
+  openProfilesSettings: (intent) =>
+    set({ settingsOpen: true, settingsTab: "profiles", profilesIntent: intent ?? null }),
+  clearProfilesIntent: () => set((s) => (s.profilesIntent === null ? s : { profilesIntent: null })),
   setAddAccountOpen: (open) => set({ addAccountOpen: open }),
 
   openNav: () => set({ navOpen: true }),

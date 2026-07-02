@@ -1,9 +1,10 @@
 // Global settings modal shell: owns the dialog chrome and sidebar navigation,
 // and routes the active tab to one of the global panels under `settings/`
-// (Appearance, Accounts, Terminal Agents, About). It holds no settings-domain
-// logic itself — each panel owns its presentation and store wiring. Per-repo
-// config (Identity, Remotes) lives in the separate `RepoSettingsModal`, opened
-// from the toolbar. Open/active-tab state comes from `useUi`.
+// (Appearance, Profiles, Accounts, Terminal Agents, About). It holds no
+// settings-domain logic itself — each panel owns its presentation and store
+// wiring. Per-repo config (Identity, Remotes) lives in the separate
+// `RepoSettingsModal`, opened from the toolbar. Open/active-tab state comes
+// from `useUi`.
 
 import { useRef } from "react";
 import { cn } from "../../lib/cn";
@@ -15,6 +16,7 @@ import { useUpdates } from "../../store/updates";
 import { GitLaneMarkIcon } from "../ui/icons";
 import { TerminalAgentsSettings } from "../../features/terminal/TerminalAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
+import { ProfilesPanel } from "./settings/profiles-panel";
 import { AccountsPanel } from "./settings/accounts-panel";
 import { AboutPanel } from "./settings/AboutPanel";
 
@@ -22,6 +24,7 @@ const TITLE_ID = "settings-modal-title";
 
 const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "general", group: "GLOBAL", label: "Appearance" },
+  { key: "profiles", group: "GLOBAL", label: "Profiles" },
   { key: "accounts", group: "GLOBAL", label: "Accounts" },
   { key: "terminal", group: "GLOBAL", label: "Terminal Agents" },
   { key: "about", group: "GLOBAL", label: "About" },
@@ -128,6 +131,7 @@ export function SettingsModal() {
             )}
           >
             {tab === "general" && <GeneralPanel />}
+            {tab === "profiles" && <ProfilesPanel />}
             {tab === "accounts" && <AccountsPanel />}
             {tab === "terminal" && <TerminalAgentsSettings />}
             {tab === "about" && <AboutPanel />}
