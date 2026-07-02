@@ -65,6 +65,24 @@ fn login_path() -> Option<String> {
     }
 }
 
+/// Keep a spawned console binary (`git`, `gh`, `gpg`, …) from flashing a
+/// visible conhost window on Windows: this app is a GUI-subsystem binary, so
+/// every console-subsystem child otherwise allocates its own console window —
+/// one black flash per spawn, focus-stealing included (GL-81). No-op on other
+/// platforms. Call on every `Command` for an external CLI before spawning.
+pub fn hide_console(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 /// Whether `name` resolves to an executable in any [`path`] directory — a pure
 /// filesystem `which` with no subprocess. On Windows the bare name is expanded
 /// through `PATHEXT` (`git-lfs` → `git-lfs.exe`, …), matching how the shell
@@ -167,8 +185,9 @@ pub fn reveal(path: &str) -> Result<(), String> {
             c
         }
     };
-    cmd.env("PATH", path_var())
-        .spawn()
+    cmd.env("PATH", path_var());
+    hide_console(&mut cmd);
+    cmd.spawn()
         .map_err(|e| format!("failed to reveal {path}: {e}"))?;
     Ok(())
 }

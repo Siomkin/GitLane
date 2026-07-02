@@ -19,13 +19,14 @@ pub fn list() -> Vec<SigningKey> {
 }
 
 fn gpg_secret_keys() -> Vec<SigningKey> {
-    let output = Command::new("gpg")
-        .args(["--list-secret-keys", "--keyid-format=long", "--with-colons"])
+    let mut cmd = Command::new("gpg");
+    cmd.args(["--list-secret-keys", "--keyid-format=long", "--with-colons"])
         .env("PATH", crate::shell::path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output();
+        .stderr(Stdio::null());
+    crate::shell::hide_console(&mut cmd);
+    let output = cmd.output();
     match output {
         Ok(out) if out.status.success() => parse_gpg_secret_keys(&String::from_utf8_lossy(&out.stdout)),
         _ => Vec::new(),

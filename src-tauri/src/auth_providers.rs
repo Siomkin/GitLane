@@ -224,14 +224,14 @@ fn parse_azure_account(json: &str) -> Option<ForgeAccount> {
 /// spawn failure / timeout. A whoami can hit the network (`glab api user`), so a
 /// slow/offline host must not block the Settings probe forever.
 fn run_bounded(cli: &str, args: &[&str]) -> Option<Output> {
-    let mut child = Command::new(cli)
-        .args(args)
+    let mut cmd = Command::new(cli);
+    cmd.args(args)
         .env("PATH", crate::shell::path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+        .stderr(Stdio::null());
+    crate::shell::hide_console(&mut cmd);
+    let mut child = cmd.spawn().ok()?;
     let deadline = Instant::now() + PROBE_TIMEOUT;
     loop {
         match child.try_wait() {
@@ -257,6 +257,7 @@ fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bo
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    crate::shell::hide_console(&mut cmd);
     let mut child = match cmd.spawn() {
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (false, None),
