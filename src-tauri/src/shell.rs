@@ -10,7 +10,7 @@
 //! back to a Homebrew-augmented guess if that fails. Callers do
 //! `cmd.env("PATH", crate::shell::path())` before `.output()`/`.spawn()`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
@@ -62,6 +62,66 @@ fn login_path() -> Option<String> {
         } else {
             Some(trimmed.to_string())
         }
+    }
+}
+
+/// Whether `name` resolves to an executable in any [`path`] directory — a pure
+/// filesystem `which` with no subprocess. On Windows the bare name is expanded
+/// through `PATHEXT` (`git-lfs` → `git-lfs.exe`, …), matching how the shell
+/// itself resolves commands; a name that already carries an extension is
+/// checked as-is.
+pub fn command_on_path(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    std::env::split_paths(&path()).any(|dir| {
+        executable_names(name)
+            .into_iter()
+            .any(|candidate| executable_exists(&dir.join(candidate)))
+    })
+}
+
+/// Whether `path` is a file this process could execute. Unix checks the
+/// executable bits; Windows has none, so a plain file check is the closest
+/// gate (PATHEXT filtering happens in [`executable_names`]).
+pub fn executable_exists(path: &Path) -> bool {
+    path.is_file() && is_executable(path)
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|meta| meta.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
+}
+
+/// The candidate filenames `name` may resolve to on this platform: the bare
+/// name everywhere, plus `PATHEXT` expansions on Windows (unless the name
+/// already has an extension).
+fn executable_names(name: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        if Path::new(name).extension().is_some() {
+            return vec![name.to_string()];
+        }
+        let pathext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+        return pathext
+            .split(';')
+            .filter(|ext| !ext.is_empty())
+            .map(|ext| format!("{name}{ext}"))
+            .collect();
+    }
+
+    #[cfg(not(windows))]
+    {
+        vec![name.to_string()]
     }
 }
 
@@ -158,6 +218,14 @@ mod tests {
                 "login PATH missing {dir}: {p}"
             );
         }
+    }
+
+    #[test]
+    fn command_on_path_finds_real_binaries_and_rejects_absent_ones() {
+        // `git` is a hard requirement of this app and of the test environment.
+        assert!(command_on_path("git"), "git must resolve on PATH");
+        assert!(!command_on_path("gitlane-definitely-absent-binary"));
+        assert!(!command_on_path(""));
     }
 
     #[test]
