@@ -64,7 +64,10 @@ export function CommitAsZone() {
           COMMIT AS · GIT PROFILE
         </div>
         <button
-          onClick={() => editInProfiles({ kind: "new" })}
+          onClick={() => {
+            closeRepoSettings();
+            openProfilesSettings();
+          }}
           className={cn(
             "text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
             focusRing,
@@ -105,18 +108,6 @@ export function CommitAsZone() {
               />
             ))}
           </div>
-          <button
-            onClick={() => editInProfiles({ kind: "new" })}
-            className={cn(
-              "mt-1.5 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium text-[color:var(--accent)] hover:bg-[var(--accent-soft)]",
-              focusRing,
-            )}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            New profile
-          </button>
         </div>
       ) : selection.kind === "unmanaged" && repoIdentity ? (
         // An identity pinned outside GitLane: surface it with its own actions
