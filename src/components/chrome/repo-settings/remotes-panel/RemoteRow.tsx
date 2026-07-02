@@ -58,8 +58,10 @@ export const RemoteRow = ({
         </span>
         <span
           title={
-            remote.isDefault && prs
-              ? "This remote drives pull requests and PR auth — the bound account must match its host."
+            prs
+              ? remote.isDefault
+                ? "This remote drives pull requests and PR auth — the bound account must match its host."
+                : "This provider supports PRs, but pull requests follow the PR remote (the default)."
               : undefined
           }
           className={cn(

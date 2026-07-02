@@ -24,7 +24,7 @@ beforeEach(() => {
   localStorage.setItem("gitlane.repoProfile", JSON.stringify({ [path]: "p2" }));
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(null);
-  useRepo.setState({ summary });
+  useRepo.setState({ summary, forge: null });
   useAccounts.setState({
     accounts: [],
     repoAccountId: null,
@@ -53,6 +53,37 @@ describe("IdentityChip", () => {
     expect(screen.queryByText("Personal")).toBeNull();
     expect(screen.getByText("PULL REQUESTS AS")).toBeInTheDocument();
     expect(screen.getByText("No account")).toBeInTheDocument();
+  });
+
+  it("mirrors the host-mismatch semantics of the Identity panel", () => {
+    useRepo.setState({
+      summary,
+      forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "ghe.corp", webUrl: "https://ghe.corp/o/r" },
+    });
+    useAccounts.setState({
+      accounts: [
+        {
+          id: "gh:github.com:1",
+          forge: "GitHub",
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "octocat",
+          label: "octocat",
+          username: "octocat",
+          name: "Octo Cat",
+          email: "octo@example.com",
+          color: "#5b8def",
+          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+          active: true,
+        },
+      ],
+      repoAccountId: "gh:github.com:1",
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("github.com · host mismatch")).toBeInTheDocument();
+    expect(screen.queryByText(/PRs enabled/)).toBeNull();
   });
 
   it("shows the current PR account display-only and links to Identity settings", () => {

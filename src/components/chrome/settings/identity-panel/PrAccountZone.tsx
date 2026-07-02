@@ -48,6 +48,15 @@ export function PrAccountZone() {
   };
 
   const pick = (id: string | null) => {
+    // Defense in depth: never bind an account whose host can't work here. The
+    // disabled row already blocks this, but the forge probe can land between
+    // render and click — check against the *latest* forge state, not the
+    // render's snapshot.
+    if (id !== null) {
+      const picked = accounts.find((a) => a.id === id);
+      const latestHost = useRepo.getState().forge?.host?.toLowerCase() ?? null;
+      if (picked && latestHost !== null && picked.host.toLowerCase() !== latestHost) return;
+    }
     void setRepoAccount(id);
     setPicking(false);
   };
@@ -80,21 +89,57 @@ export function PrAccountZone() {
       </p>
 
       {unsupportedForge ? (
-        <div className="mt-3 flex items-center gap-3 p-3 rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02]">
-          <span className="w-9 h-9 shrink-0 rounded-[10px] grid place-items-center bg-black/[0.04] dark:bg-white/[0.06] text-neutral-400 dark:text-neutral-500">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
-              <path d="M17.5 19a4.5 4.5 0 1 0-.7-8.95 6 6 0 0 0-11.65 1.6A3.75 3.75 0 0 0 6 19z" />
-            </svg>
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
-              Pull requests aren&apos;t supported for {unsupportedForge} yet
-            </div>
-            <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400 text-pretty">
-              Commit, fetch &amp; push still work via your git profile — no account needed.
+        <>
+          <div className="mt-3 flex items-center gap-3 p-3 rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02]">
+            <span className="w-9 h-9 shrink-0 rounded-[10px] grid place-items-center bg-black/[0.04] dark:bg-white/[0.06] text-neutral-400 dark:text-neutral-500">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]">
+                <path d="M17.5 19a4.5 4.5 0 1 0-.7-8.95 6 6 0 0 0-11.65 1.6A3.75 3.75 0 0 0 6 19z" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium text-neutral-700 dark:text-neutral-200">
+                Pull requests aren&apos;t supported for {unsupportedForge} yet
+              </div>
+              <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400 text-pretty">
+                Commit, fetch &amp; push still work via your git profile — no account needed.
+              </div>
             </div>
           </div>
-        </div>
+          {/* A binding left over from when this repo pointed at GitHub would
+              otherwise be invisible here — and it still feeds push/fetch auth.
+              Surface it with a way out. */}
+          {account && (
+            <div className="mt-2 flex items-center gap-3 p-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] dark:border-amber-400/20">
+              <span
+                className="w-9 h-9 shrink-0 rounded-[10px] grid place-items-center text-white text-[11px] font-bold"
+                style={{ background: account.color }}
+              >
+                {account.username.slice(0, 2).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[13px] font-semibold text-neutral-900 dark:text-white">@{account.username}</span>
+                  <span className="text-[11.5px] text-neutral-500 dark:text-neutral-400">{account.host}</span>
+                  <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/12">
+                    not usable here
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400 text-pretty">
+                  Bound earlier — this repo&apos;s remote is on {forge?.host}, so this account does nothing here.
+                </div>
+              </div>
+              <button
+                onClick={() => pick(null)}
+                className={cn(
+                  "shrink-0 text-[12.5px] font-medium px-3 h-8 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-neutral-700 dark:hover:text-neutral-200 transition",
+                  focusRing,
+                )}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </>
       ) : picking ? (
         <div className="mt-3 rounded-xl border border-black/[0.08] bg-black/[0.015] p-2 dark:border-white/[0.1] dark:bg-white/[0.02]">
           <div role="radiogroup" aria-label="Pull-request account for this repo" className="flex flex-col gap-1">

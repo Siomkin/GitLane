@@ -18,6 +18,7 @@ import { repoLabel } from "../../lib/paths";
 
 export function IdentityChip() {
   const summary = useRepo((s) => s.summary);
+  const forge = useRepo((s) => s.forge);
   const repoIdentity = useAccounts((s) => s.repoIdentity);
   const accounts = useAccounts((s) => s.accounts);
   const repoAccountId = useAccounts((s) => s.repoAccountId);
@@ -43,6 +44,10 @@ export function IdentityChip() {
   const activeProfile =
     selection.kind === "profile" ? profiles.find((p) => p.id === selection.id) ?? null : null;
   const account = accounts.find((a) => a.id === repoAccountId) ?? null;
+  // Same semantics as the Identity panel: a bound account only works when its
+  // host matches the PR remote's. Unknown forge → assume fine (backend guards).
+  const prHost = forge?.host?.toLowerCase() ?? null;
+  const accountMismatch = account !== null && prHost !== null && account.host.toLowerCase() !== prHost;
 
   const label =
     activeProfile?.label ??
@@ -138,7 +143,11 @@ export function IdentityChip() {
                 )
               }
               title={account ? `@${account.username}` : "No account"}
-              subtitle={account ? `${account.host} · PRs enabled` : "Pull requests off for this repo"}
+              subtitle={
+                account
+                  ? `${account.host} · ${accountMismatch ? "host mismatch" : "PRs enabled"}`
+                  : "Pull requests off for this repo"
+              }
             />
           </div>
 
