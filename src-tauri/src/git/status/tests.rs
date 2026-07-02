@@ -345,6 +345,9 @@ fn working_changes_reports_lfs_state() {
 
     let changes = working_changes(dir.to_str().unwrap()).unwrap();
     assert!(changes.advanced.lfs.detected);
+    // Detection must always answer the install question (Some, either way) —
+    // the value itself depends on whether the test host has git-lfs.
+    assert!(changes.advanced.lfs.installed.is_some());
     assert_eq!(changes.advanced.lfs.patterns, vec!["*.bin"]);
     assert!(changes
         .advanced

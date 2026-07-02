@@ -71,12 +71,19 @@ fn login_path() -> Option<String> {
 /// itself resolves commands; a name that already carries an extension is
 /// checked as-is.
 pub fn command_on_path(name: &str) -> bool {
+    command_in_dirs(name, &path())
+}
+
+/// The PATH scan behind [`command_on_path`], parameterized on the directory
+/// list so tests can probe a controlled dir instead of the process PATH.
+fn command_in_dirs(name: &str, dirs: &str) -> bool {
     if name.is_empty() {
         return false;
     }
-    std::env::split_paths(&path()).any(|dir| {
-        executable_names(name)
-            .into_iter()
+    let candidates = executable_names(name);
+    std::env::split_paths(dirs).any(|dir| {
+        candidates
+            .iter()
             .any(|candidate| executable_exists(&dir.join(candidate)))
     })
 }
@@ -107,22 +114,31 @@ fn is_executable(path: &Path) -> bool {
 fn executable_names(name: &str) -> Vec<String> {
     #[cfg(windows)]
     {
-        if Path::new(name).extension().is_some() {
-            return vec![name.to_string()];
-        }
         let pathext =
             std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-        return pathext
-            .split(';')
-            .filter(|ext| !ext.is_empty())
-            .map(|ext| format!("{name}{ext}"))
-            .collect();
+        return expand_pathext(name, &pathext);
     }
 
     #[cfg(not(windows))]
     {
         vec![name.to_string()]
     }
+}
+
+/// Pure PATHEXT expansion, kept platform-free so unix CI covers the Windows
+/// resolution rules (the GL-80 bug — `git-lfs` never matching `git-lfs.exe` —
+/// lived exactly here). A name that already carries an extension is returned
+/// as-is; a bare name gets each non-empty PATHEXT entry appended.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn expand_pathext(name: &str, pathext: &str) -> Vec<String> {
+    if Path::new(name).extension().is_some() {
+        return vec![name.to_string()];
+    }
+    pathext
+        .split(';')
+        .filter(|ext| !ext.is_empty())
+        .map(|ext| format!("{name}{ext}"))
+        .collect()
 }
 
 /// Reveal `path` in the OS file manager (macOS Finder, Windows Explorer, or the
@@ -226,6 +242,70 @@ mod tests {
         assert!(command_on_path("git"), "git must resolve on PATH");
         assert!(!command_on_path("gitlane-definitely-absent-binary"));
         assert!(!command_on_path(""));
+    }
+
+    // The GL-80 regression: a bare `git-lfs` must expand to `git-lfs.exe` (& co)
+    // on Windows. The expansion is pure so these run on every platform.
+    #[test]
+    fn expand_pathext_appends_each_extension_to_a_bare_name() {
+        assert_eq!(
+            expand_pathext("git-lfs", ".COM;.EXE;.BAT;.CMD"),
+            vec!["git-lfs.COM", "git-lfs.EXE", "git-lfs.BAT", "git-lfs.CMD"]
+        );
+    }
+
+    #[test]
+    fn expand_pathext_keeps_a_name_with_extension_as_is() {
+        // An explicit extension means the shell would not re-expand it — and the
+        // bare name must NOT be a candidate for extensionless lookups (a plain
+        // `git-lfs` file is not executable on Windows).
+        assert_eq!(expand_pathext("git-lfs.exe", ".COM;.EXE"), vec!["git-lfs.exe"]);
+        assert!(!expand_pathext("git-lfs", ".EXE").contains(&"git-lfs".to_string()));
+    }
+
+    #[test]
+    fn expand_pathext_skips_empty_segments() {
+        // A trailing `;` in PATHEXT (common after manual edits) must not create
+        // a bare-name candidate.
+        assert_eq!(expand_pathext("git-lfs", ";.EXE;"), vec!["git-lfs.EXE"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn command_in_dirs_respects_the_executable_bit() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join("gitlane-command-in-dirs-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let exec = dir.join("git-lfs");
+        std::fs::write(&exec, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&exec, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.join("not-exec"), "").unwrap();
+
+        let dirs = dir.to_str().unwrap();
+        assert!(command_in_dirs("git-lfs", dirs));
+        assert!(!command_in_dirs("not-exec", dirs), "plain file must not match");
+        assert!(!command_in_dirs("absent", dirs));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn command_in_dirs_resolves_exe_via_pathext_on_windows() {
+        let dir = std::env::temp_dir().join("gitlane-command-in-dirs-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A normal Windows install ships `git-lfs.exe`; the bare name must
+        // resolve to it. A bare extensionless file must NOT match.
+        std::fs::write(dir.join("git-lfs.exe"), "").unwrap();
+        std::fs::write(dir.join("other-tool"), "").unwrap();
+
+        let dirs = dir.to_str().unwrap();
+        assert!(command_in_dirs("git-lfs", dirs));
+        assert!(!command_in_dirs("other-tool", dirs));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
