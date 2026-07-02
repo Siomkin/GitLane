@@ -1351,6 +1351,9 @@ describe("repo store — deleteTag", () => {
     await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow(
       /on origin, but the local delete failed/,
     );
+    // runOp only refreshes on success, so the catch path re-syncs quietly
+    // before rethrowing — the UI must reflect whatever the failed half left.
+    expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
   });
 
   it("local-only delete never touches the remote", async () => {

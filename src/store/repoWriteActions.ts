@@ -378,8 +378,13 @@ export function createRepoWriteActions(
           try {
             await api.deleteTag(summary.path, name);
           } catch (e) {
-            // Origin has already changed; name the half-applied state and the
+            // Origin has already changed but runOp only refreshes on success —
+            // re-sync quietly so the UI reflects whatever state the failed
+            // local half left, then name the half-applied state and the
             // remaining step instead of a bare local-delete error.
+            await get()
+              .refresh({ prs: false, quiet: true })
+              .catch(() => undefined);
             const reason = e instanceof Error ? e.message : String(e);
             throw new Error(
               `Deleted ${name} on origin, but the local delete failed: ${reason}. Use “Delete local tag” to finish.`,
