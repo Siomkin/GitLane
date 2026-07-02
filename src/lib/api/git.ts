@@ -361,10 +361,12 @@ export interface FileDiff {
    * (added has no old, deleted no new) or for text diffs. */
   oldSize?: number;
   newSize?: number;
-  /** Blob oids for a **binary** change, passed to {@link gitApi.readBinaryBlob}
-   * to fetch bytes for an image preview. Absent when the side doesn't exist or
-   * libgit2 left no oid — notably the working-tree side of an unstaged diff,
-   * whose bytes are read from disk by `path` instead. */
+  /** Blob oids for each side of the change, passed to
+   * {@link gitApi.readBinaryBlob} to fetch content for a preview (image bytes,
+   * markdown source). Absent when the side doesn't exist or libgit2 left no
+   * oid. The working-tree side of an unstaged diff is unreliable by oid (zero
+   * for binary; a computed hash that need not exist in the ODB for text) —
+   * read that side from disk by `path` instead. */
   oldOid?: string;
   newOid?: string;
 }

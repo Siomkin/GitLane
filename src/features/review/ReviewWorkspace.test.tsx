@@ -185,6 +185,75 @@ describe("ReviewWorkspace — virtualized diff", () => {
     expect(screen.getByText("PDF document")).toBeInTheDocument();
   });
 
+  it("offers Code/Preview only for markdown files and renders the blob as markdown", async () => {
+    const source = "# Hello\n\nSome **body** text.";
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue({
+      base64: btoa(String.fromCharCode(...new TextEncoder().encode(source))),
+      size: source.length,
+      truncated: false,
+    });
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedCommit: "c1",
+      selectedFile: { path: "docs/guide.md", source: "commit" },
+      fileDiff: { ...bigDiff(3), path: "docs/guide.md", newOid: "beef" },
+      diffLoading: false,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    // Committed diff reads the new-side blob by oid; the raw-diff layout toggle
+    // hides while the rendered preview replaces the diff.
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "read_binary_blob",
+        expect.objectContaining({ path: "/r", oid: "beef", file: null }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: "Unified" })).not.toBeInTheDocument();
+
+    // Back to Code: the diff rows return, the preview goes away.
+    fireEvent.click(screen.getByRole("button", { name: "Code" }));
+    expect(screen.queryByRole("heading", { name: "Hello" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unified" })).toBeInTheDocument();
+  });
+
+  it("reads the working tree by path when previewing an unstaged markdown diff", async () => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue({ base64: btoa("# WT"), size: 4, truncated: false });
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "README.md", source: "unstaged" },
+      // Even with a reported oid, the worktree side must be read from disk —
+      // libgit2's computed hash need not exist in the ODB.
+      fileDiff: { ...bigDiff(3), path: "README.md", newOid: "cafe" },
+      diffLoading: false,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "read_binary_blob",
+        expect.objectContaining({ path: "/r", oid: null, file: "README.md" }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("heading", { name: "WT" })).toBeInTheDocument());
+  });
+
+  it("hides the Code/Preview toggle for non-markdown files", () => {
+    useRepo.setState({ fileDiff: bigDiff(3), diffLoading: false });
+    render(<ReviewWorkspace />);
+    expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Code" })).not.toBeInTheDocument();
+  });
+
   it("stages a changed line from split view", () => {
     const applyLine = vi.fn(async () => {});
     const fileDiff = bigDiff(3);

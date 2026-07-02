@@ -16,3 +16,8 @@ export function dirname(path: string): string {
 export function repoLabel(path: string): string {
   return path.replace(/\/$/, "").split("/").pop() || "Repository";
 }
+
+/** True for files the review surface can render as formatted Markdown. */
+export function isMarkdownPath(path: string): boolean {
+  return /\.(md|markdown)$/i.test(path);
+}

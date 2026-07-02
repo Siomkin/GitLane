@@ -544,6 +544,60 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
 }
 
 #[test]
+fn text_diff_carries_blob_oids_for_content_previews() {
+    let dir = std::env::temp_dir().join("gitlane-text-oid-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let v1 = "# Title\n\nfirst\n";
+    let v2 = "# Title\n\nsecond\n";
+    let add_oid = commit(&repo, &dir, "README.md", v1).to_string();
+    let mod_oid = commit(&repo, &dir, "README.md", v2).to_string();
+    let del_oid = remove_commit(&repo, &dir, "README.md").to_string();
+    let path = dir.to_str().unwrap();
+
+    // Added: only the new side exists; sizes stay binary-only (hunks carry the text).
+    let added = commit_file_diff(path, &add_oid, "README.md", false).unwrap();
+    assert!(!added.binary);
+    assert!(added.new_oid.is_some());
+    assert_eq!(added.old_oid, None);
+    assert_eq!((added.old_size, added.new_size), (None, None));
+
+    // Modified: both sides, and the new-side oid round-trips the full file text
+    // (this is what the markdown preview renders).
+    let modified = commit_file_diff(path, &mod_oid, "README.md", false).unwrap();
+    assert!(modified.old_oid.is_some());
+    let new_oid = modified.new_oid.clone().unwrap();
+    use base64::Engine as _;
+    let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(blob.base64.unwrap())
+        .unwrap();
+    assert_eq!(String::from_utf8(decoded).unwrap(), v2);
+
+    // Deleted: no new side to preview.
+    let deleted = commit_file_diff(path, &del_oid, "README.md", false).unwrap();
+    assert_eq!(deleted.new_oid, None);
+    assert!(deleted.old_oid.is_some());
+
+    // Working diff (the file is untracked again after the delete commit):
+    // libgit2 reports the worktree side with a *computed* hash of the file — an
+    // oid that need not exist in the ODB — so the frontend must read the
+    // working tree by path for unstaged diffs, not by that oid.
+    fs::write(dir.join("README.md"), "# Title\n\nworking\n").unwrap();
+    let working = file_diff(path, "README.md", false, false).unwrap();
+    assert_eq!(working.status, "U");
+    assert_eq!(working.old_oid, None);
+    let blob = read_binary_blob(path, None, Some("README.md"), None).unwrap();
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(blob.base64.unwrap())
+        .unwrap();
+    assert_eq!(String::from_utf8(decoded).unwrap(), "# Title\n\nworking\n");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn untracked_binary_file_is_flagged_in_working_changes() {
     let dir = std::env::temp_dir().join("gitlane-binary-untracked-test");
     let _ = fs::remove_dir_all(&dir);

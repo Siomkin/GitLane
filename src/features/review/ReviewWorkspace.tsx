@@ -2,10 +2,11 @@ import { type ReactNode, useMemo, useState } from "react";
 import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { fileWriteGuard } from "../../lib/advancedRepoState";
-import { basename, dirname } from "../../lib/paths";
+import { basename, dirname, isMarkdownPath } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
-import { FileIcon } from "@/components/ui/icons";
+import { CodeIcon, EyeIcon, FileIcon } from "@/components/ui/icons";
 import { BinaryDiff } from "./BinaryDiff";
+import { MarkdownPreview } from "./markdown-preview";
 import {
   DiffTruncatedNotice,
   HunkCardHeader,
@@ -34,6 +35,9 @@ import { ChangeCounts } from "@/components/ui/ChangeCounts";
 
 type DiffMode = "split" | "unified";
 
+/** How a markdown file is shown: the raw diff ("code") or rendered ("preview"). */
+type MdView = "code" | "preview";
+
 /** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
  * which can't be staged. */
 type HunkActionApi = {
@@ -53,6 +57,10 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const selectionDiff = useRepo((state) => state.selectionDiff);
   const changes = useRepo((state) => state.changes);
   const [mode, setMode] = useState<DiffMode>("unified");
+  // Sticky across file switches (like `mode`): browsing several .md files keeps
+  // the chosen view; non-markdown files simply ignore it.
+  const [mdView, setMdView] = useState<MdView>("code");
+  const markdown = !!fileDiff && !fileDiff.binary && isMarkdownPath(fileDiff.path);
   // Notes are scoped to the diff surface — and, for the working tree, to the
   // staged vs unstaged source — so a comment never reattaches to the same file
   // viewed in a different diff. A committed file shown as part of a multi-commit
@@ -86,7 +94,15 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
-      <ReviewHeader file={fileDiff} mode={mode} onModeChange={setMode} onBack={onBack ?? clearSelectedFile} />
+      <ReviewHeader
+        file={fileDiff}
+        mode={mode}
+        onModeChange={setMode}
+        markdown={markdown}
+        mdView={mdView}
+        onMdViewChange={setMdView}
+        onBack={onBack ?? clearSelectedFile}
+      />
 
       {diffLoading ? (
         <EmptyDiff title="Loading diff" />
@@ -94,6 +110,8 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
         <EmptyDiff title="Select a file to view its diff" />
       ) : fileDiff.binary ? (
         <BinaryDiff diff={fileDiff} className="min-h-0 flex-1 overflow-auto" />
+      ) : markdown && mdView === "preview" ? (
+        <MarkdownPreview diff={fileDiff} source={selectedFile?.source ?? "commit"} />
       ) : mode === "split" ? (
         <SplitDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       ) : (
@@ -109,13 +127,20 @@ function ReviewHeader({
   file,
   mode,
   onModeChange,
+  markdown,
+  mdView,
+  onMdViewChange,
   onBack,
 }: {
   file: FileDiff | null;
   mode: DiffMode;
   onModeChange: (mode: DiffMode) => void;
+  markdown: boolean;
+  mdView: MdView;
+  onMdViewChange: (view: MdView) => void;
   onBack: () => void;
 }) {
+  const previewing = markdown && mdView === "preview";
   return (
     <div className="flex h-12 flex-none items-center gap-2.5 border-b border-black/5 dark:border-white/5 px-4">
       {file && (
@@ -136,7 +161,30 @@ function ReviewHeader({
           hide the toggle (they render an image/size card, not line hunks) —
           Graph stays put because the wrapper owns the margin. */}
       <div className="ml-auto flex items-center gap-2.5">
-        {!file?.binary && (
+        {markdown && (
+          <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
+            <button
+              className={cn(modeButton(mdView === "code"), "flex items-center gap-1.5")}
+              title="Show the raw diff"
+              onClick={() => onMdViewChange("code")}
+            >
+              <CodeIcon width={13} height={13} />
+              Code
+            </button>
+            <button
+              className={cn(modeButton(mdView === "preview"), "flex items-center gap-1.5")}
+              title="Render the file as formatted Markdown"
+              onClick={() => onMdViewChange("preview")}
+            >
+              <EyeIcon width={13} height={13} />
+              Preview
+            </button>
+          </div>
+        )}
+        {/* Unified/Split picks between diff layouts, so it hides while the
+            rendered preview replaces the diff (and for binary files, which
+            render an image/size card, not line hunks). */}
+        {!file?.binary && !previewing && (
           <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
             <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
               Unified
