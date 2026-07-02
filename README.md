@@ -97,6 +97,21 @@ System Settings → **Privacy & Security** → **Open Anyway** after the first
 blocked launch, works instead. In-app updates delivered by the updater don't
 need this again.
 
+Developer ID signing + notarization (which removes this step) and a Homebrew
+cask are planned — see [docs/distribution.md](docs/distribution.md).
+
+### Windows: first launch
+
+The Windows build isn't code-signed yet, so Defender SmartScreen blocks a
+fresh download — *"Windows protected your PC"*, unknown publisher, with no
+obvious way to continue. Click **More info**, then **Run anyway**. The
+installer is fine; Windows treats every unsigned download this way. Code
+signing is planned and will remove this prompt.
+
+The installer (`GitLane-<version>-windows-nsis.exe`) installs for the current
+user — no admin rights needed — and in-app updates delivered by the updater
+don't retrigger SmartScreen.
+
 ### Linux: pick a package
 
 Prefer the **`.deb`** (Debian, Ubuntu, Mint) or **`.rpm`** (Fedora, openSUSE)
@@ -126,7 +141,7 @@ icon). If you want that, run it through
 [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher).
 
 Package-manager channels (Flathub, AUR) are tracked in
-[docs/linux-distribution.md](docs/linux-distribution.md).
+[docs/distribution.md](docs/distribution.md).
 
 ### Requirements
 
