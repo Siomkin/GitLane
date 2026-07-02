@@ -1295,6 +1295,78 @@ describe("repo store — fastForwardTo", () => {
   });
 });
 
+describe("repo store — deleteTag", () => {
+  function stubTagInvokes(overrides: Record<string, () => Promise<unknown>>) {
+    invokeMock.mockImplementation((cmd: string) => {
+      const hit = overrides[cmd];
+      if (hit) return hit();
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(summary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+  }
+
+  it("deletes on origin first, then locally, for the everywhere variant", async () => {
+    useRepo.setState({ summary });
+    const order: string[] = [];
+    stubTagInvokes({
+      delete_remote_tag: () => {
+        order.push("remote");
+        return Promise.resolve("ok");
+      },
+      delete_tag: () => {
+        order.push("local");
+        return Promise.resolve("ok");
+      },
+    });
+
+    const msg = await useRepo.getState().deleteTag("v1", true);
+
+    expect(order).toEqual(["remote", "local"]);
+    expect(msg).toBe("Deleted tag v1 (local and origin)");
+  });
+
+  it("skips the local delete when origin rejects, so a retry starts unchanged", async () => {
+    useRepo.setState({ summary });
+    stubTagInvokes({
+      delete_remote_tag: () => Promise.reject(new Error("auth failed")),
+    });
+
+    await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow("auth failed");
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_tag", expect.anything());
+  });
+
+  it("names the half-applied state when the local delete fails after origin succeeded", async () => {
+    useRepo.setState({ summary });
+    stubTagInvokes({
+      delete_remote_tag: () => Promise.resolve("ok"),
+      delete_tag: () => Promise.reject(new Error("ref locked")),
+    });
+
+    await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow(
+      /on origin, but the local delete failed/,
+    );
+    // runOp only refreshes on success, so the catch path re-syncs quietly
+    // before rethrowing — the UI must reflect whatever the failed half left.
+    expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
+  });
+
+  it("local-only delete never touches the remote", async () => {
+    useRepo.setState({ summary });
+    stubTagInvokes({ delete_tag: () => Promise.resolve("ok") });
+
+    await useRepo.getState().deleteTag("v1");
+
+    expect(invokeMock).toHaveBeenCalledWith("delete_tag", { path: "/repo", name: "v1" });
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_remote_tag", expect.anything());
+  });
+});
+
 describe("repo store — closeRepo clears forge", () => {
   it("drops the stale forge when the last repo closes", async () => {
     // `forge` keys the provider indicator independently of `summary`, so a leak

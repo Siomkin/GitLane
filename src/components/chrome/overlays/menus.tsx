@@ -1043,8 +1043,9 @@ export function WipContextMenu() {
 
 /** Right-click menu on a tag ref (graph pill or navigator row). Tags are
  * immutable pointers, so the menu reads the tagged commit and offers the same
- * "go to / branch from this point" actions as a commit, plus a copy. Tag
- * deletion / pushing need backend commands and are intentionally absent here. */
+ * "go to / branch from this point" actions as a commit, plus copy, push, and
+ * delete. Delete comes in two strengths: local-only (fetch re-imports the tag
+ * while it exists on origin) and local + origin. */
 export function TagContextMenu() {
   const menu = useUi((s) => s.tagMenu);
   const close = useUi((s) => s.closeOverlays);
@@ -1084,17 +1085,32 @@ export function TagContextMenu() {
       onClick: () => { close(); void navigator.clipboard?.writeText(name); showToast(`Copied ${name}`); },
     },
     {
-      label: "Delete tag",
+      label: "Delete local tag",
       icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
       sep: true,
       onClick: () =>
         requestConfirm({
           title: `Delete tag ${name}?`,
-          message: "The local tag ref will be removed. Any pushed copy on a remote is left untouched.",
-          confirmLabel: "Delete tag",
+          message:
+            "Only the local tag ref is removed. If the tag was pushed, the next fetch re-imports it from origin — use “Delete from local and origin” to remove it for good.",
+          confirmLabel: "Delete local tag",
           danger: true,
           onConfirm: () => void run(() => deleteTag(name)),
+        }),
+    },
+    {
+      label: "Delete from local and origin",
+      icon: <TrashIcon className="h-4 w-4" />,
+      danger: true,
+      onClick: () =>
+        requestConfirm({
+          title: `Delete tag ${name} everywhere?`,
+          message:
+            "The tag is deleted on origin and then locally. Other clones keep their copy until they prune, but fetch will no longer restore it here.",
+          confirmLabel: "Delete from local and origin",
+          danger: true,
+          onConfirm: () => void run(() => deleteTag(name, true)),
         }),
     },
   ];

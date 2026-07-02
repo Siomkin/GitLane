@@ -127,12 +127,19 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
 
 /// Create a lightweight tag `name` at `sha` (defaults to HEAD). Reads back as a
 /// `RefLabel` of kind "tag" on the graph.
+///
+/// `--no-sign` overrides `tag.gpgsign=true`, which would otherwise upgrade the
+/// plain `git tag` to a *signed* (annotated) tag — and, with no `-m`, make git
+/// launch an editor for the message inside this GUI subprocess and fail. A
+/// lightweight tag carries no message or tagger, so there is nothing to sign.
+/// (`--no-sign` needs git ≥ 2.23, well below the 2.43+ this app already
+/// assumes elsewhere.)
 pub fn create_tag(repo: &str, name: &str, sha: Option<&str>) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_opt(sha)?;
     match sha {
-        Some(s) => run_git(repo, &["tag", name, s]),
-        None => run_git(repo, &["tag", name]),
+        Some(s) => run_git(repo, &["tag", "--no-sign", name, s]),
+        None => run_git(repo, &["tag", "--no-sign", name]),
     }
 }
 
@@ -174,8 +181,9 @@ pub fn reset(repo: &str, target: &str, mode: &str) -> Result<String, String> {
 }
 
 /// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally
-/// only; the remote copy (if any) is untouched — use [`push_tag`] semantics in
-/// reverse via the CLI for that.
+/// only; the remote copy (if any) is untouched — that's
+/// [`super::delete_remote_tag`], and while the tag still exists on a remote the
+/// next Fetch's `refs/tags/*` import brings it back.
 pub fn delete_tag(repo: &str, name: &str) -> Result<String, String> {
     ensure_operand(name)?;
     run_git(repo, &["tag", "-d", name])?;

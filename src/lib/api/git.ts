@@ -630,9 +630,15 @@ export const gitApi = {
   createPatch: (path: string, sha: string) =>
     invoke<string>("create_patch", { path, sha }),
 
-  /** Delete a local tag. */
+  /** Delete a local tag. The remote copy (if any) is untouched and fetch will
+   * re-import it — use `deleteRemoteTag` to remove it from `origin` too. */
   deleteTag: (path: string, name: string) =>
     invoke<string>("delete_tag", { path, name }),
+
+  /** Delete a tag on `origin` (`git push origin --delete refs/tags/<name>`),
+   * optionally as the repo's bound `account`. */
+  deleteRemoteTag: (path: string, name: string, account?: GithubAccountRef | null) =>
+    invoke<string>("delete_remote_tag", { path, name, account: account ?? null }),
 
   /** Push a tag to `origin`, optionally as the repo's bound `account`. */
   pushTag: (path: string, name: string, account?: GithubAccountRef | null) =>

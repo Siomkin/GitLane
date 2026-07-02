@@ -178,10 +178,25 @@ describe("TagContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Checkout tag (detached)" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Push tag to origin" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy tag name" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Delete tag" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete local tag" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "Delete from local and origin" }),
+    ).toBeInTheDocument();
     openGroup("Create");
     expect(screen.getByRole("menuitem", { name: "Branch from here…" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Worktree from tag…" })).toBeInTheDocument();
+  });
+
+  it("routes the everywhere-delete through deleteTag(name, true) after confirm", async () => {
+    const deleteTag = vi.fn().mockResolvedValue("Deleted tag v1.0.0 (local and origin)");
+    useRepo.setState({ deleteTag });
+    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234" } });
+    render(<TagContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete from local and origin" }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    confirm!.onConfirm();
+    await waitFor(() => expect(deleteTag).toHaveBeenCalledWith("v1.0.0", true));
   });
 
   // A branch and a tag can share a short name, so the operations must reference

@@ -366,8 +366,35 @@ export function createRepoWriteActions(
         return `Created patch ${file}`;
       }),
 
-    deleteTag: (name) =>
-      runOp(get, async (summary) => api.deleteTag(summary.path, name)),
+    deleteTag: (name, alsoRemote = false) =>
+      runOp(get, async (summary) => {
+        // Remote first: if origin rejects (auth, protected tag) the local ref
+        // survives, so the user retries from an unchanged state instead of a
+        // half-deleted one that fetch would resurrect anyway. A never-pushed
+        // tag is fine — the backend treats "remote ref does not exist" as the
+        // desired end state.
+        if (alsoRemote) {
+          await api.deleteRemoteTag(summary.path, name, useAccounts.getState().repoAccountRef);
+          try {
+            await api.deleteTag(summary.path, name);
+          } catch (e) {
+            // Origin has already changed but runOp only refreshes on success —
+            // re-sync quietly so the UI reflects whatever state the failed
+            // local half left, then name the half-applied state and the
+            // remaining step instead of a bare local-delete error.
+            await get()
+              .refresh({ prs: false, quiet: true })
+              .catch(() => undefined);
+            const reason = e instanceof Error ? e.message : String(e);
+            throw new Error(
+              `Deleted ${name} on origin, but the local delete failed: ${reason}. Use “Delete local tag” to finish.`,
+            );
+          }
+          return `Deleted tag ${name} (local and origin)`;
+        }
+        await api.deleteTag(summary.path, name);
+        return `Deleted tag ${name}`;
+      }),
 
     pushTag: (name) =>
       runOp(get, async (summary) => {

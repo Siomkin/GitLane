@@ -1,14 +1,14 @@
 use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution, worktree_path};
 use super::operands::ensure_operand;
-use super::remotes::is_tag_clobber_rejection;
+use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, clear_repo_identity,
-    continue_operation, delete_branch_with_worktree, discard_all, fetch, mark_conflict_resolved,
-    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
-    preview_discard_all, preview_force_push, preview_reset, publish_branch, reconflict_file,
-    reflog_entries, remove_worktree, resolve_conflict_file, set_remote_url, set_repo_identity,
-    set_upstream, skip_operation, stage_files, worktrees,
+    continue_operation, create_tag, delete_branch_with_worktree, delete_remote_tag, discard_all,
+    fetch, mark_conflict_resolved, move_branch_to_worktree, preview_delete_branch,
+    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset,
+    publish_branch, reconflict_file, reflog_entries, remove_worktree, resolve_conflict_file,
+    set_remote_url, set_repo_identity, set_upstream, skip_operation, stage_files, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -161,6 +161,112 @@ fn clear_repo_identity_removes_name_email_and_signing() {
         !signing.status.success(),
         "user.signingkey should be unset after clear"
     );
+}
+
+#[test]
+fn create_tag_stays_lightweight_under_tag_gpgsign() {
+    let repo = TempRepo::new("lightweight-tag-gpgsign");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    // The regression: tag.gpgsign=true upgrades a plain `git tag` to a *signed*
+    // tag, which needs a message — git then launches an editor this GUI
+    // subprocess can't provide and the command fails. `--no-sign` must keep the
+    // "Tag here…" path genuinely lightweight.
+    repo.git_ok(&["config", "tag.gpgsign", "true"]);
+    std::fs::write(repo.0.join("a.txt"), "one\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
+
+    create_tag(repo.path(), "v0.0.1", None).expect("lightweight tag under tag.gpgsign=true");
+
+    // A lightweight tag points straight at the commit; a signed/annotated one
+    // would resolve to a tag object.
+    let out = repo.git(&["cat-file", "-t", "refs/tags/v0.0.1"]);
+    assert!(out.status.success(), "tag ref should exist");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "commit",
+        "tag must stay lightweight (no tag object)"
+    );
+}
+
+#[test]
+fn delete_remote_tag_removes_only_the_tag_on_the_remote() {
+    let repo = TempRepo::new("delete-remote-tag");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "one\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
+    repo.git_ok(&["tag", "--no-sign", "v1"]);
+    // A branch sharing the tag's short name — the fully-qualified `refs/tags/`
+    // delete refspec must never touch it.
+    repo.git_ok(&["branch", "v1"]);
+
+    let remote = TempRepo::new("delete-remote-tag-origin");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", remote.path()]);
+    repo.git_ok(&["push", "-q", "origin", "refs/tags/v1", "refs/heads/v1"]);
+
+    delete_remote_tag(repo.path(), "origin", "v1", None).expect("delete tag on remote");
+
+    let tags = remote.git(&["tag"]);
+    assert!(
+        !String::from_utf8_lossy(&tags.stdout).contains("v1"),
+        "remote tag should be gone"
+    );
+    let branch = remote.git(&["show-ref", "--verify", "refs/heads/v1"]);
+    assert!(
+        branch.status.success(),
+        "same-named remote branch must survive the tag delete"
+    );
+    let local = repo.git(&["show-ref", "--verify", "refs/tags/v1"]);
+    assert!(
+        local.status.success(),
+        "local tag ref is not touched by the remote delete"
+    );
+}
+
+#[test]
+fn delete_remote_tag_tolerates_a_tag_that_was_never_pushed() {
+    let repo = TempRepo::new("delete-remote-tag-unpushed");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "one\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
+    repo.git_ok(&["tag", "--no-sign", "v9"]);
+
+    let remote = TempRepo::new("delete-remote-tag-unpushed-origin");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", remote.path()]);
+
+    // "Delete everywhere" on a local-only tag: absence upstream is the desired
+    // end state, so this must not fail (the combined delete then proceeds to
+    // the local half). How git reports it varies by transport — file remotes
+    // exit 0 with a "deleting a non-existent ref" warning, smart-HTTP servers
+    // reject with "remote ref does not exist" (mapped to Ok by the tolerance
+    // tested below) — so assert the behavior, not the message.
+    delete_remote_tag(repo.path(), "origin", "v9", None)
+        .expect("missing remote ref is not a failure");
+
+    let local = repo.git(&["show-ref", "--verify", "refs/tags/v9"]);
+    assert!(local.status.success(), "local tag is untouched");
+}
+
+#[test]
+fn missing_remote_ref_rejection_is_recognized() {
+    // The smart-HTTP wording (GitHub et al.) that delete_remote_tag maps to Ok.
+    assert!(is_missing_remote_ref(
+        "error: unable to delete 'refs/tags/v9': remote ref does not exist\nerror: failed to push some refs to 'https://github.com/o/r.git'"
+    ));
+    // Genuine failures must still surface.
+    assert!(!is_missing_remote_ref(
+        "error: failed to push some refs to 'https://github.com/o/r.git' (protected tag)"
+    ));
 }
 
 #[test]

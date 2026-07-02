@@ -286,6 +286,49 @@ pub fn push_tag(
     }
 }
 
+/// Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`).
+/// The fully-qualified `refs/tags/` refspec guarantees a same-named branch on
+/// the remote is never deleted. Local deletion is separate ([`super::delete_tag`]);
+/// without this, a tag deleted locally but still on the remote is re-imported by
+/// the next Fetch's explicit `refs/tags/*` refspec. `auth` authenticates as the
+/// bound account, like [`push`].
+///
+/// A tag that was never pushed is not an error: absence upstream is the desired
+/// end state, so "remote ref does not exist" maps to `Ok` and a combined
+/// delete-everywhere still proceeds to the local delete. The subprocess runs
+/// with `LC_ALL=C` so that message match is locale-stable (same approach as
+/// [`is_tag_clobber_rejection`]).
+pub fn delete_remote_tag(
+    repo: &str,
+    remote: &str,
+    name: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(remote)?;
+    ensure_operand(name)?;
+    let refspec = format!("refs/tags/{name}");
+    let result = match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", remote, "--delete", &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env_stable_diagnostics(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => {
+            run_git_env_stable_diagnostics(repo, &["push", remote, "--delete", &refspec], &[])
+        }
+    };
+    match result {
+        Err(output) if is_missing_remote_ref(&output) => {
+            Ok(format!("Tag {name} was not on {remote}"))
+        }
+        other => other,
+    }
+}
+
+pub(super) fn is_missing_remote_ref(output: &str) -> bool {
+    output.contains("remote ref does not exist")
+}
+
 /// Delete a branch on `remote` (`git push <remote> --delete <branch>`). `branch`
 /// is the short name on the remote (e.g. `feature/x`, not `origin/feature/x`).
 /// `auth` authenticates as the bound account, like [`push`].
