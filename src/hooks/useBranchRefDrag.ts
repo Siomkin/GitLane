@@ -76,8 +76,10 @@ export function useBranchRefDrag(
         y: e.clientY,
         from: draggingFrom,
         // The drop target's kind is this element's own kind: dropping onto a
-        // remote-tracking ref yields a `remote` target (move the source onto
-        // it), onto a local branch a `local` target (mutate the target).
+        // remote-tracking ref yields a `remote` target, onto a local branch a
+        // `local` target. The dragged branch is the one that moves onto the
+        // target (a remote source is the exception — it can't move, so it feeds
+        // the local target instead).
         to: { kind: options.kind, name: refName },
       });
     },

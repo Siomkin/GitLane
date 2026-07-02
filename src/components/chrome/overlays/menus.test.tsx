@@ -693,6 +693,36 @@ describe("ActionMenu", () => {
     expect(screen.queryByRole("menuitem", { name: /Reset main to feature/ })).not.toBeInTheDocument();
   });
 
+  it("never offers the target-moving fast-forward on a local drag, even when it's possible", async () => {
+    // The target (main) *could* fast-forward to the dragged branch (feature),
+    // but on a local drag only the dragged branch moves — so the reverse FF must
+    // not appear, and the wasted probe for it isn't even issued.
+    invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) => {
+      if (cmd === "can_fast_forward") {
+        // Reverse direction (advance main to feature) would be offered if read.
+        if (args.from === "feature" && args.to === "main") return Promise.resolve(true);
+        return Promise.resolve(false);
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("menuitem", { name: /Fast-forward main to feature/ })).not.toBeInTheDocument();
+    // The reverse-direction probe (from=feature,to=main) is never issued.
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "can_fast_forward",
+      expect.objectContaining({ from: "feature", to: "main" }),
+    );
+  });
+
   it("reset-source previews then resets the dragged branch to the drop target on confirm", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const resetCurrentTo = vi.fn().mockResolvedValue("Reset to main");
