@@ -77,6 +77,23 @@ GitLane updates itself through the built-in Tauri updater. Builds ship on two
 channels — **stable** and **beta** (pre-releases, updated more often); see
 [docs/release-channels.md](docs/release-channels.md).
 
+### macOS: first launch
+
+GitLane isn't notarized by Apple yet, so after downloading, Gatekeeper blocks
+the app — typically with *"GitLane is damaged and can't be opened"* (Apple
+Silicon) or *"unidentified developer"* (Intel). The app is fine; macOS flags
+every non-notarized download this way. Clear the quarantine flag once after
+copying it to Applications:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/GitLane.app
+```
+
+Then launch normally. On some systems right-click → **Open**, or
+System Settings → **Privacy & Security** → **Open Anyway** after the first
+blocked launch, works instead. In-app updates delivered by the updater don't
+need this again.
+
 ### Requirements
 
 - `git` on your `PATH` (writes go through your real git).
