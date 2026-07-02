@@ -127,6 +127,11 @@ describe("PrAccountZone", () => {
     useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
     fireEvent.click(screen.getByRole("radio", { name: "@octocat" }));
     expect(useAccounts.getState().repoAccountId).toBeNull();
+    // The rejection explains itself and keeps the picker open so the user
+    // sees the (re-rendered, now disabled) row instead of a silent no-op.
+    expect(useUi.getState().toast?.tone).toBe("error");
+    expect(useUi.getState().toast?.message).toMatch(/github.com/);
+    expect(screen.getByRole("radiogroup", { name: "Pull-request account for this repo" })).toBeInTheDocument();
   });
 
   it("shows a bound wrong-host account in the picker as selected but disabled", () => {

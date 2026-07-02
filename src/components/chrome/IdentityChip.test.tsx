@@ -86,6 +86,39 @@ describe("IdentityChip", () => {
     expect(screen.queryByText(/PRs enabled/)).toBeNull();
   });
 
+  it("flags a stale binding on an unsupported forge as host mismatch", () => {
+    // Intentional wording difference: the Identity panel has room to explain
+    // ("not usable here" + Clear); the chip's compact line says the same fact
+    // as "host mismatch" — both agree the binding can't work.
+    useRepo.setState({
+      summary,
+      forge: { hasRemote: true, kind: "gitlab", forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/o/r" },
+    });
+    useAccounts.setState({
+      accounts: [
+        {
+          id: "gh:github.com:1",
+          forge: "GitHub",
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "octocat",
+          label: "octocat",
+          username: "octocat",
+          name: "Octo Cat",
+          email: "octo@example.com",
+          color: "#5b8def",
+          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+          active: true,
+        },
+      ],
+      repoAccountId: "gh:github.com:1",
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("github.com · host mismatch")).toBeInTheDocument();
+  });
+
   it("shows the current PR account display-only and links to Identity settings", () => {
     useAccounts.setState({
       accounts: [

@@ -13,6 +13,7 @@ import { useUi } from "../../store/ui";
 import { useAccounts } from "../../store/accounts";
 import { appliedProfileId, useProfiles } from "../../store/profiles";
 import { profileInitials, selectProfile } from "../../lib/profiles";
+import { accountMatchesPrRemote } from "../../lib/prRemote";
 import { GitBranchIcon } from "../ui/icons";
 import { repoLabel } from "../../lib/paths";
 
@@ -46,8 +47,7 @@ export function IdentityChip() {
   const account = accounts.find((a) => a.id === repoAccountId) ?? null;
   // Same semantics as the Identity panel: a bound account only works when its
   // host matches the PR remote's. Unknown forge → assume fine (backend guards).
-  const prHost = forge?.host?.toLowerCase() ?? null;
-  const accountMismatch = account !== null && prHost !== null && account.host.toLowerCase() !== prHost;
+  const accountMismatch = account !== null && !accountMatchesPrRemote(account, forge);
 
   const label =
     activeProfile?.label ??

@@ -15,6 +15,7 @@ import { useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { ForgeKind } from "../../../../lib/api";
+import { accountMatchesPrRemote, prRemoteHost } from "../../../../lib/prRemote";
 import { useAccounts, type Account } from "../../../../store/accounts";
 import { useRepo } from "../../../../store/repo";
 import { useUi } from "../../../../store/ui";
@@ -35,8 +36,8 @@ export function PrAccountZone() {
 
   // The PR remote's host scopes which accounts can work here. Unknown forge /
   // not-yet-loaded state falls back to unfiltered (the backend still guards).
-  const prHost = forge?.host?.toLowerCase() ?? null;
-  const hostMatches = (a: Account) => prHost === null || a.host.toLowerCase() === prHost;
+  const prHost = prRemoteHost(forge);
+  const hostMatches = (a: Account) => accountMatchesPrRemote(a, forge);
   const unsupportedForge =
     forge?.hasRemote && forge.kind !== null && forge.kind !== ForgeKind.GitHub ? forge.forge ?? forge.kind : null;
   const boundMismatch = account !== null && !hostMatches(account);
@@ -51,11 +52,20 @@ export function PrAccountZone() {
     // Defense in depth: never bind an account whose host can't work here. The
     // disabled row already blocks this, but the forge probe can land between
     // render and click — check against the *latest* forge state, not the
-    // render's snapshot.
+    // render's snapshot. Say why (the row looked enabled a moment ago) and
+    // keep the picker open so the user sees the now-disabled row.
     if (id !== null) {
       const picked = accounts.find((a) => a.id === id);
-      const latestHost = useRepo.getState().forge?.host?.toLowerCase() ?? null;
-      if (picked && latestHost !== null && picked.host.toLowerCase() !== latestHost) return;
+      const latestForge = useRepo.getState().forge;
+      if (picked && !accountMatchesPrRemote(picked, latestForge)) {
+        useUi
+          .getState()
+          .showToast(
+            `@${picked.username} is for ${picked.host} — this repo's remote is on ${latestForge?.host}`,
+            "error",
+          );
+        return;
+      }
     }
     void setRepoAccount(id);
     setPicking(false);
@@ -125,7 +135,8 @@ export function PrAccountZone() {
                   </span>
                 </div>
                 <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400 text-pretty">
-                  Bound earlier — this repo&apos;s remote is on {forge?.host}, so this account does nothing here.
+                  Bound earlier — this repo&apos;s remote is on {forge?.host}. Fetch &amp; push as this account
+                  will fail here; clear it to use your git credentials instead.
                 </div>
               </div>
               <button
@@ -220,7 +231,7 @@ export function PrAccountZone() {
               {boundMismatch ? (
                 <span
                   className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/12"
-                  title={`This account is for ${account.host}; the repo's remote is ${forge?.host}. PR operations will fail until they match.`}
+                  title={`This account is for ${account.host}; the repo's remote is ${forge?.host}. PR operations and authenticated fetch/push will fail until they match.`}
                 >
                   host mismatch
                 </span>
