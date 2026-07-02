@@ -343,6 +343,26 @@ async fn push_tag(
     .await
 }
 
+/// Delete a tag on `origin`, optionally pinned to the repo's bound GitHub
+/// account. Token resolved server-side, like [`push`]. Local deletion is the
+/// separate [`delete_tag`] — without the remote delete, fetch's `refs/tags/*`
+/// import resurrects a locally deleted tag that still exists upstream.
+#[tauri::command]
+async fn delete_remote_tag(
+    path: String,
+    name: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || {
+        let auth = git::github::git_auth(&path, account.as_ref())?;
+        let auth_ref = auth
+            .as_ref()
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        git::write::delete_remote_tag(&path, "origin", &name, auth_ref)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn remove_worktree(
     path: String,
@@ -1240,6 +1260,7 @@ pub fn run() {
             create_annotated_tag,
             create_patch,
             delete_tag,
+            delete_remote_tag,
             push_tag,
             remove_worktree,
             delete_remote_branch,

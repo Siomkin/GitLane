@@ -286,6 +286,31 @@ pub fn push_tag(
     }
 }
 
+/// Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`).
+/// The fully-qualified `refs/tags/` refspec guarantees a same-named branch on
+/// the remote is never deleted. Local deletion is separate ([`super::delete_tag`]);
+/// without this, a tag deleted locally but still on the remote is re-imported by
+/// the next Fetch's explicit `refs/tags/*` refspec. `auth` authenticates as the
+/// bound account, like [`push`].
+pub fn delete_remote_tag(
+    repo: &str,
+    remote: &str,
+    name: &str,
+    auth: Option<(&str, &str)>,
+) -> Result<String, String> {
+    ensure_operand(remote)?;
+    ensure_operand(name)?;
+    let refspec = format!("refs/tags/{name}");
+    match auth {
+        Some((host, token)) => {
+            let args = credential_args(host, &["push", remote, "--delete", &refspec]);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
+        }
+        None => run_git(repo, &["push", remote, "--delete", &refspec]),
+    }
+}
+
 /// Delete a branch on `remote` (`git push <remote> --delete <branch>`). `branch`
 /// is the short name on the remote (e.g. `feature/x`, not `origin/feature/x`).
 /// `auth` authenticates as the bound account, like [`push`].

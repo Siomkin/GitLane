@@ -366,8 +366,17 @@ export function createRepoWriteActions(
         return `Created patch ${file}`;
       }),
 
-    deleteTag: (name) =>
-      runOp(get, async (summary) => api.deleteTag(summary.path, name)),
+    deleteTag: (name, alsoRemote = false) =>
+      runOp(get, async (summary) => {
+        // Remote first: if origin rejects (auth, protected tag) the local ref
+        // survives, so the user retries from an unchanged state instead of a
+        // half-deleted one that fetch would resurrect anyway.
+        if (alsoRemote) {
+          await api.deleteRemoteTag(summary.path, name, useAccounts.getState().repoAccountRef);
+        }
+        await api.deleteTag(summary.path, name);
+        return alsoRemote ? `Deleted tag ${name} (local and origin)` : `Deleted tag ${name}`;
+      }),
 
     pushTag: (name) =>
       runOp(get, async (summary) => {
