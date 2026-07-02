@@ -49,6 +49,7 @@ pub(super) fn run_git_env(
     for (k, v) in envs {
         cmd.env(k, v);
     }
+    crate::shell::hide_console(&mut cmd);
 
     let output = cmd
         .output()
@@ -70,6 +71,7 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    crate::shell::hide_console(&mut cmd);
 
     let mut child = cmd
         .spawn()
@@ -98,6 +100,7 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
 pub(super) fn git_command_bare(args: &[&str]) -> Command {
     let mut cmd = Command::new("git");
     cmd.args(args).env("PATH", crate::shell::path());
+    crate::shell::hide_console(&mut cmd);
     cmd
 }
 

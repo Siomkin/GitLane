@@ -92,6 +92,7 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
         cmd.env("GH_TOKEN", t);
         cmd.env("GH_ENTERPRISE_TOKEN", t);
     }
+    crate::shell::hide_console(&mut cmd);
 
     let output = cmd.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
