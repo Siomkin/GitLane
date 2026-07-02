@@ -3,6 +3,7 @@
 // IPC). The store calls these and applies the result.
 
 import type { RepoGraph } from "../lib/api";
+import { fullCommitMessage } from "../lib/commitMessage";
 
 export interface SelectionInput {
   /** Commit ids in graph/display order (newest first). */
@@ -211,4 +212,21 @@ export function getSquashEligibility(graph: RepoGraph | null, shas: string[]): S
   const parent = oldest.parents[0];
   if (!parent) return { ok: false, reason: "Can't squash a root commit" };
   return { ok: true, parent };
+}
+
+/**
+ * Default commit message for squashing `shas`: the selected commits' own messages
+ * concatenated oldest-first (mirroring `git rebase -i` squash), separated by blank
+ * lines. Preserving the originals keeps the squash meaningful and — crucially —
+ * keeps the first line a real subject, so a repo whose commit-msg hook enforces a
+ * format (e.g. Conventional Commits) accepts the result instead of rejecting a
+ * generic placeholder. `shas` may be in any order; graph order decides the output.
+ */
+export function buildSquashMessage(graph: RepoGraph | null, shas: string[]): string {
+  const selected = new Set(shas);
+  return realCommits(graph)
+    .filter((commit) => selected.has(commit.id))
+    .reverse() // graph is newest-first; squash lists messages oldest-first
+    .map((commit) => fullCommitMessage(commit.summary, commit.body))
+    .join("\n\n");
 }

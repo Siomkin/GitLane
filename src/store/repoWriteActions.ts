@@ -326,9 +326,22 @@ export function createRepoWriteActions(
         // staged tree as one. `reset --soft` keeps the working tree + index at the
         // newest commit, so the new commit's content equals the squashed range's.
         const parent = validateSquashRange(get().graph, shas);
+        // The newest selected commit is validated to be HEAD, so this is the tip we
+        // restore to if the replacement commit is rejected below.
+        const originalHead = get().graph?.head ?? null;
         await api.resetTo(summary.path, parent, "soft");
         const identity = useAccounts.getState().repoIdentity;
-        await api.commit(summary.path, message, "", false, identity?.name, identity?.email);
+        const { summary: subject, description } = splitCommitMessage(message);
+        try {
+          await api.commit(summary.path, subject, description, false, identity?.name, identity?.email);
+        } catch (e) {
+          // The commit was rejected (commit-msg hook, signing failure, …). Undo the
+          // soft reset so the branch keeps its original commits instead of being left
+          // with them gone from HEAD and everything staged. `--soft` leaves the index
+          // and working tree untouched, so this restores the exact pre-squash state.
+          if (originalHead) await api.resetTo(summary.path, originalHead, "soft").catch(() => {});
+          throw e;
+        }
         return `Squashed ${shas.length} commits`;
       });
       get().clearSelection();

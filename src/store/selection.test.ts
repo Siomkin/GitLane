@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { RepoGraph } from "../lib/api";
 import {
   buildCommitBatchPlan,
+  buildSquashMessage,
   computeSelection,
   getSquashEligibility,
   isCommitReachableFromRemote,
@@ -151,6 +152,37 @@ describe("getSquashEligibility", () => {
       ok: true,
       parent: "origin-tip",
     });
+  });
+});
+
+describe("buildSquashMessage", () => {
+  // A newest-first graph carrying real summaries + bodies, like the Rust layout.
+  const rich = (): RepoGraph => ({
+    commits: [
+      { id: "c", shortId: "c", summary: "feat: newest", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["b"], lane: 0, row: 0, color: 0, refs: [] },
+      { id: "b", shortId: "b", summary: "fix: middle", body: "details", authorName: "", authorEmail: "", timestamp: 0, parents: ["a"], lane: 0, row: 1, color: 0, refs: [] },
+      { id: "a", shortId: "a", summary: "feat: oldest", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["base"], lane: 0, row: 2, color: 0, refs: [] },
+    ],
+    edges: [],
+    laneCount: 1,
+    head: "c",
+    truncated: false,
+  });
+
+  it("concatenates the selected messages oldest-first so the subject stays valid", () => {
+    // Passed newest-first (as the menu does); graph order drives the output.
+    expect(buildSquashMessage(rich(), ["c", "b", "a"])).toBe(
+      "feat: oldest\n\nfix: middle\n\ndetails\n\nfeat: newest",
+    );
+  });
+
+  it("only includes the selected commits", () => {
+    expect(buildSquashMessage(rich(), ["c", "b"])).toBe("fix: middle\n\ndetails\n\nfeat: newest");
+  });
+
+  it("returns an empty string for an empty selection or missing graph", () => {
+    expect(buildSquashMessage(rich(), [])).toBe("");
+    expect(buildSquashMessage(null, ["c"])).toBe("");
   });
 });
 
