@@ -254,7 +254,9 @@ jobs:
           args: ${{ matrix.args }}${{ contains(needs.preflight.outputs.release_tag, '-') && format(' --config {0}/src-tauri/tauri.beta.conf.json', github.workspace) || '' }}
           tagName: ${{ needs.preflight.outputs.release_tag }}
           releaseName: GitLane ${{ needs.preflight.outputs.release_tag }}
-          releaseBody: "Desktop builds for GitLane."
+          # Keep the install-guide link: the asset list alone gives no guidance on
+          # which file to pick (Linux ships three formats — GL-83).
+          releaseBody: "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)."
           releaseDraft: false
           # Pre-release tags publish a GitHub pre-release, so the `/latest/` alias
           # (the stable updater endpoint) keeps ignoring them; the beta channel is

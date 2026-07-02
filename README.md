@@ -68,10 +68,13 @@ Grab the latest build from the
 
 | Platform | Package |
 | --- | --- |
-| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
-| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
-| Windows | `GitLane-<version>-windows-nsis.exe` |
-| Linux | `.AppImage`, `.deb`, or `.rpm` (`GitLane-<version>-linux-…`) |
+| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
+| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
+| Windows | `GitLane-<version>-windows-nsis.exe` — see [Windows: first launch](#windows-first-launch) |
+| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` — see [Linux: pick a package](#linux-pick-a-package) |
+
+The `.sig` assets are signatures for the built-in updater — you never need to
+download them.
 
 GitLane updates itself through the built-in Tauri updater. Builds ship on two
 channels — **stable** and **beta** (pre-releases, updated more often); see
@@ -93,6 +96,55 @@ Then launch normally. On some systems right-click → **Open**, or
 System Settings → **Privacy & Security** → **Open Anyway** after the first
 blocked launch, works instead. In-app updates delivered by the updater don't
 need this again.
+
+Developer ID signing + notarization (which removes this step) and a Homebrew
+cask are planned — see [docs/distribution.md](docs/distribution.md).
+
+### Windows: first launch
+
+The Windows build isn't code-signed yet, so Defender SmartScreen blocks a
+fresh download — *"Windows protected your PC"*, unknown publisher, with no
+obvious way to continue. Click **More info**, then **Run anyway**. The
+installer is fine; Windows treats every unsigned download this way. Code
+signing is planned and will remove this prompt.
+
+The installer (`GitLane-<version>-windows-nsis.exe`) installs for the current
+user — no admin rights needed — and in-app updates delivered by the updater
+don't retrigger SmartScreen.
+
+### Linux: pick a package
+
+Prefer the **`.deb`** (Debian, Ubuntu, Mint) or **`.rpm`** (Fedora, openSUSE)
+package — it gives a normal install: app-menu entry, icon, and clean uninstall
+through your package manager.
+
+```bash
+# Debian / Ubuntu / Mint
+sudo apt install ./GitLane-<version>-linux-deb.deb
+
+# Fedora / RHEL
+sudo dnf install ./GitLane-<version>-linux-rpm.rpm
+
+# openSUSE
+sudo zypper install ./GitLane-<version>-linux-rpm.rpm
+```
+
+The **`.AppImage`** is the portable fallback for every other distribution (or
+when you can't install packages). Browsers never preserve the executable bit,
+so make it executable once before the first run:
+
+```bash
+chmod +x GitLane-<version>-linux-appimage.AppImage
+./GitLane-<version>-linux-appimage.AppImage
+```
+
+A bare AppImage doesn't integrate with the desktop (no app-menu entry or
+icon). If you want that, run it through
+[Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher).
+
+Package-manager channels (Flathub, AUR) are tracked in
+[docs/distribution.md](docs/distribution.md).
 
 ### Requirements
 
