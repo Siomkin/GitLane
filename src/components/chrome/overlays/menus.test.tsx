@@ -630,11 +630,11 @@ describe("BranchContextMenu", () => {
   });
 });
 
-// The drag-drop action menu. The prior bug (GL-102) was that `rebase-source` /
-// `reset-source` existed in the policy for commit/remote targets and in
-// `GraphActionKind`, but the local-target `switch` didn't handle them — so the
-// only rebase offered on a branch drop moved the *target*, inverting intent.
-// These tests pin the local-target handlers to the direction the label promises,
+// The drag-drop action menu. The drag gesture fixes the direction: a dropped
+// local branch moves onto the target — the reverse (moving the target) is never
+// offered for a local drag, or the drop would silently move the wrong branch
+// (GL-102). A *remote* source can't be mutated, so it instead moves the local
+// target. These tests pin the handlers to the direction each label promises,
 // which the pure `graphActions` spec test cannot see.
 describe("ActionMenu", () => {
   const localSummary = {
@@ -678,22 +678,19 @@ describe("ActionMenu", () => {
     expect(rebaseOnto).not.toHaveBeenCalledWith("feature");
   });
 
-  it("rebase-target checks out the drop target, then rebases it onto the dragged branch", async () => {
-    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
-    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto feature");
+  it("dragging a local branch onto a local branch never offers the reverse direction", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [localBranch("feature"), localBranch("main")],
-      checkoutBranch,
-      rebaseOnto,
     });
     openActionMenu("feature", "main");
     render(<ActionMenu />);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto feature/ }));
-
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature"));
-    expect(checkoutBranch).toHaveBeenCalledWith("main");
+    // feature is the actor; main (the target) is never the one rebased/reset.
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Reset feature to main/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Rebase main onto feature/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Reset main to feature/ })).not.toBeInTheDocument();
   });
 
   it("reset-source previews then resets the dragged branch to the drop target on confirm", async () => {
@@ -722,10 +719,14 @@ describe("ActionMenu", () => {
     expect(checkoutBranch).toHaveBeenCalledWith("feature");
   });
 
-  it("does not offer source-direction moves when a remote ref is dragged onto a local branch", () => {
+  it("moves the local target when a remote ref is dragged onto it (the remote can't move)", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto origin/feature");
     useRepo.setState({
       summary: localSummary,
       branches: [remoteBranch("origin/feature"), localBranch("main")],
+      checkoutBranch,
+      rebaseOnto,
     });
     useUi.setState({
       actionMenu: {
@@ -740,7 +741,11 @@ describe("ActionMenu", () => {
     // Remote source only feeds the local target: it is never itself moved.
     expect(screen.queryByRole("menuitem", { name: /Rebase origin\/feature onto main/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /Reset origin\/feature to main/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ })).toBeInTheDocument();
+
+    // The only rebase offered moves the local target onto the remote.
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("origin/feature"));
+    expect(checkoutBranch).toHaveBeenCalledWith("main");
   });
 });
 
