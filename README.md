@@ -71,7 +71,10 @@ Grab the latest build from the
 | macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
 | macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
 | Windows | `GitLane-<version>-windows-nsis.exe` |
-| Linux | `.AppImage`, `.deb`, or `.rpm` (`GitLane-<version>-linux-…`) |
+| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` — see [Linux: pick a package](#linux-pick-a-package) |
+
+The `.sig` assets are signatures for the built-in updater — you never need to
+download them.
 
 GitLane updates itself through the built-in Tauri updater. Builds ship on two
 channels — **stable** and **beta** (pre-releases, updated more often); see
@@ -93,6 +96,37 @@ Then launch normally. On some systems right-click → **Open**, or
 System Settings → **Privacy & Security** → **Open Anyway** after the first
 blocked launch, works instead. In-app updates delivered by the updater don't
 need this again.
+
+### Linux: pick a package
+
+Prefer the **`.deb`** (Debian, Ubuntu, Mint) or **`.rpm`** (Fedora, openSUSE)
+package — it gives a normal install: app-menu entry, icon, and clean uninstall
+through your package manager.
+
+```bash
+# Debian / Ubuntu / Mint
+sudo apt install ./GitLane-<version>-linux-deb.deb
+
+# Fedora / openSUSE
+sudo dnf install ./GitLane-<version>-linux-rpm.rpm
+```
+
+The **`.AppImage`** is the portable fallback for every other distribution (or
+when you can't install packages). Browsers never preserve the executable bit,
+so make it executable once before the first run:
+
+```bash
+chmod +x GitLane-<version>-linux-appimage.AppImage
+./GitLane-<version>-linux-appimage.AppImage
+```
+
+A bare AppImage doesn't integrate with the desktop (no app-menu entry or
+icon). If you want that, run it through
+[Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher).
+
+Package-manager channels (Flathub, AUR) are tracked in
+[docs/linux-distribution.md](docs/linux-distribution.md).
 
 ### Requirements
 
