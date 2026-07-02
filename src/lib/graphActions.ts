@@ -54,10 +54,13 @@ export function findOtherBranchWorktree(
   ) ?? null;
 }
 
-/** Pure policy for the graph drag menu. Only local branches are mutation
- * targets. Remote refs and commits are read-only drop targets: dropping a local
- * branch onto one moves that branch (fast-forward / rebase / reset), never the
- * target. A remote ref may also supply commits to a local target. */
+/** Pure policy for the graph drag menu. Only local branches can be mutated.
+ * Remote refs and commits are read-only drop targets: dropping a local branch
+ * onto one moves that branch (fast-forward / rebase / reset), never the
+ * target. A local target offers both directions — moving the dragged branch
+ * onto the target (source variants) and moving the target onto the dragged
+ * ref (target variants). A remote source only supplies commits to a local
+ * target; it is never moved itself. */
 export function buildGraphActionSpecs(
   source: BranchDragRef,
   target: GraphDropTarget,
@@ -110,11 +113,25 @@ export function buildGraphActionSpecs(
       label: `Merge ${source.name} into ${target.name}`,
       sub: "Create a merge commit",
     },
+    ...(source.kind === "local"
+      ? [{
+          kind: "rebase-source" as const,
+          label: `Rebase ${source.name} onto ${target.name}`,
+          sub: "Replay branch commits on top",
+        }]
+      : []),
     {
       kind: "rebase-target",
       label: `Rebase ${target.name} onto ${source.name}`,
       sub: "Replay target commits on top",
     },
+    ...(source.kind === "local"
+      ? [{
+          kind: "reset-source" as const,
+          label: `Reset ${source.name} to ${target.name}`,
+          sub: "Move branch pointer (confirmation required)",
+        }]
+      : []),
     {
       kind: "reset-target",
       label: `Reset ${target.name} to ${source.name}`,

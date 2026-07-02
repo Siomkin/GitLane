@@ -325,8 +325,16 @@ export function ActionMenu() {
             await checkoutBranch(to.name);
             return rebaseOnto(from.name);
           });
+      case "rebase-source":
+        return () =>
+          act(async () => {
+            await checkoutBranch(from.name);
+            return rebaseOnto(to.name);
+          });
       case "reset-target":
         return () => requestMixedReset(to.name, from.name, from.name);
+      case "reset-source":
+        return () => requestMixedReset(from.name, to.name, to.name);
       default:
         return () => {};
     }
