@@ -1,18 +1,127 @@
 # GitLane
 
-A visual git client for macOS — a lightweight, swimlane-style commit tree with
-drag-and-drop branch operations. Built on **Tauri 2** (Rust core) + **React/TypeScript**.
+**See your branches. Move them.** GitLane is a fast, lightweight visual git client —
+a swimlane-style commit tree with drag-and-drop branch operations, built on
+**Tauri 2** (Rust core) + **React/TypeScript**.
 
-## Stack
+[![Latest release](https://img.shields.io/github/v/release/Siomkin/GitLane?include_prereleases&label=release)](https://github.com/Siomkin/GitLane/releases)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-- **Shell:** Tauri 2 (native macOS window, ~10 MB)
+<!-- Screenshots live in docs/screenshots/ — see the capture checklist there. -->
+![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
+
+## Why GitLane
+
+- **A commit graph you can actually read.** Every branch gets its own lane and
+  color. The layout is computed in Rust and painted on canvas, so it stays
+  smooth on histories with thousands of commits.
+- **Your real git, not a reimplementation.** Every write — commit, merge,
+  rebase, push, stash — runs through your actual `git` binary, so hooks,
+  credential helpers, commit signing, and your `.gitconfig` all just work.
+  Reads use libgit2 for speed.
+- **Always live.** A filesystem watcher keeps the app in sync when you commit,
+  checkout, or stage from the terminal. No refresh button.
+- **Native and lean.** Tauri, not Electron: a small download that starts
+  instantly and stays light on memory.
+
+## Features
+
+### Drag-and-drop branch operations
+
+Drag one branch onto another and GitLane offers exactly the operations that
+make sense — fast-forward, merge, rebase, or reset — based on how the branches
+actually relate. No memorizing flags.
+
+![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
+
+### Stage, review, commit
+
+A dedicated changes workspace for multi-file staging, with unified/split diffs
+and syntax highlighting. Review a whole commit as one scrollable stack, or dig
+into a single file.
+
+![Staging and diff review](docs/screenshots/changes-staging.png)
+
+### Pull requests, multiple accounts
+
+Browse GitHub pull requests, files, and CI checks without leaving the app —
+powered by the GitHub CLI (`gh`). Each repository binds to one of your `gh`
+accounts (GitHub.com or Enterprise), and tokens never leave the Rust core.
+
+![Pull request list and detail](docs/screenshots/pull-requests.png)
+
+### Commit identity you can trust
+
+Reusable **git profiles** (name, email, optional signing key) apply per
+repository, separately from provider accounts — so you never accidentally
+commit to a client repo with the wrong email or an unverified signature.
+
+### And the everyday tools
+
+Branch/tag/remote navigator, stash management, git worktrees, an integrated
+terminal, dark/light themes with accent colors.
+
+## Install
+
+Grab the latest build from the
+[**Releases page**](https://github.com/Siomkin/GitLane/releases):
+
+| Platform | Package |
+| --- | --- |
+| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
+| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
+| Windows | `GitLane-<version>-windows-nsis.exe` |
+| Linux | `.AppImage`, `.deb`, or `.rpm` (`GitLane-<version>-linux-…`) |
+
+GitLane updates itself through the built-in Tauri updater. Builds ship on two
+channels — **stable** and **beta** (pre-releases, updated more often); see
+[docs/release-channels.md](docs/release-channels.md).
+
+### Requirements
+
+- `git` on your `PATH` (writes go through your real git).
+- Optional, for GitHub/PR features: [GitHub CLI](https://cli.github.com) `gh`
+  **2.95.0 or newer**, logged in (`gh auth login`).
+- Other forges (GitLab, Bitbucket, Azure DevOps, Gitea, Forgejo): core git
+  features work; PR browsing is GitHub-only for now, with clear guidance
+  instead of silent failures.
+
+## Develop
+
+Prerequisites: `bun`, the Rust toolchain, `git`, and `gh` 2.95.0+ for
+GitHub/PR features.
+
+```bash
+bun install
+bun run tauri dev      # launch the app (hot-reloads frontend + Rust)
+```
+
+Other:
+
+```bash
+bun run build          # tsc + vite production build
+bun run test           # frontend tests (vitest)
+(cd src-tauri && cargo check)
+```
+
+GitLane currently validates `gh` 2.95.0 as the minimum supported GitHub CLI baseline:
+
+| Capability | Probe |
+| --- | --- |
+| Version | `gh version` |
+| Host-aware account discovery | `gh auth status --json hosts` |
+| Host/user token resolution | `gh auth token --hostname <host> --user <login>` |
+| PR patches | `gh pr diff --patch --color never` |
+| GraphQL | `gh api graphql` |
+
+## Architecture
+
+- **Shell:** Tauri 2 (native window, ~10 MB)
 - **Frontend:** React 19 + TypeScript + Vite, Canvas-rendered commit graph, Zustand state
 - **Git reads:** [`git2`](https://docs.rs/git2) (libgit2) — log, refs, branches (network features disabled)
 - **Git writes:** shell out to the real `git` binary — honours hooks, credentials, config, conflicts
 - **GitHub:** provider boundary backed by the GitHub CLI (`gh`) by default; tokens stay in Rust and never cross IPC
 - **Other forges:** auth-status guidance only for GitLab, Bitbucket, Azure DevOps, Gitea, and Forgejo
-
-## Architecture
 
 ```
 src/                     # React frontend
@@ -56,48 +165,6 @@ src-tauri/src/
 commit it's waiting to render. The first parent continues a commit's lane;
 merges branch into fresh lanes. The frontend just paints the resulting
 `(row, lane, color)` coordinates — no layout logic lives in JS.
-
-## Develop
-
-Prerequisites:
-
-- `bun`
-- Rust toolchain
-- `git`
-- `gh` 2.95.0 or newer for GitHub/PR features
-
-```bash
-bun install
-bun run tauri dev      # launch the app (hot-reloads frontend + Rust)
-```
-
-Other:
-
-```bash
-bun run build          # tsc + vite production build
-(cd src-tauri && cargo check)
-```
-
-GitLane currently validates `gh` 2.95.0 as the minimum supported GitHub CLI baseline:
-
-| Capability | Probe |
-| --- | --- |
-| Version | `gh version` |
-| Host-aware account discovery | `gh auth status --json hosts` |
-| Host/user token resolution | `gh auth token --hostname <host> --user <login>` |
-| PR patches | `gh pr diff --patch --color never` |
-| GraphQL | `gh api graphql` |
-
-## Status — milestone 1
-
-- [x] Open a repository (native folder picker) and render the commit graph
-- [x] Branch sidebar (local + remote); double-click a local branch to checkout
-- [x] Commit details panel
-- [x] Write commands wired in Rust (checkout / branch / merge / rebase / reset)
-- [x] Drag-and-drop branch → merge / rebase / reset action menu
-- [x] Diff view + staging / commit
-- [x] Pull-request browsing across multiple `gh` accounts
-- [ ] Graph virtualization for very large repos
 
 ## License
 
