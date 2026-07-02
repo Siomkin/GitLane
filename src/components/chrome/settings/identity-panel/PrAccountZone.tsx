@@ -33,7 +33,7 @@ export function PrAccountZone() {
   };
 
   return (
-    <div className="mt-7 pt-6 border-t border-black/[0.07] dark:border-white/[0.08]">
+    <div className="mt-5 pt-5 border-t border-black/[0.07] dark:border-white/[0.08]">
       <div className="flex items-baseline justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">

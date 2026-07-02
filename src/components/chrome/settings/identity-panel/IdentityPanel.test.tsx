@@ -106,7 +106,7 @@ describe("IdentityPanel", () => {
     // A profile is applied (repo identity matches Work) → the commit-email field shows.
     useAccounts.setState({ repoIdentity: { name: "Stepan Work", email: "work@acme.io" } });
     render(<IdentityPanel />);
-    expect(screen.getByText("COMMIT EMAIL FOR THIS REPO")).toBeInTheDocument();
+    expect(screen.getByText("Commit email:")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit commit email" }));
     fireEvent.change(screen.getByPlaceholderText("you@example.com"), {
       target: { value: "stepan@contractor.dev" },

@@ -58,7 +58,7 @@ export function CommitAsZone() {
   );
 
   return (
-    <div className="mt-7">
+    <div className="mt-6">
       <div className="flex items-baseline justify-between gap-3">
         <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
           COMMIT AS · GIT PROFILE
