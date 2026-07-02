@@ -11,7 +11,7 @@ Common to all platforms: the `.sig` files next to release assets are minisign
 signatures for the built-in Tauri updater (GL-24), not user-facing downloads.
 Per-format install instructions live in the
 [README install section](../README.md#install); the release page body links
-there, and the gitlane.space install section mirrors it (GL-99).
+there. A mirroring install section on gitlane.space is tracked in GL-99.
 
 ## Linux
 

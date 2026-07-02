@@ -68,9 +68,9 @@ Grab the latest build from the
 
 | Platform | Package |
 | --- | --- |
-| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
-| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
-| Windows | `GitLane-<version>-windows-nsis.exe` |
+| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
+| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
+| Windows | `GitLane-<version>-windows-nsis.exe` — see [Windows: first launch](#windows-first-launch) |
 | Linux | `.deb` / `.rpm` (recommended) or `.AppImage` — see [Linux: pick a package](#linux-pick-a-package) |
 
 The `.sig` assets are signatures for the built-in updater — you never need to
@@ -122,8 +122,11 @@ through your package manager.
 # Debian / Ubuntu / Mint
 sudo apt install ./GitLane-<version>-linux-deb.deb
 
-# Fedora / openSUSE
+# Fedora / RHEL
 sudo dnf install ./GitLane-<version>-linux-rpm.rpm
+
+# openSUSE
+sudo zypper install ./GitLane-<version>-linux-rpm.rpm
 ```
 
 The **`.AppImage`** is the portable fallback for every other distribution (or
