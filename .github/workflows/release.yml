@@ -159,7 +159,14 @@ jobs:
             args: "--target x86_64-apple-darwin"
           - name: windows
             runner: windows-latest
-            args: ""
+            # NSIS only. The MSI/WiX target can't encode a non-numeric SemVer
+            # pre-release identifier (e.g. `0.2.0-beta.2` → the bundler aborts with
+            # "optional pre-release identifier ... must be numeric-only and cannot
+            # be greater than 65535 for msi target"), so `--targets all` fails on
+            # every beta tag. NSIS is Tauri's recommended Windows installer and
+            # accepts the full version; the updater artifact still rides the NSIS
+            # bundle via bundle.createUpdaterArtifacts. (GL-78)
+            args: "--bundles nsis"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -188,6 +195,23 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # macOS DMG bundling gotcha (self-hosted Mac mini): `bundle_dmg.sh` (create-dmg)
+      # runs an AppleScript `tell application "Finder"` step to lay out the DMG window,
+      # which needs the runner to be started from a GUI/Aqua session — a bare SSH
+      # `./run.sh` has no WindowServer and the DMG step fails ("error running
+      # bundle_dmg.sh"). Start the runner from a console/screen-shared Terminal.app.
+      # This step is separate defensive hygiene: both macOS legs share one mini and
+      # mount a volume named after productName, so an interrupted prior run can leave
+      # /Volumes/GitLane* mounted and make the next `hdiutil attach` fail. (GL-78)
+      - name: Detach stale DMG volumes
+        if: runner.os == 'macOS'
+        run: |
+          for vol in /Volumes/GitLane*; do
+            [ -e "$vol" ] || continue
+            echo "Detaching stale volume: $vol"
+            hdiutil detach "$vol" -force || true
+          done
 
       - name: Build and publish release artifact
         uses: tauri-apps/tauri-action@v0
@@ -228,7 +252,9 @@ jobs:
           # served separately by the publish-beta-manifest job below.
           prerelease: ${{ contains(needs.preflight.outputs.release_tag, '-') }}
           generateReleaseNotes: true
-          releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
+          # tauri-action's input is `assetNamePattern` (not `releaseAssetNamePattern`,
+          # which it silently ignored — so assets shipped under default names). (GL-78)
+          assetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
 
   # Roll the beta channel's manifest after every release. GitHub's `/latest/`
   # alias can't serve a pre-release, so the beta channel is a fixed `beta` release
