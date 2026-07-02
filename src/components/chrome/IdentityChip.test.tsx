@@ -40,14 +40,50 @@ describe("IdentityChip", () => {
     expect(screen.getByTitle("Commit identity for this repository")).toHaveTextContent("Work");
   });
 
-  it("opens a profile quick-switch with the PR account as a secondary line", () => {
+  it("opens a profile quick-switch with the PR account as its own section", () => {
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
-    expect(screen.getByText("COMMIT IDENTITY")).toBeInTheDocument();
+    expect(screen.getByText("COMMIT AS")).toBeInTheDocument();
     expect(screen.getByText("Default git identity")).toBeInTheDocument();
     expect(screen.getByText("Personal")).toBeInTheDocument();
-    // The account is present but subordinate.
-    expect(screen.getByText("PR ACCOUNT")).toBeInTheDocument();
+    // The account section is always visible below the (scroll-capped) profiles.
+    expect(screen.getByText("PULL REQUESTS AS")).toBeInTheDocument();
+    expect(screen.getByText("No account")).toBeInTheDocument();
+  });
+
+  it("quick-switches the PR account inline from its section", () => {
+    useAccounts.setState({
+      accounts: [
+        {
+          id: "gh:github.com:1",
+          forge: "GitHub",
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "octocat",
+          label: "octocat",
+          username: "octocat",
+          name: "Octo Cat",
+          email: "octo@example.com",
+          color: "#5b8def",
+          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+          active: true,
+        },
+      ],
+      repoAccountId: null,
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    // Collapsed row shows the current binding; expanding it lists accounts.
+    fireEvent.click(screen.getByText("Change"));
+    invokeMock.mockClear();
+    fireEvent.click(screen.getByText("@octocat"));
+    expect(useAccounts.getState().repoAccountId).toBe("gh:github.com:1");
+    // Binding a PR account must not write the commit identity.
+    const identityWrites = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity",
+    );
+    expect(identityWrites).toHaveLength(0);
   });
 
   it("applies a profile on click (writes the commit identity)", () => {

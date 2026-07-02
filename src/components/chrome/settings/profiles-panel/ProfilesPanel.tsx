@@ -16,6 +16,7 @@ import { selectProfile, type ProfileDraft } from "../../../../lib/profiles";
 import { useUi } from "../../../../store/ui";
 import { ProfileEditor } from "./ProfileEditor";
 import { ProfileRow } from "./ProfileRow";
+import { DefaultIdentityRow } from "./DefaultIdentityRow";
 
 type Editing = { kind: "new"; prefill?: ProfileEditorPrefill } | { kind: "edit"; id: string } | null;
 type ProfileEditorPrefill = NonNullable<Parameters<typeof ProfileEditor>[0]["prefill"]>;
@@ -24,6 +25,8 @@ export function ProfilesPanel() {
   const summary = useRepo((s) => s.summary);
   const repoIdentity = useAccounts((s) => s.repoIdentity);
   const profiles = useProfiles((s) => s.profiles);
+  const defaultIdentity = useProfiles((s) => s.defaultIdentity);
+  const loadDefaultIdentity = useProfiles((s) => s.loadDefaultIdentity);
   const loadProfiles = useProfiles((s) => s.loadProfiles);
   const saveProfile = useProfiles((s) => s.saveProfile);
   const setDefaultProfile = useProfiles((s) => s.setDefaultProfile);
@@ -35,7 +38,8 @@ export function ProfilesPanel() {
 
   useEffect(() => {
     loadProfiles();
-  }, [loadProfiles]);
+    void loadDefaultIdentity();
+  }, [loadProfiles, loadDefaultIdentity]);
 
   // A repo-scoped surface (repo Identity panel, identity chip) handed off a
   // create/edit request. Consume it exactly once.
@@ -87,6 +91,10 @@ export function ProfilesPanel() {
       </div>
 
       <div className="mt-6 flex flex-col gap-2">
+        {/* The global git-config identity: part of the library picture (repos
+            with no profile pinned commit as this), but managed by git itself. */}
+        <DefaultIdentityRow identity={defaultIdentity} />
+
         {profiles.map((p) =>
           editing?.kind === "edit" && editing.id === p.id ? (
             <ProfileEditor

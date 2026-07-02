@@ -47,28 +47,44 @@ describe("IdentityPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the default identity, saved profiles, and the optional PR-account zone", () => {
+  it("shows both picks state-first: the current commit identity and the PR-account zone", () => {
     render(<IdentityPanel />);
     expect(screen.getByRole("heading", { name: "Identity" })).toBeInTheDocument();
-    const group = screen.getByRole("radiogroup", { name: "Commit as" });
-    expect(within(group).getByRole("radio", { name: "Default git identity" })).toBeInTheDocument();
-    expect(within(group).getByRole("radio", { name: "Work" })).toBeInTheDocument();
-    // Tier-2 framing: the PR account zone is present and starts with no account.
+    // Collapsed: the current pick (nothing pinned → default git identity) is a
+    // card, not a list — so the PR zone below stays visible however many
+    // profiles exist.
+    expect(screen.getByText("Default git identity")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Commit as" })).toBeNull();
     expect(screen.getByText("OPEN PULL REQUESTS AS · ACCOUNT")).toBeInTheDocument();
     expect(screen.getByText("No account")).toBeInTheDocument();
   });
 
-  it("applies a profile to the repo's local config on selection", () => {
+  it("expands the profile picker on Change and applies a profile to local config", () => {
     render(<IdentityPanel />);
-    fireEvent.click(screen.getByRole("radio", { name: "Work" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
+    const group = screen.getByRole("radiogroup", { name: "Commit as" });
+    expect(within(group).getByRole("radio", { name: "Default git identity" })).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("radio", { name: "Work" }));
     expect(invokeMock).toHaveBeenCalledWith(
       "set_repo_identity",
       expect.objectContaining({ path, name: "Stepan Work", email: "work@acme.io" }),
     );
+    // Picking collapses back to the state card.
+    expect(screen.queryByRole("radiogroup", { name: "Commit as" })).toBeNull();
+  });
+
+  it("re-picking the current identity just collapses without rewriting git config", () => {
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
+    invokeMock.mockClear();
+    fireEvent.click(screen.getByRole("radio", { name: "Default git identity" }));
+    expect(invokeMock).not.toHaveBeenCalledWith("clear_repo_identity", expect.anything());
+    expect(screen.queryByRole("radiogroup", { name: "Commit as" })).toBeNull();
   });
 
   it("hands profile creation off to Settings → Profiles", () => {
     render(<IdentityPanel />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "New profile" }));
     // The repo window closes and the global Profiles panel opens with a create intent.
     expect(useUi.getState().repoSettingsOpen).toBe(false);
@@ -79,6 +95,7 @@ describe("IdentityPanel", () => {
 
   it("hands profile editing off to Settings → Profiles with the profile id", () => {
     render(<IdentityPanel />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Change" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Edit ↗" }));
     expect(useUi.getState().repoSettingsOpen).toBe(false);
     expect(useUi.getState().settingsTab).toBe("profiles");

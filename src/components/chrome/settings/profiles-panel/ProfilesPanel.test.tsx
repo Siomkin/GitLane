@@ -47,6 +47,16 @@ describe("ProfilesPanel", () => {
     expect(screen.getByRole("button", { name: "Edit Work" })).toBeInTheDocument();
   });
 
+  it("shows the read-only default git identity at the top of the library", () => {
+    useProfiles.setState({ defaultIdentity: { name: "Stepan Global", email: "global@x.dev" } });
+    render(<ProfilesPanel />);
+    expect(screen.getByText("Default git identity")).toBeInTheDocument();
+    expect(screen.getByText("Stepan Global · global@x.dev")).toBeInTheDocument();
+    // It belongs to global git config — no Edit affordance.
+    expect(screen.getByText("Managed by git")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Default git identity" })).toBeNull();
+  });
+
   it("shows an empty state with a create CTA when no profiles exist", () => {
     localStorage.clear();
     render(<ProfilesPanel />);
