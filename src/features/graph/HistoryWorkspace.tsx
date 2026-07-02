@@ -123,6 +123,7 @@ export const HistoryWorkspace = () => {
     overscan: HISTORY_OVERSCAN_ROWS,
     getItemKey,
     useFlushSync: false,
+    useScrollendEvent: true,
     // Keeps the first bounded window deterministic before the element observer
     // reports its real size (also mirrors the pre-layout state in jsdom).
     initialRect: { width: 0, height: rowHeight },

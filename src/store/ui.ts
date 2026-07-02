@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { usePulls } from "./pulls";
+import { friendlyGitError } from "../lib/gitError";
 import type { PrFilter } from "../lib/prs";
 import type { AccentColor } from "../lib/accent";
 import type { BranchDragRef, GraphDropTarget } from "../lib/graphActions";
@@ -687,11 +688,18 @@ export const useUi = create<UiState>()(
 
   showToast: (message, tone = "ok") => {
     const id = (toastSeq += 1);
-    set({ toast: { id, message, tone } });
+    // Rewrite raw git/hook failures into a readable message (no-op for other text).
+    const text = tone === "error" ? friendlyGitError(message) : message;
+    set({ toast: { id, message: text, tone } });
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      if (get().toast?.id === id) set({ toast: null });
-    }, 2400);
+    toastTimer = undefined;
+    // Errors — especially multi-line hook output — stay until dismissed so they can
+    // actually be read; success/info toasts auto-clear.
+    if (tone !== "error") {
+      toastTimer = setTimeout(() => {
+        if (get().toast?.id === id) set({ toast: null });
+      }, 2400);
+    }
   },
   dismissToast: () => set({ toast: null }),
     }),

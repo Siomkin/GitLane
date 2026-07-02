@@ -62,6 +62,7 @@ beforeAll(() => {
       this.scrollTop =
         typeof options === "number" ? (y ?? 0) : (options?.top ?? this.scrollTop);
       this.dispatchEvent(new Event("scroll"));
+      this.dispatchEvent(new Event("scrollend"));
     },
   });
 });
@@ -358,6 +359,7 @@ describe("HistoryWorkspace — virtualized history", () => {
       value: 500 * compactRowHeight,
     });
     fireEvent.scroll(scroller);
+    fireEvent(scroller, new Event("scrollend"));
 
     await waitFor(() => expect(screen.getByText("commit 500")).toBeInTheDocument());
     expect(screen.getAllByRole("button", { name: /commit \d+/ }).length).toBeLessThanOrEqual(26);
@@ -411,6 +413,7 @@ describe("HistoryWorkspace — virtualized history", () => {
       value: atRow * compactRowHeight,
     });
     fireEvent.scroll(scroller);
+    fireEvent(scroller, new Event("scrollend"));
     return scroller;
   };
   const graphCalls = () =>

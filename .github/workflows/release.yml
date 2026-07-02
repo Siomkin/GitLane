@@ -19,11 +19,18 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Self-hosted runners may export a host-level CARGO_TARGET_DIR. Tauri's CLI
+  # honors it, but tauri-action discovers release artifacts under
+  # src-tauri/target, so keep the build output inside the checkout.
+  CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
 
 jobs:
   preflight:
     name: Release preflight
-    runs-on: ubuntu-24.04
+    # Run preflight on the self-hosted Mac mini so a release fails before the
+    # matrix if the macOS runner is unavailable or not started from the GUI
+    # session needed for DMG packaging. (GL-78)
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 35
     outputs:
       release_tag: ${{ steps.release-tag.outputs.release_tag }}
@@ -39,13 +46,11 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          # Release preflight only needs cache restore. Saving src-tauri/target on
+          # the self-hosted Mac has timed out after validation already passed.
+          save-if: "false"
 
       - uses: oven-sh/setup-bun@v2
-
-      - name: Install Linux Tauri dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -181,6 +186,10 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          # Release matrix jobs only need cache restore. Saving the full packaged
+          # target directory after macOS bundling can hang in post-job cleanup and
+          # block the release after artifacts were already uploaded.
+          save-if: "false"
 
       - uses: oven-sh/setup-bun@v2
 

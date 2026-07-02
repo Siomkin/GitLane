@@ -38,7 +38,7 @@ import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import type { RepoState } from "@/store/repoTypes";
-import { buildCommitBatchPlan, getSquashEligibility, isCommitReachableFromRemote } from "@/store/selection";
+import { buildCommitBatchPlan, buildSquashMessage, getSquashEligibility, isCommitReachableFromRemote } from "@/store/selection";
 import { useUi, type ConfirmRequest, type PromptRequest } from "@/store/ui";
 import { Backdrop, MenuPanel, useBranchOp, useFittedMenuPosition, type MenuItem } from "./shared";
 
@@ -761,8 +761,12 @@ export function CommitContextMenu() {
               requestPrompt({
                 title: `Squash ${n} commits into one`,
                 message: "Only local, unpublished commits at the current branch tip can be squashed.",
-                placeholder: "Commit message",
-                defaultValue: "Squash commits",
+                placeholder: "Subject\n\nDescription",
+                // Seed with the combined original messages so the squash keeps their
+                // content and stays valid for repos whose commit-msg hook enforces a
+                // format (e.g. Conventional Commits); a generic placeholder is rejected.
+                defaultValue: buildSquashMessage(graph, orderedSel),
+                multiline: true,
                 confirmLabel: "Squash",
                 onSubmit: (msg) => void run(() => squashSelection(orderedSel, msg)),
               }),

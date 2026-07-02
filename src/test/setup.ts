@@ -8,6 +8,19 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
 
+// TanStack Virtual uses a debounced timer fallback when native `scrollend`
+// support is absent. jsdom tears down `window` after each test file, so a
+// pending fallback can fire after cleanup and surface as an unrelated
+// `window is not defined` unhandled error. Mark the event as supported so
+// virtualized tests follow the event-driven path instead.
+if (typeof window !== "undefined" && !("onscrollend" in window)) {
+  Object.defineProperty(window, "onscrollend", {
+    value: null,
+    configurable: true,
+    writable: true,
+  });
+}
+
 // jsdom + the Node runtime don't expose a usable `localStorage` here, but the
 // persisted Zustand store (store/ui) writes to it on every setState. Install a
 // minimal in-memory shim so persisted stores work headlessly.
