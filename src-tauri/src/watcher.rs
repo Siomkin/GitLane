@@ -6,8 +6,15 @@
 //! the graph; refs/HEAD/other git metadata conservatively request a full sync.
 //!
 //! macOS uses FSEvents (directory-level, cheap) so a recursive watch of the
-//! worktree is fine even with large `node_modules`/`target` trees. Bursts are
-//! throttled here and debounced again on the frontend.
+//! worktree is affordable even with large `node_modules`/`target` trees. That
+//! does not hold on Windows: `ReadDirectoryChangesW` reports *per-file* events,
+//! so a `cargo build` or `bun install` floods the watcher with churn from
+//! ignored directories, each event re-arming the throttle and driving a
+//! redundant status re-sync. Paths covered by the repository's ignore rules
+//! (`.gitignore` et al, via libgit2) are therefore dropped before any throttle
+//! or fingerprint work — on every platform, since ignored files never affect
+//! status or the graph. Bursts of the remaining events are throttled here and
+//! debounced again on the frontend.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -40,6 +47,9 @@ enum PathImpact {
     Worktree,
     Graph,
     Ambiguous,
+    /// Every path in the event is covered by the repo's ignore rules
+    /// (e.g. `target/`, `node_modules/`) — never worth a re-sync.
+    Ignored,
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -54,6 +64,11 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
     let mut last = Instant::now() - THROTTLE;
     let mut last_kind = ChangeKind::Worktree;
     let mut last_graph_fingerprint = graph_fingerprint(&root);
+    // Held open for the life of the watch so ignore checks don't re-open the
+    // repo per event (libgit2 revalidates cached ignore files by filestamp, so
+    // `.gitignore` edits are picked up). The handle stays on the watcher
+    // thread — it never crosses the async command boundary.
+    let ignore_repo = git2::Repository::discover(&root).ok();
 
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(event) = res else { return };
@@ -61,7 +76,9 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
         if event.kind.is_access() {
             return;
         }
-        let impact = classify_paths(&root, &event.paths);
+        let impact = classify_paths(&root, &event.paths, |relative| {
+            is_ignored(ignore_repo.as_ref(), relative)
+        });
         let now = Instant::now();
         let throttled = now.duration_since(last) < THROTTLE;
         // Pass a *lazy* fingerprint: `decide_emission` only hashes the ref set
@@ -91,7 +108,14 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
     Ok(())
 }
 
-fn classify_paths(root: &Path, paths: &[PathBuf]) -> PathImpact {
+fn classify_paths(
+    root: &Path,
+    paths: &[PathBuf],
+    is_ignored: impl Fn(&Path) -> bool,
+) -> PathImpact {
+    // An event whose paths all fall under ignore rules is dropped outright;
+    // an empty path list stays conservative (worktree refresh).
+    let mut saw_relevant = paths.is_empty();
     for path in paths {
         let Ok(relative) = path.strip_prefix(root) else {
             return PathImpact::Graph;
@@ -105,8 +129,16 @@ fn classify_paths(root: &Path, paths: &[PathBuf]) -> PathImpact {
             return PathImpact::Ambiguous;
         };
         if first.as_os_str() != ".git" {
+            // Build/install churn in ignored trees (`target/`, `node_modules/`)
+            // never changes status or the graph — skip it before it can count
+            // toward a re-sync.
+            if is_ignored(relative) {
+                continue;
+            }
+            saw_relevant = true;
             continue;
         }
+        saw_relevant = true;
 
         let Some(metadata) = components.next() else {
             return PathImpact::Graph;
@@ -116,7 +148,31 @@ fn classify_paths(root: &Path, paths: &[PathBuf]) -> PathImpact {
             return PathImpact::Graph;
         }
     }
-    PathImpact::Worktree
+    if saw_relevant {
+        PathImpact::Worktree
+    } else {
+        PathImpact::Ignored
+    }
+}
+
+/// Whether a worktree-relative path is covered by the repository's ignore
+/// rules. The path is re-joined with `/` separators because libgit2 matches
+/// ignore patterns against slash-separated paths (Windows events arrive with
+/// `\`). Errors and the no-repo case fall back to "not ignored" so filtering
+/// can only ever suppress noise, never a real change.
+fn is_ignored(repo: Option<&git2::Repository>, relative: &Path) -> bool {
+    let Some(repo) = repo else { return false };
+    let mut normalized = String::new();
+    for component in relative.components() {
+        if !normalized.is_empty() {
+            normalized.push('/');
+        }
+        normalized.push_str(&component.as_os_str().to_string_lossy());
+    }
+    if normalized.is_empty() {
+        return false;
+    }
+    repo.is_path_ignored(&normalized).unwrap_or(false)
 }
 
 fn resolve_change_kind(
@@ -125,6 +181,9 @@ fn resolve_change_kind(
     current_fingerprint: Option<u64>,
 ) -> ChangeKind {
     match impact {
+        // Filtered out by `decide_emission` before kind resolution; mapped to
+        // the mildest kind rather than panicking on the watcher thread.
+        PathImpact::Ignored => ChangeKind::Worktree,
         PathImpact::Worktree => ChangeKind::Worktree,
         PathImpact::Graph => {
             *previous_fingerprint = current_fingerprint;
@@ -157,6 +216,11 @@ fn decide_emission(
     previous_fingerprint: &mut Option<u64>,
     fingerprint: impl FnOnce() -> Option<u64>,
 ) -> Option<ChangeKind> {
+    // Ignored-tree churn is dropped before any throttle or fingerprint work —
+    // it must not re-arm the window, cost a hash, or reach the frontend.
+    if impact == PathImpact::Ignored {
+        return None;
+    }
     // A graph event may upgrade an earlier worktree event in the same burst;
     // everything else inside the window is left to the frontend debounce. Both
     // suppressed cases are decided without a fingerprint.
@@ -202,7 +266,9 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_paths, decide_emission, resolve_change_kind, ChangeKind, PathImpact};
+    use super::{
+        classify_paths, decide_emission, is_ignored, resolve_change_kind, ChangeKind, PathImpact,
+    };
     use std::cell::Cell;
     use std::path::{Path, PathBuf};
 
@@ -210,11 +276,26 @@ mod tests {
         values.iter().map(PathBuf::from).collect()
     }
 
+    /// Ignore predicate for tests that exercise classification without a real
+    /// repository: nothing is ignored.
+    fn none_ignored(_: &Path) -> bool {
+        false
+    }
+
+    /// Stand-in for the repo's ignore rules in a typical GitLane-like project.
+    fn build_dirs_ignored(relative: &Path) -> bool {
+        relative.starts_with("node_modules") || relative.starts_with("src-tauri/target")
+    }
+
     #[test]
     fn worktree_and_index_changes_do_not_request_graph_rebuilds() {
         let root = Path::new("/repo");
         assert_eq!(
-            classify_paths(root, &paths(&["/repo/src/main.ts", "/repo/.git/index"])),
+            classify_paths(
+                root,
+                &paths(&["/repo/src/main.ts", "/repo/.git/index"]),
+                none_ignored
+            ),
             PathImpact::Worktree
         );
     }
@@ -229,17 +310,101 @@ mod tests {
             "/repo/.git/objects/ab/cdef",
         ] {
             assert_eq!(
-                classify_paths(root, &paths(&[path])),
+                classify_paths(root, &paths(&[path]), none_ignored),
                 PathImpact::Graph,
                 "{path}"
             );
         }
     }
 
+    /// The Windows regression (GL-101): `ReadDirectoryChangesW` reports every
+    /// file a `cargo build` / `bun install` touches, so churn confined to
+    /// ignored trees must classify as `Ignored` — not `Worktree` — or each
+    /// event re-arms the throttle and drives a redundant status re-sync.
+    #[test]
+    fn churn_inside_ignored_trees_is_dropped() {
+        let root = Path::new("/repo");
+        assert_eq!(
+            classify_paths(
+                root,
+                &paths(&[
+                    "/repo/src-tauri/target/debug/incremental/foo.o",
+                    "/repo/node_modules/react/index.js",
+                ]),
+                build_dirs_ignored
+            ),
+            PathImpact::Ignored
+        );
+    }
+
+    #[test]
+    fn ignored_churn_does_not_mask_real_changes_in_the_same_event() {
+        let root = Path::new("/repo");
+        // A tracked worktree file alongside build churn still refreshes status…
+        assert_eq!(
+            classify_paths(
+                root,
+                &paths(&["/repo/node_modules/react/index.js", "/repo/src/main.ts"]),
+                build_dirs_ignored
+            ),
+            PathImpact::Worktree
+        );
+        // …and git metadata alongside build churn still rebuilds the graph.
+        assert_eq!(
+            classify_paths(
+                root,
+                &paths(&["/repo/src-tauri/target/debug/app", "/repo/.git/HEAD"]),
+                build_dirs_ignored
+            ),
+            PathImpact::Graph
+        );
+    }
+
+    #[test]
+    fn ignored_events_are_suppressed_without_fingerprinting_or_rearming() {
+        let calls = Cell::new(0);
+        let mut fp = Some(1);
+        for throttled in [false, true] {
+            assert_eq!(
+                decide_emission(
+                    throttled,
+                    ChangeKind::Worktree,
+                    PathImpact::Ignored,
+                    &mut fp,
+                    counting(Some(2), &calls),
+                ),
+                None
+            );
+        }
+        assert_eq!(calls.get(), 0, "ignored churn must never pay the ref hash");
+        assert_eq!(fp, Some(1), "ignored churn must not move the baseline");
+    }
+
+    /// `is_ignored` honours the repository's real `.gitignore` (rather than a
+    /// hardcoded denylist), and fails open when there is no repo to consult.
+    #[test]
+    fn ignore_checks_use_the_repositorys_gitignore() {
+        let dir = std::env::temp_dir().join(format!("gitlane-watch-ignore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let repo = git2::Repository::init(&dir).expect("init repo");
+        std::fs::write(dir.join(".gitignore"), "target/\nnode_modules/\n").expect("write ignore");
+
+        assert!(is_ignored(Some(&repo), Path::new("target/debug/app.o")));
+        assert!(is_ignored(Some(&repo), Path::new("node_modules/react/index.js")));
+        assert!(!is_ignored(Some(&repo), Path::new("src/main.rs")));
+        assert!(!is_ignored(Some(&repo), Path::new(".gitignore")));
+        // Without a repository the filter fails open: nothing is dropped.
+        assert!(!is_ignored(None, Path::new("target/debug/app.o")));
+
+        drop(repo);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn root_events_use_the_ref_fingerprint() {
         assert_eq!(
-            classify_paths(Path::new("/repo"), &paths(&["/repo"])),
+            classify_paths(Path::new("/repo"), &paths(&["/repo"]), none_ignored),
             PathImpact::Ambiguous
         );
         let mut fingerprint = Some(10);
