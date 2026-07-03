@@ -1,4 +1,5 @@
 import { api } from "../lib/api";
+import { invalidateFileDiffReconciles } from "./repoFileDiff";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { computeSelection } from "./selection";
 import { useUi } from "./ui";
@@ -147,6 +148,9 @@ export function createRepoSelectionActions(
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
         selectionKey(get().selectionDiff?.commits) === selKey;
+      // An explicit selection supersedes any background reconcile in flight —
+      // its result must not publish over this fresher fetch (GL-123).
+      invalidateFileDiffReconciles();
       set({ selectedFile: { path, source }, diffLoading: true, error: null });
       try {
         // In a multi-commit selection a committed file's diff is the merged
@@ -175,6 +179,9 @@ export function createRepoSelectionActions(
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
         selectionKey(get().selectionDiff?.commits) === selKey;
+      // See selectFile: drop any in-flight reconcile so it can't overwrite the
+      // expanded diff after this load completes.
+      invalidateFileDiffReconciles();
       set({ diffLoading: true });
       try {
         const fileDiff =
