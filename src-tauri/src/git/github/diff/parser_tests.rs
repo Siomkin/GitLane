@@ -324,3 +324,33 @@ fn parses_real_two_commit_gh_patch() {
     let added = files.iter().filter(|f| f.status == "A").count();
     assert_eq!(added, 5);
 }
+
+// A malformed `@@` header still opens its (empty) hunk, but must not inherit
+// the previous hunk's unconsumed counts — following lines would otherwise
+// attach to the wrong hunk. The first hunk deliberately overstates its counts
+// so leftovers exist when the bad header arrives.
+const MALFORMED_HEADER: &str = "\
+diff --git a/a.txt b/a.txt
+index 1111111..2222222 100644
+--- a/a.txt
++++ b/a.txt
+@@ -1,5 +1,5 @@
+ one
+-two
++TWO
+@@ garbage @@
+ stray context
++stray add
+";
+
+#[test]
+fn malformed_hunk_header_resets_leftover_counts() {
+    let files = parse_unified_diff(MALFORMED_HEADER);
+    assert_eq!(files.len(), 1);
+    let f = &files[0];
+    assert_eq!(f.hunks.len(), 2);
+    assert_eq!(f.hunks[0].lines.len(), 3);
+    // The garbage hunk owns no counts, so the stray lines are dropped.
+    assert!(f.hunks[1].lines.is_empty());
+    assert_eq!((f.add, f.del), (1, 1));
+}

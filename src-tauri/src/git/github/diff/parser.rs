@@ -73,6 +73,12 @@ pub(super) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
                 new_no = ns;
                 old_left = oc;
                 new_left = nc;
+            } else {
+                // A malformed header still opens a (empty) hunk, but must not
+                // inherit the previous hunk's leftover counts — following
+                // lines would attach to the wrong hunk.
+                old_left = 0;
+                new_left = 0;
             }
             file.hunks.push(DiffHunk {
                 header: line.to_string(),
