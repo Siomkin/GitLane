@@ -2486,7 +2486,13 @@ fn merge_pins_no_ff_against_merge_ff_config() {
     repo.git_ok(&["config", "merge.ff", "only"]);
     repo.git_ok(&["checkout", "-q", "main"]);
 
-    merge(repo.path(), "feature").expect("merge succeeds despite merge.ff=only");
+    let out = merge(repo.path(), "feature").expect("merge succeeds despite merge.ff=only");
+    // Guard the store's toast mapping: a merge that really created a commit
+    // must never carry the up-to-date phrase (`src/lib/mergeOutcome.ts`).
+    assert!(
+        !out.contains("Already up to date"),
+        "a real merge must not report up-to-date: {out}"
+    );
 
     // HEAD is a merge commit: `rev-list --parents -1` lists the commit plus its
     // two parents (three whitespace-separated hashes). A fast-forward would have
@@ -2499,6 +2505,48 @@ fn merge_pins_no_ff_against_merge_ff_config() {
         hashes, 3,
         "expected a merge commit (commit + 2 parents), got {hashes} hashes: {line:?}"
     );
+}
+
+#[test]
+fn merge_of_an_already_reachable_branch_reports_up_to_date_and_creates_nothing() {
+    let repo = TempRepo::new("merge-up-to-date");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("file.txt"), b"base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let head = |repo: &TempRepo| {
+        let out = repo.git(&["rev-parse", "HEAD"]);
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // Equal tips (the menu offers Merge here since GL-113): `--no-ff` does NOT
+    // force a merge commit — git exits 0 with "Already up to date." and creates
+    // nothing. The store keys its toast off that output, and the subprocess is
+    // pinned to LC_ALL=C so the phrase is stable under a localized git.
+    let before = head(&repo);
+    let out = merge(repo.path(), "feature").expect("merge of an equal tip succeeds");
+    assert!(
+        out.contains("Already up to date"),
+        "equal tips must report up-to-date: {out}"
+    );
+    assert_eq!(head(&repo), before, "no commit may be created for equal tips");
+
+    // Already-merged ancestor: same no-op once main moves ahead of feature.
+    std::fs::write(repo.0.join("file.txt"), b"ahead\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-am", "ahead"]);
+    let before = head(&repo);
+    let out = merge(repo.path(), "feature").expect("merge of an ancestor succeeds");
+    assert!(
+        out.contains("Already up to date"),
+        "an ancestor must report up-to-date: {out}"
+    );
+    assert_eq!(head(&repo), before, "no commit may be created for an ancestor");
 }
 
 #[test]
