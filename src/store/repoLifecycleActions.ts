@@ -165,6 +165,10 @@ export function createRepoLifecycleActions(
       useUi.getState().closeConfirm();
       useUi.getState().closeRecovery();
       useUi.getState().closePrompt();
+      // The hand-off dialog is repo-bound too — but its own success path routes
+      // through loadRepo(destination), and closing it then would drop the result
+      // screen mid-hand-off. Only close it when no move is in flight (GL-105).
+      if (!useUi.getState().handoffRunning) useUi.getState().closeHandoff();
 
       // Reset PR state and resolve the new repo's account binding the moment the
       // summary is published — before awaiting the graph — so the ActionBar can't
@@ -358,12 +362,14 @@ export function createRepoLifecycleActions(
         });
         usePulls.getState().reset();
         // Closing the last tab drops to the welcome screen; any open repo-bound
-        // overlay (destructive confirm, reflog-recovery dialog, or prompt) was
-        // bound to the now-closed repo, so clear them too. The switch-to-neighbour
-        // branch below routes through `loadRepo`, which already does this. GL-42.
+        // overlay (destructive confirm, reflog-recovery dialog, prompt, or
+        // hand-off dialog) was bound to the now-closed repo, so clear them too.
+        // The switch-to-neighbour branch below routes through `loadRepo`, which
+        // already does this. GL-42.
         useUi.getState().closeConfirm();
         useUi.getState().closeRecovery();
         useUi.getState().closePrompt();
+        useUi.getState().closeHandoff();
         return;
       }
       const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0];

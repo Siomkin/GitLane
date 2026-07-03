@@ -3,7 +3,7 @@ import { focusRing } from "../../../lib/ui";
 import { worktreeIndicatorView } from "../../../lib/worktrees";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
-import { handoffDestinationOptions, promptWorktreeHandoff } from "../../../lib/worktreeHandoff";
+import { handoffDestinationOptions, startWorktreeHandoff } from "../../../lib/worktreeHandoff";
 import { ArrowLeftIcon, TreeIcon } from "../../ui/icons";
 
 /** Toolbar cluster shown only when the open repo is itself a linked worktree
@@ -25,10 +25,8 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
   const worktrees = useRepo((s) => s.worktrees);
   const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const openNav = useUi((s) => s.openNav);
-  const requestPrompt = useUi((s) => s.requestPrompt);
-  const requestConfirm = useUi((s) => s.requestConfirm);
+  const openHandoff = useUi((s) => s.openHandoff);
   const showToast = useUi((s) => s.showToast);
 
   const view = worktreeIndicatorView(worktrees, summary);
@@ -53,19 +51,13 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
   const canHandoff = !!branch && handoffDestinationOptions(worktrees, view.path).length > 0;
   const handoff = () => {
     if (!branch) return;
-    promptWorktreeHandoff({
+    startWorktreeHandoff({
       branch,
       sourcePath: view.path,
       worktrees,
       sourceChanges:
         changes.staged.length + changes.unstaged.length + changes.conflicted.length,
-      requestPrompt,
-      requestConfirm,
-      run: (op) =>
-        void op()
-          .then((m) => showToast(m))
-          .catch((e) => showToast(String(e), "error")),
-      moveBranchToWorktree,
+      openHandoff,
       onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
     });
   };

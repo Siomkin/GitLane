@@ -10,6 +10,7 @@ import {
   ConfirmDialog,
   CreateBranchDialog,
   FileContextMenu,
+  HandoffDialog,
   PromptDialog,
   StashContextMenu,
   TagContextMenu,
@@ -325,6 +326,7 @@ const App = () => {
       <CommitModal />
       <ConfirmDialog />
       <PromptDialog />
+      <HandoffDialog />
       <Toast />
       <Tooltip />
 

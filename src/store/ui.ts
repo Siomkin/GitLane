@@ -160,6 +160,20 @@ export interface PromptOption {
   hint?: string;
 }
 
+/** A pending worktree branch hand-off (GL-74), rendered by the dedicated
+ * HandoffDialog: destination picker → live step checklist → success message.
+ * Only the subject crosses the store; the dialog owns destination choice and
+ * run/progress state (transient, per-open). */
+export interface HandoffRequest {
+  /** The branch being handed off. */
+  branch: string;
+  /** Absolute path of the worktree the branch is moving out of. */
+  sourcePath: string;
+  /** Count of the source's uncommitted files, or null when unknown (the flow
+   * was started from a menu whose worktree isn't the open repo). */
+  sourceChanges: number | null;
+}
+
 export interface PromptRequest {
   title: string;
   /** Optional helper line under the title. */
@@ -330,6 +344,12 @@ interface UiState {
   confirm: ConfirmRequest | null;
   /** Pending text-input modal (null = none open). */
   prompt: PromptRequest | null;
+  /** Pending worktree branch hand-off modal (null = none open). */
+  handoff: HandoffRequest | null;
+  /** True while a hand-off move is in flight. The success path routes through
+   * `loadRepo(destination)`, whose repo-switch cleanup must NOT close the
+   * dialog then (it's about to show the result); any other repo switch does. */
+  handoffRunning: boolean;
 
   toast: Toast | null;
   /** Floating tooltip (e.g. full branch name on hover of a truncated pill). */
@@ -452,6 +472,12 @@ interface UiState {
   requestPrompt: (req: PromptRequest) => void;
   closePrompt: () => void;
 
+  /** Open the worktree hand-off modal. */
+  openHandoff: (req: HandoffRequest) => void;
+  closeHandoff: () => void;
+  /** Flag a hand-off move as in flight (set by the dialog's run hook). */
+  setHandoffRunning: (running: boolean) => void;
+
   showToast: (message: string, tone?: "ok" | "error") => void;
   dismissToast: () => void;
 }
@@ -541,6 +567,8 @@ export const useUi = create<UiState>()(
   agentMessageBranch: null,
   confirm: null,
   prompt: null,
+  handoff: null,
+  handoffRunning: false,
 
   toast: null,
   tooltip: null,
@@ -714,6 +742,14 @@ export const useUi = create<UiState>()(
 
   requestPrompt: (req) => set({ ...noMenus, prompt: req }),
   closePrompt: () => set({ prompt: null }),
+
+  openHandoff: (req) => set({ ...noMenus, handoff: req }),
+  // Deliberately does NOT clear `handoffRunning`: a dismissed dialog leaves the
+  // move running, and the flag must hold until it settles so loadRepo's overlay
+  // cleanup can tell the hand-off's own destination switch from a genuine one.
+  closeHandoff: () => set((s) => (s.handoff === null ? s : { handoff: null })),
+  setHandoffRunning: (running) =>
+    set((s) => (s.handoffRunning === running ? s : { handoffRunning: running })),
 
   showToast: (message, tone = "ok") => {
     const id = (toastSeq += 1);

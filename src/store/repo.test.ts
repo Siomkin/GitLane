@@ -557,6 +557,70 @@ describe("repo store — large history", () => {
   });
 });
 
+// The hand-off dialog is repo-bound like confirm/prompt/recovery, so a repo
+// switch must clear it — EXCEPT the switch the hand-off itself performs when
+// it lands on the destination (flagged via `handoffRunning`), which is about
+// to show the success screen (GL-105).
+describe("repo store — hand-off overlay lifecycle", () => {
+  const openHandoffDialog = () =>
+    useUi.setState({
+      handoff: { branch: "feature", sourcePath: "/repo-feature", sourceChanges: 1 },
+      handoffRunning: false,
+    });
+  const switchInvoke = (path: string) => (cmd: string) => {
+    if (cmd === "open_repo") return Promise.resolve({ ...summary, path, workdir: path });
+    if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+    return defaultInvoke(cmd);
+  };
+
+  it("closes a stale hand-off dialog on a genuine repo switch", async () => {
+    openHandoffDialog();
+    invokeMock.mockImplementation(switchInvoke("/other"));
+    await useRepo.getState().loadRepo("/other");
+    expect(useUi.getState().handoff).toBeNull();
+  });
+
+  it("keeps the dialog through the hand-off's own destination load", async () => {
+    openHandoffDialog();
+    useUi.setState({ handoffRunning: true });
+    invokeMock.mockImplementation(switchInvoke("/dest"));
+    await useRepo.getState().loadRepo("/dest");
+    expect(useUi.getState().handoff).not.toBeNull();
+    useUi.setState({ handoff: null, handoffRunning: false });
+  });
+
+  it("closes the dialog when the last tab closes", async () => {
+    openHandoffDialog();
+    useRepo.setState({ summary, openPaths: ["/repo"] });
+    await useRepo.getState().closeRepo("/repo");
+    expect(useUi.getState().handoff).toBeNull();
+  });
+
+  // A dismissed dialog leaves the move running in the background; if the user
+  // then closes every tab, landing on the destination would yank the app off
+  // the welcome screen they chose — the result reaches them as a toast instead.
+  it("skips reopening the destination when every tab closed mid-move", async () => {
+    const slowMove = deferred<string>();
+    useRepo.setState({ summary, openPaths: ["/repo"], loading: false });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "move_branch_to_worktree") return slowMove.promise;
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      return defaultInvoke(cmd);
+    });
+
+    const move = useRepo
+      .getState()
+      .moveBranchToWorktree("feature", "/repo-feature", "/repo", true);
+    useRepo.setState({ openPaths: [], summary: null });
+    slowMove.resolve("Moved feature to repo");
+
+    await expect(move).resolves.toBe("Moved feature to repo");
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", expect.anything());
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().loading).toBe(false);
+  });
+});
+
 describe("repo store — reorderOpenPaths", () => {
   it("reorders open repo tabs and keeps the active repo selected", () => {
     localStorage.clear();

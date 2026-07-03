@@ -419,7 +419,6 @@ describe("BranchContextMenu", () => {
   // than a two-step (remove worktree, then delete), the menu offers one combined
   // action; the plain disabled Delete is gone for the linked-worktree case.
   it("promotes Open worktree + offers Hand off / Remove under Worktree for a linked worktree", () => {
-    const moveBranchToWorktree = vi.fn().mockResolvedValue("Handed off feature to repo");
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("feature")],
@@ -427,7 +426,6 @@ describe("BranchContextMenu", () => {
         { name: "repo", path: "/work/repo", branch: "main", isMain: true },
         { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
       ],
-      moveBranchToWorktree,
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
@@ -439,16 +437,13 @@ describe("BranchContextMenu", () => {
     openGroup("Worktree");
     expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "Hand off to…" }));
-    // The picker opens with the branch's *other* worktrees as destinations (the
-    // source worktree is filtered out), then a detach confirm runs the move.
-    const prompt = useUi.getState().prompt;
-    expect(prompt?.title).toBe("Hand off feature to…");
-    expect(prompt?.options?.map((o) => o.value)).toEqual(["/work/repo"]);
-    prompt!.onSubmit("/work/repo");
-    const confirm = useUi.getState().confirm;
-    expect(confirm?.title).toBe("Hand off feature to main?");
-    confirm!.onConfirm();
-    expect(moveBranchToWorktree).toHaveBeenCalledWith("feature", "/work/repo-feature", "/work/repo", true);
+    // The dedicated hand-off dialog opens on the branch's source worktree; its
+    // dirtiness is unknown from here (it isn't the open repo).
+    expect(useUi.getState().handoff).toEqual({
+      branch: "feature",
+      sourcePath: "/work/repo-feature",
+      sourceChanges: null,
+    });
   });
 
   // "Hand off to…" is hidden when no *valid* destination exists — the only other

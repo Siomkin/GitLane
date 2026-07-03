@@ -19,7 +19,7 @@ use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame,
     FileChange,
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
-    OperationStatus,
+    HandoffProgressEvent, OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
     RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
@@ -85,12 +85,14 @@ async fn add_worktree(
 
 #[tauri::command]
 async fn move_branch_to_worktree(
+    app: tauri::AppHandle,
     path: String,
     branch: String,
     from_worktree_path: String,
     to_worktree_path: String,
     carry: bool,
 ) -> Result<String, String> {
+    use tauri::Emitter;
     blocking(move || {
         git::write::move_branch_to_worktree(
             &path,
@@ -98,6 +100,14 @@ async fn move_branch_to_worktree(
             &from_worktree_path,
             &to_worktree_path,
             carry,
+            // Forward each phase to the webview so the hand-off dialog can tick
+            // its checklist live; a lost event only degrades the progress UI.
+            &|step| {
+                let _ = app.emit(
+                    "handoff-progress",
+                    HandoffProgressEvent { step: step.to_string() },
+                );
+            },
         )
     })
     .await
