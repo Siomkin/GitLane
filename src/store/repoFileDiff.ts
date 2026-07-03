@@ -10,17 +10,23 @@
 // one arrives); cf. `refreshCompare`, which likewise reconciles in place.
 
 import { api } from "../lib/api";
-import type { RepoGet, RepoSet } from "./repoTypes";
+import type { ChangeSource, RepoGet, RepoSet } from "./repoTypes";
 
-/** True when the live `selectedFile` still targets exactly `path` in `repo`.
- * A stale-response guard: a slow refetch mustn't clobber a newer selection or a
- * repo switch that happened while it was in flight. Commit selections are never
- * targeted — they read from `commitFiles`, not this working-tree diff. */
-function stillSelected(get: RepoGet, repoPath: string, path: string): boolean {
+// Monotonic counter so overlapping reconciles (watcher ticks outpacing a slow
+// `file_diff`) resolve newest-wins: an older response that lands after a newer
+// reconcile started must not publish over it (same idiom as `repoRequests.ts`).
+let reconcileGeneration = 0;
+
+/** True when the live `selectedFile` still targets exactly `path` *as* `source`
+ * in `repo`. A stale-response guard: a slow refetch mustn't clobber a newer
+ * selection, a repo switch, or — for the same path — a switch between the
+ * staged and unstaged rows (an unstaged diff must never publish into a staged
+ * selection). Commit selections are never targeted — they read immutable oids. */
+function stillSelected(get: RepoGet, repoPath: string, path: string, source: ChangeSource): boolean {
   const sel = get().selectedFile;
   return (
     get().summary?.path === repoPath &&
-    !!sel && sel.source !== "commit" && sel.path === path
+    !!sel && sel.source === source && sel.path === path
   );
 }
 
@@ -28,7 +34,8 @@ function stillSelected(get: RepoGet, repoPath: string, path: string): boolean {
  * Refetch the open working-tree file's diff and publish it into `fileDiff`.
  * Best-effort and fire-and-forget: called by `refresh` after the changed-files
  * list is updated so the open diff follows an external edit. Bails (touching no
- * state) if the selection or repo changed while the request was in flight.
+ * state) if a newer reconcile, a selection/repo change, or a foreground diff
+ * load happened while the request was in flight.
  */
 export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: string): Promise<void> {
   const sel = get().selectedFile;
@@ -38,12 +45,18 @@ export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: st
   // a non-truncated one was fully expanded (either small, or the user hit "show
   // full"), so refetch full to preserve that; a truncated one stays capped.
   const full = get().fileDiff?.truncated === false;
+  const generation = ++reconcileGeneration;
   try {
     // `source` is honored as-is: a file that moved buckets (unstaged→staged)
-    // keeps its selection source, so an unstaged-sourced file now only in the
-    // index yields an empty diff — the same result a re-click would produce.
+    // keeps its selection source until the user picks a row again, so an
+    // unstaged-sourced file now only in the index shows an empty diff rather
+    // than being silently retargeted to the other bucket.
     const fileDiff = await api.fileDiff(repoPath, path, source === "staged", full);
-    if (!stillSelected(get, repoPath, path)) return;
+    if (generation !== reconcileGeneration) return;
+    if (!stillSelected(get, repoPath, path, source)) return;
+    // A foreground load (`selectFile`/`loadFullFileDiff`) owns the pane while
+    // `diffLoading` is up; it will land fresher content, so don't race it.
+    if (get().diffLoading) return;
     // Never downgrade an expanded diff: if "show full" landed while this capped
     // fetch was in flight, dropping its truncated result here keeps the expanded
     // view; the next tick re-derives `full` from it and refetches full.
