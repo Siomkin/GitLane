@@ -533,6 +533,255 @@ describe("repo store — large history", () => {
     expect(useRepo.getState().wipSelected).toBe(false);
   });
 
+  // GL-123: the watcher refresh must also reconcile the diff of the file open in
+  // the viewer (`fileDiff`), so an external edit lands live instead of staying
+  // stale until re-click.
+  describe("open-diff reconcile", () => {
+    // A minimal schema-valid FileDiff (lib/api validates the file_diff shape).
+    const diff = (over: Partial<import("../lib/api").FileDiff> = {}) => ({
+      path: "src/a.ts",
+      status: "M" as const,
+      add: 1,
+      del: 0,
+      binary: false,
+      hunks: [],
+      truncated: false,
+      ...over,
+    });
+
+    it("refetches the open unstaged file's diff on a worktree refresh", async () => {
+      const oldDiff = diff({ add: 0 });
+      const newDiff = diff({ add: 9 });
+      useRepo.setState({
+        changes: { staged: [], unstaged: [], conflicted: [] },
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: oldDiff,
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 9, del: 0, binary: false }],
+          });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        if (cmd === "file_diff") return Promise.resolve(newDiff);
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      // The reconcile is fire-and-forget — flush the microtask queue before asserting.
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("file_diff", {
+          path: "/repo",
+          file: "src/a.ts",
+          staged: false,
+          full: true,
+        }),
+      );
+      expect(useRepo.getState().fileDiff).toEqual(newDiff);
+    });
+
+    it("never flips diffLoading while reconciling", async () => {
+      const slow = deferred<ReturnType<typeof diff>>();
+      useRepo.setState({
+        changes: { staged: [], unstaged: [], conflicted: [] },
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff(),
+        diffLoading: false,
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+          });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        if (cmd === "file_diff") return slow.promise;
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      // With the file_diff still pending, the reconcile must not have raised the spinner.
+      expect(useRepo.getState().diffLoading).toBe(false);
+      slow.resolve(diff({ add: 3 }));
+      await vi.waitFor(() => expect(useRepo.getState().fileDiff?.add).toBe(3));
+      expect(useRepo.getState().diffLoading).toBe(false);
+    });
+
+    it("refetches full when the shown diff is not truncated, capped when it is", async () => {
+      const base = {
+        changes: { staged: [], unstaged: [], conflicted: [] } as WorkingChanges,
+        selectedFile: { path: "src/a.ts", source: "unstaged" as const },
+      };
+      const worktreeInvoke = (cmd: string) => {
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+          });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        if (cmd === "file_diff") return Promise.resolve(diff());
+        return defaultInvoke(cmd);
+      };
+
+      useRepo.setState({ ...base, fileDiff: diff({ truncated: false }) });
+      invokeMock.mockImplementation(worktreeInvoke);
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("file_diff", expect.objectContaining({ full: true })),
+      );
+
+      invokeMock.mockReset();
+      useRepo.setState({ ...base, fileDiff: diff({ truncated: true }) });
+      invokeMock.mockImplementation(worktreeInvoke);
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      await vi.waitFor(() =>
+        expect(invokeMock).toHaveBeenCalledWith("file_diff", expect.objectContaining({ full: false })),
+      );
+    });
+
+    it("never refetches for a commit-source selection", async () => {
+      useRepo.setState({
+        changes: { staged: [], unstaged: [], conflicted: [] },
+        selectedFile: { path: "src/a.ts", source: "commit" },
+        fileDiff: diff(),
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      await Promise.resolve();
+      expect(invokeMock).not.toHaveBeenCalledWith("file_diff", expect.anything());
+    });
+
+    it("clears the selection and skips the refetch when the open file vanished", async () => {
+      useRepo.setState({
+        changes: {
+          staged: [],
+          unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+          conflicted: [],
+        },
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff(),
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        // The file is gone from both buckets — committed/discarded outside the app.
+        if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [] });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      await Promise.resolve();
+      expect(useRepo.getState().selectedFile).toBeNull();
+      expect(useRepo.getState().fileDiff).toBeNull();
+      expect(invokeMock).not.toHaveBeenCalledWith("file_diff", expect.anything());
+    });
+
+    it("reconciles the open diff on an all-scope refresh too", async () => {
+      const newDiff = diff({ add: 7 });
+      useRepo.setState({
+        graph: emptyGraph,
+        selectedCommit: null,
+        changes: { staged: [], unstaged: [], conflicted: [] },
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff({ add: 0 }),
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "open_repo") return Promise.resolve(summary);
+        if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 7, del: 0, binary: false }],
+          });
+        if (cmd === "file_diff") return Promise.resolve(newDiff);
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false });
+      await vi.waitFor(() => expect(useRepo.getState().fileDiff).toEqual(newDiff));
+      expect(invokeMock).toHaveBeenCalledWith(
+        "file_diff",
+        expect.objectContaining({ path: "/repo", file: "src/a.ts", staged: false }),
+      );
+    });
+
+    it("a stale reconcile cannot clobber a newer selection", async () => {
+      const slow = deferred<ReturnType<typeof diff>>();
+      const newerDiff = diff({ path: "src/b.ts", add: 5 });
+      useRepo.setState({
+        changes: {
+          staged: [],
+          unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+          conflicted: [],
+        },
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff(),
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+          });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        if (cmd === "file_diff") return slow.promise;
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      // Before the in-flight reconcile resolves, the user selects another file.
+      useRepo.setState({
+        selectedFile: { path: "src/b.ts", source: "unstaged" },
+        fileDiff: newerDiff,
+      });
+      slow.resolve(diff({ path: "src/a.ts", add: 99 }));
+      await slow.promise;
+      await Promise.resolve();
+      expect(useRepo.getState().fileDiff).toEqual(newerDiff);
+    });
+
+    it("a capped reconcile cannot downgrade a diff expanded while it was in flight", async () => {
+      const slow = deferred<ReturnType<typeof diff>>();
+      const expanded = diff({ truncated: false, add: 4 });
+      useRepo.setState({
+        changes: { staged: [], unstaged: [], conflicted: [] },
+        // The shown diff is truncated, so the reconcile fetches capped.
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff({ truncated: true }),
+      });
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+          });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        if (cmd === "file_diff") return slow.promise;
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      // "Show full" lands while the capped reconcile is still in flight.
+      useRepo.setState({ fileDiff: expanded });
+      slow.resolve(diff({ truncated: true, add: 2 }));
+      await slow.promise;
+      await Promise.resolve();
+      expect(useRepo.getState().fileDiff).toEqual(expanded);
+    });
+  });
+
   it("ignores a stale load-more result after a newer full refresh", async () => {
     const slowLoadMore = deferred<typeof emptyGraph>();
     const refreshedGraph = { ...emptyGraph, head: "fresh" };

@@ -21,6 +21,7 @@ import {
   openIntentIsCurrent,
   takePendingRefresh,
 } from "./repoRequests";
+import { reconcileFileDiff } from "./repoFileDiff";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import {
   persistRecents,
@@ -782,6 +783,11 @@ export function createRepoLifecycleActions(
           // worktree-scope event (edit/stage/terminal commit) must refresh it.
           // Ref-to-ref comparisons are pinned to commits and don't change here.
           if (get().compare?.head === null) void get().refreshCompare();
+          // The changed-files list updated above, but the file open in the diff
+          // viewer (`fileDiff`) is a separate slice `refresh` doesn't touch — so
+          // an external edit to it would stay stale until re-click. Refetch it
+          // quietly; skip when it was just cleared as gone (GL-123).
+          if (!selectedFileGone) void reconcileFileDiff(set, get, summary.path);
           return;
         }
 
@@ -911,6 +917,9 @@ export function createRepoLifecycleActions(
         // one — set changed, or a prior error to retry. Fire-and-forget so it
         // doesn't delay the queue.
         if (multiNow && !reuseUnion) void loadSelectionUnion(set, get, nextSummary.path, selectedCommits);
+        // Reconcile the open working-tree diff after a full refresh too — see the
+        // worktree-scope path above; skip when the selection was cleared as gone (GL-123).
+        if (!gone) void reconcileFileDiff(set, get, nextSummary.path);
         // A full refresh can move branch/commit tips, so re-run any open
         // comparison (ref-to-ref as well as working-tree) to keep it truthful.
         if (get().compare) void get().refreshCompare();
