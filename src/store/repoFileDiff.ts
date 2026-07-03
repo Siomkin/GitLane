@@ -17,6 +17,14 @@ import type { ChangeSource, RepoGet, RepoSet } from "./repoTypes";
 // reconcile started must not publish over it (same idiom as `repoRequests.ts`).
 let reconcileGeneration = 0;
 
+/** Drop any in-flight reconcile. Called by the foreground loaders
+ * (`selectFile`/`loadFullFileDiff`) so a reconcile that started before them
+ * can't publish over their fresher result after they complete — the
+ * `diffLoading` check below only covers the window while they're in flight. */
+export function invalidateFileDiffReconciles(): void {
+  reconcileGeneration++;
+}
+
 /** True when the live `selectedFile` still targets exactly `path` *as* `source`
  * in `repo`. A stale-response guard: a slow refetch mustn't clobber a newer
  * selection, a repo switch, or — for the same path — a switch between the

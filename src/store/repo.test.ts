@@ -901,6 +901,40 @@ describe("repo store — large history", () => {
       expect(useRepo.getState().fileDiff).toEqual(shown);
     });
 
+    it("a stale reconcile cannot overwrite a completed foreground re-select of the same file", async () => {
+      const slow = deferred<ReturnType<typeof diff>>();
+      const foreground = diff({ add: 6 });
+      useRepo.setState({
+        changes: { staged: [], unstaged: [], conflicted: [] },
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff(),
+        diffLoading: false,
+      });
+      let diffCalls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "working_changes")
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "src/a.ts", status: "M", add: 6, del: 0, binary: false }],
+          });
+        if (cmd === "operation_status")
+          return Promise.resolve({ kind: "none", canSkip: false, conflicts: [] });
+        // The reconcile's fetch stalls; the user's re-click resolves immediately.
+        if (cmd === "file_diff") return ++diffCalls === 1 ? slow.promise : Promise.resolve(foreground);
+        return defaultInvoke(cmd);
+      });
+
+      await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+      // The user re-clicks the same row; selectFile completes (diffLoading back
+      // to false) before the reconcile's slower response lands.
+      await useRepo.getState().selectFile("src/a.ts", "unstaged");
+      expect(useRepo.getState().fileDiff).toEqual(foreground);
+      slow.resolve(diff({ add: 99 }));
+      await slow.promise;
+      await Promise.resolve();
+      expect(useRepo.getState().fileDiff).toEqual(foreground);
+    });
+
     it("keeps the selection source when the file moved buckets, showing its (empty) diff", async () => {
       const emptyDiff = diff({ add: 0, del: 0 });
       useRepo.setState({
