@@ -88,7 +88,12 @@ pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
     let repo = open(path)?;
     let detached = repo.head_detached().unwrap_or(false);
 
-    let head = repo.head().ok();
+    let head = repo.head();
+    // An unborn HEAD (fresh `git init`, no commits yet) is a real state, not a
+    // read failure — surfaced so the UI can say "No commits yet" instead of
+    // the ambiguous "No branch" (GL-115).
+    let unborn = matches!(&head, Err(e) if e.code() == git2::ErrorCode::UnbornBranch);
+    let head = head.ok();
     let head_branch = if detached {
         None
     } else {
@@ -113,6 +118,7 @@ pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
         head_branch,
         head_oid,
         detached,
+        unborn,
         is_worktree: repo.is_worktree(),
         main_path: main_worktree_path(&repo),
     })

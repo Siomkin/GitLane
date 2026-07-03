@@ -62,6 +62,10 @@ export interface RepoSummary {
   headBranch: string | null;
   headOid: string | null;
   detached: boolean;
+  /** True when HEAD is unborn (fresh `git init`, no commits yet) — the UI
+   * shows "No commits yet" instead of "No branch". Optional for
+   * backward-compatible fixtures; the backend always sends it. */
+  unborn?: boolean;
   /** True when this checkout is a *linked* worktree. Optional for
    * backward-compatible fixtures; the backend always sends it. */
   isWorktree?: boolean;
