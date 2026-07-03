@@ -8,6 +8,9 @@ interface ProjectTabProps {
   path: string;
   index: number;
   active: boolean;
+  /** True when this tab's path failed to resolve (the missing-repo state,
+   * GL-108) — flagged amber like the recents list's "Missing" badge. */
+  missing?: boolean;
   onSelect: () => void;
   onClose: () => void;
 }
@@ -16,6 +19,7 @@ export const ProjectTab = ({
   path,
   index,
   active,
+  missing = false,
   onSelect,
   onClose,
 }: ProjectTabProps) => {
@@ -41,7 +45,7 @@ export const ProjectTab = ({
         <FolderIcon
           className={cn(
             "absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
-            active ? "text-[color:var(--accent)]" : "text-neutral-400",
+            missing ? "text-amber-500" : active ? "text-[color:var(--accent)]" : "text-neutral-400",
           )}
         />
         <button

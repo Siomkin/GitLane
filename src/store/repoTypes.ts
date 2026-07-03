@@ -90,6 +90,16 @@ export interface SelectionDiffState {
   error: string | null;
 }
 
+/** The dedicated missing-repo tab state (GL-108). Set when opening a tab whose
+ * path no longer resolves — the workspace swaps to a recovery screen offering
+ * Remove / Locate… / Retry instead of the raw open error on the global bar. */
+export interface MissingRepoState {
+  path: string;
+  /** `missing` = the path is gone (moved, deleted, or unmounted volume);
+   * `notARepository` = the folder exists but lost its `.git`. */
+  kind: "missing" | "notARepository";
+}
+
 /** Which two endpoints a compare view is showing. */
 export type CompareScope = "upstream" | "branch" | "commit" | "working";
 
@@ -136,6 +146,10 @@ export interface RepoState {
   stashes: StashEntry[];
   /** Paths of all open repositories — the tab strip. */
   openPaths: string[];
+  /** The active tab whose repository path failed to resolve (GL-108), or null.
+   * Mutually exclusive with a live [`summary`] — entering it clears the repo
+   * data, and a successful open clears it back. */
+  missingRepo: MissingRepoState | null;
   /** Recently-opened repositories for the onboarding "Recent" list (most-recent
    * first). Updated on each successful open; persisted to localStorage. */
   recents: RecentRepo[];
@@ -194,6 +208,10 @@ export interface RepoState {
   refreshRecents: () => Promise<void>;
   /** Drop one recent entry (e.g. a missing path the user dismisses). */
   removeRecent: (path: string) => void;
+  /** Locate… on the missing-repo state (GL-108): folder picker → carry the dead
+   * path's per-repo bindings to the picked repo → replace the stale tab and
+   * recents entry → open it. A non-repo pick keeps the missing state (toast). */
+  locateMissingRepo: () => Promise<void>;
   /** Clear the entire recent list. */
   clearRecents: () => void;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working
@@ -424,6 +442,7 @@ export type RepoDataState = Pick<
   | "worktrees"
   | "stashes"
   | "openPaths"
+  | "missingRepo"
   | "recents"
   | "changes"
   | "operation"
@@ -468,6 +487,7 @@ export function createInitialRepoData(
     worktrees: [],
     stashes: [],
     openPaths,
+    missingRepo: null,
     recents,
     changes: emptyChanges,
     operation: null,

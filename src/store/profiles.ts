@@ -95,6 +95,27 @@ function setAppliedProfileId(path: string, id: string | null) {
   writeJsonMap(LS_REPO_PROFILE, all);
 }
 
+/** Carry a relocated repo's per-path profile entries — the applied profile id
+ * and the custom-email overrides — from its stale path to the new one (GL-108
+ * Locate…). An entry already stored for the new path wins; the stale path's
+ * entries are dropped either way. The applied config itself lives in the
+ * repo's local git config and moved with the folder. */
+export function migrateProfileBindings(fromPath: string, toPath: string) {
+  const applied = readAppliedIds();
+  if (applied[fromPath] !== undefined && applied[toPath] === undefined) {
+    applied[toPath] = applied[fromPath];
+  }
+  delete applied[fromPath];
+  writeJsonMap(LS_REPO_PROFILE, applied);
+
+  const overrides = readOverrides();
+  if (overrides[fromPath] !== undefined && overrides[toPath] === undefined) {
+    overrides[toPath] = overrides[fromPath];
+  }
+  delete overrides[fromPath];
+  writeJsonMap(LS_CUSTOM_EMAIL, overrides);
+}
+
 /** Remove every reference to a deleted profile id from the per-repo applied-id
  * and custom-email maps, so a stale id can't reselect a wrong duplicate and
  * orphaned overrides don't linger. */

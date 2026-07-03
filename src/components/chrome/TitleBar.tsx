@@ -13,6 +13,7 @@ import { WindowControls } from "./WindowControls";
 
 export const TitleBar = () => {
   const summary = useRepo((state) => state.summary);
+  const missingPath = useRepo((state) => state.missingRepo?.path ?? null);
   const openPaths = useRepo((state) => state.openPaths);
   const loadRepo = useRepo((state) => state.loadRepo);
   const closeRepo = useRepo((state) => state.closeRepo);
@@ -22,7 +23,9 @@ export const TitleBar = () => {
   const onSettings = useUi((state) => state.openSettings);
   const openOnboarding = useUi((state) => state.openOnboarding);
   const closeOnboarding = useUi((state) => state.closeOnboarding);
-  const activePath = summary?.path ?? null;
+  // The missing-repo state (GL-108) owns the tab strip like a live repo would,
+  // so its tab highlights while the recovery screen is up.
+  const activePath = summary?.path ?? missingPath;
 
   const handleProjectDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -54,6 +57,7 @@ export const TitleBar = () => {
                 path={path}
                 index={index}
                 active={active}
+                missing={path === missingPath}
                 onSelect={() => {
                   closeOnboarding();
                   if (!active) void loadRepo(path);

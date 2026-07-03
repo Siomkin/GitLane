@@ -21,7 +21,7 @@ use git::types::{
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
     HandoffProgressEvent, OperationStatus,
     PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
-    RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
+    RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
 };
 
@@ -51,8 +51,11 @@ where
 }
 
 #[tauri::command]
-fn open_repo(path: String) -> Result<RepoSummary, String> {
-    git::read::summary(&path).map_err(|e| e.to_string())
+fn open_repo(path: String) -> Result<RepoSummary, RepoOpenError> {
+    // The one command with a structured error: the frontend needs to tell a
+    // moved/deleted repository apart from a real failure to offer the dedicated
+    // missing-repo state with Remove / Locate / Retry (GL-108).
+    git::read::summary_classified(&path)
 }
 
 #[tauri::command]
