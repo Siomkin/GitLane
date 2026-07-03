@@ -11,10 +11,12 @@
 //! so a `cargo build` or `bun install` floods the watcher with churn from
 //! ignored directories, each event re-arming the throttle and driving a
 //! redundant status re-sync. Paths covered by the repository's ignore rules
-//! (`.gitignore` et al, via libgit2) are therefore dropped before any throttle
-//! or fingerprint work — on every platform, since ignored files never affect
-//! status or the graph. Bursts of the remaining events are throttled here and
-//! debounced again on the frontend.
+//! (`.gitignore` et al, via libgit2) and absent from the index are therefore
+//! dropped before any throttle or fingerprint work — on every platform, since
+//! untracked ignored files never affect status or the graph. (Force-added
+//! files under ignored patterns stay in the index, so they keep refreshing.)
+//! Bursts of the remaining events are throttled here and debounced again on
+//! the frontend.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -156,10 +158,15 @@ fn classify_paths(
 }
 
 /// Whether a worktree-relative path is covered by the repository's ignore
-/// rules. The path is re-joined with `/` separators because libgit2 matches
-/// ignore patterns against slash-separated paths (Windows events arrive with
-/// `\`). Errors and the no-repo case fall back to "not ignored" so filtering
-/// can only ever suppress noise, never a real change.
+/// rules *and* not tracked. libgit2's `is_path_ignored` implements
+/// `git check-ignore --no-index` semantics — it applies ignore patterns even
+/// to tracked files — but a force-added (`git add -f`) file under an ignored
+/// pattern is still status-affecting, so any index presence (the path itself,
+/// or for directory events any entry beneath it) fails open. The path is
+/// re-joined with `/` separators because libgit2 matches ignore patterns
+/// against slash-separated paths (Windows events arrive with `\`). Errors and
+/// the no-repo case also fall back to "not ignored", so filtering can only
+/// ever suppress noise, never a real change.
 fn is_ignored(repo: Option<&git2::Repository>, relative: &Path) -> bool {
     let Some(repo) = repo else { return false };
     let mut normalized = String::new();
@@ -172,7 +179,50 @@ fn is_ignored(repo: Option<&git2::Repository>, relative: &Path) -> bool {
     if normalized.is_empty() {
         return false;
     }
-    repo.is_path_ignored(&normalized).unwrap_or(false)
+    if !repo.is_path_ignored(&normalized).unwrap_or(false) {
+        return false;
+    }
+    let Ok(mut index) = repo.index() else {
+        return false;
+    };
+    // Soft reload so a `git add -f` after the watch started is seen; with
+    // force=false this is filestamp-validated (a stat in the common case).
+    if index.read(false).is_err() {
+        return false;
+    }
+    !index_has_path_or_descendant(&index, &normalized)
+}
+
+/// Whether the index contains `path` itself (at any stage) or any entry under
+/// `path/`. The index is sorted by raw path bytes, so both probes are binary
+/// searches; `dir.txt` sorts between `dir` and `dir/`, which is why the
+/// descendant probe needs its own search for the `dir/` prefix rather than
+/// reusing the exact-path position.
+fn index_has_path_or_descendant(index: &git2::Index, path: &str) -> bool {
+    if let Some(entry) = first_entry_at_or_after(index, path.as_bytes()) {
+        if entry.path == path.as_bytes() {
+            return true;
+        }
+    }
+    let prefix = format!("{path}/");
+    first_entry_at_or_after(index, prefix.as_bytes())
+        .is_some_and(|entry| entry.path.starts_with(prefix.as_bytes()))
+}
+
+/// First index entry whose path is byte-wise `>= target`, by binary search
+/// over the sorted index (`Index::get` is random access by position).
+fn first_entry_at_or_after(index: &git2::Index, target: &[u8]) -> Option<git2::IndexEntry> {
+    let (mut low, mut high) = (0, index.len());
+    while low < high {
+        let mid = low + (high - low) / 2;
+        let entry = index.get(mid)?;
+        if entry.path.as_slice() < target {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    index.get(low)
 }
 
 fn resolve_change_kind(
@@ -267,7 +317,8 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_paths, decide_emission, is_ignored, resolve_change_kind, ChangeKind, PathImpact,
+        classify_paths, decide_emission, index_has_path_or_descendant, is_ignored,
+        resolve_change_kind, ChangeKind, PathImpact,
     };
     use std::cell::Cell;
     use std::path::{Path, PathBuf};
@@ -397,6 +448,74 @@ mod tests {
         // Without a repository the filter fails open: nothing is dropped.
         assert!(!is_ignored(None, Path::new("target/debug/app.o")));
 
+        drop(repo);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `is_path_ignored` is `git check-ignore --no-index` semantics: it flags
+    /// tracked files too. A force-added (`git add -f`) file under an ignored
+    /// pattern is still status-affecting, so it — and any directory event
+    /// naming one of its parents — must fail open rather than be dropped.
+    #[test]
+    fn force_added_files_under_ignored_patterns_are_not_dropped() {
+        let dir =
+            std::env::temp_dir().join(format!("gitlane-watch-forced-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("target/debug")).expect("create dirs");
+        let repo = git2::Repository::init(&dir).expect("init repo");
+        std::fs::write(dir.join(".gitignore"), "target/\n").expect("write ignore");
+        std::fs::write(dir.join("target/debug/keep.txt"), "pinned").expect("write keep");
+
+        // Before the force-add, the whole tree is droppable churn.
+        assert!(is_ignored(Some(&repo), Path::new("target/debug/keep.txt")));
+
+        let mut index = repo.index().expect("index");
+        index
+            .add_path(Path::new("target/debug/keep.txt"))
+            .expect("force-add ignored file");
+        index.write().expect("write index");
+
+        // The tracked file itself, and directory-level events (FSEvents) for
+        // its parents, all stay relevant…
+        assert!(!is_ignored(Some(&repo), Path::new("target/debug/keep.txt")));
+        assert!(!is_ignored(Some(&repo), Path::new("target/debug")));
+        assert!(!is_ignored(Some(&repo), Path::new("target")));
+        // …while untracked churn elsewhere under target/ is still dropped.
+        assert!(is_ignored(Some(&repo), Path::new("target/debug/app.o")));
+        assert!(is_ignored(Some(&repo), Path::new("target/release")));
+
+        drop(repo);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The index sorts by raw path bytes, so `dir.txt` sits between `dir` and
+    /// `dir/…`. The descendant probe must not mistake such a neighbour for a
+    /// tracked child, and must still find a real one.
+    #[test]
+    fn descendant_probe_is_not_fooled_by_byte_order_neighbours() {
+        let dir =
+            std::env::temp_dir().join(format!("gitlane-watch-probe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("dir")).expect("create dirs");
+        let repo = git2::Repository::init(&dir).expect("init repo");
+        std::fs::write(dir.join("dir.txt"), "neighbour").expect("write neighbour");
+        std::fs::write(dir.join("dir/keep"), "child").expect("write child");
+
+        let mut index = repo.index().expect("index");
+        index.add_path(Path::new("dir.txt")).expect("add neighbour");
+        assert!(index_has_path_or_descendant(&index, "dir.txt"));
+        assert!(
+            !index_has_path_or_descendant(&index, "dir"),
+            "a byte-order neighbour is not a descendant"
+        );
+        assert!(!index_has_path_or_descendant(&index, "di"));
+
+        index.add_path(Path::new("dir/keep")).expect("add child");
+        assert!(index_has_path_or_descendant(&index, "dir"));
+        assert!(index_has_path_or_descendant(&index, "dir/keep"));
+        assert!(!index_has_path_or_descendant(&index, "dir/k"));
+
+        drop(index);
         drop(repo);
         let _ = std::fs::remove_dir_all(&dir);
     }
