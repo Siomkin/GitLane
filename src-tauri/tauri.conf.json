@@ -3,7 +3,7 @@
   "productName": "GitLane",
   "mainBinaryName": "GitLane",
   "version": "0.2.0-beta.4",
-  "identifier": "space.gitlane.app",
+  "identifier": "space.gitlane.desktop",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",

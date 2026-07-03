@@ -52,7 +52,7 @@ export const AboutPanel = () => {
     { label: "Version", value: version || "—" },
     { label: "Tauri", value: meta.tauri ?? "—" },
     { label: "Platform", value: platformLabel },
-    { label: "Identifier", value: meta.id ?? "space.gitlane.app" },
+    { label: "Identifier", value: meta.id ?? "space.gitlane.desktop" },
   ];
 
   return (
