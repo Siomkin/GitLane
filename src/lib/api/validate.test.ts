@@ -205,11 +205,41 @@ describe("lib/api seam validation", () => {
   });
 
   it("list_pull_requests / github_accounts / commit signatures: reject malformed rows", async () => {
-    invokeMock.mockResolvedValueOnce([{ number: "1" }]);
+    const summary = {
+      number: 1,
+      title: "t",
+      state: "OPEN",
+      headRef: "h",
+      baseRef: "b",
+      author: { login: "x", name: "X" },
+      createdAt: "2026-01-01",
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      isDraft: false,
+      url: "https://example/pr/1",
+      mergeable: "UNKNOWN",
+    };
+    invokeMock.mockResolvedValueOnce([{ ...summary, number: "1" }]);
     await expect(api.listPullRequests("/r")).rejects.toThrow(/list_pull_requests/);
+    invokeMock.mockResolvedValueOnce([summary]);
+    await expect(api.listPullRequests("/r")).resolves.toEqual([summary]);
 
+    const ghAccount = {
+      provider: "gh",
+      host: "github.com",
+      accountId: "42",
+      login: "alex",
+      username: "alex",
+      name: "Alex",
+      email: "alex@example.com",
+      id: 42,
+      active: true,
+    };
     invokeMock.mockResolvedValueOnce([{ provider: "gh", host: "github.com" }]); // missing the rest
     await expect(api.githubAccounts()).rejects.toThrow(/github_accounts/);
+    invokeMock.mockResolvedValueOnce([ghAccount]);
+    await expect(api.githubAccounts()).resolves.toEqual([ghAccount]);
 
     invokeMock.mockResolvedValueOnce([{ oid: "abc", verified: "yes" }]);
     await expect(api.pullRequestCommitSignatures("/r", 1)).rejects.toThrow(
