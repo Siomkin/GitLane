@@ -131,24 +131,24 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
         let patch = Patch::from_diff(diff, idx)?;
         let binary = delta.flags().is_binary();
 
-        // For binary deltas the only "change" we can surface is each side's byte
-        // size + the blob oid to fetch its bytes for a preview. Presence keys off
-        // the delta status (added has no old side, deleted no new) rather than the
-        // oid, since libgit2 leaves the working-tree side's oid zero even when the
-        // file is present — `size()` is still valid there (it stats the file).
-        let (old_size, new_size, old_oid, new_oid) = if binary {
-            let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
-            let new_present = delta.status() != Delta::Deleted;
-            let old = delta.old_file();
-            let new = delta.new_file();
-            (
-                old_present.then(|| old.size()),
-                new_present.then(|| new.size()),
-                (old_present && !old.id().is_zero()).then(|| old.id().to_string()),
-                (new_present && !new.id().is_zero()).then(|| new.id().to_string()),
-            )
+        // Every delta carries its side's blob oids so previews (binary images,
+        // rendered markdown) can fetch content via `read_binary_blob`. Presence
+        // keys off the delta status (added has no old side, deleted no new)
+        // rather than the oid. Working-tree sides are unreliable by oid: a
+        // binary side stays zero (content never loaded), and a text side gets a
+        // *computed* hash that need not exist in the ODB — so consumers read
+        // the working tree by path for unstaged diffs. Sizes stay binary-only:
+        // they feed the "old → new (±delta)" card that replaces "+0 −0".
+        let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
+        let new_present = delta.status() != Delta::Deleted;
+        let old = delta.old_file();
+        let new = delta.new_file();
+        let old_oid = (old_present && !old.id().is_zero()).then(|| old.id().to_string());
+        let new_oid = (new_present && !new.id().is_zero()).then(|| new.id().to_string());
+        let (old_size, new_size) = if binary {
+            (old_present.then(|| old.size()), new_present.then(|| new.size()))
         } else {
-            (None, None, None, None)
+            (None, None)
         };
 
         // `patch` is `None` for binary deltas, so they stay at 0/0 with no hunks.

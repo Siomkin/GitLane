@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basename, dirname, repoLabel } from "./paths";
+import { basename, dirname, isMarkdownPath, repoLabel } from "./paths";
 
 describe("basename", () => {
   it("returns the last segment", () => {
@@ -40,5 +40,19 @@ describe("repoLabel", () => {
 
   it("falls back to 'Repository' for an empty path", () => {
     expect(repoLabel("")).toBe("Repository");
+  });
+});
+
+describe("isMarkdownPath", () => {
+  it("matches .md and .markdown, case-insensitively", () => {
+    expect(isMarkdownPath("README.md")).toBe(true);
+    expect(isMarkdownPath("docs/guide.markdown")).toBe(true);
+    expect(isMarkdownPath("NOTES.MD")).toBe(true);
+  });
+
+  it("rejects other extensions and md elsewhere in the name", () => {
+    expect(isMarkdownPath("src/App.tsx")).toBe(false);
+    expect(isMarkdownPath("archive.md.bak")).toBe(false);
+    expect(isMarkdownPath("md")).toBe(false);
   });
 });

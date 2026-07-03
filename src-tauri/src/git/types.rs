@@ -444,10 +444,12 @@ pub struct FileDiff {
     pub old_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_size: Option<u64>,
-    /// Blob oids for a **binary** change, used to fetch bytes for an image
-    /// preview ([`super::status::read_binary_blob`]). `None` when the side is
-    /// absent or libgit2 left no blob oid — notably the working-tree side of an
-    /// unstaged diff, whose content the frontend reads from disk by `path`.
+    /// Blob oids for each side of the change, used to fetch content for a
+    /// preview ([`super::status::read_binary_blob`]) — image bytes for a binary
+    /// delta, markdown source for a text one. `None` when the side is absent or
+    /// libgit2 left no blob oid. The working-tree side of an unstaged diff is
+    /// unreliable by oid (zero for binary; a computed hash that need not exist
+    /// in the ODB for text) — the frontend reads that side from disk by `path`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub old_oid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -251,7 +251,20 @@ fn file_diff(repo: &Repository, path: &str, (old, new): BlobPair, limit: usize) 
         &mut opts,
     )?;
     let (add, del, hunks, truncated) = render_patch(&patch, limit)?;
-    Ok(FileDiff { path: path.to_string(), status, add, del, hunks, truncated, ..Default::default() })
+    // Text deltas carry their blob oids too (mirroring `diffs_to_files`), so
+    // content previews — rendered markdown — can fetch the new side via
+    // `read_binary_blob`. Sizes stay binary-only: the hunks carry the text.
+    Ok(FileDiff {
+        path: path.to_string(),
+        status,
+        add,
+        del,
+        hunks,
+        truncated,
+        old_oid: old.map(|o| o.to_string()),
+        new_oid: new.map(|o| o.to_string()),
+        ..Default::default()
+    })
 }
 
 /// 3-way merge three text buffers, returning the merged bytes only when it
@@ -322,6 +335,10 @@ fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::
     Ok(FileChange { path: path.to_string(), status: "M".to_string(), add, del, binary: false, advanced: None })
 }
 
+/// Diff two composed text buffers. Unlike `file_diff`, no blob oids travel: the
+/// composed result exists only in memory (it need not match any blob in the
+/// ODB), so content previews for a gapped file fall back to their empty state
+/// rather than fetch a blob that would include the unselected edit.
 fn text_diff(path: &str, base: &[u8], new: &[u8], limit: usize) -> Result<FileDiff, git2::Error> {
     let mut opts = DiffOptions::new();
     opts.context_lines(3);
