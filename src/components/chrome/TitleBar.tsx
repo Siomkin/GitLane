@@ -15,6 +15,7 @@ export const TitleBar = () => {
   const summary = useRepo((state) => state.summary);
   const missingPath = useRepo((state) => state.missingRepo?.path ?? null);
   const openPaths = useRepo((state) => state.openPaths);
+  const recents = useRepo((state) => state.recents);
   const loadRepo = useRepo((state) => state.loadRepo);
   const closeRepo = useRepo((state) => state.closeRepo);
   const reorderOpenPaths = useRepo((state) => state.reorderOpenPaths);
@@ -51,13 +52,18 @@ export const TitleBar = () => {
         <DragDropProvider onDragEnd={handleProjectDragEnd}>
           {openPaths.map((path, index) => {
             const active = path === activePath;
+            // A background tab is flagged too when its path is already known
+            // dead — via the recents probe or a previously entered missing
+            // state — so a dead tab reads amber before it's ever clicked.
+            const missing =
+              path === missingPath || !!recents.find((r) => r.path === path)?.missing;
             return (
               <ProjectTab
                 key={path}
                 path={path}
                 index={index}
                 active={active}
-                missing={path === missingPath}
+                missing={missing}
                 onSelect={() => {
                   closeOnboarding();
                   if (!active) void loadRepo(path);

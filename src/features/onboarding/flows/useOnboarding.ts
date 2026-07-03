@@ -6,7 +6,6 @@
 // concern to one reason to change (architecture-rules-react §4).
 
 import { useCallback, useEffect, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the onboarding flow (architecture-rules-react.md §1)
 import { api } from "../../../lib/api";
 import { useRepo } from "../../../store/repo";
@@ -45,20 +44,17 @@ export const useOnboarding = (onDone?: () => void) => {
   const openRecent = useCallback(
     (repo: RecentRepo) => {
       if (repo.missing) {
-        // The path moved/disappeared: let the user point at its new location.
-        // loadRepo swallows a failed open (sets the error bar and returns), so
-        // only drop the stale entry + dismiss once a repo *actually* opened —
-        // detected by the active path changing. Picking a non-repo folder leaves
-        // the missing entry and overlay in place so the user can retry.
+        // The path moved/disappeared: the shared Locate… flow (GL-108) opens
+        // the picker, probes the pick with the classified open, migrates the
+        // stale path's per-repo bindings to the new location, and drops the
+        // dead entry — the same treatment as the missing-repo tab screen.
+        // Only dismiss once a repo *actually* opened (active path changed); a
+        // canceled picker or a non-repo pick leaves the entry + overlay in
+        // place so the user can retry.
         void (async () => {
-          const picked = await openDialog({ directory: true, multiple: false });
-          if (typeof picked !== "string") return;
           const before = useRepo.getState().summary?.path ?? null;
-          await useRepo.getState().loadRepo(picked);
-          if ((useRepo.getState().summary?.path ?? null) !== before) {
-            useRepo.getState().removeRecent(repo.path);
-            onDone?.();
-          }
+          await useRepo.getState().locateMissingRepo(repo.path);
+          if ((useRepo.getState().summary?.path ?? null) !== before) onDone?.();
         })();
         return;
       }

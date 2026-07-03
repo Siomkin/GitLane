@@ -208,10 +208,12 @@ export interface RepoState {
   refreshRecents: () => Promise<void>;
   /** Drop one recent entry (e.g. a missing path the user dismisses). */
   removeRecent: (path: string) => void;
-  /** Locate… on the missing-repo state (GL-108): folder picker → carry the dead
-   * path's per-repo bindings to the picked repo → replace the stale tab and
-   * recents entry → open it. A non-repo pick keeps the missing state (toast). */
-  locateMissingRepo: () => Promise<void>;
+  /** Locate… for a dead repository path (GL-108): folder picker → carry the
+   * stale path's per-repo bindings to the picked repo → replace the stale tab
+   * and recents entry → open it. A non-repo pick leaves everything in place
+   * (toast). Defaults to the missing-repo tab state; the onboarding "Recent"
+   * list passes its stale path explicitly. */
+  locateMissingRepo: (fromPath?: string) => Promise<void>;
   /** Clear the entire recent list. */
   clearRecents: () => void;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working

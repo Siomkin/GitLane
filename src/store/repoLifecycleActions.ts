@@ -71,9 +71,10 @@ export function createRepoLifecycleActions(
 
   // Did this failure mean the repo's path is gone? The `open_repo` rejection is
   // authoritative; for the other reads (graph/branches/changes reject with
-  // plain strings) probe presence with the same disk check the recents list
-  // uses — so a repo that vanishes mid-session (deleted, or its external
-  // volume unmounted) is recognized no matter which read fails first, and the
+  // plain strings) re-probe with the classified open itself — so a repo that
+  // vanishes mid-session (deleted, or its external volume unmounted) is
+  // recognized no matter which read fails first, with the exact kind (a folder
+  // that merely lost its `.git` is `notARepository`, not `missing`), and the
   // raw libgit2 message never reaches the error bar for that case.
   const wentMissing = async (
     path: string,
@@ -81,10 +82,10 @@ export function createRepoLifecycleActions(
   ): Promise<MissingRepoState["kind"] | null> => {
     if (isRepoOpenError(e)) return e.kind === "other" ? null : e.kind;
     try {
-      const [status] = await api.recentsStatus([path]);
-      return status && !status.exists ? "missing" : null;
-    } catch {
-      return null;
+      await api.openRepo(path);
+      return null; // still opens — the failure was something else
+    } catch (probeError) {
+      return isRepoOpenError(probeError) && probeError.kind !== "other" ? probeError.kind : null;
     }
   };
 
@@ -93,8 +94,10 @@ export function createRepoLifecycleActions(
   // repo — the failure must never be described over another repo's content —
   // keeps/adds the tab so the user can Remove / Locate… / Retry from the
   // screen, and flags the recents entry so the onboarding list agrees without
-  // waiting for its next disk probe. `lastPath` is left as persisted: a dead
-  // last-active repo restores into this same state on launch.
+  // waiting for its next disk probe. The missing tab is also persisted as the
+  // *active* one, matching what's on screen — a relaunch restores straight
+  // back into this recovery state instead of silently reopening the repo the
+  // user had switched away from.
   const enterMissingState = (path: string, kind: MissingRepoState["kind"]) => {
     // Supersede any in-flight graph request; dropping the summary below also
     // fails every summary-path guard, so nothing stale can publish after this.
@@ -102,7 +105,7 @@ export function createRepoLifecycleActions(
     const openPaths = get().openPaths.includes(path)
       ? get().openPaths
       : [...get().openPaths, path];
-    persistSession(openPaths, readLastPath());
+    persistSession(openPaths, path);
     const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
     set({
       missingRepo: { path, kind },
@@ -587,11 +590,13 @@ export function createRepoLifecycleActions(
       set({ recents: next });
     },
 
-    // Locate… on the missing-repo state (GL-108): re-point the dead tab at the
-    // repository's new location.
-    locateMissingRepo: async () => {
-      const missing = get().missingRepo;
-      if (!missing) return;
+    // Locate… (GL-108): re-point a dead repository path at its new location.
+    // With no argument it acts on the missing-repo tab state; the onboarding
+    // "Recent" list passes its stale path explicitly, so both entry points
+    // share the probe + per-repo binding migration.
+    locateMissingRepo: async (fromPath) => {
+      const stalePath = fromPath ?? get().missingRepo?.path;
+      if (!stalePath) return;
       const picked = await openDialog({ directory: true, multiple: false });
       if (typeof picked !== "string") return;
       // Probe the pick first (classified open) so a non-repo folder keeps the
@@ -604,24 +609,26 @@ export function createRepoLifecycleActions(
         useUi.getState().showToast(errorText(e), "error");
         return;
       }
-      // Superseded while the picker/probe was up (Retry succeeded, the tab was
-      // closed, or another repo opened) — don't rewrite tabs/bindings for it.
-      if (get().missingRepo?.path !== missing.path) return;
-      if (probe.path !== missing.path) {
+      // The tab flow can be superseded while the picker/probe was up (Retry
+      // succeeded, the tab was closed, or another repo opened) — don't rewrite
+      // tabs/bindings for it. The recents flow carries its path explicitly.
+      if (!fromPath && get().missingRepo?.path !== stalePath) return;
+      if (probe.path !== stalePath) {
         // Carry the old path's per-repo bindings — the account ref + cached
         // identity read (accounts) and the applied profile + custom-email
         // overrides (profiles) — so relocating doesn't silently change how the
         // repo authenticates or commits. The repo's own git config moved with
         // the folder; these are the app-side maps keyed by path. Then replace
-        // the stale tab in place (keeping its position) and drop the dead
-        // recents entry — the open below records the new location.
-        useAccounts.getState().migrateRepoBindings(missing.path, probe.path);
-        migrateProfileBindings(missing.path, probe.path);
+        // the stale tab in place (keeping its position; a no-op for a recents
+        // entry that has no tab) and drop the dead recents entry — the open
+        // below records the new location as active.
+        useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
+        migrateProfileBindings(stalePath, probe.path);
         const openPaths = get().openPaths.includes(probe.path)
-          ? get().openPaths.filter((p) => p !== missing.path)
-          : get().openPaths.map((p) => (p === missing.path ? probe.path : p));
-        const recents = get().recents.filter((r) => r.path !== missing.path);
-        persistSession(openPaths, readLastPath());
+          ? get().openPaths.filter((p) => p !== stalePath)
+          : get().openPaths.map((p) => (p === stalePath ? probe.path : p));
+        const recents = get().recents.filter((r) => r.path !== stalePath);
+        persistSession(openPaths, probe.path);
         persistRecents(recents);
         set({ openPaths, recents });
       }

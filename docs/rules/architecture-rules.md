@@ -28,7 +28,9 @@ they agree:
    (`read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/`,
    and `graph.rs` + `graph/` for reads; `write.rs` + `write/` for real-`git` operations; the
    `github/` directory for `gh`). Facades expose free functions that take a
-   `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`.
+   `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`. (One deliberate
+   exception: `open_repo` rejects with a serialized `RepoOpenError` so the frontend can
+   classify a moved/deleted repository — see architecture-rules-rust.md §4, GL-108.)
 2. **Command + registration** — `src-tauri/src/lib.rs`: the `#[tauri::command]` fn **and**
    its line in `tauri::generate_handler![…]`. Forgetting the handler entry is the #1
    "command not found" bug.

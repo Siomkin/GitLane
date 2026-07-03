@@ -152,17 +152,17 @@ describe("repo store — missing-repo state (GL-108)", () => {
     expect(s.summary).toBeNull();
   });
 
-  it("probes presence when a non-open read fails, so a raw graph error can't reach the bar for a vanished repo", async () => {
-    invokeMock.mockImplementation((cmd: string, args?: { paths?: string[] }) => {
+  it("re-probes with the classified open when a non-open read fails, so a raw graph error can't reach the bar", async () => {
+    // The initial open succeeds; the repo vanishes before the (slow) graph
+    // read, so the probe re-open rejects with the classified error.
+    let openCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
       switch (cmd) {
         case "open_repo":
-          return Promise.resolve(summary);
+          openCalls += 1;
+          return openCalls === 1 ? Promise.resolve(summary) : Promise.reject(missingError("/repo"));
         case "commit_graph":
           return Promise.reject(new Error("failed to resolve path '/repo'"));
-        case "recents_status":
-          return Promise.resolve(
-            (args?.paths ?? []).map((path: string) => ({ path, exists: false, branch: null })),
-          );
         default:
           return defaultInvoke(cmd);
       }
@@ -173,6 +173,46 @@ describe("repo store — missing-repo state (GL-108)", () => {
     const s = useRepo.getState();
     expect(s.missingRepo).toEqual({ path: "/repo", kind: "missing" });
     expect(s.error).toBeNull();
+  });
+
+  it("keeps the exact kind through the probe: a folder that lost its .git reads notARepository", async () => {
+    const notARepo: RepoOpenError = {
+      kind: "notARepository",
+      message: "The folder at /repo is not a git repository anymore.",
+      path: "/repo",
+    };
+    let openCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          openCalls += 1;
+          return openCalls === 1 ? Promise.resolve(summary) : Promise.reject(notARepo);
+        case "commit_graph":
+          return Promise.reject(new Error("could not read HEAD"));
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().loadRepo("/repo");
+
+    expect(useRepo.getState().missingRepo).toEqual({ path: "/repo", kind: "notARepository" });
+  });
+
+  it("persists the missing tab as the active one so restore returns to it", async () => {
+    localStorage.setItem("gitlane.lastPath", "/repo");
+    useRepo.setState({ summary, graph: emptyGraph, openPaths: ["/repo", "/gone"] });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
+      cmd === "open_repo" && args?.path === "/gone"
+        ? Promise.reject(missingError("/gone"))
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().loadRepo("/gone");
+
+    // What restores on relaunch matches what's on screen: the missing tab,
+    // not the repo the user had switched away from.
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/gone");
   });
 
   it("Remove (closeRepo on the missing tab) drops the tab and lands on the welcome screen", async () => {
@@ -266,6 +306,33 @@ describe("repo store — missing-repo state (GL-108)", () => {
     const s = useRepo.getState();
     expect(s.missingRepo).toEqual({ path: "/old", kind: "missing" });
     expect(s.openPaths).toEqual(["/old"]);
+  });
+
+  it("Locate… with an explicit stale path (onboarding recents) migrates bindings without a missing state", async () => {
+    useRepo.setState({
+      openPaths: [],
+      recents: [{ path: "/old", name: "old", branch: null, lastOpenedAt: 1, missing: true }],
+    });
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({ "/old": { version: 2, unbound: true } }),
+    );
+    dialogMock.mockResolvedValue("/new");
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve({ ...summary, path: "/new", workdir: "/new" });
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().locateMissingRepo("/old");
+
+    const s = useRepo.getState();
+    expect(s.summary?.path).toBe("/new");
+    // The dead recents entry is replaced by the opened repo's fresh one.
+    expect(s.recents.map((r) => r.path)).toEqual(["/new"]);
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")).toEqual({
+      "/new": { version: 2, unbound: true },
+    });
   });
 
   it("restores a session whose last repo is missing into the state, not the error bar", async () => {

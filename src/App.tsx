@@ -131,6 +131,8 @@ const App = () => {
   // Start each repo in the history view (avoid a stale changes/review pane), drop
   // any review notes pinned against the previous repo's diffs, and reset the
   // history search/filter so one repo's query never lands on another's commits.
+  // Keyed on the missing-repo path too (GL-108): switching between two dead
+  // tabs changes no summary, but it's still a repo switch for this cleanup.
   useEffect(() => {
     setLeftTab("history");
     setChangesAll(false);
@@ -140,7 +142,7 @@ const App = () => {
     // Any repo switch (incl. dropping to the no-repo start state) dismisses the
     // onboarding overlay so it can't linger over a different repo.
     closeOnboarding();
-  }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView, closeOnboarding]);
+  }, [summary?.path, missingRepo?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView, closeOnboarding]);
 
   // An active merge/rebase/cherry-pick/revert takes over the center pane: the
   // repo is in a blocking conflicted state, so the dedicated resolution
