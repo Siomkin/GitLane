@@ -42,12 +42,14 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {diffs.map((file) => {
+      {diffs.map((file, i) => {
         const name = file.path.split("/").pop() ?? file.path;
         const dir = file.path.split("/").slice(0, -1).join("/");
         return (
           <div
-            key={file.path}
+            // The patch is per-commit, so a path touched by several commits
+            // appears once per commit — the path alone would collide.
+            key={`${i}:${file.path}`}
             className="overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800"
           >
             <div className="flex items-center gap-2.5 border-b border-black/5 px-3.5 py-2.5 dark:border-white/5">
