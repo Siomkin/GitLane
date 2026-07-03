@@ -17,6 +17,23 @@ fn head_tree(repo: &Repository) -> Option<git2::Tree<'_>> {
         .and_then(|c| c.tree().ok())
 }
 
+/// True when the index entry for `path` is an intent-to-add record
+/// (`git add -N`). libgit2 reports such paths as `INDEX_NEW | WT_MODIFIED`,
+/// but git itself treats them as *unstaged* (` A` in porcelain, empty
+/// `git diff --cached`, `git commit` refuses), so they must not land in the
+/// staged bucket.
+fn is_intent_to_add(index: Option<&git2::Index>, path: &str) -> bool {
+    index
+        .and_then(|ix| ix.get_path(std::path::Path::new(path), 0))
+        .map_or(false, |e| {
+            git2::IndexEntryExtendedFlag::from_bits_truncate(e.flags_extended)
+                .contains(git2::IndexEntryExtendedFlag::INTENT_TO_ADD)
+                // Some git versions record the entry with a null blob oid
+                // instead of (or in addition to) the extended flag.
+                || e.id.is_zero()
+        })
+}
+
 /// Working-tree status split into staged (index vs HEAD) and unstaged
 /// (worktree vs index) buckets. A file can appear in both.
 pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
@@ -25,9 +42,11 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true)
         .recurse_untracked_dirs(true)
-        .renames_head_to_index(true);
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
 
     let statuses = repo.statuses(Some(&mut opts))?;
+    let index = repo.index().ok();
 
     // Line counts come from two diffs computed once, indexed by path.
     let head = head_tree(&repo);
@@ -48,7 +67,16 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
     {
         let mut o = DiffOptions::new();
         o.include_untracked(true).recurse_untracked_dirs(true);
-        let diff = repo.diff_index_to_workdir(None, Some(&mut o))?;
+        let mut diff = repo.diff_index_to_workdir(None, Some(&mut o))?;
+        // Match the status pass's index→workdir rename detection (the same
+        // flags libgit2's status uses for it, incl. FOR_UNTRACKED so the new
+        // path — an untracked file — can be a rename target), so a renamed
+        // file's line counts group under one path instead of split add/del.
+        let mut find = git2::DiffFindOptions::new();
+        find.renames(true)
+            .renames_from_rewrites(true)
+            .for_untracked(true);
+        diff.find_similar(Some(&mut find))?;
         for fc in diffs_to_changes(&diff)? {
             unstaged_counts.insert(fc.path.clone(), (fc.add, fc.del, fc.binary));
         }
@@ -85,9 +113,14 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         // fall back to the plain entry path.
         let entry_path = entry.path().ok().unwrap_or("").to_string();
 
+        let intent_to_add =
+            s.contains(Status::INDEX_NEW) && is_intent_to_add(index.as_ref(), &entry_path);
+
         // ---- staged bucket (index vs HEAD) ----
         let staged_status = if s.contains(Status::INDEX_NEW) {
-            Some("A")
+            // Intent-to-add records the path but stages no content — git
+            // counts it as unstaged, so it belongs in the other bucket.
+            (!intent_to_add).then_some("A")
         } else if s.contains(Status::INDEX_MODIFIED) {
             Some("M")
         } else if s.contains(Status::INDEX_DELETED) {
@@ -134,6 +167,15 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         } else {
             None
         };
+        // An intent-to-add path surfaces here as an unstaged addition (git's
+        // ` A`) — libgit2 marks it WT_MODIFIED vs the recorded entry, or sets
+        // no WT flag at all when the file is empty. A worktree deletion still
+        // wins: the file is gone, not pending.
+        let unstaged_status = if intent_to_add && unstaged_status != Some("D") {
+            Some("A")
+        } else {
+            unstaged_status
+        };
         if let Some(st) = unstaged_status {
             let p = entry
                 .index_to_workdir()
@@ -150,7 +192,9 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             // sensible count by reading the file when needed. The same probe
             // also classifies the file as binary (a NUL byte), since libgit2
             // hasn't examined untracked content to set its own binary flag.
-            if st == "U" && add == 0 && del == 0 {
+            // Intent-to-add additions get the same treatment — whether their
+            // diff carries stats depends on how the entry was recorded.
+            if (st == "U" || st == "A") && add == 0 && del == 0 {
                 if let Some(wd) = repo.workdir() {
                     // Bound the probe so a huge untracked file can't block this
                     // synchronous command or balloon memory just to estimate a

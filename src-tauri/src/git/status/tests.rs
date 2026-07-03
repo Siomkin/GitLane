@@ -914,6 +914,88 @@ fn selection_diff_file_carries_blob_oids_for_content_previews() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+// ---- GL-114: intent-to-add classification + unstaged rename detection ----
+
+#[test]
+fn intent_to_add_file_is_unstaged_not_staged() {
+    let dir = std::env::temp_dir().join("gitlane-intent-to-add-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+
+    // Use the real `git add -N` so the index entry lands exactly as git
+    // records it — that on-disk shape is what the classification must handle.
+    fs::write(dir.join("planned.txt"), "alpha\nbeta\n").unwrap();
+    let status = std::process::Command::new("git")
+        .args(["add", "--intent-to-add", "planned.txt"])
+        .current_dir(&dir)
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    // git treats intent-to-add as unstaged (` A` in porcelain, empty
+    // `git diff --cached`, `git commit` refuses) — it must not show as staged.
+    assert!(
+        changes.staged.iter().all(|f| f.path != "planned.txt"),
+        "intent-to-add leaked into staged: {:?}",
+        changes
+            .staged
+            .iter()
+            .map(|f| (&f.path, &f.status))
+            .collect::<Vec<_>>()
+    );
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "planned.txt")
+        .expect("intent-to-add file appears in the unstaged bucket");
+    assert_eq!(entry.status, "A");
+    assert_eq!(entry.add, 2);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn unstaged_rename_is_reported_as_one_rename_entry() {
+    let dir = std::env::temp_dir().join("gitlane-unstaged-rename-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(
+        &repo,
+        &dir,
+        "original.txt",
+        "one\ntwo\nthree\nfour\nfive\nsix\n",
+    );
+
+    // A pure worktree rename (no index update): modern `git status` shows a
+    // single `R original.txt -> renamed.txt`, not a delete + untracked pair.
+    fs::rename(dir.join("original.txt"), dir.join("renamed.txt")).unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    assert!(changes.staged.is_empty());
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "renamed.txt")
+        .expect("rename detected under the new path");
+    assert_eq!(entry.status, "R");
+    assert!(
+        changes.unstaged.iter().all(|f| f.path != "original.txt"),
+        "old path must fold into the rename, not linger as a deletion: {:?}",
+        changes
+            .unstaged
+            .iter()
+            .map(|f| (&f.path, &f.status))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(changes.unstaged.len(), 1);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn selection_diff_handles_binary_files() {
     let dir = std::env::temp_dir().join("gitlane-selection-binary-test");
