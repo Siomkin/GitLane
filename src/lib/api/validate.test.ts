@@ -109,4 +109,45 @@ describe("lib/api seam validation", () => {
     invokeMock.mockResolvedValueOnce({ ...valid, state: "NOT_A_STATE" });
     await expect(api.pullRequestDetail("/r", 1)).rejects.toThrow(/pull_request_detail/);
   });
+
+  // Review `state` is a raw, non-exhaustive gh value on the Rust side (GL-112):
+  // a state this build doesn't know must degrade to COMMENTED, not throw and
+  // take the whole PR detail pane down with it.
+  it("pull_request_detail: tolerates an unknown review state", async () => {
+    const detail = {
+      number: 1,
+      title: "t",
+      state: "OPEN",
+      headRef: "h",
+      baseRef: "b",
+      author: { login: "x", name: "X" },
+      createdAt: "2026-01-01",
+      additions: 0,
+      deletions: 0,
+      changedFiles: 0,
+      isDraft: false,
+      url: "https://example/pr/1",
+      mergeable: "UNKNOWN",
+      body: "",
+      comments: 0,
+      files: [],
+      commentList: [],
+      reviewers: [],
+      reviews: [
+        { author: { login: "a", name: "A" }, state: "APPROVED" },
+        { author: { login: "b", name: "B" }, state: "SOME_FUTURE_STATE" },
+      ],
+      assignees: [],
+      labels: [],
+      milestone: null,
+      commits: [],
+    };
+    invokeMock.mockResolvedValueOnce(detail);
+    await expect(api.pullRequestDetail("/r", 1)).resolves.toMatchObject({
+      reviews: [
+        { author: { login: "a", name: "A" }, state: "APPROVED" },
+        { author: { login: "b", name: "B" }, state: "COMMENTED" },
+      ],
+    });
+  });
 });
