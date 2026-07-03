@@ -120,7 +120,7 @@ fn defaults() -> Vec<AgentEntry> {
 }
 
 /// Path to the agent config in the per-app data dir
-/// (e.g. `~/Library/Application Support/space.gitlane.app/terminal-agents.json`).
+/// (e.g. `~/Library/Application Support/space.gitlane.desktop/terminal-agents.json`).
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
