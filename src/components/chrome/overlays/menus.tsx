@@ -1245,26 +1245,27 @@ export function StashContextMenu() {
   const requestPrompt = useUi((s) => s.requestPrompt);
   const showToast = useUi((s) => s.showToast);
   const openStackedReview = useUi((s) => s.openStackedReview);
-  const stashes = useRepo((s) => s.stashes);
   const applyStash = useRepo((s) => s.applyStash);
   const branchFromStash = useRepo((s) => s.branchFromStash);
   const dropStash = useRepo((s) => s.dropStash);
   const run = useBranchOp();
   if (!menu) return null;
 
-  const { index, message } = menu;
-  const oid = stashes.find((s) => s.index === index)?.oid;
+  // Everything acts on the stash's commit oid — a `stash@{n}` index captured
+  // when the menu opened can drift if another worktree/terminal touches the
+  // stash stack before the click lands (GL-117).
+  const { oid, message } = menu;
 
   const items: MenuItem[] = [
-    { label: "View changes", icon: <FileTextIcon className="h-4 w-4" />, onClick: () => { close(); if (oid) openStackedReview(oid, `Stash: ${message}`); } },
+    { label: "View changes", icon: <FileTextIcon className="h-4 w-4" />, onClick: () => { close(); openStackedReview(oid, `Stash: ${message}`); } },
     {
       label: "Apply",
       icon: <CheckIcon className="h-4 w-4" />,
       sep: true,
       submenu: [
-        { label: "Apply", onClick: () => { close(); void run(() => applyStash(index, false)); } },
-        { label: "Apply with index", onClick: () => { close(); void run(() => applyStash(index, false, true)); } },
-        { label: "Pop (apply & drop)", onClick: () => { close(); void run(() => applyStash(index, true)); } },
+        { label: "Apply", onClick: () => { close(); void run(() => applyStash(oid, false)); } },
+        { label: "Apply with index", onClick: () => { close(); void run(() => applyStash(oid, false, true)); } },
+        { label: "Pop (apply & drop)", onClick: () => { close(); void run(() => applyStash(oid, true)); } },
         {
           label: "Apply to new branch…",
           onClick: () =>
@@ -1273,7 +1274,7 @@ export function StashContextMenu() {
               message: "Branches from the stash's parent commit, then applies the stash.",
               placeholder: "new-branch-name",
               confirmLabel: "Create & apply",
-              onSubmit: (branch) => void run(() => branchFromStash(index, branch)),
+              onSubmit: (branch) => void run(() => branchFromStash(oid, branch)),
             }),
         },
       ],
@@ -1283,7 +1284,7 @@ export function StashContextMenu() {
       icon: <CopyIcon className="h-4 w-4" />,
       sep: true,
       submenu: [
-        { label: "Stash SHA", onClick: () => { close(); if (oid) { void navigator.clipboard?.writeText(oid); showToast(`Copied ${oid.slice(0, 7)}`); } } },
+        { label: "Stash SHA", onClick: () => { close(); void navigator.clipboard?.writeText(oid); showToast(`Copied ${oid.slice(0, 7)}`); } },
         { label: "Stash message", onClick: () => { close(); void navigator.clipboard?.writeText(message); showToast("Copied stash message"); } },
       ],
     },
@@ -1298,7 +1299,7 @@ export function StashContextMenu() {
           message: `"${message}" will be permanently deleted. This can't be undone.`,
           confirmLabel: "Drop stash",
           danger: true,
-          onConfirm: () => void run(() => dropStash(index)),
+          onConfirm: () => void run(() => dropStash(oid)),
         }),
     },
   ];

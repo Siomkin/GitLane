@@ -248,7 +248,7 @@ export function StashRow({
       onClick={() => navigate(stash.oid)}
       onContextMenu={(e) => {
         e.preventDefault();
-        openStashMenu({ x: e.clientX, y: e.clientY, index: stash.index, message: stash.message });
+        openStashMenu({ x: e.clientX, y: e.clientY, oid: stash.oid, message: stash.message });
       }}
     >
       <StashIcon className="h-3.5 w-3.5 shrink-0 text-amber-500" />

@@ -6,6 +6,7 @@ use crate::git::types::{StashContextCommit, StashEntry};
 
 use super::cli::run_git;
 use super::operands::ensure_operand;
+use super::worktrees::drop_stash_by_oid;
 
 const STASH_CONTEXT_LIMIT: usize = 8;
 
@@ -134,40 +135,66 @@ fn stash_context_commits(repo: &str, base_oid: &str) -> Vec<StashContextCommit> 
         .collect()
 }
 
-/// Apply stash `stash@{index}` without dropping it.
-pub fn stash_apply(repo: &str, index: usize) -> Result<String, String> {
-    run_git(repo, &["stash", "apply", &format!("stash@{{{index}}}")])
+/// Resolve a stash commit oid to its *current* `stash@{n}` reflog reference.
+/// Stash indices are reflog-relative and global across worktrees, so an index
+/// captured with an earlier `stash_list` snapshot goes stale the moment any
+/// stash is created or dropped elsewhere (sibling worktree, terminal). `drop`
+/// and `branch` only accept reflog references, so re-resolve the oid immediately
+/// before each mutation instead of trusting a stored index.
+fn stash_ref_for_oid(repo: &str, oid: &str) -> Result<String, String> {
+    ensure_operand(oid)?;
+    let list = run_git(repo, &["stash", "list", "--format=%H"])?;
+    list.lines()
+        .position(|line| line.trim() == oid)
+        .map(|index| format!("stash@{{{index}}}"))
+        .ok_or_else(|| {
+            let short: String = oid.chars().take(7).collect();
+            format!("Stash {short} no longer exists — it may have been applied or dropped elsewhere.")
+        })
 }
 
-/// Apply stash `stash@{index}` restoring the staged (index) state too (`--index`).
-/// Without `--index` everything lands in the working tree unstaged.
-pub fn stash_apply_index(repo: &str, index: usize) -> Result<String, String> {
-    run_git(
-        repo,
-        &["stash", "apply", "--index", &format!("stash@{{{index}}}")],
-    )
+/// Apply the stash with commit oid `oid` without dropping it. `git stash apply`
+/// accepts any stash-shaped commit, so the oid goes straight through.
+pub fn stash_apply(repo: &str, oid: &str) -> Result<String, String> {
+    ensure_operand(oid)?;
+    run_git(repo, &["stash", "apply", oid])
+}
+
+/// Apply the stash with commit oid `oid` restoring the staged (index) state too
+/// (`--index`). Without `--index` everything lands in the working tree unstaged.
+pub fn stash_apply_index(repo: &str, oid: &str) -> Result<String, String> {
+    ensure_operand(oid)?;
+    run_git(repo, &["stash", "apply", "--index", oid])
 }
 
 /// Check out `branch` at the stash's original parent commit and apply the stash
 /// there (`git stash branch <branch> <stash>`). Useful when the stash no longer
 /// applies cleanly on the current branch because history has diverged. Creates
-/// the branch if it doesn't exist.
-pub fn stash_branch(repo: &str, branch: &str, index: usize) -> Result<String, String> {
+/// the branch if it doesn't exist. Addressed via `stash@{n}` (resolved from the
+/// oid at the last moment) — with a bare oid git would apply but silently skip
+/// the drop.
+pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    run_git(
-        repo,
-        &["stash", "branch", branch, &format!("stash@{{{index}}}")],
-    )
+    let stash_ref = stash_ref_for_oid(repo, oid)?;
+    run_git(repo, &["stash", "branch", branch, &stash_ref])
 }
 
-/// Apply and drop stash `stash@{index}`.
-pub fn stash_pop(repo: &str, index: usize) -> Result<String, String> {
-    run_git(repo, &["stash", "pop", &format!("stash@{{{index}}}")])
+/// Apply and drop the stash with commit oid `oid`. Implemented as apply-then-drop
+/// (rather than `git stash pop stash@{n}`) so the destructive drop re-resolves the
+/// oid at the very last moment — this closes the narrow window where a stash pushed
+/// concurrently between resolving `stash@{n}` and running `pop` would shift indices
+/// under us. A conflicting apply errors out *before* the drop, so the stash is kept
+/// exactly as `git stash pop` would. Mirrors `restore_stash` in worktrees.rs.
+pub fn stash_pop(repo: &str, oid: &str) -> Result<String, String> {
+    let applied = stash_apply(repo, oid)?;
+    drop_stash_by_oid(repo, oid)?;
+    Ok(applied)
 }
 
-/// Drop stash `stash@{index}`.
-pub fn stash_drop(repo: &str, index: usize) -> Result<String, String> {
-    run_git(repo, &["stash", "drop", &format!("stash@{{{index}}}")])
+/// Drop the stash with commit oid `oid`.
+pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
+    let stash_ref = stash_ref_for_oid(repo, oid)?;
+    run_git(repo, &["stash", "drop", &stash_ref])
 }
 
 /// Stash the working tree and index.
