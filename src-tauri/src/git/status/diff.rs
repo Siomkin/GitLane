@@ -169,6 +169,9 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
             new_size,
             old_oid,
             new_oid,
+            // Commit attribution is a per-commit-patch (gh) concept; libgit2
+            // status diffs have no owning commit.
+            ..Default::default()
         });
     }
 

@@ -407,6 +407,12 @@ export interface FileDiff {
    * read that side from disk by `path` instead. */
   oldOid?: string;
   newOid?: string;
+  /** Owning commit when the diff came from a per-commit patch (`gh pr diff`
+   * emits one message per commit): full oid + subject line. Absent for
+   * libgit2/status diffs. The PR Diff tab groups same-commit files under one
+   * header. */
+  commitOid?: string;
+  commitSubject?: string;
 }
 
 /** Raw bytes of one blob / working-tree file for an inline preview (see Rust

@@ -495,6 +495,15 @@ pub struct FileDiff {
     pub old_oid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_oid: Option<String>,
+    /// Attribution when the diff came from a per-commit patch (`gh pr diff
+    /// --patch` emits one message per commit): the owning commit's full oid and
+    /// its subject line (folded continuations joined, `[PATCH n/m]` prefix
+    /// stripped). The Diff tab groups same-commit files under one header.
+    /// `None` for libgit2/status diffs and bare unified patches.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_oid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_subject: Option<String>,
 }
 
 /// Raw bytes of one blob / working-tree file, base64-encoded for an inline

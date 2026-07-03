@@ -60,11 +60,13 @@ beforeEach(() => {
 });
 
 describe("PR Diff tab", () => {
-  it("renders a card per FileDiff even when two commits touch the same path", () => {
+  it("groups same-path cards under their commits' headers", () => {
     usePulls.setState({
       prDiffs: {
         42: [
           fileDiff({
+            commitOid: "aaaaaaa1111111111111111111111111111111111",
+            commitSubject: "feat: first commit",
             hunks: [
               {
                 header: "@@ -1 +1 @@",
@@ -73,6 +75,8 @@ describe("PR Diff tab", () => {
             ],
           }),
           fileDiff({
+            commitOid: "bbbbbbb2222222222222222222222222222222222",
+            commitSubject: "fix: second commit",
             hunks: [
               {
                 header: "@@ -2 +2 @@",
@@ -90,6 +94,49 @@ describe("PR Diff tab", () => {
     expect(screen.getAllByText("one.txt")).toHaveLength(2);
     expect(container.textContent).toContain("from first commit");
     expect(container.textContent).toContain("from second commit");
+
+    // One header per commit: short SHA + subject.
+    expect(screen.getAllByTestId("commit-group-header")).toHaveLength(2);
+    expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
+    expect(screen.getByText("feat: first commit")).toBeInTheDocument();
+    expect(screen.getByText("bbbbbbb")).toBeInTheDocument();
+    expect(screen.getByText("fix: second commit")).toBeInTheDocument();
+  });
+
+  it("stays flat — no commit headers — for a single-commit PR", () => {
+    usePulls.setState({
+      prDiffs: {
+        42: [
+          fileDiff({
+            commitOid: "aaaaaaa1111111111111111111111111111111111",
+            commitSubject: "feat: only commit",
+          }),
+          fileDiff({
+            path: "src/other.txt",
+            commitOid: "aaaaaaa1111111111111111111111111111111111",
+            commitSubject: "feat: only commit",
+          }),
+        ],
+      },
+    });
+    render(<PrDiffTab pr={makePr()} />);
+
+    expect(screen.getByText("one.txt")).toBeInTheDocument();
+    expect(screen.getByText("other.txt")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("commit-group-header")).toHaveLength(0);
+    expect(screen.queryByText("aaaaaaa")).not.toBeInTheDocument();
+    expect(screen.queryByText("feat: only commit")).not.toBeInTheDocument();
+  });
+
+  it("stays flat when diffs carry no commit attribution", () => {
+    usePulls.setState({
+      prDiffs: { 42: [fileDiff(), fileDiff({ path: "src/other.txt" })] },
+    });
+    render(<PrDiffTab pr={makePr()} />);
+
+    expect(screen.getByText("one.txt")).toBeInTheDocument();
+    expect(screen.getByText("other.txt")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("commit-group-header")).toHaveLength(0);
   });
 
   it("shows the empty state when the PR changes no files", () => {

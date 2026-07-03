@@ -24,12 +24,23 @@ pub(super) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     // True between a mailbox commit boundary and its first `diff --git`: mail
     // headers, the commit message, the `---` separator, and the diffstat.
     let mut in_preamble = false;
+    // Attribution for the mailbox message currently being read: the boundary
+    // line's oid and the `Subject:` header (folded continuations joined,
+    // `[PATCH n/m]` stripped). Every file until the next boundary carries it.
+    let mut commit_oid: Option<String> = None;
+    let mut commit_subject: Option<String> = None;
+    // True while the next preamble line may still be a folded (whitespace-led)
+    // continuation of the `Subject:` header.
+    let mut folding_subject = false;
 
     for line in raw.lines() {
-        if is_commit_boundary(line) {
+        if let Some(sha) = commit_boundary_sha(line) {
             in_preamble = true;
             old_left = 0;
             new_left = 0;
+            commit_oid = Some(sha.to_string());
+            commit_subject = None;
+            folding_subject = false;
             continue;
         }
         if let Some(rest) = line.strip_prefix("diff --git ") {
@@ -43,6 +54,8 @@ pub(super) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
             files.push(FileDiff {
                 path,
                 status: "M".to_string(),
+                commit_oid: commit_oid.clone(),
+                commit_subject: commit_subject.clone(),
                 // GitHub patches arrive already bounded by gh's own diff
                 // limits; byte sizes aren't carried in a unified patch, so the
                 // binary size fields stay `None`.
@@ -51,6 +64,18 @@ pub(super) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
             continue;
         }
         if in_preamble {
+            if let Some(rest) = line.strip_prefix("Subject: ") {
+                commit_subject = Some(strip_patch_prefix(rest).to_string());
+                folding_subject = true;
+            } else if folding_subject && line.starts_with([' ', '\t']) {
+                if let Some(subject) = commit_subject.as_mut() {
+                    subject.push(' ');
+                    subject.push_str(line.trim());
+                }
+            } else {
+                // Any other header, the blank line, or body text ends folding.
+                folding_subject = false;
+            }
             continue;
         }
 
@@ -135,17 +160,27 @@ pub(super) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     files
 }
 
-/// True for a format-patch mailbox commit boundary: `From <40-hex-sha> Mon Sep
-/// 17 00:00:00 2001` - git's fixed magic date, so a commit-message line that
-/// merely starts with `From ` can't false-positive.
-fn is_commit_boundary(line: &str) -> bool {
-    let Some(rest) = line.strip_prefix("From ") else {
-        return false;
+/// The commit oid of a format-patch mailbox boundary line: `From <40-hex-sha>
+/// Mon Sep 17 00:00:00 2001` - git's fixed magic date, so a commit-message
+/// line that merely starts with `From ` can't false-positive. `None` when the
+/// line is not a boundary.
+fn commit_boundary_sha(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("From ")?;
+    let (sha, tail) = (rest.get(..40)?, rest.get(40..)?);
+    (sha.bytes().all(|b| b.is_ascii_hexdigit()) && tail.starts_with(" Mon Sep 17 00:00:00 2001"))
+        .then_some(sha)
+}
+
+/// Strip the `[PATCH...]` marker format-patch prefixes subjects with
+/// (`[PATCH]`, `[PATCH 1/2]`, `[PATCH v2 3/7]`), leaving the commit subject.
+fn strip_patch_prefix(subject: &str) -> &str {
+    let Some(rest) = subject.strip_prefix('[') else {
+        return subject;
     };
-    let (Some(sha), Some(tail)) = (rest.get(..40), rest.get(40..)) else {
-        return false;
-    };
-    sha.bytes().all(|b| b.is_ascii_hexdigit()) && tail.starts_with(" Mon Sep 17 00:00:00 2001")
+    match rest.split_once(']') {
+        Some((tag, tail)) if tag.starts_with("PATCH") => tail.trim_start(),
+        _ => subject,
+    }
 }
 
 /// Parse an `@@ -a[,b] +c[,d] @@` hunk header into

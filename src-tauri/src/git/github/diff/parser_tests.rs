@@ -283,6 +283,39 @@ fn format_patch_preamble_never_leaks_into_hunks() {
     assert_eq!((files[2].add, files[2].del), (1, 0));
 }
 
+#[test]
+fn attributes_files_to_their_commit() {
+    let files = parse_unified_diff(MAILBOX);
+
+    // Commit 1: oid from the boundary line; the folded Subject is joined into
+    // one line with the [PATCH 1/2] marker stripped.
+    assert_eq!(
+        files[0].commit_oid.as_deref(),
+        Some("1111111111111111111111111111111111111111")
+    );
+    assert_eq!(
+        files[0].commit_subject.as_deref(),
+        Some("feat: first commit with a subject long enough to fold onto a continuation line")
+    );
+
+    // Commit 2 owns both of its files.
+    for f in &files[1..] {
+        assert_eq!(
+            f.commit_oid.as_deref(),
+            Some("2222222222222222222222222222222222222222")
+        );
+        assert_eq!(f.commit_subject.as_deref(), Some("fix: second commit"));
+    }
+}
+
+#[test]
+fn bare_unified_diff_carries_no_commit_attribution() {
+    let files = parse_unified_diff(SAMPLE);
+    assert!(files
+        .iter()
+        .all(|f| f.commit_oid.is_none() && f.commit_subject.is_none()));
+}
+
 // Byte-for-byte capture of `gh pr diff 85 --patch --color never` on this
 // repository - the 2-commit PR the corruption was first reproduced on. The
 // per-commit totals are asserted against git's own numbers (`git apply
@@ -323,6 +356,25 @@ fn parses_real_two_commit_gh_patch() {
     // The five files created in commit 1 all classify as additions.
     let added = files.iter().filter(|f| f.status == "A").count();
     assert_eq!(added, 5);
+
+    // Every file carries its commit's attribution; the folded real-world
+    // Subject lines reassemble with the [PATCH n/2] marker stripped.
+    let oid1 = "7a78caf48c32ceb917f821e21cff3df6f7138c0a";
+    let oid2 = "00b13d71ceda75df5b0014d7a0b2b80a75284dd8";
+    assert!(files[..14]
+        .iter()
+        .all(|f| f.commit_oid.as_deref() == Some(oid1)));
+    assert!(files[14..]
+        .iter()
+        .all(|f| f.commit_oid.as_deref() == Some(oid2)));
+    assert_eq!(
+        files[0].commit_subject.as_deref(),
+        Some("GL-100 feat(review): Code/Preview toggle renders markdown files")
+    );
+    assert_eq!(
+        files[14].commit_subject.as_deref(),
+        Some("GL-100 fix(review): selection diffs carry blob oids so markdown Preview loads")
+    );
 }
 
 // A malformed `@@` header still opens its (empty) hunk, but must not inherit
