@@ -1,4 +1,4 @@
-use super::parser::parse_unified_diff;
+use super::parser::{parse_unified_diff, strip_patch_prefix};
 
 const SAMPLE: &str = "\
 diff --git a/src/foo.rs b/src/foo.rs
@@ -283,6 +283,39 @@ fn format_patch_preamble_never_leaks_into_hunks() {
     assert_eq!((files[2].add, files[2].del), (1, 0));
 }
 
+#[test]
+fn attributes_files_to_their_commit() {
+    let files = parse_unified_diff(MAILBOX);
+
+    // Commit 1: oid from the boundary line; the folded Subject is joined into
+    // one line with the [PATCH 1/2] marker stripped.
+    assert_eq!(
+        files[0].commit_oid.as_deref(),
+        Some("1111111111111111111111111111111111111111")
+    );
+    assert_eq!(
+        files[0].commit_subject.as_deref(),
+        Some("feat: first commit with a subject long enough to fold onto a continuation line")
+    );
+
+    // Commit 2 owns both of its files.
+    for f in &files[1..] {
+        assert_eq!(
+            f.commit_oid.as_deref(),
+            Some("2222222222222222222222222222222222222222")
+        );
+        assert_eq!(f.commit_subject.as_deref(), Some("fix: second commit"));
+    }
+}
+
+#[test]
+fn bare_unified_diff_carries_no_commit_attribution() {
+    let files = parse_unified_diff(SAMPLE);
+    assert!(files
+        .iter()
+        .all(|f| f.commit_oid.is_none() && f.commit_subject.is_none()));
+}
+
 // Byte-for-byte capture of `gh pr diff 85 --patch --color never` on this
 // repository - the 2-commit PR the corruption was first reproduced on. The
 // per-commit totals are asserted against git's own numbers (`git apply
@@ -323,6 +356,25 @@ fn parses_real_two_commit_gh_patch() {
     // The five files created in commit 1 all classify as additions.
     let added = files.iter().filter(|f| f.status == "A").count();
     assert_eq!(added, 5);
+
+    // Every file carries its commit's attribution; the folded real-world
+    // Subject lines reassemble with the [PATCH n/2] marker stripped.
+    let oid1 = "7a78caf48c32ceb917f821e21cff3df6f7138c0a";
+    let oid2 = "00b13d71ceda75df5b0014d7a0b2b80a75284dd8";
+    assert!(files[..14]
+        .iter()
+        .all(|f| f.commit_oid.as_deref() == Some(oid1)));
+    assert!(files[14..]
+        .iter()
+        .all(|f| f.commit_oid.as_deref() == Some(oid2)));
+    assert_eq!(
+        files[0].commit_subject.as_deref(),
+        Some("GL-100 feat(review): Code/Preview toggle renders markdown files")
+    );
+    assert_eq!(
+        files[14].commit_subject.as_deref(),
+        Some("GL-100 fix(review): selection diffs carry blob oids so markdown Preview loads")
+    );
 }
 
 // A malformed `@@` header still opens its (empty) hunk, but must not inherit
@@ -353,4 +405,53 @@ fn malformed_hunk_header_resets_leftover_counts() {
     // The garbage hunk owns no counts, so the stray lines are dropped.
     assert!(f.hunks[1].lines.is_empty());
     assert_eq!((f.add, f.del), (1, 1));
+}
+
+// The `[PATCH...]` marker strips only in the exact shape git emits; everything
+// else passes through so a subject is never silently mangled.
+#[test]
+fn strip_patch_prefix_handles_marker_variants() {
+    assert_eq!(strip_patch_prefix("[PATCH] title"), "title");
+    assert_eq!(strip_patch_prefix("[PATCH 1/2] title"), "title");
+    assert_eq!(strip_patch_prefix("[PATCH v2 3/7] title"), "title");
+    // Marker with no title: strips to empty (a folded line may still follow).
+    assert_eq!(strip_patch_prefix("[PATCH 1/2]"), "");
+    // Not git's marker: lowercase, other tags, unclosed bracket, no bracket.
+    assert_eq!(strip_patch_prefix("[patch] title"), "[patch] title");
+    assert_eq!(strip_patch_prefix("[RFC] title"), "[RFC] title");
+    assert_eq!(strip_patch_prefix("[PATCH title"), "[PATCH title");
+    assert_eq!(strip_patch_prefix("plain title"), "plain title");
+}
+
+// A mailbox message with a boundary but no `Subject:` header (hand-edited or
+// truncated patch): the file still gets the commit oid, subject stays None,
+// and body parsing is unaffected.
+const NO_SUBJECT: &str = "\
+From 3333333333333333333333333333333333333333 Mon Sep 17 00:00:00 2001
+From: Dev <dev@example.com>
+Date: Thu, 2 Jul 2026 19:24:55 +0300
+
+A body with no subject header above it.
+---
+ x.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/x.txt b/x.txt
+index 1111111..2222222 100644
+--- a/x.txt
++++ b/x.txt
+@@ -0,0 +1,1 @@
++hi
+";
+
+#[test]
+fn boundary_without_subject_keeps_oid_and_no_subject() {
+    let files = parse_unified_diff(NO_SUBJECT);
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[0].commit_oid.as_deref(),
+        Some("3333333333333333333333333333333333333333")
+    );
+    assert_eq!(files[0].commit_subject, None);
+    assert_eq!((files[0].add, files[0].del), (1, 0));
 }

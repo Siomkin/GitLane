@@ -176,6 +176,8 @@ export const fileDiffSchema = z.object({
   newSize: z.number().optional(),
   oldOid: z.string().optional(),
   newOid: z.string().optional(),
+  commitOid: z.string().optional(),
+  commitSubject: z.string().optional(),
 });
 
 // ---- pull_request_detail → PullRequestDetail ----
