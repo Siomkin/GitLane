@@ -9,9 +9,13 @@ use git2::Repository;
 
 use crate::git::types::RecentStatus;
 
+use super::repo::main_worktree_path;
+
 /// Resolve presence + current branch for each recent path. Best-effort and
 /// infallible per entry: a missing/unreadable path yields `exists: false` with
-/// no branch rather than failing the whole call.
+/// no branch rather than failing the whole call. The tab strip shares this
+/// probe for session restore + worktree-tab labeling (GL-109/GL-110), so each
+/// entry also reports whether it is a linked worktree and of which repository.
 pub fn recents_status(paths: &[String]) -> Vec<RecentStatus> {
     paths
         .iter()
@@ -38,6 +42,8 @@ pub fn recents_status(paths: &[String]) -> Vec<RecentStatus> {
                 path: path.clone(),
                 exists: repo.is_some(),
                 branch,
+                is_worktree: repo.as_ref().is_some_and(|r| r.is_worktree()),
+                main_path: repo.as_ref().and_then(main_worktree_path),
             }
         })
         .collect()

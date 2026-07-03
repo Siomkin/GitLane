@@ -34,7 +34,13 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(null);
   useRepo.setState({ summary });
-  useAccounts.setState({ accounts: [account], repoAccountId: null, repoAccountRef: null, repoIdentity: null });
+  useAccounts.setState({
+    accounts: [account],
+    repoAccountId: null,
+    repoBindingKey: null,
+    repoAccountRef: null,
+    repoIdentity: null,
+  });
 });
 
 describe("setRepoAccount — Tier 2 binding never touches commit identity", () => {
@@ -198,5 +204,86 @@ describe("loadForgeAuth — fast auth, background identity", () => {
     await useAccounts.getState().loadForgeAuth(true);
     await vi.waitFor(() => expect(useAccounts.getState().forgeAccountsLoading).toEqual([]));
     expect(useAccounts.getState().forgeAuth[0].account).toBeUndefined();
+  });
+});
+
+describe("repository-identity keying across worktrees (GL-109)", () => {
+  const mainPath = "/repo";
+  const wtPath = "/repo/.claude/worktrees/lewin";
+  const mainSummary: RepoSummary = {
+    path: mainPath,
+    workdir: mainPath,
+    headBranch: "main",
+    headOid: "abc",
+    detached: false,
+    isWorktree: false,
+    mainPath: null,
+  };
+  const wtSummary: RepoSummary = {
+    path: wtPath,
+    workdir: wtPath,
+    headBranch: "d/lewin",
+    headOid: "abc",
+    detached: false,
+    isWorktree: true,
+    mainPath,
+  };
+
+  it("an account bound in the main checkout applies in a linked worktree", async () => {
+    useRepo.setState({ summary: mainSummary });
+    useAccounts.getState().syncRepoAccount(mainPath);
+    await useAccounts.getState().setRepoAccount(account.id);
+
+    // Reopen the same repository through a linked worktree tab.
+    useAccounts.setState({ repoAccountId: null, repoAccountRef: null });
+    useRepo.setState({ summary: wtSummary });
+    useAccounts.getState().syncRepoAccount(wtPath);
+
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    expect(useAccounts.getState().repoBindingKey).toBe(mainPath);
+  });
+
+  it("binding from a worktree persists under the repository identity", async () => {
+    useRepo.setState({ summary: wtSummary });
+    useAccounts.getState().syncRepoAccount(wtPath);
+    await useAccounts.getState().setRepoAccount(account.id);
+
+    const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
+    expect(stored[mainPath]).toMatchObject({ version: 2, provider: "gh", accountId: "1" });
+    expect(stored[wtPath]).toBeUndefined();
+  });
+
+  it("migrates a pre-identity binding stored under the worktree path", () => {
+    // A binding persisted by a pre-GL-109 build, keyed by the worktree path.
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({ [wtPath]: { version: 2, ...account.ref } }),
+    );
+    useRepo.setState({ summary: wtSummary });
+    useAccounts.getState().syncRepoAccount(wtPath);
+
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
+    expect(stored[mainPath]).toMatchObject({ version: 2, accountId: "1" });
+    expect(stored[wtPath]).toBeUndefined();
+  });
+
+  it("keeps the identity-keyed binding when a stale worktree shadow also exists", () => {
+    // The identity entry (an explicit unbind) wins; the worktree shadow is dropped.
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        [mainPath]: { version: 2, unbound: true },
+        [wtPath]: { version: 2, ...account.ref },
+      }),
+    );
+    useAccounts.setState({ activeAccountId: account.id });
+    useRepo.setState({ summary: wtSummary });
+    useAccounts.getState().syncRepoAccount(wtPath);
+
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+    const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
+    expect(stored[mainPath]).toEqual({ version: 2, unbound: true });
+    expect(stored[wtPath]).toBeUndefined();
   });
 });

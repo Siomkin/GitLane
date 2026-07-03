@@ -151,9 +151,10 @@ export function WorktreeRow({
   const open = useOpenWorktree();
   const openWorktreeMenu = useUi((s) => s.openWorktreeMenu);
   const tip = useTruncatedTooltip(label);
-  // Primary action: switch to the worktree. The already-open one can't be
-  // switched to, so it just scrolls the graph to its tip.
-  const activate = () => (isActive ? reveal(oid) : open(wt.path));
+  // Primary action: switch to the worktree — in place by default; cmd/ctrl
+  // opens it in a new tab (GL-110). The already-open one can't be switched to,
+  // so it just scrolls the graph to its tip.
+  const activate = (newTab = false) => (isActive ? reveal(oid) : open(wt.path, newTab));
   // The kebab and right-click share one entry point — same menu, same payload.
   const openMenu = (x: number, y: number) =>
     openWorktreeMenu({ x, y, path: wt.path, name: label, isMain: wt.isMain });
@@ -170,11 +171,11 @@ export function WorktreeRow({
           : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
         dimmed && DIM_CLASS,
       )}
-      onClick={activate}
+      onClick={(e) => activate(e.metaKey || e.ctrlKey)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          activate();
+          activate(e.metaKey || e.ctrlKey);
         }
       }}
       onContextMenu={(e) => {

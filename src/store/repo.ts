@@ -7,7 +7,8 @@ import { createRepoLifecycleActions } from "./repoLifecycleActions";
 import { createRepoRemoteActions } from "./repoRemoteActions";
 import { createRepoSelectionActions } from "./repoSelectionActions";
 import { createInitialRepoData, type RepoState } from "./repoTypes";
-import { readOpenPaths, readRecents } from "./repoSession";
+import { readOpenPaths, readRecents, readTabInfo } from "./repoSession";
+import { pruneTabInfo } from "../lib/tabs";
 import { createRepoWriteActions } from "./repoWriteActions";
 
 export type {
@@ -22,7 +23,12 @@ export type {
 export { GRAPH_PAGE_SIZE, INITIAL_GRAPH_LIMIT } from "./repoTypes";
 
 export const useRepo = create<RepoState>((set, get) => ({
-  ...createInitialRepoData(readOpenPaths(), readRecents()),
+  // Tab info restores pruned to the restored tabs so closed paths never linger.
+  ...createInitialRepoData(
+    readOpenPaths(),
+    readRecents(),
+    pruneTabInfo(readTabInfo(), readOpenPaths()),
+  ),
   ...createRepoLifecycleActions(set, get),
   ...createRepoSelectionActions(set, get),
   ...createRepoWriteActions(set, get),

@@ -180,3 +180,53 @@ fn worktree_join_rejects_escapes_and_accepts_safe_paths() {
     assert!(worktree_join(wd, "a/../../escape").is_err());
     assert!(worktree_join(wd, "/etc/hosts").is_err());
 }
+
+#[test]
+fn summary_reports_linked_worktree_identity() {
+    use super::recents::recents_status;
+    use super::repo::summary;
+
+    let dir = TempRepo::new("wt-identity");
+    let repo = Repository::init(dir.path()).unwrap();
+    commit(&repo, "HEAD", "base", &[]);
+
+    // A linked worktree on its own branch, next to (not inside) the main dir.
+    let wt_dir = dir.path().parent().unwrap().join(format!(
+        "{}-linked",
+        dir.path().file_name().unwrap().to_string_lossy()
+    ));
+    let _ = std::fs::remove_dir_all(&wt_dir);
+    repo.worktree("linked", &wt_dir, None).unwrap();
+
+    // Canonicalize both sides: temp paths go through symlinks on macOS
+    // (/var → /private/var), and git records the resolved form.
+    let canon = |p: &str| std::fs::canonicalize(p).unwrap();
+
+    let main = summary(dir.path().to_str().unwrap()).unwrap();
+    assert!(!main.is_worktree, "the main checkout is not a linked worktree");
+    assert_eq!(main.main_path, None, "the main checkout is its own identity");
+
+    let wt = summary(wt_dir.to_str().unwrap()).unwrap();
+    assert!(wt.is_worktree, "a linked worktree reports itself as one");
+    assert_eq!(
+        canon(wt.main_path.as_deref().expect("linked worktree has a main path")),
+        canon(&main.path),
+        "a linked worktree's identity is the main checkout's path"
+    );
+
+    // The shared tab/recents probe reports the same identity per path.
+    let statuses = recents_status(&[
+        wt_dir.to_string_lossy().into_owned(),
+        dir.path().to_string_lossy().into_owned(),
+    ]);
+    assert!(statuses[0].is_worktree);
+    assert_eq!(
+        canon(statuses[0].main_path.as_deref().unwrap()),
+        canon(&main.path)
+    );
+    assert!(!statuses[1].is_worktree);
+    assert_eq!(statuses[1].main_path, None);
+    assert_eq!(statuses[0].branch.as_deref(), Some("linked"));
+
+    let _ = std::fs::remove_dir_all(&wt_dir);
+}

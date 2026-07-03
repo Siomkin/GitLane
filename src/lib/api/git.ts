@@ -62,6 +62,13 @@ export interface RepoSummary {
   headBranch: string | null;
   headOid: string | null;
   detached: boolean;
+  /** True when this checkout is a *linked* worktree. Optional for
+   * backward-compatible fixtures; the backend always sends it. */
+  isWorktree?: boolean;
+  /** The main checkout's path for a linked worktree — the stable repository
+   * identity (GL-109/GL-110); null for the main checkout itself. Optional for
+   * fixtures; the backend always sends it. */
+  mainPath?: string | null;
 }
 
 /** The classified rejection of `open_repo` — the one structured IPC error
@@ -124,13 +131,20 @@ export interface SigningKey {
   format: "openpgp" | "ssh";
 }
 
-/** Presence + current branch of a recently-opened repo path (see Rust
+/** Presence + current branch of a previously-opened repo path (see Rust
  * `RecentStatus`). `exists: false` marks a path that no longer resolves on disk
- * so the onboarding list can flag it "Missing". */
+ * so the onboarding list can flag it "Missing" (and session restore can drop
+ * the tab). The tab strip shares this probe for worktree-tab labeling. */
 export interface RecentStatus {
   path: string;
   exists: boolean;
   branch: string | null;
+  /** True when the path is a *linked* worktree of some repository. Optional
+   * for fixtures; the backend always sends it. */
+  isWorktree?: boolean;
+  /** The main checkout's path when `isWorktree` (see RepoSummary.mainPath).
+   * Optional for fixtures; the backend always sends it. */
+  mainPath?: string | null;
 }
 
 /** Payload of the `clone-progress` event streamed during a clone (see Rust

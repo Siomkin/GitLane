@@ -65,6 +65,24 @@ pub fn worktree_join(workdir: &Path, file: &str) -> Result<PathBuf, git2::Error>
     Ok(workdir.join(rel))
 }
 
+/// The main checkout's path for a *linked* worktree — the stable repository
+/// identity (GL-109/GL-110). A linked worktree's gitdir lives under
+/// `<common>/worktrees/<name>`, and `commondir()` points back at the shared
+/// gitdir, so opening the common dir yields the main worktree. Returns None for
+/// the main worktree itself (its own path is the identity) and for a bare main
+/// without a working tree (falls back to the bare gitdir).
+pub(super) fn main_worktree_path(repo: &git2::Repository) -> Option<String> {
+    if !repo.is_worktree() {
+        return None;
+    }
+    let common = repo.commondir();
+    let main = Repository::open(common).ok()?;
+    main.workdir()
+        .and_then(|p| p.to_str())
+        .map(|s| s.trim_end_matches('/').to_string())
+        .or_else(|| common.to_str().map(|s| s.trim_end_matches('/').to_string()))
+}
+
 /// High-level state for the title bar / status area.
 pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
     let repo = open(path)?;
@@ -95,6 +113,8 @@ pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
         head_branch,
         head_oid,
         detached,
+        is_worktree: repo.is_worktree(),
+        main_path: main_worktree_path(&repo),
     })
 }
 

@@ -13,6 +13,7 @@ import { create } from "zustand";
 
 import { api, type ForgeAuthStatus, type GithubAccountRef, type RepoIdentity } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
+import { repoIdentityKey } from "../lib/worktrees";
 import { useRepo } from "./repo";
 import { useUi } from "./ui";
 import { usePulls } from "./pulls";
@@ -88,6 +89,18 @@ const readIdentities = () => readJsonMap<RepoIdentity>(LS_REPO_IDENTITY);
 const writeIdentities = (map: Record<string, RepoIdentity>) =>
   writeJsonMap(LS_REPO_IDENTITY, map);
 
+/** One-shot migration of a per-repo map entry from a worktree-path key to the
+ * repository-identity key (GL-109): pre-identity builds stored bindings under
+ * whatever worktree path was open, so a value under `path` moves to `key` (the
+ * identity wins if both exist — the stale worktree shadow is dropped). Returns
+ * true when the map changed and needs persisting. */
+function migratePathKey<T>(map: Record<string, T>, key: string, path: string): boolean {
+  if (key === path || map[path] === undefined) return false;
+  if (map[key] === undefined) map[key] = map[path];
+  delete map[path];
+  return true;
+}
+
 function accountKey(ref: GithubAccountRef): string {
   return `${ref.provider}:${ref.host}:${ref.accountId}`;
 }
@@ -134,6 +147,10 @@ interface AccountsState {
   activeAccountId: string | null;
   /** The account bound to the currently open repo (its id/username). */
   repoAccountId: string | null;
+  /** The key per-repo state persists under for the open repo: its repository
+   * identity (main checkout's path), so all worktrees of a repo share the
+   * account binding and cached commit identity (GL-109). */
+  repoBindingKey: string | null;
   /** Provider/account metadata sent to Rust for GitHub operations. */
   repoAccountRef: GithubAccountRef | null;
   /** Commit identity (name + email) pinned for the open repo, or null to defer
@@ -193,6 +210,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   forgeAccountsLoading: [],
   activeAccountId: null,
   repoAccountId: null,
+  repoBindingKey: null,
   repoAccountRef: null,
   repoIdentity: null,
 
@@ -281,13 +299,22 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   syncRepoAccount: (path) => {
+    // Per-repo state keys on the repository identity — the main checkout's
+    // path — not the open worktree's path, so binding an account in any
+    // worktree of a repo applies to all of them (GL-109). The summary is the
+    // published source of that identity; a defensive fallback to the raw path
+    // covers a sync racing a repo switch (the next sync corrects it).
+    const summary = useRepo.getState().summary;
+    const key = summary && summary.path === path ? repoIdentityKey(summary) : path;
     const bindings = readBindings();
-    const bound = bindings[path];
+    // Resolve pre-identity entries stored under this worktree's own path.
+    if (migratePathKey(bindings, key, path)) writeBindings(bindings);
+    const bound = bindings[key];
     let selected: Account | null = null;
     if (typeof bound === "string") {
       selected = get().accounts.find((a) => accountMatchesLegacy(a, bound)) ?? null;
       if (selected) {
-        bindings[path] = bindingFromAccount(selected);
+        bindings[key] = bindingFromAccount(selected);
         writeBindings(bindings);
       }
     } else if (bound && bound.version === 2) {
@@ -299,12 +326,15 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       // Never configured → default to the active gh account for convenience.
       selected = get().accounts.find((a) => a.id === get().activeAccountId) ?? null;
     }
+    const identities = readIdentities();
+    if (migratePathKey(identities, key, path)) writeIdentities(identities);
     set({
       repoAccountId: selected?.id ?? null,
+      repoBindingKey: key,
       repoAccountRef: selected?.ref ?? null,
       // Optimistic: show the cached identity immediately (avoids a flash),
       // then reconcile against git config — the build-independent truth.
-      repoIdentity: readIdentities()[path] ?? null,
+      repoIdentity: identities[key] ?? null,
     });
     void get().hydrateRepoIdentity(path);
   },
@@ -312,9 +342,12 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   pinRepoIdentity: (identity, path) => {
     repoIdentityGen += 1;
     set({ repoIdentity: identity });
+    // The cache keys on the repository identity, like the git config it
+    // mirrors — `git config --local` is shared across worktrees (GL-109).
+    const key = get().repoBindingKey ?? path;
     const identities = readIdentities();
-    if (identity) identities[path] = identity;
-    else delete identities[path];
+    if (identity) identities[key] = identity;
+    else delete identities[key];
     writeIdentities(identities);
   },
 
@@ -330,19 +363,20 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // switched repos meanwhile.
     if (repoIdentityGen !== gen) return;
     if (useRepo.getState().summary?.path !== path) return;
+    const key = get().repoBindingKey ?? path;
     if (identity) {
       // git config wins; refresh the cache so both agree.
       set({ repoIdentity: identity });
       const identities = readIdentities();
-      identities[path] = identity;
+      identities[key] = identity;
       writeIdentities(identities);
     } else {
       // Nothing pinned in git config → defer to global config. Drop any stale
       // cache so a removed identity doesn't resurrect on the next open.
       set({ repoIdentity: null });
       const identities = readIdentities();
-      if (identities[path]) {
-        delete identities[path];
+      if (identities[key]) {
+        delete identities[key];
         writeIdentities(identities);
       }
     }
@@ -351,12 +385,14 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   setRepoAccount: async (id) => {
     const account = get().accounts.find((a) => a.id === id) ?? null;
     set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
-    const path = useRepo.getState().summary?.path ?? null;
-    if (path) {
+    // Persist under the repository identity (set by syncRepoAccount on open)
+    // so the binding covers every worktree of the repo (GL-109).
+    const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
+    if (key) {
       const bindings = readBindings();
       // Persist an explicit unbound marker (not a delete) so "No account" is
       // durable across reopen instead of reverting to the active gh account.
-      bindings[path] = account ? bindingFromAccount(account) : { version: 2, unbound: true };
+      bindings[key] = account ? bindingFromAccount(account) : { version: 2, unbound: true };
       writeBindings(bindings);
     }
     // Binding an account drives PR / push / fetch auth ONLY — it must never

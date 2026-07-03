@@ -430,8 +430,10 @@ export function createRepoWriteActions(
         // Land on the destination — the branch (and any carried work, or a
         // conflict to resolve) lives there now. loadRepo owns the loading lifecycle
         // + open intent, republishes the graph, and reads operation_status, so a
-        // carry conflict opens the conflict workspace for the destination.
-        await get().loadRepo(toWorktreePath);
+        // carry conflict opens the conflict workspace for the destination. The
+        // landing switches the current tab in place — same repository, same
+        // tab (GL-110) — rather than opening the destination as a sibling.
+        await get().loadRepo(toWorktreePath, { replaceTab: summary.path });
         return message;
       } catch (e) {
         flushPendingRefresh(get);
@@ -477,8 +479,18 @@ export function createRepoWriteActions(
       return `Created worktree at ${worktreePath}`;
     },
 
-    openWorktree: async (worktreePath) => {
-      await get().loadRepo(worktreePath);
+    openWorktree: async (worktreePath, opts) => {
+      // In-place by default (GL-110): git's model is one repository, many
+      // working trees, so switching worktrees moves the *current tab* to the
+      // new path — it keeps the repository identity — instead of opening a
+      // sibling tab. `newTab` is the explicit side-by-side action; a worktree
+      // already open in another tab is simply activated (loadRepo's
+      // includes-check leaves the strip untouched either way).
+      const currentPath = get().summary?.path;
+      await get().loadRepo(
+        worktreePath,
+        opts?.newTab || !currentPath ? undefined : { replaceTab: currentPath },
+      );
       // Switching into a worktree is usually about its in-progress work, but
       // loadRepo parks the selection on the tip commit. If the freshly loaded
       // worktree is dirty, surface its working tree (the WIP node) so the

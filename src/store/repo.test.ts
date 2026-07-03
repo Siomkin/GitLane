@@ -1798,3 +1798,199 @@ describe("repo store — merged selection (GL-69)", () => {
     expect(useRepo.getState().fileDiff).toBeNull();
   });
 });
+
+describe("repo store — worktree tabs (GL-110)", () => {
+  const mainSummary: RepoSummary = {
+    path: "/repo",
+    workdir: "/repo",
+    headBranch: "main",
+    headOid: null,
+    detached: false,
+    isWorktree: false,
+    mainPath: null,
+  };
+  const wtSummary: RepoSummary = {
+    path: "/repo/.claude/worktrees/lewin",
+    workdir: "/repo/.claude/worktrees/lewin",
+    headBranch: "d/lewin",
+    headOid: null,
+    detached: false,
+    isWorktree: true,
+    mainPath: "/repo",
+  };
+
+  const mockOpen = (byPath: Record<string, RepoSummary>) => {
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      if (cmd === "open_repo") {
+        const { path } = args as { path: string };
+        return Promise.resolve(byPath[path] ?? { ...mainSummary, path, workdir: path });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    useRepo.setState({
+      summary: mainSummary,
+      openPaths: ["/repo", "/other"],
+      tabInfoByPath: {
+        "/repo": { isWorktree: false, mainPath: null, branch: "main" },
+        "/other": { isWorktree: false, mainPath: null, branch: "main" },
+      },
+    });
+  });
+
+  it("switches the current tab in place by default (one repo, one tab)", async () => {
+    mockOpen({ [wtSummary.path]: wtSummary });
+
+    await useRepo.getState().openWorktree(wtSummary.path);
+
+    // The worktree replaced the main checkout's tab — no sibling tab appeared.
+    expect(useRepo.getState().openPaths).toEqual([wtSummary.path, "/other"]);
+    expect(useRepo.getState().summary?.path).toBe(wtSummary.path);
+    // The strip knows it's a worktree of /repo on d/lewin (label + grouping).
+    expect(useRepo.getState().tabInfoByPath[wtSummary.path]).toEqual({
+      isWorktree: true,
+      mainPath: "/repo",
+      branch: "d/lewin",
+    });
+    // The replaced tab's info no longer lingers.
+    expect(useRepo.getState().tabInfoByPath["/repo"]).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual([
+      wtSummary.path,
+      "/other",
+    ]);
+  });
+
+  it("opens a separate tab grouped next to the repository on newTab", async () => {
+    mockOpen({ [wtSummary.path]: wtSummary });
+
+    await useRepo.getState().openWorktree(wtSummary.path, { newTab: true });
+
+    // Inserted right after /repo (its parent), not appended after /other.
+    expect(useRepo.getState().openPaths).toEqual(["/repo", wtSummary.path, "/other"]);
+    expect(useRepo.getState().summary?.path).toBe(wtSummary.path);
+  });
+
+  it("just activates a worktree that is already open in another tab", async () => {
+    useRepo.setState({ openPaths: ["/repo", wtSummary.path] });
+    mockOpen({ [wtSummary.path]: wtSummary });
+
+    await useRepo.getState().openWorktree(wtSummary.path);
+
+    // No duplicate tab, no replacement — the existing tab became active.
+    expect(useRepo.getState().openPaths).toEqual(["/repo", wtSummary.path]);
+    expect(useRepo.getState().summary?.path).toBe(wtSummary.path);
+  });
+});
+
+describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
+  const aliveSummary: RepoSummary = {
+    path: "/a",
+    workdir: "/a",
+    headBranch: "main",
+    headOid: null,
+    detached: false,
+    isWorktree: false,
+    mainPath: null,
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    useRepo.setState({
+      summary: null,
+      openPaths: ["/a", "/dead-wt"],
+      // The persisted tab info is what lets restore recognize the dead path as
+      // a *worktree* (the gone directory can't answer anymore).
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/dead-wt": { isWorktree: true, mainPath: "/a", branch: "d/lewin" },
+      },
+    });
+  });
+
+  it("drops a removed worktree tab and heals the last-active path to a survivor", async () => {
+    localStorage.setItem("gitlane.lastPath", "/dead-wt");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            // A pruned agent worktree: gone from disk since last session.
+            { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+          ]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().restoreSession();
+
+    // The dead tab is gone instead of restoring as an error tab, and the app
+    // reopened on the surviving repo.
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual(["/a"]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
+  });
+
+  it("keeps a missing *repository* tab for the GL-108 recovery screen", async () => {
+    // A dead path that was NOT a worktree (a repo on an unmounted volume):
+    // the tab must survive so Retry/Locate stay reachable.
+    useRepo.setState({
+      openPaths: ["/a", "/gone-repo"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/gone-repo": { isWorktree: false, mainPath: null, branch: "main" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            { path: "/gone-repo", exists: false, branch: null, isWorktree: false, mainPath: null },
+          ]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/gone-repo"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+  });
+
+  it("keeps restored tabs when the probe itself fails", async () => {
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.reject(new Error("probe failed"));
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/dead-wt"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+  });
+});
