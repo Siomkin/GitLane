@@ -15,8 +15,9 @@ export type PreviewSource = { oid?: string; file?: string };
  *
  * The unstaged case must read from disk by path: libgit2 reports the worktree
  * side with a computed hash that need not exist in the ODB. Returns null when
- * there is nothing to render (the file was deleted, or a non-worktree diff
- * carries no new-side oid).
+ * there is nothing to render — the file was deleted, or a non-worktree diff
+ * carries no new-side oid (a gapped multi-commit selection whose merged
+ * content is composed in memory and matches no repo blob).
  */
 export function previewSource(diff: FileDiff, source: ChangeSource): PreviewSource | null {
   if (diff.status === "D") return null;
