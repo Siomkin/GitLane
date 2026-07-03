@@ -1,6 +1,7 @@
 import { api, type RepoSummary } from "../lib/api";
 import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "../lib/advancedRepoState";
 import { splitCommitMessage } from "../lib/commitMessage";
+import { mergeWasAlreadyUpToDate } from "../lib/mergeOutcome";
 import { useAccounts } from "./accounts";
 import { takePendingRefresh } from "./repoRequests";
 import { validateSquashRange } from "./selection";
@@ -210,8 +211,13 @@ export function createRepoWriteActions(
               throw new Error(`Couldn't check out ${to} to merge into it: ${e}`);
             }
           }
-          await api.mergeBranch(summary.path, from);
-          return `Merged ${from} into ${to}`;
+          const output = await api.mergeBranch(summary.path, from);
+          // Even under `--no-ff`, git exits 0 and creates nothing when `from`
+          // is already reachable from HEAD (equal tips included) — the toast
+          // must not claim a merge happened.
+          return mergeWasAlreadyUpToDate(output)
+            ? `${to} is already up to date with ${from}`
+            : `Merged ${from} into ${to}`;
         },
         `Merging ${from} into ${to}`,
       ),

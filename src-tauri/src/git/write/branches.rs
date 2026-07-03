@@ -1,6 +1,6 @@
 //! Branch, tag, patch, sequencer, and reset operations.
 
-use super::cli::run_git;
+use super::cli::{run_git, run_git_env_stable_diagnostics};
 use super::operands::{ensure_operand, ensure_opt};
 
 /// Check out an existing branch, tag, or commit.
@@ -51,9 +51,15 @@ pub fn set_upstream(repo: &str, branch: &str, upstream: &str) -> Result<String, 
 /// move was a fast-forward, and `merge.ff=only` would fail an otherwise-mergeable
 /// branch. `--no-edit` keeps git from ever launching an editor for the merge
 /// message inside this GUI subprocess (there is no TTY to drive it).
+///
+/// Even under `--no-ff`, merging a branch whose tip is already reachable from
+/// HEAD (equal tips included) creates nothing — git exits 0 with "Already up to
+/// date." The store keys its toast off that phrase (`src/lib/mergeOutcome.ts`),
+/// so diagnostics are pinned to `LC_ALL=C` to keep it locale-stable, same as
+/// the tag-clobber detection in `remotes.rs`.
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    run_git(repo, &["merge", "--no-ff", "--no-edit", branch])
+    run_git_env_stable_diagnostics(repo, &["merge", "--no-ff", "--no-edit", branch], &[])
 }
 
 /// Fast-forward the current HEAD to `target`. Fails (no merge commit) if the

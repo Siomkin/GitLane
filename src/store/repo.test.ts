@@ -421,6 +421,47 @@ describe("repo store — folder roll-up staging", () => {
   });
 });
 
+describe("repo store — mergeInto toast mapping", () => {
+  // `merge --no-ff` exits 0 without creating anything when the branch is
+  // already reachable from HEAD (equal tips included) — the returned message
+  // must say so instead of claiming a merge happened. The backend pins the
+  // subprocess to LC_ALL=C, so the "Already up to date." match is stable.
+  const invokeWithMergeOutput = (output: string) => (cmd: string) => {
+    switch (cmd) {
+      case "merge_branch":
+        return Promise.resolve(output);
+      case "open_repo":
+        return Promise.resolve(summary);
+      case "commit_graph":
+        return Promise.resolve(emptyGraph);
+      default:
+        return defaultInvoke(cmd);
+    }
+  };
+
+  it("reports the merge when git created a merge commit", async () => {
+    invokeMock.mockImplementation(
+      invokeWithMergeOutput("Merge made by the 'ort' strategy.\n file.txt | 1 +"),
+    );
+
+    const msg = await useRepo.getState().mergeInto("feature", "main");
+
+    expect(invokeMock).toHaveBeenCalledWith("merge_branch", {
+      path: "/repo",
+      branch: "feature",
+    });
+    expect(msg).toBe("Merged feature into main");
+  });
+
+  it("reports up-to-date when the no-ff merge was a no-op", async () => {
+    invokeMock.mockImplementation(invokeWithMergeOutput("Already up to date."));
+
+    const msg = await useRepo.getState().mergeInto("feature", "main");
+
+    expect(msg).toBe("main is already up to date with feature");
+  });
+});
+
 describe("repo store — large history", () => {
   it("loads the next graph page and preserves the larger limit", async () => {
     useRepo.setState({
