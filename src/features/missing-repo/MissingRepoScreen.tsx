@@ -40,7 +40,7 @@ export const MissingRepoScreen = () => {
             {message}
           </div>
 
-          <div className="mx-auto mt-5 max-w-[440px] overflow-x-auto whitespace-nowrap rounded-xl border border-black/5 bg-black/[0.03] px-4 py-3 text-left font-mono text-[12px] text-neutral-500 dark:border-white/10 dark:bg-white/5 dark:text-neutral-400">
+          <div className="mx-auto mt-5 max-w-[440px] break-all rounded-xl border border-black/5 bg-black/[0.03] px-4 py-3 text-left font-mono text-[12px] leading-relaxed text-neutral-500 dark:border-white/10 dark:bg-white/5 dark:text-neutral-400">
             {missing.path}
           </div>
 
