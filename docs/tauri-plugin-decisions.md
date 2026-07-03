@@ -205,9 +205,13 @@ the architecture.
   component deep in the tree. These errors are contained by the feature error
   boundaries from GL-56.
 - **Covered commands:** `commit_graph`, `working_changes`, `file_diff` (plus the
-  `commit_file_diff` / `diff_range_file` / `compare_file_diff` variants that share
-  the `FileDiff` shape), and `pull_request_detail`. Extend coverage to a new command
-  by adding its schema and parsing the result in the wrapper.
+  `commit_file_diff` / `diff_range_file` / `selection_diff_file` /
+  `compare_file_diff` variants that share the `FileDiff` shape), and every GitHub
+  read: `pull_request_detail`, `github_accounts`, `list_pull_requests`,
+  `pull_request_checks`, `pull_request_commit_signatures`, `pull_request_diff`,
+  and `pull_request_review_threads` (GL-122 follow-up). GitHub write commands
+  return gh's plain string output and are not schema-validated. Extend coverage
+  to a new command by adding its schema and parsing the result in the wrapper.
 - **Type source of truth:** the hand-written, documented interfaces in `git.ts` /
   `github.ts` stay the *type* source of truth (their field docs are valuable); the
   schema is the *runtime* source of truth. A compile-time `assertEqual` guard in

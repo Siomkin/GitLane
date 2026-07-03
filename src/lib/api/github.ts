@@ -1,7 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
+import { z } from "zod";
 import type { FileDiff } from "./git";
 import { parse } from "./validate";
-import { pullRequestDetailSchema } from "./schemas";
+import {
+  fileDiffSchema,
+  githubAccountSchema,
+  prCheckSchema,
+  prCommitSignatureSchema,
+  pullRequestDetailSchema,
+  pullRequestSummarySchema,
+  reviewThreadSchema,
+} from "./schemas";
 
 export type GithubAuthProvider = "gh" | "native";
 
@@ -139,11 +148,19 @@ export type PrStateAction = "close" | "reopen" | "ready";
 
 export const githubApi = {
   /** Accounts the `gh` CLI is logged into. Empty when not logged in. */
-  githubAccounts: () => invoke<GithubAccount[]>("github_accounts"),
+  githubAccounts: async (): Promise<GithubAccount[]> =>
+    parse(z.array(githubAccountSchema), await invoke("github_accounts"), "github_accounts"),
 
   /** Pull requests for the repo, fetched as the bound `account` if given. */
-  listPullRequests: (path: string, account?: GithubAccountRef | null) =>
-    invoke<PullRequestSummary[]>("list_pull_requests", { path, account: account ?? null }),
+  listPullRequests: async (
+    path: string,
+    account?: GithubAccountRef | null,
+  ): Promise<PullRequestSummary[]> =>
+    parse(
+      z.array(pullRequestSummarySchema),
+      await invoke("list_pull_requests", { path, account: account ?? null }),
+      "list_pull_requests",
+    ),
 
   /** Detail (body, files, comment count) for one pull request — no checks. */
   pullRequestDetail: async (
@@ -158,28 +175,52 @@ export const githubApi = {
     ),
 
   /** CI/status checks for a PR (the slow field), loaded lazily on demand. */
-  pullRequestChecks: (path: string, number: number, account?: GithubAccountRef | null) =>
-    invoke<PrCheck[]>("pull_request_checks", { path, number, account: account ?? null }),
+  pullRequestChecks: async (
+    path: string,
+    number: number,
+    account?: GithubAccountRef | null,
+  ): Promise<PrCheck[]> =>
+    parse(
+      z.array(prCheckSchema),
+      await invoke("pull_request_checks", { path, number, account: account ?? null }),
+      "pull_request_checks",
+    ),
 
   /** Per-commit signature verification (GraphQL), loaded lazily on demand. */
-  pullRequestCommitSignatures: (path: string, number: number, account?: GithubAccountRef | null) =>
-    invoke<PrCommitSignature[]>("pull_request_commit_signatures", {
-      path,
-      number,
-      account: account ?? null,
-    }),
+  pullRequestCommitSignatures: async (
+    path: string,
+    number: number,
+    account?: GithubAccountRef | null,
+  ): Promise<PrCommitSignature[]> =>
+    parse(
+      z.array(prCommitSignatureSchema),
+      await invoke("pull_request_commit_signatures", { path, number, account: account ?? null }),
+      "pull_request_commit_signatures",
+    ),
 
   /** Full unified diff of a PR (parsed server-side), loaded lazily on demand. */
-  pullRequestDiff: (path: string, number: number, account?: GithubAccountRef | null) =>
-    invoke<FileDiff[]>("pull_request_diff", { path, number, account: account ?? null }),
+  pullRequestDiff: async (
+    path: string,
+    number: number,
+    account?: GithubAccountRef | null,
+  ): Promise<FileDiff[]> =>
+    parse(
+      z.array(fileDiffSchema),
+      await invoke("pull_request_diff", { path, number, account: account ?? null }),
+      "pull_request_diff",
+    ),
 
   /** Inline review threads for a PR (GraphQL), loaded lazily on demand. */
-  pullRequestReviewThreads: (path: string, number: number, account?: GithubAccountRef | null) =>
-    invoke<ReviewThread[]>("pull_request_review_threads", {
-      path,
-      number,
-      account: account ?? null,
-    }),
+  pullRequestReviewThreads: async (
+    path: string,
+    number: number,
+    account?: GithubAccountRef | null,
+  ): Promise<ReviewThread[]> =>
+    parse(
+      z.array(reviewThreadSchema),
+      await invoke("pull_request_review_threads", { path, number, account: account ?? null }),
+      "pull_request_review_threads",
+    ),
 
   /** Resolve (or unresolve) a review thread by its GraphQL node id. */
   resolveReviewThread: (

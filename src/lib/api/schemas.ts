@@ -35,14 +35,18 @@ import type {
   WorkingChanges,
 } from "./git";
 import type {
+  GithubAccount,
   Mergeable,
   PrAuthor,
+  PrCheck,
   PrComment,
   PrCommit,
+  PrCommitSignature,
   PrLabel,
   PrReview,
   PullRequestDetail,
   PullRequestSummary,
+  ReviewThread,
 } from "./github";
 
 // ---- commit_graph → RepoGraph ----
@@ -218,7 +222,7 @@ const prLabelSchema = z.object({
   color: z.string(),
 });
 
-const pullRequestSummarySchema = z.object({
+export const pullRequestSummarySchema = z.object({
   number: z.number(),
   title: z.string(),
   state: z.enum(["OPEN", "MERGED", "CLOSED"]),
@@ -245,6 +249,48 @@ export const pullRequestDetailSchema = pullRequestSummarySchema.extend({
   labels: z.array(prLabelSchema),
   milestone: z.string().nullable(),
   commits: z.array(prCommitSchema),
+});
+
+// ---- github_accounts → GithubAccount[] ----
+
+export const githubAccountSchema = z.object({
+  provider: z.enum(["gh", "native"]),
+  host: z.string(),
+  accountId: z.string(),
+  login: z.string(),
+  username: z.string(),
+  name: z.string(),
+  email: z.string(),
+  id: z.number(),
+  active: z.boolean(),
+});
+
+// ---- pull_request_checks → PrCheck[] ----
+
+export const prCheckSchema = z.object({
+  name: z.string(),
+  // The Rust side normalizes gh's rollup values into these four buckets today,
+  // but a newer backend may grow a fifth. Degrade an unknown bucket to the
+  // neutral "pending" instead of failing the whole Checks tab (GL-112).
+  state: z.enum(["pass", "fail", "pending", "skipped"]).catch("pending"),
+});
+
+// ---- pull_request_commit_signatures → PrCommitSignature[] ----
+
+export const prCommitSignatureSchema = z.object({
+  oid: z.string(),
+  verified: z.boolean(),
+});
+
+// ---- pull_request_review_threads → ReviewThread[] ----
+
+export const reviewThreadSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  line: z.number().nullable(),
+  isResolved: z.boolean(),
+  isOutdated: z.boolean(),
+  comments: z.array(prCommentSchema),
 });
 
 // ---- compile-time guards: schema output ≡ documented interface ----
@@ -284,3 +330,8 @@ assertEqual<z.infer<typeof prReviewSchema>, PrReview>(true);
 assertEqual<z.infer<typeof prLabelSchema>, PrLabel>(true);
 assertEqual<z.infer<typeof pullRequestSummarySchema>, PullRequestSummary>(true);
 assertEqual<z.infer<typeof pullRequestDetailSchema>, PullRequestDetail>(true);
+
+assertEqual<z.infer<typeof githubAccountSchema>, GithubAccount>(true);
+assertEqual<z.infer<typeof prCheckSchema>, PrCheck>(true);
+assertEqual<z.infer<typeof prCommitSignatureSchema>, PrCommitSignature>(true);
+assertEqual<z.infer<typeof reviewThreadSchema>, ReviewThread>(true);

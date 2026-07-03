@@ -115,12 +115,12 @@ describe("pulls lazy-load error isolation", () => {
     await usePulls.getState().loadPrChecks(7);
     expect(usePulls.getState().prChecksError[7]).toBeDefined();
 
-    invokeMock.mockResolvedValueOnce([{ name: "build", ok: true }]);
+    invokeMock.mockResolvedValueOnce([{ name: "build", state: "pass" }]);
     await usePulls.getState().loadPrChecks(7, true);
 
     const s = usePulls.getState();
     expect(s.prChecksError[7]).toBeUndefined();
-    expect(s.prChecks[7]).toEqual([{ name: "build", ok: true }]);
+    expect(s.prChecks[7]).toEqual([{ name: "build", state: "pass" }]);
   });
 
   it("keeps one PR's error from leaking into another PR's tab", async () => {
