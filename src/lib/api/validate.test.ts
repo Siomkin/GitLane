@@ -150,4 +150,75 @@ describe("lib/api seam validation", () => {
       ],
     });
   });
+
+  it("pull_request_diff: rejects a wrong-typed field, accepts a valid per-commit diff", async () => {
+    const valid = {
+      path: "a.ts",
+      status: "M",
+      add: 1,
+      del: 0,
+      binary: false,
+      hunks: [],
+      truncated: false,
+      commitOid: "abc123",
+      commitSubject: "GL-122 group diff by commit",
+    };
+    invokeMock.mockResolvedValueOnce([{ ...valid, add: "one" }]);
+    await expect(api.pullRequestDiff("/r", 1)).rejects.toThrow(/pull_request_diff/);
+
+    invokeMock.mockResolvedValueOnce([valid]);
+    await expect(api.pullRequestDiff("/r", 1)).resolves.toEqual([valid]);
+  });
+
+  it("pull_request_review_threads: rejects a payload missing the resolve state", async () => {
+    const valid = {
+      id: "RT_1",
+      path: "a.ts",
+      line: 3,
+      isResolved: false,
+      isOutdated: false,
+      comments: [],
+    };
+    invokeMock.mockResolvedValueOnce([{ ...valid, isResolved: undefined }]);
+    await expect(api.pullRequestReviewThreads("/r", 1)).rejects.toThrow(
+      /pull_request_review_threads/,
+    );
+
+    invokeMock.mockResolvedValueOnce([valid]);
+    await expect(api.pullRequestReviewThreads("/r", 1)).resolves.toEqual([valid]);
+  });
+
+  // Check state buckets come normalized from Rust today, but a newer backend
+  // may grow a fifth bucket — degrade it to "pending", don't drop the tab.
+  it("pull_request_checks: tolerates an unknown state, rejects a wrong shape", async () => {
+    invokeMock.mockResolvedValueOnce([
+      { name: "build", state: "pass" },
+      { name: "future", state: "quarantined" },
+    ]);
+    await expect(api.pullRequestChecks("/r", 1)).resolves.toEqual([
+      { name: "build", state: "pass" },
+      { name: "future", state: "pending" },
+    ]);
+
+    invokeMock.mockResolvedValueOnce([{ state: "pass" }]); // no `name`
+    await expect(api.pullRequestChecks("/r", 1)).rejects.toThrow(/pull_request_checks/);
+  });
+
+  it("list_pull_requests / github_accounts / commit signatures: reject malformed rows", async () => {
+    invokeMock.mockResolvedValueOnce([{ number: "1" }]);
+    await expect(api.listPullRequests("/r")).rejects.toThrow(/list_pull_requests/);
+
+    invokeMock.mockResolvedValueOnce([{ provider: "gh", host: "github.com" }]); // missing the rest
+    await expect(api.githubAccounts()).rejects.toThrow(/github_accounts/);
+
+    invokeMock.mockResolvedValueOnce([{ oid: "abc", verified: "yes" }]);
+    await expect(api.pullRequestCommitSignatures("/r", 1)).rejects.toThrow(
+      /pull_request_commit_signatures/,
+    );
+
+    invokeMock.mockResolvedValueOnce([{ oid: "abc", verified: true }]);
+    await expect(api.pullRequestCommitSignatures("/r", 1)).resolves.toEqual([
+      { oid: "abc", verified: true },
+    ]);
+  });
 });
