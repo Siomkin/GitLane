@@ -203,7 +203,12 @@ const prCommitSchema = z.object({
 
 const prReviewSchema = z.object({
   author: prAuthorSchema,
-  state: z.enum(["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING"]),
+  // The Rust side documents `state` as the raw, non-exhaustive gh value. A
+  // state this build doesn't know degrades to the neutral COMMENTED (matching
+  // `lowerReviewState`'s fallback) instead of failing the whole PR detail.
+  state: z
+    .enum(["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING"])
+    .catch("COMMENTED"),
 });
 
 const prLabelSchema = z.object({
