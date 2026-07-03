@@ -242,12 +242,19 @@ fn restore_stash(worktree: &str, oid: &str) {
 ///
 /// Stashes are recorded by oid and never dropped until applied, so every failure
 /// path leaves the work recoverable.
+///
+/// `progress` is invoked as each phase *begins* (step ids: `stashSource`,
+/// `stashDestination`, `detach`, `checkout`, `applySource`, `applyDestination`,
+/// `finalize`) so the UI can show a live checklist. The command layer forwards
+/// them as `handoff-progress` Tauri events; steps that don't apply (a clean
+/// source/destination) simply never fire.
 pub fn move_branch_to_worktree(
     repo: &str,
     branch: &str,
     from_worktree_path: &str,
     to_worktree_path: &str,
     carry: bool,
+    progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
@@ -282,6 +289,7 @@ pub fn move_branch_to_worktree(
 
     // 1. Stash the source's changes (they ride along with the branch).
     let source_stash = if source_dirty {
+        progress("stashSource");
         Some(push_stash(from, &format!("GitLane: handoff {branch}"))?)
     } else {
         None
@@ -301,6 +309,7 @@ pub fn move_branch_to_worktree(
         }
     };
     let dest_stash = if dest_dirty {
+        progress("stashDestination");
         match push_stash(to, "GitLane: destination changes") {
             Ok(oid) => Some(oid),
             Err(e) => {
@@ -315,6 +324,7 @@ pub fn move_branch_to_worktree(
     };
 
     // 3. Free the branch by detaching the source at its current HEAD.
+    progress("detach");
     if let Err(e) = run_git(from, &["checkout", "--detach"]) {
         // Source is still on `branch`; just restore both stashes.
         if let Some(o) = &dest_stash {
@@ -327,6 +337,7 @@ pub fn move_branch_to_worktree(
     }
 
     // 4. Check the branch out in the (now clean) destination.
+    progress("checkout");
     if let Err(e) = run_git(to, &["checkout", branch]) {
         // Roll back: re-attach the source to its branch, restore both stashes.
         let _ = run_git(from, &["checkout", branch]);
@@ -352,12 +363,15 @@ pub fn move_branch_to_worktree(
     //    taken at this branch's tip and the destination now sits at that tip, so
     //    this applies cleanly in practice.
     if let Some(o) = &source_stash {
+        progress("applySource");
         match run_git(to, &["stash", "apply", o]) {
             Ok(_) => applied.push(o.clone()),
             Err(_) if has_unmerged(to) => {
+                progress("finalize");
                 return carry_conflict(to, branch, dest_label, &applied, o, "resolve the carried changes");
             }
             Err(_) => {
+                progress("finalize");
                 drop_all(to, &applied);
                 return Ok(format!(
                     "Handed off {branch} to {dest_label}; the carried changes couldn't apply and are kept in a stash"
@@ -369,9 +383,11 @@ pub fn move_branch_to_worktree(
     // 6. Re-apply the destination's own prior changes over the handed-off branch.
     //    This crosses the branch boundary, so it can genuinely conflict.
     if let Some(o) = &dest_stash {
+        progress("applyDestination");
         match run_git(to, &["stash", "apply", o]) {
             Ok(_) => applied.push(o.clone()),
             Err(_) if has_unmerged(to) => {
+                progress("finalize");
                 return carry_conflict(
                     to,
                     branch,
@@ -382,6 +398,7 @@ pub fn move_branch_to_worktree(
                 );
             }
             Err(_) => {
+                progress("finalize");
                 drop_all(to, &applied);
                 return Ok(format!(
                     "Handed off {branch} to {dest_label}; the destination's prior changes overlap the carried work and are kept in a stash"
@@ -390,6 +407,7 @@ pub fn move_branch_to_worktree(
         }
     }
 
+    progress("finalize");
     drop_all(to, &applied);
     Ok(if source_dirty {
         format!(

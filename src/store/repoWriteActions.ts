@@ -422,6 +422,11 @@ export function createRepoWriteActions(
           toWorktreePath,
           carry,
         );
+        // The dialog can be dismissed mid-move and the tab(s) closed while the
+        // move finishes in the background — landing on the destination then
+        // would yank the app off the welcome screen the user chose. The result
+        // still reaches them as a toast.
+        if (get().openPaths.length === 0) return message;
         // Land on the destination — the branch (and any carried work, or a
         // conflict to resolve) lives there now. loadRepo owns the loading lifecycle
         // + open intent, republishes the graph, and reads operation_status, so a

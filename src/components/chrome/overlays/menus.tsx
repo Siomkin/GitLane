@@ -14,7 +14,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
-import { handoffDestinationOptions, promptWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { handoffDestinationOptions, startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -400,6 +400,7 @@ export function BranchContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
+  const openHandoff = useUi((s) => s.openHandoff);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openCompare = useRepo((s) => s.openCompare);
@@ -429,7 +430,6 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const deleteBranchWithWorktree = useRepo((s) => s.deleteBranchWithWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
@@ -602,17 +602,14 @@ export function BranchContextMenu() {
       children.push({
         label: "Hand off to…",
         onClick: () =>
-          promptWorktreeHandoff({
+          startWorktreeHandoff({
             branch: b,
             sourcePath: existingWt.path,
             worktrees,
             // The branch lives in another worktree, not the open repo, so its
             // uncommitted state isn't known here — carry conditionally.
             sourceChanges: null,
-            requestPrompt,
-            requestConfirm,
-            run,
-            moveBranchToWorktree,
+            openHandoff,
             onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
           }),
       });
@@ -1138,14 +1135,13 @@ export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const requestPrompt = useUi((s) => s.requestPrompt);
+  const openHandoff = useUi((s) => s.openHandoff);
   const showToast = useUi((s) => s.showToast);
   const summary = useRepo((s) => s.summary);
   const worktrees = useRepo((s) => s.worktrees);
   const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
-  const moveBranchToWorktree = useRepo((s) => s.moveBranchToWorktree);
   const run = useBranchOp();
   if (!menu) return null;
 
@@ -1186,15 +1182,12 @@ export function WorktreeContextMenu() {
       label: "Hand off branch to…",
       icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />,
       onClick: () =>
-        promptWorktreeHandoff({
+        startWorktreeHandoff({
           branch: wtBranch,
           sourcePath: path,
           worktrees,
           sourceChanges,
-          requestPrompt,
-          requestConfirm,
-          run,
-          moveBranchToWorktree,
+          openHandoff,
           onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
         }),
     });

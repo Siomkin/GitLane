@@ -315,7 +315,7 @@ fn move_branch_to_worktree_detaches_source_then_checks_out_branch() {
     let linked_str = linked.to_str().unwrap();
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
 
-    let result = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false)
+    let result = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false, &|_| {})
         .expect("move branch from linked worktree");
     assert!(
         result.starts_with("Moved feature to "),
@@ -496,7 +496,7 @@ fn move_branch_to_worktree_refuses_when_path_no_longer_holds_the_branch() {
         .expect("git detaches the linked worktree");
     assert!(detach.status.success());
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false)
+    let err = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false, &|_| {})
         .expect_err("a stale worktree path should abort the move");
     assert!(err.contains("feature"), "error should name the branch, got: {err}");
     // The current worktree was not switched onto the branch.
@@ -576,6 +576,38 @@ fn is_detached(dir: &std::path::Path) -> bool {
         .success()
 }
 
+// The progress step ids are the UI contract for the hand-off dialog's live
+// checklist: assert the happy-path order for a dirty source, and that the
+// stash/apply steps never fire when everything is clean (the dialog folds the
+// skipped rows in).
+#[test]
+fn move_branch_to_worktree_reports_progress_steps_in_order() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-progress");
+    std::fs::write(linked.0.join("file.txt"), "carried\n").unwrap();
+
+    let steps = std::cell::RefCell::new(Vec::new());
+    move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|s| {
+        steps.borrow_mut().push(s)
+    })
+    .expect("carry handoff");
+    assert_eq!(
+        steps.into_inner(),
+        vec!["stashSource", "detach", "checkout", "applySource", "finalize"]
+    );
+}
+
+#[test]
+fn move_branch_to_worktree_skips_stash_steps_when_clean() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-progress-clean");
+
+    let steps = std::cell::RefCell::new(Vec::new());
+    move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|s| {
+        steps.borrow_mut().push(s)
+    })
+    .expect("clean handoff");
+    assert_eq!(steps.into_inner(), vec!["detach", "checkout", "finalize"]);
+}
+
 #[test]
 fn move_branch_to_worktree_carries_dirty_source_changes() {
     let (repo, linked) = repo_with_feature_worktree("handoff-carry");
@@ -583,7 +615,7 @@ fn move_branch_to_worktree_carries_dirty_source_changes() {
     std::fs::write(linked.0.join("file.txt"), "carried\n").unwrap();
     std::fs::write(linked.0.join("new.txt"), "brand new\n").unwrap(); // untracked rides along
 
-    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
         .expect("carry handoff");
     assert!(msg.contains("feature"), "message should name the branch: {msg}");
 
@@ -609,7 +641,7 @@ fn move_branch_to_worktree_refuses_dirty_source_without_carry() {
     let (repo, linked) = repo_with_feature_worktree("handoff-nocarry");
     std::fs::write(linked.0.join("file.txt"), "dirty\n").unwrap();
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), false)
+    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), false, &|_| {})
         .expect_err("a dirty source without carry should be refused");
     assert!(err.contains("uncommitted"), "error should explain: {err}");
 
@@ -628,7 +660,7 @@ fn move_branch_to_worktree_reapplies_dirty_destination() {
     // doesn't diverge between branches, so it re-applies cleanly after the switch.
     std::fs::write(repo.0.join("dest-wip.txt"), "dest work\n").unwrap();
 
-    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
         .expect("handoff onto a dirty destination");
     assert!(msg.contains("feature"), "message should name the branch: {msg}");
 
@@ -658,7 +690,7 @@ fn move_branch_to_worktree_restores_the_source_stash_when_dest_stash_fails() {
     let lock = repo.0.join(".git").join("index.lock");
     std::fs::write(&lock, b"").unwrap();
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
         .expect_err("a failed destination stash should abort the handoff");
     let _ = std::fs::remove_file(&lock); // let the TempRepo Drop clean up
     assert!(!err.is_empty(), "expected a git error, got empty");
@@ -697,7 +729,7 @@ fn handoff_into_conflict(tag: &str) -> (TempRepo, LinkedDir, String) {
     // Destination has a conflicting uncommitted change to the same file.
     std::fs::write(repo.0.join("file.txt"), "destination wip\n").unwrap();
 
-    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
         .expect("handoff should land structurally even when the carry conflicts");
     (repo, linked, msg)
 }
@@ -814,7 +846,7 @@ fn move_branch_to_worktree_refuses_a_source_with_unresolved_conflicts() {
     let merge = git_at(l, &["merge", "sibling"]);
     assert!(!merge.status.success(), "merge should conflict for the test setup");
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true)
+    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
         .expect_err("a source mid-conflict should be refused up front");
     assert!(
         err.contains("unresolved conflicts"),
@@ -874,7 +906,7 @@ fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destinat
     );
 
     // Handing the feature branch off *into the bare repo* is refused up front.
-    let err = move_branch_to_worktree(bare.path(), "feature", linked.as_str(), bare.path(), true)
+    let err = move_branch_to_worktree(bare.path(), "feature", linked.as_str(), bare.path(), true, &|_| {})
         .expect_err("handoff into a bare repo should be refused");
     assert!(err.contains("bare repository"), "got: {err}");
     // The source was not detached by the refused handoff.
