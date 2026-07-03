@@ -43,8 +43,14 @@ pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
 
 /// Pull from the upstream remote without creating a merge commit. Divergence
 /// fails explicitly so the user can choose merge or rebase from the graph.
+///
+/// `--no-rebase` pins the fast-forward-only contract regardless of the user's
+/// `pull.rebase` config. Modern git already gives an explicit `--ff-only`
+/// precedence over `pull.rebase=true`, but older versions rebased on divergence
+/// instead of failing — passing `--no-rebase` makes the ff-only behaviour
+/// identical everywhere rather than depending on the git version and config.
 pub fn pull(repo: &str) -> Result<String, String> {
-    run_git(repo, &["pull", "--ff-only"])
+    run_git(repo, &["pull", "--no-rebase", "--ff-only"])
 }
 
 /// Push to the upstream remote (shells out — libgit2 has no network here).

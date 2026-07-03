@@ -1,4 +1,4 @@
-use super::branches::branches;
+use super::branches::{branches, can_fast_forward};
 use git2::{Oid, Repository, Signature};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -166,6 +166,35 @@ fn branch_sync_reports_unknown_when_ahead_behind_cannot_be_computed() {
         local_status(&dir, "main"),
         ("unknown".into(), Some("origin/main".into()), 0, 0)
     );
+}
+
+#[test]
+fn can_fast_forward_treats_equal_tips_as_up_to_date() {
+    let dir = TempRepo::new("ff-equal-tips");
+    let repo = Repository::init(dir.path()).unwrap();
+    let path = dir.path().to_str().unwrap();
+
+    // `main` and `feature` point at the same commit.
+    let base = commit(&repo, "refs/heads/main", "base", &[]);
+    repo.set_head("refs/heads/main").unwrap();
+    repo.reference("refs/heads/feature", base, true, "seed feature")
+        .unwrap();
+
+    // The regression: equal tips are an up-to-date no-op fast-forward, so both
+    // directions must report true (previously `graph_descendant_of` returned
+    // false for equal oids, hiding Fast-forward for identical branches).
+    assert!(can_fast_forward(path, "feature", "main").unwrap());
+    assert!(can_fast_forward(path, "main", "feature").unwrap());
+
+    // Advance `main` one commit; `feature` stays behind at `base`.
+    let ahead = commit(&repo, "refs/heads/main", "ahead", &[base]);
+    assert_ne!(ahead, base);
+
+    // Fast-forwarding `feature` to `main` still works: `main` is a strict
+    // descendant of `feature`.
+    assert!(can_fast_forward(path, "main", "feature").unwrap());
+    // But `feature` (behind) can't be the fast-forward source for `main`.
+    assert!(!can_fast_forward(path, "feature", "main").unwrap());
 }
 
 #[test]

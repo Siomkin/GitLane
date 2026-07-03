@@ -5,8 +5,9 @@ use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, clear_repo_identity,
     continue_operation, create_tag, delete_branch_with_worktree, delete_remote_tag, discard_all,
-    fetch, mark_conflict_resolved, move_branch_to_worktree, preview_delete_branch,
-    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset,
+    fast_forward, fast_forward_branch, fetch, mark_conflict_resolved, merge,
+    move_branch_to_worktree, preview_delete_branch,
+    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
     publish_branch, reconflict_file, reflog_entries, remove_worktree, resolve_conflict_file,
     set_remote_url, set_repo_identity, set_upstream, skip_operation, stage_files, worktrees,
 };
@@ -2459,4 +2460,168 @@ fn set_remote_url_leaves_push_following_fetch_when_no_push_url() {
         remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
         "https://github.com/new/repo.git"
     );
+}
+
+#[test]
+fn merge_pins_no_ff_against_merge_ff_config() {
+    let repo = TempRepo::new("merge-no-ff");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    // Base commit on main.
+    std::fs::write(repo.0.join("file.txt"), b"base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+
+    // A feature branch with one extra commit (so a plain merge *could* fast-forward).
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("file.txt"), b"feature\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+
+    // `merge.ff=only` would refuse a real merge commit — the flag must override it.
+    repo.git_ok(&["config", "merge.ff", "only"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+
+    merge(repo.path(), "feature").expect("merge succeeds despite merge.ff=only");
+
+    // HEAD is a merge commit: `rev-list --parents -1` lists the commit plus its
+    // two parents (three whitespace-separated hashes). A fast-forward would have
+    // left a single-parent commit (two hashes).
+    let out = repo.git(&["rev-list", "--parents", "-1", "HEAD"]);
+    assert!(out.status.success(), "rev-list failed");
+    let line = String::from_utf8_lossy(&out.stdout);
+    let hashes = line.split_whitespace().count();
+    assert_eq!(
+        hashes, 3,
+        "expected a merge commit (commit + 2 parents), got {hashes} hashes: {line:?}"
+    );
+}
+
+#[test]
+fn fast_forward_is_a_no_op_on_equal_tips() {
+    let repo = TempRepo::new("ff-equal-tips");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("file.txt"), b"base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let head_out = repo.git(&["rev-parse", "HEAD"]);
+    let head = String::from_utf8_lossy(&head_out.stdout).trim().to_string();
+
+    // The probe now reports equal tips as fast-forwardable (GL-113), so both
+    // write paths the menu can dispatch to must treat them as an up-to-date
+    // no-op rather than fail: `merge --ff-only` on the checked-out branch and
+    // `fetch . <target>:<branch>` on a branch that isn't checked out.
+    fast_forward(repo.path(), "feature").expect("ff-only merge of an equal tip succeeds");
+    fast_forward_branch(repo.path(), "feature", "main")
+        .expect("in-place ff of an equal tip succeeds");
+
+    // Nothing moved: both refs still point at the original commit.
+    for rev in ["HEAD", "refs/heads/feature"] {
+        let out = repo.git(&["rev-parse", rev]);
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            head,
+            "{rev} must be unchanged by a no-op fast-forward"
+        );
+    }
+}
+
+/// Shared fixture for the pull tests: a seed repo with one commit on `main`
+/// and a local clone of it. Returned as (root, seed, clone) — `root` owns the
+/// parent temp dir, the other two wrap its subdirectories (their Drop is a
+/// no-op after root's cleanup, which `remove_dir_all` tolerates).
+fn seed_and_clone(tag: &str) -> (TempRepo, TempRepo, TempRepo) {
+    let root = TempRepo::new(tag);
+    let seed_dir = root.0.join("seed");
+    let clone_dir = root.0.join("clone");
+
+    let init = Command::new("git")
+        .args(["init", "-q", seed_dir.to_str().unwrap()])
+        .output()
+        .expect("git init launches");
+    assert!(
+        init.status.success(),
+        "init failed\nstderr:\n{}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let seed = TempRepo(seed_dir);
+    seed.git_ok(&["config", "user.name", "GitLane Test"]);
+    seed.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    seed.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(seed.0.join("file.txt"), b"v1\n").unwrap();
+    seed.git_ok(&["add", "file.txt"]);
+    seed.git_ok(&["commit", "-q", "-m", "seed"]);
+    seed.git_ok(&["branch", "-M", "main"]);
+
+    let clone_out = Command::new("git")
+        .args(["clone", "-q", seed.path(), clone_dir.to_str().unwrap()])
+        .output()
+        .expect("git clone launches");
+    assert!(
+        clone_out.status.success(),
+        "clone failed\nstderr:\n{}",
+        String::from_utf8_lossy(&clone_out.stderr)
+    );
+    (root, seed, TempRepo(clone_dir))
+}
+
+#[test]
+fn pull_stays_ff_only_under_pull_rebase_config() {
+    let (_root, seed, clone) = seed_and_clone("pull-rebase");
+    clone.git_ok(&["config", "user.name", "GitLane Test"]);
+    clone.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    clone.git_ok(&["config", "commit.gpgsign", "false"]);
+    // `pull.rebase=true` would make an unpinned pull rebase on divergence; the
+    // `--no-rebase --ff-only` contract must fail instead of rebasing.
+    clone.git_ok(&["config", "pull.rebase", "true"]);
+
+    // Diverge: one new commit in the seed, a different one in the clone.
+    std::fs::write(seed.0.join("file.txt"), b"seed-side\n").unwrap();
+    seed.git_ok(&["add", "file.txt"]);
+    seed.git_ok(&["commit", "-q", "-m", "seed diverge"]);
+
+    std::fs::write(clone.0.join("other.txt"), b"clone-side\n").unwrap();
+    clone.git_ok(&["add", "other.txt"]);
+    clone.git_ok(&["commit", "-q", "-m", "clone diverge"]);
+
+    let before = clone.git(&["rev-parse", "HEAD"]);
+    let before_head = String::from_utf8_lossy(&before.stdout).trim().to_string();
+
+    let result = pull(clone.path());
+    assert!(result.is_err(), "divergent pull must fail, got {result:?}");
+
+    // No rebase and no merge happened: the clone HEAD is untouched.
+    let after = clone.git(&["rev-parse", "HEAD"]);
+    let after_head = String::from_utf8_lossy(&after.stdout).trim().to_string();
+    assert_eq!(before_head, after_head, "HEAD must be unchanged after a failed pull");
+}
+
+#[test]
+fn pull_fast_forwards_when_behind() {
+    let (_root, seed, clone) = seed_and_clone("pull-ff");
+
+    // Advance the seed after cloning, so the clone is strictly behind.
+    std::fs::write(seed.0.join("file.txt"), b"v2\n").unwrap();
+    seed.git_ok(&["add", "file.txt"]);
+    seed.git_ok(&["commit", "-q", "-m", "seed advance"]);
+    let seed_head = String::from_utf8_lossy(&seed.git(&["rev-parse", "HEAD"]).stdout)
+        .trim()
+        .to_string();
+
+    pull(clone.path()).expect("fast-forward pull when strictly behind");
+
+    let clone_head = String::from_utf8_lossy(&clone.git(&["rev-parse", "HEAD"]).stdout)
+        .trim()
+        .to_string();
+    assert_eq!(clone_head, seed_head, "clone HEAD fast-forwarded to seed HEAD");
 }
