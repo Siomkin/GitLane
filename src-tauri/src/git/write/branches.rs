@@ -42,10 +42,18 @@ pub fn set_upstream(repo: &str, branch: &str, upstream: &str) -> Result<String, 
     run_git(repo, &["branch", &arg, branch])
 }
 
-/// Merge `branch` into the current HEAD.
+/// Merge `branch` into the current HEAD, always creating a merge commit.
+///
+/// The UI offers Fast-forward as a separate, explicit action and labels this
+/// operation "Create a merge commit" (`src/lib/graphActions.ts`), so `--no-ff`
+/// pins that outcome against the user's `merge.ff` config: default `--ff` would
+/// silently fast-forward (no merge commit, contradicting the label) whenever the
+/// move was a fast-forward, and `merge.ff=only` would fail an otherwise-mergeable
+/// branch. `--no-edit` keeps git from ever launching an editor for the merge
+/// message inside this GUI subprocess (there is no TTY to drive it).
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    run_git(repo, &["merge", branch])
+    run_git(repo, &["merge", "--no-ff", "--no-edit", branch])
 }
 
 /// Fast-forward the current HEAD to `target`. Fails (no merge commit) if the

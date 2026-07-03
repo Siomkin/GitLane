@@ -6,14 +6,20 @@ use crate::git::types::{BranchInfo, BranchSyncState};
 
 use super::repo::open;
 
-/// True when fast-forwarding `to` to `from` is possible — i.e. `from` is a
-/// strict descendant of `to`, so `to`'s pointer can move forward with no merge
-/// commit. Both args are anything `revparse` accepts (branch, remote, oid).
+/// True when fast-forwarding `to` to `from` is possible — i.e. `from` is `to`
+/// itself or a descendant of it, so `to`'s pointer can move forward with no
+/// merge commit. Both args are anything `revparse` accepts (branch, remote, oid).
+///
+/// Equal tips count as fast-forwardable: the move is an up-to-date no-op, which
+/// is exactly what `git merge-base --is-ancestor A A` reports (true).
+/// `graph_descendant_of` is *strict* (false for equal oids), so the equal case
+/// is handled explicitly — otherwise the drop menu hid Fast-forward and offered
+/// merge/rebase for two refs already pointing at the same commit.
 pub fn can_fast_forward(path: &str, from: &str, to: &str) -> Result<bool, git2::Error> {
     let repo = open(path)?;
     let from_oid = repo.revparse_single(from)?.peel_to_commit()?.id();
     let to_oid = repo.revparse_single(to)?.peel_to_commit()?.id();
-    repo.graph_descendant_of(from_oid, to_oid)
+    Ok(from_oid == to_oid || repo.graph_descendant_of(from_oid, to_oid)?)
 }
 
 /// Local + remote branches for the sidebar.
