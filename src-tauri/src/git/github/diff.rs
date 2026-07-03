@@ -5,15 +5,23 @@
 //! — is a pure function over the raw patch string, mirroring the `FileDiff`
 //! shape libgit2 produces in `status.rs` so the frontend diff renderer is
 //! shared. Parser helpers stay private; their fixtures live in this module.
+//!
+//! `--patch` output is **format-patch mailbox** format, not a bare unified
+//! diff: one `From <sha> Mon Sep 17 00:00:00 2001` message per commit, each
+//! with mail headers, the commit body, a `---` separator, and a diffstat
+//! before the first `diff --git`. The parser must treat those preamble lines
+//! as inert — folded `Subject:` continuations and diffstat rows start with a
+//! space and would otherwise read as hunk context.
 
 use super::cli::run_gh;
 use crate::git::types::{DiffHunk, DiffLine, FileDiff};
 
 /// Full unified diff of a PR, parsed into per-file [`FileDiff`] so the existing
-/// diff viewer renders it unchanged. `gh pr diff` emits a standard git patch.
+/// diff viewer renders it unchanged. `gh pr diff --patch` emits format-patch
+/// mailbox output: one mail-headed message per commit (see the module docs).
 pub fn pr_diff(workdir: &str, number: u64, token: Option<&str>) -> Result<Vec<FileDiff>, String> {
     let num = number.to_string();
-    // `--patch` forces the unified-diff body (not a name-only summary) and
+    // `--patch` forces the full patch body (not a name-only summary) and
     // `--color never` strips ANSI so the parser sees a clean git patch.
     let raw = run_gh(
         workdir,
@@ -23,21 +31,45 @@ pub fn pr_diff(workdir: &str, number: u64, token: Option<&str>) -> Result<Vec<Fi
     Ok(parse_unified_diff(&raw))
 }
 
-/// Parse a multi-file git unified diff into [`FileDiff`]s, mirroring the shape
-/// libgit2 produces in `status.rs` so the frontend painter is shared. Status is
-/// the single-letter code the UI's `FileStatus` union expects (A/D/R/M).
+/// Parse a git patch — bare unified diff or format-patch mailbox — into
+/// [`FileDiff`]s, mirroring the shape libgit2 produces in `status.rs` so the
+/// frontend painter is shared. Status is the single-letter code the UI's
+/// `FileStatus` union expects (A/D/R/M).
+///
+/// Two guards keep per-commit preamble out of the diff data:
+/// - a commit boundary (`From <sha> Mon Sep 17 00:00:00 2001`) drops the
+///   parser back into preamble state until the next `diff --git`, so commit
+///   bodies and diffstats can't mutate the previous commit's file;
+/// - hunk bodies are bounded by their `@@` header counts, so trailing lines
+///   (format-patch's `-- ` signature, stray text) never extend a hunk.
 fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     let mut files: Vec<FileDiff> = Vec::new();
     let mut old_no = 0u32;
     let mut new_no = 0u32;
+    // Body lines the current hunk still expects on each side, per its `@@`
+    // header. Both at zero = not inside a hunk.
+    let mut old_left = 0u32;
+    let mut new_left = 0u32;
+    // True between a mailbox commit boundary and its first `diff --git`: mail
+    // headers, the commit message, the `---` separator, and the diffstat.
+    let mut in_preamble = false;
 
     for line in raw.lines() {
+        if is_commit_boundary(line) {
+            in_preamble = true;
+            old_left = 0;
+            new_left = 0;
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("diff --git ") {
             // `a/<path> b/<path>` — take the b-side path. Git C-quotes paths
             // with spaces/special chars (`"a/foo bar" "b/foo bar"`), so a naive
             // `split_once(" b/")` would swallow the whole header; `diff_git_b_path`
             // handles both the quoted and bare forms.
             let path = diff_git_b_path(rest);
+            in_preamble = false;
+            old_left = 0;
+            new_left = 0;
             files.push(FileDiff {
                 path,
                 status: "M".to_string(),
@@ -46,6 +78,9 @@ fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
                 // size fields stay `None` (the card degrades to type + kind only).
                 ..Default::default()
             });
+            continue;
+        }
+        if in_preamble {
             continue;
         }
 
@@ -63,20 +98,25 @@ fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
             file.binary = true;
         } else if line.starts_with("@@") {
             // @@ -oldStart,oldCount +newStart,newCount @@ [section]
-            if let Some((os, ns)) = parse_hunk_header(line) {
+            if let Some((os, oc, ns, nc)) = parse_hunk_header(line) {
                 old_no = os;
                 new_no = ns;
+                old_left = oc;
+                new_left = nc;
             }
             file.hunks.push(DiffHunk {
                 header: line.to_string(),
                 lines: Vec::new(),
             });
-        } else if let Some(hunk) = file.hunks.last_mut() {
-            // Body lines only count once we're inside a hunk. Skip file-header
-            // noise (---/+++/index) which precedes the first @@.
+        } else if old_left > 0 || new_left > 0 {
+            // Body lines only count while the current hunk still owes lines.
+            // (`\ No newline` markers don't consume a count on either side.)
             if line.starts_with("\\ No newline") {
                 continue;
             }
+            let Some(hunk) = file.hunks.last_mut() else {
+                continue;
+            };
             let (kind, content) = match line.as_bytes().first() {
                 Some(b'+') => ("add", &line[1..]),
                 Some(b'-') => ("del", &line[1..]),
@@ -86,17 +126,21 @@ fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
             let (o, n) = match kind {
                 "add" => {
                     file.add += 1;
+                    new_left = new_left.saturating_sub(1);
                     let n = new_no;
                     new_no += 1;
                     (None, Some(n))
                 }
                 "del" => {
                     file.del += 1;
+                    old_left = old_left.saturating_sub(1);
                     let o = old_no;
                     old_no += 1;
                     (Some(o), None)
                 }
                 _ => {
+                    old_left = old_left.saturating_sub(1);
+                    new_left = new_left.saturating_sub(1);
                     let (o, n) = (old_no, new_no);
                     old_no += 1;
                     new_no += 1;
@@ -113,6 +157,19 @@ fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     }
 
     files
+}
+
+/// True for a format-patch mailbox commit boundary: `From <40-hex-sha> Mon Sep
+/// 17 00:00:00 2001` — git's fixed magic date, so a commit-message line that
+/// merely starts with `From ` can't false-positive.
+fn is_commit_boundary(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("From ") else {
+        return false;
+    };
+    let (Some(sha), Some(tail)) = (rest.get(..40), rest.get(40..)) else {
+        return false;
+    };
+    sha.bytes().all(|b| b.is_ascii_hexdigit()) && tail.starts_with(" Mon Sep 17 00:00:00 2001")
 }
 
 /// Extract the b-side path from a `diff --git ` header body (everything after
@@ -214,16 +271,24 @@ fn c_unquote(inner: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Parse the start line numbers from an `@@ -a,b +c,d @@` hunk header.
-fn parse_hunk_header(header: &str) -> Option<(u32, u32)> {
+/// Parse an `@@ -a[,b] +c[,d] @@` hunk header into
+/// `(old_start, old_count, new_start, new_count)`. A side without an explicit
+/// count is git's one-line shorthand (`-3` ≡ `-3,1`).
+fn parse_hunk_header(header: &str) -> Option<(u32, u32, u32, u32)> {
     let inner = header.strip_prefix("@@ ")?;
     let inner = inner.split(" @@").next()?;
     let mut parts = inner.split_whitespace();
-    let old = parts.next()?.trim_start_matches('-');
-    let new = parts.next()?.trim_start_matches('+');
-    let old_start = old.split(',').next()?.parse().ok()?;
-    let new_start = new.split(',').next()?.parse().ok()?;
-    Some((old_start, new_start))
+    let (old_start, old_count) = parse_hunk_range(parts.next()?.strip_prefix('-')?)?;
+    let (new_start, new_count) = parse_hunk_range(parts.next()?.strip_prefix('+')?)?;
+    Some((old_start, old_count, new_start, new_count))
+}
+
+/// Parse one side of a hunk header (`start[,count]`), defaulting count to 1.
+fn parse_hunk_range(s: &str) -> Option<(u32, u32)> {
+    match s.split_once(',') {
+        Some((start, count)) => Some((start.parse().ok()?, count.parse().ok()?)),
+        None => Some((s.parse().ok()?, 1)),
+    }
 }
 
 #[cfg(test)]
@@ -235,7 +300,7 @@ diff --git a/src/foo.rs b/src/foo.rs
 index 1111111..2222222 100644
 --- a/src/foo.rs
 +++ b/src/foo.rs
-@@ -1,3 +1,4 @@
+@@ -1,4 +1,5 @@
  fn main() {
 -    let x = 1;
 +    let x = 2;
@@ -419,5 +484,150 @@ index 1111111..2222222 100644
         assert_eq!((f.add, f.del), (1, 1));
         let kinds: Vec<&str> = f.hunks[0].lines.iter().map(|l| l.kind.as_str()).collect();
         assert_eq!(kinds, ["del", "add"]);
+    }
+
+    // `gh pr diff --patch` is format-patch mailbox output, one message per
+    // commit. Every preamble hazard is represented: a folded `Subject:`
+    // continuation (leading space), a commit body with `-` bullets, indented
+    // lines, and a literal `rename from` line, the `---` separator, diffstat
+    // rows (leading space), and the dash-dash + git-version signature trailer
+    // (really `-- `; written `--` here so an invisible trailing space can't be
+    // stripped from the fixture). None of it may leak into the previous
+    // commit's last hunk or restyle its file status.
+    const MAILBOX: &str = "\
+From 1111111111111111111111111111111111111111 Mon Sep 17 00:00:00 2001
+From: Dev <dev@example.com>
+Date: Thu, 2 Jul 2026 19:24:55 +0300
+Subject: [PATCH 1/2] feat: first commit with a subject long enough to fold
+ onto a continuation line
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A body paragraph.
+
+- a bullet that starts with a dash
++ a line that starts with a plus
+  an indented line
+rename from something in prose
+---
+ src/one.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/one.txt b/src/one.txt
+index 1111111..2222222 100644
+--- a/src/one.txt
++++ b/src/one.txt
+@@ -1,3 +1,3 @@
+ first
+-second
++SECOND
+ third
+--
+2.39.5
+
+From 2222222222222222222222222222222222222222 Mon Sep 17 00:00:00 2001
+From: Dev <dev@example.com>
+Date: Fri, 3 Jul 2026 11:02:55 +0300
+Subject: [PATCH 2/2] fix: second commit
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Touches the same file again plus a new one.
+---
+ src/one.txt | 1 +
+ src/two.txt | 1 +
+ 2 files changed, 2 insertions(+)
+ create mode 100644 src/two.txt
+
+diff --git a/src/one.txt b/src/one.txt
+index 2222222..3333333 100644
+--- a/src/one.txt
++++ b/src/one.txt
+@@ -3 +3,2 @@ SECOND
+ third
++fourth
+diff --git a/src/two.txt b/src/two.txt
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/src/two.txt
+@@ -0,0 +1,1 @@
++hello
+--
+2.39.5
+";
+
+    #[test]
+    fn format_patch_preamble_never_leaks_into_hunks() {
+        let files = parse_unified_diff(MAILBOX);
+        assert_eq!(files.len(), 3);
+
+        // Commit 1's file: exactly the 4 body lines its @@ header promises —
+        // no phantom lines from the trailer or commit 2's preamble, and no
+        // `R` status from the prose `rename from` line.
+        let one = &files[0];
+        assert_eq!(one.path, "src/one.txt");
+        assert_eq!(one.status, "M");
+        assert_eq!((one.add, one.del), (1, 1));
+        assert_eq!(one.hunks.len(), 1);
+        let kinds: Vec<&str> = one.hunks[0].lines.iter().map(|l| l.kind.as_str()).collect();
+        assert_eq!(kinds, ["ctx", "del", "add", "ctx"]);
+
+        // Commit 2 re-touches the file (its own entry) with a count-less old
+        // side (`-3` ≡ `-3,1`) and adds a new file.
+        let again = &files[1];
+        assert_eq!(again.path, "src/one.txt");
+        assert_eq!((again.add, again.del), (1, 0));
+        let hunk = &again.hunks[0];
+        let kinds: Vec<&str> = hunk.lines.iter().map(|l| l.kind.as_str()).collect();
+        assert_eq!(kinds, ["ctx", "add"]);
+
+        assert_eq!(files[2].path, "src/two.txt");
+        assert_eq!(files[2].status, "A");
+        assert_eq!((files[2].add, files[2].del), (1, 0));
+    }
+
+    // Byte-for-byte capture of `gh pr diff 85 --patch --color never` on this
+    // repository — the 2-commit PR the corruption was first reproduced on.
+    // The per-commit totals are asserted against git's own numbers
+    // (`git apply --numstat` / each message's diffstat), which any phantom
+    // preamble line would break.
+    const PR_85: &str = include_str!("fixtures/pr_85_two_commits.patch");
+
+    #[test]
+    fn parses_real_two_commit_gh_patch() {
+        let files = parse_unified_diff(PR_85);
+        // 14 files in commit 1 + 3 in commit 2 (per-commit patches repeat a
+        // path touched by both commits — src/git/status/tests.rs, preview.ts).
+        assert_eq!(files.len(), 17);
+
+        let (add1, del1) = files[..14]
+            .iter()
+            .fold((0, 0), |(a, d), f| (a + f.add, d + f.del));
+        assert_eq!((add1, del1), (422, 30), "commit 1 diffstat totals");
+
+        let (add2, del2) = files[14..]
+            .iter()
+            .fold((0, 0), |(a, d), f| (a + f.add, d + f.del));
+        assert_eq!((add2, del2), (63, 3), "commit 2 diffstat totals");
+
+        // The last file of commit 1 sits right against commit 2's preamble —
+        // the exact spot the old parser appended phantom lines to.
+        let paths = &files[13];
+        assert_eq!(paths.path, "src/lib/paths.ts");
+        assert_eq!((paths.add, paths.del), (5, 0));
+        assert_eq!(paths.hunks.len(), 1);
+        // @@ -16,3 +16,8 @@ — 3 ctx + 5 add, nothing more.
+        assert_eq!(paths.hunks[0].lines.len(), 8);
+
+        // Commit 2 opens cleanly on its own first file.
+        assert_eq!(files[14].path, "src-tauri/src/git/status/selection.rs");
+        assert_eq!((files[14].add, files[14].del), (18, 1));
+
+        // The five files created in commit 1 all classify as additions.
+        let added = files.iter().filter(|f| f.status == "A").count();
+        assert_eq!(added, 5);
     }
 }

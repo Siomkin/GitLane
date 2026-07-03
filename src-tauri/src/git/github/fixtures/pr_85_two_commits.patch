@@ -1,0 +1,815 @@
+From 7a78caf48c32ceb917f821e21cff3df6f7138c0a Mon Sep 17 00:00:00 2001
+From: Siomkin Alexander <siomkin.alexander@gmail.com>
+Date: Thu, 2 Jul 2026 19:24:55 +0300
+Subject: [PATCH 1/2] GL-100 feat(review): Code/Preview toggle renders markdown
+ files
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The single-file review header gets an icon switcher for .md/.markdown
+files: Code shows the existing raw diff, Preview renders the file's NEW
+side (worktree copy for unstaged, index blob for staged, the commit's
+blob otherwise) through the same sanitized GFM pipeline as PR
+descriptions (react-markdown + remark-gfm + rehype-sanitize via
+components/ui/Markdown) — no new JS dependency. The Unified/Split
+toggle hides while previewing, mirroring the binary-card behavior.
+
+Content comes through the existing read_binary_blob command: diffs_to_files
+now populates oldOid/newOid for text deltas too (sizes stay binary-only).
+The working-tree side of an unstaged diff is deliberately read from disk
+by path — libgit2 reports that side with a computed hash that need not
+exist in the ODB. Preview is capped at 2 MiB, with deleted/empty/too-large
+states in the pane.
+
+Validation: cargo test (207, incl. a new text-oid round-trip test),
+bunx tsc --noEmit, bun run test (838, incl. new render tests for the
+toggle and the unstaged by-path read), eslint on touched files.
+---
+ src-tauri/src/git/status/diff.rs              | 34 ++++-----
+ src-tauri/src/git/status/tests.rs             | 54 +++++++++++++++
+ src-tauri/src/git/types.rs                    | 10 +--
+ src/components/ui/icons.tsx                   | 18 +++++
+ src/features/review/ReviewWorkspace.test.tsx  | 69 +++++++++++++++++++
+ src/features/review/ReviewWorkspace.tsx       | 56 +++++++++++++--
+ .../markdown-preview/MarkdownPreview.tsx      | 45 ++++++++++++
+ src/features/review/markdown-preview/index.ts |  2 +
+ .../review/markdown-preview/preview.test.ts   | 42 +++++++++++
+ .../review/markdown-preview/preview.ts        | 33 +++++++++
+ .../markdown-preview/useMarkdownText.ts       | 58 ++++++++++++++++
+ src/lib/api/git.ts                            | 10 +--
+ src/lib/paths.test.ts                         | 16 ++++-
+ src/lib/paths.ts                              |  5 ++
+ 14 files changed, 422 insertions(+), 30 deletions(-)
+ create mode 100644 src/features/review/markdown-preview/MarkdownPreview.tsx
+ create mode 100644 src/features/review/markdown-preview/index.ts
+ create mode 100644 src/features/review/markdown-preview/preview.test.ts
+ create mode 100644 src/features/review/markdown-preview/preview.ts
+ create mode 100644 src/features/review/markdown-preview/useMarkdownText.ts
+
+diff --git a/src-tauri/src/git/status/diff.rs b/src-tauri/src/git/status/diff.rs
+index c8117c8..95203c8 100644
+--- a/src-tauri/src/git/status/diff.rs
++++ b/src-tauri/src/git/status/diff.rs
+@@ -131,24 +131,24 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
+         let patch = Patch::from_diff(diff, idx)?;
+         let binary = delta.flags().is_binary();
+ 
+-        // For binary deltas the only "change" we can surface is each side's byte
+-        // size + the blob oid to fetch its bytes for a preview. Presence keys off
+-        // the delta status (added has no old side, deleted no new) rather than the
+-        // oid, since libgit2 leaves the working-tree side's oid zero even when the
+-        // file is present — `size()` is still valid there (it stats the file).
+-        let (old_size, new_size, old_oid, new_oid) = if binary {
+-            let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
+-            let new_present = delta.status() != Delta::Deleted;
+-            let old = delta.old_file();
+-            let new = delta.new_file();
+-            (
+-                old_present.then(|| old.size()),
+-                new_present.then(|| new.size()),
+-                (old_present && !old.id().is_zero()).then(|| old.id().to_string()),
+-                (new_present && !new.id().is_zero()).then(|| new.id().to_string()),
+-            )
++        // Every delta carries its side's blob oids so previews (binary images,
++        // rendered markdown) can fetch content via `read_binary_blob`. Presence
++        // keys off the delta status (added has no old side, deleted no new)
++        // rather than the oid. Working-tree sides are unreliable by oid: a
++        // binary side stays zero (content never loaded), and a text side gets a
++        // *computed* hash that need not exist in the ODB — so consumers read
++        // the working tree by path for unstaged diffs. Sizes stay binary-only:
++        // they feed the "old → new (±delta)" card that replaces "+0 −0".
++        let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
++        let new_present = delta.status() != Delta::Deleted;
++        let old = delta.old_file();
++        let new = delta.new_file();
++        let old_oid = (old_present && !old.id().is_zero()).then(|| old.id().to_string());
++        let new_oid = (new_present && !new.id().is_zero()).then(|| new.id().to_string());
++        let (old_size, new_size) = if binary {
++            (old_present.then(|| old.size()), new_present.then(|| new.size()))
+         } else {
+-            (None, None, None, None)
++            (None, None)
+         };
+ 
+         // `patch` is `None` for binary deltas, so they stay at 0/0 with no hunks.
+diff --git a/src-tauri/src/git/status/tests.rs b/src-tauri/src/git/status/tests.rs
+index 48c4f92..4871f8f 100644
+--- a/src-tauri/src/git/status/tests.rs
++++ b/src-tauri/src/git/status/tests.rs
+@@ -543,6 +543,60 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
+     let _ = fs::remove_dir_all(&dir);
+ }
+ 
++#[test]
++fn text_diff_carries_blob_oids_for_content_previews() {
++    let dir = std::env::temp_dir().join("gitlane-text-oid-test");
++    let _ = fs::remove_dir_all(&dir);
++    fs::create_dir_all(&dir).unwrap();
++    let repo = Repository::init(&dir).unwrap();
++    let v1 = "# Title\n\nfirst\n";
++    let v2 = "# Title\n\nsecond\n";
++    let add_oid = commit(&repo, &dir, "README.md", v1).to_string();
++    let mod_oid = commit(&repo, &dir, "README.md", v2).to_string();
++    let del_oid = remove_commit(&repo, &dir, "README.md").to_string();
++    let path = dir.to_str().unwrap();
++
++    // Added: only the new side exists; sizes stay binary-only (hunks carry the text).
++    let added = commit_file_diff(path, &add_oid, "README.md", false).unwrap();
++    assert!(!added.binary);
++    assert!(added.new_oid.is_some());
++    assert_eq!(added.old_oid, None);
++    assert_eq!((added.old_size, added.new_size), (None, None));
++
++    // Modified: both sides, and the new-side oid round-trips the full file text
++    // (this is what the markdown preview renders).
++    let modified = commit_file_diff(path, &mod_oid, "README.md", false).unwrap();
++    assert!(modified.old_oid.is_some());
++    let new_oid = modified.new_oid.clone().unwrap();
++    use base64::Engine as _;
++    let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();
++    let decoded = base64::engine::general_purpose::STANDARD
++        .decode(blob.base64.unwrap())
++        .unwrap();
++    assert_eq!(String::from_utf8(decoded).unwrap(), v2);
++
++    // Deleted: no new side to preview.
++    let deleted = commit_file_diff(path, &del_oid, "README.md", false).unwrap();
++    assert_eq!(deleted.new_oid, None);
++    assert!(deleted.old_oid.is_some());
++
++    // Working diff (the file is untracked again after the delete commit):
++    // libgit2 reports the worktree side with a *computed* hash of the file — an
++    // oid that need not exist in the ODB — so the frontend must read the
++    // working tree by path for unstaged diffs, not by that oid.
++    fs::write(dir.join("README.md"), "# Title\n\nworking\n").unwrap();
++    let working = file_diff(path, "README.md", false, false).unwrap();
++    assert_eq!(working.status, "U");
++    assert_eq!(working.old_oid, None);
++    let blob = read_binary_blob(path, None, Some("README.md"), None).unwrap();
++    let decoded = base64::engine::general_purpose::STANDARD
++        .decode(blob.base64.unwrap())
++        .unwrap();
++    assert_eq!(String::from_utf8(decoded).unwrap(), "# Title\n\nworking\n");
++
++    let _ = fs::remove_dir_all(&dir);
++}
++
+ #[test]
+ fn untracked_binary_file_is_flagged_in_working_changes() {
+     let dir = std::env::temp_dir().join("gitlane-binary-untracked-test");
+diff --git a/src-tauri/src/git/types.rs b/src-tauri/src/git/types.rs
+index 2403995..29b8a10 100644
+--- a/src-tauri/src/git/types.rs
++++ b/src-tauri/src/git/types.rs
+@@ -444,10 +444,12 @@ pub struct FileDiff {
+     pub old_size: Option<u64>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub new_size: Option<u64>,
+-    /// Blob oids for a **binary** change, used to fetch bytes for an image
+-    /// preview ([`super::status::read_binary_blob`]). `None` when the side is
+-    /// absent or libgit2 left no blob oid — notably the working-tree side of an
+-    /// unstaged diff, whose content the frontend reads from disk by `path`.
++    /// Blob oids for each side of the change, used to fetch content for a
++    /// preview ([`super::status::read_binary_blob`]) — image bytes for a binary
++    /// delta, markdown source for a text one. `None` when the side is absent or
++    /// libgit2 left no blob oid. The working-tree side of an unstaged diff is
++    /// unreliable by oid (zero for binary; a computed hash that need not exist
++    /// in the ODB for text) — the frontend reads that side from disk by `path`.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub old_oid: Option<String>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+diff --git a/src/components/ui/icons.tsx b/src/components/ui/icons.tsx
+index 51b240d..38ac4ee 100644
+--- a/src/components/ui/icons.tsx
++++ b/src/components/ui/icons.tsx
+@@ -847,3 +847,21 @@ export function GitBranchIcon(props: IconProps) {
+     </IconBase>
+   );
+ }
++
++export function CodeIcon(props: IconProps) {
++  return (
++    <IconBase {...props}>
++      <path d="m16 18 6-6-6-6" />
++      <path d="m8 6-6 6 6 6" />
++    </IconBase>
++  );
++}
++
++export function EyeIcon(props: IconProps) {
++  return (
++    <IconBase {...props}>
++      <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" />
++      <circle cx="12" cy="12" r="2.5" />
++    </IconBase>
++  );
++}
+diff --git a/src/features/review/ReviewWorkspace.test.tsx b/src/features/review/ReviewWorkspace.test.tsx
+index 8e41d26..c58c85d 100644
+--- a/src/features/review/ReviewWorkspace.test.tsx
++++ b/src/features/review/ReviewWorkspace.test.tsx
+@@ -185,6 +185,75 @@ describe("ReviewWorkspace — virtualized diff", () => {
+     expect(screen.getByText("PDF document")).toBeInTheDocument();
+   });
+ 
++  it("offers Code/Preview only for markdown files and renders the blob as markdown", async () => {
++    const source = "# Hello\n\nSome **body** text.";
++    invokeMock.mockReset();
++    invokeMock.mockResolvedValue({
++      base64: btoa(String.fromCharCode(...new TextEncoder().encode(source))),
++      size: source.length,
++      truncated: false,
++    });
++    useRepo.setState({
++      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
++      selectedCommit: "c1",
++      selectedFile: { path: "docs/guide.md", source: "commit" },
++      fileDiff: { ...bigDiff(3), path: "docs/guide.md", newOid: "beef" },
++      diffLoading: false,
++    });
++
++    render(<ReviewWorkspace />);
++    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
++
++    // Committed diff reads the new-side blob by oid; the raw-diff layout toggle
++    // hides while the rendered preview replaces the diff.
++    await waitFor(() =>
++      expect(invokeMock).toHaveBeenCalledWith(
++        "read_binary_blob",
++        expect.objectContaining({ path: "/r", oid: "beef", file: null }),
++      ),
++    );
++    await waitFor(() =>
++      expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument(),
++    );
++    expect(screen.queryByRole("button", { name: "Unified" })).not.toBeInTheDocument();
++
++    // Back to Code: the diff rows return, the preview goes away.
++    fireEvent.click(screen.getByRole("button", { name: "Code" }));
++    expect(screen.queryByRole("heading", { name: "Hello" })).not.toBeInTheDocument();
++    expect(screen.getByRole("button", { name: "Unified" })).toBeInTheDocument();
++  });
++
++  it("reads the working tree by path when previewing an unstaged markdown diff", async () => {
++    invokeMock.mockReset();
++    invokeMock.mockResolvedValue({ base64: btoa("# WT"), size: 4, truncated: false });
++    useRepo.setState({
++      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
++      selectedFile: { path: "README.md", source: "unstaged" },
++      // Even with a reported oid, the worktree side must be read from disk —
++      // libgit2's computed hash need not exist in the ODB.
++      fileDiff: { ...bigDiff(3), path: "README.md", newOid: "cafe" },
++      diffLoading: false,
++    });
++
++    render(<ReviewWorkspace />);
++    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
++
++    await waitFor(() =>
++      expect(invokeMock).toHaveBeenCalledWith(
++        "read_binary_blob",
++        expect.objectContaining({ path: "/r", oid: null, file: "README.md" }),
++      ),
++    );
++    await waitFor(() => expect(screen.getByRole("heading", { name: "WT" })).toBeInTheDocument());
++  });
++
++  it("hides the Code/Preview toggle for non-markdown files", () => {
++    useRepo.setState({ fileDiff: bigDiff(3), diffLoading: false });
++    render(<ReviewWorkspace />);
++    expect(screen.queryByRole("button", { name: "Preview" })).not.toBeInTheDocument();
++    expect(screen.queryByRole("button", { name: "Code" })).not.toBeInTheDocument();
++  });
++
+   it("stages a changed line from split view", () => {
+     const applyLine = vi.fn(async () => {});
+     const fileDiff = bigDiff(3);
+diff --git a/src/features/review/ReviewWorkspace.tsx b/src/features/review/ReviewWorkspace.tsx
+index e2c5cbe..bf070c6 100644
+--- a/src/features/review/ReviewWorkspace.tsx
++++ b/src/features/review/ReviewWorkspace.tsx
+@@ -2,10 +2,11 @@ import { type ReactNode, useMemo, useState } from "react";
+ import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
+ import { cn } from "../../lib/cn";
+ import { fileWriteGuard } from "../../lib/advancedRepoState";
+-import { basename, dirname } from "../../lib/paths";
++import { basename, dirname, isMarkdownPath } from "../../lib/paths";
+ import { useRepo } from "../../store/repo";
+-import { FileIcon } from "@/components/ui/icons";
++import { CodeIcon, EyeIcon, FileIcon } from "@/components/ui/icons";
+ import { BinaryDiff } from "./BinaryDiff";
++import { MarkdownPreview } from "./markdown-preview";
+ import {
+   DiffTruncatedNotice,
+   HunkCardHeader,
+@@ -34,6 +35,9 @@ import { ChangeCounts } from "@/components/ui/ChangeCounts";
+ 
+ type DiffMode = "split" | "unified";
+ 
++/** How a markdown file is shown: the raw diff ("code") or rendered ("preview"). */
++type MdView = "code" | "preview";
++
+ /** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
+  * which can't be staged. */
+ type HunkActionApi = {
+@@ -53,6 +57,10 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
+   const selectionDiff = useRepo((state) => state.selectionDiff);
+   const changes = useRepo((state) => state.changes);
+   const [mode, setMode] = useState<DiffMode>("unified");
++  // Sticky across file switches (like `mode`): browsing several .md files keeps
++  // the chosen view; non-markdown files simply ignore it.
++  const [mdView, setMdView] = useState<MdView>("code");
++  const markdown = !!fileDiff && !fileDiff.binary && isMarkdownPath(fileDiff.path);
+   // Notes are scoped to the diff surface — and, for the working tree, to the
+   // staged vs unstaged source — so a comment never reattaches to the same file
+   // viewed in a different diff. A committed file shown as part of a multi-commit
+@@ -86,7 +94,15 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
+ 
+   return (
+     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
+-      <ReviewHeader file={fileDiff} mode={mode} onModeChange={setMode} onBack={onBack ?? clearSelectedFile} />
++      <ReviewHeader
++        file={fileDiff}
++        mode={mode}
++        onModeChange={setMode}
++        markdown={markdown}
++        mdView={mdView}
++        onMdViewChange={setMdView}
++        onBack={onBack ?? clearSelectedFile}
++      />
+ 
+       {diffLoading ? (
+         <EmptyDiff title="Loading diff" />
+@@ -94,6 +110,8 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
+         <EmptyDiff title="Select a file to view its diff" />
+       ) : fileDiff.binary ? (
+         <BinaryDiff diff={fileDiff} className="min-h-0 flex-1 overflow-auto" />
++      ) : markdown && mdView === "preview" ? (
++        <MarkdownPreview diff={fileDiff} source={selectedFile?.source ?? "commit"} />
+       ) : mode === "split" ? (
+         <SplitDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
+       ) : (
+@@ -109,13 +127,20 @@ function ReviewHeader({
+   file,
+   mode,
+   onModeChange,
++  markdown,
++  mdView,
++  onMdViewChange,
+   onBack,
+ }: {
+   file: FileDiff | null;
+   mode: DiffMode;
+   onModeChange: (mode: DiffMode) => void;
++  markdown: boolean;
++  mdView: MdView;
++  onMdViewChange: (view: MdView) => void;
+   onBack: () => void;
+ }) {
++  const previewing = markdown && mdView === "preview";
+   return (
+     <div className="flex h-12 flex-none items-center gap-2.5 border-b border-black/5 dark:border-white/5 px-4">
+       {file && (
+@@ -136,7 +161,30 @@ function ReviewHeader({
+           hide the toggle (they render an image/size card, not line hunks) —
+           Graph stays put because the wrapper owns the margin. */}
+       <div className="ml-auto flex items-center gap-2.5">
+-        {!file?.binary && (
++        {markdown && (
++          <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
++            <button
++              className={cn(modeButton(mdView === "code"), "flex items-center gap-1.5")}
++              title="Show the raw diff"
++              onClick={() => onMdViewChange("code")}
++            >
++              <CodeIcon width={13} height={13} />
++              Code
++            </button>
++            <button
++              className={cn(modeButton(mdView === "preview"), "flex items-center gap-1.5")}
++              title="Render the file as formatted Markdown"
++              onClick={() => onMdViewChange("preview")}
++            >
++              <EyeIcon width={13} height={13} />
++              Preview
++            </button>
++          </div>
++        )}
++        {/* Unified/Split picks between diff layouts, so it hides while the
++            rendered preview replaces the diff (and for binary files, which
++            render an image/size card, not line hunks). */}
++        {!file?.binary && !previewing && (
+           <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
+             <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
+               Unified
+diff --git a/src/features/review/markdown-preview/MarkdownPreview.tsx b/src/features/review/markdown-preview/MarkdownPreview.tsx
+new file mode 100644
+index 0000000..78ae7d8
+--- /dev/null
++++ b/src/features/review/markdown-preview/MarkdownPreview.tsx
+@@ -0,0 +1,45 @@
++// Rendered-markdown Preview mode for the review surface: shows the NEW side of
++// the selected .md file (worktree / index / commit blob) through the same
++// sanitized GFM renderer as PR descriptions, instead of the raw diff.
++
++import type { FileDiff } from "../../../lib/api";
++import type { ChangeSource } from "../../../store/repoTypes";
++import { useRepo } from "../../../store/repo";
++import { Markdown } from "@/components/ui/Markdown";
++import { formatBytes } from "../../../lib/binaryFile";
++import { previewSource } from "./preview";
++import { useMarkdownText } from "./useMarkdownText";
++
++export function MarkdownPreview({ diff, source }: { diff: FileDiff; source: ChangeSource }) {
++  const repoPath = useRepo((s) => s.summary?.path ?? null);
++  const blobSource = previewSource(diff, source);
++  const state = useMarkdownText(repoPath, blobSource);
++
++  if (!blobSource) {
++    return (
++      <PreviewNotice>
++        {diff.status === "D" ? "This file was deleted — nothing to preview." : "No content to preview."}
++      </PreviewNotice>
++    );
++  }
++  if (state.loading) return <PreviewNotice>Loading preview…</PreviewNotice>;
++  if (state.tooLarge) {
++    return <PreviewNotice>{formatBytes(state.size ?? 0)} — too large to preview.</PreviewNotice>;
++  }
++  if (state.error || state.text == null) return <PreviewNotice>Couldn't load preview.</PreviewNotice>;
++  // Guard before <Markdown>, whose empty state says "No description." (it was
++  // written for PR bodies).
++  if (!state.text.trim()) return <PreviewNotice>Empty file.</PreviewNotice>;
++
++  return (
++    <div className="min-h-0 flex-1 overflow-auto" data-testid="markdown-preview">
++      <div className="mx-auto w-full max-w-[780px] px-6 py-5">
++        <Markdown content={state.text} />
++      </div>
++    </div>
++  );
++}
++
++function PreviewNotice({ children }: { children: React.ReactNode }) {
++  return <div className="grid min-h-0 flex-1 place-content-center text-sm text-neutral-400">{children}</div>;
++}
+diff --git a/src/features/review/markdown-preview/index.ts b/src/features/review/markdown-preview/index.ts
+new file mode 100644
+index 0000000..2013f30
+--- /dev/null
++++ b/src/features/review/markdown-preview/index.ts
+@@ -0,0 +1,2 @@
++export { MarkdownPreview } from "./MarkdownPreview";
++export { previewSource, type PreviewSource } from "./preview";
+diff --git a/src/features/review/markdown-preview/preview.test.ts b/src/features/review/markdown-preview/preview.test.ts
+new file mode 100644
+index 0000000..e92a7cc
+--- /dev/null
++++ b/src/features/review/markdown-preview/preview.test.ts
+@@ -0,0 +1,42 @@
++import { describe, expect, it } from "vitest";
++import type { FileDiff } from "../../../lib/api";
++import { decodeBase64Text, previewSource } from "./preview";
++
++const diff = (over: Partial<FileDiff>): FileDiff => ({
++  path: "README.md",
++  status: "M",
++  add: 1,
++  del: 1,
++  binary: false,
++  truncated: false,
++  hunks: [],
++  ...over,
++});
++
++describe("previewSource", () => {
++  it("reads the working tree by path for an unstaged diff, even when libgit2 reported an oid", () => {
++    // The worktree side's oid is a computed hash that may not exist in the ODB.
++    expect(previewSource(diff({ newOid: "feed" }), "unstaged")).toEqual({ file: "README.md" });
++    expect(previewSource(diff({ status: "U" }), "unstaged")).toEqual({ file: "README.md" });
++  });
++
++  it("reads the new-side blob by oid for staged and committed diffs", () => {
++    expect(previewSource(diff({ newOid: "abc123" }), "staged")).toEqual({ oid: "abc123" });
++    expect(previewSource(diff({ newOid: "abc123" }), "commit")).toEqual({ oid: "abc123" });
++  });
++
++  it("returns null when there is nothing to render", () => {
++    expect(previewSource(diff({ status: "D", newOid: undefined }), "commit")).toBeNull();
++    expect(previewSource(diff({ status: "D" }), "unstaged")).toBeNull();
++    // A non-worktree diff without a new-side oid has no readable source.
++    expect(previewSource(diff({ newOid: undefined }), "commit")).toBeNull();
++  });
++});
++
++describe("decodeBase64Text", () => {
++  it("decodes UTF-8 content, including non-ASCII", () => {
++    const text = "# Заголовок\n\némoji 🎉\n";
++    const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(text)));
++    expect(decodeBase64Text(base64)).toBe(text);
++  });
++});
+diff --git a/src/features/review/markdown-preview/preview.ts b/src/features/review/markdown-preview/preview.ts
+new file mode 100644
+index 0000000..b878a20
+--- /dev/null
++++ b/src/features/review/markdown-preview/preview.ts
+@@ -0,0 +1,33 @@
++// Pure helpers for the markdown Preview mode of the review surface: which blob
++// the rendered side comes from, and decoding its base64 payload to text.
++
++import type { ChangeSource } from "../../../store/repoTypes";
++import type { FileDiff } from "../../../lib/api";
++
++/** Which blob the preview reads: a committed/staged blob (`oid`) or the
++ * working-tree file (`file`, repo-relative). Mirrors `BinaryDiff`'s sources. */
++export type PreviewSource = { oid?: string; file?: string };
++
++/**
++ * Resolve where the preview's content comes from — always the NEW side of the
++ * diff (the file as it stands after the change: the worktree copy for an
++ * unstaged diff, the index blob for a staged one, the commit's blob otherwise).
++ *
++ * The unstaged case must read from disk by path: libgit2 reports the worktree
++ * side with a computed hash that need not exist in the ODB. Returns null when
++ * there is nothing to render (the file was deleted, or a non-worktree diff
++ * carries no new-side oid).
++ */
++export function previewSource(diff: FileDiff, source: ChangeSource): PreviewSource | null {
++  if (diff.status === "D") return null;
++  if (source === "unstaged") return { file: diff.path };
++  return diff.newOid ? { oid: diff.newOid } : null;
++}
++
++/** Decode a base64 payload (from `readBinaryBlob`) as UTF-8 text. */
++export function decodeBase64Text(base64: string): string {
++  const bin = atob(base64);
++  const bytes = new Uint8Array(bin.length);
++  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
++  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
++}
+diff --git a/src/features/review/markdown-preview/useMarkdownText.ts b/src/features/review/markdown-preview/useMarkdownText.ts
+new file mode 100644
+index 0000000..c794a38
+--- /dev/null
++++ b/src/features/review/markdown-preview/useMarkdownText.ts
+@@ -0,0 +1,58 @@
++import { useEffect, useState } from "react";
++// eslint-disable-next-line no-restricted-imports -- local markdown-preview text probe, the same disposable preview boundary as BinaryDiff's image blob (architecture-rules-react.md §1)
++import { api } from "../../../lib/api";
++import { decodeBase64Text, type PreviewSource } from "./preview";
++
++/** Hard cap on markdown source rendered inline. Rendering a multi-megabyte
++ * document would wedge the webview long before it's readable anyway. */
++const MAX_PREVIEW_TEXT_BYTES = 2 * 1024 * 1024; // 2 MiB
++
++export interface MarkdownTextState {
++  text: string | null;
++  loading: boolean;
++  /** Content exceeded the preview cap; `size` says how big it is. */
++  tooLarge: boolean;
++  size: number | null;
++  error: boolean;
++}
++
++/** Fetch one side's text for the markdown preview. Re-runs only when the
++ * underlying source identity (oid/file) changes, not on every parent render. */
++export function useMarkdownText(repoPath: string | null, source: PreviewSource | null): MarkdownTextState {
++  const [state, setState] = useState<MarkdownTextState>({
++    text: null,
++    loading: !!(repoPath && source),
++    tooLarge: false,
++    size: null,
++    error: false,
++  });
++  const oid = source?.oid ?? null;
++  const file = source?.file ?? null;
++
++  useEffect(() => {
++    if (!repoPath || (!oid && !file)) {
++      setState({ text: null, loading: false, tooLarge: false, size: null, error: false });
++      return;
++    }
++    let live = true;
++    setState({ text: null, loading: true, tooLarge: false, size: null, error: false });
++    api
++      .readBinaryBlob(repoPath, { oid, file }, MAX_PREVIEW_TEXT_BYTES)
++      .then((blob) => {
++        if (!live) return;
++        if (blob.base64 != null) {
++          setState({ text: decodeBase64Text(blob.base64), loading: false, tooLarge: false, size: blob.size, error: false });
++        } else {
++          setState({ text: null, loading: false, tooLarge: true, size: blob.size, error: false });
++        }
++      })
++      .catch(() => {
++        if (live) setState({ text: null, loading: false, tooLarge: false, size: null, error: true });
++      });
++    return () => {
++      live = false;
++    };
++  }, [repoPath, oid, file]);
++
++  return state;
++}
+diff --git a/src/lib/api/git.ts b/src/lib/api/git.ts
+index c47b83c..0af6e5e 100644
+--- a/src/lib/api/git.ts
++++ b/src/lib/api/git.ts
+@@ -361,10 +361,12 @@ export interface FileDiff {
+    * (added has no old, deleted no new) or for text diffs. */
+   oldSize?: number;
+   newSize?: number;
+-  /** Blob oids for a **binary** change, passed to {@link gitApi.readBinaryBlob}
+-   * to fetch bytes for an image preview. Absent when the side doesn't exist or
+-   * libgit2 left no oid — notably the working-tree side of an unstaged diff,
+-   * whose bytes are read from disk by `path` instead. */
++  /** Blob oids for each side of the change, passed to
++   * {@link gitApi.readBinaryBlob} to fetch content for a preview (image bytes,
++   * markdown source). Absent when the side doesn't exist or libgit2 left no
++   * oid. The working-tree side of an unstaged diff is unreliable by oid (zero
++   * for binary; a computed hash that need not exist in the ODB for text) —
++   * read that side from disk by `path` instead. */
+   oldOid?: string;
+   newOid?: string;
+ }
+diff --git a/src/lib/paths.test.ts b/src/lib/paths.test.ts
+index eb6f7d8..de98707 100644
+--- a/src/lib/paths.test.ts
++++ b/src/lib/paths.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, it, expect } from "vitest";
+-import { basename, dirname, repoLabel } from "./paths";
++import { basename, dirname, isMarkdownPath, repoLabel } from "./paths";
+ 
+ describe("basename", () => {
+   it("returns the last segment", () => {
+@@ -42,3 +42,17 @@ describe("repoLabel", () => {
+     expect(repoLabel("")).toBe("Repository");
+   });
+ });
++
++describe("isMarkdownPath", () => {
++  it("matches .md and .markdown, case-insensitively", () => {
++    expect(isMarkdownPath("README.md")).toBe(true);
++    expect(isMarkdownPath("docs/guide.markdown")).toBe(true);
++    expect(isMarkdownPath("NOTES.MD")).toBe(true);
++  });
++
++  it("rejects other extensions and md elsewhere in the name", () => {
++    expect(isMarkdownPath("src/App.tsx")).toBe(false);
++    expect(isMarkdownPath("archive.md.bak")).toBe(false);
++    expect(isMarkdownPath("md")).toBe(false);
++  });
++});
+diff --git a/src/lib/paths.ts b/src/lib/paths.ts
+index 9ca0f80..b82537a 100644
+--- a/src/lib/paths.ts
++++ b/src/lib/paths.ts
+@@ -16,3 +16,8 @@ export function dirname(path: string): string {
+ export function repoLabel(path: string): string {
+   return path.replace(/\/$/, "").split("/").pop() || "Repository";
+ }
++
++/** True for files the review surface can render as formatted Markdown. */
++export function isMarkdownPath(path: string): boolean {
++  return /\.(md|markdown)$/i.test(path);
++}
+
+From 00b13d71ceda75df5b0014d7a0b2b80a75284dd8 Mon Sep 17 00:00:00 2001
+From: Siomkin Alexander <siomkin.alexander@gmail.com>
+Date: Fri, 3 Jul 2026 11:02:55 +0300
+Subject: [PATCH 2/2] GL-100 fix(review): selection diffs carry blob oids so
+ markdown Preview loads
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Code review caught that the multi-commit selection path (selection_diff_file)
+still returned text FileDiffs without oldOid/newOid — only diffs_to_files was
+updated in the feature commit. Opening a .md file from a multi-commit
+selection and hitting Preview therefore resolved no source and showed "No
+content to preview" even though the Code diff rendered fine.
+
+The non-gapped text branch of selection.rs file_diff now carries both blob
+oids, mirroring its binary branch and diffs_to_files (sizes stay binary-only).
+The gapped composed path (text_diff) intentionally stays oid-less: the merged
+result exists only in memory and matches no repo blob, so Preview falls back
+to its empty state rather than fetch a blob that would include the unselected
+edit — documented on text_diff and in previewSource's doc comment.
+
+Validation: cargo test (210, incl. a new selection oid round-trip test that
+also pins the composed-path behavior), bunx tsc --noEmit, bun run test (858).
+---
+ src-tauri/src/git/status/selection.rs         | 19 ++++++++-
+ src-tauri/src/git/status/tests.rs             | 42 +++++++++++++++++++
+ .../review/markdown-preview/preview.ts        |  5 ++-
+ 3 files changed, 63 insertions(+), 3 deletions(-)
+
+diff --git a/src-tauri/src/git/status/selection.rs b/src-tauri/src/git/status/selection.rs
+index 0fa7d1e..c881ce6 100644
+--- a/src-tauri/src/git/status/selection.rs
++++ b/src-tauri/src/git/status/selection.rs
+@@ -251,7 +251,20 @@ fn file_diff(repo: &Repository, path: &str, (old, new): BlobPair, limit: usize)
+         &mut opts,
+     )?;
+     let (add, del, hunks, truncated) = render_patch(&patch, limit)?;
+-    Ok(FileDiff { path: path.to_string(), status, add, del, hunks, truncated, ..Default::default() })
++    // Text deltas carry their blob oids too (mirroring `diffs_to_files`), so
++    // content previews — rendered markdown — can fetch the new side via
++    // `read_binary_blob`. Sizes stay binary-only: the hunks carry the text.
++    Ok(FileDiff {
++        path: path.to_string(),
++        status,
++        add,
++        del,
++        hunks,
++        truncated,
++        old_oid: old.map(|o| o.to_string()),
++        new_oid: new.map(|o| o.to_string()),
++        ..Default::default()
++    })
+ }
+ 
+ /// 3-way merge three text buffers, returning the merged bytes only when it
+@@ -322,6 +335,10 @@ fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::
+     Ok(FileChange { path: path.to_string(), status: "M".to_string(), add, del, binary: false, advanced: None })
+ }
+ 
++/// Diff two composed text buffers. Unlike `file_diff`, no blob oids travel: the
++/// composed result exists only in memory (it need not match any blob in the
++/// ODB), so content previews for a gapped file fall back to their empty state
++/// rather than fetch a blob that would include the unselected edit.
+ fn text_diff(path: &str, base: &[u8], new: &[u8], limit: usize) -> Result<FileDiff, git2::Error> {
+     let mut opts = DiffOptions::new();
+     opts.context_lines(3);
+diff --git a/src-tauri/src/git/status/tests.rs b/src-tauri/src/git/status/tests.rs
+index 4871f8f..67fc330 100644
+--- a/src-tauri/src/git/status/tests.rs
++++ b/src-tauri/src/git/status/tests.rs
+@@ -872,6 +872,48 @@ fn selection_diff_gapped_uncomposable_file_fails_closed() {
+     let _ = fs::remove_dir_all(&dir);
+ }
+ 
++#[test]
++fn selection_diff_file_carries_blob_oids_for_content_previews() {
++    let dir = std::env::temp_dir().join("gitlane-selection-oid-test");
++    let _ = fs::remove_dir_all(&dir);
++    fs::create_dir_all(&dir).unwrap();
++    let repo = Repository::init(&dir).unwrap();
++    commit(&repo, &dir, "seed.txt", "seed\n");
++    let add = commit(&repo, &dir, "README.md", "# Title\n\nfirst\n").to_string();
++    commit(&repo, &dir, "other.txt", "between, does not touch README\n"); // unselected
++    let v2 = "# Title\n\nsecond\n";
++    let modify = commit(&repo, &dir, "README.md", v2).to_string();
++    let path = dir.to_str().unwrap();
++    let oids = [add, modify];
++
++    // Non-gapped selection (the unselected commit doesn't touch the file): the
++    // net text diff carries the blob oids, and the new side round-trips the
++    // full file text — what the markdown preview renders (GL-100).
++    let diff = selection_diff_file(path, &oids, "README.md", false).unwrap();
++    assert_eq!(diff.status, "A");
++    assert_eq!(diff.old_oid, None);
++    let new_oid = diff.new_oid.clone().expect("selection text diff carries the new-side oid");
++    use base64::Engine as _;
++    let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();
++    let decoded = base64::engine::general_purpose::STANDARD
++        .decode(blob.base64.unwrap())
++        .unwrap();
++    assert_eq!(String::from_utf8(decoded).unwrap(), v2);
++
++    // Gapped + composed: the merged result exists only in memory — there is no
++    // blob to fetch — so no oids travel and the preview falls back to its
++    // "no content" state instead of showing a blob with the unselected edit.
++    commit(&repo, &dir, "gap.md", "1\n2\n3\n4\n5\n"); // base (parent of A)
++    let a = commit(&repo, &dir, "gap.md", "A\n2\n3\n4\n5\n").to_string(); // selected: line 1
++    commit(&repo, &dir, "gap.md", "A\n2\nB\n4\n5\n"); // UNSELECTED: line 3
++    let c = commit(&repo, &dir, "gap.md", "A\n2\nB\n4\nC\n").to_string(); // selected: line 5
++    let composed = selection_diff_file(path, &[a, c], "gap.md", false).unwrap();
++    assert_eq!(composed.old_oid, None);
++    assert_eq!(composed.new_oid, None);
++
++    let _ = fs::remove_dir_all(&dir);
++}
++
+ #[test]
+ fn selection_diff_handles_binary_files() {
+     let dir = std::env::temp_dir().join("gitlane-selection-binary-test");
+diff --git a/src/features/review/markdown-preview/preview.ts b/src/features/review/markdown-preview/preview.ts
+index b878a20..91e3642 100644
+--- a/src/features/review/markdown-preview/preview.ts
++++ b/src/features/review/markdown-preview/preview.ts
+@@ -15,8 +15,9 @@ export type PreviewSource = { oid?: string; file?: string };
+  *
+  * The unstaged case must read from disk by path: libgit2 reports the worktree
+  * side with a computed hash that need not exist in the ODB. Returns null when
+- * there is nothing to render (the file was deleted, or a non-worktree diff
+- * carries no new-side oid).
++ * there is nothing to render — the file was deleted, or a non-worktree diff
++ * carries no new-side oid (a gapped multi-commit selection whose merged
++ * content is composed in memory and matches no repo blob).
+  */
+ export function previewSource(diff: FileDiff, source: ChangeSource): PreviewSource | null {
+   if (diff.status === "D") return null;
