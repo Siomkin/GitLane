@@ -12,18 +12,20 @@ export function useRevealNavigate() {
   };
 }
 
-/** Switch the app to a linked worktree (loads it as the open repo) and close the
- * navigator. This is a worktree row's primary left-click action — distinct from
- * "reveal tip", which only scrolls the current graph. Errors (e.g. a removed
- * directory) surface as a toast rather than throwing into the click handler,
- * matching the worktree context menu. */
+/** Switch the app to a linked worktree and close the navigator. This is a
+ * worktree row's primary left-click action — distinct from "reveal tip", which
+ * only scrolls the current graph. The switch moves the current tab in place
+ * (one repository, one tab — GL-110); `newTab` (cmd/ctrl-click, or the menu's
+ * explicit "Open in new tab") opens it side-by-side instead. Errors (e.g. a
+ * removed directory) surface as a toast rather than throwing into the click
+ * handler, matching the worktree context menu. */
 export function useOpenWorktree() {
   const openWorktree = useRepo((s) => s.openWorktree);
   const closeNav = useUi((s) => s.closeNav);
   const showToast = useUi((s) => s.showToast);
-  return (worktreePath: string) => {
+  return (worktreePath: string, newTab = false) => {
     closeNav();
-    void openWorktree(worktreePath).catch((e) => showToast(String(e), "error"));
+    void openWorktree(worktreePath, { newTab }).catch((e) => showToast(String(e), "error"));
   };
 }
 

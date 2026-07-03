@@ -1160,7 +1160,9 @@ export function WorktreeContextMenu() {
   const isActiveWorktree = isActiveWorktreePath(summary, path);
   const items: MenuItem[] = [];
   // The active worktree is already open, so opening it again is a no-op; only
-  // offer the switch for the others.
+  // offer the switch for the others. "Open worktree" switches the current tab
+  // in place (one repository, one tab); "Open in new tab" is the deliberate
+  // side-by-side action (GL-110).
   if (!isActiveWorktree) {
     items.push({
       label: "Open worktree",
@@ -1168,6 +1170,14 @@ export function WorktreeContextMenu() {
       onClick: () => {
         close();
         void openWorktree(path).catch((e) => showToast(String(e), "error"));
+      },
+    });
+    items.push({
+      label: "Open in new tab",
+      icon: <PlusIcon className="h-4 w-4" />,
+      onClick: () => {
+        close();
+        void openWorktree(path, { newTab: true }).catch((e) => showToast(String(e), "error"));
       },
     });
   }

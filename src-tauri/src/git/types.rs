@@ -100,6 +100,12 @@ pub struct RepoSummary {
     pub head_oid: Option<String>,
     /// True when HEAD is detached (not on a branch).
     pub detached: bool,
+    /// True when this checkout is a *linked* worktree (not the main one).
+    pub is_worktree: bool,
+    /// The main checkout's path for a linked worktree — the stable repository
+    /// identity that tab grouping and per-repo state key on (GL-109/GL-110).
+    /// None for the main worktree itself (its own `path` is the identity).
+    pub main_path: Option<String>,
 }
 
 /// Why `open_repo` failed, classified so the frontend can give a moved/deleted
@@ -132,9 +138,10 @@ pub enum RepoOpenErrorKind {
     Other,
 }
 
-/// Presence + current branch of a recently-opened repository, for the
-/// onboarding "Recent" list. `exists: false` flags a path that no longer
-/// resolves on disk so the UI can mark it "Missing".
+/// Presence + current branch of a previously-opened repository path, for the
+/// onboarding "Recent" list and the tab strip's session-restore probe
+/// (GL-109/GL-110 share this shape). `exists: false` flags a path that no
+/// longer resolves on disk so the UI can mark it "Missing" / drop the tab.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentStatus {
@@ -142,6 +149,10 @@ pub struct RecentStatus {
     pub exists: bool,
     /// Currently checked-out branch (short name), or None when detached / gone.
     pub branch: Option<String>,
+    /// True when the path is a *linked* worktree of some repository.
+    pub is_worktree: bool,
+    /// The main checkout's path when `is_worktree` (see [`RepoSummary`]).
+    pub main_path: Option<String>,
 }
 
 /// Remote-forge summary for the toolbar provider indicator. Pure libgit2

@@ -1,8 +1,9 @@
 import { useSortable } from "@dnd-kit/react/sortable";
 import { cn } from "../../lib/cn";
 import { repoLabel } from "../../lib/paths";
+import type { TabDisplay } from "../../lib/tabs";
 import { focusRing } from "../../lib/ui";
-import { CloseIcon, FolderIcon } from "../ui/icons";
+import { CloseIcon, FolderIcon, TreeIcon } from "../ui/icons";
 
 interface ProjectTabProps {
   path: string;
@@ -11,6 +12,10 @@ interface ProjectTabProps {
   /** True when this tab's path failed to resolve (the missing-repo state,
    * GL-108) — flagged amber like the recents list's "Missing" badge. */
   missing?: boolean;
+  /** How the tab presents itself: a plain repo tab, or a worktree tab showing
+   * `parent repo · branch` with the accent tree icon (GL-110). Defaults to a
+   * plain repo tab labeled by the path's leaf directory. */
+  display?: TabDisplay;
   onSelect: () => void;
   onClose: () => void;
 }
@@ -20,6 +25,7 @@ export const ProjectTab = ({
   index,
   active,
   missing = false,
+  display,
   onSelect,
   onClose,
 }: ProjectTabProps) => {
@@ -29,6 +35,9 @@ export const ProjectTab = ({
     type: "repo-tab",
     accept: "repo-tab",
   });
+  const shown: TabDisplay = display ?? { kind: "repo", name: repoLabel(path) };
+  const label =
+    shown.kind === "worktree" ? `${shown.repoName} · ${shown.detail}` : shown.name;
 
   return (
     <div
@@ -42,12 +51,25 @@ export const ProjectTab = ({
       )}
     >
       <div className="relative h-5 w-3.5 shrink-0">
-        <FolderIcon
-          className={cn(
-            "absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
-            missing ? "text-amber-500" : active ? "text-[color:var(--accent)]" : "text-neutral-400",
-          )}
-        />
+        {shown.kind === "worktree" && !missing ? (
+          // The accent tree icon is the worktree signal — the same visual
+          // language as the toolbar worktree indicator (GL-22). A missing
+          // worktree falls back to the amber folder below: gone-ness beats
+          // worktree-ness (the recovery screen is what the tab opens onto).
+          <TreeIcon
+            className={cn(
+              "absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--accent)] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
+              !active && "opacity-60",
+            )}
+          />
+        ) : (
+          <FolderIcon
+            className={cn(
+              "absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
+              missing ? "text-amber-500" : active ? "text-[color:var(--accent)]" : "text-neutral-400",
+            )}
+          />
+        )}
         <button
           ref={sortable.handleRef}
           type="button"
@@ -56,7 +78,7 @@ export const ProjectTab = ({
             focusRing,
           )}
           title="Drag to reorder repository"
-          aria-label={`Drag ${repoLabel(path)} to reorder`}
+          aria-label={`Drag ${label} to reorder`}
         >
           <span aria-hidden="true" className="grid grid-cols-2 gap-[2px]">
             <span className="h-0.5 w-0.5 rounded-full bg-current" />
@@ -74,7 +96,21 @@ export const ProjectTab = ({
         onClick={onSelect}
         title={path}
       >
-        <span className="truncate">{repoLabel(path)}</span>
+        {shown.kind === "worktree" ? (
+          <>
+            {/* The branch is the distinguishing part; the parent repo name
+                (repeated from the main tab it groups next to) stays muted. */}
+            <span className="max-w-24 shrink-0 truncate text-neutral-400 dark:text-neutral-500">
+              {shown.repoName}
+            </span>
+            <span aria-hidden="true" className="mx-1 shrink-0 text-neutral-400 dark:text-neutral-500">
+              ·
+            </span>
+            <span className="truncate">{shown.detail}</span>
+          </>
+        ) : (
+          <span className="truncate">{shown.name}</span>
+        )}
       </button>
       <button
         type="button"
@@ -87,7 +123,7 @@ export const ProjectTab = ({
           onClose();
         }}
         title="Close repository"
-        aria-label={`Close ${repoLabel(path)}`}
+        aria-label={`Close ${label}`}
       >
         <CloseIcon className="h-2.5 w-2.5" />
       </button>

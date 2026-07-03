@@ -1,12 +1,15 @@
-// Session persistence for the repo store: which repos are open (the tab strip)
-// and which was active last, mirrored to localStorage so the app reopens them on
-// launch. Pure storage helpers — no Zustand, no IPC (selection.ts-style module).
+// Session persistence for the repo store: which repos are open (the tab strip),
+// which was active last, and what the strip knows about each tab, mirrored to
+// localStorage so the app reopens them on launch. Pure storage helpers — no
+// Zustand, no IPC (selection.ts-style module).
 
 import { repoLabel } from "../lib/paths";
+import type { TabInfo } from "../lib/tabs";
 
 const LS_OPEN = "gitlane.openPaths";
 const LS_LAST = "gitlane.lastPath";
 const LS_RECENTS = "gitlane.recentRepos";
+const LS_TAB_INFO = "gitlane.tabInfo";
 
 /** Max recent repositories kept (the onboarding "Recent" list is short). */
 const RECENTS_LIMIT = 12;
@@ -51,6 +54,41 @@ export function persistSession(openPaths: string[], lastPath: string | null): vo
     localStorage.setItem(LS_OPEN, JSON.stringify(openPaths));
     if (lastPath) localStorage.setItem(LS_LAST, lastPath);
     else localStorage.removeItem(LS_LAST);
+  } catch {
+    /* ignore quota / unavailable */
+  }
+}
+
+/** Per-tab info persisted from a previous session (GL-110): worktree tabs keep
+ * their `parent repo · branch` label on first paint, and session restore can
+ * tell a pruned *worktree* (tab dropped) from a missing *repository* (tab kept
+ * for the GL-108 recovery screen) even though the dead path no longer answers. */
+export function readTabInfo(): Record<string, TabInfo> {
+  try {
+    const raw = localStorage.getItem(LS_TAB_INFO);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, Partial<TabInfo>>).map(([path, info]) => [
+        path,
+        {
+          isWorktree: info?.isWorktree === true,
+          mainPath: typeof info?.mainPath === "string" ? info.mainPath : null,
+          branch: typeof info?.branch === "string" ? info.branch : null,
+        },
+      ]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+/** Mirror the tab-info map to localStorage (callers pass it already pruned to
+ * the open tabs, so this never accumulates closed paths). */
+export function persistTabInfo(tabInfoByPath: Record<string, TabInfo>): void {
+  try {
+    localStorage.setItem(LS_TAB_INFO, JSON.stringify(tabInfoByPath));
   } catch {
     /* ignore quota / unavailable */
   }

@@ -17,6 +17,7 @@ import { HistorySkeleton } from "./HistorySkeleton";
 import { LoadError } from "../../components/ui/Loading";
 import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { changeTotal, summarizeChanges } from "../../lib/changeSummary";
+import { repoIdentityKey } from "../../lib/worktrees";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 // GL-23: minimum rows ahead of the trailing load-more row at which a near-bottom
@@ -42,7 +43,16 @@ export const HistoryWorkspace = () => {
   const wipSelected = useRepo((state) => state.wipSelected);
   const selectWip = useRepo((state) => state.selectWip);
   const density = useUi((state) => state.density);
-  const repoGraphWidth = useUi((state) => summary?.path ? state.graphWidthsByRepo[summary.path] : undefined);
+  // Column widths key on the repository identity so every worktree of a repo
+  // shares them (GL-109); pre-identity entries under the worktree path are
+  // still read as a fallback and converge on the identity key at next resize.
+  const graphWidthKey = summary ? repoIdentityKey(summary) : null;
+  const repoGraphWidth = useUi((state) =>
+    graphWidthKey
+      ? state.graphWidthsByRepo[graphWidthKey] ??
+        (summary?.path ? state.graphWidthsByRepo[summary.path] : undefined)
+      : undefined,
+  );
   const setRepoGraphWidth = useUi((state) => state.setRepoGraphWidth);
   // The header (HistorySearchBar) owns the rest of the search/filter state; the
   // workspace only needs the query + kind to decide which commits to highlight.
@@ -104,9 +114,9 @@ export const HistoryWorkspace = () => {
   const graphColW = repoGraphWidth ?? autoGraphW;
   const resizeGraphColumn = useCallback(
     (width: number) => {
-      if (summary?.path) setRepoGraphWidth(summary.path, width);
+      if (graphWidthKey) setRepoGraphWidth(graphWidthKey, width);
     },
-    [setRepoGraphWidth, summary?.path],
+    [setRepoGraphWidth, graphWidthKey],
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);

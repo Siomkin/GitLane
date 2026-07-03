@@ -2,6 +2,13 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { arrayMove } from "@dnd-kit/helpers";
 import { api, isRepoOpenError, type RepoSummary } from "../lib/api";
 import { repoLabel } from "../lib/paths";
+import {
+  groupedInsertIndex,
+  pruneTabInfo,
+  tabInfoFromStatus,
+  tabInfoFromSummary,
+} from "../lib/tabs";
+import { repoIdentityKey } from "../lib/worktrees";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
 import { migrateProfileBindings } from "./profiles";
@@ -15,7 +22,13 @@ import {
   takePendingRefresh,
 } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
-import { persistRecents, persistSession, readLastPath, upsertRecent } from "./repoSession";
+import {
+  persistRecents,
+  persistSession,
+  persistTabInfo,
+  readLastPath,
+  upsertRecent,
+} from "./repoSession";
 import { useUi } from "./ui";
 import {
   emptyChanges,
@@ -166,7 +179,7 @@ export function createRepoLifecycleActions(
       }
     },
 
-    loadRepo: async (path: string) => {
+    loadRepo: async (path: string, opts?: { replaceTab?: string }) => {
       // Claim the latest open intent before doing anything that can await. A newer
       // pick supersedes this one even if our open resolves later (GL-20 review).
       const intent = claimOpenIntent();
@@ -205,9 +218,26 @@ export function createRepoLifecycleActions(
       // skeleton flags. The bump and this set share a synchronous tick, so no other
       // load can interleave between them.
       const generation = beginGraphRequest();
-      const openPaths = get().openPaths.includes(summary.path)
-        ? get().openPaths
-        : [...get().openPaths, summary.path];
+      // Tab placement: an already-open path keeps the strip as-is; `replaceTab`
+      // switches that tab to the new path in place (the in-place worktree
+      // switch — the tab keeps its repository identity, GL-110); otherwise the
+      // new tab is inserted right after the last tab of the same repository so
+      // worktrees group next to their parent repo instead of appending as an
+      // unrelated sibling.
+      const prevPaths = get().openPaths;
+      let openPaths: string[];
+      if (prevPaths.includes(summary.path)) {
+        openPaths = prevPaths;
+      } else if (opts?.replaceTab && prevPaths.includes(opts.replaceTab)) {
+        openPaths = prevPaths.map((p) => (p === opts.replaceTab ? summary.path : p));
+      } else {
+        const at = groupedInsertIndex(prevPaths, get().tabInfoByPath, repoIdentityKey(summary));
+        openPaths = [...prevPaths.slice(0, at), summary.path, ...prevPaths.slice(at)];
+      }
+      const tabInfoByPath = pruneTabInfo(
+        { ...get().tabInfoByPath, [summary.path]: tabInfoFromSummary(summary) },
+        openPaths,
+      );
       // Record this open in the recents list (most-recent first) so the
       // onboarding screen can offer it without browsing the filesystem again.
       const recents = upsertRecent(get().recents, {
@@ -217,6 +247,7 @@ export function createRepoLifecycleActions(
         lastOpenedAt: Date.now(),
       });
       persistSession(openPaths, summary.path);
+      persistTabInfo(tabInfoByPath);
       persistRecents(recents);
       set({
         summary,
@@ -224,6 +255,7 @@ export function createRepoLifecycleActions(
         // A successful open resolves any missing-repo state (e.g. Retry after
         // the volume re-mounted, or Locate… landing on the relocated repo).
         missingRepo: null,
+        tabInfoByPath,
         recents,
         forge: null,
         graph: null,
@@ -437,8 +469,10 @@ export function createRepoLifecycleActions(
       // tab + state and land on a neighbour or the welcome screen (GL-108).
       if (get().missingRepo?.path === path) {
         const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0] ?? null;
-        set({ openPaths: remaining, missingRepo: null });
+        const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
+        set({ openPaths: remaining, missingRepo: null, tabInfoByPath: prunedInfo });
         persistSession(remaining, next);
+        persistTabInfo(prunedInfo);
         if (next) await get().loadRepo(next);
         return;
       }
@@ -446,14 +480,18 @@ export function createRepoLifecycleActions(
       if (!wasActive) {
         // `summary` can legitimately be null here (a missing-repo tab is the
         // active one) — keep the persisted lastPath rather than wiping it.
+        const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
         persistSession(remaining, summary?.path ?? readLastPath());
-        set({ openPaths: remaining });
+        persistTabInfo(prunedInfo);
+        set({ openPaths: remaining, tabInfoByPath: prunedInfo });
         return;
       }
       if (remaining.length === 0) {
         persistSession([], null);
+        persistTabInfo({});
         set({
           openPaths: [],
+          tabInfoByPath: {},
           summary: null,
           // `forge` keys the provider indicator independently of `summary`, so a
           // leak here would render a stale indicator on the welcome screen.
@@ -502,6 +540,7 @@ export function createRepoLifecycleActions(
       // a summary whose tab no longer exists.
       set({
         openPaths: remaining,
+        tabInfoByPath: pruneTabInfo(get().tabInfoByPath, remaining),
         summary: null,
         forge: null,
         graph: null,
@@ -533,6 +572,7 @@ export function createRepoLifecycleActions(
         compare: null,
       });
       persistSession(remaining, next);
+      persistTabInfo(pruneTabInfo(get().tabInfoByPath, remaining));
       await get().loadRepo(next);
     },
 
@@ -554,9 +594,55 @@ export function createRepoLifecycleActions(
     },
 
     // On launch, reopen the last active repository (tabs are restored from
-    // localStorage in the initial state).
+    // localStorage in the initial state). Before reopening, probe the restored
+    // tabs on disk. A since-removed *worktree* tab (e.g. a pruned agent
+    // worktree) is dropped instead of restoring dead (GL-109) — worktree-ness
+    // comes from the persisted tab info, since the gone path can't answer. A
+    // missing *repository* keeps its tab and restores into the GL-108 recovery
+    // screen (Retry is a real path for unmounted volumes). Surviving worktree
+    // tabs refresh their identity info (parent repo + branch) for
+    // labels/grouping before their first activation (GL-110).
     restoreSession: async () => {
-      const last = readLastPath();
+      let last = readLastPath();
+      const restored = get().openPaths;
+      if (restored.length > 0) {
+        try {
+          const statuses = await api.recentsStatus(restored);
+          const byPath = new Map(statuses.map((s) => [s.path, s]));
+          const prevInfo = get().tabInfoByPath;
+          // Drop only what the probe positively reported gone AND the persisted
+          // info knows was a worktree; a path the probe didn't answer for keeps
+          // its tab (defensive — a short result must not wipe the strip).
+          const openPaths = restored.filter((path) => {
+            const status = byPath.get(path);
+            return !status || status.exists || !prevInfo[path]?.isWorktree;
+          });
+          const tabInfoByPath = Object.fromEntries(
+            openPaths.map((path) => {
+              const status = byPath.get(path);
+              // A kept-but-missing repo tab holds on to its last-known info so
+              // its label survives until Retry/Locate resolves it.
+              const info =
+                status?.exists ? tabInfoFromStatus(status) : prevInfo[path];
+              return [path, info ?? { isWorktree: false, mainPath: null, branch: null }];
+            }),
+          );
+          // The last-active path may be among the dropped worktrees — heal to
+          // the first *live* survivor (falling back to a missing repo tab,
+          // which restores into its recovery screen) rather than reopening a
+          // gone directory.
+          if (last && !openPaths.includes(last)) {
+            last =
+              openPaths.find((p) => byPath.get(p)?.exists) ?? openPaths[0] ?? null;
+          }
+          persistSession(openPaths, last);
+          persistTabInfo(tabInfoByPath);
+          set({ openPaths, tabInfoByPath });
+        } catch {
+          // Probe failure: keep the restored tabs — a truly dead last path
+          // still surfaces through loadRepo's classified open below.
+        }
+      }
       if (last) await get().loadRepo(last);
     },
 
@@ -786,6 +872,13 @@ export function createRepoLifecycleActions(
           changes.conflicted.length === 0;
         set({
           summary: nextSummary,
+          // Keep the active tab's label truthful — a checkout (in-app or
+          // terminal) changes the branch a worktree tab shows. Persisted below
+          // so a restored session labels the tab correctly on first paint.
+          tabInfoByPath: {
+            ...get().tabInfoByPath,
+            [nextSummary.path]: tabInfoFromSummary(nextSummary),
+          },
           forge,
           graph,
           branches,
@@ -813,6 +906,7 @@ export function createRepoLifecycleActions(
           ...(gone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
+        persistTabInfo(get().tabInfoByPath);
         // The union needs (re)loading whenever we didn't reuse a healthy cached
         // one — set changed, or a prior error to retry. Fire-and-forget so it
         // doesn't delay the queue.

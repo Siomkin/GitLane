@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { isMac, isTauri } from "../../lib/platform";
+import { tabDisplay } from "../../lib/tabs";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
@@ -16,6 +17,7 @@ export const TitleBar = () => {
   const missingPath = useRepo((state) => state.missingRepo?.path ?? null);
   const openPaths = useRepo((state) => state.openPaths);
   const recents = useRepo((state) => state.recents);
+  const tabInfoByPath = useRepo((state) => state.tabInfoByPath);
   const loadRepo = useRepo((state) => state.loadRepo);
   const closeRepo = useRepo((state) => state.closeRepo);
   const reorderOpenPaths = useRepo((state) => state.reorderOpenPaths);
@@ -64,6 +66,7 @@ export const TitleBar = () => {
                 index={index}
                 active={active}
                 missing={missing}
+                display={tabDisplay(path, tabInfoByPath[path])}
                 onSelect={() => {
                   closeOnboarding();
                   if (!active) void loadRepo(path);

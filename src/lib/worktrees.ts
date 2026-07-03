@@ -10,6 +10,14 @@ export function trimTrailingSlash(path: string): string {
   return path.replace(/\/+$/, "");
 }
 
+/** The stable repository identity for per-repo state (GL-109): the main
+ * checkout's path for a linked worktree, the repo's own path otherwise. Account
+ * bindings, view prefs, and tab grouping key on this so every worktree of a
+ * repository shares them. */
+export function repoIdentityKey(summary: RepoSummary): string {
+  return trimTrailingSlash(summary.mainPath ?? summary.path);
+}
+
 /** Does `path` point at the worktree backing the currently open repo? Matched on
  * both the workdir and the canonical repo path (they diverge for a bare repo),
  * mirroring git's own porcelain canonicalization at the UI boundary. */

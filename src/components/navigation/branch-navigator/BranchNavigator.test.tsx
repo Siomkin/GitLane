@@ -130,9 +130,10 @@ describe("BranchNavigator", () => {
     expect(screen.getByText("/work/r-wt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
 
-    // Left-click on a non-active worktree switches the app to it and closes the nav.
+    // Left-click on a non-active worktree switches the app to it (in place —
+    // no new tab) and closes the nav.
     fireEvent.click(screen.getByRole("button", { name: "Open worktree feature/search" }));
-    expect(openWorktree).toHaveBeenCalledWith("/work/r-wt");
+    expect(openWorktree).toHaveBeenCalledWith("/work/r-wt", { newTab: false });
     expect(useUi.getState().navOpen).toBe(false);
   });
 

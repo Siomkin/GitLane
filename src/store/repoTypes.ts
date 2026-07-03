@@ -18,6 +18,7 @@ import type {
   WorktreeInfo,
 } from "../lib/api";
 import type { RecentRepo } from "./repoSession";
+import type { TabInfo } from "../lib/tabs";
 import { emptyAdvancedState } from "../lib/advancedRepoState";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
@@ -150,6 +151,11 @@ export interface RepoState {
    * Mutually exclusive with a live [`summary`] — entering it clears the repo
    * data, and a successful open clears it back. */
   missingRepo: MissingRepoState | null;
+  /** What the tab strip knows about each open path (worktree? of which repo?
+   * on which branch?) — drives worktree-tab labels and grouped insertion
+   * (GL-110). Filled from summaries as tabs open and from the session-restore
+   * probe; a missing entry degrades to a plain repo tab. */
+  tabInfoByPath: Record<string, TabInfo>;
   /** Recently-opened repositories for the onboarding "Recent" list (most-recent
    * first). Updated on each successful open; persisted to localStorage. */
   recents: RecentRepo[];
@@ -198,7 +204,11 @@ export interface RepoState {
   error: string | null;
 
   pickAndOpen: () => Promise<void>;
-  loadRepo: (path: string) => Promise<void>;
+  /** Open the repo at `path`. An already-open path just activates its tab.
+   * `replaceTab` switches an existing tab to the new path in place (the
+   * in-place worktree switch, GL-110) instead of appending a sibling tab; a
+   * genuinely new tab is inserted grouped next to its repository's tabs. */
+  loadRepo: (path: string, opts?: { replaceTab?: string }) => Promise<void>;
   closeRepo: (path: string) => Promise<void>;
   /** Reorder the open repository tabs without changing the active repository. */
   reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
@@ -334,8 +344,11 @@ export interface RepoState {
   /** Create a worktree at `worktreePath` checked out to `reference`, then open
    * it as a repo tab. */
   createWorktreeAt: (worktreePath: string, reference: string) => Promise<string>;
-  /** Switch the app to an existing worktree (opens its path as a repo tab). */
-  openWorktree: (worktreePath: string) => Promise<void>;
+  /** Switch the app to an existing worktree. By default the current tab's
+   * path switches in place — one repository, one tab (GL-110); `newTab` is the
+   * explicit side-by-side action, opening a separate worktree-styled tab
+   * grouped next to this repository's tabs. */
+  openWorktree: (worktreePath: string, opts?: { newTab?: boolean }) => Promise<void>;
   /** Open the combined-diff review for a commit range base..head. */
   compareRange: (base: string, head: string, title: string) => void;
   /** Open a dedicated history-inspection page for a repo-relative file. */
@@ -445,6 +458,7 @@ export type RepoDataState = Pick<
   | "stashes"
   | "openPaths"
   | "missingRepo"
+  | "tabInfoByPath"
   | "recents"
   | "changes"
   | "operation"
@@ -477,6 +491,7 @@ export const emptyChanges: WorkingChanges = {
 export function createInitialRepoData(
   openPaths: string[],
   recents: RecentRepo[] = [],
+  tabInfoByPath: Record<string, TabInfo> = {},
 ): RepoDataState {
   return {
     summary: null,
@@ -490,6 +505,7 @@ export function createInitialRepoData(
     stashes: [],
     openPaths,
     missingRepo: null,
+    tabInfoByPath,
     recents,
     changes: emptyChanges,
     operation: null,
