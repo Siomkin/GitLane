@@ -10,6 +10,14 @@ describe("mergeWasAlreadyUpToDate", () => {
     expect(mergeWasAlreadyUpToDate("Already up-to-date.")).toBe(true);
   });
 
+  it("matches the phrase surrounded by other output lines", () => {
+    // Matching is deliberately line-by-line: hooks or git hints may precede the
+    // phrase in the combined stdout/stderr, and must not hide the no-op.
+    expect(
+      mergeWasAlreadyUpToDate("hint: some advice from a future git\nAlready up to date."),
+    ).toBe(true);
+  });
+
   it("does not match a merge that created a commit", () => {
     expect(
       mergeWasAlreadyUpToDate(
