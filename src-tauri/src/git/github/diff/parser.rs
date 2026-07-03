@@ -173,7 +173,9 @@ fn commit_boundary_sha(line: &str) -> Option<&str> {
 
 /// Strip the `[PATCH...]` marker format-patch prefixes subjects with
 /// (`[PATCH]`, `[PATCH 1/2]`, `[PATCH v2 3/7]`), leaving the commit subject.
-fn strip_patch_prefix(subject: &str) -> &str {
+/// Anything else — no bracket, an unclosed bracket, a non-PATCH tag — passes
+/// through untouched (git emits the marker uppercase).
+pub(super) fn strip_patch_prefix(subject: &str) -> &str {
     let Some(rest) = subject.strip_prefix('[') else {
         return subject;
     };

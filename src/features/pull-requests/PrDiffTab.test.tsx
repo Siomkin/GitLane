@@ -128,6 +128,30 @@ describe("PR Diff tab", () => {
     expect(screen.queryByText("feat: only commit")).not.toBeInTheDocument();
   });
 
+  it("shows headers only for attributed groups when attribution is mixed", () => {
+    usePulls.setState({
+      prDiffs: {
+        42: [
+          fileDiff(),
+          fileDiff({
+            path: "src/other.txt",
+            commitOid: "ccccccc3333333333333333333333333333333333",
+            commitSubject: "fix: attributed commit",
+          }),
+        ],
+      },
+    });
+    render(<PrDiffTab pr={makePr()} />);
+
+    // Two groups, so headers are enabled — but the attribution-less group has
+    // no oid to show, so exactly one header renders (documents the guard; a
+    // real gh patch never mixes attributed and unattributed files).
+    expect(screen.getAllByTestId("commit-group-header")).toHaveLength(1);
+    expect(screen.getByText("ccccccc")).toBeInTheDocument();
+    expect(screen.getByText("fix: attributed commit")).toBeInTheDocument();
+    expect(screen.getAllByText(/\.txt$/)).toHaveLength(2);
+  });
+
   it("stays flat when diffs carry no commit attribution", () => {
     usePulls.setState({
       prDiffs: { 42: [fileDiff(), fileDiff({ path: "src/other.txt" })] },

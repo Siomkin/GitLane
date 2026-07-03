@@ -1,4 +1,4 @@
-use super::parser::parse_unified_diff;
+use super::parser::{parse_unified_diff, strip_patch_prefix};
 
 const SAMPLE: &str = "\
 diff --git a/src/foo.rs b/src/foo.rs
@@ -405,4 +405,53 @@ fn malformed_hunk_header_resets_leftover_counts() {
     // The garbage hunk owns no counts, so the stray lines are dropped.
     assert!(f.hunks[1].lines.is_empty());
     assert_eq!((f.add, f.del), (1, 1));
+}
+
+// The `[PATCH...]` marker strips only in the exact shape git emits; everything
+// else passes through so a subject is never silently mangled.
+#[test]
+fn strip_patch_prefix_handles_marker_variants() {
+    assert_eq!(strip_patch_prefix("[PATCH] title"), "title");
+    assert_eq!(strip_patch_prefix("[PATCH 1/2] title"), "title");
+    assert_eq!(strip_patch_prefix("[PATCH v2 3/7] title"), "title");
+    // Marker with no title: strips to empty (a folded line may still follow).
+    assert_eq!(strip_patch_prefix("[PATCH 1/2]"), "");
+    // Not git's marker: lowercase, other tags, unclosed bracket, no bracket.
+    assert_eq!(strip_patch_prefix("[patch] title"), "[patch] title");
+    assert_eq!(strip_patch_prefix("[RFC] title"), "[RFC] title");
+    assert_eq!(strip_patch_prefix("[PATCH title"), "[PATCH title");
+    assert_eq!(strip_patch_prefix("plain title"), "plain title");
+}
+
+// A mailbox message with a boundary but no `Subject:` header (hand-edited or
+// truncated patch): the file still gets the commit oid, subject stays None,
+// and body parsing is unaffected.
+const NO_SUBJECT: &str = "\
+From 3333333333333333333333333333333333333333 Mon Sep 17 00:00:00 2001
+From: Dev <dev@example.com>
+Date: Thu, 2 Jul 2026 19:24:55 +0300
+
+A body with no subject header above it.
+---
+ x.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/x.txt b/x.txt
+index 1111111..2222222 100644
+--- a/x.txt
++++ b/x.txt
+@@ -0,0 +1,1 @@
++hi
+";
+
+#[test]
+fn boundary_without_subject_keeps_oid_and_no_subject() {
+    let files = parse_unified_diff(NO_SUBJECT);
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        files[0].commit_oid.as_deref(),
+        Some("3333333333333333333333333333333333333333")
+    );
+    assert_eq!(files[0].commit_subject, None);
+    assert_eq!((files[0].add, files[0].del), (1, 0));
 }
