@@ -24,6 +24,7 @@ import { SettingsModal } from "./components/chrome/SettingsModal";
 import { RepoSettingsModal } from "./components/chrome/repo-settings";
 import { TitleBar } from "./components/chrome/TitleBar";
 import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
+import { MissingRepoScreen } from "./features/missing-repo";
 import { RepoOnboarding } from "./features/onboarding";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
@@ -52,6 +53,7 @@ import "./App.css";
 
 const App = () => {
   const summary = useRepo((state) => state.summary);
+  const missingRepo = useRepo((state) => state.missingRepo);
   const error = useRepo((state) => state.error);
   const clearError = useRepo((state) => state.clearError);
   const selectedFile = useRepo((state) => state.selectedFile);
@@ -129,6 +131,8 @@ const App = () => {
   // Start each repo in the history view (avoid a stale changes/review pane), drop
   // any review notes pinned against the previous repo's diffs, and reset the
   // history search/filter so one repo's query never lands on another's commits.
+  // Keyed on the missing-repo path too (GL-108): switching between two dead
+  // tabs changes no summary, but it's still a repo switch for this cleanup.
   useEffect(() => {
     setLeftTab("history");
     setChangesAll(false);
@@ -138,7 +142,7 @@ const App = () => {
     // Any repo switch (incl. dropping to the no-repo start state) dismisses the
     // onboarding overlay so it can't linger over a different repo.
     closeOnboarding();
-  }, [summary?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView, closeOnboarding]);
+  }, [summary?.path, missingRepo?.path, setChangesAll, closeNav, clearReviewNotes, resetHistView, closeOnboarding]);
 
   // An active merge/rebase/cherry-pick/revert takes over the center pane: the
   // repo is in a blocking conflicted state, so the dedicated resolution
@@ -301,13 +305,17 @@ const App = () => {
             </ErrorBoundary>
           </div>
         </>
+      ) : missingRepo ? (
+        // A tab whose path no longer resolves (GL-108): the dedicated recovery
+        // state replaces the workspace — never a banner over another repo.
+        <MissingRepoScreen />
       ) : (
         <RepoOnboarding />
       )}
 
-      {/* Onboarding raised from the tab strip while a repo is open (the no-repo
-          start state renders RepoOnboarding inline above instead). */}
-      {onboardingOpen && summary && <RepoOnboarding onClose={closeOnboarding} />}
+      {/* Onboarding raised from the tab strip while a repo (or the missing-repo
+          state) is showing; the no-repo start state renders it inline instead. */}
+      {onboardingOpen && (summary || missingRepo) && <RepoOnboarding onClose={closeOnboarding} />}
 
       <SettingsModal />
       <RepoSettingsModal />

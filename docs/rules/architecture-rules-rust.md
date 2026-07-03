@@ -60,7 +60,10 @@ freezes the whole UI (no repaint) until it returns.
 - **Errors are `Result<T, String>` at IPC.** GitHub internals use typed `GithubError`
   categories and map them back to strings at the `git::github` facade. Keep messages readable
   and actionable — match the bar set by the `gh`-not-found message in `github/cli.rs` (it
-  names the fix and the install URL).
+  names the fix and the install URL). The one deliberate exception is `open_repo`, which
+  rejects with a serialized `RepoOpenError` (`kind` + `message` + `path`) so the frontend can
+  give a moved/deleted repository its dedicated missing-repo state (GL-108) — don't add
+  further structured errors without the same "the frontend must branch on the category" need.
 - **Secrets never cross IPC.** GitHub commands accept a frontend-safe account ref
   (`provider`, `host`, `accountId`, `login`), never a token. `GithubService`/`GhProvider`
   resolve tokens server-side immediately before use and hand them to subprocesses via env

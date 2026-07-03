@@ -162,6 +162,11 @@ interface AccountsState {
    * binding and reloads PRs; never writes the commit identity (that's owned by
    * git profiles / `useProfiles`). `null` unbinds (PRs off for this repo). */
   setRepoAccount: (id: string | null) => Promise<void>;
+  /** Carry a relocated repo's per-path entries — the account binding and the
+   * cached identity read — from its stale path to the new one (GL-108
+   * Locate…). An entry already stored for the new path wins; the stale path's
+   * entries are dropped either way. */
+  migrateRepoBindings: (fromPath: string, toPath: string) => void;
 }
 
 // Providers GitLane can resolve a real account for. Keep in sync with the
@@ -363,5 +368,20 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }
     void usePulls.getState().loadPullRequests();
+  },
+
+  migrateRepoBindings: (fromPath, toPath) => {
+    const bindings = readBindings();
+    if (bindings[fromPath] !== undefined && bindings[toPath] === undefined) {
+      bindings[toPath] = bindings[fromPath];
+    }
+    delete bindings[fromPath];
+    writeBindings(bindings);
+    const identities = readIdentities();
+    if (identities[fromPath] !== undefined && identities[toPath] === undefined) {
+      identities[toPath] = identities[fromPath];
+    }
+    delete identities[fromPath];
+    writeIdentities(identities);
   },
 }));

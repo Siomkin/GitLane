@@ -64,6 +64,30 @@ export interface RepoSummary {
   detached: boolean;
 }
 
+/** The classified rejection of `open_repo` — the one structured IPC error
+ * (everything else rejects with a string). Rust distinguishes a moved/deleted
+ * path (`missing`) and a folder that lost its `.git` (`notARepository`) from
+ * real failures (`other`) so the store can swap in the dedicated missing-repo
+ * state instead of the raw libgit2 message (GL-108). */
+export interface RepoOpenError {
+  kind: "missing" | "notARepository" | "other";
+  /** Human-readable message (used for the error bar on `other`). */
+  message: string;
+  /** The path the open was attempted with. */
+  path: string;
+}
+
+/** Narrow an `api.openRepo` rejection to the structured {@link RepoOpenError}. */
+export function isRepoOpenError(e: unknown): e is RepoOpenError {
+  if (!e || typeof e !== "object") return false;
+  const err = e as Partial<RepoOpenError>;
+  return (
+    (err.kind === "missing" || err.kind === "notARepository" || err.kind === "other") &&
+    typeof err.message === "string" &&
+    typeof err.path === "string"
+  );
+}
+
 /** Commit identity pinned for a repo: name + email, plus optional signing
  * config. Only the signing *reference* (GPG key id or SSH key path/literal) is
  * ever carried here — never a passphrase or private key. */

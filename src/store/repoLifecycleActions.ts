@@ -1,9 +1,10 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { arrayMove } from "@dnd-kit/helpers";
-import { api, type RepoSummary } from "../lib/api";
+import { api, isRepoOpenError, type RepoSummary } from "../lib/api";
 import { repoLabel } from "../lib/paths";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
+import { migrateProfileBindings } from "./profiles";
 import { usePulls } from "./pulls";
 import {
   beginGraphRequest,
@@ -20,6 +21,7 @@ import {
   emptyChanges,
   GRAPH_PAGE_SIZE,
   INITIAL_GRAPH_LIMIT,
+  type MissingRepoState,
   type RepoGet,
   type RepoSet,
   type RepoState,
@@ -37,6 +39,7 @@ export function createRepoLifecycleActions(
   | "restoreSession"
   | "refreshRecents"
   | "removeRecent"
+  | "locateMissingRepo"
   | "clearRecents"
   | "refresh"
   | "loadMoreHistory"
@@ -60,6 +63,98 @@ export function createRepoLifecycleActions(
   const flushPendingRefresh = () => {
     const scope = takePendingRefresh();
     if (scope) void get().refresh({ prs: false, quiet: true, scope });
+  };
+
+  // Human text for a failed open/read: the classified `open_repo` rejection
+  // carries a readable message (GL-108); everything else stringifies as before.
+  const errorText = (e: unknown) => (isRepoOpenError(e) ? e.message : String(e));
+
+  // Did this failure mean the repo's path is gone? The `open_repo` rejection is
+  // authoritative; for the other reads (graph/branches/changes reject with
+  // plain strings) re-probe with the classified open itself — so a repo that
+  // vanishes mid-session (deleted, or its external volume unmounted) is
+  // recognized no matter which read fails first, with the exact kind (a folder
+  // that merely lost its `.git` is `notARepository`, not `missing`), and the
+  // raw libgit2 message never reaches the error bar for that case.
+  const wentMissing = async (
+    path: string,
+    e: unknown,
+  ): Promise<MissingRepoState["kind"] | null> => {
+    if (isRepoOpenError(e)) return e.kind === "other" ? null : e.kind;
+    try {
+      await api.openRepo(path);
+      return null; // still opens — the failure was something else
+    } catch (probeError) {
+      return isRepoOpenError(probeError) && probeError.kind !== "other" ? probeError.kind : null;
+    }
+  };
+
+  // Swap the workspace for the dedicated missing-repo state (GL-108): one
+  // atomic publish that clears every slice of the failed (or previously shown)
+  // repo — the failure must never be described over another repo's content —
+  // keeps/adds the tab so the user can Remove / Locate… / Retry from the
+  // screen, and flags the recents entry so the onboarding list agrees without
+  // waiting for its next disk probe. The missing tab is also persisted as the
+  // *active* one, matching what's on screen — a relaunch restores straight
+  // back into this recovery state instead of silently reopening the repo the
+  // user had switched away from.
+  const enterMissingState = (path: string, kind: MissingRepoState["kind"]) => {
+    // Supersede any in-flight graph request; dropping the summary below also
+    // fails every summary-path guard, so nothing stale can publish after this.
+    beginGraphRequest();
+    const openPaths = get().openPaths.includes(path)
+      ? get().openPaths
+      : [...get().openPaths, path];
+    persistSession(openPaths, path);
+    const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
+    set({
+      missingRepo: { path, kind },
+      summary: null,
+      openPaths,
+      recents,
+      forge: null,
+      graph: null,
+      branches: [],
+      reflogEntries: [],
+      reflogLoading: false,
+      reflogError: null,
+      worktrees: [],
+      stashes: [],
+      changes: emptyChanges,
+      operation: null,
+      commitFiles: [],
+      selectionDiff: null,
+      selectedCommit: null,
+      selectedCommits: [],
+      selectionAnchor: null,
+      wipSelected: false,
+      revealTarget: null,
+      graphLimit: INITIAL_GRAPH_LIMIT,
+      loading: false,
+      graphLoading: false,
+      loadingMoreHistory: false,
+      selectedFile: null,
+      fileDiff: null,
+      fileHistory: null,
+      compare: null,
+      error: null,
+    });
+    // Same repo-bound cleanup as a switch: PR state and any open repo-bound
+    // overlay were computed for a repo that is no longer on screen.
+    usePulls.getState().reset();
+    useUi.getState().closeConfirm();
+    useUi.getState().closeRecovery();
+    useUi.getState().closePrompt();
+  };
+
+  // Route a failed secondary read for the displayed repo: a vanished path gets
+  // the missing-repo state, anything else the global error bar. Re-guarded
+  // after the async presence probe so a repo switch in that window wins.
+  const surfaceOpenFailure = async (path: string, e: unknown) => {
+    const kind = await wentMissing(path, e);
+    if (get().summary?.path !== path) return;
+    if (kind) enterMissingState(path, kind);
+    else set({ error: errorText(e) });
   };
 
   return {
@@ -89,7 +184,15 @@ export function createRepoLifecycleActions(
       } catch (e) {
         // Only surface the error if this is still the latest pick — a slow failed
         // open must not error over a repo the user has since switched to.
-        if (openIntentIsCurrent(intent)) set({ error: String(e) });
+        if (openIntentIsCurrent(intent)) {
+          // A vanished path gets the dedicated missing-repo state — tab click,
+          // startup restore, and a recents open all funnel through here
+          // (GL-108). Other failures keep the GL-20 behavior: error bar only,
+          // the current repo untouched.
+          const missing = isRepoOpenError(e) && e.kind !== "other" ? e.kind : null;
+          if (missing) enterMissingState(path, missing);
+          else set({ error: errorText(e) });
+        }
         return;
       }
       // A newer pick superseded us while we were opening → drop this stale open so
@@ -118,6 +221,9 @@ export function createRepoLifecycleActions(
       set({
         summary,
         openPaths,
+        // A successful open resolves any missing-repo state (e.g. Retry after
+        // the volume re-mounted, or Locate… landing on the relocated repo).
+        missingRepo: null,
         recents,
         forge: null,
         graph: null,
@@ -196,7 +302,7 @@ export function createRepoLifecycleActions(
           if (repoStillDisplayed(summary.path)) set({ branches });
         })
         .catch((e) => {
-          if (repoStillDisplayed(summary.path)) set({ error: String(e) });
+          if (repoStillDisplayed(summary.path)) void surfaceOpenFailure(summary.path, e);
         });
       void api
         .listWorktrees(summary.path)
@@ -236,7 +342,7 @@ export function createRepoLifecycleActions(
           if (repoStillDisplayed(summary.path)) set({ changes });
         })
         .catch((e) => {
-          if (repoStillDisplayed(summary.path)) set({ error: String(e) });
+          if (repoStillDisplayed(summary.path)) void surfaceOpenFailure(summary.path, e);
         });
       // The active operation (merge/rebase/cherry-pick/revert) gates the
       // conflict workspace. Best-effort: a detection failure degrades to "no
@@ -310,7 +416,13 @@ export function createRepoLifecycleActions(
         // Only clear the loading flags if this request still owns the active repo —
         // a newer load may have superseded us while the graph was in flight.
         if (!graphRequestIsCurrent(generation, summary.path)) return;
-        set({ loading: false, graphLoading: false, error: String(e) });
+        // The repo can vanish between the open and the (slow) graph read —
+        // classify before surfacing so even this window can't show the raw
+        // libgit2 message (GL-108). Re-guard after the async probe.
+        const missing = await wentMissing(summary.path, e);
+        if (!graphRequestIsCurrent(generation, summary.path)) return;
+        if (missing) enterMissingState(summary.path, missing);
+        else set({ loading: false, graphLoading: false, error: errorText(e) });
         flushPendingRefresh();
       }
     },
@@ -320,9 +432,21 @@ export function createRepoLifecycleActions(
     closeRepo: async (path) => {
       const { openPaths, summary } = get();
       const remaining = openPaths.filter((p) => p !== path);
+      // Closing the missing-repo tab (its X, or Remove on the screen): the repo
+      // data was already cleared when the state was entered, so just drop the
+      // tab + state and land on a neighbour or the welcome screen (GL-108).
+      if (get().missingRepo?.path === path) {
+        const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0] ?? null;
+        set({ openPaths: remaining, missingRepo: null });
+        persistSession(remaining, next);
+        if (next) await get().loadRepo(next);
+        return;
+      }
       const wasActive = summary?.path === path;
       if (!wasActive) {
-        persistSession(remaining, summary?.path ?? null);
+        // `summary` can legitimately be null here (a missing-repo tab is the
+        // active one) — keep the persisted lastPath rather than wiping it.
+        persistSession(remaining, summary?.path ?? readLastPath());
         set({ openPaths: remaining });
         return;
       }
@@ -466,6 +590,51 @@ export function createRepoLifecycleActions(
       set({ recents: next });
     },
 
+    // Locate… (GL-108): re-point a dead repository path at its new location.
+    // With no argument it acts on the missing-repo tab state; the onboarding
+    // "Recent" list passes its stale path explicitly, so both entry points
+    // share the probe + per-repo binding migration.
+    locateMissingRepo: async (fromPath) => {
+      const stalePath = fromPath ?? get().missingRepo?.path;
+      if (!stalePath) return;
+      const picked = await openDialog({ directory: true, multiple: false });
+      if (typeof picked !== "string") return;
+      // Probe the pick first (classified open) so a non-repo folder keeps the
+      // missing state in place — and so the *normalized* repo path (not the raw
+      // picked folder) keys the tab replacement and binding migration.
+      let probe: RepoSummary;
+      try {
+        probe = await api.openRepo(picked);
+      } catch (e) {
+        useUi.getState().showToast(errorText(e), "error");
+        return;
+      }
+      // The tab flow can be superseded while the picker/probe was up (Retry
+      // succeeded, the tab was closed, or another repo opened) — don't rewrite
+      // tabs/bindings for it. The recents flow carries its path explicitly.
+      if (!fromPath && get().missingRepo?.path !== stalePath) return;
+      if (probe.path !== stalePath) {
+        // Carry the old path's per-repo bindings — the account ref + cached
+        // identity read (accounts) and the applied profile + custom-email
+        // overrides (profiles) — so relocating doesn't silently change how the
+        // repo authenticates or commits. The repo's own git config moved with
+        // the folder; these are the app-side maps keyed by path. Then replace
+        // the stale tab in place (keeping its position; a no-op for a recents
+        // entry that has no tab) and drop the dead recents entry — the open
+        // below records the new location as active.
+        useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
+        migrateProfileBindings(stalePath, probe.path);
+        const openPaths = get().openPaths.includes(probe.path)
+          ? get().openPaths.filter((p) => p !== stalePath)
+          : get().openPaths.map((p) => (p === stalePath ? probe.path : p));
+        const recents = get().recents.filter((r) => r.path !== stalePath);
+        persistSession(openPaths, probe.path);
+        persistRecents(recents);
+        set({ openPaths, recents });
+      }
+      await get().loadRepo(probe.path);
+    },
+
     clearRecents: () => {
       persistRecents([]);
       set({ recents: [] });
@@ -530,9 +699,14 @@ export function createRepoLifecycleActions(
           return;
         }
 
-        const [nextSummary, graph, branches, worktrees, stashes, changes, forge, opStatus] =
+        // Open first, alone: its classified rejection is what distinguishes a
+        // repo whose path vanished mid-session from a real failure (GL-108), so
+        // it must not race the other reads' plain string errors inside the
+        // Promise.all (which rejects with whichever settles first). It's a
+        // cheap in-process libgit2 metadata read — the serialization is free.
+        const nextSummary = await api.openRepo(summary.path);
+        const [graph, branches, worktrees, stashes, changes, forge, opStatus] =
           await Promise.all([
-            api.openRepo(summary.path),
             api.commitGraph(summary.path, graphLimit),
             api.listBranches(summary.path),
             api.listWorktrees(summary.path).catch(() => []),
@@ -654,10 +828,25 @@ export function createRepoLifecycleActions(
           flushPendingRefresh();
           return;
         }
-        // When this refresh owns the graph request (generation !== null), clear
-        // graphLoading too: it may have superseded the initial open, whose
-        // orphaned load can't clear the skeleton itself (GL-20 review).
-        set({ loading: false, error: String(e), ...(generation !== null ? { graphLoading: false } : {}) });
+        // A refresh failing because the repo's path vanished (deleted, or its
+        // volume unmounted under an open tab) swaps in the missing-repo state
+        // instead of the raw error (GL-108). Re-guard after the async probe —
+        // a newer load may have replaced the displayed repo meanwhile.
+        const missing = await wentMissing(summary.path, e);
+        if (get().summary?.path === summary.path) {
+          if (missing) {
+            enterMissingState(summary.path, missing);
+          } else {
+            // When this refresh owns the graph request (generation !== null), clear
+            // graphLoading too: it may have superseded the initial open, whose
+            // orphaned load can't clear the skeleton itself (GL-20 review).
+            set({
+              loading: false,
+              error: errorText(e),
+              ...(generation !== null ? { graphLoading: false } : {}),
+            });
+          }
+        }
         flushPendingRefresh();
       }
     },

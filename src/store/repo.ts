@@ -13,6 +13,7 @@ import { createRepoWriteActions } from "./repoWriteActions";
 export type {
   ActiveOperationKind,
   ChangeSource,
+  MissingRepoState,
   OperationFile,
   OperationState,
   RepoState,

@@ -18,4 +18,4 @@ pub use branches::{branches, can_fast_forward};
 pub use identity::{default_identity, repo_identity};
 pub use recents::recents_status;
 pub use remotes::list_remotes;
-pub use repo::{commit_graph, open, summary, worktree_join};
+pub use repo::{commit_graph, open, summary_classified, worktree_join};

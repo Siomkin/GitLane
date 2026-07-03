@@ -102,6 +102,36 @@ pub struct RepoSummary {
     pub detached: bool,
 }
 
+/// Why `open_repo` failed, classified so the frontend can give a moved/deleted
+/// repository its dedicated missing-repo state instead of the raw libgit2
+/// message (GL-108). This is the one command with a structured IPC error —
+/// everything else stays `Result<T, String>` (architecture-rules-rust §4); the
+/// classification has to happen in Rust because only this side can distinguish
+/// "path gone" from "not a repo" without matching on libgit2 message strings.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoOpenError {
+    pub kind: RepoOpenErrorKind,
+    /// Human-readable message (no libgit2 class/code jargon) for the error bar
+    /// fallback when the failure isn't the missing-repo kind.
+    pub message: String,
+    /// The path the open was attempted with, echoed back for the missing state.
+    pub path: String,
+}
+
+/// Classification of an [`RepoOpenError`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepoOpenErrorKind {
+    /// The path no longer exists on disk — moved, deleted, or on an unmounted
+    /// volume (so a retry after re-mounting is a real recovery path).
+    Missing,
+    /// The path exists but no longer resolves to a git repository.
+    NotARepository,
+    /// Any other open failure (permissions, corruption, …) — error-bar material.
+    Other,
+}
+
 /// Presence + current branch of a recently-opened repository, for the
 /// onboarding "Recent" list. `exists: false` flags a path that no longer
 /// resolves on disk so the UI can mark it "Missing".
