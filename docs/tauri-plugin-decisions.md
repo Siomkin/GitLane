@@ -208,7 +208,7 @@ the architecture.
   `commit_file_diff` / `diff_range_file` / `selection_diff_file` /
   `compare_file_diff` variants that share the `FileDiff` shape), and every GitHub
   read: `pull_request_detail`, `github_accounts`, `list_pull_requests`,
-  `pull_request_checks`, `pull_request_commit_signatures`, `pull_request_diff`,
+  `pull_request_checks`, `pull_request_commits`, `pull_request_diff`,
   and `pull_request_review_threads` (GL-122 follow-up). GitHub write commands
   return gh's plain string output and are not schema-validated. Extend coverage
   to a new command by adding its schema and parsing the result in the wrapper.

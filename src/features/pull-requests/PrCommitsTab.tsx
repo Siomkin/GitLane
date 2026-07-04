@@ -1,8 +1,8 @@
-// PR Commits tab: the commit list that rides along with the PR detail fetch
-// (gh pr view --json …,commits). Signature verification isn't on that
-// projection, so it's fetched lazily here via GraphQL and merged into the
-// cached commits — reliable structured data (signature.isValid), never inferred
-// from local state.
+// PR Commits tab. The PR detail fetch carries a fast first-paint commit list
+// (gh pr view --json …,commits), but that projection is capped and has no
+// signature data. So on open this lazily loads the full, verified commit list
+// via paginated GraphQL (`loadPrCommits`) and *replaces* the cached list —
+// `verified` is reliable structured data (signature.isValid), never inferred.
 import { useEffect, useState } from "react";
 import { openExternalUrl } from "../../lib/openExternal";
 import { cn } from "../../lib/cn";

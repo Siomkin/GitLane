@@ -19,13 +19,14 @@ pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
 /// branch by returning `refs/heads/<name>`; otherwise return `name` unchanged.
 ///
 /// Git's rev resolution gives a **tag** precedence over a same-named branch
-/// (`gitrevisions`), so `git merge feature` / `git rebase feature` silently
-/// operate on the tag when both exist. Merge/rebase take a branch here, so
-/// qualify to `refs/heads/` in exactly that ambiguous case — matching how the
-/// tag operations already fully-qualify `refs/tags/`. The qualification is
-/// skipped when no clashing tag exists, so the ordinary case keeps its clean
-/// bare name (and merge keeps its "Merge branch 'feature'" message).
-fn qualify_branch_if_ambiguous(repo: &str, name: &str) -> String {
+/// (`gitrevisions`), so `git merge feature` / `git rebase feature` / `git reset
+/// feature` silently operate on the tag when both exist. Those callers take a
+/// branch, so qualify to `refs/heads/` in exactly that ambiguous case — matching
+/// how the tag operations already fully-qualify `refs/tags/`. The qualification
+/// is skipped when no clashing tag exists, so the ordinary case keeps its clean
+/// bare name (and merge keeps its "Merge branch 'feature'" message). Shared with
+/// `recovery::preview_reset` so the preview and the write agree on the ref.
+pub(super) fn qualify_branch_if_ambiguous(repo: &str, name: &str) -> String {
     if ref_exists(repo, &format!("refs/heads/{name}")) && ref_exists(repo, &format!("refs/tags/{name}"))
     {
         format!("refs/heads/{name}")

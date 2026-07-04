@@ -46,7 +46,7 @@ describe("validateBranchName", () => {
   it("rejects the reserved HEAD pseudo-ref and its cousins", () => {
     // `git check-ref-format --branch HEAD` fails: a branch can't be named after
     // a pseudo-ref, or it becomes ambiguous with the real one.
-    for (const bad of ["HEAD", "FETCH_HEAD", "ORIG_HEAD", "MERGE_HEAD"]) {
+    for (const bad of ["HEAD", "FETCH_HEAD", "ORIG_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD"]) {
       expect(validateBranchName(bad)).not.toBeNull();
     }
   });

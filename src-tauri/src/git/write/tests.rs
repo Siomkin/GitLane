@@ -1956,6 +1956,47 @@ fn reset_preview_source_uses_branch_not_same_named_tag() {
 }
 
 #[test]
+fn reset_preview_target_uses_branch_not_same_named_tag() {
+    // The write path (`reset`) qualifies an ambiguous target to refs/heads/; the
+    // preview must resolve the same ref so the confirm dialog can't describe
+    // moving to the tag while the reset lands on the branch (GL-120 review).
+    let repo = TempRepo::new("reset-target-ambig");
+    repo.git(&["init", "-q", "-b", "main"]);
+    repo.git(&["config", "user.email", "t@t.t"]);
+    repo.git(&["config", "user.name", "T"]);
+    repo.git(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git(&["add", "f.txt"]);
+    repo.git(&["commit", "-qm", "one"]);
+    let base_short = rev_parse(&repo, "HEAD")[..7].to_string();
+    // Branch `dup` carries an extra commit; tag `dup` stays at base.
+    repo.git(&["branch", "dup"]);
+    repo.git(&["checkout", "-q", "dup"]);
+    std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+    repo.git(&["commit", "-qam", "dup-only"]);
+    let dup_tip_short = rev_parse(&repo, "HEAD")[..7].to_string();
+    repo.git(&["checkout", "-q", "main"]);
+    repo.git(&["tag", "dup", "main"]);
+
+    // Resetting HEAD (main, at base) to `dup`: the target must resolve to the
+    // branch tip, so the preview says HEAD moves there — not to the tag at base.
+    let preview = preview_reset(repo.path(), "dup", "mixed", "HEAD").expect("preview");
+    assert!(
+        preview.details.iter().any(|line| line.contains(&dup_tip_short)),
+        "preview target must resolve to the branch tip {dup_tip_short}, not the tag: {:?}",
+        preview.details
+    );
+    assert!(
+        !preview
+            .details
+            .iter()
+            .any(|line| line.contains(&format!("move to {base_short}"))),
+        "preview must not describe moving to the same-named tag at base {base_short}: {:?}",
+        preview.details
+    );
+}
+
+#[test]
 fn reset_preview_fails_closed_on_unresolvable_refs() {
     let repo = TempRepo::new("reset-bad-refs");
     repo.git(&["init", "-q", "-b", "main"]);

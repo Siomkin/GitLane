@@ -780,3 +780,72 @@ describe("pulls PR list refresh coalescing", () => {
     await load;
   });
 });
+
+describe("loadPrCommits (paginated commit list replaces the capped fast-path)", () => {
+  // The `gh pr view` fast-path list a detail is seeded with: one commit, unverified.
+  const cappedRow = {
+    oid: "c0",
+    shortOid: "c0",
+    headline: "capped",
+    age: "1h",
+    author: { name: "A", login: "a", initials: "A" },
+    hasAuthor: true,
+    url: "https://github.com/o/r/commit/c0",
+    verified: false,
+  };
+  const seedDetail = () =>
+    usePulls.setState({
+      prDetails: { 7: { ...summaryToPr(prSummary(7)), commits: [cappedRow] } },
+    });
+
+  it("replaces the capped list with the full, verified GraphQL list", async () => {
+    seedDetail();
+    invokeMock.mockResolvedValueOnce([
+      { oid: "c0", headline: "first", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
+      { oid: "c1", headline: "second", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: false },
+    ]);
+
+    await usePulls.getState().loadPrCommits(7);
+
+    const s = usePulls.getState();
+    expect(invokeMock).toHaveBeenCalledWith("pull_request_commits", {
+      path: "/repo",
+      number: 7,
+      account: null,
+    });
+    // The whole list is replaced (2 rows, past the fast-path's 1) with real verified flags.
+    expect(s.prDetails[7].commits.map((c) => c.oid)).toEqual(["c0", "c1"]);
+    expect(s.prDetails[7].commits.map((c) => c.verified)).toEqual([true, false]);
+    expect(s.prCommitsLoaded[7]).toBe(true);
+  });
+
+  it("keeps the fast-path list and records a scoped error on failure", async () => {
+    seedDetail();
+    invokeMock.mockRejectedValueOnce("commits blew up");
+
+    await usePulls.getState().loadPrCommits(7);
+
+    const s = usePulls.getState();
+    expect(s.prCommitsError[7]).toContain("commits blew up");
+    expect(s.prDetails[7].commits).toEqual([cappedRow]); // fast-path list preserved
+    expect(s.prError).toBeNull(); // list-level error untouched
+    expect(s.prCommitsLoaded[7]).toBeUndefined();
+  });
+
+  it("discards a stale response when the PR's resource version changed mid-flight", async () => {
+    seedDetail();
+    const pending = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(pending.promise);
+
+    const load = usePulls.getState().loadPrCommits(7);
+    // A refresh bumps the PR's resource version while the read is in flight.
+    usePulls.setState((s) => ({ prResourceVersion: { ...s.prResourceVersion, 7: 1 } }));
+    pending.resolve([
+      { oid: "c9", headline: "late", authoredDate: "2026-01-03T00:00:00Z", authorName: "C", authorLogin: "c", verified: true },
+    ]);
+    await load;
+
+    // The pre-refresh response is dropped rather than repopulating the evicted cache.
+    expect(usePulls.getState().prDetails[7].commits).toEqual([cappedRow]);
+  });
+});
