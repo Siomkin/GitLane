@@ -213,6 +213,10 @@ export interface RepoState {
   /** Reorder the open repository tabs without changing the active repository. */
   reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
   restoreSession: () => Promise<void>;
+  /** Re-probe one open tab's identity info (branch, worktree parent) so its
+   * label stays live while the tab is in the background (GL-116). The full
+   * data reload still happens on activation via `loadRepo`. */
+  refreshTabInfo: (path: string) => Promise<void>;
   /** Refresh recents' presence + current branch from disk (start-screen mount):
    * flags paths that no longer exist as `missing` and updates their branch. */
   refreshRecents: () => Promise<void>;
