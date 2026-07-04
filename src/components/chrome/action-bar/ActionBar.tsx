@@ -101,12 +101,17 @@ export const ActionBar = ({
 
   const currentBranch = summary?.detached
     ? `detached @ ${summary.headOid?.slice(0, 7) ?? "?"}`
-    : summary?.headBranch ?? "No branch";
+    : summary?.unborn
+      ? "No commits yet"
+      : summary?.headBranch ?? "No branch";
   const currentSync = currentBranchSyncView(summary, branches);
   // Open PR whose head is the checked-out branch — surfaced as a clickable badge.
-  const openPr = summary?.detached
-    ? undefined
-    : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
+  // An unborn branch has no pushed commits, so it can't own a PR even if one
+  // happens to share its name (e.g. the default `main`); skip the match.
+  const openPr =
+    summary?.detached || summary?.unborn
+      ? undefined
+      : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
 
   // Remote-provider status: forge detection (backend) combined with GitHub auth
   // state (accounts store). Only GitHub supports PRs today; recognised non-GitHub

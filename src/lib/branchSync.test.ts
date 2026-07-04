@@ -110,6 +110,37 @@ describe("branch sync view model", () => {
   });
 });
 
+describe("branch sync view — unborn branch (GL-115 follow-up)", () => {
+  // The backend now resolves the unborn branch name from HEAD's symbolic target,
+  // so headBranch is populated *and* unborn is true. The view must treat it as a
+  // checked-out branch (not "No branch is checked out.") while offering no sync.
+  const unborn: RepoSummary = { ...summary, headBranch: "master", unborn: true, headOid: null };
+
+  it("reads as a real branch with nothing to sync, not 'No branch'", () => {
+    const view = currentBranchSyncView(unborn, []);
+    expect(view).toMatchObject({ label: null, canPull: false, canPush: false, needsPublishPrompt: false });
+    expect(view.title).toMatch(/no commits yet/i);
+    expect(view.title).not.toMatch(/No branch is checked out/i);
+  });
+
+  it("wins over the 'sync unavailable' fallback even though it never appears in the branch list", () => {
+    // Without the unborn guard this would hit `branches.find(...) === undefined`
+    // and wrongly enable pull/push (see the "does not strand toolbar actions" case).
+    const view = currentBranchSyncView(unborn, [branch(sync({ status: "upToDate" }))]);
+    expect(view.canPull).toBe(false);
+    expect(view.canPush).toBe(false);
+  });
+
+  it("stays distinct from a genuinely null branch and from detached HEAD", () => {
+    expect(currentBranchSyncView({ ...summary, headBranch: null }, []).title).toBe(
+      "No branch is checked out.",
+    );
+    expect(
+      currentBranchSyncView({ ...summary, headBranch: null, detached: true }, []).title,
+    ).toMatch(/Detached HEAD/);
+  });
+});
+
 describe("defaultPublishTarget", () => {
   const remote = (name: string): BranchInfo => ({
     name,

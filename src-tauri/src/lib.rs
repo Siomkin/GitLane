@@ -690,29 +690,32 @@ async fn list_stashes(path: String) -> Result<Vec<StashEntry>, String> {
     blocking(move || git::write::stash_list(&path)).await
 }
 
+// Stashes are addressed by commit oid, not `stash@{n}` — indices are
+// reflog-relative and global across worktrees, so one captured at list time can
+// point at a different stash by the time the user acts (GL-117).
 #[tauri::command]
-async fn stash_apply(path: String, index: usize) -> Result<String, String> {
-    blocking(move || git::write::stash_apply(&path, index)).await
+async fn stash_apply(path: String, oid: String) -> Result<String, String> {
+    blocking(move || git::write::stash_apply(&path, &oid)).await
 }
 
 #[tauri::command]
-async fn stash_apply_index(path: String, index: usize) -> Result<String, String> {
-    blocking(move || git::write::stash_apply_index(&path, index)).await
+async fn stash_apply_index(path: String, oid: String) -> Result<String, String> {
+    blocking(move || git::write::stash_apply_index(&path, &oid)).await
 }
 
 #[tauri::command]
-async fn stash_branch(path: String, branch: String, index: usize) -> Result<String, String> {
-    blocking(move || git::write::stash_branch(&path, &branch, index)).await
+async fn stash_branch(path: String, branch: String, oid: String) -> Result<String, String> {
+    blocking(move || git::write::stash_branch(&path, &branch, &oid)).await
 }
 
 #[tauri::command]
-async fn stash_pop(path: String, index: usize) -> Result<String, String> {
-    blocking(move || git::write::stash_pop(&path, index)).await
+async fn stash_pop(path: String, oid: String) -> Result<String, String> {
+    blocking(move || git::write::stash_pop(&path, &oid)).await
 }
 
 #[tauri::command]
-async fn stash_drop(path: String, index: usize) -> Result<String, String> {
-    blocking(move || git::write::stash_drop(&path, index)).await
+async fn stash_drop(path: String, oid: String) -> Result<String, String> {
+    blocking(move || git::write::stash_drop(&path, &oid)).await
 }
 
 #[tauri::command]
@@ -1150,8 +1153,10 @@ fn pty_kill(state: tauri::State<'_, TerminalState>) -> Result<(), String> {
     terminal::kill(&state)
 }
 
-/// Start (or replace) the filesystem watch for `path`, emitting `repo-changed`
-/// events when the worktree or `.git` changes.
+/// Start (or replace) the filesystem watch for `path`, emitting path-tagged
+/// `repo-changed` events when its worktree or git state changes. Each open
+/// tab keeps its own watch; linked worktrees also cover their private gitdir
+/// and shared common dir.
 #[tauri::command]
 fn watch_repo(
     app: tauri::AppHandle,
@@ -1159,6 +1164,12 @@ fn watch_repo(
     path: String,
 ) -> Result<(), String> {
     watcher::watch(&app, &state, &path)
+}
+
+/// Stop the filesystem watch for `path` (its tab closed).
+#[tauri::command]
+fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(), String> {
+    watcher::unwatch(&state, &path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1375,6 +1386,7 @@ pub fn run() {
             pty_resize,
             pty_kill,
             watch_repo,
+            unwatch_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

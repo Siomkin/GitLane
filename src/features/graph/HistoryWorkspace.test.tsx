@@ -256,7 +256,7 @@ describe("HistoryWorkspace — search highlight/dim", () => {
     expect(useUi.getState().stackedReview).toBeNull();
   });
 
-  it("opens anchored stash actions from the context menu with the original stash index", () => {
+  it("opens anchored stash actions from the context menu addressed by stash oid", () => {
     useRepo.setState({ stashes: [{ ...stash, index: 3, message: "branch stash", oid: "s3" }] });
     render(<HistoryWorkspace />);
 
@@ -266,7 +266,7 @@ describe("HistoryWorkspace — search highlight/dim", () => {
     });
 
     expect(useUi.getState().stashMenu).toMatchObject({
-      index: 3,
+      oid: "s3",
       message: "branch stash",
       x: 20,
       y: 30,

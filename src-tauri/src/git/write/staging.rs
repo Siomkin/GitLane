@@ -7,9 +7,25 @@ pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
     run_git(repo, &["add", "-A", "--", file])
 }
 
-/// Unstage a single file, restoring it to its HEAD state in the index.
+/// True when HEAD resolves to a commit. False on an unborn HEAD (fresh
+/// `git init`, no commits yet), where `restore --staged` / `reset HEAD` die
+/// with `fatal: could not resolve 'HEAD'` — callers must fall back to
+/// index-only commands there.
+fn has_head(repo: &str) -> bool {
+    run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok()
+}
+
+/// Unstage a single file, restoring it to its HEAD state in the index. On an
+/// unborn HEAD there is no HEAD state to restore, so the entry is dropped from
+/// the index instead (`git rm --cached`), leaving the file untracked — `-f`
+/// because losing the staged snapshot is exactly what unstage means, even when
+/// the worktree copy has moved on.
 pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
-    run_git(repo, &["restore", "--staged", "--", file])
+    if has_head(repo) {
+        run_git(repo, &["restore", "--staged", "--", file])
+    } else {
+        run_git(repo, &["rm", "--cached", "-f", "-q", "--", file])
+    }
 }
 
 /// Stage one hunk from the worktree diff, or unstage one hunk from the staged
@@ -439,12 +455,17 @@ pub fn stage_files(repo: &str, files: &[String]) -> Result<String, String> {
 
 /// Unstage several files in one atomic invocation (`git restore --staged -- A B…`)
 /// so a partial failure can't leave some of the set staged. Paths follow `--`, so
-/// a dash-prefixed path cannot be parsed as a flag.
+/// a dash-prefixed path cannot be parsed as a flag. Unborn HEAD falls back to
+/// dropping the entries from the index, as in [`unstage_file`].
 pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
     if files.is_empty() {
         return Ok(String::new());
     }
-    let mut args: Vec<&str> = vec!["restore", "--staged", "--"];
+    let mut args: Vec<&str> = if has_head(repo) {
+        vec!["restore", "--staged", "--"]
+    } else {
+        vec!["rm", "--cached", "-f", "-q", "--"]
+    };
     args.extend(files.iter().map(String::as_str));
     run_git(repo, &args)
 }
@@ -456,25 +477,33 @@ pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
 /// Whether the file exists in HEAD decides how it's discarded: a file present in
 /// HEAD is restored from it; a *new* file (untracked, or staged but never
 /// committed — and every file in an unborn repo) has nothing to restore *to*, so
-/// its worktree copy is removed with `git clean` instead. This branch is decided
-/// up front from `cat-file`, rather than by catching a `git restore` error — so a
-/// genuine restore failure on a committed file (a lock, a permission error)
-/// surfaces as an error instead of being silently swallowed by the clean
-/// fallback and reported as success.
+/// it is removed instead. This branch is decided up front from `cat-file`,
+/// rather than by catching a `git restore` error — so a genuine restore failure
+/// on a committed file (a lock, a permission error) surfaces as an error instead
+/// of being silently swallowed by the removal fallback and reported as success.
+///
+/// For the new-file branch the *index* — not the caller's `staged` flag, which
+/// can be stale — decides between `git rm -f` (staged-new: clears index and
+/// worktree; `git clean` would silently skip a tracked file and report success)
+/// and `git clean -f -d` (genuinely untracked file or directory). Skipping
+/// `restore --staged` here also keeps the staged case working on an unborn HEAD.
 pub fn discard_file(repo: &str, file: &str, staged: bool) -> Result<String, String> {
     // `cat-file -e HEAD:<path>` exits 0 only when the path resolves in HEAD; it
     // fails for a new path and for an unborn repo (no HEAD at all).
     let in_head = run_git(repo, &["cat-file", "-e", &format!("HEAD:{file}")]).is_ok();
 
-    if staged {
-        run_git(repo, &["restore", "--staged", "--", file])?;
-    }
-
     if in_head {
+        if staged {
+            run_git(repo, &["restore", "--staged", "--", file])?;
+        }
         run_git(repo, &["restore", "--worktree", "--", file])?;
         Ok(format!("Discarded changes in {file}"))
+    } else if run_git(repo, &["ls-files", "--error-unmatch", "--", file]).is_ok() {
+        // Staged-new file: drop it from index and worktree in one step.
+        run_git(repo, &["rm", "-f", "-q", "--", file])?;
+        Ok(format!("Discarded {file}"))
     } else {
-        // New file: remove the worktree copy (and any untracked dir it created).
+        // Untracked file: remove the worktree copy (and any untracked dir it created).
         run_git(repo, &["clean", "-f", "-d", "--", file])?;
         Ok(format!("Discarded {file}"))
     }
@@ -485,9 +514,16 @@ pub fn stage_all(repo: &str) -> Result<String, String> {
     run_git(repo, &["add", "-A"])
 }
 
-/// Unstage everything, resetting the index to HEAD.
+/// Unstage everything, resetting the index to HEAD. An unborn HEAD has no
+/// commit to reset to, so the index is emptied instead (`git read-tree
+/// --empty`), leaving every staged file untracked — the same guard
+/// [`discard_all`] uses.
 pub fn unstage_all(repo: &str) -> Result<String, String> {
-    run_git(repo, &["reset", "-q", "HEAD"])
+    if has_head(repo) {
+        run_git(repo, &["reset", "-q", "HEAD"])
+    } else {
+        run_git(repo, &["read-tree", "--empty"])
+    }
 }
 
 /// Create a commit. `description` (when non-empty) becomes a second message
@@ -544,8 +580,7 @@ pub fn commit(
 /// behind. Empty the index first (`git read-tree --empty`) so those files become
 /// untracked and get cleaned with everything else.
 pub fn discard_all(repo: &str) -> Result<String, String> {
-    let has_head = run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok();
-    if has_head {
+    if has_head(repo) {
         run_git(repo, &["reset", "--hard", "HEAD"])?;
     } else {
         run_git(repo, &["read-tree", "--empty"])?;

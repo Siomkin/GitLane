@@ -3,13 +3,15 @@ use super::operands::ensure_operand;
 use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, clear_repo_identity,
-    continue_operation, create_tag, delete_branch_with_worktree, delete_remote_tag, discard_all,
-    fast_forward, fast_forward_branch, fetch, mark_conflict_resolved, merge,
-    move_branch_to_worktree, preview_delete_branch,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, cherry_pick, cherry_pick_many,
+    clear_repo_identity, continue_operation, create_tag, delete_branch_with_worktree,
+    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch, fetch,
+    mark_conflict_resolved, merge, move_branch_to_worktree, preview_delete_branch,
     preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
     publish_branch, reconflict_file, reflog_entries, remove_worktree, resolve_conflict_file,
-    set_remote_url, set_repo_identity, set_upstream, skip_operation, stage_files, worktrees,
+    revert, revert_many, set_remote_url, set_repo_identity, set_upstream, skip_operation,
+    stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list, stash_pop,
+    unstage_all, unstage_file, unstage_files, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -74,6 +76,110 @@ impl Drop for TempRepo {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+fn rev_parse(repo: &TempRepo, rev: &str) -> String {
+    let out = repo.git(&["rev-parse", rev]);
+    assert!(out.status.success(), "rev-parse {rev} should resolve");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Build `base ─ main work ─ M` on `main` where `M` merges a `feature` branch
+/// that added `feature.txt` (so `M`'s first parent is the mainline commit with
+/// `main.txt`). Returns the repo and the merge commit's sha.
+fn repo_with_merged_feature(tag: &str) -> (TempRepo, String) {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    // cherry_pick/revert honour repo config and would try to sign under a
+    // developer's global commit.gpgsign=true — pin it off for hermetic tests.
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    repo.git_ok(&["merge", "-q", "--no-ff", "--no-edit", "feature"]);
+    let sha = rev_parse(&repo, "HEAD");
+    (repo, sha)
+}
+
+#[test]
+fn revert_of_a_merge_commit_defaults_to_mainline_one() {
+    // Without `-m 1` git refuses outright: "commit … is a merge but no -m
+    // option was given" — the swimlane UI's Revert must work on merges.
+    let (repo, merge_sha) = repo_with_merged_feature("revert-merge");
+
+    revert(repo.path(), &merge_sha).expect("revert a merge commit");
+
+    assert!(
+        !repo.0.join("feature.txt").exists(),
+        "the merged-in change is undone"
+    );
+    assert!(
+        repo.0.join("main.txt").exists(),
+        "first-parent (mainline) history survives the revert"
+    );
+    assert!(repo.0.join("base.txt").exists());
+}
+
+#[test]
+fn cherry_pick_of_a_merge_applies_the_first_parent_delta() {
+    let (repo, merge_sha) = repo_with_merged_feature("cherry-pick-merge");
+    // A branch rooted before the merge — picking the merge onto it must apply
+    // exactly what the merge introduced relative to its first parent.
+    repo.git_ok(&["checkout", "-q", "-b", "dest", &format!("{merge_sha}~2")]);
+
+    cherry_pick(repo.path(), &merge_sha).expect("cherry-pick a merge commit");
+
+    assert!(
+        repo.0.join("feature.txt").exists(),
+        "the first-parent delta (the merged branch's change) is applied"
+    );
+    assert!(
+        !repo.0.join("main.txt").exists(),
+        "the mainline commit itself is not dragged along"
+    );
+}
+
+#[test]
+fn revert_many_splits_a_mixed_normal_and_merge_selection() {
+    // `git revert -m 1 A B` rejects a non-merge B, so a mixed selection has to
+    // run as consecutive same-kind invocations — both commits must be undone.
+    let (repo, merge_sha) = repo_with_merged_feature("revert-many-mixed");
+    std::fs::write(repo.0.join("extra.txt"), "extra\n").unwrap();
+    repo.git_ok(&["add", "extra.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "extra"]);
+    let extra_sha = rev_parse(&repo, "HEAD");
+
+    revert_many(repo.path(), &[extra_sha, merge_sha]).expect("revert normal + merge");
+
+    assert!(!repo.0.join("extra.txt").exists(), "normal commit reverted");
+    assert!(!repo.0.join("feature.txt").exists(), "merge commit reverted");
+    assert!(repo.0.join("main.txt").exists(), "mainline history survives");
+}
+
+#[test]
+fn cherry_pick_many_splits_a_mixed_normal_and_merge_selection() {
+    let (repo, merge_sha) = repo_with_merged_feature("cherry-pick-many-mixed");
+    let mainline_sha = rev_parse(&repo, &format!("{merge_sha}~1"));
+    repo.git_ok(&["checkout", "-q", "-b", "dest", &format!("{merge_sha}~2")]);
+
+    cherry_pick_many(repo.path(), &[mainline_sha, merge_sha])
+        .expect("cherry-pick normal + merge");
+
+    assert!(repo.0.join("main.txt").exists(), "normal commit applied");
+    assert!(
+        repo.0.join("feature.txt").exists(),
+        "merge's first-parent delta applied"
+    );
 }
 
 #[test]
@@ -2674,10 +2780,215 @@ fn pull_fast_forwards_when_behind() {
     assert_eq!(clone_head, seed_head, "clone HEAD fast-forwarded to seed HEAD");
 }
 
-fn rev_parse(repo: &TempRepo, rev: &str) -> String {
-    String::from_utf8_lossy(&repo.git(&["rev-parse", rev]).stdout)
-        .trim()
-        .to_string()
+/// A repo with one commit of `f.txt`, ready for stash churn (GL-117 tests).
+fn stash_seed_repo(tag: &str) -> TempRepo {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "t@t.t"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-qm", "base"]);
+    repo
+}
+
+#[test]
+fn stash_apply_by_oid_survives_index_churn() {
+    // Apply (unlike pop) leaves the stash on the stack; addressing by oid must
+    // still resolve the originally-picked stash after out-of-band churn.
+    let repo = stash_seed_repo("stash-oid-apply");
+
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "one"]);
+    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+
+    // Out-of-band churn: "one" moves from stash@{0} to stash@{1}.
+    std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "two"]);
+
+    stash_apply(repo.path(), &picked).expect("apply the picked stash by oid");
+
+    let content = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
+    assert_eq!(content, "one\n", "the picked stash was applied, not stash@{{0}}");
+    assert_eq!(
+        stash_list(repo.path()).expect("list after apply").len(),
+        2,
+        "apply must leave both stashes on the stack"
+    );
+}
+
+#[test]
+fn stash_pop_by_oid_survives_index_churn() {
+    // GL-117: the user picks a stash from a list snapshot, then another stash
+    // lands out-of-band (terminal, sibling worktree) and shifts every
+    // `stash@{n}`. Popping by oid must still hit the picked stash.
+    let repo = stash_seed_repo("stash-oid-pop");
+
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "one"]);
+    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+
+    // Out-of-band churn: "one" moves from stash@{0} to stash@{1}.
+    std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "two"]);
+
+    stash_pop(repo.path(), &picked).expect("pop the picked stash by oid");
+
+    let content = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
+    assert_eq!(content, "one\n", "the picked stash was applied, not stash@{{0}}");
+    let remaining = stash_list(repo.path()).expect("list after pop");
+    assert_eq!(remaining.len(), 1, "only the picked stash was dropped");
+    assert_eq!(remaining[0].message, "On main: two");
+}
+
+#[test]
+fn stash_drop_by_oid_survives_index_churn_and_refuses_when_gone() {
+    let repo = stash_seed_repo("stash-oid-drop");
+
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "one"]);
+    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+    std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "two"]);
+
+    stash_drop(repo.path(), &picked).expect("drop the picked stash by oid");
+    let remaining = stash_list(repo.path()).expect("list after drop");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].message, "On main: two", "the newer stash survived");
+
+    // Dropping again: the stash is gone, so the destructive op must refuse
+    // rather than fall back to any index.
+    let err = stash_drop(repo.path(), &picked).expect_err("second drop refuses");
+    assert!(
+        err.contains("no longer exists"),
+        "error should say the stash is gone: {err}"
+    );
+}
+
+#[test]
+fn stash_branch_by_oid_still_drops_the_stash() {
+    // `git stash branch <name> <oid>` would apply but silently SKIP the drop —
+    // only a `stash@{n}` reference keeps the drop semantics, so the op resolves
+    // the oid to its current index first.
+    let repo = stash_seed_repo("stash-oid-branch");
+
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "one"]);
+    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+
+    stash_branch(repo.path(), "from-stash", &picked).expect("stash branch by oid");
+
+    let head = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "from-stash");
+    let content = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
+    assert_eq!(content, "one\n", "the stash was applied on the new branch");
+    assert!(
+        stash_list(repo.path()).expect("list after branch").is_empty(),
+        "stash branch must drop the consumed stash"
+    );
+}
+
+/// Index entries (`git ls-files`) as owned lines, for asserting what is staged.
+fn index_entries(repo: &TempRepo) -> Vec<String> {
+    let out = repo.git(&["ls-files"]);
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn unstage_works_on_an_unborn_repo() {
+    // GL-115 Bug 1: with no commits yet, `restore --staged` and `reset HEAD`
+    // die with "could not resolve 'HEAD'" — the very first stage → unstage in
+    // a fresh `git init` repo must still work, via the index-only fallbacks.
+    let repo = TempRepo::new("unborn-unstage");
+    repo.git_ok(&["init", "-q"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    std::fs::write(repo.0.join("b.txt"), "b\n").unwrap();
+    stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage on unborn HEAD");
+
+    unstage_file(repo.path(), "a.txt").expect("unstage one file on unborn HEAD");
+    assert_eq!(index_entries(&repo), ["b.txt"], "only a.txt leaves the index");
+    assert!(repo.0.join("a.txt").exists(), "unstage must not touch the worktree copy");
+
+    // Re-stage, then edit the worktree copy so index ≠ worktree — the unborn
+    // fallback (`rm --cached`) must still unstage without tripping git's
+    // staged-content safety check.
+    stage_file(repo.path(), "a.txt").expect("re-stage a.txt");
+    std::fs::write(repo.0.join("a.txt"), "a edited\n").unwrap();
+    unstage_files(repo.path(), &["a.txt".into(), "b.txt".into()])
+        .expect("unstage several files on unborn HEAD");
+    assert!(index_entries(&repo).is_empty(), "index is empty after unstaging both");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "a edited\n",
+        "worktree edit survives unstaging"
+    );
+
+    stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage again");
+    unstage_all(repo.path()).expect("unstage all on unborn HEAD");
+    assert!(index_entries(&repo).is_empty(), "index is empty after unstage-all");
+    assert!(repo.0.join("a.txt").exists() && repo.0.join("b.txt").exists());
+}
+
+#[test]
+fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
+    // GL-115 Bug 2: `git clean` only removes *untracked* files, so discard with
+    // staged=false used to exit 0 and silently leave a staged-new file in both
+    // index and worktree. The index — not the caller's flag — decides.
+    let repo = TempRepo::new("discard-staged-new");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+
+    std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
+    repo.git_ok(&["add", "staged_new.txt"]);
+    std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
+
+    discard_file(repo.path(), "staged_new.txt", false).expect("discard staged-new file");
+    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
+    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+
+    // The genuinely untracked path still goes through `git clean`.
+    discard_file(repo.path(), "untracked.txt", false).expect("discard untracked file");
+    assert!(!repo.0.join("untracked.txt").exists(), "untracked file is cleaned");
+}
+
+#[test]
+fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
+    // GL-115 Bug 2 regression: the new `git rm -f` path must behave like the
+    // old restore-then-clean flow for the staged=true case on a repo that does
+    // have history — clearing the staged-new file from index and worktree.
+    let repo = TempRepo::new("discard-staged-true-born");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+
+    std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
+    repo.git_ok(&["add", "staged_new.txt"]);
+
+    discard_file(repo.path(), "staged_new.txt", true).expect("discard staged=true new file");
+    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
+    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+}
+
+#[test]
+fn discard_staged_file_works_on_an_unborn_repo() {
+    // GL-115 Bug 1 interplay: discard(staged=true) used to open with
+    // `restore --staged`, which dies on an unborn HEAD. The `git rm -f` path
+    // needs no HEAD at all.
+    let repo = TempRepo::new("unborn-discard");
+    repo.git_ok(&["init", "-q"]);
+    std::fs::write(repo.0.join("new.txt"), "new\n").unwrap();
+    stage_file(repo.path(), "new.txt").expect("stage on unborn HEAD");
+
+    discard_file(repo.path(), "new.txt", true).expect("discard staged file on unborn HEAD");
+    assert!(index_entries(&repo).is_empty(), "file leaves the index");
+    assert!(!repo.0.join("new.txt").exists(), "file leaves the worktree");
 }
 
 #[test]

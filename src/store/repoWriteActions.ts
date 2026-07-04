@@ -250,23 +250,23 @@ export function createRepoWriteActions(
         return `Reset to ${target}`;
       }),
 
-    applyStash: (index, pop, withIndex) =>
+    applyStash: (oid, pop, withIndex) =>
       runOp(get, async (summary) => {
-        if (pop) await api.stashPop(summary.path, index);
-        else if (withIndex) await api.stashApplyIndex(summary.path, index);
-        else await api.stashApply(summary.path, index);
+        if (pop) await api.stashPop(summary.path, oid);
+        else if (withIndex) await api.stashApplyIndex(summary.path, oid);
+        else await api.stashApply(summary.path, oid);
         return pop ? "Popped stash" : "Applied stash";
       }),
 
-    branchFromStash: (index, branch) =>
+    branchFromStash: (oid, branch) =>
       runOp(get, async (summary) => {
-        await api.stashBranch(summary.path, branch, index);
+        await api.stashBranch(summary.path, branch, oid);
         return `Applied stash to new branch ${branch}`;
       }),
 
-    dropStash: (index) =>
+    dropStash: (oid) =>
       runOp(get, async (summary) => {
-        await api.stashDrop(summary.path, index);
+        await api.stashDrop(summary.path, oid);
         return "Dropped stash";
       }),
 

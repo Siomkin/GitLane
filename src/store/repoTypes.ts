@@ -219,6 +219,10 @@ export interface RepoState {
   /** Reorder the open repository tabs without changing the active repository. */
   reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
   restoreSession: () => Promise<void>;
+  /** Re-probe one open tab's identity info (branch, worktree parent) so its
+   * label stays live while the tab is in the background (GL-116). The full
+   * data reload still happens on activation via `loadRepo`. */
+  refreshTabInfo: (path: string) => Promise<void>;
   /** Refresh recents' presence + current branch from disk (start-screen mount):
    * flags paths that no longer exist as `missing` and updates their branch. */
   refreshRecents: () => Promise<void>;
@@ -297,10 +301,12 @@ export interface RepoState {
   fastForwardTo: (from: string, to: string) => Promise<string>;
   rebaseOnto: (onto: string) => Promise<string>;
   resetCurrentTo: (target: string, mode: "soft" | "mixed" | "hard") => Promise<string>;
-  applyStash: (index: number, pop: boolean, withIndex?: boolean) => Promise<string>;
+  /** Stash actions address the stash by commit oid — `stash@{n}` indices go
+   * stale whenever any stash is created/dropped, even in another worktree. */
+  applyStash: (oid: string, pop: boolean, withIndex?: boolean) => Promise<string>;
   /** Check out `branch` at the stash's parent and apply the stash there. */
-  branchFromStash: (index: number, branch: string) => Promise<string>;
-  dropStash: (index: number) => Promise<string>;
+  branchFromStash: (oid: string, branch: string) => Promise<string>;
+  dropStash: (oid: string) => Promise<string>;
   cherryPickCommit: (sha: string) => Promise<string>;
   revertCommit: (sha: string) => Promise<string>;
   /** Cherry-pick several commits atomically (single git invocation). */

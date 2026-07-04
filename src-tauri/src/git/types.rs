@@ -100,6 +100,10 @@ pub struct RepoSummary {
     pub head_oid: Option<String>,
     /// True when HEAD is detached (not on a branch).
     pub detached: bool,
+    /// True when HEAD is unborn (fresh `git init`, no commits yet) — a real
+    /// state, distinct from a read failure, so the UI can say "No commits yet"
+    /// (GL-115).
+    pub unborn: bool,
     /// True when this checkout is a *linked* worktree (not the main one).
     pub is_worktree: bool,
     /// The main checkout's path for a linked worktree — the stable repository

@@ -60,6 +60,9 @@ const healthyInvoke =
 
 beforeEach(() => {
   invokeMock.mockReset();
+  // Fire-and-forget IPC (e.g. unwatch on tab close) must resolve rather than
+  // return `undefined`; tests that care set their own impl.
+  invokeMock.mockResolvedValue(undefined);
   dialogMock.mockReset();
   localStorage.clear();
   useRepo.setState(createInitialRepoData([], []));

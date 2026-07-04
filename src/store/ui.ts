@@ -76,7 +76,9 @@ export interface CommitMenu {
 export interface StashMenu {
   x: number;
   y: number;
-  index: number;
+  /** The stash commit oid — stable across list churn, unlike `stash@{n}`
+   * indices, which shift whenever any stash is created or dropped (GL-117). */
+  oid: string;
   message: string;
 }
 
