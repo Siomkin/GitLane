@@ -87,8 +87,9 @@ describe("WorkingInspector", () => {
   });
 
   it("omits discard (copy-only) when right-clicking a renamed file", () => {
-    // A rename's FileChange carries only the new path, so discard would half-undo
-    // it — the menu opens copy-only (no discard target).
+    // Discard is single-path and can't restore a rename's old side (unlike
+    // stage/unstage, which move both after GL-127), so the menu opens copy-only
+    // (no discard target) rather than half-undo the rename.
     useRepo.setState({
       changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0, binary: false }], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/new.ts", source: "staged" },

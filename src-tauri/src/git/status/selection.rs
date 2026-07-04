@@ -218,6 +218,9 @@ fn file_change(repo: &Repository, path: &str, (old, new): BlobPair) -> Result<Fi
         add,
         del,
         binary,
+        // The multi-commit union diff is keyed by a single path (renames are
+        // resolved into the net add/delete), so there is no distinct old side.
+        previous_path: None,
         advanced: None,
     })
 }
@@ -332,7 +335,7 @@ fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::
     let mut opts = DiffOptions::new();
     let patch = diff_bytes(Some(base), Some(new), path, &mut opts)?;
     let (_ctx, add, del) = patch.line_stats()?;
-    Ok(FileChange { path: path.to_string(), status: "M".to_string(), add, del, binary: false, advanced: None })
+    Ok(FileChange { path: path.to_string(), status: "M".to_string(), add, del, binary: false, previous_path: None, advanced: None })
 }
 
 /// Diff two composed text buffers. Unlike `file_diff`, no blob oids travel: the

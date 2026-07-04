@@ -46,9 +46,9 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 
   const openMenu = (file: FileChange, staged: boolean, e: MouseEvent) => {
     e.preventDefault();
-    // A rename's FileChange carries only the new path, so the backend can't
-    // restore the old side — offer a copy-only menu (no discard) rather than
-    // half-undo the rename.
+    // Stage/unstage a rename now moves both sides (GL-127), but discard is still
+    // single-path (it can't restore the old side of a rename), so offer a
+    // copy-only menu (no discard) rather than half-undo the rename.
     const discard = file.status === "R" ? undefined : { staged };
     openFileMenu({ x: e.clientX, y: e.clientY, path: file.path, discard });
   };

@@ -428,6 +428,158 @@ describe("repo store — folder roll-up staging", () => {
   });
 });
 
+describe("repo store — rename staging (GL-127)", () => {
+  // Reads that `refresh()` performs after a write; valid shapes so the
+  // post-action refresh passes IPC-shape validation (GL-57).
+  const refreshInvoke = (cmd: string) => {
+    switch (cmd) {
+      case "open_repo":
+        return Promise.resolve(summary);
+      case "commit_graph":
+        return Promise.resolve(emptyGraph);
+      case "working_changes":
+        return Promise.resolve(EMPTY_CHANGES);
+      case "file_diff":
+        return Promise.resolve({ path: "new.txt", status: "R", binary: false, hunks: [] });
+      default:
+        return defaultInvoke(cmd);
+    }
+  };
+
+  it("stages both sides of an unstaged rename in one atomic call", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [
+          { path: "new.txt", status: "R", add: 0, del: 0, binary: false, previousPath: "old.txt" },
+        ],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().stageFile("new.txt");
+
+    // Both paths go through the multi-path command; the single-path one is not used.
+    expect(invokeMock).toHaveBeenCalledWith("stage_files", {
+      path: "/repo",
+      files: ["old.txt", "new.txt"],
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("stage_file", expect.anything());
+  });
+
+  it("unstages both sides of a staged rename in one atomic call", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [
+          { path: "new.txt", status: "R", add: 0, del: 0, binary: false, previousPath: "old.txt" },
+        ],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().unstageFile("new.txt");
+
+    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
+      path: "/repo",
+      files: ["old.txt", "new.txt"],
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("unstage_file", expect.anything());
+  });
+
+  it("leaves an ordinary (non-rename) file on the single-path stage command", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().stageFile("src/a.ts");
+
+    expect(invokeMock).toHaveBeenCalledWith("stage_file", { path: "/repo", file: "src/a.ts" });
+    expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
+  });
+
+  it("folder roll-up (stagePaths) pulls in a rename's old path so it isn't half-staged", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [
+          { path: "src/b.ts", status: "M", add: 1, del: 0, binary: false },
+          { path: "src/new.ts", status: "R", add: 0, del: 0, binary: false, previousPath: "src/old.ts" },
+        ],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    // The Tree view rolls up the directory's *displayed* (new-side) paths.
+    await useRepo.getState().stagePaths(["src/b.ts", "src/new.ts"]);
+
+    // The rename's old side is expanded in, so the folder stages as one rename.
+    expect(invokeMock).toHaveBeenCalledWith("stage_files", {
+      path: "/repo",
+      files: ["src/b.ts", "src/new.ts", "src/old.ts"],
+    });
+  });
+
+  it("folder roll-up (unstagePaths) pulls in a staged rename's old path", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [
+          { path: "src/new.ts", status: "R", add: 0, del: 0, binary: false, previousPath: "src/old.ts" },
+        ],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().unstagePaths(["src/new.ts"]);
+
+    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
+      path: "/repo",
+      files: ["src/new.ts", "src/old.ts"],
+    });
+  });
+
+  it("commit modal exclude of a staged rename unstages both its paths", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [
+          { path: "keep.ts", status: "M", add: 1, del: 0, binary: false },
+          { path: "src/new.ts", status: "R", add: 0, del: 0, binary: false, previousPath: "src/old.ts" },
+        ],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    // Uncheck the staged rename in the modal; commit the rest.
+    await useRepo.getState().commitSelected("Subject", ["src/new.ts"], false);
+
+    // The excluded rename is dropped on both sides before committing, so its old
+    // path's deletion isn't left staged and committed as half a rename.
+    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
+      path: "/repo",
+      files: ["src/new.ts", "src/old.ts"],
+    });
+    expect(invokeMock).toHaveBeenCalledWith("commit", expect.objectContaining({ path: "/repo" }));
+  });
+});
+
 describe("repo store — mergeInto toast mapping", () => {
   // `merge --no-ff` exits 0 without creating anything when the branch is
   // already reachable from HEAD (equal tips included) — the returned message
