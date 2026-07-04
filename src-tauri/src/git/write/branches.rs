@@ -43,15 +43,22 @@ fn ref_exists(repo: &str, reference: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve a rev to the first oid line from `git rev-parse --verify`.
+/// Resolve a rev to the oid printed by `git rev-parse --verify`. `--verify`
+/// exits non-zero for an unresolvable ref, so `run_git` already yields `Err`
+/// before we get here; an *empty* success line is therefore a broken invariant,
+/// not "no match", and we surface it rather than let two empty strings compare
+/// equal and masquerade as an already-up-to-date no-op in `fast_forward_branch`.
 fn resolve_rev(repo: &str, reference: &str) -> Result<String, String> {
-    run_git(repo, &["rev-parse", "--verify", reference]).map(|out| {
-        out.lines()
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_string()
-    })
+    let oid = run_git(repo, &["rev-parse", "--verify", reference])?
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if oid.is_empty() {
+        return Err(format!("could not resolve {reference}"));
+    }
+    Ok(oid)
 }
 
 /// Create a branch `name` at `start_point` (defaults to HEAD).
