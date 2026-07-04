@@ -51,6 +51,7 @@ export function createRepoLifecycleActions(
   | "closeRepo"
   | "reorderOpenPaths"
   | "restoreSession"
+  | "refreshTabInfo"
   | "refreshRecents"
   | "removeRecent"
   | "locateMissingRepo"
@@ -289,10 +290,11 @@ export function createRepoLifecycleActions(
       });
 
       // Watch the new worktree as soon as the shell swaps — before the graph — so a
-      // commit/checkout during the (slow) graph load still triggers a refresh, the
-      // watcher never lingers on the previous repo after a switch, and a graph
-      // failure below can't leave the now-active repo unwatched (GL-20 review).
-      void api.watchRepo(summary.workdir ?? summary.path).catch(() => {});
+      // commit/checkout during the (slow) graph load still triggers a refresh, and a
+      // graph failure below can't leave the now-active repo unwatched (GL-20 review).
+      // Keyed by `summary.path` (the openPaths identity): each open tab keeps its
+      // own watch, so switching tabs no longer silences the previous repo (GL-116).
+      void api.watchRepo(summary.path).catch(() => {});
 
       // A repo switch invalidates any open repo-bound overlay: a destructive
       // confirm / reflog-recovery dialog (impact + entries computed for the old
@@ -465,6 +467,9 @@ export function createRepoLifecycleActions(
     closeRepo: async (path) => {
       const { openPaths, summary } = get();
       const remaining = openPaths.filter((p) => p !== path);
+      // Every open tab holds a filesystem watch (GL-116); closing the tab is
+      // what releases it, whichever branch below handles the tab itself.
+      void api.unwatchRepo(path).catch(() => {});
       // Closing the missing-repo tab (its X, or Remove on the screen): the repo
       // data was already cleared when the state was entered, so just drop the
       // tab + state and land on a neighbour or the welcome screen (GL-108).
@@ -639,12 +644,41 @@ export function createRepoLifecycleActions(
           persistSession(openPaths, last);
           persistTabInfo(tabInfoByPath);
           set({ openPaths, tabInfoByPath });
+          // Background tabs are never load-ed until activated, so give each
+          // surviving live path its watch now (GL-116) — the active one is
+          // (re-)watched by loadRepo below; re-inserting the key is harmless.
+          for (const path of openPaths) {
+            if (path !== last && byPath.get(path)?.exists) {
+              void api.watchRepo(path).catch(() => {});
+            }
+          }
         } catch {
           // Probe failure: keep the restored tabs — a truly dead last path
           // still surfaces through loadRepo's classified open below.
         }
       }
       if (last) await get().loadRepo(last);
+    },
+
+    // A background tab's watcher fired: re-probe the path so its tab label
+    // (branch, worktree identity) stays live without loading the repo — the
+    // full data reload still happens on activation (loadRepo). Best-effort;
+    // a probe failure keeps the last-known label.
+    refreshTabInfo: async (path) => {
+      try {
+        const [status] = await api.recentsStatus([path]);
+        if (!status?.exists) return;
+        // Re-check after the await: the tab may have closed while probing.
+        if (!get().openPaths.includes(path)) return;
+        const tabInfoByPath = {
+          ...get().tabInfoByPath,
+          [path]: tabInfoFromStatus(status),
+        };
+        persistTabInfo(tabInfoByPath);
+        set({ tabInfoByPath });
+      } catch {
+        /* best-effort: keep the existing tab info */
+      }
     },
 
     // Probe each recent's path on disk: flag the ones that no longer resolve as
@@ -711,6 +745,9 @@ export function createRepoLifecycleActions(
         // below records the new location as active.
         useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
         migrateProfileBindings(stalePath, probe.path);
+        // The dead path may still hold a watch from before it went missing;
+        // its tab is being re-keyed, so release the stale entry (GL-116).
+        void api.unwatchRepo(stalePath).catch(() => {});
         const openPaths = get().openPaths.includes(probe.path)
           ? get().openPaths.filter((p) => p !== stalePath)
           : get().openPaths.map((p) => (p === stalePath ? probe.path : p));

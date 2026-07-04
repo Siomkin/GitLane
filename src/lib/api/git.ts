@@ -997,6 +997,11 @@ export const gitApi = {
   /** Reveal `path` in the OS file manager (Finder/Explorer). */
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
 
-  /** Start watching `path`; the backend emits `repo-changed` on any change. */
+  /** Start watching `path` (one watch per open tab); the backend emits
+   * `repo-changed` events tagged with this path on any change. Linked
+   * worktrees also cover their private gitdir and shared common dir. */
   watchRepo: (path: string) => invoke<void>("watch_repo", { path }),
+
+  /** Stop watching `path` (its tab closed). Unknown paths are a no-op. */
+  unwatchRepo: (path: string) => invoke<void>("unwatch_repo", { path }),
 };

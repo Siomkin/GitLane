@@ -76,6 +76,9 @@ function deferred<T>() {
 
 beforeEach(() => {
   invokeMock.mockReset();
+  // Fire-and-forget IPC (e.g. watch/unwatch on tab open/close) must resolve
+  // rather than return `undefined`; tests that care set their own impl.
+  invokeMock.mockResolvedValue(undefined);
   useRepo.setState({
     summary,
     selectedFile: null,
@@ -1022,7 +1025,13 @@ describe("repo store — large history", () => {
       openPaths: ["/repo", "/other"],
       graph: emptyGraph,
     });
-    invokeMock.mockRejectedValueOnce(new Error("cannot open"));
+    // Target the neighbour's open specifically: closeRepo now also fires a
+    // fire-and-forget unwatch, so a bare `…Once` would be consumed by that.
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "open_repo"
+        ? Promise.reject(new Error("cannot open"))
+        : defaultInvoke(cmd),
+    );
 
     await useRepo.getState().closeRepo("/repo");
 
@@ -1927,6 +1936,14 @@ describe("repo store — closeRepo clears forge", () => {
     expect(s.summary).toBeNull();
     expect(s.forge).toBeNull();
   });
+
+  it("releases the closed tab's filesystem watch (GL-116)", async () => {
+    useRepo.setState({ openPaths: ["/repo", "/other"], summary });
+
+    await useRepo.getState().closeRepo("/other");
+
+    expect(invokeMock).toHaveBeenCalledWith("unwatch_repo", { path: "/other" });
+  });
 });
 
 describe("repo store — conflict actions", () => {
@@ -2469,5 +2486,132 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
 
     expect(useRepo.getState().openPaths).toEqual(["/a", "/dead-wt"]);
     expect(useRepo.getState().summary?.path).toBe("/a");
+  });
+
+  it("watches every live background tab so it doesn't go stale (GL-116)", async () => {
+    // Two live repos: /a is the last-active (watched by loadRepo), /b is a
+    // background tab that no loadRepo ever runs for until activated — it must
+    // still get its own watch on restore.
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+          ]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().restoreSession();
+
+    // The background tab is watched by path; the active one is watched by
+    // loadRepo (also by path) rather than left to this fallback.
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/b" });
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/a" });
+  });
+
+  it("never watches a dead background tab (GL-116)", async () => {
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+          ]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/dead-wt" });
+  });
+});
+
+describe("repo store — refreshTabInfo (GL-116 background-tab labels)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "old" },
+      },
+    });
+  });
+
+  it("re-probes one tab's identity without loading the repo", async () => {
+    invokeMock.mockImplementation((cmd: string, args?: { paths?: string[] }) => {
+      if (cmd === "recents_status") {
+        expect(args?.paths).toEqual(["/b"]);
+        return Promise.resolve([
+          { path: "/b", exists: true, branch: "new", isWorktree: true, mainPath: "/a" },
+        ]);
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().refreshTabInfo("/b");
+
+    // The label follows the fresh probe; the repo was never opened.
+    expect(useRepo.getState().tabInfoByPath["/b"]).toEqual({
+      isWorktree: true,
+      mainPath: "/a",
+      branch: "new",
+    });
+    expect(useRepo.getState().tabInfoByPath["/a"].branch).toBe("main");
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
+  });
+
+  it("keeps the last-known label when the tab probes gone", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "recents_status"
+        ? Promise.resolve([
+            { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+          ])
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().refreshTabInfo("/b");
+
+    expect(useRepo.getState().tabInfoByPath["/b"].branch).toBe("old");
+  });
+
+  it("drops the update if the tab closed while probing", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "recents_status"
+        ? Promise.resolve([
+            { path: "/b", exists: true, branch: "new", isWorktree: false, mainPath: null },
+          ])
+        : defaultInvoke(cmd),
+    );
+
+    const probe = useRepo.getState().refreshTabInfo("/b");
+    // The tab closes before the probe resolves.
+    useRepo.setState({ openPaths: ["/a"] });
+    await probe;
+
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("old");
   });
 });

@@ -1141,8 +1141,10 @@ fn pty_kill(state: tauri::State<'_, TerminalState>) -> Result<(), String> {
     terminal::kill(&state)
 }
 
-/// Start (or replace) the filesystem watch for `path`, emitting `repo-changed`
-/// events when the worktree or `.git` changes.
+/// Start (or replace) the filesystem watch for `path`, emitting path-tagged
+/// `repo-changed` events when its worktree or git state changes. Each open
+/// tab keeps its own watch; linked worktrees also cover their private gitdir
+/// and shared common dir.
 #[tauri::command]
 fn watch_repo(
     app: tauri::AppHandle,
@@ -1150,6 +1152,12 @@ fn watch_repo(
     path: String,
 ) -> Result<(), String> {
     watcher::watch(&app, &state, &path)
+}
+
+/// Stop the filesystem watch for `path` (its tab closed).
+#[tauri::command]
+fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(), String> {
+    watcher::unwatch(&state, &path)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1354,6 +1362,7 @@ pub fn run() {
             pty_resize,
             pty_kill,
             watch_repo,
+            unwatch_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
