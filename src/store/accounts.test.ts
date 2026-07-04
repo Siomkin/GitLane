@@ -81,6 +81,72 @@ describe("durable 'No account' across repo reopen", () => {
   });
 });
 
+describe("v2 binding survives an account going unhealthy (GL-119)", () => {
+  // A repo bound while the account was healthy stores its stable numeric user id
+  // (gh:host:<id>). When the account later returns unhealthy the backend skips
+  // the whoami, so its id falls back to the login (gh:host:<login>). The binding
+  // must still resolve — otherwise the account vanishes instead of showing the
+  // "needs re-auth" badge, defeating the whole point of the health flag.
+  const boundByNumericId = () =>
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        [path]: { version: 2, provider: "gh", host: "github.com", accountId: "1234", login: "octocat" },
+      }),
+    );
+
+  it("re-resolves a numerically-bound account that returns under its login id", () => {
+    boundByNumericId();
+    const unhealthy: Account = {
+      ...account,
+      id: "gh:github.com:octocat",
+      accountId: "octocat",
+      ref: { provider: "gh", host: "github.com", accountId: "octocat", login: "octocat" },
+      healthy: false,
+      healthError: "token invalid (HTTP 401)",
+    };
+    useAccounts.setState({
+      accounts: [unhealthy],
+      repoAccountId: null,
+      repoAccountRef: null,
+      repoBindingKey: null,
+    });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    // Resolved via the {provider, host, login} fallback, not lost.
+    expect(useAccounts.getState().repoAccountId).toBe("gh:github.com:octocat");
+    expect(useAccounts.getState().repoAccountRef).toEqual(unhealthy.ref);
+    // The stored binding is untouched, so it re-pins to the numeric id on recovery.
+    const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts")!)[path];
+    expect(stored.accountId).toBe("1234");
+  });
+
+  it("does not cross-match a different login on the same host", () => {
+    boundByNumericId();
+    const other: Account = {
+      ...account,
+      id: "gh:github.com:hubot",
+      accountId: "hubot",
+      login: "hubot",
+      username: "hubot",
+      ref: { provider: "gh", host: "github.com", accountId: "hubot", login: "hubot" },
+    };
+    useAccounts.setState({
+      accounts: [other],
+      activeAccountId: null,
+      repoAccountId: null,
+      repoAccountRef: null,
+      repoBindingKey: null,
+    });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    // A non-matching login stays unbound rather than binding the wrong account.
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+  });
+});
+
 describe("loadForgeAuth — fast auth, background identity", () => {
   it("lists authenticated forges immediately, then merges the resolved account", async () => {
     // Keep the whoami pending so the intermediate "resolving" state is observable.

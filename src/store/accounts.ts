@@ -326,7 +326,27 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       }
     } else if (bound && bound.version === 2) {
       if (!("unbound" in bound)) {
-        selected = get().accounts.find((a) => a.id === accountKey(bound)) ?? null;
+        // Exact id match first — while healthy an account's id keys on its
+        // stable numeric user id. Fall back to {provider, host, login} when the
+        // id doesn't match: an unhealthy account resolves its id to the login
+        // (the backend skips the whoami that yields the numeric id), so a repo
+        // bound while healthy must still resolve to it and surface the
+        // "needs re-auth" badge instead of silently vanishing (GL-119). The
+        // stored binding is left as-is so it re-pins to the numeric id once the
+        // account is healthy again. `login` is unique per host, so the fallback
+        // can't cross-match a different account.
+        const list = get().accounts;
+        selected =
+          list.find((a) => a.id === accountKey(bound)) ??
+          (bound.login
+            ? list.find(
+                (a) =>
+                  a.provider === bound.provider &&
+                  a.host === bound.host &&
+                  a.login === bound.login,
+              )
+            : undefined) ??
+          null;
       }
       // else: explicit "No account" — leave unbound (no active-account fallback).
     } else if (!bound) {
