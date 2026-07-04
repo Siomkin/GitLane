@@ -2958,6 +2958,25 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
 }
 
 #[test]
+fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
+    // GL-115 Bug 2 regression: the new `git rm -f` path must behave like the
+    // old restore-then-clean flow for the staged=true case on a repo that does
+    // have history — clearing the staged-new file from index and worktree.
+    let repo = TempRepo::new("discard-staged-true-born");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+
+    std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
+    repo.git_ok(&["add", "staged_new.txt"]);
+
+    discard_file(repo.path(), "staged_new.txt", true).expect("discard staged=true new file");
+    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
+    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+}
+
+#[test]
 fn discard_staged_file_works_on_an_unborn_repo() {
     // GL-115 Bug 1 interplay: discard(staged=true) used to open with
     // `restore --staged`, which dies on an unborn HEAD. The `git rm -f` path

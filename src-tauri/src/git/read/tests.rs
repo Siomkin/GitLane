@@ -211,6 +211,30 @@ fn worktree_join_rejects_escapes_and_accepts_safe_paths() {
 }
 
 #[test]
+fn summary_flags_an_unborn_head_then_clears_it_after_the_first_commit() {
+    use super::repo::summary;
+
+    // Fresh `git init`: HEAD points at a branch with no commits. `repo.head()`
+    // fails with `UnbornBranch`, which is a real state — not a read failure —
+    // so `unborn` must be true and distinguishable from "No branch" (GL-115).
+    let dir = TempRepo::new("unborn-summary");
+    let repo = Repository::init(dir.path()).unwrap();
+    let path = dir.path().to_str().unwrap();
+
+    let fresh = summary(path).unwrap();
+    assert!(fresh.unborn, "a repo with no commits reports an unborn HEAD");
+    assert_eq!(fresh.head_branch, None, "there is no resolvable branch yet");
+    assert_eq!(fresh.head_oid, None, "there is no commit to resolve");
+    assert!(!fresh.detached, "unborn is not the same as detached");
+
+    // The first commit is born: HEAD now resolves, so `unborn` clears.
+    commit(&repo, "HEAD", "base", &[]);
+    let born = summary(path).unwrap();
+    assert!(!born.unborn, "a committed repo is no longer unborn");
+    assert!(born.head_oid.is_some(), "HEAD resolves after the first commit");
+}
+
+#[test]
 fn summary_reports_linked_worktree_identity() {
     use super::recents::recents_status;
     use super::repo::summary;
