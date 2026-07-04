@@ -75,6 +75,21 @@ export const currentBranchSyncView = (
       needsPublishPrompt: false,
     };
   }
+  // An unborn branch (fresh `git init`, no commits) is a real branch — the
+  // backend resolves its name from HEAD's symbolic target — but it has nothing
+  // to sync yet and never appears in the branch list, so short-circuit here
+  // instead of falling through to the "sync unavailable" path (which would
+  // wrongly offer pull/push). Precedes the `!headBranch` guard because the name
+  // is now populated (GL-115 follow-up).
+  if (summary.unborn) {
+    return {
+      label: null,
+      title: "This branch has no commits yet. Make the first commit before pulling or pushing.",
+      canPull: false,
+      canPush: false,
+      needsPublishPrompt: false,
+    };
+  }
   if (!summary.headBranch) {
     return {
       label: null,

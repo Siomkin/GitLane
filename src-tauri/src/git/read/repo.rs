@@ -83,6 +83,20 @@ pub(super) fn main_worktree_path(repo: &git2::Repository) -> Option<String> {
         .or_else(|| common.to_str().map(|s| s.trim_end_matches('/').to_string()))
 }
 
+/// The branch name a fresh (`unborn`) HEAD points at. HEAD is a symbolic ref
+/// (`ref: refs/heads/<name>`) even before the first commit exists, so read its
+/// target directly and strip the `refs/heads/` prefix. Returns None if HEAD is
+/// missing or not a `refs/heads/` symbolic ref (never expected for an unborn
+/// branch, but keeps the caller from surfacing a bogus name).
+fn unborn_branch_name(repo: &Repository) -> Option<String> {
+    let head = repo.find_reference("HEAD").ok()?;
+    head.symbolic_target()
+        .ok()
+        .flatten()?
+        .strip_prefix("refs/heads/")
+        .map(|s| s.to_string())
+}
+
 /// High-level state for the title bar / status area.
 pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
     let repo = open(path)?;
@@ -96,6 +110,13 @@ pub fn summary(path: &str) -> Result<RepoSummary, git2::Error> {
     let head = head.ok();
     let head_branch = if detached {
         None
+    } else if unborn {
+        // `repo.head()` failed, but HEAD is still a symbolic ref pointing at the
+        // branch the first commit will create (e.g. `refs/heads/main`). Resolve
+        // that name so consumers treat it like a checked-out branch for display,
+        // even though it has no commits and no entry in the branch list yet
+        // (GL-115 follow-up). The `unborn` flag keeps it distinguishable.
+        unborn_branch_name(&repo)
     } else {
         head.as_ref()
             .and_then(|h| h.shorthand().ok())

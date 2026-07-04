@@ -213,24 +213,44 @@ fn worktree_join_rejects_escapes_and_accepts_safe_paths() {
 #[test]
 fn summary_flags_an_unborn_head_then_clears_it_after_the_first_commit() {
     use super::repo::summary;
+    use git2::RepositoryInitOptions;
 
     // Fresh `git init`: HEAD points at a branch with no commits. `repo.head()`
     // fails with `UnbornBranch`, which is a real state — not a read failure —
     // so `unborn` must be true and distinguishable from "No branch" (GL-115).
+    // Pin the initial branch so the resolved name is deterministic regardless of
+    // the host's `init.defaultBranch`.
     let dir = TempRepo::new("unborn-summary");
-    let repo = Repository::init(dir.path()).unwrap();
+    let repo = Repository::init_opts(
+        dir.path(),
+        RepositoryInitOptions::new().initial_head("master"),
+    )
+    .unwrap();
     let path = dir.path().to_str().unwrap();
 
     let fresh = summary(path).unwrap();
     assert!(fresh.unborn, "a repo with no commits reports an unborn HEAD");
-    assert_eq!(fresh.head_branch, None, "there is no resolvable branch yet");
+    // The unborn branch is resolved from HEAD's symbolic target (GL-115
+    // follow-up): a branch *exists*, it just has no commits yet, so downstream
+    // consumers can treat it like a checked-out branch instead of "No branch".
+    assert_eq!(
+        fresh.head_branch.as_deref(),
+        Some("master"),
+        "unborn HEAD resolves its symbolic target branch name"
+    );
     assert_eq!(fresh.head_oid, None, "there is no commit to resolve");
     assert!(!fresh.detached, "unborn is not the same as detached");
 
-    // The first commit is born: HEAD now resolves, so `unborn` clears.
+    // The first commit is born: HEAD now resolves, so `unborn` clears and the
+    // branch name still resolves — now via the born HEAD.
     commit(&repo, "HEAD", "base", &[]);
     let born = summary(path).unwrap();
     assert!(!born.unborn, "a committed repo is no longer unborn");
+    assert_eq!(
+        born.head_branch.as_deref(),
+        Some("master"),
+        "the branch name persists once the first commit is born"
+    );
     assert!(born.head_oid.is_some(), "HEAD resolves after the first commit");
 }
 

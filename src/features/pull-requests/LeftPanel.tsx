@@ -34,6 +34,9 @@ function PullRequestsPanel() {
   const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreatePr = useUi((state) => state.openCreatePr);
   const headBranch = useRepo((state) => state.summary?.headBranch ?? null);
+  // An unborn branch resolves a name but has no commits, so there's nothing to
+  // open a PR from — keep "New PR" disabled even though `headBranch` is set.
+  const unborn = useRepo((state) => state.summary?.unborn ?? false);
   // PRs run through `gh`, so creating one only makes sense on a GitHub remote.
   // Treat an unknown forge (`null` — still loading, or detection failed) as
   // capable, matching the store's load gate (`loadPullRequests` only blocks a
@@ -89,13 +92,15 @@ function PullRequestsPanel() {
           <div className="flex items-center gap-2">
             <button
               onClick={openCreatePr}
-              disabled={!headBranch || prsUnsupported}
+              disabled={!headBranch || unborn || prsUnsupported}
               title={
                 prsUnsupported
                   ? "Pull requests are only available for GitHub repositories"
-                  : headBranch
-                    ? "Open a new pull request"
-                    : "Check out a branch first"
+                  : unborn
+                    ? "Make the first commit before opening a pull request"
+                    : headBranch
+                      ? "Open a new pull request"
+                      : "Check out a branch first"
               }
               className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-neutral-500 hover:bg-black/5 hover:text-neutral-800 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-neutral-100"
             >

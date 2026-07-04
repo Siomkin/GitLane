@@ -210,18 +210,24 @@ describe("ActionBar layout order", () => {
     expect(screen.getByTitle(/Push unavailable. Detached HEAD/)).toBeDisabled();
   });
 
-  it("labels an unborn repo 'No commits yet' rather than 'No branch'", () => {
-    // Fresh `git init`: the backend sends unborn=true with headBranch=null
-    // (GL-115). The toolbar must distinguish it from a null-branch read.
+  it("labels an unborn repo 'No commits yet' even though the branch name resolves", () => {
+    // Fresh `git init`: the backend now resolves the branch name from HEAD's
+    // symbolic target (GL-115 follow-up), so headBranch is populated *and*
+    // unborn is true. The unborn guard must still win so the toolbar shows
+    // "No commits yet" rather than the bare branch name.
     useRepo.setState({
-      summary: { ...SUMMARY, headBranch: null, unborn: true },
+      summary: { ...SUMMARY, headBranch: "master", unborn: true },
       branches: [],
     });
 
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
 
     expect(screen.getByText("No commits yet")).toBeInTheDocument();
+    expect(screen.queryByText("master")).not.toBeInTheDocument();
     expect(screen.queryByText("No branch")).not.toBeInTheDocument();
+    // Pull/Push stay disabled — there is nothing to sync yet.
+    expect(screen.getByTitle(/Pull unavailable.*no commits yet/i)).toBeDisabled();
+    expect(screen.getByTitle(/Push unavailable.*no commits yet/i)).toBeDisabled();
   });
 });
 
