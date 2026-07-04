@@ -3,14 +3,14 @@ use super::operands::ensure_operand;
 use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, clear_repo_identity,
-    continue_operation, create_tag, delete_branch_with_worktree, delete_remote_tag, discard_all,
-    fast_forward, fast_forward_branch, fetch, mark_conflict_resolved, merge,
-    move_branch_to_worktree, preview_delete_branch,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, cherry_pick, cherry_pick_many,
+    clear_repo_identity, continue_operation, create_tag, delete_branch_with_worktree,
+    delete_remote_tag, discard_all, fast_forward, fast_forward_branch, fetch,
+    mark_conflict_resolved, merge, move_branch_to_worktree, preview_delete_branch,
     preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
     publish_branch, reconflict_file, reflog_entries, remove_worktree, resolve_conflict_file,
-    set_remote_url, set_repo_identity, set_upstream, skip_operation, stage_files, stash_apply,
-    stash_branch, stash_drop, stash_list, stash_pop, worktrees,
+    revert, revert_many, set_remote_url, set_repo_identity, set_upstream, skip_operation,
+    stage_files, stash_apply, stash_branch, stash_drop, stash_list, stash_pop, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -75,6 +75,110 @@ impl Drop for TempRepo {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+fn rev_parse(repo: &TempRepo, rev: &str) -> String {
+    let out = repo.git(&["rev-parse", rev]);
+    assert!(out.status.success(), "rev-parse {rev} should resolve");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Build `base ─ main work ─ M` on `main` where `M` merges a `feature` branch
+/// that added `feature.txt` (so `M`'s first parent is the mainline commit with
+/// `main.txt`). Returns the repo and the merge commit's sha.
+fn repo_with_merged_feature(tag: &str) -> (TempRepo, String) {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    // cherry_pick/revert honour repo config and would try to sign under a
+    // developer's global commit.gpgsign=true — pin it off for hermetic tests.
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    repo.git_ok(&["merge", "-q", "--no-ff", "--no-edit", "feature"]);
+    let sha = rev_parse(&repo, "HEAD");
+    (repo, sha)
+}
+
+#[test]
+fn revert_of_a_merge_commit_defaults_to_mainline_one() {
+    // Without `-m 1` git refuses outright: "commit … is a merge but no -m
+    // option was given" — the swimlane UI's Revert must work on merges.
+    let (repo, merge_sha) = repo_with_merged_feature("revert-merge");
+
+    revert(repo.path(), &merge_sha).expect("revert a merge commit");
+
+    assert!(
+        !repo.0.join("feature.txt").exists(),
+        "the merged-in change is undone"
+    );
+    assert!(
+        repo.0.join("main.txt").exists(),
+        "first-parent (mainline) history survives the revert"
+    );
+    assert!(repo.0.join("base.txt").exists());
+}
+
+#[test]
+fn cherry_pick_of_a_merge_applies_the_first_parent_delta() {
+    let (repo, merge_sha) = repo_with_merged_feature("cherry-pick-merge");
+    // A branch rooted before the merge — picking the merge onto it must apply
+    // exactly what the merge introduced relative to its first parent.
+    repo.git_ok(&["checkout", "-q", "-b", "dest", &format!("{merge_sha}~2")]);
+
+    cherry_pick(repo.path(), &merge_sha).expect("cherry-pick a merge commit");
+
+    assert!(
+        repo.0.join("feature.txt").exists(),
+        "the first-parent delta (the merged branch's change) is applied"
+    );
+    assert!(
+        !repo.0.join("main.txt").exists(),
+        "the mainline commit itself is not dragged along"
+    );
+}
+
+#[test]
+fn revert_many_splits_a_mixed_normal_and_merge_selection() {
+    // `git revert -m 1 A B` rejects a non-merge B, so a mixed selection has to
+    // run as consecutive same-kind invocations — both commits must be undone.
+    let (repo, merge_sha) = repo_with_merged_feature("revert-many-mixed");
+    std::fs::write(repo.0.join("extra.txt"), "extra\n").unwrap();
+    repo.git_ok(&["add", "extra.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "extra"]);
+    let extra_sha = rev_parse(&repo, "HEAD");
+
+    revert_many(repo.path(), &[extra_sha, merge_sha]).expect("revert normal + merge");
+
+    assert!(!repo.0.join("extra.txt").exists(), "normal commit reverted");
+    assert!(!repo.0.join("feature.txt").exists(), "merge commit reverted");
+    assert!(repo.0.join("main.txt").exists(), "mainline history survives");
+}
+
+#[test]
+fn cherry_pick_many_splits_a_mixed_normal_and_merge_selection() {
+    let (repo, merge_sha) = repo_with_merged_feature("cherry-pick-many-mixed");
+    let mainline_sha = rev_parse(&repo, &format!("{merge_sha}~1"));
+    repo.git_ok(&["checkout", "-q", "-b", "dest", &format!("{merge_sha}~2")]);
+
+    cherry_pick_many(repo.path(), &[mainline_sha, merge_sha])
+        .expect("cherry-pick normal + merge");
+
+    assert!(repo.0.join("main.txt").exists(), "normal commit applied");
+    assert!(
+        repo.0.join("feature.txt").exists(),
+        "merge's first-parent delta applied"
+    );
 }
 
 #[test]

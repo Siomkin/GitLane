@@ -90,16 +90,66 @@ pub fn rebase(repo: &str, onto: &str) -> Result<String, String> {
     run_git(repo, &["rebase", onto])
 }
 
-/// Cherry-pick `commit` onto the current HEAD.
-pub fn cherry_pick(repo: &str, commit: &str) -> Result<String, String> {
-    ensure_operand(commit)?;
-    run_git(repo, &["cherry-pick", commit])
+/// Whether `commit` is a merge commit (more than one parent). Git refuses to
+/// cherry-pick or revert a merge without `-m <parent>`, so those callers probe
+/// this first and pass `-m 1`. Uses `git rev-list --parents -n 1`, whose first
+/// output line is `<sha> <parent>…` — it fails loudly on an unresolvable
+/// commit instead of silently reading "not a merge".
+fn is_merge_commit(repo: &str, commit: &str) -> Result<bool, String> {
+    let out = run_git(repo, &["rev-list", "--parents", "-n", "1", commit])?;
+    // run_git returns stdout followed by stderr; the commit line is first, any
+    // stderr warnings (e.g. an ambiguous refname) land on later lines.
+    let parents = out
+        .lines()
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .count()
+        .saturating_sub(1);
+    Ok(parents > 1)
 }
 
-/// Cherry-pick several commits onto the current HEAD in one atomic invocation
-/// (`git cherry-pick A B C…`). Unlike a client-side loop, a single invocation
-/// applies them in order with proper conflict handling — and stops cleanly on
-/// the first conflict instead of leaving a half-applied mess mid-loop.
+/// Partition `commits` into runs of consecutive commits that agree on
+/// merge-ness, preserving order. `git cherry-pick`/`git revert` accept `-m 1`
+/// only when *every* named commit is a merge, so a mixed selection has to be
+/// split into per-kind invocations.
+fn group_by_mergeness<'a>(
+    repo: &str,
+    commits: &'a [String],
+) -> Result<Vec<(bool, Vec<&'a str>)>, String> {
+    let mut runs: Vec<(bool, Vec<&str>)> = Vec::new();
+    for c in commits {
+        let merge = is_merge_commit(repo, c)?;
+        match runs.last_mut() {
+            Some((kind, run)) if *kind == merge => run.push(c.as_str()),
+            _ => runs.push((merge, vec![c.as_str()])),
+        }
+    }
+    Ok(runs)
+}
+
+/// Cherry-pick `commit` onto the current HEAD. Merge commits get `-m 1`, so
+/// the applied delta is against the first parent — the branch merged *into*,
+/// matching the graph's first-parent lane semantics.
+pub fn cherry_pick(repo: &str, commit: &str) -> Result<String, String> {
+    ensure_operand(commit)?;
+    if is_merge_commit(repo, commit)? {
+        run_git(repo, &["cherry-pick", "-m", "1", commit])
+    } else {
+        run_git(repo, &["cherry-pick", commit])
+    }
+}
+
+/// Cherry-pick several commits onto the current HEAD in order (`git
+/// cherry-pick A B C…`). Unlike a client-side loop, batched invocations apply
+/// them with proper conflict handling — and stop cleanly on the first conflict
+/// instead of leaving a half-applied mess mid-loop.
+///
+/// Merge commits need `-m 1` and non-merges reject it, so a mixed selection is
+/// split into consecutive same-kind runs, one invocation each. A conflict
+/// stops at the failing run: earlier runs stay applied (exactly like git's own
+/// sequencer stopping mid-batch), but commits after the failing run are not
+/// queued in the sequencer — continue finishes only the current run.
 pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String> {
     if commits.is_empty() {
         return Err("no commits to cherry-pick".to_string());
@@ -107,22 +157,38 @@ pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String
     for c in commits {
         ensure_operand(c)?;
     }
-    let mut args: Vec<&str> = Vec::with_capacity(commits.len() + 1);
-    args.push("cherry-pick");
-    for c in commits {
-        args.push(c.as_str());
+    let mut outputs: Vec<String> = Vec::new();
+    for (merge, run) in group_by_mergeness(repo, commits)? {
+        let mut args: Vec<&str> = Vec::with_capacity(run.len() + 3);
+        args.push("cherry-pick");
+        if merge {
+            args.extend(["-m", "1"]);
+        }
+        args.extend(run);
+        outputs.push(run_git(repo, &args)?);
     }
-    run_git(repo, &args)
+    outputs.retain(|o| !o.is_empty());
+    Ok(outputs.join("\n"))
 }
 
-/// Revert `commit`, creating a new commit that undoes it.
+/// Revert `commit`, creating a new commit that undoes it. Merge commits get
+/// `-m 1`: the revert undoes what the merge brought in relative to its first
+/// parent — the branch merged *into*, matching the graph's first-parent lane
+/// semantics.
 pub fn revert(repo: &str, commit: &str) -> Result<String, String> {
     ensure_operand(commit)?;
-    run_git(repo, &["revert", "--no-edit", commit])
+    if is_merge_commit(repo, commit)? {
+        run_git(repo, &["revert", "--no-edit", "-m", "1", commit])
+    } else {
+        run_git(repo, &["revert", "--no-edit", commit])
+    }
 }
 
-/// Revert several commits in one atomic invocation (`git revert --no-edit A B…`).
-/// Reverts in the given order; stops on the first conflict.
+/// Revert several commits in order (`git revert --no-edit A B…`); stops on the
+/// first conflict. Same split as [`cherry_pick_many`]: merge commits need
+/// `-m 1` and non-merges reject it, so mixed selections run as consecutive
+/// same-kind invocations, and a conflict leaves earlier runs applied without
+/// queueing the later ones.
 pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
     if commits.is_empty() {
         return Err("no commits to revert".to_string());
@@ -130,13 +196,19 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
     for c in commits {
         ensure_operand(c)?;
     }
-    let mut args: Vec<&str> = Vec::with_capacity(commits.len() + 2);
-    args.push("revert");
-    args.push("--no-edit");
-    for c in commits {
-        args.push(c.as_str());
+    let mut outputs: Vec<String> = Vec::new();
+    for (merge, run) in group_by_mergeness(repo, commits)? {
+        let mut args: Vec<&str> = Vec::with_capacity(run.len() + 4);
+        args.push("revert");
+        args.push("--no-edit");
+        if merge {
+            args.extend(["-m", "1"]);
+        }
+        args.extend(run);
+        outputs.push(run_git(repo, &args)?);
     }
-    run_git(repo, &args)
+    outputs.retain(|o| !o.is_empty());
+    Ok(outputs.join("\n"))
 }
 
 /// Create a lightweight tag `name` at `sha` (defaults to HEAD). Reads back as a
