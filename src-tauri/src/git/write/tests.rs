@@ -2731,6 +2731,35 @@ fn fast_forward_is_a_no_op_on_equal_tips() {
     }
 }
 
+#[test]
+fn fast_forward_branch_no_op_when_equal_tip_branch_is_checked_out_in_worktree() {
+    let repo = TempRepo::new("ff-equal-linked-worktree");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("file.txt"), b"base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    repo.git_ok(&["branch", "feature"]);
+    let linked = repo.0.with_file_name(format!(
+        "gitlane-ff-equal-linked-worktree-linked-{}",
+        std::process::id()
+    ));
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+
+    let head = rev_parse(&repo, "main");
+
+    let out = fast_forward_branch(repo.path(), "feature", "main")
+        .expect("equal-tip branch held by another worktree is already current");
+
+    assert!(out.contains("Already up to date"));
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+    let _ = std::fs::remove_dir_all(linked);
+}
+
 /// Shared fixture for the pull tests: a seed repo with one commit on `main`
 /// and a local clone of it. Returned as (root, seed, clone) — `root` owns the
 /// parent temp dir, the other two wrap its subdirectories (their Drop is a

@@ -43,6 +43,17 @@ fn ref_exists(repo: &str, reference: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve a rev to the first oid line from `git rev-parse --verify`.
+fn resolve_rev(repo: &str, reference: &str) -> Result<String, String> {
+    run_git(repo, &["rev-parse", "--verify", reference]).map(|out| {
+        out.lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    })
+}
+
 /// Create a branch `name` at `start_point` (defaults to HEAD).
 pub fn create_branch(repo: &str, name: &str, start_point: Option<&str>) -> Result<String, String> {
     ensure_operand(name)?;
@@ -122,6 +133,10 @@ pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<Str
     // option and reach command execution. Reject those operands outright.
     ensure_operand(branch)?;
     ensure_operand(target)?;
+    let branch_ref = format!("refs/heads/{branch}");
+    if resolve_rev(repo, &branch_ref)? == resolve_rev(repo, target)? {
+        return Ok("Already up to date.".to_string());
+    }
     run_git(repo, &["fetch", ".", &format!("{target}:{branch}")])
 }
 

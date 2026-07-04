@@ -1802,6 +1802,58 @@ describe("repo store — loadRepo progressive open", () => {
     expect(graphCalls).toBeGreaterThanOrEqual(1);
   });
 
+  it("opens the existing worktree instead of checking out a branch held elsewhere", async () => {
+    const realOpenWorktree = useRepo.getState().openWorktree;
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      summary: { ...summary, headBranch: null, detached: true },
+      worktrees: [
+        { name: "repo", path: "/repo", branch: null, isMain: true },
+        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+      ],
+      openWorktree,
+    });
+
+    try {
+      await useRepo.getState().checkoutBranch("develop");
+
+      expect(openWorktree).toHaveBeenCalledWith("/repo/.claude/worktrees/zen-chaum-e0e8aa");
+      expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
+    } finally {
+      useRepo.setState({ openWorktree: realOpenWorktree });
+    }
+  });
+
+  it("refreshes worktree ownership before checking out when the cached list is empty", async () => {
+    const realOpenWorktree = useRepo.getState().openWorktree;
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_worktrees") {
+        return Promise.resolve([
+          { name: "repo", path: "/repo", branch: null, isMain: true },
+          { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+        ]);
+      }
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({
+      summary: { ...summary, headBranch: null, detached: true },
+      worktrees: [],
+      openWorktree,
+    });
+
+    try {
+      await useRepo.getState().checkoutBranch("develop");
+
+      expect(invokeMock).toHaveBeenCalledWith("list_worktrees", { path: "/repo" });
+      expect(useRepo.getState().worktrees).toHaveLength(2);
+      expect(openWorktree).toHaveBeenCalledWith("/repo/.claude/worktrees/zen-chaum-e0e8aa");
+      expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
+    } finally {
+      useRepo.setState({ openWorktree: realOpenWorktree });
+    }
+  });
+
   it("does not drop a deferred watcher sync when a manual refresh is superseded", async () => {
     const slowGraph = deferred<RepoGraph>();
     let graphCallsB = 0;
