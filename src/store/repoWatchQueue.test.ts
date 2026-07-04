@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // can close over them.
 const { calls, pending, apiMock } = vi.hoisted(() => {
   const calls: string[] = [];
-  const pending: Array<{ label: string; resolve: () => void }> = [];
+  const pending: Array<{ label: string; resolve: () => void; reject: () => void }> = [];
   const deferred = (label: string) => {
     calls.push(label);
-    return new Promise<void>((resolve) => pending.push({ label, resolve }));
+    return new Promise<void>((resolve, reject) =>
+      pending.push({ label, resolve, reject: () => reject(new Error(label)) }),
+    );
   };
   return {
     calls,
@@ -88,9 +90,25 @@ describe("repoWatchQueue — per-path FIFO sequencing (GL-125)", () => {
     await tick();
     expect(calls).toEqual(["unwatch:/t4"]);
 
-    // Reject the unwatch — the wrappers swallow it and the watch still runs.
-    pending.shift()?.resolve();
+    // Actually *reject* the unwatch's IPC — the wrapper swallows it and the
+    // next link (watch) still dispatches, exercising `.then(op, op)`'s reject
+    // branch.
+    pending.shift()?.reject();
     await tick();
     expect(calls).toEqual(["unwatch:/t4", "watch:/t4"]);
+  });
+
+  it("normalizes the path so a trailing-slash reopen shares the chain and key", async () => {
+    // A close on "/t5" and a reopen on "/t5/" must sequence on one chain and
+    // reach the backend under one normalized key (GL-125 review).
+    void unwatchRepo("/t5");
+    void watchRepo("/t5/");
+    await tick();
+    // Only the unwatch has dispatched: the watch is queued behind it, not on a
+    // separate chain — and the label shows the normalized key, not "/t5/".
+    expect(calls).toEqual(["unwatch:/t5"]);
+
+    await release();
+    expect(calls).toEqual(["unwatch:/t5", "watch:/t5"]);
   });
 });

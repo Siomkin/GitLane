@@ -1,9 +1,9 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useRepo } from "@/store/repo";
+import { normalizeWatchPath } from "@/lib/paths";
 import {
   mergeRefreshScope,
-  normalizeWatchPath,
   type RefreshScope,
   type RepoChangedEvent,
 } from "./repoWatcher";

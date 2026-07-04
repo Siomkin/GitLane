@@ -1,4 +1,5 @@
 import { api } from "../lib/api";
+import { normalizeWatchPath } from "../lib/paths";
 
 /**
  * Per-path FIFO sequencing for the filesystem watch/unwatch IPC calls (GL-125).
@@ -17,31 +18,42 @@ import { api } from "../lib/api";
  * reordered regardless of how the app-level gestures interleave. Different paths
  * stay independent. Errors are swallowed (best-effort, matching the previous
  * fire-and-forget call sites) but never break the chain.
+ *
+ * The path is normalized before it keys the chain *and* before it reaches the
+ * backend, so the ordering guarantee matches the routing guarantee in
+ * `useRepoWatcher`: a `/foo` vs `/foo/` mismatch can't split one repo across two
+ * chains (reintroducing the reorder) or two backend watch keys (duplicate
+ * watches / a leaked shared-commondir subscriber).
  */
 const chains = new Map<string, Promise<void>>();
 
-function enqueue(path: string, op: () => Promise<void>): Promise<void> {
-  const prev = chains.get(path) ?? Promise.resolve();
+function enqueue(path: string, op: (path: string) => Promise<void>): Promise<void> {
+  const key = normalizeWatchPath(path);
+  const prev = chains.get(key) ?? Promise.resolve();
   // Run `op` whether the previous link settled or rejected — one failure must
-  // not stall the rest of the chain.
-  const next = prev.then(op, op);
-  chains.set(path, next);
+  // not stall the rest of the chain. The normalized key is what reaches the
+  // backend too, keeping the watch key stable across representations.
+  const next = prev.then(
+    () => op(key),
+    () => op(key),
+  );
+  chains.set(key, next);
   // Drop the entry once this link is the tail, so the map doesn't grow
   // unboundedly across a long session.
   void next.finally(() => {
-    if (chains.get(path) === next) chains.delete(path);
+    if (chains.get(key) === next) chains.delete(key);
   });
   return next;
 }
 
 /** Start (or replace) the watch for `path`, sequenced after any pending
- * watch/unwatch for the same path. */
+ * watch/unwatch for the same (normalized) path. */
 export function watchRepo(path: string): Promise<void> {
-  return enqueue(path, () => api.watchRepo(path).catch(() => {}));
+  return enqueue(path, (key) => api.watchRepo(key).catch(() => {}));
 }
 
 /** Stop the watch for `path`, sequenced after any pending watch/unwatch for the
- * same path. */
+ * same (normalized) path. */
 export function unwatchRepo(path: string): Promise<void> {
-  return enqueue(path, () => api.unwatchRepo(path).catch(() => {}));
+  return enqueue(path, (key) => api.unwatchRepo(key).catch(() => {}));
 }

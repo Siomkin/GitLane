@@ -327,9 +327,12 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
                         if event.kind.is_access() {
                             return;
                         }
-                        let Ok(subscribers) = fan_subscribers.lock() else {
-                            return;
-                        };
+                        // Recover a poisoned lock rather than silencing every
+                        // subscriber's events until restart — consistent with
+                        // `detach` (GL-125 review).
+                        let subscribers = fan_subscribers
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
                         for (sub_key, sub) in subscribers.iter() {
                             // Common-dir paths never reach `classify_path`'s
                             // ignore branch (that is workdir-only), so no repo
@@ -689,11 +692,16 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_paths, decide_emission, index_has_path_or_descendant, is_ignored,
-        resolve_change_kind, resolve_watch_roots, ChangeKind, PathImpact, WatchRoots,
+        classify_paths, decide_emission, detach, index_has_path_or_descendant, is_ignored,
+        resolve_change_kind, resolve_watch_roots, ChangeKind, CommondirSubscriber, EmitState,
+        PathImpact, SharedWatch, TabWatch, WatchRoots, Watchers,
     };
+    use notify::RecommendedWatcher;
     use std::cell::Cell;
+    use std::collections::HashMap;
     use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+    use std::time::Instant;
 
     fn paths(values: &[&str]) -> Vec<PathBuf> {
         values.iter().map(PathBuf::from).collect()
@@ -1028,6 +1036,86 @@ mod tests {
             PathImpact::Graph,
             "a sibling tab sees it through the common dir"
         );
+    }
+
+    /// A no-op `notify` watcher that watches nothing — lets the subscription
+    /// bookkeeping be tested without an `AppHandle` or real filesystem roots.
+    fn dummy_watcher() -> RecommendedWatcher {
+        notify::recommended_watcher(|_: notify::Result<notify::Event>| {}).expect("create watcher")
+    }
+
+    fn fresh_emit() -> Arc<Mutex<EmitState>> {
+        Arc::new(Mutex::new(EmitState {
+            last: Instant::now(),
+            last_kind: ChangeKind::Worktree,
+            last_graph_fingerprint: None,
+        }))
+    }
+
+    /// GL-125 refcount lifecycle: two sibling worktree tabs share one common-dir
+    /// watch; closing the first keeps it (the second still subscribes), and
+    /// closing the last tears it — and the whole `shared` entry — down.
+    #[test]
+    fn shared_commondir_watch_is_refcounted_across_sibling_tabs() {
+        let common = PathBuf::from("/main/.git");
+        let subscribers = Arc::new(Mutex::new(HashMap::new()));
+        for key in ["/wt1", "/wt2"] {
+            subscribers.lock().unwrap().insert(
+                key.to_string(),
+                CommondirSubscriber {
+                    roots: linked_worktree_roots(),
+                    fingerprint_root: PathBuf::from(key),
+                    emit: fresh_emit(),
+                },
+            );
+        }
+        let mut watchers = Watchers::default();
+        watchers.shared.insert(
+            common.clone(),
+            SharedWatch {
+                _watcher: dummy_watcher(),
+                subscribers: subscribers.clone(),
+            },
+        );
+        for key in ["/wt1", "/wt2"] {
+            watchers.tabs.insert(
+                key.to_string(),
+                TabWatch {
+                    _watcher: dummy_watcher(),
+                    commondir: Some(common.clone()),
+                },
+            );
+        }
+
+        // Closing the first sibling: the shared watch survives for the second.
+        detach(&mut watchers, "/wt1");
+        assert!(watchers.shared.contains_key(&common));
+        assert_eq!(subscribers.lock().unwrap().len(), 1);
+        assert!(!watchers.tabs.contains_key("/wt1"));
+
+        // Closing the last sibling: the shared watch (and its entry) is dropped.
+        detach(&mut watchers, "/wt2");
+        assert!(!watchers.shared.contains_key(&common));
+        assert!(watchers.tabs.is_empty());
+    }
+
+    /// A plain (non-worktree) tab has no common dir, so `detach` just drops its
+    /// private watch and never touches the shared map.
+    #[test]
+    fn detaching_a_plain_tab_leaves_shared_watches_untouched() {
+        let mut watchers = Watchers::default();
+        watchers.tabs.insert(
+            "/repo".to_string(),
+            TabWatch {
+                _watcher: dummy_watcher(),
+                commondir: None,
+            },
+        );
+        detach(&mut watchers, "/repo");
+        assert!(watchers.tabs.is_empty());
+        assert!(watchers.shared.is_empty());
+        // Detaching an unknown key is a no-op.
+        detach(&mut watchers, "/nope");
     }
 
     /// The path-resolution helper (gitfile → private gitdir + commondir), on a

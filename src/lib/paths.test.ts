@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basename, dirname, isMarkdownPath, repoLabel } from "./paths";
+import { basename, dirname, isMarkdownPath, normalizeWatchPath, repoLabel } from "./paths";
 
 describe("basename", () => {
   it("returns the last segment", () => {
@@ -54,5 +54,20 @@ describe("isMarkdownPath", () => {
     expect(isMarkdownPath("src/App.tsx")).toBe(false);
     expect(isMarkdownPath("archive.md.bak")).toBe(false);
     expect(isMarkdownPath("md")).toBe(false);
+  });
+});
+
+describe("normalizeWatchPath", () => {
+  it("leaves an ordinary path untouched", () => {
+    expect(normalizeWatchPath("/Users/me/repo")).toBe("/Users/me/repo");
+  });
+
+  it("trims a trailing separator so it routes/sequences like the un-slashed form", () => {
+    expect(normalizeWatchPath("/Users/me/repo/")).toBe("/Users/me/repo");
+    expect(normalizeWatchPath("C:\\repo\\")).toBe("C:\\repo");
+  });
+
+  it("preserves a lone filesystem-root separator", () => {
+    expect(normalizeWatchPath("/")).toBe("/");
   });
 });
