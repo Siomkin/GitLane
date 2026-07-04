@@ -252,118 +252,200 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
     }));
 
     // The tab's own watch: workdir plus its private gitdir when that lies
-    // outside the common dir. The common dir (when present) is watched once and
-    // fanned out below.
-    let private_watcher = {
-        let app = app.clone();
-        let key = key.clone();
-        let event_roots = roots.clone();
-        let event_fingerprint_root = fingerprint_root.clone();
-        let emit = emit.clone();
-        // Held open for the life of this watch so ignore checks don't re-open
-        // the repo per event (libgit2 revalidates cached ignore files by
-        // filestamp, so `.gitignore` edits are picked up). `git2::Repository`
-        // is `Send` but not `Sync`, so it stays owned by this single closure —
-        // never shared with the common-dir watcher (whose paths never consult
-        // ignore rules) — and never crosses the async command boundary.
-        let ignore_repo = git2::Repository::discover(&fingerprint_root).ok();
-        let mut watcher =
-            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                let Ok(event) = res else { return };
+    // outside the common dir. Built before touching the registry, so its own
+    // failure returns with the previous watch (if any) untouched.
+    let private_watcher = build_private_watcher(app, &key, &roots, &fingerprint_root, &emit)?;
+
+    // Install atomically: stage the (fallible) shared common-dir registration
+    // before detaching the old watch, then commit. `spawn_commondir_watcher`
+    // carries the app handle; the ordering/registry logic lives in
+    // `install_watch`, which is app-free and unit-testable.
+    install_watch(
+        state,
+        key,
+        &roots,
+        &fingerprint_root,
+        emit,
+        private_watcher,
+        |common, subscribers| spawn_commondir_watcher(app, common, subscribers),
+    )
+}
+
+/// Build the tab's private watcher (workdir + private gitdir when outside the
+/// common dir). Fallible: a `notify` create/registration error propagates.
+fn build_private_watcher(
+    app: &AppHandle,
+    key: &str,
+    roots: &WatchRoots,
+    fingerprint_root: &Path,
+    emit: &Arc<Mutex<EmitState>>,
+) -> Result<RecommendedWatcher, String> {
+    let app = app.clone();
+    let key = key.to_string();
+    let event_roots = roots.clone();
+    let event_fingerprint_root = fingerprint_root.to_path_buf();
+    let emit = emit.clone();
+    // Held open for the life of this watch so ignore checks don't re-open the
+    // repo per event (libgit2 revalidates cached ignore files by filestamp, so
+    // `.gitignore` edits are picked up). `git2::Repository` is `Send` but not
+    // `Sync`, so it stays owned by this single closure — never shared with the
+    // common-dir watcher (whose paths never consult ignore rules) — and never
+    // crosses the async command boundary.
+    let ignore_repo = git2::Repository::discover(fingerprint_root).ok();
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(event) = res else { return };
+        handle_event(
+            &app,
+            &key,
+            &event_roots,
+            &event_fingerprint_root,
+            |relative| is_ignored(ignore_repo.as_ref(), relative),
+            &emit,
+            &event,
+        );
+    })
+    .map_err(|e| format!("failed to create watcher: {e}"))?;
+    for target in roots.private_targets() {
+        watcher
+            .watch(target, RecursiveMode::Recursive)
+            .map_err(|e| format!("failed to watch {}: {e}", target.display()))?;
+    }
+    Ok(watcher)
+}
+
+/// Create the shared common-dir watcher: a single recursive watch that fans each
+/// event out to every current subscriber, classified from that subscriber's own
+/// perspective. Fallible: a `notify` create/registration error propagates.
+fn spawn_commondir_watcher(
+    app: &AppHandle,
+    common: &Path,
+    subscribers: Arc<Mutex<HashMap<String, CommondirSubscriber>>>,
+) -> Result<RecommendedWatcher, String> {
+    let fan_app = app.clone();
+    let fan_subscribers = subscribers;
+    let mut watcher =
+        notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let Ok(event) = res else { return };
+            if event.kind.is_access() {
+                return;
+            }
+            // Recover a poisoned lock rather than silencing every subscriber's
+            // events until restart — consistent with `detach` (GL-125 review).
+            let subscribers = fan_subscribers
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            for (sub_key, sub) in subscribers.iter() {
+                // Common-dir paths never reach `classify_path`'s ignore branch
+                // (that is workdir-only), so no repo handle is needed here.
                 handle_event(
-                    &app,
-                    &key,
-                    &event_roots,
-                    &event_fingerprint_root,
-                    |relative| is_ignored(ignore_repo.as_ref(), relative),
-                    &emit,
+                    &fan_app,
+                    sub_key,
+                    &sub.roots,
+                    &sub.fingerprint_root,
+                    |_| false,
+                    &sub.emit,
                     &event,
                 );
-            })
-            .map_err(|e| format!("failed to create watcher: {e}"))?;
-        for target in roots.private_targets() {
-            watcher
-                .watch(target, RecursiveMode::Recursive)
-                .map_err(|e| format!("failed to watch {}: {e}", target.display()))?;
-        }
-        watcher
-    };
+            }
+        })
+        .map_err(|e| format!("failed to create watcher: {e}"))?;
+    watcher
+        .watch(common, RecursiveMode::Recursive)
+        .map_err(|e| format!("failed to watch {}: {e}", common.display()))?;
+    Ok(watcher)
+}
 
-    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    // Re-inserting a key (reload / in-place re-key) drops the old private watch
-    // and unsubscribes it from any shared common-dir watch before re-adding.
-    detach(&mut guard, &key);
+/// This tab's subscription to a shared common-dir watch.
+fn make_subscriber(
+    roots: &WatchRoots,
+    fingerprint_root: &Path,
+    emit: &Arc<Mutex<EmitState>>,
+) -> CommondirSubscriber {
+    CommondirSubscriber {
+        roots: roots.clone(),
+        fingerprint_root: fingerprint_root.to_path_buf(),
+        emit: emit.clone(),
+    }
+}
 
+/// Register (or replace) a tab's watch in the registry, given its already-built
+/// private watcher and a factory for the shared common-dir watch.
+///
+/// Ordering is the crux (GL-125 review): the previously-registered watch for
+/// `key` must not be dropped until its replacement is fully in place. So every
+/// fallible step — building a fresh shared common-dir watch when one is needed —
+/// runs *before* `detach`, and once past `detach` there is no early return. A
+/// notify failure therefore leaves the previous watch intact (the caller's
+/// best-effort `watchRepo` swallows the error and the tab stays watched) rather
+/// than stranding the tab unwatched for the session.
+fn install_watch(
+    state: &WatcherState,
+    key: String,
+    roots: &WatchRoots,
+    fingerprint_root: &Path,
+    emit: Arc<Mutex<EmitState>>,
+    private_watcher: RecommendedWatcher,
+    spawn_shared: impl FnOnce(
+        &Path,
+        Arc<Mutex<HashMap<String, CommondirSubscriber>>>,
+    ) -> Result<RecommendedWatcher, String>,
+) -> Result<(), String> {
     let commondir = roots.commondir.clone();
-    if let Some(common) = &commondir {
-        let subscriber = CommondirSubscriber {
-            roots: roots.clone(),
-            fingerprint_root: fingerprint_root.clone(),
-            emit: emit.clone(),
-        };
-        match guard.shared.get(common) {
-            // A sibling worktree already watches this common dir — just join it.
-            Some(shared) => {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+
+    // Stage the only fallible registry step — creating a fresh shared watch —
+    // before detaching the old watch. A shared watch is only needed anew when it
+    // won't survive detaching this key (no other tab subscribes to it);
+    // otherwise this tab just joins the surviving one, which is infallible.
+    let staged_shared = match &commondir {
+        Some(common) => {
+            let survives = guard.shared.get(common).is_some_and(|shared| {
                 shared
                     .subscribers
                     .lock()
-                    .map_err(|e| e.to_string())?
-                    .insert(key.clone(), subscriber);
-            }
-            // First tab on this common dir — create the shared watch and fan its
-            // events out to every current subscriber, each classified from its
-            // own perspective.
-            None => {
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .keys()
+                    .any(|other| other != &key)
+            });
+            if survives {
+                None
+            } else {
                 let subscribers = Arc::new(Mutex::new(HashMap::new()));
                 subscribers
                     .lock()
-                    .map_err(|e| e.to_string())?
-                    .insert(key.clone(), subscriber);
-                let fan_subscribers = subscribers.clone();
-                let fan_app = app.clone();
-                let mut watcher = notify::recommended_watcher(
-                    move |res: notify::Result<notify::Event>| {
-                        let Ok(event) = res else { return };
-                        if event.kind.is_access() {
-                            return;
-                        }
-                        // Recover a poisoned lock rather than silencing every
-                        // subscriber's events until restart — consistent with
-                        // `detach` (GL-125 review).
-                        let subscribers = fan_subscribers
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        for (sub_key, sub) in subscribers.iter() {
-                            // Common-dir paths never reach `classify_path`'s
-                            // ignore branch (that is workdir-only), so no repo
-                            // handle is needed for the fan-out.
-                            handle_event(
-                                &fan_app,
-                                sub_key,
-                                &sub.roots,
-                                &sub.fingerprint_root,
-                                |_| false,
-                                &sub.emit,
-                                &event,
-                            );
-                        }
-                    },
-                )
-                .map_err(|e| format!("failed to create watcher: {e}"))?;
-                watcher
-                    .watch(common, RecursiveMode::Recursive)
-                    .map_err(|e| format!("failed to watch {}: {e}", common.display()))?;
-                guard.shared.insert(
-                    common.clone(),
-                    SharedWatch {
-                        _watcher: watcher,
-                        subscribers,
-                    },
-                );
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(key.clone(), make_subscriber(roots, fingerprint_root, &emit));
+                // Fallible — a failure here returns with the old watch intact.
+                let watcher = spawn_shared(common, subscribers.clone())?;
+                Some(SharedWatch {
+                    _watcher: watcher,
+                    subscribers,
+                })
+            }
+        }
+        None => None,
+    };
+
+    // Everything fallible has succeeded — commit. No early return past here, so
+    // the old watch can never be dropped without its replacement in place.
+    detach(&mut guard, &key);
+    if let Some(common) = &commondir {
+        match staged_shared {
+            Some(shared) => {
+                guard.shared.insert(common.clone(), shared);
+            }
+            // The existing shared watch survived detach; join it.
+            None => {
+                if let Some(shared) = guard.shared.get(common) {
+                    shared
+                        .subscribers
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .insert(key.clone(), make_subscriber(roots, fingerprint_root, &emit));
+                }
             }
         }
     }
-
     guard.tabs.insert(
         key,
         TabWatch {
@@ -692,9 +774,9 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_paths, decide_emission, detach, index_has_path_or_descendant, is_ignored,
-        resolve_change_kind, resolve_watch_roots, ChangeKind, CommondirSubscriber, EmitState,
-        PathImpact, SharedWatch, TabWatch, WatchRoots, Watchers,
+        classify_paths, decide_emission, detach, index_has_path_or_descendant, install_watch,
+        is_ignored, resolve_change_kind, resolve_watch_roots, ChangeKind, CommondirSubscriber,
+        EmitState, PathImpact, SharedWatch, TabWatch, WatchRoots, WatcherState, Watchers,
     };
     use notify::RecommendedWatcher;
     use std::cell::Cell;
@@ -1097,6 +1179,120 @@ mod tests {
         detach(&mut watchers, "/wt2");
         assert!(!watchers.shared.contains_key(&common));
         assert!(watchers.tabs.is_empty());
+    }
+
+    /// Seed a `WatcherState` with an existing watch for `key` on `common`, as its
+    /// sole subscriber — the reload-of-a-lone-worktree case, where re-watching
+    /// must register a *fresh* shared watch (the old one is torn down by detach).
+    fn seed_lone_worktree_watch(state: &WatcherState, key: &str, common: &Path) {
+        let mut guard = state.0.lock().unwrap();
+        let subscribers = Arc::new(Mutex::new(HashMap::new()));
+        subscribers.lock().unwrap().insert(
+            key.to_string(),
+            CommondirSubscriber {
+                roots: linked_worktree_roots(),
+                fingerprint_root: PathBuf::from(key),
+                emit: fresh_emit(),
+            },
+        );
+        guard.shared.insert(
+            common.to_path_buf(),
+            SharedWatch {
+                _watcher: dummy_watcher(),
+                subscribers,
+            },
+        );
+        guard.tabs.insert(
+            key.to_string(),
+            TabWatch {
+                _watcher: dummy_watcher(),
+                commondir: Some(common.to_path_buf()),
+            },
+        );
+    }
+
+    /// GL-125 review — the ordering fix: if the replacement shared common-dir
+    /// registration fails while re-watching an already-watched worktree, the
+    /// previous watch must survive (the tab stays watched) rather than being torn
+    /// down first and left unwatched for the session.
+    #[test]
+    fn failed_shared_watch_registration_keeps_the_previous_watch() {
+        let roots = linked_worktree_roots();
+        let common = roots.commondir.clone().unwrap();
+        let key = "/wt".to_string();
+        let state = WatcherState::default();
+        seed_lone_worktree_watch(&state, &key, &common);
+
+        // Re-watch the same worktree, but the shared registration fails.
+        let result = install_watch(
+            &state,
+            key.clone(),
+            &roots,
+            Path::new("/wt"),
+            fresh_emit(),
+            dummy_watcher(),
+            |_common, _subs| Err::<RecommendedWatcher, String>("boom".into()),
+        );
+
+        assert!(result.is_err(), "a failed shared registration must surface");
+        let guard = state.0.lock().unwrap();
+        assert!(
+            guard.tabs.contains_key(&key),
+            "the previous private watch must survive a failed re-watch"
+        );
+        assert!(
+            guard.shared.contains_key(&common),
+            "the previous shared watch must survive"
+        );
+        assert_eq!(
+            guard
+                .shared
+                .get(&common)
+                .unwrap()
+                .subscribers
+                .lock()
+                .unwrap()
+                .len(),
+            1,
+            "the sole subscriber is still registered"
+        );
+    }
+
+    /// The success path of the same reload: the fresh shared watch swaps in and
+    /// the tab stays registered.
+    #[test]
+    fn successful_rewatch_swaps_the_shared_watch_in_place() {
+        let roots = linked_worktree_roots();
+        let common = roots.commondir.clone().unwrap();
+        let key = "/wt".to_string();
+        let state = WatcherState::default();
+        seed_lone_worktree_watch(&state, &key, &common);
+
+        let result = install_watch(
+            &state,
+            key.clone(),
+            &roots,
+            Path::new("/wt"),
+            fresh_emit(),
+            dummy_watcher(),
+            |_common, _subs| Ok(dummy_watcher()),
+        );
+
+        assert!(result.is_ok());
+        let guard = state.0.lock().unwrap();
+        assert!(guard.tabs.contains_key(&key));
+        assert!(guard.shared.contains_key(&common));
+        assert_eq!(
+            guard
+                .shared
+                .get(&common)
+                .unwrap()
+                .subscribers
+                .lock()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     /// A plain (non-worktree) tab has no common dir, so `detach` just drops its
