@@ -101,7 +101,9 @@ export const ActionBar = ({
 
   const currentBranch = summary?.detached
     ? `detached @ ${summary.headOid?.slice(0, 7) ?? "?"}`
-    : summary?.headBranch ?? "No branch";
+    : summary?.unborn
+      ? "No commits yet"
+      : summary?.headBranch ?? "No branch";
   const currentSync = currentBranchSyncView(summary, branches);
   // Open PR whose head is the checked-out branch — surfaced as a clickable badge.
   const openPr = summary?.detached

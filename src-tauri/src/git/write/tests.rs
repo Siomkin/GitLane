@@ -5,12 +5,13 @@ use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, cherry_pick, cherry_pick_many,
     clear_repo_identity, continue_operation, create_tag, delete_branch_with_worktree,
-    delete_remote_tag, discard_all, fast_forward, fast_forward_branch, fetch,
+    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch, fetch,
     mark_conflict_resolved, merge, move_branch_to_worktree, preview_delete_branch,
     preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
     publish_branch, reconflict_file, reflog_entries, remove_worktree, resolve_conflict_file,
     revert, revert_many, set_remote_url, set_repo_identity, set_upstream, skip_operation,
-    stage_files, stash_apply, stash_branch, stash_drop, stash_list, stash_pop, worktrees,
+    stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list, stash_pop,
+    unstage_all, unstage_file, unstage_files, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -2886,4 +2887,106 @@ fn stash_branch_by_oid_still_drops_the_stash() {
         stash_list(repo.path()).expect("list after branch").is_empty(),
         "stash branch must drop the consumed stash"
     );
+}
+
+/// Index entries (`git ls-files`) as owned lines, for asserting what is staged.
+fn index_entries(repo: &TempRepo) -> Vec<String> {
+    let out = repo.git(&["ls-files"]);
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn unstage_works_on_an_unborn_repo() {
+    // GL-115 Bug 1: with no commits yet, `restore --staged` and `reset HEAD`
+    // die with "could not resolve 'HEAD'" — the very first stage → unstage in
+    // a fresh `git init` repo must still work, via the index-only fallbacks.
+    let repo = TempRepo::new("unborn-unstage");
+    repo.git_ok(&["init", "-q"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    std::fs::write(repo.0.join("b.txt"), "b\n").unwrap();
+    stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage on unborn HEAD");
+
+    unstage_file(repo.path(), "a.txt").expect("unstage one file on unborn HEAD");
+    assert_eq!(index_entries(&repo), ["b.txt"], "only a.txt leaves the index");
+    assert!(repo.0.join("a.txt").exists(), "unstage must not touch the worktree copy");
+
+    // Re-stage, then edit the worktree copy so index ≠ worktree — the unborn
+    // fallback (`rm --cached`) must still unstage without tripping git's
+    // staged-content safety check.
+    stage_file(repo.path(), "a.txt").expect("re-stage a.txt");
+    std::fs::write(repo.0.join("a.txt"), "a edited\n").unwrap();
+    unstage_files(repo.path(), &["a.txt".into(), "b.txt".into()])
+        .expect("unstage several files on unborn HEAD");
+    assert!(index_entries(&repo).is_empty(), "index is empty after unstaging both");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "a edited\n",
+        "worktree edit survives unstaging"
+    );
+
+    stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage again");
+    unstage_all(repo.path()).expect("unstage all on unborn HEAD");
+    assert!(index_entries(&repo).is_empty(), "index is empty after unstage-all");
+    assert!(repo.0.join("a.txt").exists() && repo.0.join("b.txt").exists());
+}
+
+#[test]
+fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
+    // GL-115 Bug 2: `git clean` only removes *untracked* files, so discard with
+    // staged=false used to exit 0 and silently leave a staged-new file in both
+    // index and worktree. The index — not the caller's flag — decides.
+    let repo = TempRepo::new("discard-staged-new");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+
+    std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
+    repo.git_ok(&["add", "staged_new.txt"]);
+    std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
+
+    discard_file(repo.path(), "staged_new.txt", false).expect("discard staged-new file");
+    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
+    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+
+    // The genuinely untracked path still goes through `git clean`.
+    discard_file(repo.path(), "untracked.txt", false).expect("discard untracked file");
+    assert!(!repo.0.join("untracked.txt").exists(), "untracked file is cleaned");
+}
+
+#[test]
+fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
+    // GL-115 Bug 2 regression: the new `git rm -f` path must behave like the
+    // old restore-then-clean flow for the staged=true case on a repo that does
+    // have history — clearing the staged-new file from index and worktree.
+    let repo = TempRepo::new("discard-staged-true-born");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+
+    std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
+    repo.git_ok(&["add", "staged_new.txt"]);
+
+    discard_file(repo.path(), "staged_new.txt", true).expect("discard staged=true new file");
+    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
+    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+}
+
+#[test]
+fn discard_staged_file_works_on_an_unborn_repo() {
+    // GL-115 Bug 1 interplay: discard(staged=true) used to open with
+    // `restore --staged`, which dies on an unborn HEAD. The `git rm -f` path
+    // needs no HEAD at all.
+    let repo = TempRepo::new("unborn-discard");
+    repo.git_ok(&["init", "-q"]);
+    std::fs::write(repo.0.join("new.txt"), "new\n").unwrap();
+    stage_file(repo.path(), "new.txt").expect("stage on unborn HEAD");
+
+    discard_file(repo.path(), "new.txt", true).expect("discard staged file on unborn HEAD");
+    assert!(index_entries(&repo).is_empty(), "file leaves the index");
+    assert!(!repo.0.join("new.txt").exists(), "file leaves the worktree");
 }

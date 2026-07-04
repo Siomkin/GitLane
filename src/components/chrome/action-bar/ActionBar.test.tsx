@@ -209,6 +209,20 @@ describe("ActionBar layout order", () => {
     expect(screen.getByTitle(/Pull unavailable. Detached HEAD/)).toBeDisabled();
     expect(screen.getByTitle(/Push unavailable. Detached HEAD/)).toBeDisabled();
   });
+
+  it("labels an unborn repo 'No commits yet' rather than 'No branch'", () => {
+    // Fresh `git init`: the backend sends unborn=true with headBranch=null
+    // (GL-115). The toolbar must distinguish it from a null-branch read.
+    useRepo.setState({
+      summary: { ...SUMMARY, headBranch: null, unborn: true },
+      branches: [],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(screen.getByText("No commits yet")).toBeInTheDocument();
+    expect(screen.queryByText("No branch")).not.toBeInTheDocument();
+  });
 });
 
 describe("ActionBar worktree indicator", () => {
