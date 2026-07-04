@@ -1,6 +1,7 @@
 import { api, type FileChange, type RepoSummary } from "../lib/api";
 import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "../lib/advancedRepoState";
 import { splitCommitMessage } from "../lib/commitMessage";
+import { findOtherBranchWorktree, type WorktreeRef } from "../lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "../lib/mergeOutcome";
 import { useAccounts } from "./accounts";
 import { takePendingRefresh } from "./repoRequests";
@@ -135,6 +136,27 @@ function guardedPathMessage(get: RepoGet, path: string): string | null {
   );
 }
 
+async function findCheckoutWorktree(
+  set: RepoSet,
+  get: RepoGet,
+  summary: RepoSummary,
+  branch: string,
+): Promise<WorktreeRef | null> {
+  const currentWorkdir = summary.workdir ?? summary.path;
+  const cached = findOtherBranchWorktree(get().worktrees, branch, currentWorkdir);
+  if (cached) return cached;
+
+  // On checkout, a cached miss is not enough: the branch may be held by a
+  // worktree that is still loading, so probe once before falling through to git.
+  const worktrees = await api.listWorktrees(summary.path).catch(() => null);
+  if (!worktrees) return null;
+  if (get().summary?.path !== summary.path) {
+    throw new Error("Repository changed while checking worktrees. Try again.");
+  }
+  set({ worktrees });
+  return findOtherBranchWorktree(worktrees, branch, currentWorkdir);
+}
+
 export function createRepoWriteActions(
   set: RepoSet,
   get: RepoGet,
@@ -194,6 +216,11 @@ export function createRepoWriteActions(
     checkoutBranch: async (name) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
+      const existingWorktree = await findCheckoutWorktree(set, get, summary, name);
+      if (existingWorktree) {
+        await get().openWorktree(existingWorktree.path);
+        return `Opened ${name} worktree`;
+      }
       set({ loading: true, error: null });
       try {
         await api.checkout(summary.path, name);

@@ -43,6 +43,24 @@ fn ref_exists(repo: &str, reference: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve a rev to the oid printed by `git rev-parse --verify`. `--verify`
+/// exits non-zero for an unresolvable ref, so `run_git` already yields `Err`
+/// before we get here; an *empty* success line is therefore a broken invariant,
+/// not "no match", and we surface it rather than let two empty strings compare
+/// equal and masquerade as an already-up-to-date no-op in `fast_forward_branch`.
+fn resolve_rev(repo: &str, reference: &str) -> Result<String, String> {
+    let oid = run_git(repo, &["rev-parse", "--verify", reference])?
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if oid.is_empty() {
+        return Err(format!("could not resolve {reference}"));
+    }
+    Ok(oid)
+}
+
 /// Create a branch `name` at `start_point` (defaults to HEAD).
 pub fn create_branch(repo: &str, name: &str, start_point: Option<&str>) -> Result<String, String> {
     ensure_operand(name)?;
@@ -122,6 +140,10 @@ pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<Str
     // option and reach command execution. Reject those operands outright.
     ensure_operand(branch)?;
     ensure_operand(target)?;
+    let branch_ref = format!("refs/heads/{branch}");
+    if resolve_rev(repo, &branch_ref)? == resolve_rev(repo, target)? {
+        return Ok("Already up to date.".to_string());
+    }
     run_git(repo, &["fetch", ".", &format!("{target}:{branch}")])
 }
 
