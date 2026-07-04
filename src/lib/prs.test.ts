@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyCommitSignatures, commitUrl, detailToPr } from "./prs";
+import { commitUrl, detailToPr, uiCommits } from "./prs";
 import type { PrComment, PullRequestDetail } from "./api";
 
 const ISO = "2026-01-01T00:00:00Z";
@@ -71,6 +71,7 @@ describe("detailToPr commits", () => {
             authoredDate: ISO,
             authorName: "Alex Smith",
             authorLogin: "alexsmith",
+            verified: false,
           },
         ],
       }),
@@ -89,7 +90,7 @@ describe("detailToPr commits", () => {
     const pr = detailToPr(
       makeDetail({
         commits: [
-          { oid: "abc1234def", headline: "chore: tidy", authoredDate: ISO, authorName: "", authorLogin: "" },
+          { oid: "abc1234def", headline: "chore: tidy", authoredDate: ISO, authorName: "", authorLogin: "", verified: false },
         ],
       }),
     );
@@ -105,7 +106,7 @@ describe("detailToPr commits", () => {
       makeDetail({
         url: "https://github.com/acme/widgets/pull/42",
         commits: [
-          { oid: "deadbeef", headline: "x", authoredDate: ISO, authorName: "A", authorLogin: "a" },
+          { oid: "deadbeef", headline: "x", authoredDate: ISO, authorName: "A", authorLogin: "a", verified: false },
         ],
       }),
     );
@@ -134,31 +135,24 @@ describe("commitUrl", () => {
   });
 });
 
-describe("applyCommitSignatures", () => {
-  const base = detailToPr(
-    makeDetail({
-      url: "https://github.com/acme/widgets/pull/42",
-      commits: [
-        { oid: "signed", headline: "a", authoredDate: ISO, authorName: "A", authorLogin: "a" },
-        { oid: "unsigned", headline: "b", authoredDate: ISO, authorName: "B", authorLogin: "b" },
-      ],
-    }),
-  ).commits;
+describe("uiCommits", () => {
+  const prUrl = "https://github.com/acme/widgets/pull/42";
 
-  it("flips verified true only for oids GitHub reports as valid", () => {
-    const merged = applyCommitSignatures(base, [
-      { oid: "signed", verified: true },
-      { oid: "unsigned", verified: false },
-    ]);
-    expect(merged.map((c) => c.verified)).toEqual([true, false]);
-    // Order preserved, other fields intact.
-    expect(merged.map((c) => c.oid)).toEqual(["signed", "unsigned"]);
+  it("maps the full commit list, carrying each commit's authoritative verified flag", () => {
+    const rows = uiCommits(
+      [
+        { oid: "signed", headline: "a", authoredDate: ISO, authorName: "A", authorLogin: "a", verified: true },
+        { oid: "unsigned", headline: "b", authoredDate: ISO, authorName: "B", authorLogin: "b", verified: false },
+      ],
+      prUrl,
+    );
+    expect(rows.map((c) => c.verified)).toEqual([true, false]);
+    // Order preserved; per-commit url derived from the PR url.
+    expect(rows.map((c) => c.oid)).toEqual(["signed", "unsigned"]);
+    expect(rows[0].url).toBe("https://github.com/acme/widgets/commit/signed");
   });
 
-  it("leaves commits unverified when no signature is returned for them", () => {
-    const merged = applyCommitSignatures(base, []);
-    expect(merged.every((c) => !c.verified)).toBe(true);
-    // Unchanged rows are returned by reference (no needless re-render churn).
-    expect(merged[0]).toBe(base[0]);
+  it("returns an empty list for an empty commit set", () => {
+    expect(uiCommits([], prUrl)).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ import {
   fileDiffSchema,
   githubAccountSchema,
   prCheckSchema,
-  prCommitSignatureSchema,
+  prCommitSchema,
   pullRequestDetailSchema,
   pullRequestSummarySchema,
   reviewThreadSchema,
@@ -74,13 +74,6 @@ export interface PrComment {
   createdAt: string; // ISO-8601
 }
 
-/** Per-commit signature verification (GraphQL), loaded lazily for the Commits
- * tab. `verified` is GitHub's own `signature.isValid` — never inferred. */
-export interface PrCommitSignature {
-  oid: string;
-  verified: boolean;
-}
-
 /** A commit included in a PR, sourced from GitHub (the authoritative set). */
 export interface PrCommit {
   /** Full commit SHA. */
@@ -92,6 +85,10 @@ export interface PrCommit {
   authorName: string;
   /** GitHub login; "" when unknown. */
   authorLogin: string;
+  /** GitHub's own `signature.isValid` — never inferred. `false` for unsigned
+   * commits and for the fast-path `gh pr view` list until the paginated commit
+   * read replaces it. */
+  verified: boolean;
 }
 
 /** An inline review thread (file/line-anchored comments + resolve state). */
@@ -194,16 +191,17 @@ export const githubApi = {
       "pull_request_checks",
     ),
 
-  /** Per-commit signature verification (GraphQL), loaded lazily on demand. */
-  pullRequestCommitSignatures: async (
+  /** The full, verified PR commit list (GraphQL, paginated), loaded lazily on
+   * demand — supersedes the capped `commits` array on the PR detail. */
+  pullRequestCommits: async (
     path: string,
     number: number,
     account?: GithubAccountRef | null,
-  ): Promise<PrCommitSignature[]> =>
+  ): Promise<PrCommit[]> =>
     parse(
-      z.array(prCommitSignatureSchema),
-      await invoke("pull_request_commit_signatures", { path, number, account: account ?? null }),
-      "pull_request_commit_signatures",
+      z.array(prCommitSchema),
+      await invoke("pull_request_commits", { path, number, account: account ?? null }),
+      "pull_request_commits",
     ),
 
   /** Full unified diff of a PR (parsed server-side), loaded lazily on demand. */

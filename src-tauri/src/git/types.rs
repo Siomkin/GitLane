@@ -808,16 +808,10 @@ pub struct PrCommit {
     pub author_name: String,
     /// Author GitHub login; empty when GitHub returns no author.
     pub author_login: String,
-}
-
-/// Per-commit signature verification for a PR, fetched lazily via GraphQL (the
-/// `gh pr view` projection carries no signature data). `verified` is GitHub's
-/// own `signature.isValid` — reliable structured data, never inferred locally.
-/// Commits without a signature are simply absent / `verified: false`.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PrCommitSignature {
-    pub oid: String,
+    /// GitHub's own `signature.isValid` — reliable structured data, never
+    /// inferred locally. `false` for unsigned commits, and for the fast-path
+    /// commits from `gh pr view` (which carries no signature data) until the
+    /// paginated GraphQL commit read replaces them.
     pub verified: bool,
 }
 

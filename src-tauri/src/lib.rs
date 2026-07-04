@@ -20,7 +20,7 @@ use git::types::{
     FileChange,
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
     HandoffProgressEvent, OperationStatus,
-    PrCheck, PrCommitSignature, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
+    PrCheck, PrCommit, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
     RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
 };
@@ -871,15 +871,16 @@ async fn pull_request_checks(
     blocking(move || git::github::pr_checks(&path, number, account.as_ref())).await
 }
 
-/// Per-commit signature verification for a PR (GraphQL), loaded lazily when the
-/// Commits tab is opened so `pull_request_detail` stays a single fast call.
+/// The full, verified PR commit list (GraphQL, paginated), loaded lazily when the
+/// Commits tab is opened so `pull_request_detail` stays a single fast call. This
+/// supersedes the capped `gh pr view` commit projection carried on the detail.
 #[tauri::command]
-async fn pull_request_commit_signatures(
+async fn pull_request_commits(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<PrCommitSignature>, String> {
-    blocking(move || git::github::commit_signatures(&path, number, account.as_ref())).await
+) -> Result<Vec<PrCommit>, String> {
+    blocking(move || git::github::pr_commits(&path, number, account.as_ref())).await
 }
 
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
@@ -1357,7 +1358,7 @@ pub fn run() {
             list_pull_requests,
             pull_request_detail,
             pull_request_checks,
-            pull_request_commit_signatures,
+            pull_request_commits,
             pull_request_diff,
             pull_request_review_threads,
             resolve_review_thread,

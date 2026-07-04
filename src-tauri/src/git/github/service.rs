@@ -6,7 +6,7 @@
 //! below this boundary.
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitSignature, PullRequestDetail,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
     PullRequestSummary, ReviewThread,
 };
 use crate::git::{forge, forge::ForgeKind};
@@ -32,11 +32,8 @@ pub trait GithubProvider {
     fn pr_detail(&self, ctx: &GithubContext, number: u64)
         -> Result<PullRequestDetail, GithubError>;
     fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError>;
-    fn commit_signatures(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-    ) -> Result<Vec<PrCommitSignature>, GithubError>;
+    fn pr_commits(&self, ctx: &GithubContext, number: u64)
+        -> Result<Vec<PrCommit>, GithubError>;
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError>;
     fn review_threads(
         &self,
@@ -149,14 +146,14 @@ impl GithubService {
         provider.pr_checks(&ctx, number)
     }
 
-    pub fn commit_signatures(
+    pub fn pr_commits(
         &self,
         workdir: &str,
         number: u64,
         account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<PrCommitSignature>, GithubError> {
+    ) -> Result<Vec<PrCommit>, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
-        provider.commit_signatures(&ctx, number)
+        provider.pr_commits(&ctx, number)
     }
 
     pub fn pr_diff(

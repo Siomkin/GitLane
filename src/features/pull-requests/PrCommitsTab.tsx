@@ -12,12 +12,12 @@ import { useUi } from "../../store/ui";
 import { GitHubIcon } from "@/components/ui/icons";
 
 export function PrCommitsTab({ pr }: { pr: PullRequest }) {
-  const loadPrCommitSignatures = usePulls((s) => s.loadPrCommitSignatures);
+  const loadPrCommits = usePulls((s) => s.loadPrCommits);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
 
   useEffect(() => {
-    void loadPrCommitSignatures(pr.num);
-  }, [pr.num, prsFetchedAt, loadPrCommitSignatures]);
+    void loadPrCommits(pr.num);
+  }, [pr.num, prsFetchedAt, loadPrCommits]);
 
   if (pr.commits.length === 0) {
     return (
