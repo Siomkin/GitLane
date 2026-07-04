@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { FileChange } from "../../lib/api";
+import { emptyAdvancedState } from "../../lib/advancedRepoState";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { FileContextMenu } from "../../components/chrome/overlays";
@@ -11,7 +12,7 @@ const staged = (path: string): FileChange => ({ path, status: "M", add: 1, del: 
 
 beforeEach(() => {
   // Reset the git-domain slice this component reads to a clean, empty tree.
-  useRepo.setState({ changes: { staged: [], unstaged: [], conflicted: [] }, selectedFile: null });
+  useRepo.setState({ changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState }, selectedFile: null });
   useUi.setState({ fileMenu: null });
 });
 
@@ -32,7 +33,7 @@ describe("WorkingInspector", () => {
     // selectedFile already points at the staged file, so the keep-selection
     // effect is a no-op (no async selectFile → no IPC needed here).
     useRepo.setState({
-      changes: { staged: [staged("a.ts")], unstaged: [], conflicted: [] },
+      changes: { staged: [staged("a.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "a.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -65,7 +66,7 @@ describe("WorkingInspector", () => {
 
   it("right-clicking an unstaged row opens the file context menu for that path", () => {
     useRepo.setState({
-      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [] },
+      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -77,7 +78,7 @@ describe("WorkingInspector", () => {
 
   it("right-clicking a staged row marks the menu as staged", () => {
     useRepo.setState({
-      changes: { staged: [staged("src/b.ts")], unstaged: [], conflicted: [] },
+      changes: { staged: [staged("src/b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/b.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -89,7 +90,7 @@ describe("WorkingInspector", () => {
     // A rename's FileChange carries only the new path, so discard would half-undo
     // it — the menu opens copy-only (no discard target).
     useRepo.setState({
-      changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0, binary: false }], unstaged: [], conflicted: [] },
+      changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0, binary: false }], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/new.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -102,7 +103,7 @@ describe("WorkingInspector", () => {
   it("groups working files into a tree and stages a whole folder from the roll-up", async () => {
     const stagePaths = vi.fn();
     useRepo.setState({
-      changes: { staged: [], unstaged: [staged("src/a.ts"), staged("src/b.ts")], conflicted: [] },
+      changes: { staged: [], unstaged: [staged("src/a.ts"), staged("src/b.ts")], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
       stagePaths,
     });
@@ -126,7 +127,7 @@ describe("WorkingInspector", () => {
     // Tree view must group them — GL-28 review follow-up.
     const conflict = (path: string): FileChange => ({ path, status: "C", add: 0, del: 0, binary: false });
     useRepo.setState({
-      changes: { staged: [], unstaged: [], conflicted: [conflict("src/a.ts"), conflict("src/b.ts")] },
+      changes: { staged: [], unstaged: [], conflicted: [conflict("src/a.ts"), conflict("src/b.ts")], advanced: emptyAdvancedState },
       selectedFile: null,
     });
     const user = userEvent.setup();
@@ -146,7 +147,7 @@ describe("WorkingInspector", () => {
 
   it("rings the row whose context menu is open", () => {
     useRepo.setState({
-      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [] },
+      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);

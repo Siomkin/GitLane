@@ -40,8 +40,9 @@ export interface GraphEdge {
   fromLane: number;
   toRow: number;
   toLane: number;
-  /** Zero-based parent index on the child commit; > 0 means merge parent. */
-  parentIndex?: number;
+  /** Zero-based parent index on the child commit; > 0 means merge parent.
+   * Always present — the Rust `GraphEdge` sends it on every edge. */
+  parentIndex: number;
   color: number;
 }
 
@@ -201,6 +202,9 @@ export interface BranchInfo {
   target: string | null;
   isHead: boolean;
   upstream: string | null;
+  /** For a remote branch, the remote it belongs to (resolved by the backend
+   * against the known remote list). `null` for local branches. */
+  remote: string | null;
   sync?: BranchSyncState | null;
 }
 
@@ -339,13 +343,20 @@ export interface WorkingChanges {
    * surfaced separately so they stay visible even when the owning operation
    * isn't detected. */
   conflicted: FileChange[];
-  advanced?: AdvancedRepoState;
+  /** Advanced repo state (submodules, LFS, sparse-checkout). Always present —
+   * the Rust `WorkingChanges` sends it on every read. */
+  advanced: AdvancedRepoState;
 }
 
 /** The active in-progress operation that can stop on conflicts. "none" when the
  * repo is clean / no operation is underway. "carry" is GitLane's worktree-handoff
  * carry (GL-74) — a stash re-apply left conflicts with no git sequencer state. */
 export type OperationKind = "merge" | "rebase" | "cherry-pick" | "revert" | "carry" | "none";
+
+/** Non-drivable in-progress git state surfaced as a read-only banner (GitLane
+ * can't continue/abort these in-app): `git am` or bisect. "" when the repo is
+ * clean or in a drivable operation. */
+export type OperationAdvisory = "apply-mailbox" | "bisect" | "";
 
 /** One conflicted (unmerged) path. */
 export interface ConflictFile {
@@ -363,6 +374,9 @@ export interface OperationStatus {
   /** True when the operation supports skipping the current commit. */
   canSkip: boolean;
   conflicts: ConflictFile[];
+  /** A non-drivable in-progress state (git am / bisect) shown as a read-only
+   * banner, independent of the drivable `kind`. */
+  advisory: OperationAdvisory;
 }
 
 /** Raw conflicted content of one text file (with git's merge markers). */
@@ -505,10 +519,17 @@ export const gitApi = {
   listWorktrees: (path: string) =>
     invoke<WorktreeInfo[]>("list_worktrees", { path }),
 
-  /** Create a linked worktree at `worktreePath`, checked out to `reference`
+  /** Create a linked worktree at `worktreePath`. With `newBranch`, a fresh
+   * branch of that name is created at `reference` (its start point) and checked
+   * out there; otherwise the worktree is checked out to `reference` directly
    * (branch/tag/commit; defaults to HEAD). */
-  addWorktree: (path: string, worktreePath: string, reference?: string) =>
-    invoke<string>("add_worktree", { path, worktreePath, reference: reference ?? null }),
+  addWorktree: (path: string, worktreePath: string, reference?: string, newBranch?: string) =>
+    invoke<string>("add_worktree", {
+      path,
+      worktreePath,
+      reference: reference ?? null,
+      newBranch: newBranch ?? null,
+    }),
 
   /** Hand `branch` off from one worktree to another (GL-74): detach the source,
    * check the branch out in `toWorktreePath`, and — when `carry` — bring the

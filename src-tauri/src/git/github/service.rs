@@ -9,6 +9,7 @@ use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitSignature, PullRequestDetail,
     PullRequestSummary, ReviewThread,
 };
+use crate::git::{forge, forge::ForgeKind};
 
 use super::domain::{
     normalize_account_ref, GithubContext, GithubError, GithubGitAuth, GithubRepository, GH_PROVIDER,
@@ -267,6 +268,25 @@ impl GithubService {
     ) -> Result<(&'a dyn GithubProvider, GithubContext), GithubError> {
         let account = account.map(normalize_account_ref);
         let provider = self.provider_for(account.as_ref())?;
+        // Pre-check the repo's remote host from local git config (no token, no
+        // network) before `resolve_repository` runs with the account's token —
+        // otherwise a wrong-host binding sends that token to the mismatched
+        // endpoint first and the clear HostMismatch/UnsupportedForge message is
+        // buried under the resulting auth failure.
+        if let (Some(account), Some(remote)) = (account.as_ref(), forge::detect(workdir)) {
+            if remote.kind != ForgeKind::GitHub {
+                return Err(GithubError::UnsupportedForge {
+                    forge: remote.kind.label().to_string(),
+                    host: remote.host,
+                });
+            }
+            if remote.host != account.host {
+                return Err(GithubError::HostMismatch {
+                    repo_host: remote.host,
+                    account_host: account.host.clone(),
+                });
+            }
+        }
         let repository = provider.resolve_repository(workdir, account.as_ref())?;
         if let Some(account) = account.as_ref() {
             if repository.host != account.host {

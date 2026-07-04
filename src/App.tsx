@@ -29,7 +29,7 @@ import { RepoOnboarding } from "./features/onboarding";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { CreatePrDialog } from "./features/pull-requests/CreatePrDialog";
 import { ChangesWorkspace } from "./features/changes/ChangesWorkspace";
-import { ConflictWorkspace } from "./features/conflicts";
+import { ConflictWorkspace, OperationAdvisoryBanner } from "./features/conflicts";
 import { HistoryInspectWorkspace } from "./features/history-inspect";
 import { HistoryWorkspace } from "./features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
@@ -66,6 +66,7 @@ const App = () => {
       state.changes.conflicted.length === 0,
   );
   const operation = useRepo((state) => state.operation);
+  const operationAdvisory = useRepo((state) => state.operationAdvisory);
   const revealTarget = useRepo((state) => state.revealTarget);
   const restoreSession = useRepo((state) => state.restoreSession);
   const refresh = useRepo((state) => state.refresh);
@@ -276,6 +277,9 @@ const App = () => {
         <>
           <ActionBar activeTab={leftTab} onTabChange={setLeftTab} />
           <div className="relative flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
+            {operationAdvisory && !inConflict && (
+              <OperationAdvisoryBanner advisory={operationAdvisory} />
+            )}
             <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
               {inConflict ? (
                 center

@@ -14,6 +14,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: dialogMock }));
 import { useRepo } from "./repo";
 import { createInitialRepoData } from "./repoTypes";
 import type { RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "../lib/api";
+import { emptyAdvancedState } from "../lib/advancedRepoState";
 
 const summary: RepoSummary = {
   path: "/repo",
@@ -29,7 +30,7 @@ const emptyGraph: RepoGraph = {
   head: null,
   truncated: false,
 };
-const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
+const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState };
 
 // The classified `open_repo` rejection for a vanished path.
 const missingError = (path: string): RepoOpenError => ({

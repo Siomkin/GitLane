@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, RepoGraph } from "../../lib/api";
+import { emptyAdvancedState } from "../../lib/advancedRepoState";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { HistoryWorkspace } from "./HistoryWorkspace";
@@ -103,7 +104,7 @@ beforeEach(() => {
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
     graph,
     graphLoading: false,
-    changes: { staged: [], unstaged: [], conflicted: [] },
+    changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     stashes: [],
     selectedCommit: null,
     selectedCommits: [],

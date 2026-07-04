@@ -13,7 +13,16 @@ use super::cli::{repo_slug, run_gh};
 use super::dto::{GqlThread, GqlThreadsResp};
 use crate::git::types::ReviewThread;
 
-const REVIEW_THREADS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{id isResolved isOutdated path line comments(first:50){nodes{author{login} body createdAt}}}}}}}";
+// Threads are paginated by cursor so a review-heavy PR never silently loses
+// threads past the first page. Comments stay capped per thread (nested
+// pagination would multiply round-trips); `totalCount` flags the rare thread
+// that exceeds the cap so the UI can say so instead of presenting the list as
+// complete.
+const REVIEW_THREADS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:50){totalCount nodes{author{login} body createdAt}}}}}}}";
+
+/// Hard stop for cursor pagination (100 items per page). Far beyond any real
+/// PR; guards against a pathological/looping `pageInfo` from the API.
+const MAX_GRAPHQL_PAGES: usize = 20;
 const RESOLVE_THREAD_MUTATION: &str =
     "mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}";
 const UNRESOLVE_THREAD_MUTATION: &str =
@@ -32,9 +41,10 @@ pub fn review_threads(
     let owner_field = format!("owner={owner}");
     let name_field = format!("name={name}");
     let number_field = format!("number={number}");
-    let raw = run_gh(
-        workdir,
-        &[
+    let mut threads = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_GRAPHQL_PAGES {
+        let mut args = vec![
             "api",
             "--hostname",
             host,
@@ -47,20 +57,28 @@ pub fn review_threads(
             &name_field,
             "-F",
             &number_field,
-        ],
-        token,
-    )?;
-    let parsed: GqlThreadsResp =
-        serde_json::from_str(&raw).map_err(|e| format!("failed to parse review threads: {e}"))?;
-    Ok(parsed
-        .data
-        .repository
-        .pull_request
-        .review_threads
-        .nodes
-        .into_iter()
-        .map(GqlThread::into_thread)
-        .collect())
+        ];
+        // Omitted on the first page so the `$cursor` variable stays null —
+        // `-f cursor=` would send an empty string, which GitHub rejects.
+        let cursor_field = cursor.as_ref().map(|c| format!("cursor={c}"));
+        if let Some(f) = cursor_field.as_deref() {
+            args.push("-f");
+            args.push(f);
+        }
+        let raw = run_gh(workdir, &args, token)?;
+        let parsed: GqlThreadsResp = serde_json::from_str(&raw)
+            .map_err(|e| format!("failed to parse review threads: {e}"))?;
+        let connection = parsed.data.repository.pull_request.review_threads;
+        threads.extend(connection.nodes.into_iter().map(GqlThread::into_thread));
+        match connection.page_info.filter(|p| p.has_next_page) {
+            Some(page) => match page.end_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            },
+            None => break,
+        }
+    }
+    Ok(threads)
 }
 
 /// Resolve (or, when `resolved` is false, unresolve) a review thread by its

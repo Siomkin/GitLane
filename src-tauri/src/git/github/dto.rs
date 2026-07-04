@@ -296,8 +296,25 @@ pub(super) struct GqlThreadsPr {
     pub(super) review_threads: GqlNodes<GqlThread>,
 }
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(super) struct GqlNodes<T> {
     pub(super) nodes: Vec<T>,
+    /// Present only when the query requests `pageInfo` (paginated connections).
+    #[serde(default)]
+    pub(super) page_info: Option<GqlPageInfo>,
+    /// Present only when the query requests `totalCount` (capped connections
+    /// that surface a truncation flag instead of paginating).
+    #[serde(default)]
+    pub(super) total_count: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlPageInfo {
+    #[serde(default)]
+    pub(super) has_next_page: bool,
+    #[serde(default)]
+    pub(super) end_cursor: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -329,12 +346,19 @@ pub(super) struct GqlAuthor {
 
 impl GqlThread {
     pub(super) fn into_thread(self) -> ReviewThread {
+        // The query caps comments per thread (no nested pagination); GitHub's
+        // totalCount tells us when that cap actually cut something off.
+        let comments_truncated = self
+            .comments
+            .total_count
+            .is_some_and(|total| total > self.comments.nodes.len() as u64);
         ReviewThread {
             id: self.id,
             path: self.path,
             line: self.line,
             is_resolved: self.is_resolved,
             is_outdated: self.is_outdated,
+            comments_truncated,
             comments: self
                 .comments
                 .nodes
@@ -608,10 +632,13 @@ mod tests {
                         created_at: "t".into(),
                     },
                 ],
+                page_info: None,
+                total_count: None,
             },
         };
         let mapped = thread.into_thread();
         assert_eq!(mapped.comments.len(), 2);
+        assert!(!mapped.comments_truncated);
         // null author → login empty, display name "ghost".
         assert_eq!(mapped.comments[0].author.login, "");
         assert_eq!(mapped.comments[0].author.name, "ghost");

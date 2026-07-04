@@ -102,23 +102,54 @@ pub fn publish_branch(
     auth: Option<(&str, &str)>,
 ) -> Result<String, String> {
     ensure_operand(branch)?;
-    let (remote, remote_branch) = upstream.split_once('/').ok_or_else(|| {
-        "Enter an upstream as remote/branch, for example origin/main.".to_string()
-    })?;
-    if remote.is_empty() || remote_branch.is_empty() {
-        return Err("Enter an upstream as remote/branch, for example origin/main.".to_string());
-    }
-    ensure_operand(remote)?;
-    ensure_operand(remote_branch)?;
+    let (remote, remote_branch) = split_remote_ref(repo, upstream)?;
+    ensure_operand(&remote)?;
+    ensure_operand(&remote_branch)?;
     let refspec = format!("refs/heads/{branch}:refs/heads/{remote_branch}");
     match auth {
         Some((host, token)) => {
-            let args = credential_args(host, &["push", "--set-upstream", remote, &refspec]);
+            let args = credential_args(host, &["push", "--set-upstream", &remote, &refspec]);
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             run_git_env(repo, &arg_refs, &[("GH_TOKEN", token)])
         }
-        None => run_git(repo, &["push", "--set-upstream", remote, &refspec]),
+        None => run_git(repo, &["push", "--set-upstream", &remote, &refspec]),
     }
+}
+
+/// Split an `upstream` string like `origin/main` into its `(remote, branch)`
+/// parts by matching the **longest configured remote name** that prefixes it —
+/// not by splitting on the first `/`. A remote name may itself contain a slash
+/// (git permits it), and a first-`/` split would then send the push to the
+/// wrong remote (or a nonexistent one). Falls back to the first-`/` split only
+/// when no configured remote matches, so a genuine first-push to a
+/// not-yet-fetched remote still works and git surfaces its own error if the
+/// remote is unknown.
+fn split_remote_ref(repo: &str, upstream: &str) -> Result<(String, String), String> {
+    let invalid = || "Enter an upstream as remote/branch, for example origin/main.".to_string();
+    let remotes = run_git(repo, &["remote"])?;
+    let matched = remotes
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .filter(|name| {
+            upstream
+                .strip_prefix(*name)
+                .is_some_and(|rest| rest.starts_with('/'))
+        })
+        // Longest remote name wins so `origin/x` beats `origin` for an
+        // `origin/x/feature` upstream.
+        .max_by_key(|name| name.len());
+    let (remote, remote_branch) = match matched {
+        Some(remote) => (remote.to_string(), upstream[remote.len() + 1..].to_string()),
+        None => {
+            let (r, b) = upstream.split_once('/').ok_or_else(invalid)?;
+            (r.to_string(), b.to_string())
+        }
+    };
+    if remote.is_empty() || remote_branch.is_empty() {
+        return Err(invalid());
+    }
+    Ok((remote, remote_branch))
 }
 
 /// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,

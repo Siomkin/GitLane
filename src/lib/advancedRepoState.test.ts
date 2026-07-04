@@ -3,6 +3,7 @@ import type { FileChange, WorkingChanges } from "./api";
 import {
   advancedFileGuard,
   advancedNotices,
+  emptyAdvancedState,
   fileWriteGuard,
   guardedAdvancedWriteMessage,
 } from "./advancedRepoState";
@@ -107,6 +108,7 @@ describe("advancedRepoState", () => {
         },
       ],
       conflicted: [],
+      advanced: emptyAdvancedState,
     };
 
     expect(advancedFileGuard(changes.unstaged[0])).toBe(
@@ -131,6 +133,7 @@ describe("advancedRepoState", () => {
         },
       ],
       conflicted: [],
+      advanced: emptyAdvancedState,
     };
 
     expect(advancedFileGuard(changes.unstaged[0])).toBe(

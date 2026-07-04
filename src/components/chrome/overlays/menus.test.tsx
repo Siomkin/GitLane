@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
+import { emptyAdvancedState } from "../../../lib/advancedRepoState";
 import { BranchRow } from "../../navigation/branch-navigator/rows";
 import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
@@ -37,7 +38,7 @@ beforeEach(() => {
     return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
   });
   useRepo.setState({
-    changes: { staged: [], unstaged: [], conflicted: [] },
+    changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     summary: null,
     branches: [],
     worktrees: [],
@@ -73,6 +74,7 @@ const localBranch = (name: string) => ({
   target: "abc1234",
   isHead: false,
   upstream: null,
+  remote: null,
 });
 
 const remoteBranch = (name: string) => ({
@@ -81,6 +83,9 @@ const remoteBranch = (name: string) => ({
   target: "abc1234",
   isHead: false,
   upstream: null,
+  // Backend attributes each remote branch to its remote; the delete-on-remote
+  // action reads this rather than splitting the name on the first `/`.
+  remote: name.split("/")[0],
 });
 
 const file = (path: string) => ({ path, status: "M" as const, add: 1, del: 0, binary: false });
@@ -115,7 +120,7 @@ describe("WipContextMenu", () => {
   });
 
   it("shows Stage all only when there are unstaged files", () => {
-    useRepo.setState({ changes: { staged: [], unstaged: [file("a.ts")], conflicted: [] } });
+    useRepo.setState({ changes: { staged: [], unstaged: [file("a.ts")], conflicted: [], advanced: emptyAdvancedState } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeInTheDocument();
@@ -133,6 +138,7 @@ describe("WipContextMenu", () => {
           },
         ],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
     });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
@@ -145,7 +151,7 @@ describe("WipContextMenu", () => {
   });
 
   it("shows Unstage all only when there are staged files", () => {
-    useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [] } });
+    useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage all changes" })).toBeInTheDocument();
@@ -164,7 +170,7 @@ describe("WipContextMenu", () => {
     });
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
-      changes: { staged: [file("b.ts")], unstaged: [], conflicted: [] },
+      changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
     render(<WipContextMenu />);

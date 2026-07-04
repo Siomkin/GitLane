@@ -26,7 +26,16 @@ pub fn can_fast_forward(path: &str, from: &str, to: &str) -> Result<bool, git2::
 pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
     let repo = open(path)?;
     let mut out = Vec::new();
-    let has_remote = !repo.remotes()?.is_empty();
+    let remote_names = repo.remotes()?;
+    let has_remote = !remote_names.is_empty();
+    // Snapshot the configured remote names once so each remote branch can be
+    // attributed to its remote by longest-prefix match (a remote name may
+    // contain a slash), rather than the frontend re-splitting on the first `/`.
+    let mut remotes: Vec<String> = (0..remote_names.len())
+        .filter_map(|i| remote_names.get(i).ok().flatten().map(|s| s.to_string()))
+        .collect();
+    // Longest first so `origin/mirror` wins over `origin` for `origin/mirror/x`.
+    remotes.sort_by_key(|r| std::cmp::Reverse(r.len()));
 
     for (kind, label) in [(BranchType::Local, "local"), (BranchType::Remote, "remote")] {
         for entry in repo.branches(Some(kind))? {
@@ -61,12 +70,22 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 None
             };
 
+            let remote = if kind == BranchType::Remote {
+                remotes
+                    .iter()
+                    .find(|r| name.strip_prefix(r.as_str()).is_some_and(|rest| rest.starts_with('/')))
+                    .cloned()
+            } else {
+                None
+            };
+
             out.push(BranchInfo {
                 name,
                 kind: label.to_string(),
                 target,
                 is_head: branch.is_head(),
                 upstream,
+                remote,
                 sync,
             });
         }

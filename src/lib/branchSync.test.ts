@@ -24,6 +24,7 @@ const branch = (state: BranchSyncState): BranchInfo => ({
   target: "abc123",
   isHead: true,
   upstream: state.upstream,
+  remote: null,
   sync: state,
 });
 
@@ -116,6 +117,7 @@ describe("defaultPublishTarget", () => {
     target: "c1",
     isHead: false,
     upstream: null,
+    remote: name.split("/")[0],
   });
 
   it("prefers the configured upstream when present", () => {

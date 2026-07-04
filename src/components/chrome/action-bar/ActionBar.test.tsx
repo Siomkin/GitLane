@@ -33,6 +33,7 @@ const branch = (over: Partial<BranchInfo> = {}): BranchInfo => ({
   target: "abc1234",
   isHead: true,
   upstream: "origin/main",
+  remote: null,
   sync: { status: "upToDate", upstream: "origin/main", ahead: 0, behind: 0 },
   ...over,
 });

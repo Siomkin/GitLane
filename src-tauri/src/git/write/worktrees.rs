@@ -68,20 +68,36 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
     Ok(out)
 }
 
-/// Create a new linked worktree at `worktree_path`, checked out to `reference`
-/// (a branch, tag, or commit; defaults to HEAD). When `reference` is a commit or
-/// a tag the new worktree is detached; an existing branch is checked out there
-/// (git refuses if it's already checked out elsewhere, surfacing its own error).
+/// Create a new linked worktree at `worktree_path`.
+///
+/// With `new_branch` set, a fresh branch of that name is created at `reference`
+/// (its start point, defaulting to HEAD) and checked out there in one step
+/// (`git worktree add -b <new> <path> <start>`) — git refuses if the branch
+/// already exists, surfacing its own error.
+///
+/// Without `new_branch`, the worktree is checked out to `reference` directly (a
+/// branch, tag, or commit; defaults to HEAD): a commit or tag detaches, an
+/// existing branch is checked out (git refuses if it's already checked out
+/// elsewhere, surfacing its own error).
 pub fn add_worktree(
     repo: &str,
     worktree_path: &str,
     reference: Option<&str>,
+    new_branch: Option<&str>,
 ) -> Result<String, String> {
     ensure_operand(worktree_path)?;
     ensure_opt(reference)?;
-    match reference {
-        Some(r) => run_git(repo, &["worktree", "add", worktree_path, r]),
-        None => run_git(repo, &["worktree", "add", worktree_path]),
+    ensure_opt(new_branch)?;
+    match (new_branch, reference) {
+        // `-b <new> <path> <start>` — create the branch at its start point.
+        (Some(branch), Some(start)) => {
+            run_git(repo, &["worktree", "add", "-b", branch, worktree_path, start])
+        }
+        (Some(branch), None) => {
+            run_git(repo, &["worktree", "add", "-b", branch, worktree_path])
+        }
+        (None, Some(r)) => run_git(repo, &["worktree", "add", worktree_path, r]),
+        (None, None) => run_git(repo, &["worktree", "add", worktree_path]),
     }
 }
 

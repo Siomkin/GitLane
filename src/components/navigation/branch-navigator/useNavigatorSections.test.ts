@@ -10,6 +10,7 @@ const branch = (name: string, kind: BranchInfo["kind"], target = "c1"): BranchIn
   target,
   isHead: false,
   upstream: null,
+  remote: null,
 });
 const commit = (over: Partial<CommitNode>): CommitNode => ({
   id: "c1",
