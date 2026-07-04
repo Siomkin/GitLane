@@ -910,17 +910,20 @@ export const gitApi = {
 
   listStashes: (path: string) => invoke<StashEntry[]>("list_stashes", { path }),
 
-  stashApply: (path: string, index: number) => invoke<string>("stash_apply", { path, index }),
+  // Stash ops address the stash by commit oid — `stash@{n}` indices shift
+  // whenever any stash is created/dropped (globally, across worktrees), so an
+  // index captured at list time can hit the wrong stash (GL-117).
+  stashApply: (path: string, oid: string) => invoke<string>("stash_apply", { path, oid }),
 
   /** Apply a stash restoring the staged (index) state too (`git stash apply --index`). */
-  stashApplyIndex: (path: string, index: number) => invoke<string>("stash_apply_index", { path, index }),
+  stashApplyIndex: (path: string, oid: string) => invoke<string>("stash_apply_index", { path, oid }),
 
   /** Check out `branch` at the stash's parent and apply the stash there. */
-  stashBranch: (path: string, branch: string, index: number) => invoke<string>("stash_branch", { path, branch, index }),
+  stashBranch: (path: string, branch: string, oid: string) => invoke<string>("stash_branch", { path, branch, oid }),
 
-  stashPop: (path: string, index: number) => invoke<string>("stash_pop", { path, index }),
+  stashPop: (path: string, oid: string) => invoke<string>("stash_pop", { path, oid }),
 
-  stashDrop: (path: string, index: number) => invoke<string>("stash_drop", { path, index }),
+  stashDrop: (path: string, oid: string) => invoke<string>("stash_drop", { path, oid }),
 
   pull: (path: string) => invoke<string>("pull", { path }),
 
