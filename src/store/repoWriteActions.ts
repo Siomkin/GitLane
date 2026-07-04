@@ -8,16 +8,54 @@ import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
 
-// The two paths a rename entry spans, or null when `path` is an ordinary
-// single-path change. A rename ("R") in `bucket` carries its old side as
-// `previousPath`; both must be staged/unstaged together (GL-127), else the
-// deletion of the old path is left in the opposite state. Ordering doesn't
-// matter — the paths follow `--` in one atomic `git add`/`git restore`.
+// The old-side path of a rename ("R") entry for `path` in `bucket`, or null when
+// it isn't a rename. Only renames need both sides staged/unstaged together
+// (GL-127): a rename deletes the old path, so acting on the new path alone leaves
+// that deletion in the opposite state. A copy ("C") is deliberately excluded —
+// it leaves the old path intact, so it must NOT be touched. An "R" with no
+// `previousPath` is a backend-invariant breach (post-GL-127 the status pass
+// always fills it); warn rather than silently fall back to single-path staging,
+// which would resurrect the half-staged-rename bug instead of failing loudly.
+function renameOldPath(entry: FileChange | undefined): string | null {
+  if (entry?.status !== "R") return null;
+  if (!entry.previousPath) {
+    console.warn(
+      `GL-127: rename entry "${entry.path}" is missing previousPath; staging its new side only`,
+    );
+    return null;
+  }
+  return entry.previousPath;
+}
+
+// The two paths a rename spans, or null for an ordinary single-path change — so
+// the caller can keep using the single-path git command for non-renames.
 function renamePaths(bucket: FileChange[], path: string): string[] | null {
-  const entry = bucket.find((f) => f.path === path);
-  return entry?.status === "R" && entry.previousPath
-    ? [entry.previousPath, path]
-    : null;
+  const old = renameOldPath(bucket.find((f) => f.path === path));
+  return old ? [old, path] : null;
+}
+
+// Expand a path list so any rename in `bucket` also contributes its old side.
+// Folder roll-ups (stagePaths/unstagePaths) and the commit modal's partial
+// exclude pass new-side paths only; without this a rename under a rolled-up
+// directory — or an unchecked staged rename — would leave the old path's
+// deletion in the opposite state (the same GL-127 bug in the bulk flows).
+// De-duplicated (a rename and its source both selected won't double up); order
+// preserved for stable git invocations.
+function withRenameCounterparts(bucket: FileChange[], paths: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (p: string) => {
+    if (!seen.has(p)) {
+      seen.add(p);
+      out.push(p);
+    }
+  };
+  for (const path of paths) {
+    push(path);
+    const old = renameOldPath(bucket.find((f) => f.path === path));
+    if (old) push(old);
+  }
+  return out;
 }
 
 // Shared body for the branch/history write ops: require an open repo, run the
@@ -587,7 +625,9 @@ export function createRepoWriteActions(
       const blocked = paths.map((p) => guardedPathMessage(get, p)).find(Boolean) ?? null;
       if (toastAdvancedGuard(blocked)) return;
       try {
-        await api.stageFiles(summary.path, paths);
+        // Pull each rolled-up rename's old side in too, so a rename under this
+        // folder stages as one rename instead of a half-staged pair (GL-127).
+        await api.stageFiles(summary.path, withRenameCounterparts(get().changes.unstaged, paths));
         await get().refresh();
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -600,7 +640,8 @@ export function createRepoWriteActions(
       const blocked = paths.map((p) => guardedPathMessage(get, p)).find(Boolean) ?? null;
       if (toastAdvancedGuard(blocked)) return;
       try {
-        await api.unstageFiles(summary.path, paths);
+        // Symmetric to stagePaths: unstage each rolled-up rename's old side too.
+        await api.unstageFiles(summary.path, withRenameCounterparts(get().changes.staged, paths));
         await get().refresh();
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -739,10 +780,13 @@ export function createRepoWriteActions(
       const identity = useAccounts.getState().repoIdentity;
       try {
         // Files unchecked in the modal are dropped from this commit by unstaging
-        // them first; they stay in the working tree.
+        // them first; they stay in the working tree. Expand renames so unchecking
+        // a staged rename also unstages its old-path deletion, instead of leaving
+        // that "D" staged and committing half the rename (GL-127).
         // Unstage the excluded set atomically so a partial failure can't leave
         // some of them staged.
-        if (excludePaths.length > 0) await api.unstageFiles(summary.path, excludePaths);
+        const excluded = withRenameCounterparts(changes.staged, excludePaths);
+        if (excluded.length > 0) await api.unstageFiles(summary.path, excluded);
         const { summary: subject, description } = splitCommitMessage(message);
         await api.commit(summary.path, subject, description, amend, identity?.name, identity?.email);
         await get().refresh();

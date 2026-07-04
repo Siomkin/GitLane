@@ -1115,6 +1115,8 @@ fn unstaged_rename_is_reported_as_one_rename_entry() {
         .find(|f| f.path == "renamed.txt")
         .expect("rename detected under the new path");
     assert_eq!(entry.status, "R");
+    // The entry carries the old path so staging can move both sides (GL-127).
+    assert_eq!(entry.previous_path.as_deref(), Some("original.txt"));
     assert!(
         changes.unstaged.iter().all(|f| f.path != "original.txt"),
         "old path must fold into the rename, not linger as a deletion: {:?}",
@@ -1206,6 +1208,49 @@ fn staging_a_worktree_rename_records_a_single_rename() {
         "no leftover unstaged deletion: {:?}",
         after.unstaged
     );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn unstaging_a_staged_rename_restores_both_sides() {
+    // GL-127 (mirror of the stage case): a staged rename carries `previous_path`,
+    // and unstaging it via both paths must return the file to a single unstaged
+    // "R" with no orphaned staged "D old.txt". This is the round-trip the store's
+    // `unstageFile` performs.
+    let dir = std::env::temp_dir().join("gitlane-unstage-rename-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "old.txt", "alpha\nbeta\ngamma\ndelta\n");
+    let path = dir.to_str().unwrap();
+
+    // Rename on disk, then stage both sides so the index holds a staged rename.
+    fs::rename(dir.join("old.txt"), dir.join("new.txt")).unwrap();
+    crate::git::write::stage_files(path, &["old.txt".to_string(), "new.txt".to_string()])
+        .expect("stage the rename");
+
+    let staged = working_changes(path).unwrap();
+    assert_eq!(staged.staged.len(), 1, "one staged rename: {:?}", staged.staged);
+    let entry = &staged.staged[0];
+    assert_eq!(entry.status, "R");
+    assert_eq!(entry.previous_path.as_deref(), Some("old.txt"));
+
+    // Unstage the way the store's `unstageFile` does for an "R": both paths.
+    let paths = vec![entry.previous_path.clone().unwrap(), entry.path.clone()];
+    crate::git::write::unstage_files(path, &paths).expect("unstage both sides of the rename");
+
+    // Back to a single unstaged rename, nothing left staged.
+    let after = working_changes(path).unwrap();
+    assert!(
+        after.staged.is_empty(),
+        "no leftover staged deletion: {:?}",
+        after.staged
+    );
+    assert_eq!(after.unstaged.len(), 1, "one unstaged rename: {:?}", after.unstaged);
+    assert_eq!(after.unstaged[0].status, "R");
+    assert_eq!(after.unstaged[0].path, "new.txt");
+    assert_eq!(after.unstaged[0].previous_path.as_deref(), Some("old.txt"));
 
     let _ = fs::remove_dir_all(&dir);
 }

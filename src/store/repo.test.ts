@@ -454,6 +454,7 @@ describe("repo store — rename staging (GL-127)", () => {
           { path: "new.txt", status: "R", add: 0, del: 0, binary: false, previousPath: "old.txt" },
         ],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
     });
     invokeMock.mockImplementation(refreshInvoke);
@@ -476,6 +477,7 @@ describe("repo store — rename staging (GL-127)", () => {
         ],
         unstaged: [],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
     });
     invokeMock.mockImplementation(refreshInvoke);
@@ -495,6 +497,7 @@ describe("repo store — rename staging (GL-127)", () => {
         staged: [],
         unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
     });
     invokeMock.mockImplementation(refreshInvoke);
@@ -503,6 +506,77 @@ describe("repo store — rename staging (GL-127)", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("stage_file", { path: "/repo", file: "src/a.ts" });
     expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
+  });
+
+  it("folder roll-up (stagePaths) pulls in a rename's old path so it isn't half-staged", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [
+          { path: "src/b.ts", status: "M", add: 1, del: 0, binary: false },
+          { path: "src/new.ts", status: "R", add: 0, del: 0, binary: false, previousPath: "src/old.ts" },
+        ],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    // The Tree view rolls up the directory's *displayed* (new-side) paths.
+    await useRepo.getState().stagePaths(["src/b.ts", "src/new.ts"]);
+
+    // The rename's old side is expanded in, so the folder stages as one rename.
+    expect(invokeMock).toHaveBeenCalledWith("stage_files", {
+      path: "/repo",
+      files: ["src/b.ts", "src/new.ts", "src/old.ts"],
+    });
+  });
+
+  it("folder roll-up (unstagePaths) pulls in a staged rename's old path", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [
+          { path: "src/new.ts", status: "R", add: 0, del: 0, binary: false, previousPath: "src/old.ts" },
+        ],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    await useRepo.getState().unstagePaths(["src/new.ts"]);
+
+    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
+      path: "/repo",
+      files: ["src/new.ts", "src/old.ts"],
+    });
+  });
+
+  it("commit modal exclude of a staged rename unstages both its paths", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [
+          { path: "keep.ts", status: "M", add: 1, del: 0, binary: false },
+          { path: "src/new.ts", status: "R", add: 0, del: 0, binary: false, previousPath: "src/old.ts" },
+        ],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    // Uncheck the staged rename in the modal; commit the rest.
+    await useRepo.getState().commitSelected("Subject", ["src/new.ts"], false);
+
+    // The excluded rename is dropped on both sides before committing, so its old
+    // path's deletion isn't left staged and committed as half a rename.
+    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
+      path: "/repo",
+      files: ["src/new.ts", "src/old.ts"],
+    });
+    expect(invokeMock).toHaveBeenCalledWith("commit", expect.objectContaining({ path: "/repo" }));
   });
 });
 
