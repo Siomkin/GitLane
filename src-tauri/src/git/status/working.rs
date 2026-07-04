@@ -25,7 +25,7 @@ fn head_tree(repo: &Repository) -> Option<git2::Tree<'_>> {
 fn is_intent_to_add(index: Option<&git2::Index>, path: &str) -> bool {
     index
         .and_then(|ix| ix.get_path(std::path::Path::new(path), 0))
-        .map_or(false, |e| {
+        .is_some_and(|e| {
             git2::IndexEntryExtendedFlag::from_bits_truncate(e.flags_extended)
                 .contains(git2::IndexEntryExtendedFlag::INTENT_TO_ADD)
                 // Some git versions record the entry with a null blob oid
@@ -68,14 +68,16 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         let mut o = DiffOptions::new();
         o.include_untracked(true).recurse_untracked_dirs(true);
         let mut diff = repo.diff_index_to_workdir(None, Some(&mut o))?;
-        // Match the status pass's index→workdir rename detection (the same
-        // flags libgit2's status uses for it, incl. FOR_UNTRACKED so the new
-        // path — an untracked file — can be a rename target), so a renamed
+        // Mirror the status pass's index→workdir rename detection so a renamed
         // file's line counts group under one path instead of split add/del.
+        // libgit2's status (with only renames_index_to_workdir set) runs
+        // find_similar with RENAMES | FOR_UNTRACKED — the latter lets the new
+        // side, an untracked file, be a rename target. Match exactly: adding
+        // more (e.g. renames_from_rewrites) would detect renames the status
+        // pass doesn't, so a path could be a rename here but split there and
+        // the count lookup would miss.
         let mut find = git2::DiffFindOptions::new();
-        find.renames(true)
-            .renames_from_rewrites(true)
-            .for_untracked(true);
+        find.renames(true).for_untracked(true);
         diff.find_similar(Some(&mut find))?;
         for fc in diffs_to_changes(&diff)? {
             unstaged_counts.insert(fc.path.clone(), (fc.add, fc.del, fc.binary));
