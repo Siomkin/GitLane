@@ -5,10 +5,11 @@ import { repoLabel } from "../lib/paths";
 import {
   groupedInsertIndex,
   pruneTabInfo,
+  type TabInfo,
   tabInfoFromStatus,
   tabInfoFromSummary,
 } from "../lib/tabs";
-import { repoIdentityKey } from "../lib/worktrees";
+import { repoIdentityKey, trimTrailingSlash } from "../lib/worktrees";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
 import { migrateProfileBindings } from "./profiles";
@@ -163,13 +164,129 @@ export function createRepoLifecycleActions(
     useUi.getState().closePrompt();
   };
 
+  // GL-126: A *linked worktree* whose directory has been removed is a dead end,
+  // not a repository to recover. The GL-108 missing-repo screen (Remove / Retry /
+  // Locate…) is the right recovery for a moved or deleted standalone repo, but a
+  // removed worktree should hand focus back to a usable context instead of
+  // stranding on that screen. Drop the dead worktree tab and switch to a
+  // sensible default — its parent/main repo if known and still on disk, else
+  // another open tab, else the welcome screen — and never persist the removed
+  // worktree as the active selection (so a relaunch doesn't return to it). This
+  // always resolves; a removed worktree never lands on the missing-repo screen.
+  const fallbackFromRemovedWorktree = async (path: string, info: TabInfo) => {
+    // The dead worktree stops being watched and leaves the strip; a different
+    // active path is persisted below so restore never returns to it.
+    void api.unwatchRepo(path).catch(() => {});
+    const deadPath = trimTrailingSlash(path);
+    const openIndex = get().openPaths.indexOf(path);
+    const remaining = get().openPaths.filter((p) => p !== path);
+    const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
+    // A removed worktree isn't a repo to relocate — drop it from recents too so
+    // the onboarding list doesn't offer a dead worktree with a Locate… action.
+    const recents = get().recents.filter((r) => r.path !== path);
+
+    // Fallback order: the parent/main repo (known and available), then the
+    // neighbouring open tab, then any remaining tab.
+    const mainPath = info.mainPath ? trimTrailingSlash(info.mainPath) : null;
+    let target: string | null = null;
+    if (mainPath && mainPath !== deadPath) {
+      if (remaining.includes(mainPath)) {
+        target = mainPath; // already open — trust it
+      } else {
+        // Not open: only switch to it if it still resolves on disk, so we don't
+        // trade one missing-repo screen for another.
+        try {
+          const [status] = await api.recentsStatus([mainPath]);
+          if (status?.exists) target = mainPath;
+        } catch {
+          /* probe failed — fall back to another open tab */
+        }
+      }
+    }
+    if (!target) target = remaining[Math.max(0, openIndex - 1)] ?? remaining[0] ?? null;
+
+    // Supersede any in-flight graph read for the dead worktree; dropping the tab
+    // (and, in the welcome branch, the summary) fails every summary-path guard,
+    // so nothing stale can publish after this.
+    beginGraphRequest();
+
+    if (target) {
+      // Publish the pruned strip first (dead tab gone), then load the target —
+      // loadRepo does the full workspace swap and re-guards its own reads.
+      persistSession(remaining, target);
+      persistTabInfo(prunedInfo);
+      persistRecents(recents);
+      set({ openPaths: remaining, tabInfoByPath: prunedInfo, recents, missingRepo: null });
+      await get().loadRepo(target);
+      return;
+    }
+
+    // Nothing safe to land on (no available parent, no other tab) → the
+    // welcome/empty state (mirrors closeRepo's last-tab branch), never the
+    // missing-repo screen. `remaining` is empty here.
+    persistSession(remaining, null);
+    persistTabInfo(prunedInfo);
+    persistRecents(recents);
+    set({
+      openPaths: remaining,
+      tabInfoByPath: prunedInfo,
+      recents,
+      missingRepo: null,
+      summary: null,
+      forge: null,
+      graph: null,
+      branches: [],
+      reflogEntries: [],
+      reflogLoading: false,
+      reflogError: null,
+      worktrees: [],
+      stashes: [],
+      changes: emptyChanges,
+      operation: null,
+      operationAdvisory: null,
+      commitFiles: [],
+      selectionDiff: null,
+      selectedCommit: null,
+      selectedCommits: [],
+      selectionAnchor: null,
+      wipSelected: false,
+      revealTarget: null,
+      graphLimit: INITIAL_GRAPH_LIMIT,
+      loading: false,
+      graphLoading: false,
+      loadingMoreHistory: false,
+      selectedFile: null,
+      fileDiff: null,
+      fileHistory: null,
+      compare: null,
+      error: null,
+    });
+    usePulls.getState().reset();
+    useUi.getState().closeConfirm();
+    useUi.getState().closeRecovery();
+    useUi.getState().closePrompt();
+  };
+
+  // Route a vanished path (GL-108 + GL-126). A removed linked worktree falls
+  // back to a usable context (its parent repo / another tab / welcome); a moved
+  // or deleted standalone repo keeps the dedicated missing-repo recovery screen.
+  const handleMissing = async (path: string, kind: MissingRepoState["kind"]) => {
+    const info = get().tabInfoByPath[path];
+    if (info?.isWorktree) {
+      await fallbackFromRemovedWorktree(path, info);
+      return;
+    }
+    enterMissingState(path, kind);
+  };
+
   // Route a failed secondary read for the displayed repo: a vanished path gets
-  // the missing-repo state, anything else the global error bar. Re-guarded
-  // after the async presence probe so a repo switch in that window wins.
+  // the missing-repo state (or the worktree fallback), anything else the global
+  // error bar. Re-guarded after the async presence probe so a repo switch in
+  // that window wins.
   const surfaceOpenFailure = async (path: string, e: unknown) => {
     const kind = await wentMissing(path, e);
     if (get().summary?.path !== path) return;
-    if (kind) enterMissingState(path, kind);
+    if (kind) await handleMissing(path, kind);
     else set({ error: errorText(e) });
   };
 
@@ -206,7 +323,7 @@ export function createRepoLifecycleActions(
           // (GL-108). Other failures keep the GL-20 behavior: error bar only,
           // the current repo untouched.
           const missing = isRepoOpenError(e) && e.kind !== "other" ? e.kind : null;
-          if (missing) enterMissingState(path, missing);
+          if (missing) await handleMissing(path, missing);
           else set({ error: errorText(e) });
         }
         return;
@@ -473,7 +590,7 @@ export function createRepoLifecycleActions(
         // libgit2 message (GL-108). Re-guard after the async probe.
         const missing = await wentMissing(summary.path, e);
         if (!graphRequestIsCurrent(generation, summary.path)) return;
-        if (missing) enterMissingState(summary.path, missing);
+        if (missing) await handleMissing(summary.path, missing);
         else set({ loading: false, graphLoading: false, error: errorText(e) });
         flushPendingRefresh();
       }
@@ -998,7 +1115,7 @@ export function createRepoLifecycleActions(
         const missing = await wentMissing(summary.path, e);
         if (get().summary?.path === summary.path) {
           if (missing) {
-            enterMissingState(summary.path, missing);
+            await handleMissing(summary.path, missing);
           } else {
             // When this refresh owns the graph request (generation !== null), clear
             // graphLoading too: it may have superseded the initial open, whose
