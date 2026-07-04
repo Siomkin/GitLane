@@ -11,7 +11,8 @@ use super::files::conflict_files;
 /// Map libgit2's `RepositoryState` to the operation key the frontend expects.
 /// Anything that isn't a merge/rebase/cherry-pick/revert (Clean, Bisect,
 /// ApplyMailbox, …) reports "none" — the conflict workflow only covers the
-/// operations GitLane can drive to completion.
+/// operations GitLane can drive to completion. Non-drivable-but-active states
+/// (`git am`, bisect) are surfaced separately via [`advisory_kind`].
 fn operation_kind(state: RepositoryState) -> &'static str {
     match state {
         RepositoryState::Merge => "merge",
@@ -24,10 +25,27 @@ fn operation_kind(state: RepositoryState) -> &'static str {
     }
 }
 
+/// Map the non-drivable-but-active states to a read-only advisory key, or "" for
+/// everything else. GitLane can't drive `git am` or bisect to completion, but it
+/// must not pretend the repo is clean either — the frontend shows a read-only
+/// banner pointing the user at the terminal. `ApplyMailboxOrRebase` is git's
+/// ambiguous "am or rebase" state; treat it as apply-mailbox since the drivable
+/// rebase states above are matched first.
+fn advisory_kind(state: RepositoryState) -> &'static str {
+    match state {
+        RepositoryState::ApplyMailbox | RepositoryState::ApplyMailboxOrRebase => "apply-mailbox",
+        RepositoryState::Bisect => "bisect",
+        _ => "",
+    }
+}
+
 /// The active operation (if any) plus its outstanding conflicts.
 pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
     let mut repo = open(path)?;
-    let mut kind = operation_kind(repo.state());
+    let state = repo.state();
+    let mut kind = operation_kind(state);
+    // Read-only advisory (git am / bisect); independent of the drivable `kind`.
+    let advisory = advisory_kind(state).to_string();
     // A worktree-handoff carry (GL-74) leaves unmerged index entries but no
     // sequencer state (`RepositoryState::Clean`), so libgit2 reports "none".
     // Recognise it from the handoff marker — but gate on the marker's recovery
@@ -56,6 +74,7 @@ pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
     Ok(OperationStatus {
         kind: kind.to_string(),
         can_skip: matches!(kind, "rebase" | "cherry-pick" | "revert"),
+        advisory,
         conflicts,
     })
 }
@@ -85,4 +104,46 @@ fn carry_stashes_live(repo: &mut Repository, marker: &str) -> bool {
         }
     });
     present
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn drivable_states_map_to_their_kind_and_no_advisory() {
+        for (state, kind) in [
+            (RepositoryState::Merge, "merge"),
+            (RepositoryState::Revert, "revert"),
+            (RepositoryState::RevertSequence, "revert"),
+            (RepositoryState::CherryPick, "cherry-pick"),
+            (RepositoryState::CherryPickSequence, "cherry-pick"),
+            (RepositoryState::Rebase, "rebase"),
+            (RepositoryState::RebaseInteractive, "rebase"),
+            (RepositoryState::RebaseMerge, "rebase"),
+        ] {
+            assert_eq!(operation_kind(state), kind);
+            assert_eq!(advisory_kind(state), "");
+        }
+    }
+
+    #[test]
+    fn non_drivable_states_map_to_a_read_only_advisory_not_a_kind() {
+        // git am / bisect are surfaced as read-only advisories, never as a
+        // drivable operation `kind` (which stays "none").
+        for (state, advisory) in [
+            (RepositoryState::ApplyMailbox, "apply-mailbox"),
+            (RepositoryState::ApplyMailboxOrRebase, "apply-mailbox"),
+            (RepositoryState::Bisect, "bisect"),
+        ] {
+            assert_eq!(operation_kind(state), "none");
+            assert_eq!(advisory_kind(state), advisory);
+        }
+    }
+
+    #[test]
+    fn a_clean_repo_has_neither_kind_nor_advisory() {
+        assert_eq!(operation_kind(RepositoryState::Clean), "none");
+        assert_eq!(advisory_kind(RepositoryState::Clean), "");
+    }
 }

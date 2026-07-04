@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { FileChange, WorkingChanges } from "./api";
+import { emptyAdvancedState } from "./advancedRepoState";
 import { changeTotal, summarizeChanges, summarizeFiles } from "./changeSummary";
 
 const file = (path: string, status: FileChange["status"]): FileChange => ({
@@ -14,6 +15,7 @@ const changes = (over: Partial<WorkingChanges>): WorkingChanges => ({
   staged: [],
   unstaged: [],
   conflicted: [],
+  advanced: emptyAdvancedState,
   ...over,
 });
 

@@ -134,6 +134,11 @@ function ThreadCard({ pr, thread }: { pr: PullRequest; thread: ReviewThread }) {
         {thread.comments.map((c, i) => (
           <ThreadComment key={i} comment={c} prAuthorName={pr.author.name} />
         ))}
+        {thread.commentsTruncated && (
+          <div className="text-[11.5px] italic text-neutral-400">
+            This thread has more comments than shown here — open the pull request on GitHub to see all of them.
+          </div>
+        )}
       </div>
 
       <ReviewThreadControls prNum={pr.num} thread={thread} authorInitials={pr.author.initials} />

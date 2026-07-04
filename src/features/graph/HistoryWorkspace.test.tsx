@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "../../lib/api";
+import { emptyAdvancedState } from "../../lib/advancedRepoState";
 import { useRepo } from "../../store/repo";
 import { rowHeightFor, useUi } from "../../store/ui";
 import { HistoryWorkspace } from "./HistoryWorkspace";
@@ -121,7 +122,7 @@ beforeEach(() => {
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
     graph,
     graphLoading: false,
-    changes: { staged: [], unstaged: [], conflicted: [] },
+    changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     stashes: [],
     commitFiles: [],
     selectedFile: null,
@@ -225,7 +226,7 @@ describe("HistoryWorkspace — search highlight/dim", () => {
   });
 
   it("dims the synthetic WIP and stash rows while searching, but not when inert", () => {
-    useRepo.setState({ changes: { staged: [file], unstaged: [], conflicted: [] }, stashes: [stash] });
+    useRepo.setState({ changes: { staged: [file], unstaged: [], conflicted: [], advanced: emptyAdvancedState }, stashes: [stash] });
     // Inert: WIP + stash render at full strength.
     const { unmount } = render(<HistoryWorkspace />);
     expect(screen.getByText("WIP").closest("button")!.className).not.toMatch(/opacity-25/);

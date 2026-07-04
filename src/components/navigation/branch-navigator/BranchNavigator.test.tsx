@@ -11,6 +11,7 @@ const branch = (name: string, kind: BranchInfo["kind"], over: Partial<BranchInfo
   target: "c1",
   isHead: false,
   upstream: null,
+  remote: null,
   ...over,
 });
 const tagged: CommitNode = {

@@ -7,6 +7,7 @@ import type {
   FileChange,
   FileDiff,
   FileHistoryEntry,
+  OperationAdvisory,
   OperationKind,
   ReflogEntry,
   RemoteInfo,
@@ -164,6 +165,11 @@ export interface RepoState {
    * null when none is in progress. Refreshed with working-tree status; when
    * non-null the app surfaces the dedicated conflict-resolution workspace. */
   operation: OperationState | null;
+  /** A non-drivable in-progress git state (`git am` or bisect) surfaced as a
+   * read-only advisory banner — GitLane can't continue/abort these in-app, so
+   * they stay out of `operation` and the conflict workspace. Null when the repo
+   * is clean or in a drivable operation. */
+  operationAdvisory: OperationAdvisory | null;
   commitFiles: FileChange[];
   /** The merged diff for a multi-commit selection (GL-68), or null when a single
    * commit (or none) is selected — then [`commitFiles`] drives the inspector. */
@@ -347,9 +353,15 @@ export interface RepoState {
   discardAll: () => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */
   createPatchAt: (sha: string) => Promise<string>;
-  /** Create a worktree at `worktreePath` checked out to `reference`, then open
-   * it as a repo tab. */
-  createWorktreeAt: (worktreePath: string, reference: string) => Promise<string>;
+  /** Create a worktree at `worktreePath`, then open it as a repo tab. With
+   * `newBranch`, a fresh branch of that name is created at `reference` (its
+   * start point) and checked out in the worktree; otherwise the worktree is
+   * checked out to `reference` directly. */
+  createWorktreeAt: (
+    worktreePath: string,
+    reference: string,
+    newBranch?: string,
+  ) => Promise<string>;
   /** Switch the app to an existing worktree. By default the current tab's
    * path switches in place — one repository, one tab (GL-110); `newTab` is the
    * explicit side-by-side action, opening a separate worktree-styled tab
@@ -468,6 +480,7 @@ export type RepoDataState = Pick<
   | "recents"
   | "changes"
   | "operation"
+  | "operationAdvisory"
   | "commitFiles"
   | "selectionDiff"
   | "fileHistory"
@@ -515,6 +528,7 @@ export function createInitialRepoData(
     recents,
     changes: emptyChanges,
     operation: null,
+    operationAdvisory: null,
     commitFiles: [],
     selectionDiff: null,
     fileHistory: null,

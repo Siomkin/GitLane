@@ -4,9 +4,42 @@ use super::cli::{run_git, run_git_env_stable_diagnostics};
 use super::operands::{ensure_operand, ensure_opt};
 
 /// Check out an existing branch, tag, or commit.
+///
+/// The bare `target` is intentional even when a branch and tag share the name:
+/// `git checkout <name>` DWIMs to the *branch* (git's own precedence for
+/// checkout), whereas `git checkout refs/heads/<name>` would *detach* HEAD. So
+/// unlike merge/rebase below, checkout needs no `refs/heads/` qualification —
+/// adding it would regress the common "switch to branch" case.
 pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
     ensure_operand(target)?;
     run_git(repo, &["checkout", target])
+}
+
+/// Disambiguate a bare ref that is *both* a local branch and a tag toward the
+/// branch by returning `refs/heads/<name>`; otherwise return `name` unchanged.
+///
+/// Git's rev resolution gives a **tag** precedence over a same-named branch
+/// (`gitrevisions`), so `git merge feature` / `git rebase feature` silently
+/// operate on the tag when both exist. Merge/rebase take a branch here, so
+/// qualify to `refs/heads/` in exactly that ambiguous case — matching how the
+/// tag operations already fully-qualify `refs/tags/`. The qualification is
+/// skipped when no clashing tag exists, so the ordinary case keeps its clean
+/// bare name (and merge keeps its "Merge branch 'feature'" message).
+fn qualify_branch_if_ambiguous(repo: &str, name: &str) -> String {
+    if ref_exists(repo, &format!("refs/heads/{name}")) && ref_exists(repo, &format!("refs/tags/{name}"))
+    {
+        format!("refs/heads/{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+/// Whether `reference` resolves to an existing ref (`git rev-parse --verify
+/// --quiet` exits non-zero when it doesn't).
+fn ref_exists(repo: &str, reference: &str) -> bool {
+    run_git(repo, &["rev-parse", "--verify", "--quiet", reference])
+        .map(|out| !out.trim().is_empty())
+        .unwrap_or(false)
 }
 
 /// Create a branch `name` at `start_point` (defaults to HEAD).
@@ -27,6 +60,12 @@ pub fn delete_branch(repo: &str, name: &str, force: bool) -> Result<String, Stri
 }
 
 /// Rename a branch.
+///
+/// `-m` (not `-M`) is deliberate: the lowercase form refuses to overwrite an
+/// existing branch at `new`, so a rename can never silently clobber another
+/// branch's ref. `-M` would force that overwrite — a data-loss risk we don't
+/// want behind a plain rename. Callers that need to reuse a name must delete the
+/// target branch first.
 pub fn rename_branch(repo: &str, old: &str, new: &str) -> Result<String, String> {
     ensure_operand(old)?;
     ensure_operand(new)?;
@@ -59,7 +98,8 @@ pub fn set_upstream(repo: &str, branch: &str, upstream: &str) -> Result<String, 
 /// the tag-clobber detection in `remotes.rs`.
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    run_git_env_stable_diagnostics(repo, &["merge", "--no-ff", "--no-edit", branch], &[])
+    let target = qualify_branch_if_ambiguous(repo, branch);
+    run_git_env_stable_diagnostics(repo, &["merge", "--no-ff", "--no-edit", &target], &[])
 }
 
 /// Fast-forward the current HEAD to `target`. Fails (no merge commit) if the
@@ -87,7 +127,8 @@ pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<Str
 /// Rebase the current HEAD onto `onto`.
 pub fn rebase(repo: &str, onto: &str) -> Result<String, String> {
     ensure_operand(onto)?;
-    run_git(repo, &["rebase", onto])
+    let target = qualify_branch_if_ambiguous(repo, onto);
+    run_git(repo, &["rebase", &target])
 }
 
 /// Whether `commit` is a merge commit (more than one parent). Git refuses to

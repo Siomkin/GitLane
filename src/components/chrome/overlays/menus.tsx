@@ -14,6 +14,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
+import { validateBranchName } from "@/lib/refName";
 import { handoffDestinationOptions, startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
@@ -155,6 +156,29 @@ function promptCreateWorktree(
     defaultValue: defaultWorktreePath(workdir, label),
     confirmLabel: "Create worktree",
     onSubmit: (path) => run(() => createWorktreeAt(path, reference)),
+  });
+}
+
+/** Prompt for a new branch name, then create a worktree that checks out a fresh
+ * branch of that name starting at `reference` (`git worktree add -b`). The
+ * worktree path is derived from the branch name; the branch name is validated
+ * with the same `check-ref-format` rules as Create/Rename branch. */
+function promptNewBranchWorktree(
+  requestPrompt: PromptFn,
+  run: RunFn,
+  createWorktreeAt: (path: string, ref: string, newBranch?: string) => Promise<string>,
+  reference: string,
+  workdir: string,
+  label: string,
+) {
+  requestPrompt({
+    title: `New branch in a worktree from ${label}`,
+    message: "A new branch is created at this point and checked out in a fresh linked worktree.",
+    placeholder: "feature/my-branch",
+    confirmLabel: "Create branch & worktree",
+    validate: validateBranchName,
+    onSubmit: (name) =>
+      run(() => createWorktreeAt(defaultWorktreePath(workdir, name), reference, name)),
   });
 }
 
@@ -638,7 +662,7 @@ export function BranchContextMenu() {
     danger.push({ label: "Manage", header: true });
     danger.push({
       label: `Rename ${b}…`,
-      onClick: () => requestPrompt({ title: `Rename branch ${b}`, placeholder: "new-branch-name", defaultValue: b, confirmLabel: "Rename", onSubmit: (next) => { if (next !== b) void run(() => renameBranchTo(b, next)); } }),
+      onClick: () => requestPrompt({ title: `Rename branch ${b}`, placeholder: "new-branch-name", defaultValue: b, confirmLabel: "Rename", validate: validateBranchName, onSubmit: (next) => { if (next !== b) void run(() => renameBranchTo(b, next)); } }),
     });
     if (isCurrent) {
       danger.push({
@@ -669,10 +693,12 @@ export function BranchContextMenu() {
     }
   }
   if (isRemote) {
-    const slash = b.indexOf("/");
-    if (slash > 0) {
-      const remote = b.slice(0, slash);
-      const remoteBranch = b.slice(slash + 1);
+    // The backend attributes each remote branch to its remote (matched against
+    // the known remote list), so use that rather than splitting on the first `/`
+    // — a slash-containing remote name would otherwise target the wrong remote.
+    const remote = info?.remote ?? null;
+    if (remote && b.startsWith(`${remote}/`)) {
+      const remoteBranch = b.slice(remote.length + 1);
       danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)) }) });
     }
   }
@@ -861,6 +887,7 @@ export function CommitContextMenu() {
       submenu: [
         { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
         { label: "Worktree from commit…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
+        { label: "New branch in worktree…", onClick: () => promptNewBranchWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
         { label: "Tag here…", onClick: () => requestPrompt({ title: `Create tag at ${shortSha}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, sha)) }) },
         { label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, sha, shortSha) },
         { label: "Patch from commit", onClick: () => act(() => createPatchAt(sha)) },

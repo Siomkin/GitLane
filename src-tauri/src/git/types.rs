@@ -316,6 +316,12 @@ pub struct BranchInfo {
     pub is_head: bool,
     /// Upstream branch name, if any (local branches only).
     pub upstream: Option<String>,
+    /// For a remote branch (`kind == "remote"`), the configured remote it
+    /// belongs to — resolved by matching the ref against the known remote list,
+    /// so a slash-containing remote name is handled correctly. `None` for local
+    /// branches. Lets the frontend address the remote/branch split without
+    /// re-guessing it from the first `/`.
+    pub remote: Option<String>,
     /// Ahead/behind state against the configured upstream. Remote branches do
     /// not have their own upstream state, so this is `None` for them.
     pub sync: Option<BranchSyncState>,
@@ -599,9 +605,9 @@ pub struct CompareResult {
 
 /// The in-progress merge/sequencer operation that left the repo in a conflicted
 /// or mid-operation state. Drives the conflict-resolution workflow. `kind` is
-/// "merge" | "rebase" | "cherry-pick" | "revert" | "none" — mapped from
-/// libgit2's `RepositoryState`, so a rebase/cherry-pick/revert started from a
-/// terminal is detected too.
+/// "merge" | "rebase" | "cherry-pick" | "revert" | "carry" | "none" — mapped
+/// from libgit2's `RepositoryState`, so a rebase/cherry-pick/revert started from
+/// a terminal is detected too.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationStatus {
@@ -611,6 +617,12 @@ pub struct OperationStatus {
     /// Unmerged (conflicted) paths still needing resolution. Empty when the
     /// operation has no outstanding conflicts (e.g. all already staged).
     pub conflicts: Vec<ConflictFile>,
+    /// A non-drivable in-progress git state that GitLane surfaces as a read-only
+    /// advisory (not the conflict workspace): "apply-mailbox" (`git am`) or
+    /// "bisect". Empty when the repo is clean or in a drivable operation. These
+    /// have no in-app continue/abort — the banner points the user at the
+    /// terminal — so they stay out of `kind`.
+    pub advisory: String,
 }
 
 /// One conflicted (unmerged) path in the index.
@@ -763,6 +775,9 @@ pub struct ReviewThread {
     pub line: Option<u32>,
     pub is_resolved: bool,
     pub is_outdated: bool,
+    /// True when the thread holds more comments than the per-thread query cap
+    /// fetched — the UI should say so instead of presenting the list as complete.
+    pub comments_truncated: bool,
     pub comments: Vec<PrComment>,
 }
 
@@ -824,8 +839,10 @@ pub struct PullRequestSummary {
     pub changed_files: u64,
     pub is_draft: bool,
     pub url: String,
-    /// gh mergeability verdict ("UNKNOWN" until GitHub computes it); lets the
-    /// frontend invalidate a cached detail when it flips to a definitive value.
+    /// gh mergeability verdict: "MERGEABLE" | "CONFLICTING" | "UNKNOWN"
+    /// ("UNKNOWN" until GitHub finishes computing it), or "" when gh reports no
+    /// value. Lets the frontend invalidate a cached detail when it flips to a
+    /// definitive value.
     pub mergeable: String,
 }
 
@@ -851,8 +868,10 @@ pub struct PullRequestDetail {
     pub files: Vec<String>,
     /// Discussion comments in order (the `comments` field above is just the count).
     pub comment_list: Vec<PrComment>,
-    /// Mergeability as gh reports it: "MERGEABLE" | "CONFLICTING" | "UNKNOWN".
-    /// Drives whether the merge button is offered; empty when not resolved.
+    /// gh mergeability verdict — same value set as [`PullRequestSummary`]'s:
+    /// "MERGEABLE" | "CONFLICTING" | "UNKNOWN" | "" (the last two while GitHub
+    /// is still computing it or gh reports no value). Drives whether the merge
+    /// button is offered.
     pub mergeable: String,
     /// Requested reviewers still pending (users + teams, by login/slug).
     pub reviewers: Vec<PrAuthor>,

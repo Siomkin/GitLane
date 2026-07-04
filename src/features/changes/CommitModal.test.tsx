@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange } from "../../lib/api";
+import { emptyAdvancedState } from "../../lib/advancedRepoState";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { CommitModal } from "./CommitModal";
@@ -16,7 +17,7 @@ beforeEach(() => {
   useRepo.setState({
     summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
     graph: null,
-    changes: { staged: [staged("src/features/changes/CommitModal.tsx")], unstaged: [], conflicted: [] },
+    changes: { staged: [staged("src/features/changes/CommitModal.tsx")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
   });
   useUi.setState({
     commitOpen: true,
@@ -85,6 +86,7 @@ describe("CommitModal", () => {
         ],
         unstaged: [],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
     });
     useUi.setState({ commitMsg: "Update dependency" });

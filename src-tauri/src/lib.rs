@@ -82,8 +82,17 @@ async fn add_worktree(
     path: String,
     worktree_path: String,
     reference: Option<String>,
+    new_branch: Option<String>,
 ) -> Result<String, String> {
-    blocking(move || git::write::add_worktree(&path, &worktree_path, reference.as_deref())).await
+    blocking(move || {
+        git::write::add_worktree(
+            &path,
+            &worktree_path,
+            reference.as_deref(),
+            new_branch.as_deref(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1175,6 +1184,18 @@ pub fn run() {
         .manage(TerminalState::default())
         .manage(CloneState::default())
         .setup(|app| {
+            // Warm the login-shell PATH cache off the main thread at startup.
+            // `shell::path()` resolves the user's real PATH by running a login
+            // shell (`$SHELL -lic …`) on first use and caches it. The synchronous
+            // `working_changes` command touches it (via LFS detection's
+            // `command_on_path("git-lfs")`), so a cold cache would run that
+            // login-shell probe on the webview main thread and stall the first
+            // status read. Priming it here on the blocking pool means the first
+            // real call hits a warm `OnceLock`.
+            tauri::async_runtime::spawn_blocking(|| {
+                let _ = crate::shell::path();
+            });
+
             // The updater is desktop-only; registering it here (rather than in the
             // builder chain) keeps a future mobile build compiling without it. The
             // frontend drives it via @tauri-apps/plugin-updater.

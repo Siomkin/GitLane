@@ -475,14 +475,17 @@ export function createRepoWriteActions(
       return runOp(get, async (summary) => api.discardAll(summary.path));
     },
 
-    createWorktreeAt: async (worktreePath, reference) => {
+    createWorktreeAt: async (worktreePath, reference, newBranch) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
       // Create the worktree against the current repo, then open the new path as
-      // its own repo tab (loadRepo discovers + watches it).
-      await api.addWorktree(summary.path, worktreePath, reference);
+      // its own repo tab (loadRepo discovers + watches it). With `newBranch`,
+      // `reference` is the new branch's start point.
+      await api.addWorktree(summary.path, worktreePath, reference, newBranch);
       await get().loadRepo(worktreePath);
-      return `Created worktree at ${worktreePath}`;
+      return newBranch
+        ? `Created ${newBranch} in a worktree at ${worktreePath}`
+        : `Created worktree at ${worktreePath}`;
     },
 
     openWorktree: async (worktreePath, opts) => {

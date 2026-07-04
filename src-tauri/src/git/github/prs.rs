@@ -13,8 +13,13 @@ use crate::git::types::{
 
 // `gh pr view --json commits` exposes no signature data, so per-commit
 // verification is read separately via GraphQL. Mirrors the review-threads query
-// in `threads.rs`; the 250 cap matches GitHub's commit projection limit.
-const COMMIT_SIGNATURES_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){commits(first:250){nodes{commit{oid signature{isValid}}}}}}}";
+// in `threads.rs`, including cursor pagination — a PR past 250 commits keeps
+// its signature badges instead of silently losing the tail.
+const COMMIT_SIGNATURES_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){commits(first:250,after:$cursor){pageInfo{hasNextPage endCursor} nodes{commit{oid signature{isValid}}}}}}}";
+
+/// Hard stop for cursor pagination, matching `threads::MAX_GRAPHQL_PAGES` in
+/// spirit (250 commits per page). Guards against a looping `pageInfo`.
+const MAX_SIGNATURE_PAGES: usize = 20;
 
 // `mergeable` rides the same GraphQL query (no extra round-trip); GitHub may
 // report "UNKNOWN" until it computes mergeability, which the frontend tolerates.
@@ -144,9 +149,10 @@ pub fn commit_signatures(
     let owner_field = format!("owner={owner}");
     let name_field = format!("name={name}");
     let number_field = format!("number={number}");
-    let raw = run_gh(
-        workdir,
-        &[
+    let mut signatures = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..MAX_SIGNATURE_PAGES {
+        let mut args = vec![
             "api",
             "graphql",
             "-f",
@@ -157,20 +163,27 @@ pub fn commit_signatures(
             &name_field,
             "-F",
             &number_field,
-        ],
-        token,
-    )?;
-    let parsed: GqlCommitsResp = serde_json::from_str(&raw)
-        .map_err(|e| format!("failed to parse commit signatures: {e}"))?;
-    Ok(parsed
-        .data
-        .repository
-        .pull_request
-        .commits
-        .nodes
-        .into_iter()
-        .map(GqlCommitNode::into_signature)
-        .collect())
+        ];
+        // Omitted on the first page so `$cursor` stays null (same as threads.rs).
+        let cursor_field = cursor.as_ref().map(|c| format!("cursor={c}"));
+        if let Some(f) = cursor_field.as_deref() {
+            args.push("-f");
+            args.push(f);
+        }
+        let raw = run_gh(workdir, &args, token)?;
+        let parsed: GqlCommitsResp = serde_json::from_str(&raw)
+            .map_err(|e| format!("failed to parse commit signatures: {e}"))?;
+        let connection = parsed.data.repository.pull_request.commits;
+        signatures.extend(connection.nodes.into_iter().map(GqlCommitNode::into_signature));
+        match connection.page_info.filter(|p| p.has_next_page) {
+            Some(page) => match page.end_cursor {
+                Some(next) => cursor = Some(next),
+                None => break,
+            },
+            None => break,
+        }
+    }
+    Ok(signatures)
 }
 
 /// Fetch just the CI/status checks for a PR (the slow `statusCheckRollup`

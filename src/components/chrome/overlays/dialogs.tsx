@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
+import { validateBranchName } from "@/lib/refName";
 import { SearchIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -21,11 +22,13 @@ export function CreateBranchDialog() {
   if (!open) return null;
   const base = start ?? summary?.headBranch ?? "HEAD";
 
+  const trimmedName = name.trim();
+  const validationError = trimmedName ? validateBranchName(trimmedName) : null;
+
   const submit = () => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+    if (!trimmedName || validationError) return;
     setOpen(false);
-    void run(() => createBranchAt(trimmed, start ?? undefined));
+    void run(() => createBranchAt(trimmedName, start ?? undefined));
   };
 
   return (
@@ -53,6 +56,9 @@ export function CreateBranchDialog() {
           placeholder="feature/my-branch"
           className="mt-4 w-full rounded-lg border border-black/10 bg-transparent px-3 py-2.5 text-[13.5px] text-neutral-800 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
         />
+        {validationError && (
+          <div className="mt-2 text-[12px] text-rose-500">{validationError}</div>
+        )}
         <div className="mt-[18px] flex justify-end gap-2">
           <button
             onClick={() => setOpen(false)}
@@ -62,7 +68,7 @@ export function CreateBranchDialog() {
           </button>
           <button
             onClick={submit}
-            disabled={!name.trim()}
+            disabled={!trimmedName || !!validationError}
             className="h-9 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
           >
             Create branch
@@ -194,9 +200,20 @@ export function PromptDialog() {
   // points past the end.
   const active = filtered.length ? Math.min(highlight, filtered.length - 1) : -1;
 
+  // A synchronous validity check on the typed value (create/rename branch use
+  // this). Only meaningful for the plain text input — never with a picker or the
+  // multiline editor. Blocks submit and shows an inline message.
+  const validationError =
+    !options && !prompt.multiline && prompt.validate && value.trim() !== ""
+      ? prompt.validate(value.trim())
+      : null;
+
   const fire = (raw: string) => {
     const trimmed = raw.trim();
     if (!trimmed) return;
+    // A failed validator blocks submission (the button is also disabled, but a
+    // keyboard Enter reaches here directly).
+    if (!options && !prompt.multiline && prompt.validate && prompt.validate(trimmed)) return;
     // Close THIS prompt first, then run onSubmit — so a handler that opens a
     // follow-up prompt (e.g. the two-step annotated-tag flow) isn't immediately
     // clobbered by a trailing closePrompt() that would null the reopened prompt.
@@ -208,7 +225,9 @@ export function PromptDialog() {
   // With options, prefer the highlighted row; fall back to the typed value so a
   // ref outside the list (a SHA, HEAD~1) is still reachable.
   const submit = () => fire(options && active >= 0 ? filtered[active].value : value);
-  const canSubmit = options ? filtered.length > 0 || value.trim() !== "" : value.trim() !== "";
+  const canSubmit = options
+    ? filtered.length > 0 || value.trim() !== ""
+    : value.trim() !== "" && !validationError;
 
   return (
     <div
@@ -319,6 +338,9 @@ export function PromptDialog() {
             placeholder={prompt.placeholder}
             className="mt-4 w-full rounded-lg border border-black/10 bg-transparent px-3 py-2.5 text-[13.5px] text-neutral-800 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
           />
+        )}
+        {validationError && (
+          <div className="mt-2 text-[12px] text-rose-500">{validationError}</div>
         )}
         <div className="mt-[18px] flex justify-end gap-2">
           <button

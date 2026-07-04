@@ -6,6 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { IpcValidationError, parse } from "./validate";
 import { api } from "./index";
+import { emptyAdvancedState } from "../advancedRepoState";
 
 beforeEach(() => invokeMock.mockReset());
 
@@ -48,12 +49,13 @@ describe("lib/api seam validation", () => {
     await expect(api.commitGraph("/r")).resolves.toEqual(valid);
   });
 
-  it("working_changes: defaults a missing `conflicted` to [], rejects a wrong-typed field", async () => {
+  it("working_changes: defaults a missing `conflicted`/`advanced`, rejects a wrong-typed field", async () => {
     invokeMock.mockResolvedValueOnce({ staged: [], unstaged: [] });
     await expect(api.workingChanges("/r")).resolves.toEqual({
       staged: [],
       unstaged: [],
       conflicted: [],
+      advanced: emptyAdvancedState,
     });
 
     invokeMock.mockResolvedValueOnce({ staged: "not-an-array", unstaged: [] });
@@ -177,6 +179,7 @@ describe("lib/api seam validation", () => {
       line: 3,
       isResolved: false,
       isOutdated: false,
+      commentsTruncated: false,
       comments: [],
     };
     invokeMock.mockResolvedValueOnce([{ ...valid, isResolved: undefined }]);

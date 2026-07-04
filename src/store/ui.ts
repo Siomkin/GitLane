@@ -195,6 +195,10 @@ export interface PromptRequest {
    * instead of typing the exact ref. The typed text filters the list; a typed
    * value not in the list is still accepted on submit. */
   options?: PromptOption[];
+  /** Optional synchronous validator for the trimmed value. Returns an error
+   * message to block submission (shown inline, submit disabled) or `null` when
+   * valid. Not used with `options`. */
+  validate?: (value: string) => string | null;
   /** Run with the trimmed value; only fired when the input is non-empty. */
   onSubmit: (value: string) => void;
 }

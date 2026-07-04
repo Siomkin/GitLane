@@ -87,6 +87,7 @@ describe("PR comment markdown", () => {
       line: 12,
       isResolved: false,
       isOutdated: false,
+      commentsTruncated: false,
       comments: [
         {
           author: { name: "dependabot[bot]", login: "dependabot[bot]" },
@@ -117,6 +118,7 @@ describe("PR comment markdown", () => {
             line: null,
             isResolved: false,
             isOutdated: true,
+            commentsTruncated: false,
             comments: [
               {
                 author: { name: "reviewer", login: "reviewer" },
@@ -150,6 +152,7 @@ describe("PR comment markdown", () => {
             line: 252,
             isResolved: false,
             isOutdated: false,
+            commentsTruncated: false,
             comments: [
               {
                 author: { name: "reviewer", login: "reviewer" },
@@ -226,6 +229,7 @@ const thread = (id: string, body: string): ReviewThread => ({
   line: 1,
   isResolved: false,
   isOutdated: false,
+  commentsTruncated: false,
   comments: [
     {
       author: { name: "reviewer", login: "reviewer" },

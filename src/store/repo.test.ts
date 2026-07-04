@@ -10,6 +10,7 @@ import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
 import { useUi } from "./ui";
 import { ForgeKind } from "../lib/api";
+import { emptyAdvancedState } from "../lib/advancedRepoState";
 import type { PullRequest } from "../lib/prs";
 import type {
   BranchInfo,
@@ -42,7 +43,7 @@ const emptyGraph: RepoGraph = {
 // reads return a list, but `working_changes` is a WorkingChanges object — now
 // that lib/api validates the IPC shape (GL-57), a catch-all `[]` is rejected at
 // the seam, so route the fall-through through here.
-const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [] };
+const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState };
 const defaultInvoke = (cmd: string) =>
   Promise.resolve(cmd === "working_changes" ? EMPTY_CHANGES : []);
 
@@ -99,6 +100,7 @@ describe("repo store — discardFile", () => {
         staged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
         unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0, binary: false }],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
@@ -141,6 +143,7 @@ describe("repo store — discardFile", () => {
         staged: [],
         unstaged: [{ path: "src/a.ts", status: "M", add: 2, del: 0, binary: false }],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
@@ -259,7 +262,7 @@ describe("repo store — advanced write guards", () => {
         case "commit_graph":
           return Promise.resolve(emptyGraph);
         case "working_changes":
-          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
         default:
           return defaultInvoke(cmd);
       }
@@ -288,6 +291,7 @@ describe("repo store — advanced write guards", () => {
           },
         ],
         conflicted: [],
+        advanced: emptyAdvancedState,
       },
     });
 
@@ -556,7 +560,7 @@ describe("repo store — large history", () => {
       const oldDiff = diff({ add: 0 });
       const newDiff = diff({ add: 9 });
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: oldDiff,
       });
@@ -588,7 +592,7 @@ describe("repo store — large history", () => {
     it("never flips diffLoading while reconciling", async () => {
       const slow = deferred<ReturnType<typeof diff>>();
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff(),
         diffLoading: false,
@@ -615,7 +619,7 @@ describe("repo store — large history", () => {
 
     it("refetches full when the shown diff is not truncated, capped when it is", async () => {
       const base = {
-        changes: { staged: [], unstaged: [], conflicted: [] } as WorkingChanges,
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState } as WorkingChanges,
         selectedFile: { path: "src/a.ts", source: "unstaged" as const },
       };
       const worktreeInvoke = (cmd: string) => {
@@ -648,7 +652,7 @@ describe("repo store — large history", () => {
 
     it("never refetches for a commit-source selection", async () => {
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "commit" },
         fileDiff: diff(),
       });
@@ -670,6 +674,7 @@ describe("repo store — large history", () => {
           staged: [],
           unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
           conflicted: [],
+          advanced: emptyAdvancedState,
         },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff(),
@@ -694,7 +699,7 @@ describe("repo store — large history", () => {
       useRepo.setState({
         graph: emptyGraph,
         selectedCommit: null,
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff({ add: 0 }),
       });
@@ -726,6 +731,7 @@ describe("repo store — large history", () => {
           staged: [],
           unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
           conflicted: [],
+          advanced: emptyAdvancedState,
         },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff(),
@@ -758,7 +764,7 @@ describe("repo store — large history", () => {
       const slow = deferred<ReturnType<typeof diff>>();
       const expanded = diff({ truncated: false, add: 4 });
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         // The shown diff is truncated, so the reconcile fetches capped.
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff({ truncated: true }),
@@ -786,7 +792,7 @@ describe("repo store — large history", () => {
 
     it("fetches the staged diff for a staged selection", async () => {
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "staged" },
         fileDiff: diff(),
       });
@@ -813,7 +819,7 @@ describe("repo store — large history", () => {
       const slow = deferred<ReturnType<typeof diff>>();
       const stagedDiff = diff({ add: 5 });
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff(),
       });
@@ -845,7 +851,7 @@ describe("repo store — large history", () => {
       const slow = deferred<ReturnType<typeof diff>>();
       const newDiff = diff({ add: 8 });
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff({ add: 0 }),
       });
@@ -877,7 +883,7 @@ describe("repo store — large history", () => {
       const slow = deferred<ReturnType<typeof diff>>();
       const shown = diff({ add: 1 });
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: shown,
         diffLoading: false,
@@ -908,7 +914,7 @@ describe("repo store — large history", () => {
       const slow = deferred<ReturnType<typeof diff>>();
       const foreground = diff({ add: 6 });
       useRepo.setState({
-        changes: { staged: [], unstaged: [], conflicted: [] },
+        changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff(),
         diffLoading: false,
@@ -945,6 +951,7 @@ describe("repo store — large history", () => {
           staged: [],
           unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
           conflicted: [],
+          advanced: emptyAdvancedState,
         },
         selectedFile: { path: "src/a.ts", source: "unstaged" },
         fileDiff: diff(),
@@ -1177,7 +1184,7 @@ describe("repo store — loadRepo failed open", () => {
     };
     const prevGraph: RepoGraph = { ...emptyGraph, head: "abc1234" };
     const prevBranches: BranchInfo[] = [
-      { name: "main", kind: "local", target: "abc1234", isHead: true, upstream: null },
+      { name: "main", kind: "local", target: "abc1234", isHead: true, upstream: null, remote: null },
     ];
     const prevWorktrees: WorktreeInfo[] = [
       { name: "old", path: "/old", branch: "main", isMain: true },
@@ -1189,6 +1196,7 @@ describe("repo store — loadRepo failed open", () => {
       staged: [{ path: "a.ts", status: "M", add: 1, del: 0, binary: false }],
       unstaged: [],
       conflicted: [],
+      advanced: emptyAdvancedState,
     };
     useRepo.setState({
       summary: prevSummary,
@@ -1578,7 +1586,7 @@ describe("repo store — loadRepo progressive open", () => {
     await useRepo.getState().loadMoreHistory();
 
     const picked: BranchInfo[] = [
-      { name: "main", kind: "local", target: "head", isHead: true, upstream: null },
+      { name: "main", kind: "local", target: "head", isHead: true, upstream: null, remote: null },
     ];
     branchesDeferred.resolve(picked);
     await new Promise((resolve) => setTimeout(resolve));
@@ -2011,7 +2019,7 @@ describe("repo store — conflict actions", () => {
     useRepo.setState({ operation: { kind: "merge", canSkip: false, files: [] } });
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "working_changes")
-        return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+        return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
       if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
       return defaultInvoke(cmd);
     });
@@ -2118,7 +2126,7 @@ describe("repo store — openWorktree", () => {
         case "commit_graph":
           return Promise.resolve(graphWithTip);
         case "working_changes":
-          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
         default:
           return defaultInvoke(cmd);
       }
@@ -2159,7 +2167,7 @@ describe("repo store — merged selection (GL-69)", () => {
         case "commit_graph":
           return Promise.resolve(trimmedGraph);
         case "working_changes":
-          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
         case "selection_diff":
           return Promise.resolve(freshFiles);
         default:
@@ -2199,7 +2207,7 @@ describe("repo store — merged selection (GL-69)", () => {
         case "commit_graph":
           return Promise.resolve(graph);
         case "working_changes":
-          return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
         case "selection_diff":
           return Promise.resolve(freshFiles);
         default:
@@ -2229,7 +2237,7 @@ describe("repo store — merged selection (GL-69)", () => {
         : cmd === "commit_graph"
           ? Promise.resolve(oneLeft)
           : cmd === "working_changes"
-            ? Promise.resolve({ staged: [], unstaged: [], conflicted: [] })
+            ? Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState })
             : defaultInvoke(cmd),
     );
 

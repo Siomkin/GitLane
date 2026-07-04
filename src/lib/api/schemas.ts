@@ -17,6 +17,7 @@
 // frontend doesn't read yet, which is the safe direction to be lenient in.
 
 import { z } from "zod";
+import { emptyAdvancedState } from "../advancedRepoState";
 import type {
   AdvancedRepoState,
   CommitNode,
@@ -82,7 +83,7 @@ const graphEdgeSchema = z.object({
   fromLane: z.number(),
   toRow: z.number(),
   toLane: z.number(),
-  parentIndex: z.number().optional(),
+  parentIndex: z.number(),
   color: z.number(),
 });
 
@@ -151,7 +152,10 @@ export const workingChangesSchema = z.object({
   // payload still normalizes to [] (the long-standing defensive contract) rather
   // than throwing — every consumer can keep relying on the field being present.
   conflicted: z.array(fileChangeSchema).default([]),
-  advanced: advancedRepoStateSchema.optional(),
+  // Always sent by the backend; defaulted (like `conflicted`) so a malformed or
+  // legacy payload still normalizes to an empty advanced state rather than
+  // throwing, while the parsed type stays non-optional.
+  advanced: advancedRepoStateSchema.default(emptyAdvancedState),
 });
 
 // ---- file_diff (and the commit/range/compare variants) → FileDiff ----
@@ -292,6 +296,7 @@ export const reviewThreadSchema = z.object({
   line: z.number().nullable(),
   isResolved: z.boolean(),
   isOutdated: z.boolean(),
+  commentsTruncated: z.boolean(),
   comments: z.array(prCommentSchema),
 });
 

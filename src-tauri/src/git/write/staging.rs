@@ -541,6 +541,13 @@ pub fn commit(
     name: Option<&str>,
     email: Option<&str>,
 ) -> Result<String, String> {
+    // Guard an empty subject with a clear message instead of letting git fail
+    // with its raw "Aborting commit due to empty commit message" — the commit
+    // always carries an explicit `-m <summary>`, so an empty subject is a user
+    // error, not an editor abort.
+    if summary.trim().is_empty() {
+        return Err("A commit message is required.".to_string());
+    }
     let mut args: Vec<String> = Vec::new();
     if let (Some(n), Some(e)) = (name, email) {
         if !n.is_empty() && !e.is_empty() {

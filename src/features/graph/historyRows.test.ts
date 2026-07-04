@@ -202,7 +202,7 @@ describe("buildHistoryRows", () => {
       graph: {
         ...graph,
         laneCount: 2,
-        edges: [{ fromRow: 0, fromLane: 1, toRow: 1, toLane: 1, color: 1 }],
+        edges: [{ fromRow: 0, fromLane: 1, toRow: 1, toLane: 1, color: 1, parentIndex: 0 }],
       },
       stashes: [
         stash({
@@ -294,7 +294,7 @@ describe("buildHistoryRows", () => {
         stashNode,
         commit({ id: "c2", summary: "tip", timestamp: 200, row: 2, lane: 0, parents: ["c1"] }),
       ],
-      edges: [{ fromRow: 1, fromLane: 1, toRow: 0, toLane: 0, color: 0 }],
+      edges: [{ fromRow: 1, fromLane: 1, toRow: 0, toLane: 0, color: 0, parentIndex: 0 }],
       laneCount: 2,
       head: "c2",
       truncated: false,

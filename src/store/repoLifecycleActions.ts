@@ -137,6 +137,7 @@ export function createRepoLifecycleActions(
       stashes: [],
       changes: emptyChanges,
       operation: null,
+      operationAdvisory: null,
       commitFiles: [],
       selectionDiff: null,
       selectedCommit: null,
@@ -269,6 +270,7 @@ export function createRepoLifecycleActions(
         stashes: [],
         changes: emptyChanges,
         operation: null,
+        operationAdvisory: null,
         loading: true,
         graphLoading: true,
         error: null,
@@ -399,7 +401,10 @@ export function createRepoLifecycleActions(
         .operationStatus(summary.path)
         .then((status) => {
           if (repoStillDisplayed(summary.path)) {
-            set({ operation: mergeOperationStatus(get().operation, status) });
+            set({
+              operation: mergeOperationStatus(get().operation, status),
+              operationAdvisory: status.advisory || null,
+            });
           }
         })
         .catch(() => {});
@@ -522,6 +527,7 @@ export function createRepoLifecycleActions(
           worktrees: [],
           changes: emptyChanges,
           operation: null,
+          operationAdvisory: null,
           commitFiles: [],
           selectionDiff: null,
           selectedCommit: null,
@@ -570,6 +576,7 @@ export function createRepoLifecycleActions(
         stashes: [],
         changes: emptyChanges,
         operation: null,
+        operationAdvisory: null,
         commitFiles: [],
         selectionDiff: null,
         selectedCommit: null,
@@ -822,6 +829,9 @@ export function createRepoLifecycleActions(
               : changes.conflicted.length === 0
                 ? null
                 : get().operation,
+            // A failed status read leaves the prior advisory untouched (avoid
+            // flickering the banner on a transient error).
+            operationAdvisory: opStatus ? opStatus.advisory || null : get().operationAdvisory,
             // Only clear the spinner if this call owned it (non-quiet). The quiet
             // watcher path never set it, so it must not clear a concurrent load's.
             ...(opts?.quiet ? {} : { loading: false }),
@@ -947,6 +957,7 @@ export function createRepoLifecycleActions(
             : changes.conflicted.length === 0
               ? null
               : get().operation,
+          operationAdvisory: opStatus ? opStatus.advisory || null : get().operationAdvisory,
           selectedCommit,
           selectedCommits,
           selectionAnchor,

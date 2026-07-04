@@ -7,6 +7,7 @@ const status = (over: Partial<OperationStatus> = {}): OperationStatus => ({
   kind: "merge",
   canSkip: false,
   conflicts: [],
+  advisory: "",
   ...over,
 });
 
