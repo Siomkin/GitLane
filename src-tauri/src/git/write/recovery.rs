@@ -92,6 +92,12 @@ pub fn preview_reset(
         "soft" | "mixed" | "hard" => mode,
         _ => "mixed",
     };
+    // Qualify a branch/tag-ambiguous target to refs/heads/ exactly as the write
+    // path (`branches::reset`) does, so the preview describes the *same* ref the
+    // reset will actually move to — otherwise a same-named tag could be shown in
+    // the confirm dialog while the reset lands on the branch (GL-120 review).
+    let target = super::branches::qualify_branch_if_ambiguous(repo, target);
+    let target = target.as_str();
     // Validate both ends up front. The impact reads below tolerate git failures
     // with `unwrap_or_default()`, so an unresolvable target or source would
     // otherwise yield a confident-looking but empty preview ("No commits are

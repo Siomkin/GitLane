@@ -16,7 +16,7 @@ import {
   type ReviewAction,
   type ReviewThread,
 } from "../lib/api";
-import { applyCommitSignatures, detailToPr, summaryToPr, type PullRequest } from "../lib/prs";
+import { detailToPr, summaryToPr, uiCommits, type PullRequest } from "../lib/prs";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 
@@ -93,11 +93,11 @@ interface PullsState {
   prThreadsLoading: boolean;
   /** Per-PR threads-load error (drives an inline retry in the threads section). */
   prThreadsError: Record<number, string>;
-  /** PRs whose commit signatures have been merged into `prDetails` (GraphQL).
-   * Tracked so the lazy verification fetch runs once per detail load. */
-  prCommitSigsLoaded: Record<number, boolean>;
-  /** Per-PR signature-load error (silent; badges just stay absent on failure). */
-  prCommitSigsError: Record<number, string>;
+  /** PRs whose full commit list (paginated GraphQL, with verification) has
+   * replaced the capped `gh pr view` list. Tracked so it runs once per load. */
+  prCommitsLoaded: Record<number, boolean>;
+  /** Per-PR commit-load error (silent; the fast-path list stays on failure). */
+  prCommitsError: Record<number, string>;
   /**
    * Per-PR cache generation, bumped when a refresh prunes a PR's stale caches.
    * In-flight detail/diff/threads/signature loads capture it and discard their
@@ -127,9 +127,9 @@ interface PullsState {
   loadPrDetail: (num: number, force?: boolean) => Promise<void>;
   /** Lazily load + cache a PR's checks. No-ops if cached (unless `force`). */
   loadPrChecks: (num: number, force?: boolean) => Promise<void>;
-  /** Lazily fetch per-commit signatures and merge them into the cached detail's
-   * commits. No-ops if already applied for this detail load (unless `force`). */
-  loadPrCommitSignatures: (num: number, force?: boolean) => Promise<void>;
+  /** Lazily fetch the full paginated commit list and replace the cached detail's
+   * capped commits. No-ops if already loaded for this detail (unless `force`). */
+  loadPrCommits: (num: number, force?: boolean) => Promise<void>;
   /** Lazily load + cache a PR's full diff. No-ops if cached (unless `force`). */
   loadPrDiff: (num: number, force?: boolean) => Promise<void>;
   /** Lazily load + cache a PR's inline review threads. No-ops if cached. */
@@ -182,8 +182,8 @@ export const usePulls = create<PullsState>((set, get) => ({
   prThreads: {},
   prThreadsLoading: false,
   prThreadsError: {},
-  prCommitSigsLoaded: {},
-  prCommitSigsError: {},
+  prCommitsLoaded: {},
+  prCommitsError: {},
   prResourceVersion: {},
   prPendingActions: [],
 
@@ -199,8 +199,8 @@ export const usePulls = create<PullsState>((set, get) => ({
       prDiffError: {},
       prThreads: {},
       prThreadsError: {},
-      prCommitSigsLoaded: {},
-      prCommitSigsError: {},
+      prCommitsLoaded: {},
+      prCommitsError: {},
       prResourceVersion: {},
       prsFetchedAt: null,
       prsRefreshInFlight: false,
@@ -276,8 +276,8 @@ export const usePulls = create<PullsState>((set, get) => ({
             prChecksError: {},
             prDiffError: {},
             prThreadsError: {},
-            prCommitSigsLoaded: {},
-            prCommitSigsError: {},
+            prCommitsLoaded: {},
+            prCommitsError: {},
             prChecksLoadingByNum: {},
             prChecksLoading: false,
             // Bump every known PR's version so an in-flight detail/diff/threads
@@ -392,7 +392,7 @@ export const usePulls = create<PullsState>((set, get) => ({
           prDetailLoading: false,
           // Fresh commits (verified: false) — drop the applied marker so the lazy
           // signature fetch re-runs for this PR.
-          prCommitSigsLoaded: omit(s.prCommitSigsLoaded, num),
+          prCommitsLoaded: omit(s.prCommitsLoaded, num),
         };
       });
     } catch (e) {
@@ -448,20 +448,20 @@ export const usePulls = create<PullsState>((set, get) => ({
     }
   },
 
-  // Lazily fetch per-commit signatures (GraphQL) and merge `verified` into the
-  // cached detail's commits. Supplementary metadata: failures stay silent (no
-  // badge) rather than blanking the Commits tab.
-  loadPrCommitSignatures: async (num, force) => {
+  // Lazily fetch the full, verified commit list (paginated GraphQL) and replace
+  // the cached detail's capped `gh pr view` commits. Supplementary: on failure
+  // keep the fast-path list rather than blanking the Commits tab.
+  loadPrCommits: async (num, force) => {
     const summary = useRepo.getState().summary;
     if (!summary) return;
-    if (!force && get().prCommitSigsLoaded[num]) return;
+    if (!force && get().prCommitsLoaded[num]) return;
     const detail = get().prDetails[num];
-    if (!detail || detail.commits.length === 0) return;
+    if (!detail) return;
     const account = useAccounts.getState().repoAccountRef;
     const version = get().prResourceVersion[num] ?? 0;
-    set((s) => ({ prCommitSigsError: omit(s.prCommitSigsError, num) }));
+    set((s) => ({ prCommitsError: omit(s.prCommitsError, num) }));
     try {
-      const sigs = await api.pullRequestCommitSignatures(summary.path, num, account);
+      const commits = await api.pullRequestCommits(summary.path, num, account);
       set((s) => {
         const d = s.prDetails[num];
         // Skip if pruned mid-flight or the detail was evicted under us.
@@ -469,13 +469,13 @@ export const usePulls = create<PullsState>((set, get) => ({
         return {
           prDetails: {
             ...s.prDetails,
-            [num]: { ...d, commits: applyCommitSignatures(d.commits, sigs) },
+            [num]: { ...d, commits: uiCommits(commits, d.url) },
           },
-          prCommitSigsLoaded: { ...s.prCommitSigsLoaded, [num]: true },
+          prCommitsLoaded: { ...s.prCommitsLoaded, [num]: true },
         };
       });
     } catch (e) {
-      set((s) => ({ prCommitSigsError: { ...s.prCommitSigsError, [num]: String(e) } }));
+      set((s) => ({ prCommitsError: { ...s.prCommitsError, [num]: String(e) } }));
     }
   },
 
@@ -720,7 +720,7 @@ function pruneStalePrCaches(s: PullsState, summaries: PullRequest[]): Partial<Pu
     prDiffs: omitMany(s.prDiffs, stale),
     prChecks: omitMany(s.prChecks, stale),
     prThreads: omitMany(s.prThreads, stale),
-    prCommitSigsLoaded: omitMany(s.prCommitSigsLoaded, stale),
+    prCommitsLoaded: omitMany(s.prCommitsLoaded, stale),
     prDetailError: omitMany(s.prDetailError, stale),
     prDiffError: omitMany(s.prDiffError, stale),
     prChecksError: omitMany(s.prChecksError, stale),

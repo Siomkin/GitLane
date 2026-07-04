@@ -67,6 +67,7 @@ const App = () => {
   );
   const operation = useRepo((state) => state.operation);
   const operationAdvisory = useRepo((state) => state.operationAdvisory);
+  const hasConflictedFiles = useRepo((state) => state.changes.conflicted.length > 0);
   const revealTarget = useRepo((state) => state.revealTarget);
   const restoreSession = useRepo((state) => state.restoreSession);
   const refresh = useRepo((state) => state.refresh);
@@ -278,7 +279,7 @@ const App = () => {
           <ActionBar activeTab={leftTab} onTabChange={setLeftTab} />
           <div className="relative flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
             {operationAdvisory && !inConflict && (
-              <OperationAdvisoryBanner advisory={operationAdvisory} />
+              <OperationAdvisoryBanner advisory={operationAdvisory} hasConflicts={hasConflictedFiles} />
             )}
             <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
               {inConflict ? (

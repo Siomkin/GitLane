@@ -42,7 +42,6 @@ import type {
   PrCheck,
   PrComment,
   PrCommit,
-  PrCommitSignature,
   PrLabel,
   PrReview,
   PullRequestDetail,
@@ -204,12 +203,13 @@ const prCommentSchema = z.object({
   createdAt: z.string(),
 });
 
-const prCommitSchema = z.object({
+export const prCommitSchema = z.object({
   oid: z.string(),
   headline: z.string(),
   authoredDate: z.string(),
   authorName: z.string(),
   authorLogin: z.string(),
+  verified: z.boolean(),
 });
 
 const prReviewSchema = z.object({
@@ -282,13 +282,6 @@ export const prCheckSchema = z.object({
   state: z.enum(["pass", "fail", "pending", "skipped"]).catch("pending"),
 });
 
-// ---- pull_request_commit_signatures → PrCommitSignature[] ----
-
-export const prCommitSignatureSchema = z.object({
-  oid: z.string(),
-  verified: z.boolean(),
-});
-
 // ---- pull_request_review_threads → ReviewThread[] ----
 
 export const reviewThreadSchema = z.object({
@@ -341,5 +334,4 @@ assertEqual<z.infer<typeof pullRequestDetailSchema>, PullRequestDetail>(true);
 
 assertEqual<z.infer<typeof githubAccountSchema>, GithubAccount>(true);
 assertEqual<z.infer<typeof prCheckSchema>, PrCheck>(true);
-assertEqual<z.infer<typeof prCommitSignatureSchema>, PrCommitSignature>(true);
 assertEqual<z.infer<typeof reviewThreadSchema>, ReviewThread>(true);

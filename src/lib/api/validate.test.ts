@@ -207,7 +207,7 @@ describe("lib/api seam validation", () => {
     await expect(api.pullRequestChecks("/r", 1)).rejects.toThrow(/pull_request_checks/);
   });
 
-  it("list_pull_requests / github_accounts / commit signatures: reject malformed rows", async () => {
+  it("list_pull_requests / github_accounts / pr commits: reject malformed rows", async () => {
     const summary = {
       number: 1,
       title: "t",
@@ -246,14 +246,18 @@ describe("lib/api seam validation", () => {
     invokeMock.mockResolvedValueOnce([ghAccount]);
     await expect(api.githubAccounts()).resolves.toEqual([ghAccount]);
 
-    invokeMock.mockResolvedValueOnce([{ oid: "abc", verified: "yes" }]);
-    await expect(api.pullRequestCommitSignatures("/r", 1)).rejects.toThrow(
-      /pull_request_commit_signatures/,
-    );
+    const validCommit = {
+      oid: "abc",
+      headline: "feat: x",
+      authoredDate: "2026-01-01",
+      authorName: "A",
+      authorLogin: "a",
+      verified: true,
+    };
+    invokeMock.mockResolvedValueOnce([{ ...validCommit, verified: "yes" }]);
+    await expect(api.pullRequestCommits("/r", 1)).rejects.toThrow(/pull_request_commits/);
 
-    invokeMock.mockResolvedValueOnce([{ oid: "abc", verified: true }]);
-    await expect(api.pullRequestCommitSignatures("/r", 1)).resolves.toEqual([
-      { oid: "abc", verified: true },
-    ]);
+    invokeMock.mockResolvedValueOnce([validCommit]);
+    await expect(api.pullRequestCommits("/r", 1)).resolves.toEqual([validCommit]);
   });
 });

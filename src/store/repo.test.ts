@@ -678,6 +678,27 @@ describe("repo store — large history", () => {
     expect(useRepo.getState().graph).toBe(graph);
   });
 
+  it("sets and clears operationAdvisory from operation_status (git am / bisect)", async () => {
+    const status = (advisory: string) =>
+      Promise.resolve({ kind: "none", canSkip: false, conflicts: [], advisory });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+      if (cmd === "operation_status") return status("bisect");
+      return defaultInvoke(cmd);
+    });
+    await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+    expect(useRepo.getState().operationAdvisory).toBe("bisect");
+
+    // A subsequent clean status (empty advisory) clears it.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes") return Promise.resolve({ staged: [], unstaged: [], conflicted: [] });
+      if (cmd === "operation_status") return status("");
+      return defaultInvoke(cmd);
+    });
+    await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+    expect(useRepo.getState().operationAdvisory).toBeNull();
+  });
+
   it("clears a WIP selection when a worktree refresh becomes clean", async () => {
     useRepo.setState({ wipSelected: true });
     invokeMock.mockImplementation((cmd: string) => {

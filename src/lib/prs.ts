@@ -8,7 +8,6 @@ import type {
   PrAuthor as ApiPrAuthor,
   PrComment as ApiPrComment,
   PrCommit as ApiPrCommit,
-  PrCommitSignature as PrCommitSignatureApi,
   PrLabel,
   PrReview,
   PrStateRaw,
@@ -216,22 +215,16 @@ function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
     },
     hasAuthor,
     url: commitUrl(prUrl, c.oid),
-    verified: false,
+    // `verified` is authoritative from the source: the `gh pr view` fast-path
+    // sends `false`; the paginated GraphQL commit read sends GitHub's real value.
+    verified: c.verified,
   };
 }
 
-/** Merge lazily-fetched signature verification into a commit list, returning a
- * new array (commits stay in order). Verified flips true only for oids GitHub
- * reports as validly signed. */
-export function applyCommitSignatures(
-  commits: PrCommitView[],
-  signatures: PrCommitSignatureApi[],
-): PrCommitView[] {
-  const verifiedByOid = new Map(signatures.map((s) => [s.oid, s.verified]));
-  return commits.map((c) => {
-    const verified = verifiedByOid.get(c.oid) ?? false;
-    return verified === c.verified ? c : { ...c, verified };
-  });
+/** Map the full API commit list (from the paginated GraphQL read) to UI rows.
+ * Replaces the capped `gh pr view` list once the Commits tab loads. */
+export function uiCommits(commits: ApiPrCommit[], prUrl: string): PrCommitView[] {
+  return commits.map((c) => uiCommit(c, prUrl));
 }
 
 /** Dedupe a list of people by login (the stable handle), preserving first-seen

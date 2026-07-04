@@ -107,6 +107,46 @@ describe("PR comment markdown", () => {
     expect(container.textContent).not.toContain("<summary>");
   });
 
+  it("notes when a thread's comments were truncated by the fetch cap", () => {
+    const pr = makePr({ state: "open" });
+    const thread: ReviewThread = {
+      id: "thread-trunc",
+      path: "src/big.ts",
+      line: 5,
+      isResolved: false,
+      isOutdated: false,
+      commentsTruncated: true,
+      comments: [
+        { author: { name: "Alex", login: "alex" }, body: "first", createdAt: new Date().toISOString() },
+      ],
+    };
+    usePulls.setState({ prThreads: { [pr.num]: [thread] } });
+
+    render(<ReviewThreads pr={pr} />);
+
+    expect(screen.getByText(/more comments than shown here/i)).toBeInTheDocument();
+  });
+
+  it("does not show the truncation note for a complete thread", () => {
+    const pr = makePr({ state: "open" });
+    const thread: ReviewThread = {
+      id: "thread-full",
+      path: "src/small.ts",
+      line: 1,
+      isResolved: false,
+      isOutdated: false,
+      commentsTruncated: false,
+      comments: [
+        { author: { name: "Alex", login: "alex" }, body: "only one", createdAt: new Date().toISOString() },
+      ],
+    };
+    usePulls.setState({ prThreads: { [pr.num]: [thread] } });
+
+    render(<ReviewThreads pr={pr} />);
+
+    expect(screen.queryByText(/more comments than shown here/i)).not.toBeInTheDocument();
+  });
+
   it("marks outdated review threads even when GitHub no longer returns a current line", () => {
     const pr = makePr({ state: "open" });
     usePulls.setState({

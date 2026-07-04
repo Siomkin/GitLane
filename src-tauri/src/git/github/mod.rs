@@ -32,7 +32,7 @@ mod service;
 mod threads;
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitSignature, PullRequestDetail,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
     PullRequestSummary, ReviewThread,
 };
 
@@ -77,12 +77,12 @@ pub fn pr_checks(
     ipc(GithubService::default().pr_checks(workdir, number, account))
 }
 
-pub fn commit_signatures(
+pub fn pr_commits(
     workdir: &str,
     number: u64,
     account: Option<&GithubAccountRef>,
-) -> Result<Vec<PrCommitSignature>, String> {
-    ipc(GithubService::default().commit_signatures(workdir, number, account))
+) -> Result<Vec<PrCommit>, String> {
+    ipc(GithubService::default().pr_commits(workdir, number, account))
 }
 
 pub fn pr_diff(

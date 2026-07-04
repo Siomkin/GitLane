@@ -1,7 +1,7 @@
 //! `gh`-backed implementation of the internal GitHub provider contract.
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitSignature, PullRequestDetail,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
     PullRequestSummary, ReviewThread,
 };
 use crate::git::{forge, forge::ForgeKind};
@@ -126,14 +126,14 @@ impl GithubProvider for GhProvider {
             .map_err(|err| GithubError::from_command("pull request checks", err))
     }
 
-    fn commit_signatures(
+    fn pr_commits(
         &self,
         ctx: &GithubContext,
         number: u64,
-    ) -> Result<Vec<PrCommitSignature>, GithubError> {
-        let token = self.token_for_context(ctx, "pull request commit signatures")?;
-        prs::commit_signatures(&ctx.workdir, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request commit signatures", err))
+    ) -> Result<Vec<PrCommit>, GithubError> {
+        let token = self.token_for_context(ctx, "pull request commits")?;
+        prs::pr_commits(&ctx.workdir, number, token.as_deref())
+            .map_err(|err| GithubError::from_command("pull request commits", err))
     }
 
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError> {

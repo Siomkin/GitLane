@@ -8,18 +8,19 @@
 use super::cli::{repo_slug, run_gh};
 use super::dto::*;
 use crate::git::types::{
-    PrCheck, PrCommitSignature, PrLabel, PrReview, PullRequestDetail, PullRequestSummary,
+    PrCheck, PrCommit, PrLabel, PrReview, PullRequestDetail, PullRequestSummary,
 };
 
-// `gh pr view --json commits` exposes no signature data, so per-commit
-// verification is read separately via GraphQL. Mirrors the review-threads query
-// in `threads.rs`, including cursor pagination — a PR past 250 commits keeps
-// its signature badges instead of silently losing the tail.
-const COMMIT_SIGNATURES_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){commits(first:250,after:$cursor){pageInfo{hasNextPage endCursor} nodes{commit{oid signature{isValid}}}}}}}";
+// `gh pr view --json commits` caps its commit projection and carries no
+// signature data, so the authoritative commit list — full metadata plus
+// per-commit verification — is read via GraphQL with cursor pagination (mirrors
+// the review-threads query in `threads.rs`). A PR past the projection cap keeps
+// every commit and its verified badge instead of silently losing the tail.
+const PR_COMMITS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){commits(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{commit{oid messageHeadline authoredDate signature{isValid} author{name user{login}}}}}}}}";
 
-/// Hard stop for cursor pagination, matching `threads::MAX_GRAPHQL_PAGES` in
-/// spirit (250 commits per page). Guards against a looping `pageInfo`.
-const MAX_SIGNATURE_PAGES: usize = 20;
+/// Hard stop for cursor pagination (100 commits per page). At 100 pages this is
+/// far beyond any real PR; it guards against a looping `pageInfo`.
+const MAX_COMMIT_PAGES: usize = 100;
 
 // `mergeable` rides the same GraphQL query (no extra round-trip); GitHub may
 // report "UNKNOWN" until it computes mergeability, which the frontend tolerates.
@@ -28,9 +29,9 @@ const PR_LIST_FIELDS: &str =
 
 // `statusCheckRollup` is deliberately excluded — it's the slowest field (extra
 // API round-trips) and is fetched lazily via `pr_checks` only when needed.
-// `commits` is loaded here (not lazily): it rides the existing GraphQL response
-// without extra round-trips and GitHub caps the projection at 250 commits, so it
-// stays bounded even for large PRs.
+// `commits` is loaded here for a fast first paint of the Commits tab, but it is
+// capped by GitHub's projection limit and has no signature data — so the tab
+// replaces it with the full, verified, paginated list from [`pr_commits`].
 const PR_VIEW_FIELDS: &str =
     "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,body,comments,files,mergeable,reviewRequests,reviews,assignees,labels,milestone,commits";
 
@@ -136,22 +137,24 @@ pub fn pr_detail(
     })
 }
 
-/// Fetch per-commit signature verification for a PR via GraphQL, loaded lazily
-/// when the Commits tab is opened. `verified` is GitHub's own `signature.isValid`
-/// (never inferred locally); unsigned commits come back `verified: false`.
-pub fn commit_signatures(
+/// Fetch the full, verified commit list for a PR via GraphQL, loaded lazily when
+/// the Commits tab is opened. Unlike the capped `gh pr view` projection this
+/// paginates every commit; `verified` is GitHub's own `signature.isValid` (never
+/// inferred locally), so unsigned commits come back `verified: false`.
+pub fn pr_commits(
     workdir: &str,
     number: u64,
     token: Option<&str>,
-) -> Result<Vec<PrCommitSignature>, String> {
+) -> Result<Vec<PrCommit>, String> {
     let (owner, name) = repo_slug(workdir, token)?;
-    let query_field = format!("query={COMMIT_SIGNATURES_QUERY}");
+    let query_field = format!("query={PR_COMMITS_QUERY}");
     let owner_field = format!("owner={owner}");
     let name_field = format!("name={name}");
     let number_field = format!("number={number}");
-    let mut signatures = Vec::new();
+    let mut commits = Vec::new();
     let mut cursor: Option<String> = None;
-    for _ in 0..MAX_SIGNATURE_PAGES {
+    let mut more_pages = false;
+    for _ in 0..MAX_COMMIT_PAGES {
         let mut args = vec![
             "api",
             "graphql",
@@ -172,18 +175,36 @@ pub fn commit_signatures(
         }
         let raw = run_gh(workdir, &args, token)?;
         let parsed: GqlCommitsResp = serde_json::from_str(&raw)
-            .map_err(|e| format!("failed to parse commit signatures: {e}"))?;
+            .map_err(|e| format!("failed to parse pull request commits: {e}"))?;
         let connection = parsed.data.repository.pull_request.commits;
-        signatures.extend(connection.nodes.into_iter().map(GqlCommitNode::into_signature));
+        commits.extend(connection.nodes.into_iter().map(GqlCommitNode::into_commit));
         match connection.page_info.filter(|p| p.has_next_page) {
             Some(page) => match page.end_cursor {
-                Some(next) => cursor = Some(next),
-                None => break,
+                Some(next) => {
+                    cursor = Some(next);
+                    more_pages = true;
+                }
+                None => {
+                    more_pages = false;
+                    break;
+                }
             },
-            None => break,
+            None => {
+                more_pages = false;
+                break;
+            }
         }
     }
-    Ok(signatures)
+    // Same runaway-guard breadcrumb as review threads: don't drop the tail
+    // silently if a pathologically large PR ever reaches the page cap.
+    if more_pages {
+        eprintln!(
+            "gitlane: commits for PR #{number} hit the {MAX_COMMIT_PAGES}-page cap; \
+             {} fetched, later commits omitted",
+            commits.len()
+        );
+    }
+    Ok(commits)
 }
 
 /// Fetch just the CI/status checks for a PR (the slow `statusCheckRollup`
