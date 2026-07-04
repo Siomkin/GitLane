@@ -123,6 +123,37 @@ describe("IdentityChip", () => {
     expect(screen.getByText("github.com · host mismatch")).toBeInTheDocument();
   });
 
+  it("shows needs re-auth for a bound account gh reported as broken", () => {
+    // Consistency with PrAccountZone: a revoked/timed-out account must not read
+    // "PRs enabled" in the chip while settings flags it as needing re-auth.
+    useAccounts.setState({
+      accounts: [
+        {
+          id: "gh:github.com:1",
+          forge: "GitHub",
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "octocat",
+          label: "octocat",
+          username: "octocat",
+          name: "Octo Cat",
+          email: "octo@example.com",
+          color: "#5b8def",
+          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
+          active: true,
+          healthy: false,
+          healthError: "token invalid (HTTP 401)",
+        },
+      ],
+      repoAccountId: "gh:github.com:1",
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("github.com · needs re-auth")).toBeInTheDocument();
+    expect(screen.queryByText(/PRs enabled/)).toBeNull();
+  });
+
   it("shows the current PR account display-only and links to Identity settings", () => {
     useAccounts.setState({
       accounts: [
