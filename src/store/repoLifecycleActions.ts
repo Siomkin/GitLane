@@ -222,28 +222,14 @@ export function createRepoLifecycleActions(
       if (openParent) {
         target = openParent; // already open — trust it
       } else {
-        // The presence probe is the one place this awaits, so capture the open
-        // intent first and re-check ownership after: a repo switch initiated in
-        // that window has claimed a newer intent even though its summary/graph
-        // generation haven't published yet, so `summary`/generation guards alone
-        // would miss it and the fallback below could steal focus by claiming a
-        // still-newer intent via loadRepo. Only switch to the parent if it still
-        // resolves on disk (else we'd trade one missing-repo screen for another).
-        const entryIntent = currentOpenIntent();
-        let exists = false;
+        // Not open: only switch to it if it still resolves on disk, so we don't
+        // trade one missing-repo screen for another.
         try {
           const [status] = await api.recentsStatus([parent]);
-          exists = status?.exists ?? false;
+          if (status?.exists) target = parent;
         } catch {
           /* probe failed — fall back to another open tab */
         }
-        // A newer operation (the caller's own token) or an in-flight repo switch
-        // (open intent) now owns the store: don't mutate shared state or reload —
-        // let that operation publish. The dead worktree tab self-heals on its
-        // next activation. This is the async-ownership model the store already
-        // uses for overlapping opens/refreshes.
-        if (!isCurrent() || !openIntentIsCurrent(entryIntent)) return;
-        if (exists) target = parent;
       }
     }
     const remaining = get().openPaths.filter((p) => p !== path);
@@ -252,6 +238,17 @@ export function createRepoLifecycleActions(
     // the onboarding list doesn't offer a dead worktree with a Locate… action.
     const recents = get().recents.filter((r) => r.path !== path);
     if (!target) target = remaining[Math.max(0, openIndex - 1)] ?? remaining[0] ?? null;
+
+    // Single ownership re-check before any mutation, covering both the async
+    // parent probe above and the parent-already-open synchronous path. The
+    // caller's `isCurrent` token folds in the open-intent baseline it captured
+    // *before its own awaits*, so a repo switch initiated anywhere in this
+    // window — which claims a newer intent before its summary/graph generation
+    // publish, and so slips past `summary`/generation guards — flips it false.
+    // When a newer operation owns the store, stand down without mutating shared
+    // state or reloading; let it publish. The dead worktree tab self-heals on
+    // its next activation (the store's usual async-ownership model).
+    if (!isCurrent()) return;
 
     // Supersede any in-flight graph read for the dead worktree; clearing the
     // summary below also fails every summary-path guard, so nothing stale can
@@ -262,7 +259,11 @@ export function createRepoLifecycleActions(
       // Clear the dead worktree's workspace *before* the async target open, so
       // the gone directory's graph/history isn't left on screen during the
       // handoff (matches closeRepo's neighbour switch); loadRepo then does the
-      // full workspace swap and re-guards its own reads.
+      // full workspace swap and re-guards its own reads. Loading flags stay
+      // false here: with `summary` null the app renders onboarding regardless of
+      // them, and loadRepo raises its own skeleton on a successful open — so a
+      // target whose open fails (a non-missing error only sets `error` and
+      // returns, GL-20) can't strand the store "loading" over a null summary.
       persistSession(remaining, target);
       persistTabInfo(prunedInfo);
       persistRecents(recents);
@@ -273,8 +274,8 @@ export function createRepoLifecycleActions(
         missingRepo: null,
         summary: null,
         graph: null,
-        loading: true,
-        graphLoading: true,
+        loading: false,
+        graphLoading: false,
         error: null,
       });
       await get().loadRepo(target);
@@ -366,9 +367,19 @@ export function createRepoLifecycleActions(
   // error bar. Re-guarded after the async presence probe so a repo switch in
   // that window wins.
   const surfaceOpenFailure = async (path: string, e: unknown) => {
+    // Capture the open intent before the async classify probe: a repo switch
+    // begun during it claims a newer intent before publishing, so fold this into
+    // the ownership token handed to the worktree fallback (which would otherwise
+    // steal focus back on the parent-already-open path).
+    const entryIntent = currentOpenIntent();
     const kind = await wentMissing(path, e);
     if (!repoStillDisplayed(path)) return;
-    if (kind) await handleMissing(path, kind, () => repoStillDisplayed(path));
+    if (kind)
+      await handleMissing(
+        path,
+        kind,
+        () => openIntentIsCurrent(entryIntent) && repoStillDisplayed(path),
+      );
     else set({ error: errorText(e) });
   };
 
@@ -673,8 +684,13 @@ export function createRepoLifecycleActions(
         const missing = await wentMissing(summary.path, e);
         if (!graphRequestIsCurrent(generation, summary.path)) return;
         if (missing)
-          await handleMissing(summary.path, missing, () =>
-            graphRequestIsCurrent(generation, summary.path),
+          // `intent` (claimed at this loadRepo's start, before every await) is
+          // the open-intent baseline: a competing switch bumps it, flipping the
+          // token even before that switch publishes its summary/generation.
+          await handleMissing(
+            summary.path,
+            missing,
+            () => graphRequestIsCurrent(generation, summary.path) && openIntentIsCurrent(intent),
           );
         else set({ loading: false, graphLoading: false, error: errorText(e) });
         flushPendingRefresh();
@@ -988,6 +1004,12 @@ export function createRepoLifecycleActions(
     refresh: async (opts) => {
       const { summary, graphLimit, loading } = get();
       if (!summary) return;
+      // The open-intent baseline for a missing-repo fallback (GL-126): captured
+      // before any read below so a repo switch begun mid-refresh — which claims
+      // a newer intent before its summary/generation publish — flips the
+      // ownership token handed to the worktree fallback, even on the
+      // parent-already-open synchronous path the generation guard can't see.
+      const entryIntent = currentOpenIntent();
       // A load (or a manual refresh) holds `loading` while a graph is in flight.
       // Don't drop a watcher/focus re-sync that lands in that window — defer it,
       // keeping the most permissive scope, and replay once the blocker clears
@@ -1202,11 +1224,16 @@ export function createRepoLifecycleActions(
           if (missing) {
             // A full refresh owns a graph generation; a worktree-scope re-sync
             // has none (generation === null), so fall back to the displayed-path
-            // guard for it.
-            await handleMissing(summary.path, missing, () =>
-              generation !== null
-                ? graphRequestIsCurrent(generation, summary.path)
-                : repoStillDisplayed(summary.path),
+            // guard for it. Both are AND-ed with the open-intent baseline so an
+            // in-flight switch that hasn't published yet still wins.
+            await handleMissing(
+              summary.path,
+              missing,
+              () =>
+                openIntentIsCurrent(entryIntent) &&
+                (generation !== null
+                  ? graphRequestIsCurrent(generation, summary.path)
+                  : repoStillDisplayed(summary.path)),
             );
           } else {
             // When this refresh owns the graph request (generation !== null), clear

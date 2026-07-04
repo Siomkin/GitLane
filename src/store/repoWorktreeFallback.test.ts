@@ -182,14 +182,14 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     });
     invokeMock.mockImplementation(invokeWithDead(["/wt"]));
 
+    const before = useRepo.getState().summary;
     await useRepo.getState().loadRepo("/wt");
 
     const s = useRepo.getState();
     // The worktree wasn't the displayed repo, so its tab is dropped and focus
-    // stays on /main — no reload of the already-displayed repo.
+    // stays on /main — no reload of the already-displayed repo (same object).
     expect(s.missingRepo).toBeNull();
-    expect(s.summary).toBe(s.summary); // unchanged object
-    expect(s.summary?.path).toBe("/main");
+    expect(s.summary).toBe(before);
     expect(s.openPaths).toEqual(["/main"]);
     // /main was never re-opened (only /wt was probed).
     expect(invokeMock).not.toHaveBeenCalledWith("open_repo", { path: "/main" });
@@ -329,6 +329,112 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     expect(s.missingRepo).toBeNull();
     expect(s.summary?.path).toBe("/main");
     expect(s.openPaths).toEqual(["/main"]);
+  });
+
+  it("does not strand the store loading when the fallback target's open fails", async () => {
+    // The parent is already an open tab (no probe), so the fallback hands off to
+    // loadRepo(/main) — whose initial open then fails with a *non-missing* error.
+    // loadRepo's phase-1 catch only sets `error` (it assumes it never raised the
+    // loading flags), so the fallback must not leave them stuck true.
+    useRepo.setState({
+      summary: summaryAt("/wt", { isWorktree: true, mainPath: "/main" }),
+      graph: emptyGraph,
+      openPaths: ["/main", "/wt"],
+      tabInfoByPath: { "/wt": worktreeInfo("/main") },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo") {
+        if (args?.path === "/wt") return Promise.reject(missingError("/wt"));
+        return Promise.reject(new Error("disk I/O error")); // /main open fails, not missing
+      }
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().refresh({ prs: false });
+
+    const s = useRepo.getState();
+    // Dead worktree left behind, target never published — but not stuck loading.
+    expect(s.summary).toBeNull();
+    expect(s.missingRepo).toBeNull();
+    expect(s.loading).toBe(false);
+    expect(s.graphLoading).toBe(false);
+    expect(s.error).toContain("disk I/O error");
+    expect(s.openPaths).toEqual(["/main"]);
+  });
+
+  it("does not switch away on an in-flight switch when the parent is already open", async () => {
+    // The parent-already-open synchronous path has no probe to re-guard on, so
+    // the open-intent baseline must be captured by the *caller*. Here the repo
+    // vanishes between refresh's open and its graph read, so wentMissing re-opens
+    // /wt to classify it (an await); the user switches during that window. The
+    // switch has claimed a newer intent but not published, so the fallback —
+    // which would otherwise pick the already-open /main synchronously — must
+    // stand down on the intent baseline refresh captured before its reads.
+    let probeStarted: () => void = () => {};
+    const started = new Promise<void>((r) => {
+      probeStarted = r;
+    });
+    let resolveReprobe: () => void = () => {};
+    const reprobe = new Promise<void>((r) => {
+      resolveReprobe = r;
+    });
+    let resolveOther: (v: RepoSummary) => void = () => {};
+    const otherOpen = new Promise<RepoSummary>((r) => {
+      resolveOther = r;
+    });
+    useRepo.setState({
+      summary: summaryAt("/wt", { isWorktree: true, mainPath: "/main" }),
+      graph: emptyGraph,
+      openPaths: ["/main", "/wt", "/other"],
+      tabInfoByPath: { "/wt": worktreeInfo("/main") },
+    });
+    let wtOpens = 0;
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo") {
+        if (args?.path === "/wt") {
+          wtOpens += 1;
+          // Refresh's own open succeeds; the repo then vanishes before the graph,
+          // so wentMissing's re-probe (2nd open) reclassifies it missing — held
+          // open so the switch can race the classify await.
+          if (wtOpens === 1) {
+            return Promise.resolve(summaryAt("/wt", { isWorktree: true, mainPath: "/main" }));
+          }
+          probeStarted();
+          return reprobe.then(() => {
+            throw missingError("/wt");
+          });
+        }
+        if (args?.path === "/other") return otherOpen; // in flight
+        return Promise.resolve(summaryAt(args?.path ?? ""));
+      }
+      if (cmd === "commit_graph") {
+        // The worktree's graph read is what fails (a plain, non-classified
+        // error), forcing wentMissing to re-probe with an await.
+        return args?.path === "/wt"
+          ? Promise.reject(new Error("failed to resolve path '/wt'"))
+          : Promise.resolve(emptyGraph);
+      }
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
+      return defaultInvoke(cmd);
+    });
+
+    const refreshing = useRepo.getState().refresh({ prs: false });
+    await started;
+    // Switch initiated (claims a newer intent) but its open is still pending.
+    const switching = useRepo.getState().loadRepo("/other");
+    // The classify re-probe resolves; the fallback must bail on the newer intent
+    // rather than synchronously switching to the already-open /main.
+    resolveReprobe();
+    await refreshing;
+    resolveOther(summaryAt("/other"));
+    await switching;
+
+    const s = useRepo.getState();
+    expect(s.summary?.path).toBe("/other");
+    expect(s.missingRepo).toBeNull();
+    // The fallback never loaded /main (its open would be the healthy branch).
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", { path: "/main" });
   });
 
   it("keeps the missing-repo screen for a standalone (non-worktree) repo", async () => {
