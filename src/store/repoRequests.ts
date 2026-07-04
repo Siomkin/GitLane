@@ -21,6 +21,12 @@ let openIntentGeneration = 0;
 export const claimOpenIntent = (): number => ++openIntentGeneration;
 export const openIntentIsCurrent = (intent: number): boolean =>
   intent === openIntentGeneration;
+// Read the current open intent *without* claiming a new one. A follow-up that
+// awaits between failure detection and publishing (the removed-worktree
+// fallback's disk probe) captures this first, then re-checks it after: a repo
+// switch initiated in that window has already claimed a newer intent — before
+// its summary/graph generation catch up — so this is what flips first.
+export const currentOpenIntent = (): number => openIntentGeneration;
 
 export type RefreshScope = "all" | "worktree";
 
