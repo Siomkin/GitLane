@@ -145,7 +145,7 @@ export function IdentityChip() {
               title={account ? `@${account.username}` : "No account"}
               subtitle={
                 account
-                  ? `${account.host} · ${accountMismatch ? "host mismatch" : "PRs enabled"}`
+                  ? `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "PRs enabled" : "needs re-auth"}`
                   : "Pull requests off for this repo"
               }
             />

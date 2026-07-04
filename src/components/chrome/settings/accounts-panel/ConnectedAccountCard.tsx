@@ -27,10 +27,20 @@ export function ConnectedAccountCard({ account }: { account: Account }) {
               active
             </span>
           )}
-          <span className="inline-flex h-[17px] items-center gap-1 rounded-full bg-emerald-500/12 px-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            PRs enabled
-          </span>
+          {account.healthy ? (
+            <span className="inline-flex h-[17px] items-center gap-1 rounded-full bg-emerald-500/12 px-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              PRs enabled
+            </span>
+          ) : (
+            <span
+              className="inline-flex h-[17px] items-center gap-1 rounded-full bg-amber-500/12 px-1.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+              title={`${account.healthError || "gh reported this account's credentials as broken."} Run \`gh auth login --hostname ${account.host}\` to re-authenticate.`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              needs re-auth
+            </span>
+          )}
         </div>
         <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
           {account.name} · {account.email || account.host}

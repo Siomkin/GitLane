@@ -63,6 +63,14 @@ struct GhAuthAccountStatus {
     host: String,
     #[serde(default)]
     login: String,
+    /// Per-account credential check result: "success" | "error" | "timeout".
+    /// The command exits 0 even when an account's token is revoked, so this
+    /// field is the only signal that the account is broken.
+    #[serde(default)]
+    state: String,
+    /// Human-readable failure detail accompanying a non-success `state`.
+    #[serde(default)]
+    error: String,
 }
 
 #[derive(Deserialize)]
@@ -239,15 +247,34 @@ pub(super) fn accounts() -> Result<Vec<GithubAccount>, String> {
             if host.is_empty() || login.is_empty() {
                 continue;
             }
+            // An empty state (older gh without the per-account check) counts as
+            // healthy — only an explicit non-success verdict flags the account.
+            let healthy = entry.state.is_empty() || entry.state == "success";
+            let health_error = if healthy {
+                String::new()
+            } else {
+                let detail = entry.error.trim();
+                if detail.is_empty() {
+                    format!("gh auth check reported \"{}\"", entry.state)
+                } else {
+                    detail.to_string()
+                }
+            };
             let account_ref = GithubAccountRef {
                 provider: GH_PROVIDER.to_string(),
                 host: host.clone(),
                 account_id: login.clone(),
                 login: login.clone(),
             };
-            let info = token_for(&account_ref)
-                .ok()
-                .and_then(|t| user_info(&host, &t));
+            // Don't probe the API for an account gh already reported broken —
+            // the call would just fail (or hang again after a timeout).
+            let info = if healthy {
+                token_for(&account_ref)
+                    .ok()
+                    .and_then(|t| user_info(&host, &t))
+            } else {
+                None
+            };
             let account_id = info
                 .as_ref()
                 .map(|u| u.id.to_string())
@@ -276,6 +303,8 @@ pub(super) fn accounts() -> Result<Vec<GithubAccount>, String> {
                 email,
                 id,
                 active: entry.active,
+                healthy,
+                health_error,
             });
         }
     }

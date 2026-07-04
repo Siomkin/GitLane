@@ -34,10 +34,11 @@ const WholeFileCard = ({
   detail: string;
   primaryLabel: string;
   primaryTone: "accent" | "blue";
-  secondaryLabel: string;
-  secondaryTone: "rose" | "blue";
+  /** Omitted when there's only one sensible resolution (both-deleted). */
+  secondaryLabel?: string;
+  secondaryTone?: "rose" | "blue";
   onPrimary: () => void;
-  onSecondary: () => void;
+  onSecondary?: () => void;
 }) => (
   <div className="mx-auto max-w-[640px] px-6 py-10">
     <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/20 dark:bg-amber-400/10">
@@ -50,7 +51,7 @@ const WholeFileCard = ({
         <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">{detail}</div>
       </div>
     </div>
-    <div className="mt-4 grid grid-cols-2 gap-3">
+    <div className={cn("mt-4 grid gap-3", secondaryLabel ? "grid-cols-2" : "grid-cols-1")}>
       <button
         onClick={onPrimary}
         className={cn(
@@ -69,24 +70,26 @@ const WholeFileCard = ({
           {primaryLabel}
         </span>
       </button>
-      <button
-        onClick={onSecondary}
-        className={cn(
-          "rounded-xl border p-3.5 text-left transition-colors",
-          secondaryTone === "rose"
-            ? "border-black/10 hover:border-rose-400/50 dark:border-white/10"
-            : "border-black/10 hover:border-[#3b7ff5]/50 dark:border-white/10",
-        )}
-      >
-        <span
+      {secondaryLabel && (
+        <button
+          onClick={onSecondary}
           className={cn(
-            "text-[13px] font-semibold",
-            secondaryTone === "rose" ? "text-rose-500" : "text-[#3b7ff5]",
+            "rounded-xl border p-3.5 text-left transition-colors",
+            secondaryTone === "rose"
+              ? "border-black/10 hover:border-rose-400/50 dark:border-white/10"
+              : "border-black/10 hover:border-[#3b7ff5]/50 dark:border-white/10",
           )}
         >
-          {secondaryLabel}
-        </span>
-      </button>
+          <span
+            className={cn(
+              "text-[13px] font-semibold",
+              secondaryTone === "rose" ? "text-rose-500" : "text-[#3b7ff5]",
+            )}
+          >
+            {secondaryLabel}
+          </span>
+        </button>
+      )}
     </div>
   </div>
 );
@@ -212,20 +215,32 @@ export const ConflictEditor = ({
             This file is resolved and staged. Unstage it below to make further edits.
           </div>
         ) : file.kind === "deleted" ? (
-          <WholeFileCard
-            title={
-              file.deletedSide === "ours"
-                ? `Deleted on ${oursSub}, modified on ${theirsSub}`
-                : `Modified on ${oursSub}, deleted on ${theirsSub}`
-            }
-            detail={`${file.path} cannot be auto-merged. Keep a version, or accept the deletion.`}
-            primaryLabel={file.deletedSide === "ours" ? "Accept deletion" : `Keep ${oursSub}`}
-            primaryTone="accent"
-            secondaryLabel={file.deletedSide === "ours" ? `Keep ${theirsSub}` : "Accept deletion"}
-            secondaryTone={file.deletedSide === "ours" ? "blue" : "rose"}
-            onPrimary={() => onAcceptSide("ours")}
-            onSecondary={() => onAcceptSide("theirs")}
-          />
+          file.deletedSide === "both" ? (
+            // DD conflict (e.g. rename/rename): neither side kept a version,
+            // so the only resolution is confirming the deletion.
+            <WholeFileCard
+              title={`Deleted on both ${oursSub} and ${theirsSub}`}
+              detail={`Both sides removed ${file.path} — there is no version to keep. Confirm the deletion to resolve it.`}
+              primaryLabel="Accept deletion"
+              primaryTone="accent"
+              onPrimary={() => onAcceptSide("ours")}
+            />
+          ) : (
+            <WholeFileCard
+              title={
+                file.deletedSide === "ours"
+                  ? `Deleted on ${oursSub}, modified on ${theirsSub}`
+                  : `Modified on ${oursSub}, deleted on ${theirsSub}`
+              }
+              detail={`${file.path} cannot be auto-merged. Keep a version, or accept the deletion.`}
+              primaryLabel={file.deletedSide === "ours" ? "Accept deletion" : `Keep ${oursSub}`}
+              primaryTone="accent"
+              secondaryLabel={file.deletedSide === "ours" ? `Keep ${theirsSub}` : "Accept deletion"}
+              secondaryTone={file.deletedSide === "ours" ? "blue" : "rose"}
+              onPrimary={() => onAcceptSide("ours")}
+              onSecondary={() => onAcceptSide("theirs")}
+            />
+          )
         ) : showWholeFile ? (
           <WholeFileCard
             title="Binary file — no line-level merge"

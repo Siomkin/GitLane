@@ -621,8 +621,8 @@ pub struct ConflictFile {
     /// "text" (both sides changed, line-mergeable), "binary" (both sides
     /// changed, not line-mergeable), or "deleted" (one side removed the file).
     pub kind: String,
-    /// For the "deleted" kind, which side removed it: "ours" | "theirs". Empty
-    /// for text/binary conflicts.
+    /// For the "deleted" kind, which side removed it: "ours" | "theirs", or
+    /// "both" for a both-deleted (DD) conflict. Empty for text/binary conflicts.
     pub deleted_side: String,
 }
 
@@ -675,6 +675,12 @@ pub struct GithubAccount {
     pub id: u64,
     /// True for the account `gh` currently treats as active.
     pub active: bool,
+    /// False when `gh auth status` reported the account's credentials as
+    /// broken (revoked/expired token, or the check timed out) — the UI shows
+    /// a "needs re-auth" badge instead of treating the account as usable.
+    pub healthy: bool,
+    /// Human-readable failure detail when `healthy` is false; empty otherwise.
+    pub health_error: String,
 }
 
 /// Authentication status for a non-GitHub forge. This is auth-only metadata for

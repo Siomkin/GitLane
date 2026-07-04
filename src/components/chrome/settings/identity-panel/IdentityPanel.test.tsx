@@ -151,6 +151,8 @@ describe("IdentityPanel", () => {
           color: "#5b8def",
           ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
           active: true,
+          healthy: true,
+          healthError: "",
         },
       ],
       repoAccountId: null,

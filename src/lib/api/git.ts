@@ -356,8 +356,9 @@ export interface ConflictFile {
   path: string;
   /** "text" (line-mergeable), "binary", or "deleted" (one side removed it). */
   kind: "text" | "binary" | "deleted";
-  /** For "deleted", the side that removed the file ("ours" | "theirs"); else "". */
-  deletedSide: "ours" | "theirs" | "";
+  /** For "deleted", the side that removed the file — "both" when a DD conflict
+   * (e.g. rename/rename) left no side with a version; else "". */
+  deletedSide: "ours" | "theirs" | "both" | "";
 }
 
 /** The in-progress operation + its outstanding conflicts (see Rust

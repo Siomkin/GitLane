@@ -56,9 +56,10 @@ fn classify(repo: &Repository, conflict: &IndexConflict) -> (&'static str, &'sta
                 ("text", "")
             }
         }
-        // Both sides deleted (DD) — nothing to merge; treat as a deletion both
-        // already agree on, surfaced as "deleted by theirs" for the UI's card.
-        (None, None) => ("deleted", "theirs"),
+        // Both sides deleted (DD, e.g. the original path of a rename/rename
+        // conflict) — nothing to merge; surfaced distinctly so the UI's card
+        // says both sides removed it instead of blaming one side.
+        (None, None) => ("deleted", "both"),
     }
 }
 

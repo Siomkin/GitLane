@@ -35,6 +35,11 @@ export interface Account {
   ref: GithubAccountRef;
   /** True for the account the `gh` CLI currently treats as active. */
   active: boolean;
+  /** False when `gh auth status` reported the account's credentials as broken
+   * (revoked/expired token, or the check timed out) — shown as "needs re-auth". */
+  healthy: boolean;
+  /** Failure detail when `healthy` is false; empty otherwise. */
+  healthError: string;
 }
 
 // `RepoIdentity` is defined alongside the IPC layer (it's the shape
@@ -234,6 +239,8 @@ export const useAccounts = create<AccountsState>((set, get) => ({
           color: ACCOUNT_COLORS[i % ACCOUNT_COLORS.length],
           ref,
           active: a.active,
+          healthy: a.healthy,
+          healthError: a.healthError,
         };
       });
       const activeAccountId = accounts.find((a) => a.active)?.id ?? accounts[0]?.id ?? null;

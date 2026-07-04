@@ -24,6 +24,8 @@ const ghAccount: Account = {
   color: "#5b8def",
   ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
   active: true,
+  healthy: true,
+  healthError: "",
 };
 
 const gitlabMissing: ForgeAuthStatus = {
@@ -69,6 +71,18 @@ describe("AccountsPanel (add-account model)", () => {
     expect(screen.getByText(/enable pull requests/i)).toBeInTheDocument();
     expect(screen.getByText("@octocat")).toBeInTheDocument();
     expect(screen.getByText("PRs enabled")).toBeInTheDocument();
+  });
+
+  it("flags an account whose gh credentials are broken as needing re-auth", () => {
+    useAccounts.setState({
+      accounts: [
+        { ...ghAccount, healthy: false, healthError: "token invalid (HTTP 401)" },
+      ],
+    });
+    render(<AccountsPanel />);
+    expect(screen.getByText("@octocat")).toBeInTheDocument();
+    expect(screen.getByText("needs re-auth")).toBeInTheDocument();
+    expect(screen.queryByText("PRs enabled")).not.toBeInTheDocument();
   });
 
   it("does not render a permanent card for un-added providers (GitLab only appears via Add account)", () => {

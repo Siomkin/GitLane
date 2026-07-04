@@ -24,6 +24,8 @@ const account: Account = {
   color: "#5b8def",
   ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
   active: true,
+  healthy: true,
+  healthError: "",
 };
 
 const identityCmds = (calls: unknown[][]) =>
