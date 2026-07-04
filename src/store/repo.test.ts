@@ -1706,6 +1706,41 @@ describe("repo store — loadRepo progressive open", () => {
     expect(useRepo.getState().graphLoading).toBe(false);
   });
 
+  it("releases the replaced tab's watch on an in-place worktree switch (GL-116)", async () => {
+    // The GL-110 in-place switch re-keys the tab from /old to /new; the per-tab
+    // watcher map is keyed by path, so the /old watch must be released or it
+    // leaks for the rest of the session.
+    useRepo.setState({ summary: { ...summary, path: "/old" }, openPaths: ["/old"] });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve({ ...summary, path: "/new", workdir: "/new" });
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().loadRepo("/new", { replaceTab: "/old" });
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(useRepo.getState().openPaths).toEqual(["/new"]);
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/new" });
+    expect(invokeMock).toHaveBeenCalledWith("unwatch_repo", { path: "/old" });
+  });
+
+  it("keeps the watch when replaceTab resolves to the same path (GL-116)", async () => {
+    // A re-open of the already-active path must not unwatch the tab it just
+    // re-armed (old === new key).
+    useRepo.setState({ summary: { ...summary, path: "/repo" }, openPaths: ["/repo"] });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().loadRepo("/repo", { replaceTab: "/repo" });
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(invokeMock).not.toHaveBeenCalledWith("unwatch_repo", { path: "/repo" });
+  });
+
   it("defers a watcher refresh during a graph load and replays it once loaded", async () => {
     const graphDeferred = deferred<RepoGraph>();
     let graphCalls = 0;

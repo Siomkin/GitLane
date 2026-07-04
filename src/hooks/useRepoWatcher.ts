@@ -45,9 +45,9 @@ export function useRepoWatcher(refresh: RefreshFn) {
   // Live filesystem watching, routed by the event's open path (one watcher
   // per open tab). The active repo re-syncs: ordinary worktree/index events
   // only need status; any graph-affecting event upgrades the whole debounce
-  // burst to a full sync. A background tab's event only re-probes its tab
-  // label (branch) — activation does a full load anyway. One-shot getState
-  // reads, so the listener never re-subscribes on store churn.
+  // burst to a full sync. A background tab's graph-kind event re-probes just
+  // its tab label (branch) — activation does a full load anyway. One-shot
+  // getState reads, so the listener never re-subscribes on store churn.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pendingScope: RefreshScope | null = null;
@@ -64,9 +64,13 @@ export function useRepoWatcher(refresh: RefreshFn) {
         }, 400);
         return;
       }
-      // A background tab: debounce per path — a burst (rebase, bun install)
-      // collapses into one probe.
+      // A background tab: its label (branch / worktree parent) only moves when
+      // HEAD or refs do — a graph-kind event. Worktree-only churn (file edits,
+      // index writes, a background `bun install`) never changes the label, so
+      // skip the probe rather than spend a `recents_status` IPC on it (GL-116
+      // review). Debounce per path — a graph burst (rebase) collapses to one.
       if (!openPaths.includes(payload.path)) return;
+      if (payload.kind !== "graph") return;
       const previous = tabTimers.get(payload.path);
       if (previous) clearTimeout(previous);
       tabTimers.set(

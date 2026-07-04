@@ -295,6 +295,18 @@ export function createRepoLifecycleActions(
       // Keyed by `summary.path` (the openPaths identity): each open tab keeps its
       // own watch, so switching tabs no longer silences the previous repo (GL-116).
       void api.watchRepo(summary.path).catch(() => {});
+      // An in-place tab replacement (the GL-110 worktree switch) re-keys the tab
+      // from `replaceTab` to `summary.path`. The per-tab watcher map is keyed by
+      // path, so the old key would otherwise leak an OS watch + backend thread for
+      // the rest of the session — release it once it has truly left the strip and
+      // isn't the new key itself (GL-116 review).
+      if (
+        opts?.replaceTab &&
+        opts.replaceTab !== summary.path &&
+        !openPaths.includes(opts.replaceTab)
+      ) {
+        void api.unwatchRepo(opts.replaceTab).catch(() => {});
+      }
 
       // A repo switch invalidates any open repo-bound overlay: a destructive
       // confirm / reflog-recovery dialog (impact + entries computed for the old
