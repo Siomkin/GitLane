@@ -17,6 +17,7 @@ import { usePulls } from "./pulls";
 import {
   beginGraphRequest,
   claimOpenIntent,
+  currentOpenIntent,
   deferRefresh,
   graphGenerationIsCurrent,
   openIntentIsCurrent,
@@ -193,7 +194,11 @@ export function createRepoLifecycleActions(
   // persist the removed worktree as the active selection (so a relaunch doesn't
   // return to it). A worktree that isn't the displayed repo (a background or
   // just-clicked dead tab) is merely retired, leaving the current repo untouched.
-  const fallbackFromRemovedWorktree = async (path: string, info: TabInfo) => {
+  const fallbackFromRemovedWorktree = async (
+    path: string,
+    info: TabInfo,
+    isCurrent: () => boolean,
+  ) => {
     // The dead worktree stops being watched whichever branch handles its tab.
     void api.unwatchRepo(path).catch(() => {});
 
@@ -217,21 +222,28 @@ export function createRepoLifecycleActions(
       if (openParent) {
         target = openParent; // already open — trust it
       } else {
-        // Not open: only switch to it if it still resolves on disk, so we don't
-        // trade one missing-repo screen for another.
+        // The presence probe is the one place this awaits, so capture the open
+        // intent first and re-check ownership after: a repo switch initiated in
+        // that window has claimed a newer intent even though its summary/graph
+        // generation haven't published yet, so `summary`/generation guards alone
+        // would miss it and the fallback below could steal focus by claiming a
+        // still-newer intent via loadRepo. Only switch to the parent if it still
+        // resolves on disk (else we'd trade one missing-repo screen for another).
+        const entryIntent = currentOpenIntent();
+        let exists = false;
         try {
           const [status] = await api.recentsStatus([parent]);
-          // Re-guard after the probe: a tab switch in that window means the
-          // user's own load now owns the active repo — downgrade to just
-          // retiring the dead tab rather than hijacking focus back to it.
-          if (get().summary?.path !== path) {
-            retireDeadWorktreeTab(path);
-            return;
-          }
-          if (status?.exists) target = parent;
+          exists = status?.exists ?? false;
         } catch {
           /* probe failed — fall back to another open tab */
         }
+        // A newer operation (the caller's own token) or an in-flight repo switch
+        // (open intent) now owns the store: don't mutate shared state or reload —
+        // let that operation publish. The dead worktree tab self-heals on its
+        // next activation. This is the async-ownership model the store already
+        // uses for overlapping opens/refreshes.
+        if (!isCurrent() || !openIntentIsCurrent(entryIntent)) return;
+        if (exists) target = parent;
       }
     }
     const remaining = get().openPaths.filter((p) => p !== path);
@@ -324,7 +336,14 @@ export function createRepoLifecycleActions(
   // Worktree identity comes from the persisted tab info, falling back to the
   // live summary when the vanished path is the active tab — so a stale or absent
   // tab-info entry can't misroute an active worktree onto the missing screen.
-  const handleMissing = async (path: string, kind: MissingRepoState["kind"]) => {
+  // `isCurrent` is the caller's ownership token (open intent / graph generation /
+  // displayed path), re-checked after the fallback's async probe so a repo
+  // switch that races the probe wins instead of being clobbered.
+  const handleMissing = async (
+    path: string,
+    kind: MissingRepoState["kind"],
+    isCurrent: () => boolean,
+  ) => {
     const info = get().tabInfoByPath[path];
     const summary = get().summary;
     const activeIsThisWorktree = summary?.path === path && summary.isWorktree === true;
@@ -336,7 +355,7 @@ export function createRepoLifecycleActions(
             mainPath: info?.mainPath ?? summary?.mainPath ?? null,
             branch: info?.branch ?? summary?.headBranch ?? null,
           };
-      await fallbackFromRemovedWorktree(path, wtInfo);
+      await fallbackFromRemovedWorktree(path, wtInfo, isCurrent);
       return;
     }
     enterMissingState(path, kind);
@@ -348,8 +367,8 @@ export function createRepoLifecycleActions(
   // that window wins.
   const surfaceOpenFailure = async (path: string, e: unknown) => {
     const kind = await wentMissing(path, e);
-    if (get().summary?.path !== path) return;
-    if (kind) await handleMissing(path, kind);
+    if (!repoStillDisplayed(path)) return;
+    if (kind) await handleMissing(path, kind, () => repoStillDisplayed(path));
     else set({ error: errorText(e) });
   };
 
@@ -386,7 +405,7 @@ export function createRepoLifecycleActions(
           // (GL-108). Other failures keep the GL-20 behavior: error bar only,
           // the current repo untouched.
           const missing = isRepoOpenError(e) && e.kind !== "other" ? e.kind : null;
-          if (missing) await handleMissing(path, missing);
+          if (missing) await handleMissing(path, missing, () => openIntentIsCurrent(intent));
           else set({ error: errorText(e) });
         }
         return;
@@ -653,7 +672,10 @@ export function createRepoLifecycleActions(
         // libgit2 message (GL-108). Re-guard after the async probe.
         const missing = await wentMissing(summary.path, e);
         if (!graphRequestIsCurrent(generation, summary.path)) return;
-        if (missing) await handleMissing(summary.path, missing);
+        if (missing)
+          await handleMissing(summary.path, missing, () =>
+            graphRequestIsCurrent(generation, summary.path),
+          );
         else set({ loading: false, graphLoading: false, error: errorText(e) });
         flushPendingRefresh();
       }
@@ -1178,7 +1200,14 @@ export function createRepoLifecycleActions(
         const missing = await wentMissing(summary.path, e);
         if (get().summary?.path === summary.path) {
           if (missing) {
-            await handleMissing(summary.path, missing);
+            // A full refresh owns a graph generation; a worktree-scope re-sync
+            // has none (generation === null), so fall back to the displayed-path
+            // guard for it.
+            await handleMissing(summary.path, missing, () =>
+              generation !== null
+                ? graphRequestIsCurrent(generation, summary.path)
+                : repoStillDisplayed(summary.path),
+            );
           } else {
             // When this refresh owns the graph request (generation !== null), clear
             // graphLoading too: it may have superseded the initial open, whose

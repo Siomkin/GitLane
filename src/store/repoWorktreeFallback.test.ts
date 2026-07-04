@@ -195,7 +195,14 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("open_repo", { path: "/main" });
   });
 
-  it("does not hijack focus if the user switches tabs during the parent probe", async () => {
+  it("does not switch away when a repo opens and completes during the parent probe", async () => {
+    // The completed-switch race: the newer open publishes its summary and bumps
+    // the graph generation before the probe resolves, so the caller's ownership
+    // token (graph generation) is stale and the fallback must stand down.
+    let resolveProbe: (v: RecentStatus[]) => void = () => {};
+    const probe = new Promise<RecentStatus[]>((r) => {
+      resolveProbe = r;
+    });
     useRepo.setState({
       summary: summaryAt("/wt", { isWorktree: true, mainPath: "/main" }),
       graph: emptyGraph,
@@ -208,24 +215,81 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
           ? Promise.reject(missingError("/wt"))
           : Promise.resolve(summaryAt(args?.path ?? ""));
       }
-      if (cmd === "recents_status") {
-        // The user switches to /other while the parent-presence probe is in
-        // flight; the fallback must not yank focus back afterwards.
-        useRepo.setState({ summary: summaryAt("/other"), graph: emptyGraph });
-        return Promise.resolve([{ path: "/main", exists: true, branch: "main" }]);
-      }
+      if (cmd === "recents_status") return probe; // held open
       if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
       return defaultInvoke(cmd);
     });
 
-    await useRepo.getState().refresh({ prs: false });
+    const refreshing = useRepo.getState().refresh({ prs: false });
+    // The user switches to /other; let that open fully complete.
+    await useRepo.getState().loadRepo("/other");
+    expect(useRepo.getState().summary?.path).toBe("/other");
+
+    // Now the stale fallback's probe resolves — it must not steal focus back.
+    resolveProbe([{ path: "/main", exists: true, branch: "main" }]);
+    await refreshing;
 
     const s = useRepo.getState();
-    // Focus stayed on the user's choice; the fallback only retired the dead tab.
     expect(s.summary?.path).toBe("/other");
-    expect(s.openPaths).toEqual(["/other"]);
     expect(s.missingRepo).toBeNull();
-    // The parent was never opened — the probe race downgraded to a tab retire.
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", { path: "/main" });
+  });
+
+  it("does not switch away when a repo switch is still in flight during the parent probe", async () => {
+    // The in-flight race the summary/generation guards miss: the competing
+    // loadRepo has *claimed its open intent* but not yet published its summary
+    // or bumped the generation when the probe resolves. Only the captured open
+    // intent flips in that window — the fallback must bail on it.
+    let probeStarted: () => void = () => {};
+    const started = new Promise<void>((r) => {
+      probeStarted = r;
+    });
+    let resolveProbe: (v: RecentStatus[]) => void = () => {};
+    const probe = new Promise<RecentStatus[]>((r) => {
+      resolveProbe = r;
+    });
+    let resolveOther: (v: RepoSummary) => void = () => {};
+    const otherOpen = new Promise<RepoSummary>((r) => {
+      resolveOther = r;
+    });
+    useRepo.setState({
+      summary: summaryAt("/wt", { isWorktree: true, mainPath: "/main" }),
+      graph: emptyGraph,
+      openPaths: ["/wt", "/other"],
+      tabInfoByPath: { "/wt": worktreeInfo("/main") },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo") {
+        if (args?.path === "/wt") return Promise.reject(missingError("/wt"));
+        if (args?.path === "/other") return otherOpen; // held open (in flight)
+        return Promise.resolve(summaryAt(args?.path ?? ""));
+      }
+      if (cmd === "recents_status") {
+        probeStarted(); // the fallback has captured its entry intent by now
+        return probe;
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
+      return defaultInvoke(cmd);
+    });
+
+    // Refresh detects /wt missing and parks on the parent probe.
+    const refreshing = useRepo.getState().refresh({ prs: false });
+    await started;
+    // Switch is initiated (claims a newer open intent) but its open is pending.
+    const switching = useRepo.getState().loadRepo("/other");
+    // Probe resolves while /other is still opening — the fallback must bail.
+    resolveProbe([{ path: "/main", exists: true, branch: "main" }]);
+    await refreshing;
+    // Let the in-flight switch finish.
+    resolveOther(summaryAt("/other"));
+    await switching;
+
+    const s = useRepo.getState();
+    expect(s.summary?.path).toBe("/other");
+    expect(s.missingRepo).toBeNull();
+    // The fallback never opened the parent — it stood down for the newer intent.
     expect(invokeMock).not.toHaveBeenCalledWith("open_repo", { path: "/main" });
   });
 
