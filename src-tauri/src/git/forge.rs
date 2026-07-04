@@ -213,7 +213,10 @@ fn classify_host(host: &str) -> Option<ForgeKind> {
         Some(ForgeKind::GitLab)
     } else if host == "bitbucket.org" || host.contains("bitbucket") {
         Some(ForgeKind::Bitbucket)
-    } else if host == "dev.azure.com" || host.ends_with(".visualstudio.com") {
+    } else if host == "dev.azure.com"
+        || host == "ssh.dev.azure.com"
+        || host.ends_with(".visualstudio.com")
+    {
         Some(ForgeKind::AzureDevOps)
     } else if host == "codeberg.org" || host.contains("forgejo") {
         Some(ForgeKind::Forgejo)
@@ -270,6 +273,10 @@ mod tests {
             remote_host("ssh://git@gitlab.example.com/group/repo.git"),
             Some("gitlab.example.com".into())
         );
+        assert_eq!(
+            remote_host("git@ssh.dev.azure.com:v3/org/project/repo"),
+            Some("ssh.dev.azure.com".into())
+        );
     }
 
     #[test]
@@ -278,6 +285,11 @@ mod tests {
         assert_eq!(classify_host("gitlab.example.com"), Some(ForgeKind::GitLab));
         assert_eq!(classify_host("bitbucket.org"), Some(ForgeKind::Bitbucket));
         assert_eq!(classify_host("dev.azure.com"), Some(ForgeKind::AzureDevOps));
+        // Azure DevOps' own "Clone → SSH" URL uses a dedicated SSH host.
+        assert_eq!(
+            classify_host("ssh.dev.azure.com"),
+            Some(ForgeKind::AzureDevOps)
+        );
         assert_eq!(classify_host("codeberg.org"), Some(ForgeKind::Forgejo));
         assert_eq!(classify_host("gitea.company.test"), Some(ForgeKind::Gitea));
     }

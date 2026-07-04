@@ -235,6 +235,8 @@ describe("lib/api seam validation", () => {
       email: "alex@example.com",
       id: 42,
       active: true,
+      healthy: true,
+      healthError: "",
     };
     invokeMock.mockResolvedValueOnce([{ provider: "gh", host: "github.com" }]); // missing the rest
     await expect(api.githubAccounts()).rejects.toThrow(/github_accounts/);

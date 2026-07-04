@@ -86,6 +86,37 @@ fn operation_status_clean_repo_reports_none() {
 }
 
 #[test]
+fn both_deleted_conflict_reports_deleted_side_both() {
+    // A rename/rename conflict leaves the original path with only an ancestor
+    // stage (DD): both sides deleted it, neither has a version to keep.
+    let repo = TempRepo::new("op-dd");
+    repo.init();
+    std::fs::write(repo.0.join("orig.txt"), b"one\ntwo\nthree\n").unwrap();
+    repo.git(&["add", "orig.txt"]);
+    repo.git(&["commit", "-qm", "base"]);
+    repo.git(&["checkout", "-q", "-b", "other"]);
+    repo.git(&["mv", "orig.txt", "b.txt"]);
+    repo.git(&["commit", "-qm", "rename to b"]);
+    repo.git(&["checkout", "-q", "main"]);
+    repo.git(&["mv", "orig.txt", "a.txt"]);
+    repo.git(&["commit", "-qm", "rename to a"]);
+    let _ = repo.git(&["merge", "other"]);
+
+    let status = operation_status(repo.path()).unwrap();
+    assert_eq!(status.kind, "merge");
+    let orig = status
+        .conflicts
+        .iter()
+        .find(|c| c.path == "orig.txt")
+        .expect("original path conflicted");
+    assert_eq!(orig.kind, "deleted");
+    assert_eq!(
+        orig.deleted_side, "both",
+        "a DD conflict must not be blamed on one side"
+    );
+}
+
+#[test]
 fn conflict_file_returns_text_with_markers() {
     let repo = conflict_repo("cf-text", b"base", b"ours", b"theirs");
     let content = conflict_file(repo.path(), "f.txt").unwrap();

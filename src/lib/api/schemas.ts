@@ -263,6 +263,8 @@ export const githubAccountSchema = z.object({
   email: z.string(),
   id: z.number(),
   active: z.boolean(),
+  healthy: z.boolean(),
+  healthError: z.string(),
 });
 
 // ---- pull_request_checks → PrCheck[] ----

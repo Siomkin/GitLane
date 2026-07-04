@@ -185,9 +185,11 @@ export function PrAccountZone() {
                   }
                   title={`@${a.username}`}
                   subtitle={
-                    usable
-                      ? `${a.host} · authenticates PRs only`
-                      : `${a.host} · different host than this repo's remote (${forge?.host})`
+                    !usable
+                      ? `${a.host} · different host than this repo's remote (${forge?.host})`
+                      : a.healthy
+                        ? `${a.host} · authenticates PRs only`
+                        : `${a.host} · needs re-auth (gh auth login)`
                   }
                 />
               );
@@ -234,6 +236,13 @@ export function PrAccountZone() {
                   title={`This account is for ${account.host}; the repo's remote is ${forge?.host}. PR operations and authenticated fetch/push will fail until they match.`}
                 >
                   host mismatch
+                </span>
+              ) : !account.healthy ? (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/12"
+                  title={`${account.healthError || "gh reported this account's credentials as broken."} Run \`gh auth login --hostname ${account.host}\` to re-authenticate.`}
+                >
+                  needs re-auth
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/12">

@@ -17,9 +17,11 @@ const WarnDot = () => (
 
 const kindSuffix = (file: OperationFile) =>
   file.kind === "deleted"
-    ? file.deletedSide === "ours"
-      ? " · deleted by you"
-      : " · deleted by them"
+    ? file.deletedSide === "both"
+      ? " · deleted by both"
+      : file.deletedSide === "ours"
+        ? " · deleted by you"
+        : " · deleted by them"
     : file.kind === "binary"
       ? " · binary"
       : "";

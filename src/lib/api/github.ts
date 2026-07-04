@@ -24,6 +24,11 @@ export interface GithubAccount {
   email: string;
   id: number;
   active: boolean;
+  /** False when `gh auth status` reported the credentials as broken (revoked/
+   * expired token, or the check timed out) — surfaced as "needs re-auth". */
+  healthy: boolean;
+  /** Failure detail when `healthy` is false; empty otherwise. */
+  healthError: string;
 }
 
 export interface GithubAccountRef {

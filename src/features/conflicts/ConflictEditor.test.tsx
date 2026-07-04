@@ -90,6 +90,24 @@ describe("ConflictEditor", () => {
     expect(screen.getByRole("button", { name: /Stage current version/i })).toBeInTheDocument();
   });
 
+  it("shows a single Accept-deletion card for a both-deleted (DD) conflict", () => {
+    const onAcceptSide = vi.fn();
+    render(
+      <ConflictEditor
+        {...props({
+          file: { path: "orig.ts", kind: "deleted", deletedSide: "both", resolved: false },
+          onAcceptSide,
+        })}
+      />,
+    );
+    // Neither side has a version to keep — no "Keep …" choice, no side blame.
+    expect(screen.getByText(/Deleted on both/)).toBeInTheDocument();
+    expect(screen.queryByText(/Keep current \(ours\)/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Keep incoming \(theirs\)/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Accept deletion"));
+    expect(onAcceptSide).toHaveBeenCalledWith("ours");
+  });
+
   it("offers Unstage for a staged whole-file conflict", () => {
     const onUnstage = vi.fn();
     render(
