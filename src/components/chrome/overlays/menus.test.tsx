@@ -825,6 +825,51 @@ describe("ActionMenu", () => {
     expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeEnabled();
   });
 
+  it("keeps fast-forward enabled when the dragged branch lives in another worktree", async () => {
+    // Fast-forward moves a ref in place (no checkout), so it must stay clickable
+    // even when the branch is held elsewhere — unlike rebase/reset.
+    invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) => {
+      if (cmd === "can_fast_forward") {
+        // Advancing feature to main (sourceToTarget) is possible → FF is offered.
+        return Promise.resolve(args.from === "main" && args.to === "feature");
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    const ff = await screen.findByRole("menuitem", { name: /Fast-forward feature to main/ });
+    expect(ff).toBeEnabled();
+    // The checkout-based ops for the same held branch are still disabled.
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeDisabled();
+  });
+
+  it("guards rebase/reset of the dragged branch when dropped on a commit", () => {
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+    });
+    useUi.setState({
+      actionMenu: {
+        x: 10,
+        y: 10,
+        from: { name: "feature", kind: "local" },
+        to: { kind: "commit", sha: "deadbeefcafe", shortSha: "deadbee" },
+      },
+    });
+    render(<ActionMenu />);
+
+    // Dropping the held branch on a commit still checks it out to rebase/reset.
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto deadbee/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /Reset feature to deadbee/ })).toBeDisabled();
+  });
+
   it("disables the target-moving ops when a remote source is dropped on a target held elsewhere", () => {
     useRepo.setState({
       summary: localSummary,

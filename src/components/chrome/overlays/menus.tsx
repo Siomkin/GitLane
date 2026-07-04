@@ -437,6 +437,7 @@ export function ActionMenu() {
                 key={item.label}
                 role="menuitem"
                 disabled={item.disabled}
+                aria-label={item.disabledReason ? item.label : undefined}
                 aria-describedby={reasonId}
                 onClick={item.disabled ? undefined : item.onClick}
                 className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left ${focusRing} ${
