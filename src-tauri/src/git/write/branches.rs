@@ -297,6 +297,10 @@ pub fn create_patch(repo: &str, sha: &str) -> Result<String, String> {
 }
 
 /// Reset the current branch to `target`. `mode` is one of soft|mixed|hard.
+///
+/// Like [`merge`]/[`rebase`], a bare `target` that is both a branch and a tag is
+/// qualified to `refs/heads/` so the reset lands on the branch rather than the
+/// tag git's rev resolution would otherwise pick first.
 pub fn reset(repo: &str, target: &str, mode: &str) -> Result<String, String> {
     ensure_operand(target)?;
     let flag = match mode {
@@ -304,7 +308,8 @@ pub fn reset(repo: &str, target: &str, mode: &str) -> Result<String, String> {
         "hard" => "--hard",
         _ => "--mixed",
     };
-    run_git(repo, &["reset", flag, target])
+    let target = qualify_branch_if_ambiguous(repo, target);
+    run_git(repo, &["reset", flag, &target])
 }
 
 /// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally

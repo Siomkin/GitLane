@@ -15,9 +15,21 @@ const COPY: Record<Exclude<OperationAdvisory, "">, { label: string; detail: stri
   },
 };
 
-export const OperationAdvisoryBanner = ({ advisory }: { advisory: OperationAdvisory }) => {
+export const OperationAdvisoryBanner = ({
+  advisory,
+  hasConflicts = false,
+}: {
+  advisory: OperationAdvisory;
+  /** True when the working tree still has conflicted paths. GitLane can't drive
+   * these operations, so the copy tells the user the conflicts (visible in the
+   * Changes view) must be resolved from the terminal too. */
+  hasConflicts?: boolean;
+}) => {
   if (advisory === "") return null;
-  const { label, detail } = COPY[advisory];
+  const { label } = COPY[advisory];
+  const detail = hasConflicts
+    ? "Conflicted files are listed under Changes; resolve them and continue this operation from the terminal."
+    : COPY[advisory].detail;
 
   return (
     <div className="mb-2.5 flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-1.5 dark:border-amber-400/20 dark:bg-amber-400/[0.08]">

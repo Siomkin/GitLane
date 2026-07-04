@@ -151,6 +151,7 @@ pub fn commit_signatures(
     let number_field = format!("number={number}");
     let mut signatures = Vec::new();
     let mut cursor: Option<String> = None;
+    let mut more_pages = false;
     for _ in 0..MAX_SIGNATURE_PAGES {
         let mut args = vec![
             "api",
@@ -177,11 +178,29 @@ pub fn commit_signatures(
         signatures.extend(connection.nodes.into_iter().map(GqlCommitNode::into_signature));
         match connection.page_info.filter(|p| p.has_next_page) {
             Some(page) => match page.end_cursor {
-                Some(next) => cursor = Some(next),
-                None => break,
+                Some(next) => {
+                    cursor = Some(next);
+                    more_pages = true;
+                }
+                None => {
+                    more_pages = false;
+                    break;
+                }
             },
-            None => break,
+            None => {
+                more_pages = false;
+                break;
+            }
         }
+    }
+    // Same runaway-guard breadcrumb as review threads: don't drop the tail
+    // silently if a pathologically large PR ever reaches the page cap.
+    if more_pages {
+        eprintln!(
+            "gitlane: commit signatures for PR #{number} hit the {MAX_SIGNATURE_PAGES}-page cap; \
+             {} fetched, later commits omitted",
+            signatures.len()
+        );
     }
     Ok(signatures)
 }

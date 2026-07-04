@@ -4,6 +4,10 @@
 // remains the source of truth and will still reject anything this misses. Kept
 // pure (no React, no IPC) so it's trivially testable.
 
+/** Git pseudo-refs that must not be used as a branch's short name — a branch so
+ * named collides with the real ref (`git check-ref-format --branch HEAD` fails). */
+const RESERVED_NAMES = new Set(["HEAD", "FETCH_HEAD", "ORIG_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD"]);
+
 /**
  * Validate a proposed branch (short) name against git's ref-format rules.
  * Returns a human-readable error message when invalid, or `null` when the name
@@ -34,6 +38,9 @@ export function validateBranchName(name: string): string | null {
   if (value.includes("@{"))
     return "A branch name can't contain “@{”.";
   if (value === "@") return "A branch name can't be a single “@”.";
+  // Pseudo-refs: `git check-ref-format --branch HEAD` fails, and naming a
+  // branch after one makes it ambiguous with the real ref.
+  if (RESERVED_NAMES.has(value)) return `“${value}” is a reserved git name.`;
 
   // Control chars (incl. DEL), space, and git's reserved punctuation.
   for (const ch of value) {

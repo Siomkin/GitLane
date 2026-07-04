@@ -8,7 +8,7 @@ use super::{
     delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch, fetch,
     mark_conflict_resolved, merge, move_branch_to_worktree, preview_delete_branch,
     preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
-    publish_branch, reconflict_file, reflog_entries, remove_worktree, resolve_conflict_file,
+    publish_branch, reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file,
     revert, revert_many, set_remote_url, set_repo_identity, set_upstream, skip_operation,
     stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list, stash_pop,
     unstage_all, unstage_file, unstage_files, worktrees,
@@ -3042,4 +3042,35 @@ fn merge_keeps_the_bare_name_when_no_tag_clashes() {
         .trim()
         .to_string();
     assert_eq!(subject, "Merge branch 'feature'");
+}
+
+#[test]
+fn reset_targets_a_branch_over_a_same_named_tag() {
+    // `git reset --hard feature` resolves the TAG first when both exist; the
+    // write path qualifies to refs/heads/ so reset lands on the branch tip.
+    let repo = TempRepo::new("reset-ambiguous");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "user.email", "t@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "base"]);
+    let base = rev_parse(&repo, "HEAD");
+
+    // Branch `feature` one commit ahead of the tag `feature` (pinned at base).
+    repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["tag", "feature", &base]);
+    repo.git_ok(&["checkout", "-q", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "branch-work"]);
+    let branch_tip = rev_parse(&repo, "HEAD");
+    // Back on main, and move it forward so the reset is a real move.
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "main-work"]);
+
+    reset(repo.path(), "feature", "hard").expect("reset to the branch, not the tag");
+
+    assert_eq!(
+        rev_parse(&repo, "HEAD"),
+        branch_tip,
+        "reset must land on the branch tip, not the same-named tag at base"
+    );
 }

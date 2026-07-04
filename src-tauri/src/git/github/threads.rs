@@ -43,6 +43,7 @@ pub fn review_threads(
     let number_field = format!("number={number}");
     let mut threads = Vec::new();
     let mut cursor: Option<String> = None;
+    let mut more_pages = false;
     for _ in 0..MAX_GRAPHQL_PAGES {
         let mut args = vec![
             "api",
@@ -72,11 +73,30 @@ pub fn review_threads(
         threads.extend(connection.nodes.into_iter().map(GqlThread::into_thread));
         match connection.page_info.filter(|p| p.has_next_page) {
             Some(page) => match page.end_cursor {
-                Some(next) => cursor = Some(next),
-                None => break,
+                Some(next) => {
+                    cursor = Some(next);
+                    more_pages = true;
+                }
+                None => {
+                    more_pages = false;
+                    break;
+                }
             },
-            None => break,
+            None => {
+                more_pages = false;
+                break;
+            }
         }
+    }
+    // The page cap is a runaway-loop guard set far beyond any real PR, but if it
+    // ever bounds a genuinely huge thread set, don't drop the tail silently —
+    // leave a breadcrumb (the reachable count is still returned).
+    if more_pages {
+        eprintln!(
+            "gitlane: review threads for PR #{number} hit the {MAX_GRAPHQL_PAGES}-page cap; \
+             {} fetched, later threads omitted",
+            threads.len()
+        );
     }
     Ok(threads)
 }
