@@ -250,6 +250,8 @@ export function ActionMenu() {
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const resetCurrentTo = useRepo((s) => s.resetCurrentTo);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
+  const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
+  const worktrees = useRepo((s) => s.worktrees);
   const run = useBranchOp();
   const panelRef = useRef<HTMLDivElement>(null);
   useDismiss(true, close, panelRef);
@@ -376,11 +378,44 @@ export function ActionMenu() {
           ? { icon: "⤓", iconBg: "rgba(224,98,111,0.18)" }
           : { icon: "⛙", iconBg: "rgba(47,158,126,0.18)" };
 
-  const items = buildGraphActionSpecs(from, to, ff).map((spec) => ({
-    ...spec,
-    ...iconFor(spec.kind),
-    onClick: handler(spec.kind),
-  }));
+  // The branch a checkout-based op must check out before running: merge/rebase/
+  // reset all switch the working tree to the ref they mutate (merge via
+  // `mergeInto`, the others via `checkoutBranch`). Fast-forward moves a ref in
+  // place and never checks out, so it isn't listed. `to`/`from` are only local
+  // in the directions where these kinds are produced, matching the specs.
+  const checkoutBranchFor = (kind: GraphActionKind): string | null => {
+    switch (kind) {
+      case "merge-target":
+      case "rebase-target":
+      case "reset-target":
+        return to.kind === "local" ? to.name : null;
+      case "rebase-source":
+      case "reset-source":
+        return from.kind === "local" ? from.name : null;
+      default:
+        return null;
+    }
+  };
+
+  const items = buildGraphActionSpecs(from, to, ff).map((spec) => {
+    // Git refuses to check out a branch already checked out in another worktree,
+    // so a checkout-based op would fail with a raw worktree error. Disable it up
+    // front with the owning worktree named, mirroring BranchContextMenu. GL-103.
+    const guarded = checkoutBranchFor(spec.kind);
+    const heldElsewhere = guarded ? findOtherBranchWorktree(worktrees, guarded, workdir) : null;
+    const heldBy = heldElsewhere
+      ? worktrees.find((w) => w.path === heldElsewhere.path)?.name ?? heldElsewhere.path
+      : null;
+    return {
+      ...spec,
+      ...iconFor(spec.kind),
+      onClick: handler(spec.kind),
+      disabled: !!heldElsewhere,
+      disabledReason: heldElsewhere
+        ? `${guarded} is checked out in worktree ${heldBy}`
+        : null,
+    };
+  });
 
   return (
     <>
@@ -395,25 +430,37 @@ export function ActionMenu() {
           Drop {from.name} onto {to.kind === "commit" ? to.shortSha : to.name}
         </div>
         <div className="p-1.5">
-          {items.map((item) => (
-            <button
-              key={item.label}
-              role="menuitem"
-              onClick={item.onClick}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left hover:bg-black/5 dark:hover:bg-white/5 ${focusRing}`}
-            >
-              <span
-                className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg text-sm text-neutral-700 dark:text-neutral-200"
-                style={{ background: item.iconBg }}
+          {items.map((item) => {
+            const reasonId = item.disabledReason ? `action-reason-${item.kind}` : undefined;
+            return (
+              <button
+                key={item.label}
+                role="menuitem"
+                disabled={item.disabled}
+                aria-label={item.disabledReason ? item.label : undefined}
+                aria-describedby={reasonId}
+                onClick={item.disabled ? undefined : item.onClick}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left ${focusRing} ${
+                  item.disabled
+                    ? "cursor-not-allowed opacity-60"
+                    : "hover:bg-black/5 dark:hover:bg-white/5"
+                }`}
               >
-                {item.icon}
-              </span>
-              <span className="flex flex-col">
-                <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-100">{item.label}</span>
-                <span className="text-[11px] text-neutral-400">{item.sub}</span>
-              </span>
-            </button>
-          ))}
+                <span
+                  className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg text-sm text-neutral-700 dark:text-neutral-200"
+                  style={{ background: item.iconBg }}
+                >
+                  {item.icon}
+                </span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-100">{item.label}</span>
+                  <span id={reasonId} className="text-[11px] text-neutral-400">
+                    {item.disabledReason ?? item.sub}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </>

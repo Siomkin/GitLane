@@ -778,6 +778,119 @@ describe("ActionMenu", () => {
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("origin/feature"));
     expect(checkoutBranch).toHaveBeenCalledWith("main");
   });
+
+  // A checkout-based op (rebase/reset of the dragged branch, or merge — all check
+  // out the branch they mutate) can't run when git already has that branch out in
+  // another worktree. GL-103: disable it up front instead of letting the checkout
+  // fail with a raw worktree error.
+  it("disables the dragged-branch ops when the dragged branch lives in another worktree", () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      checkoutBranch,
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    const rebase = screen.getByRole("menuitem", { name: /Rebase feature onto main/ });
+    const reset = screen.getByRole("menuitem", { name: /Reset feature to main/ });
+    expect(rebase).toBeDisabled();
+    expect(reset).toBeDisabled();
+    expect(rebase).toHaveTextContent("feature is checked out in worktree repo-feature");
+
+    // Clicking the disabled op does nothing — no checkout is attempted.
+    fireEvent.click(rebase);
+    expect(checkoutBranch).not.toHaveBeenCalled();
+
+    // Merge checks out the *target* (main), which is free, so it stays enabled.
+    expect(screen.getByRole("menuitem", { name: /Merge feature into main/ })).toBeEnabled();
+  });
+
+  it("disables Merge when the drop-target branch lives in another worktree", () => {
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false }],
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    const merge = screen.getByRole("menuitem", { name: /Merge feature into main/ });
+    expect(merge).toBeDisabled();
+    expect(merge).toHaveTextContent("main is checked out in worktree repo-main");
+
+    // Rebasing/resetting the dragged branch checks out feature (free) — enabled.
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeEnabled();
+  });
+
+  it("keeps fast-forward enabled when the dragged branch lives in another worktree", async () => {
+    // Fast-forward moves a ref in place (no checkout), so it must stay clickable
+    // even when the branch is held elsewhere — unlike rebase/reset.
+    invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) => {
+      if (cmd === "can_fast_forward") {
+        // Advancing feature to main (sourceToTarget) is possible → FF is offered.
+        return Promise.resolve(args.from === "main" && args.to === "feature");
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature"), localBranch("main")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    const ff = await screen.findByRole("menuitem", { name: /Fast-forward feature to main/ });
+    expect(ff).toBeEnabled();
+    // The checkout-based ops for the same held branch are still disabled.
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeDisabled();
+  });
+
+  it("guards rebase/reset of the dragged branch when dropped on a commit", () => {
+    useRepo.setState({
+      summary: localSummary,
+      branches: [localBranch("feature")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+    });
+    useUi.setState({
+      actionMenu: {
+        x: 10,
+        y: 10,
+        from: { name: "feature", kind: "local" },
+        to: { kind: "commit", sha: "deadbeefcafe", shortSha: "deadbee" },
+      },
+    });
+    render(<ActionMenu />);
+
+    // Dropping the held branch on a commit still checks it out to rebase/reset.
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto deadbee/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /Reset feature to deadbee/ })).toBeDisabled();
+  });
+
+  it("disables the target-moving ops when a remote source is dropped on a target held elsewhere", () => {
+    useRepo.setState({
+      summary: localSummary,
+      branches: [remoteBranch("origin/feature"), localBranch("main")],
+      worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false }],
+    });
+    useUi.setState({
+      actionMenu: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      },
+    });
+    render(<ActionMenu />);
+
+    // Both the merge and the rebase/reset of the target check out main → disabled.
+    expect(screen.getByRole("menuitem", { name: /Merge origin\/feature into main/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /Reset main to origin\/feature/ })).toBeDisabled();
+  });
 });
 
 describe("WorktreeContextMenu", () => {
