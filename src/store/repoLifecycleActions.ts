@@ -164,59 +164,107 @@ export function createRepoLifecycleActions(
     useUi.getState().closePrompt();
   };
 
+  // GL-126 helper: retire a removed worktree's tab (strip + recents + tab info)
+  // without touching the active repo. Used when the worktree isn't — or, after
+  // the async parent probe, is no longer — the displayed repo: a background tab,
+  // a just-clicked dead tab from another repo, or a focus switch that raced the
+  // probe. Keeping the current active path is what stops the fallback from
+  // hijacking focus back to a repo the user has since navigated away from.
+  const retireDeadWorktreeTab = (path: string) => {
+    const remaining = get().openPaths.filter((p) => p !== path);
+    if (remaining.length === get().openPaths.length) return; // already gone
+    const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
+    const recents = get().recents.filter((r) => r.path !== path);
+    // `summary` is the still-displayed repo here; keep it active (falling back
+    // to the persisted last path when a missing-repo tab is the current one).
+    persistSession(remaining, get().summary?.path ?? readLastPath());
+    persistTabInfo(prunedInfo);
+    persistRecents(recents);
+    set({ openPaths: remaining, tabInfoByPath: prunedInfo, recents });
+  };
+
   // GL-126: A *linked worktree* whose directory has been removed is a dead end,
   // not a repository to recover. The GL-108 missing-repo screen (Remove / Retry /
   // Locate…) is the right recovery for a moved or deleted standalone repo, but a
   // removed worktree should hand focus back to a usable context instead of
-  // stranding on that screen. Drop the dead worktree tab and switch to a
-  // sensible default — its parent/main repo if known and still on disk, else
-  // another open tab, else the welcome screen — and never persist the removed
-  // worktree as the active selection (so a relaunch doesn't return to it). This
-  // always resolves; a removed worktree never lands on the missing-repo screen.
+  // stranding on that screen. When the worktree is the repo on screen, drop its
+  // tab and switch to a sensible default — its parent/main repo if known and
+  // still on disk, else another open tab, else the welcome screen — and never
+  // persist the removed worktree as the active selection (so a relaunch doesn't
+  // return to it). A worktree that isn't the displayed repo (a background or
+  // just-clicked dead tab) is merely retired, leaving the current repo untouched.
   const fallbackFromRemovedWorktree = async (path: string, info: TabInfo) => {
-    // The dead worktree stops being watched and leaves the strip; a different
-    // active path is persisted below so restore never returns to it.
+    // The dead worktree stops being watched whichever branch handles its tab.
     void api.unwatchRepo(path).catch(() => {});
-    const deadPath = trimTrailingSlash(path);
-    const openIndex = get().openPaths.indexOf(path);
-    const remaining = get().openPaths.filter((p) => p !== path);
-    const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
-    // A removed worktree isn't a repo to relocate — drop it from recents too so
-    // the onboarding list doesn't offer a dead worktree with a Locate… action.
-    const recents = get().recents.filter((r) => r.path !== path);
+
+    // Not the repo on screen (e.g. clicking a dead worktree tab while another
+    // repo is displayed): just retire its tab and leave the active repo as is.
+    if (get().summary?.path !== path) {
+      retireDeadWorktreeTab(path);
+      return;
+    }
 
     // Fallback order: the parent/main repo (known and available), then the
     // neighbouring open tab, then any remaining tab.
-    const mainPath = info.mainPath ? trimTrailingSlash(info.mainPath) : null;
+    const deadPath = trimTrailingSlash(path);
+    const openIndex = get().openPaths.indexOf(path);
+    const parent = info.mainPath ? trimTrailingSlash(info.mainPath) : null;
     let target: string | null = null;
-    if (mainPath && mainPath !== deadPath) {
-      if (remaining.includes(mainPath)) {
-        target = mainPath; // already open — trust it
+    if (parent && parent !== deadPath) {
+      // Match on the normalized path so a trailing-slash spelling still counts
+      // as already-open (mirrors tabIdentity/repoIdentityKey).
+      const openParent = get().openPaths.find((p) => trimTrailingSlash(p) === parent);
+      if (openParent) {
+        target = openParent; // already open — trust it
       } else {
         // Not open: only switch to it if it still resolves on disk, so we don't
         // trade one missing-repo screen for another.
         try {
-          const [status] = await api.recentsStatus([mainPath]);
-          if (status?.exists) target = mainPath;
+          const [status] = await api.recentsStatus([parent]);
+          // Re-guard after the probe: a tab switch in that window means the
+          // user's own load now owns the active repo — downgrade to just
+          // retiring the dead tab rather than hijacking focus back to it.
+          if (get().summary?.path !== path) {
+            retireDeadWorktreeTab(path);
+            return;
+          }
+          if (status?.exists) target = parent;
         } catch {
           /* probe failed — fall back to another open tab */
         }
       }
     }
+    const remaining = get().openPaths.filter((p) => p !== path);
+    const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
+    // A removed worktree isn't a repo to relocate — drop it from recents too so
+    // the onboarding list doesn't offer a dead worktree with a Locate… action.
+    const recents = get().recents.filter((r) => r.path !== path);
     if (!target) target = remaining[Math.max(0, openIndex - 1)] ?? remaining[0] ?? null;
 
-    // Supersede any in-flight graph read for the dead worktree; dropping the tab
-    // (and, in the welcome branch, the summary) fails every summary-path guard,
-    // so nothing stale can publish after this.
+    // Supersede any in-flight graph read for the dead worktree; clearing the
+    // summary below also fails every summary-path guard, so nothing stale can
+    // publish after this.
     beginGraphRequest();
 
     if (target) {
-      // Publish the pruned strip first (dead tab gone), then load the target —
-      // loadRepo does the full workspace swap and re-guards its own reads.
+      // Clear the dead worktree's workspace *before* the async target open, so
+      // the gone directory's graph/history isn't left on screen during the
+      // handoff (matches closeRepo's neighbour switch); loadRepo then does the
+      // full workspace swap and re-guards its own reads.
       persistSession(remaining, target);
       persistTabInfo(prunedInfo);
       persistRecents(recents);
-      set({ openPaths: remaining, tabInfoByPath: prunedInfo, recents, missingRepo: null });
+      set({
+        openPaths: remaining,
+        tabInfoByPath: prunedInfo,
+        recents,
+        missingRepo: null,
+        summary: null,
+        graph: null,
+        loading: true,
+        graphLoading: true,
+        error: null,
+      });
       await get().loadRepo(target);
       return;
     }
@@ -265,15 +313,30 @@ export function createRepoLifecycleActions(
     useUi.getState().closeConfirm();
     useUi.getState().closeRecovery();
     useUi.getState().closePrompt();
+    // Match closeRepo's last-tab branch: a handoff dialog bound to the now-gone
+    // worktree must not linger on the welcome screen (GL-42).
+    useUi.getState().closeHandoff();
   };
 
   // Route a vanished path (GL-108 + GL-126). A removed linked worktree falls
   // back to a usable context (its parent repo / another tab / welcome); a moved
   // or deleted standalone repo keeps the dedicated missing-repo recovery screen.
+  // Worktree identity comes from the persisted tab info, falling back to the
+  // live summary when the vanished path is the active tab — so a stale or absent
+  // tab-info entry can't misroute an active worktree onto the missing screen.
   const handleMissing = async (path: string, kind: MissingRepoState["kind"]) => {
     const info = get().tabInfoByPath[path];
-    if (info?.isWorktree) {
-      await fallbackFromRemovedWorktree(path, info);
+    const summary = get().summary;
+    const activeIsThisWorktree = summary?.path === path && summary.isWorktree === true;
+    if (info?.isWorktree || activeIsThisWorktree) {
+      const wtInfo: TabInfo = info?.isWorktree
+        ? info
+        : {
+            isWorktree: true,
+            mainPath: info?.mainPath ?? summary?.mainPath ?? null,
+            branch: info?.branch ?? summary?.headBranch ?? null,
+          };
+      await fallbackFromRemovedWorktree(path, wtInfo);
       return;
     }
     enterMissingState(path, kind);
