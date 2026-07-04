@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useRepo } from "@/store/repo";
+import { normalizeWatchPath } from "@/lib/paths";
 import {
   mergeRefreshScope,
   type RefreshScope,
@@ -54,7 +55,11 @@ export function useRepoWatcher(refresh: RefreshFn) {
     const tabTimers = new Map<string, ReturnType<typeof setTimeout>>();
     const unlisten = listen<RepoChangedEvent>("repo-changed", ({ payload }) => {
       const { summary, openPaths, refreshTabInfo } = useRepo.getState();
-      if (summary?.path === payload.path) {
+      // Route on a normalized path so a trailing-separator (or otherwise
+      // slightly different) representation can't silently drop the tab's events
+      // (GL-125). Downstream still uses the tab's own `openPaths` string.
+      const eventPath = normalizeWatchPath(payload.path);
+      if (summary && normalizeWatchPath(summary.path) === eventPath) {
         pendingScope = mergeRefreshScope(pendingScope, payload.kind);
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
@@ -69,15 +74,16 @@ export function useRepoWatcher(refresh: RefreshFn) {
       // index writes, a background `bun install`) never changes the label, so
       // skip the probe rather than spend a `recents_status` IPC on it (GL-116
       // review). Debounce per path — a graph burst (rebase) collapses to one.
-      if (!openPaths.includes(payload.path)) return;
+      const tabPath = openPaths.find((p) => normalizeWatchPath(p) === eventPath);
+      if (!tabPath) return;
       if (payload.kind !== "graph") return;
-      const previous = tabTimers.get(payload.path);
+      const previous = tabTimers.get(tabPath);
       if (previous) clearTimeout(previous);
       tabTimers.set(
-        payload.path,
+        tabPath,
         setTimeout(() => {
-          tabTimers.delete(payload.path);
-          void refreshTabInfo(payload.path);
+          tabTimers.delete(tabPath);
+          void refreshTabInfo(tabPath);
         }, 400),
       );
     }).catch(() => () => {});

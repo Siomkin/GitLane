@@ -30,6 +30,7 @@ import {
   readLastPath,
   upsertRecent,
 } from "./repoSession";
+import { unwatchRepo, watchRepo } from "./repoWatchQueue";
 import { useUi } from "./ui";
 import {
   emptyChanges,
@@ -296,7 +297,9 @@ export function createRepoLifecycleActions(
       // graph failure below can't leave the now-active repo unwatched (GL-20 review).
       // Keyed by `summary.path` (the openPaths identity): each open tab keeps its
       // own watch, so switching tabs no longer silences the previous repo (GL-116).
-      void api.watchRepo(summary.path).catch(() => {});
+      // Sequenced per path so a close→reopen of the same repo can't leave it
+      // unwatched (GL-125).
+      void watchRepo(summary.path);
       // An in-place tab replacement (the GL-110 worktree switch) re-keys the tab
       // from `replaceTab` to `summary.path`. The per-tab watcher map is keyed by
       // path, so the old key would otherwise leak an OS watch + backend thread for
@@ -307,7 +310,7 @@ export function createRepoLifecycleActions(
         opts.replaceTab !== summary.path &&
         !openPaths.includes(opts.replaceTab)
       ) {
-        void api.unwatchRepo(opts.replaceTab).catch(() => {});
+        void unwatchRepo(opts.replaceTab);
       }
 
       // A repo switch invalidates any open repo-bound overlay: a destructive
@@ -486,7 +489,9 @@ export function createRepoLifecycleActions(
       const remaining = openPaths.filter((p) => p !== path);
       // Every open tab holds a filesystem watch (GL-116); closing the tab is
       // what releases it, whichever branch below handles the tab itself.
-      void api.unwatchRepo(path).catch(() => {});
+      // Sequenced per path so an immediate reopen's watch can't be reordered
+      // ahead of this unwatch (GL-125).
+      void unwatchRepo(path);
       // Closing the missing-repo tab (its X, or Remove on the screen): the repo
       // data was already cleared when the state was entered, so just drop the
       // tab + state and land on a neighbour or the welcome screen (GL-108).
@@ -668,7 +673,7 @@ export function createRepoLifecycleActions(
           // (re-)watched by loadRepo below; re-inserting the key is harmless.
           for (const path of openPaths) {
             if (path !== last && byPath.get(path)?.exists) {
-              void api.watchRepo(path).catch(() => {});
+              void watchRepo(path);
             }
           }
         } catch {
@@ -766,7 +771,7 @@ export function createRepoLifecycleActions(
         migrateProfileBindings(stalePath, probe.path);
         // The dead path may still hold a watch from before it went missing;
         // its tab is being re-keyed, so release the stale entry (GL-116).
-        void api.unwatchRepo(stalePath).catch(() => {});
+        void unwatchRepo(stalePath);
         const openPaths = get().openPaths.includes(probe.path)
           ? get().openPaths.filter((p) => p !== stalePath)
           : get().openPaths.map((p) => (p === stalePath ? probe.path : p));

@@ -106,4 +106,24 @@ describe("useRepoWatcher — event routing (GL-116)", () => {
     expect(refresh).not.toHaveBeenCalled();
     expect(refreshTabInfo).not.toHaveBeenCalled();
   });
+
+  // GL-125: routing normalizes paths, so a trailing-separator representation
+  // still lands on the right tab instead of silently dropping its events.
+  it("routes a trailing-slash active-repo path via normalization", () => {
+    renderHook(() => useRepoWatcher(refresh));
+
+    emit({ kind: "worktree", path: "/a/" });
+    flushDebounce();
+    expect(refresh).toHaveBeenCalledWith({ prs: false, quiet: true, scope: "worktree" });
+  });
+
+  it("routes a trailing-slash background path and probes the openPaths string", () => {
+    renderHook(() => useRepoWatcher(refresh));
+
+    emit({ kind: "graph", path: "/b/" });
+    flushDebounce();
+    // Downstream uses the tab's own `openPaths` entry, not the raw payload path.
+    expect(refreshTabInfo).toHaveBeenCalledWith("/b");
+    expect(refresh).not.toHaveBeenCalled();
+  });
 });
