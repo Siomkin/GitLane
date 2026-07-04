@@ -29,7 +29,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{path::Path, path::PathBuf};
 
@@ -37,12 +37,63 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-/// One watcher per open repo tab, keyed by the open path (`summary.path`).
-/// Background tabs keep their watcher so their events keep flowing; removing
-/// an entry (tab close) or re-inserting the key (reload) drops the old watcher,
-/// which stops its watch.
+/// Mutable per-tab emission bookkeeping. A worktree tab's events arrive from
+/// two watchers — its own workdir watcher and the shared common-dir watcher
+/// that fans out to it (GL-125) — so this state is shared (`Arc<Mutex<_>>`) and
+/// the throttle window / ref fingerprint coalesce events from both sources.
+struct EmitState {
+    /// When the last event was emitted, for the throttle window.
+    last: Instant,
+    /// The kind last emitted (a graph event can upgrade a worktree burst).
+    last_kind: ChangeKind,
+    /// The last ref/HEAD fingerprint, to tell a real ref move from noise.
+    last_graph_fingerprint: Option<u64>,
+}
+
+/// A worktree tab subscribed to a shared common-dir watch. Its roots and
+/// fingerprint root drive classification from *this* tab's perspective (a
+/// sibling worktree's HEAD move is graph-worthy here — the worktree list shows
+/// its branch), and its `emit` is the same state its private watcher mutates.
+struct CommondirSubscriber {
+    roots: WatchRoots,
+    fingerprint_root: PathBuf,
+    emit: Arc<Mutex<EmitState>>,
+}
+
+/// One recursive watch on a repository's common dir (`<main>/.git`), fanned out
+/// to every open worktree tab of that repository. Sharing a single watch avoids
+/// the duplicate kernel/notify registration and the duplicate `repo-changed`
+/// emissions two sibling worktree tabs would otherwise place on the same common
+/// dir (GL-125).
+struct SharedWatch {
+    _watcher: RecommendedWatcher,
+    subscribers: Arc<Mutex<HashMap<String, CommondirSubscriber>>>,
+}
+
+/// One open tab's private watch: its workdir, plus its private gitdir when that
+/// lies outside the common dir. `commondir` records which shared watch this tab
+/// is subscribed to, so closing it can detach the subscription.
+struct TabWatch {
+    _watcher: RecommendedWatcher,
+    commondir: Option<PathBuf>,
+}
+
+/// The watcher registry: one private watch per open tab, plus shared common-dir
+/// watches keyed by canonical common-dir path.
 #[derive(Default)]
-pub struct WatcherState(pub Mutex<HashMap<String, RecommendedWatcher>>);
+struct Watchers {
+    tabs: HashMap<String, TabWatch>,
+    shared: HashMap<PathBuf, SharedWatch>,
+}
+
+/// Filesystem watches for the open repositories. Adding a tab (`watch`) inserts
+/// a private watch and subscribes it to the repository's shared common-dir
+/// watch; removing it (`unwatch`, or re-inserting the key on reload) drops the
+/// private watch and unsubscribes, tearing the shared watch down once its last
+/// subscriber leaves. Background tabs keep their watches so their events keep
+/// flowing.
+#[derive(Default)]
+pub struct WatcherState(Mutex<Watchers>);
 
 /// Minimum gap between emitted events, to collapse the burst of fs events a
 /// single git operation produces.
@@ -99,15 +150,15 @@ impl WatchRoots {
         }
     }
 
-    /// The distinct directories to place recursive watches on. The private
-    /// gitdir sits inside the common dir (`<common>/worktrees/<name>`), so
-    /// watching the common dir covers it; it gets its own watch only in the
-    /// unusual case where it lies elsewhere.
-    fn watch_targets(&self) -> Vec<&Path> {
+    /// The directories this tab watches on its own — the workdir, plus its
+    /// private gitdir when that lies *outside* the common dir. The private
+    /// gitdir usually sits inside the common dir (`<common>/worktrees/<name>`),
+    /// where the shared common-dir watch already covers it; it gets its own
+    /// watch only in the unusual case where it lies elsewhere. The common dir
+    /// (`commondir`) is watched once per repository and fanned out to every
+    /// worktree tab (GL-125), so it is deliberately not included here.
+    fn private_targets(&self) -> Vec<&Path> {
         let mut targets = vec![self.workdir.as_path()];
-        if let Some(common) = &self.commondir {
-            targets.push(common);
-        }
         if let Some(gitdir) = &self.gitdir {
             let covered = self
                 .commondir
@@ -141,78 +192,219 @@ fn resolve_watch_roots(open_path: &Path) -> WatchRoots {
     }
 }
 
+/// Classify one filesystem event for a single tab and emit `repo-changed` when
+/// it warrants a re-sync. Shared by a tab's private (workdir) watcher and the
+/// shared common-dir watcher's fan-out, so the tab's throttle/fingerprint state
+/// (`state`) coalesces events from both sources into one window.
+fn handle_event(
+    app: &AppHandle,
+    key: &str,
+    roots: &WatchRoots,
+    fingerprint_root: &Path,
+    is_ignored: impl Fn(&Path) -> bool,
+    state: &Mutex<EmitState>,
+    event: &notify::Event,
+) {
+    // Ignore pure reads — only mutations should trigger a re-sync.
+    if event.kind.is_access() {
+        return;
+    }
+    let impact = classify_paths(roots, &event.paths, is_ignored);
+    let Ok(mut st) = state.lock() else { return };
+    let now = Instant::now();
+    let throttled = now.duration_since(st.last) < THROTTLE;
+    let last_kind = st.last_kind;
+    // Pass a *lazy* fingerprint: `decide_emission` only hashes the ref set when
+    // the decision actually depends on it, so a burst of `.git/refs` writes
+    // (fetch/gc/rebase) hashes once instead of once per fs event.
+    let Some(kind) = decide_emission(
+        throttled,
+        last_kind,
+        impact,
+        &mut st.last_graph_fingerprint,
+        || graph_fingerprint(fingerprint_root),
+    ) else {
+        return;
+    };
+    st.last = now;
+    st.last_kind = kind;
+    // Release the lock before emitting so a sibling watcher isn't blocked on it
+    // across the (foreign) event dispatch.
+    drop(st);
+    let _ = app.emit(
+        "repo-changed",
+        RepoChangedEvent {
+            kind,
+            path: key.to_string(),
+        },
+    );
+}
+
 pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), String> {
-    let app = app.clone();
     let key = path.to_string();
     let roots = resolve_watch_roots(Path::new(path));
     // Fingerprint/ignore lookups discover from the workdir, exactly as events do.
     let fingerprint_root = roots.workdir.clone();
-    let mut last = Instant::now() - THROTTLE;
-    let mut last_kind = ChangeKind::Worktree;
-    let mut last_graph_fingerprint = graph_fingerprint(&fingerprint_root);
-    // Held open for the life of the watch so ignore checks don't re-open the
-    // repo per event (libgit2 revalidates cached ignore files by filestamp, so
-    // `.gitignore` edits are picked up). The handle stays on the watcher
-    // thread — it never crosses the async command boundary.
-    let ignore_repo = git2::Repository::discover(&fingerprint_root).ok();
+    let emit = Arc::new(Mutex::new(EmitState {
+        last: Instant::now() - THROTTLE,
+        last_kind: ChangeKind::Worktree,
+        last_graph_fingerprint: graph_fingerprint(&fingerprint_root),
+    }));
 
-    let event_roots = roots.clone();
-    let event_key = key.clone();
-    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-        let Ok(event) = res else { return };
-        // Ignore pure reads — only mutations should trigger a re-sync.
-        if event.kind.is_access() {
-            return;
+    // The tab's own watch: workdir plus its private gitdir when that lies
+    // outside the common dir. The common dir (when present) is watched once and
+    // fanned out below.
+    let private_watcher = {
+        let app = app.clone();
+        let key = key.clone();
+        let event_roots = roots.clone();
+        let event_fingerprint_root = fingerprint_root.clone();
+        let emit = emit.clone();
+        // Held open for the life of this watch so ignore checks don't re-open
+        // the repo per event (libgit2 revalidates cached ignore files by
+        // filestamp, so `.gitignore` edits are picked up). `git2::Repository`
+        // is `Send` but not `Sync`, so it stays owned by this single closure —
+        // never shared with the common-dir watcher (whose paths never consult
+        // ignore rules) — and never crosses the async command boundary.
+        let ignore_repo = git2::Repository::discover(&fingerprint_root).ok();
+        let mut watcher =
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                let Ok(event) = res else { return };
+                handle_event(
+                    &app,
+                    &key,
+                    &event_roots,
+                    &event_fingerprint_root,
+                    |relative| is_ignored(ignore_repo.as_ref(), relative),
+                    &emit,
+                    &event,
+                );
+            })
+            .map_err(|e| format!("failed to create watcher: {e}"))?;
+        for target in roots.private_targets() {
+            watcher
+                .watch(target, RecursiveMode::Recursive)
+                .map_err(|e| format!("failed to watch {}: {e}", target.display()))?;
         }
-        let impact = classify_paths(&event_roots, &event.paths, |relative| {
-            is_ignored(ignore_repo.as_ref(), relative)
-        });
-        let now = Instant::now();
-        let throttled = now.duration_since(last) < THROTTLE;
-        // Pass a *lazy* fingerprint: `decide_emission` only hashes the ref set
-        // when the decision actually depends on it, so a burst of `.git/refs`
-        // writes (fetch/gc/rebase) hashes once instead of once per fs event.
-        let Some(kind) = decide_emission(
-            throttled,
-            last_kind,
-            impact,
-            &mut last_graph_fingerprint,
-            || graph_fingerprint(&fingerprint_root),
-        ) else {
-            return;
-        };
-        last = now;
-        last_kind = kind;
-        let _ = app.emit(
-            "repo-changed",
-            RepoChangedEvent {
-                kind,
-                path: event_key.clone(),
-            },
-        );
-    })
-    .map_err(|e| format!("failed to create watcher: {e}"))?;
-
-    for target in roots.watch_targets() {
         watcher
-            .watch(target, RecursiveMode::Recursive)
-            .map_err(|e| format!("failed to watch {}: {e}", target.display()))?;
+    };
+
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    // Re-inserting a key (reload / in-place re-key) drops the old private watch
+    // and unsubscribes it from any shared common-dir watch before re-adding.
+    detach(&mut guard, &key);
+
+    let commondir = roots.commondir.clone();
+    if let Some(common) = &commondir {
+        let subscriber = CommondirSubscriber {
+            roots: roots.clone(),
+            fingerprint_root: fingerprint_root.clone(),
+            emit: emit.clone(),
+        };
+        match guard.shared.get(common) {
+            // A sibling worktree already watches this common dir — just join it.
+            Some(shared) => {
+                shared
+                    .subscribers
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .insert(key.clone(), subscriber);
+            }
+            // First tab on this common dir — create the shared watch and fan its
+            // events out to every current subscriber, each classified from its
+            // own perspective.
+            None => {
+                let subscribers = Arc::new(Mutex::new(HashMap::new()));
+                subscribers
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .insert(key.clone(), subscriber);
+                let fan_subscribers = subscribers.clone();
+                let fan_app = app.clone();
+                let mut watcher = notify::recommended_watcher(
+                    move |res: notify::Result<notify::Event>| {
+                        let Ok(event) = res else { return };
+                        if event.kind.is_access() {
+                            return;
+                        }
+                        let Ok(subscribers) = fan_subscribers.lock() else {
+                            return;
+                        };
+                        for (sub_key, sub) in subscribers.iter() {
+                            // Common-dir paths never reach `classify_path`'s
+                            // ignore branch (that is workdir-only), so no repo
+                            // handle is needed for the fan-out.
+                            handle_event(
+                                &fan_app,
+                                sub_key,
+                                &sub.roots,
+                                &sub.fingerprint_root,
+                                |_| false,
+                                &sub.emit,
+                                &event,
+                            );
+                        }
+                    },
+                )
+                .map_err(|e| format!("failed to create watcher: {e}"))?;
+                watcher
+                    .watch(common, RecursiveMode::Recursive)
+                    .map_err(|e| format!("failed to watch {}: {e}", common.display()))?;
+                guard.shared.insert(
+                    common.clone(),
+                    SharedWatch {
+                        _watcher: watcher,
+                        subscribers,
+                    },
+                );
+            }
+        }
     }
 
-    // Re-inserting the key replaces (and drops) that path's previous watcher.
-    state
-        .0
-        .lock()
-        .map_err(|e| e.to_string())?
-        .insert(key, watcher);
+    guard.tabs.insert(
+        key,
+        TabWatch {
+            _watcher: private_watcher,
+            commondir,
+        },
+    );
     Ok(())
 }
 
-/// Stop watching `path` (tab closed). Dropping the watcher stops its watch;
-/// unknown paths are a no-op.
+/// Stop watching `path` (tab closed). Dropping the private watch stops it;
+/// unsubscribing from the shared common-dir watch drops that too once its last
+/// subscriber leaves. Unknown paths are a no-op.
 pub fn unwatch(state: &WatcherState, path: &str) -> Result<(), String> {
-    state.0.lock().map_err(|e| e.to_string())?.remove(path);
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    detach(&mut guard, path);
     Ok(())
+}
+
+/// Remove a tab's private watch and unsubscribe it from its shared common-dir
+/// watch, tearing that shared watch down once its last subscriber leaves.
+fn detach(watchers: &mut Watchers, key: &str) {
+    let Some(tab) = watchers.tabs.remove(key) else {
+        return;
+    };
+    let Some(common) = tab.commondir else {
+        return;
+    };
+    let empty = match watchers.shared.get(&common) {
+        Some(shared) => {
+            // A poisoned subscriber lock still means teardown is safer than a
+            // leaked watch, so recover the map either way.
+            let mut subscribers = shared
+                .subscribers
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            subscribers.remove(key);
+            subscribers.is_empty()
+        }
+        None => false,
+    };
+    if empty {
+        watchers.shared.remove(&common);
+    }
 }
 
 fn classify_paths(
@@ -810,6 +1002,34 @@ mod tests {
         }
     }
 
+    /// The GL-125 fan-out: one shared common-dir event is classified from each
+    /// subscribed tab's own perspective, so a single shared watch can serve every
+    /// worktree tab of a repository. A worktree's HEAD move (in its private
+    /// gitdir under the common dir) is graph-worthy for that tab *and* for every
+    /// sibling — their worktree list shows its branch — so both must surface it.
+    #[test]
+    fn shared_commondir_event_classifies_per_subscriber() {
+        // The owning tab (/wt): matches its private gitdir before the common dir.
+        let owner = linked_worktree_roots();
+        // A sibling worktree (/other) of the same repository, sharing the dir.
+        let sibling = WatchRoots {
+            workdir: PathBuf::from("/other"),
+            gitdir: Some(PathBuf::from("/main/.git/worktrees/other")),
+            commondir: Some(PathBuf::from("/main/.git")),
+        };
+        let event = paths(&["/main/.git/worktrees/wt/HEAD"]);
+        assert_eq!(
+            classify_paths(&owner, &event, none_ignored),
+            PathImpact::Graph,
+            "the owning tab sees its own HEAD move"
+        );
+        assert_eq!(
+            classify_paths(&sibling, &event, none_ignored),
+            PathImpact::Graph,
+            "a sibling tab sees it through the common dir"
+        );
+    }
+
     /// The path-resolution helper (gitfile → private gitdir + commondir), on a
     /// real repository pair: the linked worktree needs the main `.git` watched;
     /// the main checkout needs nothing beyond its workdir.
@@ -839,14 +1059,16 @@ mod tests {
         let wt_dir = base.join("wt");
         repo.worktree("wt", &wt_dir, None).expect("add worktree");
 
-        // The main checkout: everything lives under the workdir.
+        // The main checkout: everything lives under the workdir, so it watches
+        // only its workdir privately and subscribes to no shared common dir.
         let roots = resolve_watch_roots(&main_dir);
         assert_eq!(roots.gitdir, None);
         assert_eq!(roots.commondir, None);
-        assert_eq!(roots.watch_targets(), vec![roots.workdir.as_path()]);
+        assert_eq!(roots.private_targets(), vec![roots.workdir.as_path()]);
 
-        // The linked worktree: private gitdir + shared common dir, with the
-        // gitdir covered by the common-dir watch.
+        // The linked worktree: private gitdir + shared common dir. The gitdir
+        // nests inside the common dir, so the tab's *private* watch is just its
+        // workdir; the common dir is watched once and shared (GL-125).
         let roots = resolve_watch_roots(&wt_dir);
         let gitdir = roots.gitdir.clone().expect("private gitdir resolved");
         let commondir = roots.commondir.clone().expect("commondir resolved");
@@ -858,10 +1080,7 @@ mod tests {
             gitdir.starts_with(&commondir),
             "private gitdir {gitdir:?} nests inside commondir {commondir:?}"
         );
-        assert_eq!(
-            roots.watch_targets(),
-            vec![roots.workdir.as_path(), commondir.as_path()]
-        );
+        assert_eq!(roots.private_targets(), vec![roots.workdir.as_path()]);
 
         drop(repo);
         let _ = std::fs::remove_dir_all(&base);
