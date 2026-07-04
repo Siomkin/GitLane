@@ -301,6 +301,12 @@ export interface FileChange {
   /** True when git treats the change as binary (no line stats); lets file lists
    * mark it as binary instead of showing a misleading "+0 −0". */
   binary: boolean;
+  /** For a rename ("R") or copy ("C"), the file's previous (old-side) path. A
+   * worktree rename shows as one "R" entry naming only the new path, so staging
+   * or unstaging it must act on both `previousPath` and `path` together — a bare
+   * add of the new path leaves the old path's deletion behind (GL-127). Absent
+   * for every other change. */
+  previousPath?: string;
   advanced?: FileAdvancedState;
 }
 

@@ -209,12 +209,24 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             del = deletions;
         }
 
+        // For a rename/copy the old side names the source path — carry it so
+        // consumers can act on both paths (mirrors the working-tree buckets).
+        let previous_path = matches!(delta.status(), Delta::Renamed | Delta::Copied)
+            .then(|| {
+                delta
+                    .old_file()
+                    .path()
+                    .map(|p| p.to_string_lossy().to_string())
+            })
+            .flatten();
+
         out.push(FileChange {
             path,
             status,
             add,
             del,
             binary,
+            previous_path,
             advanced: None,
         });
     }

@@ -388,6 +388,13 @@ pub struct FileChange {
     /// True when git treats this delta as binary (no line stats / text hunks).
     /// Lets file lists mark it as binary instead of showing a misleading "+0 −0".
     pub binary: bool,
+    /// For a rename ("R") — or copy ("C") — the delta's old-side path. Carried so
+    /// staging/unstaging a rename can act on both the old and new path atomically:
+    /// a bare `git add <new>` stages only the addition and leaves the old path's
+    /// deletion behind as a separate unstaged "D" (GL-127). `None` for every other
+    /// change, where `path` already names the only affected file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub advanced: Option<FileAdvancedState>,
 }

@@ -110,6 +110,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add: 0,
                 del: 0,
                 binary: false,
+                previous_path: None,
                 advanced: None,
             });
             continue;
@@ -139,8 +140,9 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             None
         };
         if let Some(st) = staged_status {
-            let p = entry
-                .head_to_index()
+            let delta = entry.head_to_index();
+            let p = delta
+                .as_ref()
                 .and_then(|d| {
                     d.new_file()
                         .path()
@@ -148,6 +150,14 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                         .map(|x| x.to_string_lossy().to_string())
                 })
                 .unwrap_or_else(|| entry_path.clone());
+            // A staged rename carries the old path so unstaging it can restore
+            // both sides at once — restoring only the new path would leave the
+            // old path's deletion staged (the mirror of the GL-127 stage bug).
+            let previous_path = (st == "R")
+                .then(|| {
+                    delta.and_then(|d| d.old_file().path().map(|x| x.to_string_lossy().to_string()))
+                })
+                .flatten();
             let (add, del, binary) = staged_counts.get(&p).copied().unwrap_or((0, 0, false));
             staged.push(FileChange {
                 path: p,
@@ -155,6 +165,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add,
                 del,
                 binary,
+                previous_path,
                 advanced: None,
             });
         }
@@ -183,8 +194,9 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             unstaged_status
         };
         if let Some(st) = unstaged_status {
-            let p = entry
-                .index_to_workdir()
+            let delta = entry.index_to_workdir();
+            let p = delta
+                .as_ref()
                 .and_then(|d| {
                     d.new_file()
                         .path()
@@ -192,6 +204,15 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                         .map(|x| x.to_string_lossy().to_string())
                 })
                 .unwrap_or_else(|| entry_path.clone());
+            // A pure worktree rename (GL-114) shows as one "R" entry naming the
+            // new path; carry the old path so staging it can add both sides at
+            // once. Without this the old path's deletion stays unstaged after the
+            // add — the GL-127 bug this field fixes.
+            let previous_path = (st == "R")
+                .then(|| {
+                    delta.and_then(|d| d.old_file().path().map(|x| x.to_string_lossy().to_string()))
+                })
+                .flatten();
             let (mut add, del, mut binary) = unstaged_counts.get(&p).copied().unwrap_or((0, 0, false));
             // Untracked files don't appear in the index-to-workdir diff stats
             // above unless include_untracked content was diffed; ensure a
@@ -225,6 +246,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add,
                 del,
                 binary,
+                previous_path,
                 advanced: None,
             });
         }

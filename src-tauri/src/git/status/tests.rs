@@ -1159,3 +1159,53 @@ fn selection_diff_handles_binary_files() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn staging_a_worktree_rename_records_a_single_rename() {
+    // GL-127: a pure worktree rename surfaces as one unstaged "R" entry naming
+    // the new path (GL-114). The entry must carry the old path as `previous_path`
+    // so the frontend can stage both sides at once — otherwise `git add <new>`
+    // stages only the addition and leaves the old path's deletion as a leftover
+    // unstaged "D".
+    let dir = std::env::temp_dir().join("gitlane-stage-rename-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    // Identical content on both sides → unambiguous rename detection.
+    commit(&repo, &dir, "old.txt", "alpha\nbeta\ngamma\ndelta\n");
+    let path = dir.to_str().unwrap();
+
+    // Move the file on disk; the index still holds old.txt.
+    fs::rename(dir.join("old.txt"), dir.join("new.txt")).unwrap();
+
+    let before = working_changes(path).unwrap();
+    assert!(before.staged.is_empty(), "nothing staged yet: {:?}", before.staged);
+    assert_eq!(before.unstaged.len(), 1, "one unstaged entry: {:?}", before.unstaged);
+    let entry = &before.unstaged[0];
+    assert_eq!(entry.status, "R");
+    assert_eq!(entry.path, "new.txt");
+    assert_eq!(entry.previous_path.as_deref(), Some("old.txt"));
+
+    // Stage the rename the way the store's `stageFile` does for an "R": both the
+    // old and new path together, atomically.
+    let paths = vec![
+        entry.previous_path.clone().unwrap(),
+        entry.path.clone(),
+    ];
+    crate::git::write::stage_files(path, &paths).expect("stage both sides of the rename");
+
+    // The index now holds a single staged rename and nothing is left unstaged —
+    // no orphaned "D old.txt".
+    let after = working_changes(path).unwrap();
+    assert_eq!(after.staged.len(), 1, "one staged entry: {:?}", after.staged);
+    assert_eq!(after.staged[0].status, "R");
+    assert_eq!(after.staged[0].path, "new.txt");
+    assert_eq!(after.staged[0].previous_path.as_deref(), Some("old.txt"));
+    assert!(
+        after.unstaged.is_empty(),
+        "no leftover unstaged deletion: {:?}",
+        after.unstaged
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

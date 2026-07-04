@@ -1,4 +1,4 @@
-import { api, type RepoSummary } from "../lib/api";
+import { api, type FileChange, type RepoSummary } from "../lib/api";
 import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "../lib/advancedRepoState";
 import { splitCommitMessage } from "../lib/commitMessage";
 import { mergeWasAlreadyUpToDate } from "../lib/mergeOutcome";
@@ -7,6 +7,18 @@ import { takePendingRefresh } from "./repoRequests";
 import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
+
+// The two paths a rename entry spans, or null when `path` is an ordinary
+// single-path change. A rename ("R") in `bucket` carries its old side as
+// `previousPath`; both must be staged/unstaged together (GL-127), else the
+// deletion of the old path is left in the opposite state. Ordering doesn't
+// matter — the paths follow `--` in one atomic `git add`/`git restore`.
+function renamePaths(bucket: FileChange[], path: string): string[] | null {
+  const entry = bucket.find((f) => f.path === path);
+  return entry?.status === "R" && entry.previousPath
+    ? [entry.previousPath, path]
+    : null;
+}
 
 // Shared body for the branch/history write ops: require an open repo, run the
 // op, refresh the graph, and return its toast message. Rejects (for the caller
@@ -529,7 +541,16 @@ export function createRepoWriteActions(
       if (!summary) return;
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        await api.stageFile(summary.path, path);
+        // A worktree rename shows as one "R" entry naming the new path, but its
+        // old path is still deleted in the index. Stage both together so the
+        // index records a single rename instead of leaving the deletion behind
+        // as a separate unstaged "D" (GL-127).
+        const paths = renamePaths(get().changes.unstaged, path);
+        if (paths) {
+          await api.stageFiles(summary.path, paths);
+        } else {
+          await api.stageFile(summary.path, path);
+        }
         await get().refresh();
         await get().selectFile(path, "staged");
       } catch (e) {
@@ -542,7 +563,14 @@ export function createRepoWriteActions(
       if (!summary) return;
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        await api.unstageFile(summary.path, path);
+        // Mirror of stageFile: restore both sides of a staged rename at once so
+        // unstaging the new path doesn't leave the old path's deletion staged.
+        const paths = renamePaths(get().changes.staged, path);
+        if (paths) {
+          await api.unstageFiles(summary.path, paths);
+        } else {
+          await api.unstageFile(summary.path, path);
+        }
         await get().refresh();
         await get().selectFile(path, "unstaged");
       } catch (e) {

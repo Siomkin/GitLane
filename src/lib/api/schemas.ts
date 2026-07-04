@@ -112,6 +112,7 @@ const fileChangeSchema = z.object({
   add: z.number(),
   del: z.number(),
   binary: z.boolean(),
+  previousPath: z.string().optional(),
   advanced: fileAdvancedStateSchema.optional(),
 });
 
