@@ -958,6 +958,38 @@ fn intent_to_add_file_is_unstaged_not_staged() {
 }
 
 #[test]
+fn empty_intent_to_add_file_is_unstaged() {
+    let dir = std::env::temp_dir().join("gitlane-ita-empty-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+
+    // An *empty* intent-to-add file: libgit2 sets INDEX_NEW with no WT flag
+    // (identical empty content), so this exercises the branch where the
+    // unstaged status is otherwise None and must be forced to "A". git shows
+    // ` A empty.txt` in porcelain.
+    fs::write(dir.join("empty.txt"), "").unwrap();
+    assert!(std::process::Command::new("git")
+        .args(["add", "--intent-to-add", "empty.txt"])
+        .current_dir(&dir)
+        .status()
+        .unwrap()
+        .success());
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    assert!(changes.staged.iter().all(|f| f.path != "empty.txt"));
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "empty.txt")
+        .expect("empty intent-to-add file appears as an unstaged add");
+    assert_eq!(entry.status, "A");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn intent_to_add_then_deleted_shows_unstaged_delete() {
     let dir = std::env::temp_dir().join("gitlane-ita-then-delete-test");
     let _ = fs::remove_dir_all(&dir);

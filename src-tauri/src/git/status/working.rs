@@ -46,6 +46,10 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         .renames_index_to_workdir(true);
 
     let statuses = repo.statuses(Some(&mut opts))?;
+    // Used only to detect intent-to-add entries. If the index can't be read
+    // (should not happen for an open repo), detection degrades to "off" and an
+    // intent-to-add file falls back to its libgit2 classification (staged "A")
+    // rather than erroring the whole status read.
     let index = repo.index().ok();
 
     // Line counts come from two diffs computed once, indexed by path.
