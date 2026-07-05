@@ -81,11 +81,14 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         // The backend emits no event for the graph refresh — advance to the
         // terminal "Refreshing" row ourselves so it spins while the store reloads.
         // (The store action deliberately skips runOp's refresh so we own it here.)
-        setReached(DELETE_WORKTREE_REFRESH_ROW);
-        // Only refresh if we're still on the repo the delete acted on. A mid-run
-        // switch means the mutated repo isn't active; refreshing the new one would
-        // reload the wrong graph (the acted-on repo reconciles via its FS watcher
-        // / next load). GL-107 review.
+        // Guard the checklist state like the listener does: a close after the IPC
+        // resolved but before refresh finishes must not setState on the dead body.
+        if (mounted.current) setReached(DELETE_WORKTREE_REFRESH_ROW);
+        // Refresh regardless of mount (a closed-but-same-repo dialog still needs
+        // the deleted branch gone from the graph) — but only if we're still on the
+        // repo the delete acted on. A mid-run switch means the mutated repo isn't
+        // active; refreshing the new one would reload the wrong graph (the acted-on
+        // repo reconciles via its FS watcher / next load). GL-107 review.
         if (useRepo.getState().summary?.path === repoAtStart) {
           await useRepo.getState().refresh();
         }

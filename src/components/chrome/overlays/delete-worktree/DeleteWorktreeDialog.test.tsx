@@ -197,21 +197,25 @@ describe("DeleteWorktreeDialog", () => {
     expect(useUi.getState().deleteWorktreeRunning).toBe(true);
 
     // Close mid-run (the body unmounts; the delete keeps running in the
-    // background) and reopen a fresh dialog — its hook has inFlight=false, so only
-    // the store latch stops a second invoke.
+    // background) and reopen a fresh dialog — its hook has inFlight=false, so the
+    // store latch is what stops a second invoke.
     fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
     first.unmount();
     openDialog();
     render(<DeleteWorktreeDialog />);
-    const secondButton = await screen.findByRole("button", { name: "Delete anyway" });
-    await waitFor(() => expect(secondButton).not.toBeDisabled());
+    // Even once the preview has loaded, the button stays disabled with a visible
+    // reason (not a silent no-op) while the first delete is still running.
+    await screen.findByText(/Commits ahead of current HEAD/);
+    const secondButton = screen.getByRole("button", { name: "Delete anyway" });
+    expect(secondButton).toBeDisabled();
+    expect(screen.getByText(/Another delete is still finishing/)).toBeInTheDocument();
     fireEvent.click(secondButton);
 
-    // The store latch swallowed the second run — still exactly one delete IPC.
+    // Still exactly one delete IPC — the disabled button + store latch both hold.
     expect(
       invokeMock.mock.calls.filter(([cmd]) => cmd === "delete_branch_with_worktree"),
     ).toHaveLength(1);
-    // Let the first delete settle so the latch clears.
+    // Let the first delete settle so the latch clears and the button frees up.
     await act(async () => del.resolve("Deleted feature and its worktree"));
     expect(useUi.getState().deleteWorktreeRunning).toBe(false);
   });

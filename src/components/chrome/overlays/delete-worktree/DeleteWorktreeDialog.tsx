@@ -43,6 +43,10 @@ type PreviewState = { kind: "loading" } | { kind: "ready"; preview: DestructiveP
 
 function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   const closeDeleteWorktree = useUi((s) => s.closeDeleteWorktree);
+  // A background delete from a prior, closed dialog may still be running; block a
+  // second one and say why, rather than leaving an enabled button that no-ops
+  // (the run hook's store latch enforces it; this is the visible half).
+  const deleteWorktreeRunning = useUi((s) => s.deleteWorktreeRunning);
   const previewDeleteBranch = useRepo((s) => s.previewDeleteBranch);
   const { phase, reached, message, start } = useDeleteWorktreeRun(req);
   const [preview, setPreview] = useState<PreviewState>({ kind: "loading" });
@@ -166,12 +170,17 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
               <button
                 type="button"
                 onClick={start}
-                disabled={preview.kind !== "ready"}
+                disabled={preview.kind !== "ready" || deleteWorktreeRunning}
                 className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
               >
                 Delete anyway
               </button>
             </div>
+            {deleteWorktreeRunning && (
+              <div className="mt-2.5 text-center text-[11.5px] text-neutral-400">
+                Another delete is still finishing — this will be ready in a moment.
+              </div>
+            )}
           </>
         )}
 
