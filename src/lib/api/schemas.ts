@@ -272,6 +272,13 @@ export const githubAccountSchema = z.object({
   healthError: z.string(),
 });
 
+// ---- github_sign_in → GithubSignInResult ----
+
+export const githubSignInResultSchema = z.object({
+  host: z.string(),
+  login: z.string(),
+});
+
 // ---- pull_request_checks → PrCheck[] ----
 
 export const prCheckSchema = z.object({

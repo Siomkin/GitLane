@@ -10,9 +10,16 @@ import {
   pullRequestDetailSchema,
   pullRequestSummarySchema,
   reviewThreadSchema,
+  githubSignInResultSchema,
 } from "./schemas";
 
 export type GithubAuthProvider = "gh" | "native";
+
+/** Result of an in-app `gh auth login --web` sign-in (GL-106). No token. */
+export interface GithubSignInResult {
+  host: string;
+  login: string;
+}
 
 export interface GithubAccount {
   provider: GithubAuthProvider;
@@ -155,6 +162,18 @@ export const githubApi = {
   /** Accounts the `gh` CLI is logged into. Empty when not logged in. */
   githubAccounts: async (): Promise<GithubAccount[]> =>
     parse(z.array(githubAccountSchema), await invoke("github_accounts"), "github_accounts"),
+
+  /** Start the in-app `gh auth login --web` device flow for `host`. Resolves with
+   * the newly added account once authorized; emits `github-signin-progress`
+   * events meanwhile. Rejects on failure or when cancelled via
+   * `cancelGithubSignIn`. */
+  githubSignIn: async (host: string): Promise<GithubSignInResult> =>
+    parse(githubSignInResultSchema, await invoke("github_sign_in", { host }), "github_sign_in"),
+
+  /** Kill an in-flight `githubSignIn` child (Cancel). Idempotent. */
+  cancelGithubSignIn: async (): Promise<void> => {
+    await invoke("cancel_github_sign_in");
+  },
 
   /** Pull requests for the repo, fetched as the bound `account` if given. */
   listPullRequests: async (

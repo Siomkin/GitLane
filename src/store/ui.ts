@@ -176,6 +176,14 @@ export interface HandoffRequest {
   sourceChanges: number | null;
 }
 
+/** A pending in-app GitHub sign-in (GL-106), rendered by GithubSigninDialog. Only
+ * the initial host crosses the store; the dialog owns host choice, the device
+ * code, and run/progress state (transient, per-open). */
+export interface GithubSigninRequest {
+  /** Host to sign in to, e.g. "github.com" or a GHES hostname. */
+  host: string;
+}
+
 export interface PromptRequest {
   title: string;
   /** Optional helper line under the title. */
@@ -350,6 +358,9 @@ interface UiState {
   confirm: ConfirmRequest | null;
   /** Pending text-input modal (null = none open). */
   prompt: PromptRequest | null;
+  /** Pending in-app GitHub sign-in modal (GL-106), null = none open. Carries the
+   * initial host; the dialog owns host choice and run/progress state. */
+  githubSignin: GithubSigninRequest | null;
   /** Pending worktree branch hand-off modal (null = none open). */
   handoff: HandoffRequest | null;
   /** True while a hand-off move is in flight. The success path routes through
@@ -478,6 +489,10 @@ interface UiState {
   requestPrompt: (req: PromptRequest) => void;
   closePrompt: () => void;
 
+  /** Open the in-app GitHub sign-in modal for `host` (GL-106). */
+  openGithubSignin: (host: string) => void;
+  closeGithubSignin: () => void;
+
   /** Open the worktree hand-off modal. */
   openHandoff: (req: HandoffRequest) => void;
   closeHandoff: () => void;
@@ -573,6 +588,7 @@ export const useUi = create<UiState>()(
   agentMessageBranch: null,
   confirm: null,
   prompt: null,
+  githubSignin: null,
   handoff: null,
   handoffRunning: false,
 
@@ -748,6 +764,9 @@ export const useUi = create<UiState>()(
 
   requestPrompt: (req) => set({ ...noMenus, prompt: req }),
   closePrompt: () => set({ prompt: null }),
+
+  openGithubSignin: (host) => set({ ...noMenus, githubSignin: { host } }),
+  closeGithubSignin: () => set((s) => (s.githubSignin === null ? s : { githubSignin: null })),
 
   openHandoff: (req) => set({ ...noMenus, handoff: req }),
   // Deliberately does NOT clear `handoffRunning`: a dismissed dialog leaves the

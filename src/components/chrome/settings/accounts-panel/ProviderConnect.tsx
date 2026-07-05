@@ -8,6 +8,7 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { openExternalUrl } from "../../../../lib/openExternal";
 import type { ForgeAuthStatus } from "../../../../lib/api";
+import { useUi } from "../../../../store/ui";
 import { accountHandle, connectState, providerInitials, type ProviderMeta } from "./providers";
 import { CopyCommand } from "./CopyCommand";
 
@@ -128,24 +129,41 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
 }
 
 function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
+  const openGithubSignin = useUi((s) => s.openGithubSignin);
   return (
     <StateBlock
-      title="Sign in with the GitHub CLI"
+      title="Sign in to GitHub"
       body={
         <>
-          Run the login command in a terminal, then Refresh. GitLane reads accounts from{" "}
-          <code className="font-mono text-[12px]">gh</code> — pull requests, push, and fetch all work once you’re
+          Authorize GitLane in your browser with a one-time code — no terminal needed. GitLane reads the account from{" "}
+          <code className="font-mono text-[12px]">gh</code>, so pull requests, push, and fetch all work once you’re
           signed in.
         </>
       }
     >
-      <CopyCommand command="gh auth login" />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => openGithubSignin("github.com")}
+          className={cn(
+            "inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[12.5px] font-semibold text-white transition hover:brightness-110",
+            focusRing,
+          )}
+        >
+          Sign in
+        </button>
         {refresh}
         <button onClick={() => openExternalUrl("https://cli.github.com")} className={cn(linkCls, "px-1")}>
           Install gh
         </button>
       </div>
+      <details className="text-[12px] text-neutral-500 dark:text-neutral-400">
+        <summary className="cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200">
+          Prefer the terminal?
+        </summary>
+        <div className="mt-2">
+          <CopyCommand command="gh auth login" />
+        </div>
+      </details>
     </StateBlock>
   );
 }

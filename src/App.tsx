@@ -36,6 +36,7 @@ import { PullRequestDetail } from "./features/pull-requests/PullRequestDetail";
 import { ReflogRecoveryDialog } from "./features/recovery";
 import { ReviewWorkspace } from "./features/review/ReviewWorkspace";
 import { AgentMessageDialog } from "./features/review-notes/ReviewNotes";
+import { GithubSigninDialog } from "./components/chrome/overlays/github-signin";
 import { StackedReview } from "./features/review/StackedReview";
 import { CommitModal } from "./features/changes/CommitModal";
 import { RightPanel } from "./features/changes/RightPanel";
@@ -340,6 +341,7 @@ const App = () => {
       <ConfirmDialog />
       <PromptDialog />
       <HandoffDialog />
+      <GithubSigninDialog />
       <Toast />
       <Tooltip />
 
