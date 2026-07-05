@@ -130,18 +130,33 @@ versioned metadata: `{ provider: "gh", host, accountId, login }`. Legacy usernam
 are migrated only after they resolve against the loaded `gh` accounts, so a temporarily
 missing account does not silently switch identity.
 
-The account ref crosses IPC, but **tokens never do**. The backend resolves the token
-immediately before the operation through `GithubService`/`GhProvider`, passes it to the
-child process via `GH_TOKEN`, and drops it. Repository/account host mismatches fail before
-PR operations or authenticated fetch/push.
+The account ref crosses IPC for GitHub PR/API operations, but provider tokens are resolved in the
+backend immediately before the PR operation through `GithubService`/`GhProvider`, passed to the
+child process via `GH_TOKEN`, and dropped. Repository/account host mismatches fail before PR
+operations. The only accepted secret IPC path is the explicit HTTPS credential-save flow: the
+frontend sends the user-entered token/password once, Rust pipes it directly to `git credential
+approve`, and GitLane must never log, persist, echo, or return that secret.
 
-**Two-tier identity model.** The bound account is Tier 2 — it drives **PR / push / fetch
-auth only** and does **not** set the commit identity. Who the repo commits as is a Tier 1
-**git profile** (a reusable name/email + optional signing), applied to the repo's local git
-config via `set_repo_identity` (`commit` can also pin author/committer per commit). A repo is
-fully usable (commit/fetch/push) with just a profile and no account. Profiles live in
-`src/store/profiles.ts`; the account binding lives in `src/store/accounts.ts`. The two are
-independent — picking an account never rewrites `user.name`/`user.email`.
+**Two-noun identity model: accounts authenticate, identities author.** Accounts drive
+**PR / clone / fetch / pull / push auth only** — for git transport **per remote**, and
+**git-natively**: the account is the HTTPS remote URL's username (gitcredentials(7) —
+credential helpers resolve by that username), written by the Remotes picker via
+`git remote set-url` and *derived* back from the remote list, so the same choice works in a
+terminal. GitHub remotes can inject `gh auth git-credential` per invocation; GitLab,
+Bitbucket, Azure Repos, and unknown HTTPS remotes use the user's configured git credential
+helper / GCM. The app can send a non-GitHub token/password once to `git credential approve`
+so Git's helper stores it; GitLane itself must never store it. SSH remotes select their
+account via the SSH key. Only the PR-API account keeps a small localStorage binding.
+Accounts never set the commit identity. Who the repo commits as is an
+**identity card** (GL-130): a plain name/email (+ optional signing) entry applied to the
+repo's *local* git config via `set_repo_identity` (never global; `commit` can also pin
+author/committer per commit), with "this computer" (global config) as the default when
+nothing is pinned. Accounts only contribute a one-click prefill when creating a card ("New
+identity from @login") — no live link, no divergence tracking; the repo Identity panel is
+one freely-editable name/email card with the saved cards as prefill presets. A repo is fully
+usable (commit/fetch/push) with no account at all. Cards live in `src/store/identities.ts`;
+the per-remote account bindings live in `src/store/accounts.ts`. Picking an auth account
+never rewrites `user.name`/`user.email`.
 
 ### Frontend state — Zustand stores (split by concern)
 
@@ -152,12 +167,14 @@ Split so churn in one domain never re-renders another:
   All async actions call through `lib/api`.
 - `src/store/pulls.ts` — **pull-request state**: the PR list plus per-number detail/checks
   caches (split out so PR consumers don't re-render on graph churn).
-- `src/store/accounts.ts` — **account state (Tier 2)**: the `gh` account list and the per-repo
-  account binding that drives PR/push/fetch auth. Does **not** own commit identity; an explicit
-  "no account" is persisted (durable) rather than deleted.
-- `src/store/profiles.ts` — **git profiles (Tier 1)**: saved reusable commit identities
-  (name/email + optional signing) and how they apply to the open repo's local git config, plus
-  the per-repo+profile custom-email override. Git config is the source of truth; the effective
+- `src/store/accounts.ts` — **account state**: the `gh` account list and the **per-remote**
+  transport-auth resolution that drives clone/fetch/pull/push auth (GL-129+): GitHub can
+  resolve to `gh auth git-credential`, non-GitHub HTTPS remotes resolve to URL username +
+  system credential helper/GCM, and SSH remotes use keys. The default GitHub remote's binding
+  is mirrored for the PR surface. Does **not** own commit identity.
+- `src/store/identities.ts` — **identity cards (GL-130)**: saved name/email (+ optional
+  signing) entries and how one applies to the open repo's local git config, plus the
+  per-repo+card custom-email override. Git config is the source of truth; the effective
   identity is read back into `accounts.ts`'s `repoIdentity`.
 - `src/store/ui.ts` — **view & chrome state**: theme (dark/light/system) + accent colour,
   density, panel widths, collapsed

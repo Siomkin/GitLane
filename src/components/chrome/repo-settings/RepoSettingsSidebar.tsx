@@ -3,13 +3,17 @@ import { focusRing } from "../../../lib/ui";
 import type { RepoSettingsSection } from "../../../store/ui";
 import { ArrowUpRightIcon, IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "../../ui/icons";
 
+// One page since GL-130: these entries SCROLL to their section rather than
+// swapping pages. Keep the labels job-oriented so commit authorship and network
+// credentials do not read as two names for the same account concept.
 const NAV: { key: RepoSettingsSection; label: string; Icon: typeof IdCardIcon }[] = [
-  { key: "identity", label: "Identity", Icon: IdCardIcon },
-  { key: "remotes", label: "Remotes", Icon: RemotesIcon },
+  { key: "identity", label: "Commit author", Icon: IdCardIcon },
+  { key: "remotes", label: "Remote access", Icon: RemotesIcon },
 ];
 
 /** Left rail of the Repository settings window: the repo header, the per-repo
- * sections (Identity, Remotes), and a link across to the global App settings. */
+ * sections (commit author, remote access), and a link across to the global App
+ * settings. */
 export const RepoSettingsSidebar = ({
   section,
   repoName,

@@ -1,10 +1,25 @@
 // A connected GitHub account — the only provider with real identity today, so
-// it gets the richest card: avatar, @login, host, active state, name/email, and
-// an explicit "PRs enabled" marker that non-GitHub providers never show.
+// it gets the richest card: avatar, @login, host, active state, name/email, an
+// explicit "PRs enabled" marker that non-GitHub providers never show, and a
+// Sign out action (`gh auth logout` for exactly this account).
 
-import type { Account } from "../../../../store/accounts";
+import { cn } from "../../../../lib/cn";
+import { focusRing } from "../../../../lib/ui";
+import { useAccounts, type Account } from "../../../../store/accounts";
+import { useUi } from "../../../../store/ui";
 
 export function ConnectedAccountCard({ account }: { account: Account }) {
+  const signOutGithub = useAccounts((s) => s.signOutGithub);
+  const requestConfirm = useUi((s) => s.requestConfirm);
+  const signOut = () =>
+    requestConfirm({
+      title: `Sign @${account.username} out of GitHub?`,
+      message:
+        "Its stored credentials are removed from gh. Remotes pinned to this account fall back to your system git credentials until you sign in again.",
+      confirmLabel: "Sign out",
+      danger: true,
+      onConfirm: () => void signOutGithub(account),
+    });
   return (
     <div className="flex items-center gap-3 rounded-xl border border-black/[0.07] bg-black/[0.02] p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
       <span
@@ -46,6 +61,15 @@ export function ConnectedAccountCard({ account }: { account: Account }) {
           {account.name} · {account.email || account.host}
         </div>
       </div>
+      <button
+        onClick={signOut}
+        className={cn(
+          "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium text-neutral-500 transition hover:bg-rose-500/10 hover:text-rose-600 dark:text-neutral-400 dark:hover:text-rose-400",
+          focusRing,
+        )}
+      >
+        Sign out
+      </button>
     </div>
   );
 }

@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 import type { ForgeAuthStatus } from "@/lib/api";
 import { useAccounts, type Account } from "@/store/accounts";
+import { useUi } from "@/store/ui";
 import { AccountsPanel } from "./AccountsPanel";
 
 const ghAccount: Account = {
@@ -39,16 +40,12 @@ const gitlabMissing: ForgeAuthStatus = {
   docsUrl: "https://gitlab.com/gitlab-org/cli",
   notes: "PR features are not implemented for GitLab.",
 };
-const bitbucketManual: ForgeAuthStatus = {
-  provider: "bitbucket",
-  forge: "Bitbucket",
-  cli: null,
-  authMethod: "API token or git credential helper",
-  available: false,
-  authenticated: null,
-  loginCommand: "Create a Bitbucket API token.",
-  docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
-  notes: "Auth metadata only.",
+
+const gitlabSignedIn: ForgeAuthStatus = {
+  ...gitlabMissing,
+  available: true,
+  authenticated: true,
+  account: { username: "ada" },
 };
 
 beforeEach(() => {
@@ -59,180 +56,50 @@ beforeEach(() => {
     accounts: [ghAccount],
     accountsLoading: false,
     accountsError: null,
-    forgeAuth: [gitlabMissing, bitbucketManual],
+    forgeAuth: [gitlabMissing],
     forgeAuthError: null,
     forgeAccountsLoading: [],
   });
+  useUi.setState({ githubSignin: null, confirm: null });
 });
 
-describe("AccountsPanel (add-account model)", () => {
-  it("frames accounts as optional and shows connected GitHub with PRs enabled", () => {
+// Provider-first navigation: a persistent provider list, one page per provider.
+describe("AccountsPanel (provider pages)", () => {
+  it("lists every provider with a status line, GitHub selected by default", () => {
     render(<AccountsPanel />);
-    expect(screen.getByText(/enable pull requests/i)).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Providers" });
+    expect(nav).toBeInTheDocument();
+    // Status lines: GitHub connected count; GitLab CLI probe result.
+    expect(screen.getByText("1 account connected")).toBeInTheDocument();
+    expect(screen.getByText("glab CLI not installed")).toBeInTheDocument();
+    // The GitHub page shows the connected account card.
     expect(screen.getByText("@octocat")).toBeInTheDocument();
-    expect(screen.getByText("PRs enabled")).toBeInTheDocument();
   });
 
-  it("flags an account whose gh credentials are broken as needing re-auth", () => {
-    useAccounts.setState({
-      accounts: [
-        { ...ghAccount, healthy: false, healthError: "token invalid (HTTP 401)" },
-      ],
-    });
+  it("adding a GitHub account opens the device sign-in dialog", () => {
     render(<AccountsPanel />);
-    expect(screen.getByText("@octocat")).toBeInTheDocument();
-    expect(screen.getByText("needs re-auth")).toBeInTheDocument();
-    expect(screen.queryByText("PRs enabled")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add another account" }));
+    expect(useUi.getState().githubSignin).toEqual({ host: "github.com" });
   });
 
-  it("does not render a permanent card for un-added providers (GitLab only appears via Add account)", () => {
+  it("selecting a non-GitHub provider shows its connect page", () => {
     render(<AccountsPanel />);
-    // GitLab is not shown until the user opens the picker.
-    expect(screen.queryByText("GitLab")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
-    expect(screen.getByText("GitLab")).toBeInTheDocument();
-    expect(screen.getByText("Bitbucket")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /GitLab CLI not installed|GitLab/ }));
+    expect(screen.getByText("Connect GitLab")).toBeInTheDocument();
   });
 
-  it("shows the install step for a provider whose CLI is missing", () => {
-    // In jsdom (non-Tauri) external links fall back to window.open.
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+  it("shows sign out for an authenticated GitLab provider", () => {
+    useAccounts.setState({ forgeAuth: [gitlabSignedIn] });
     render(<AccountsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
-    fireEvent.click(screen.getByText("GitLab"));
-    expect(screen.getByText("Install the glab CLI")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Install glab" }));
-    expect(openSpy).toHaveBeenCalledWith("https://gitlab.com/gitlab-org/cli", "_blank", "noopener");
-    openSpy.mockRestore();
+
+    fireEvent.click(screen.getByRole("button", { name: /Signed in via glab|GitLab/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(useUi.getState().confirm?.title).toBe("Sign out of GitLab?");
   });
 
-  it("shows the actionable API-token walkthrough for Bitbucket", () => {
+  it("frames accounts as auth-only (identity lives in Identities)", () => {
     render(<AccountsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
-    fireEvent.click(screen.getByText("Bitbucket"));
-    expect(screen.getByText("Connect with an API token")).toBeInTheDocument();
-    // Concrete steps: the credential-helper command and the prompt fields.
-    expect(screen.getByText("git config --global credential.helper osxkeychain")).toBeInTheDocument();
-    expect(screen.getByText("your API token")).toBeInTheDocument();
-  });
-
-  it("leads with an Add-account empty state when there are no accounts", () => {
-    useAccounts.setState({ accounts: [] });
-    render(<AccountsPanel />);
-    expect(screen.getByText("No accounts yet")).toBeInTheDocument();
-  });
-
-  it("lists an authenticated provider with its real account as an auth-only card", () => {
-    const gitlabAuthed: ForgeAuthStatus = {
-      provider: "gitlab",
-      forge: "GitLab",
-      cli: "glab",
-      authMethod: "GitLab CLI",
-      available: true,
-      authenticated: true,
-      loginCommand: "glab auth login",
-      docsUrl: "https://gitlab.com/gitlab-org/cli",
-      notes: "PR features are not implemented for GitLab.",
-      account: { username: "ada", name: "Ada Lovelace" },
-    };
-    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed] });
-    render(<AccountsPanel />);
-    // Signed-in GitLab appears as connected (auth-only) with the real username.
-    expect(screen.queryByText("No accounts yet")).not.toBeInTheDocument();
-    expect(screen.getByText("@ada")).toBeInTheDocument();
-    expect(screen.getByText("Sign-in only")).toBeInTheDocument();
-  });
-
-  it("shows the forge card immediately with an identity skeleton while it resolves", () => {
-    const gitlabAuthed: ForgeAuthStatus = {
-      provider: "gitlab",
-      forge: "GitLab",
-      cli: "glab",
-      authMethod: "GitLab CLI",
-      available: true,
-      authenticated: true,
-      loginCommand: "glab auth login",
-      docsUrl: "https://gitlab.com/gitlab-org/cli",
-      notes: "PR features are not implemented for GitLab.",
-      // No account yet — whoami still in flight.
-    };
-    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed], forgeAccountsLoading: ["gitlab"] });
-    render(<AccountsPanel />);
-    // The card is visible right away (auth known) with a loading identity.
-    expect(screen.getByText("GitLab")).toBeInTheDocument();
-    expect(screen.getByText("Resolving account…")).toBeInTheDocument();
-  });
-
-  it("shows a resolving state in the connect screen while the whoami is in flight", () => {
-    const gitlabAuthed: ForgeAuthStatus = {
-      provider: "gitlab",
-      forge: "GitLab",
-      cli: "glab",
-      authMethod: "GitLab CLI",
-      available: true,
-      authenticated: true,
-      loginCommand: "glab auth login",
-      docsUrl: "https://gitlab.com/gitlab-org/cli",
-      notes: "PR features are not implemented for GitLab.",
-    };
-    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed], forgeAccountsLoading: ["gitlab"] });
-    render(<AccountsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /Add account/ }));
-    fireEvent.click(screen.getByText("GitLab"));
-    expect(screen.getByText("Signed in — resolving account…")).toBeInTheDocument();
-  });
-
-  it("shows CLI status per provider in the add-account picker", () => {
-    const gitlabAuthed: ForgeAuthStatus = {
-      provider: "gitlab",
-      forge: "GitLab",
-      cli: "glab",
-      authMethod: "GitLab CLI",
-      available: true,
-      authenticated: true,
-      loginCommand: "glab auth login",
-      docsUrl: "https://gitlab.com/gitlab-org/cli",
-      notes: "PR features are not implemented for GitLab.",
-      account: { username: "ada", name: "Ada Lovelace" },
-    };
-    const giteaMissing: ForgeAuthStatus = {
-      provider: "gitea",
-      forge: "Gitea",
-      cli: "tea",
-      authMethod: "tea CLI",
-      available: false,
-      authenticated: false,
-      loginCommand: "tea login add",
-      docsUrl: "https://gitea.com",
-      notes: "",
-    };
-    useAccounts.setState({ accounts: [], forgeAuth: [gitlabAuthed, giteaMissing] });
-    render(<AccountsPanel />);
-    fireEvent.click(screen.getAllByRole("button", { name: /Add account/ })[0]);
-    // Each provider row says which CLI drives it and whether it's usable now.
-    expect(screen.getByText("Signed in via glab")).toBeInTheDocument();
-    expect(screen.getByText("tea CLI not installed")).toBeInTheDocument();
-    expect(screen.getByText("gh installed — not signed in")).toBeInTheDocument();
-    // The capability badge is the short form.
-    expect(screen.getAllByText("Sign-in only").length).toBeGreaterThan(0);
-  });
-
-  it("shows an email/UPN identity (Azure) as-is, not as a double-@ handle", () => {
-    const azureAuthed: ForgeAuthStatus = {
-      provider: "azure-devops",
-      forge: "Azure DevOps",
-      cli: "az",
-      authMethod: "Azure CLI",
-      available: true,
-      authenticated: true,
-      loginCommand: "az login && az devops login",
-      docsUrl: "https://learn.microsoft.com/cli/azure/install-azure-cli",
-      notes: "Azure DevOps PR features are not implemented.",
-      account: { username: "alex@contoso.com" },
-    };
-    useAccounts.setState({ accounts: [], forgeAuth: [azureAuthed] });
-    render(<AccountsPanel />);
-    expect(screen.getByText("alex@contoso.com")).toBeInTheDocument();
-    expect(screen.queryByText("@alex@contoso.com")).not.toBeInTheDocument();
+    expect(screen.getByText(/Who your commits are authored as\s+is separate/)).toBeInTheDocument();
   });
 });

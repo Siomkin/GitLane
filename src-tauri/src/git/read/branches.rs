@@ -73,8 +73,16 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
             let remote = if kind == BranchType::Remote {
                 remotes
                     .iter()
-                    .find(|r| name.strip_prefix(r.as_str()).is_some_and(|rest| rest.starts_with('/')))
+                    .find(|r| {
+                        name.strip_prefix(r.as_str())
+                            .is_some_and(|rest| rest.starts_with('/'))
+                    })
                     .cloned()
+            } else {
+                None
+            };
+            let upstream_remote = if kind == BranchType::Local {
+                configured_remote(&repo, &name)
             } else {
                 None
             };
@@ -86,12 +94,27 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 is_head: branch.is_head(),
                 upstream,
                 remote,
+                upstream_remote,
                 sync,
             });
         }
     }
 
     Ok(out)
+}
+
+/// The remote a local branch pushes to (`branch.<name>.remote`), excluding the
+/// local-tracking `"."` — mirrors the fallback-free half of the write side's
+/// `push_target` so the frontend and the actual push agree on the target.
+fn configured_remote(repo: &Repository, branch_name: &str) -> Option<String> {
+    let cfg = repo.config().ok()?;
+    let remote = cfg
+        .get_string(&format!("branch.{branch_name}.remote"))
+        .ok()?;
+    if remote.is_empty() || remote == "." {
+        return None;
+    }
+    Some(remote)
 }
 
 fn configured_upstream(repo: &Repository, branch_name: &str) -> Option<String> {

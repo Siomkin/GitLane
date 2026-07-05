@@ -40,7 +40,11 @@ pub fn read_binary_blob(
             let oid = Oid::from_str(oid)?;
             let (size, _kind) = repo.odb()?.read_header(oid)?;
             if size as u64 > cap {
-                return Ok(BinaryBlob { base64: None, size: size as u64, truncated: true });
+                return Ok(BinaryBlob {
+                    base64: None,
+                    size: size as u64,
+                    truncated: true,
+                });
             }
             repo.find_blob(oid)?.content().to_vec()
         }
@@ -64,7 +68,11 @@ pub fn read_binary_blob(
                 )));
             }
             if meta.len() > cap {
-                return Ok(BinaryBlob { base64: None, size: meta.len(), truncated: true });
+                return Ok(BinaryBlob {
+                    base64: None,
+                    size: meta.len(),
+                    truncated: true,
+                });
             }
             std::fs::read(&full).map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
         }
@@ -72,5 +80,9 @@ pub fn read_binary_blob(
 
     let size = bytes.len() as u64;
     let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(BinaryBlob { base64: Some(base64), size, truncated: false })
+    Ok(BinaryBlob {
+        base64: Some(base64),
+        size,
+        truncated: false,
+    })
 }

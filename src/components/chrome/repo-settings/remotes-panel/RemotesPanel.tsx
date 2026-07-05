@@ -23,7 +23,13 @@ export const RemotesPanel = () => {
   const addRemote = useRepo((s) => s.addRemote);
   const setRemoteUrl = useRepo((s) => s.setRemoteUrl);
   const removeRemote = useRepo((s) => s.removeRemote);
-  const repoAccountRef = useAccounts((s) => s.repoAccountRef);
+  const accounts = useAccounts((s) => s.accounts);
+  const forgeAuth = useAccounts((s) => s.forgeAuth);
+  const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
+  const repoRemoteAccountIds = useAccounts((s) => s.repoRemoteAccountIds);
+  const setRemoteAccount = useAccounts((s) => s.setRemoteAccount);
+  const setRemoteUsername = useAccounts((s) => s.setRemoteUsername);
+  const saveRemoteCredential = useAccounts((s) => s.saveRemoteCredential);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -65,6 +71,12 @@ export const RemotesPanel = () => {
     setError(null);
     void reload();
   }, [reload]);
+
+  // The per-remote account notes reflect the forge CLI probes (e.g. a glab
+  // sign-in) — make sure they're loaded (cached; no re-probe when present).
+  useEffect(() => {
+    void loadForgeAuth();
+  }, [loadForgeAuth]);
 
   // Serialise mutations; reload from git config and refresh the repo on success.
   // Returns whether the op succeeded so forms can stay open (keeping the user's
@@ -109,13 +121,15 @@ export const RemotesPanel = () => {
     });
 
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0];
-  const accountLabel = repoAccountRef?.login ? `@${repoAccountRef.login}` : null;
+  const defaultRemoteAccountId = defaultRemote ? repoRemoteAccountIds[defaultRemote.name] : null;
+  const defaultRemoteAccount = accounts.find((a) => a.id === defaultRemoteAccountId) ?? null;
+  const accountLabel = defaultRemoteAccount ? `@${defaultRemoteAccount.login}` : null;
 
   if (!summary) return null;
 
   return (
     <div className="max-w-[760px]">
-      <h2 className="text-[28px] font-bold tracking-tight text-neutral-900 dark:text-white">Remotes</h2>
+      <h2 className="text-[19px] font-bold tracking-tight text-neutral-900 dark:text-white">Remotes</h2>
       <p className="mt-2 text-pretty text-[14.5px] text-neutral-500 dark:text-neutral-400">
         Git remotes for{" "}
         <span className="font-mono text-[13px] text-neutral-700 dark:text-neutral-300">{repoLeaf(summary.workdir)}</span>.
@@ -150,7 +164,21 @@ export const RemotesPanel = () => {
           </div>
           <div className="mt-3 flex flex-col gap-2.5">
             {remotes.map((r) => (
-              <RemoteRow key={r.name} remote={r} busy={busy} onSave={handleSave} onRemove={handleRemove} />
+              <RemoteRow
+                key={r.name}
+                remote={r}
+                busy={busy}
+                accounts={accounts}
+                forgeAuth={forgeAuth}
+                selectedAccountId={repoRemoteAccountIds[r.name] ?? null}
+                onPickAccount={(remote, id) => void setRemoteAccount(remote, id)}
+                onSetUsername={(remote, username) => void setRemoteUsername(remote, username)}
+                onSaveCredential={(remote, username, password) =>
+                  void saveRemoteCredential(remote, username, password)
+                }
+                onSave={handleSave}
+                onRemove={handleRemove}
+              />
             ))}
             <AddRemoteForm busy={busy} onAdd={handleAdd} />
           </div>

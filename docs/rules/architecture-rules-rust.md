@@ -64,10 +64,14 @@ freezes the whole UI (no repaint) until it returns.
   rejects with a serialized `RepoOpenError` (`kind` + `message` + `path`) so the frontend can
   give a moved/deleted repository its dedicated missing-repo state (GL-108) — don't add
   further structured errors without the same "the frontend must branch on the category" need.
-- **Secrets never cross IPC.** GitHub commands accept a frontend-safe account ref
-  (`provider`, `host`, `accountId`, `login`), never a token. `GithubService`/`GhProvider`
-  resolve tokens server-side immediately before use and hand them to subprocesses via env
-  (`GH_TOKEN`). **Do not add a command that returns a token to JS.**
+- **Secrets are never returned or stored by IPC.** GitHub PR/API commands accept a
+  frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. Git
+  transport commands accept `GitTransportAuthRef`, which carries URL username/helper metadata
+  only. The explicit HTTPS credential setup command is the only command that may receive a
+  token/password from JS, and it must pass that value directly to `git credential approve`
+  without logging or persisting it. `GithubService` / `GhProvider` resolve PR/API tokens
+  server-side immediately before use and hand them to subprocesses via env (`GH_TOKEN`).
+  **Do not add a command that returns a token to JS.**
 - **Doc comments explain *why*, not *what*.** Module headers use `//!`, functions use `///`.
   Document the non-obvious rationale (the read/write split, the `PATH` workaround, the `Send`
   constraint, "callers should only offer fast-forward when it is one") the way the existing
@@ -89,6 +93,8 @@ freezes the whole UI (no repaint) until it returns.
 - ❌ A sync Tauri command that shells out (freezes the UI).
 - ❌ Reimplementing a write with libgit2, or spawning `git`/`gh` outside the `run_*` helpers.
 - ❌ Caching/threading a `git2::Repository` across calls.
-- ❌ Returning a token or any secret across the IPC boundary.
+- ❌ Returning, logging, storing, or surfacing a token or any secret across the IPC boundary.
+  The HTTPS credential-save command is the exception: it may receive a user-entered secret only
+  long enough to pass it to `git credential approve`.
 - ❌ Layout/positioning math pushed to the frontend instead of `graph.rs`.
 - ❌ A `#[tauri::command]` fn with no `generate_handler!` entry.

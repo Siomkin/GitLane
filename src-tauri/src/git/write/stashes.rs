@@ -149,7 +149,9 @@ fn stash_ref_for_oid(repo: &str, oid: &str) -> Result<String, String> {
         .map(|index| format!("stash@{{{index}}}"))
         .ok_or_else(|| {
             let short: String = oid.chars().take(7).collect();
-            format!("Stash {short} no longer exists — it may have been applied or dropped elsewhere.")
+            format!(
+                "Stash {short} no longer exists — it may have been applied or dropped elsewhere."
+            )
         })
 }
 

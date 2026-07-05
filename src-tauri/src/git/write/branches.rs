@@ -27,7 +27,8 @@ pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
 /// bare name (and merge keeps its "Merge branch 'feature'" message). Shared with
 /// `recovery::preview_reset` so the preview and the write agree on the ref.
 pub(super) fn qualify_branch_if_ambiguous(repo: &str, name: &str) -> String {
-    if ref_exists(repo, &format!("refs/heads/{name}")) && ref_exists(repo, &format!("refs/tags/{name}"))
+    if ref_exists(repo, &format!("refs/heads/{name}"))
+        && ref_exists(repo, &format!("refs/tags/{name}"))
     {
         format!("refs/heads/{name}")
     } else {

@@ -32,15 +32,19 @@ describe("RepoSettingsModal", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows the repo slug and the active section, and routes nav clicks", () => {
+  it("shows the repo slug and ONE page: identity above remotes (GL-130)", () => {
     render(<RepoSettingsModal />);
     // Sidebar repo identity derived from the forge web URL.
     expect(screen.getByText("Siomkin/GitLane")).toBeInTheDocument();
-    // Active section = remotes → the Remotes panel heading is shown.
+    // Both sections render together on one page — identity first, so "who
+    // authors" sits right above "who authenticates, per remote".
+    expect(screen.getByRole("heading", { name: "Identity" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Remotes" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Identity" }));
+    // The sidebar stays as scroll navigation: clicking a section highlights it
+    // without hiding the other one.
+    fireEvent.click(screen.getByRole("button", { name: "Commit author" }));
     expect(useUi.getState().repoSettingsSection).toBe("identity");
+    expect(screen.getByRole("heading", { name: "Remotes" })).toBeInTheDocument();
   });
 
   it("closes via the close button", () => {

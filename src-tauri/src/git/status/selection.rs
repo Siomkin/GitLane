@@ -66,7 +66,10 @@ struct Touch {
 /// ancestors (so ancestors rank before descendants). Commits with no ancestry
 /// relationship in the pick share a rank and fall back to committer time, then
 /// input order, for a deterministic result.
-fn ordered_commits<'r>(repo: &'r Repository, oids: &[String]) -> Result<Vec<Commit<'r>>, git2::Error> {
+fn ordered_commits<'r>(
+    repo: &'r Repository,
+    oids: &[String],
+) -> Result<Vec<Commit<'r>>, git2::Error> {
     let mut commits: Vec<Commit<'r>> = Vec::with_capacity(oids.len());
     for oid in oids {
         commits.push(repo.find_commit(Oid::from_str(oid)?)?);
@@ -87,16 +90,25 @@ fn ordered_commits<'r>(repo: &'r Repository, oids: &[String]) -> Result<Vec<Comm
     }
 
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| rank[a].cmp(&rank[b]).then(times[a].cmp(&times[b])).then(a.cmp(&b)));
+    order.sort_by(|&a, &b| {
+        rank[a]
+            .cmp(&rank[b])
+            .then(times[a].cmp(&times[b]))
+            .then(a.cmp(&b))
+    });
 
     // Reorder the owned commits by `order` without cloning.
     let mut slots: Vec<Option<Commit<'r>>> = commits.into_iter().map(Some).collect();
-    Ok(order.into_iter().map(|i| slots[i].take().expect("each index used once")).collect())
+    Ok(order
+        .into_iter()
+        .map(|i| slots[i].take().expect("each index used once"))
+        .collect())
 }
 
 /// Blob oid of `path` in `tree`, or `None` when the file isn't present there.
 fn blob_in(tree: Option<&git2::Tree>, path: &str) -> Option<Oid> {
-    tree.and_then(|t| t.get_path(Path::new(path)).ok()).map(|e| e.id())
+    tree.and_then(|t| t.get_path(Path::new(path)).ok())
+        .map(|e| e.id())
 }
 
 /// One-letter status from the file's presence on each side of the net diff.
@@ -111,7 +123,10 @@ fn status_for(old: bool, new: bool) -> &'static str {
 /// Walk the ordered selection and record, per touched file, the parent blob of
 /// the earliest touch (`base`), the blob of the latest touch (`head`), and
 /// whether an unselected commit edited it in between (`gapped`).
-fn collect_touches(repo: &Repository, ordered: &[Commit]) -> Result<HashMap<String, Touch>, git2::Error> {
+fn collect_touches(
+    repo: &Repository,
+    ordered: &[Commit],
+) -> Result<HashMap<String, Touch>, git2::Error> {
     let mut touched: HashMap<String, Touch> = HashMap::new();
     for commit in ordered {
         let tree = commit.tree()?;
@@ -133,7 +148,14 @@ fn collect_touches(repo: &Repository, ordered: &[Commit]) -> Result<HashMap<Stri
             }
             match touched.get_mut(&path) {
                 None => {
-                    touched.insert(path, Touch { base: anc, head: new, gapped: false });
+                    touched.insert(
+                        path,
+                        Touch {
+                            base: anc,
+                            head: new,
+                            gapped: false,
+                        },
+                    );
                 }
                 Some(t) => {
                     // This commit's parent blob differs from the running result →
@@ -182,7 +204,12 @@ fn touch_for_file(ordered: &[Commit], file: &str) -> Result<(BlobPair, bool), gi
 /// can't express an added/deleted side. Diffing the blobs' bytes — an absent side
 /// is just `&[]` — keeps the same hunk/stat machinery without writing an empty
 /// blob to the object DB.
-fn diff_bytes<'a>(old: Option<&'a [u8]>, new: Option<&'a [u8]>, path: &str, opts: &mut DiffOptions) -> Result<Patch<'a>, git2::Error> {
+fn diff_bytes<'a>(
+    old: Option<&'a [u8]>,
+    new: Option<&'a [u8]>,
+    path: &str,
+    opts: &mut DiffOptions,
+) -> Result<Patch<'a>, git2::Error> {
     Patch::from_buffers(
         old.unwrap_or(&[]),
         Some(Path::new(path)),
@@ -192,7 +219,11 @@ fn diff_bytes<'a>(old: Option<&'a [u8]>, new: Option<&'a [u8]>, path: &str, opts
     )
 }
 
-fn file_change(repo: &Repository, path: &str, (old, new): BlobPair) -> Result<FileChange, git2::Error> {
+fn file_change(
+    repo: &Repository,
+    path: &str,
+    (old, new): BlobPair,
+) -> Result<FileChange, git2::Error> {
     let old_blob = old.map(|o| repo.find_blob(o)).transpose()?;
     let new_blob = new.map(|o| repo.find_blob(o)).transpose()?;
     let binary = old_blob.as_ref().is_some_and(|b| b.is_binary())
@@ -225,7 +256,12 @@ fn file_change(repo: &Repository, path: &str, (old, new): BlobPair) -> Result<Fi
     })
 }
 
-fn file_diff(repo: &Repository, path: &str, (old, new): BlobPair, limit: usize) -> Result<FileDiff, git2::Error> {
+fn file_diff(
+    repo: &Repository,
+    path: &str,
+    (old, new): BlobPair,
+    limit: usize,
+) -> Result<FileDiff, git2::Error> {
     let old_blob = old.map(|o| repo.find_blob(o)).transpose()?;
     let new_blob = new.map(|o| repo.find_blob(o)).transpose()?;
     let status = status_for(old.is_some(), new.is_some()).to_string();
@@ -291,7 +327,11 @@ fn merge_text(ancestor: &[u8], ours: &[u8], theirs: &[u8], path: &str) -> Option
 /// Returns `None` (caller falls back to the blob-range) when the chain isn't
 /// pure text — an add/delete side or a binary blob — or a compose step
 /// conflicts, since those can't be composed at the blob level.
-fn compose_text(repo: &Repository, ordered: &[Commit], file: &str) -> Result<Option<(Vec<u8>, Vec<u8>)>, git2::Error> {
+fn compose_text(
+    repo: &Repository,
+    ordered: &[Commit],
+    file: &str,
+) -> Result<Option<(Vec<u8>, Vec<u8>)>, git2::Error> {
     let mut base: Option<Vec<u8>> = None;
     let mut acc: Vec<u8> = Vec::new();
     for commit in ordered {
@@ -335,7 +375,15 @@ fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::
     let mut opts = DiffOptions::new();
     let patch = diff_bytes(Some(base), Some(new), path, &mut opts)?;
     let (_ctx, add, del) = patch.line_stats()?;
-    Ok(FileChange { path: path.to_string(), status: "M".to_string(), add, del, binary: false, previous_path: None, advanced: None })
+    Ok(FileChange {
+        path: path.to_string(),
+        status: "M".to_string(),
+        add,
+        del,
+        binary: false,
+        previous_path: None,
+        advanced: None,
+    })
 }
 
 /// Diff two composed text buffers. Unlike `file_diff`, no blob oids travel: the
@@ -347,7 +395,15 @@ fn text_diff(path: &str, base: &[u8], new: &[u8], limit: usize) -> Result<FileDi
     opts.context_lines(3);
     let patch = diff_bytes(Some(base), Some(new), path, &mut opts)?;
     let (add, del, hunks, truncated) = render_patch(&patch, limit)?;
-    Ok(FileDiff { path: path.to_string(), status: "M".to_string(), add, del, hunks, truncated, ..Default::default() })
+    Ok(FileDiff {
+        path: path.to_string(),
+        status: "M".to_string(),
+        add,
+        del,
+        hunks,
+        truncated,
+        ..Default::default()
+    })
 }
 
 /// Net changed files across the merged selection (`oids` in any order). Files

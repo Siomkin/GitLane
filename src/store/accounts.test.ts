@@ -6,6 +6,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import type { RepoSummary } from "../lib/api";
 import { useRepo } from "./repo";
 import { useAccounts, type Account } from "./accounts";
+import { useUi } from "./ui";
+import { usePulls } from "./pulls";
 
 const path = "repo-under-test";
 const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
@@ -31,14 +33,27 @@ const account: Account = {
 const identityCmds = (calls: unknown[][]) =>
   calls.filter(([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity");
 
+const remoteInfo = (name: string, url: string, isDefault = false) => ({
+  name,
+  fetchUrl: url,
+  pushUrl: url,
+  isDefault,
+});
+const origin = remoteInfo("origin", "https://github.com/owner/repo.git", true);
+const bucket = remoteInfo("bucket", "https://alice@bitbucket.org/team/repo.git");
+const loadPullRequests = usePulls.getState().loadPullRequests;
+
 beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(null);
-  useRepo.setState({ summary });
+  useRepo.setState({ summary, remotes: [] });
+  useUi.setState({ toast: null });
+  usePulls.setState({ loadPullRequests });
   useAccounts.setState({
     accounts: [account],
     repoAccountId: null,
+    repoRemoteAccountIds: {},
     repoBindingKey: null,
     repoAccountRef: null,
     repoIdentity: null,
@@ -273,6 +288,329 @@ describe("loadForgeAuth — fast auth, background identity", () => {
     await vi.waitFor(() => expect(useAccounts.getState().forgeAccountsLoading).toEqual([]));
     expect(useAccounts.getState().forgeAuth[0].account).toBeUndefined();
   });
+
+  it("signOutForge calls the provider logout and force-refreshes status", async () => {
+    let statusCalls = 0;
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "forge_sign_out") return "ok";
+      if (cmd === "forge_auth_statuses") {
+        statusCalls += 1;
+        return [
+          {
+            provider: "gitlab",
+            forge: "GitLab",
+            cli: "glab",
+            authMethod: "GitLab CLI",
+            available: true,
+            authenticated: false,
+            loginCommand: "x",
+            docsUrl: "y",
+            notes: "z",
+          },
+        ];
+      }
+      return null;
+    });
+    useAccounts.setState({
+      forgeAuth: [
+        {
+          provider: "gitlab",
+          forge: "GitLab",
+          cli: "glab",
+          authMethod: "GitLab CLI",
+          available: true,
+          authenticated: true,
+          loginCommand: "x",
+          docsUrl: "y",
+          notes: "z",
+        },
+      ],
+      forgeAuthLoading: false,
+      forgeAccountsLoading: [],
+    });
+
+    await useAccounts.getState().signOutForge("gitlab");
+
+    expect(invokeMock).toHaveBeenCalledWith("forge_sign_out", { provider: "gitlab" });
+    expect(statusCalls).toBe(1);
+    expect(useAccounts.getState().forgeAuth[0].authenticated).toBe(false);
+    expect(useUi.getState().toast?.message).toBe("Signed out of GitLab");
+  });
+});
+
+describe("loadAccounts — PR fetch waits for remotes", () => {
+  const apiAccount = {
+    provider: "gh",
+    host: "github.com",
+    accountId: "1",
+    login: "octocat",
+    username: "octocat",
+    name: "Octo Cat",
+    email: "octo@example.com",
+    id: 1,
+    active: true,
+    healthy: true,
+    healthError: "",
+  };
+
+  it("does not foreground-fetch PRs before remotes have loaded", async () => {
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
+    useRepo.setState({ summary, remotes: [] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "github_accounts") return [apiAccount];
+      return null;
+    });
+
+    await useAccounts.getState().loadAccounts();
+
+    expect(loadPrs).not.toHaveBeenCalled();
+  });
+
+  it("foreground-fetches PRs when remotes are already available", async () => {
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
+    useRepo.setState({ summary, remotes: [origin] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "github_accounts") return [apiAccount];
+      return null;
+    });
+
+    await useAccounts.getState().loadAccounts();
+
+    expect(loadPrs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("per-remote accounts — git-native (URL username, gitcredentials(7))", () => {
+  const originWithUser = remoteInfo("origin", "https://octocat@github.com/owner/repo.git", true);
+
+  it("derives the per-remote accounts from the remote URLs' usernames", () => {
+    useRepo.setState({ summary, remotes: [originWithUser, bucket] });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({
+      origin: account.id, // https://octocat@github.com → @octocat
+      bucket: null, // no matching gh login on bitbucket.org
+    });
+    // The default remote's derived account also drives the PR mirror.
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    // Nothing is persisted app-side — git config is the source of truth.
+    expect(localStorage.getItem("gitlane.repoAccounts")).toBeNull();
+  });
+
+  it("a URL without a username derives no account (system credential lookup)", () => {
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    useAccounts.setState({ activeAccountId: account.id });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({ origin: null, bucket: null });
+    // The default HTTPS remote is the source of truth for the provider account:
+    // no URL username means system git credentials and no PR account selected.
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+  });
+
+  it("migrates a v2 PR account onto a plain HTTPS default remote", async () => {
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: { version: 2, ...account.ref } }));
+    useRepo.setState({ summary, remotes: [origin] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remotes") return [originWithUser];
+      return null;
+    });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({ origin: null });
+    // The stored binding remains available while the one-shot URL migration runs.
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    expect(useAccounts.getState().repoAccountRef).toEqual(account.ref);
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+        path,
+        name: "origin",
+        username: "octocat",
+      }),
+    );
+  });
+
+  it("migrates interim v3 remote bindings into git URL usernames", async () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        [path]: {
+          version: 3,
+          remotes: {
+            origin: account.ref,
+            bucket: { provider: "gh", host: "github.com", accountId: "missing", login: "missing" },
+          },
+        },
+      }),
+    );
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remotes") return [originWithUser, bucket];
+      return null;
+    });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+        path,
+        name: "origin",
+        username: "octocat",
+      }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "bucket",
+      username: expect.anything(),
+    });
+    await vi.waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
+      expect(stored[path]).toEqual({ version: 2, ...account.ref });
+    });
+  });
+
+  it("setRemoteAccount writes only the remote username, never localStorage", async () => {
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remotes") return [originWithUser, bucket];
+      return null;
+    });
+
+    await useAccounts.getState().setRemoteAccount("origin", account.id);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "origin",
+      username: "octocat",
+    });
+    expect(localStorage.getItem("gitlane.repoAccounts")).toBeNull();
+    // No identity writes from a push-auth change (two-tier safety).
+    expect(identityCmds(invokeMock.mock.calls)).toHaveLength(0);
+  });
+
+  it("clearing the account strips the username from the URL", async () => {
+    useRepo.setState({ summary, remotes: [originWithUser, bucket] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remotes") return [origin, bucket];
+      return null;
+    });
+
+    await useAccounts.getState().setRemoteAccount("origin", null);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "origin",
+      username: null,
+    });
+  });
+
+  it("refuses to bind an SSH remote (the SSH key is the account)", async () => {
+    const lab = remoteInfo("lab", "git@gitlab.com:group/repo.git");
+    useRepo.setState({ summary, remotes: [origin, lab] });
+    invokeMock.mockClear();
+
+    await useAccounts.getState().setRemoteAccount("lab", account.id);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+  });
+
+  it("accountRefForRemote maps the derived pick to the ref PR calls send", () => {
+    useRepo.setState({ summary, remotes: [originWithUser, bucket] });
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().accountRefForRemote("origin")).toEqual(account.ref);
+    expect(useAccounts.getState().accountRefForRemote("bucket")).toBeNull();
+    expect(useAccounts.getState().accountRefForRemote("nonexistent")).toBeNull();
+  });
+
+  it("transportAuthForRemote maps GitHub to gh and non-GitHub to credential helpers", () => {
+    useRepo.setState({ summary, remotes: [originWithUser, bucket] });
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toEqual({
+      mode: "githubGh",
+      provider: "github",
+      host: "github.com",
+      credentialHost: "github.com",
+      username: "octocat",
+      accountRef: account.ref,
+    });
+    expect(useAccounts.getState().transportAuthForRemote("bucket")).toEqual({
+      mode: "credentialHelper",
+      provider: "bitbucket",
+      host: "bitbucket.org",
+      credentialHost: "bitbucket.org",
+      username: "alice",
+    });
+  });
+
+  it("transportAuthForRemote requires an exact credential host for custom ports", () => {
+    const portAccount: Account = {
+      ...account,
+      id: "gh:ghe.test:worker",
+      host: "ghe.test",
+      login: "worker",
+      username: "worker",
+      ref: { provider: "gh", host: "ghe.test", accountId: "2", login: "worker" },
+    };
+    useAccounts.setState({ accounts: [portAccount] });
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("ghe", "https://worker@ghe.test:8443/owner/repo.git")],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("ghe")).toEqual({
+      mode: "credentialHelper",
+      provider: "other",
+      host: "ghe.test",
+      credentialHost: "ghe.test:8443",
+      username: "worker",
+    });
+
+    useAccounts.setState({
+      accounts: [
+        {
+          ...portAccount,
+          id: "gh:ghe.test:8443:worker",
+          host: "ghe.test:8443",
+          ref: { provider: "gh", host: "ghe.test:8443", accountId: "3", login: "worker" },
+        },
+      ],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("ghe")).toEqual({
+      mode: "githubGh",
+      provider: "github",
+      host: "ghe.test",
+      credentialHost: "ghe.test:8443",
+      username: "worker",
+      accountRef: { provider: "gh", host: "ghe.test:8443", accountId: "3", login: "worker" },
+    });
+  });
+
+  it("setRemoteUsername writes a non-GitHub HTTPS username into the remote URL", async () => {
+    const lab = remoteInfo("lab", "https://gitlab.com/group/repo.git");
+    useRepo.setState({ summary, remotes: [lab] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remotes") return [remoteInfo("lab", "https://ada@gitlab.com/group/repo.git")];
+      return null;
+    });
+
+    await useAccounts.getState().setRemoteUsername("lab", "ada");
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "lab",
+      username: "ada",
+    });
+    expect(identityCmds(invokeMock.mock.calls)).toHaveLength(0);
+  });
 });
 
 describe("repository-identity keying across worktrees (GL-109)", () => {
@@ -311,12 +649,14 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     expect(useAccounts.getState().repoBindingKey).toBe(mainPath);
   });
 
-  it("binding from a worktree persists under the repository identity", async () => {
-    useRepo.setState({ summary: wtSummary });
+  it("binding the PR account from a worktree persists under the repository identity", async () => {
+    useRepo.setState({ summary: wtSummary, remotes: [] });
     useAccounts.getState().syncRepoAccount(wtPath);
     await useAccounts.getState().setRepoAccount(account.id);
 
     const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
+    // The PR-API account persists in the v2 shape (per-remote accounts are
+    // git-native — see the gitcredentials describe above).
     expect(stored[mainPath]).toMatchObject({ version: 2, provider: "gh", accountId: "1" });
     expect(stored[wtPath]).toBeUndefined();
   });
@@ -334,6 +674,22 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
     expect(stored[mainPath]).toMatchObject({ version: 2, accountId: "1" });
     expect(stored[wtPath]).toBeUndefined();
+  });
+
+  it("derived per-remote accounts follow the remote list in any worktree", () => {
+    const withUser = {
+      name: "origin",
+      fetchUrl: "https://octocat@github.com/owner/repo.git",
+      pushUrl: "https://octocat@github.com/owner/repo.git",
+      isDefault: true,
+    };
+    useRepo.setState({ summary: wtSummary, remotes: [withUser] });
+    useAccounts.getState().syncRepoAccount(wtPath);
+
+    // Derived from git config (the URL), so the worktree sees the same pick —
+    // remotes are shared repo state, nothing app-side to migrate.
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({ origin: account.id });
+    expect(useAccounts.getState().repoBindingKey).toBe(mainPath);
   });
 
   it("keeps the identity-keyed binding when a stale worktree shadow also exists", () => {

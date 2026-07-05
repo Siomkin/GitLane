@@ -16,13 +16,13 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame,
-    FileChange,
-    FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
-    DeleteWorktreeProgressEvent, GithubSignInResult, HandoffProgressEvent, OperationStatus,
-    PrCheck, PrCommit, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
-    RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
-    WorktreeInfo,
+    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialHelperStatus,
+    CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview, FileBlame, FileChange,
+    FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef, GithubAccount,
+    GithubAccountRef, GithubSignInResult, HandoffProgressEvent, OperationStatus, PrCheck, PrCommit,
+    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo,
+    RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey,
+    StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -123,7 +123,9 @@ async fn move_branch_to_worktree(
             &|step| {
                 let _ = app.emit(
                     "handoff-progress",
-                    HandoffProgressEvent { step: step.to_string() },
+                    HandoffProgressEvent {
+                        step: step.to_string(),
+                    },
                 );
             },
         )
@@ -149,7 +151,9 @@ async fn delete_branch_with_worktree(
             &|step| {
                 let _ = app.emit(
                     "delete-worktree-progress",
-                    DeleteWorktreeProgressEvent { step: step.to_string() },
+                    DeleteWorktreeProgressEvent {
+                        step: step.to_string(),
+                    },
                 );
             },
         )
@@ -368,41 +372,45 @@ async fn delete_tag(path: String, name: String) -> Result<String, String> {
     blocking(move || git::write::delete_tag(&path, &name)).await
 }
 
-/// Push a tag to `origin`, optionally pinned to the repo's bound GitHub account.
-/// The token is resolved server-side via the provider, never passed in from the
-/// frontend (same as [`push`]).
+/// Push a tag to `remote` (the default push remote when not given), optionally
+/// pinned to that remote's bound GitHub account. The token is resolved
+/// server-side via the provider, never passed in from the frontend (same as
+/// [`push`]).
 #[tauri::command]
 async fn push_tag(
     path: String,
     name: String,
-    account: Option<GithubAccountRef>,
+    remote: Option<String>,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::push_tag(&path, &name, "origin", auth_ref)
+        let remote = remote
+            .or_else(|| git::forge::default_remote(&path))
+            .unwrap_or_else(|| "origin".to_string());
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::push_tag(&path, &name, &remote, gh_host.as_deref())
     })
     .await
 }
 
-/// Delete a tag on `origin`, optionally pinned to the repo's bound GitHub
-/// account. Token resolved server-side, like [`push`]. Local deletion is the
-/// separate [`delete_tag`] — without the remote delete, fetch's `refs/tags/*`
-/// import resurrects a locally deleted tag that still exists upstream.
+/// Delete a tag on `remote` (the default push remote when not given),
+/// optionally pinned to that remote's bound GitHub account. Token resolved
+/// server-side, like [`push`]. Local deletion is the separate [`delete_tag`] —
+/// without the remote delete, fetch's `refs/tags/*` import resurrects a locally
+/// deleted tag that still exists upstream.
 #[tauri::command]
 async fn delete_remote_tag(
     path: String,
     name: String,
-    account: Option<GithubAccountRef>,
+    remote: Option<String>,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::delete_remote_tag(&path, "origin", &name, auth_ref)
+        let remote = remote
+            .or_else(|| git::forge::default_remote(&path))
+            .unwrap_or_else(|| "origin".to_string());
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::delete_remote_tag(&path, &remote, &name, gh_host.as_deref())
     })
     .await
 }
@@ -416,39 +424,36 @@ async fn remove_worktree(
     blocking(move || git::write::remove_worktree(&path, &worktree_path, force)).await
 }
 
-/// Delete `branch` on `remote`, optionally pinned to the repo's bound GitHub
-/// account. Token resolved server-side, like [`push`].
+/// Delete `branch` on `remote`, optionally pinned to that remote's bound
+/// GitHub account. Token resolved server-side, like [`push`].
 #[tauri::command]
 async fn delete_remote_branch(
     path: String,
     remote: String,
     branch: String,
-    account: Option<GithubAccountRef>,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::delete_remote_branch(&path, &remote, &branch, auth_ref)
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::delete_remote_branch(&path, &remote, &branch, gh_host.as_deref())
     })
     .await
 }
 
-/// Force-push a specific `branch` with `--force-with-lease`, optionally pinned to
-/// the repo's bound GitHub account. Token resolved server-side, like [`push`].
+/// Force-push a specific `branch` with `--force-with-lease`, optionally pinned
+/// to the target remote's bound GitHub account. The account is validated
+/// against the branch's push remote, so a stale binding fails loudly instead of
+/// pushing with the wrong token. Token resolved server-side, like [`push`].
 #[tauri::command]
 async fn force_push(
     path: String,
     branch: String,
-    account: Option<GithubAccountRef>,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::force_push(&path, &branch, auth_ref)
+        let remote = git::write::branch_push_remote(&path, &branch);
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::force_push(&path, &branch, gh_host.as_deref())
     })
     .await
 }
@@ -540,8 +545,10 @@ async fn file_history(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<FileHistoryPage, String> {
-    blocking(move || git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string()))
-        .await
+    blocking(move || {
+        git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -551,8 +558,10 @@ async fn file_blame(
     revision: Option<String>,
     limit: Option<usize>,
 ) -> Result<FileBlame, String> {
-    blocking(move || git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string()))
-        .await
+    blocking(move || {
+        git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -561,8 +570,10 @@ async fn compare_refs(
     base: String,
     head: Option<String>,
 ) -> Result<CompareResult, String> {
-    blocking(move || git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string()))
-        .await
+    blocking(move || {
+        git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -622,7 +633,14 @@ async fn apply_hunk(
     expected_body: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::apply_hunk(&path, &file, staged, hunk_index, &expected_header, &expected_body)
+        git::write::apply_hunk(
+            &path,
+            &file,
+            staged,
+            hunk_index,
+            &expected_header,
+            &expected_body,
+        )
     })
     .await
 }
@@ -741,72 +759,89 @@ async fn stash_drop(path: String, oid: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn pull(path: String) -> Result<String, String> {
-    blocking(move || git::write::pull(&path)).await
-}
-
-/// Fetch + prune, optionally pinned to the repo's bound GitHub account.
-/// The token is resolved server-side via the provider, never passed in from the frontend.
-#[tauri::command]
-async fn fetch(path: String, account: Option<GithubAccountRef>) -> Result<String, String> {
+async fn pull(path: String, auth: Option<GitTransportAuthRef>) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::fetch(&path, auth_ref)
+        let gh_host = match git::write::head_pull_remote(&path) {
+            Some(remote) => {
+                git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?
+            }
+            None => None,
+        };
+        git::write::pull(&path, gh_host.as_deref())
     })
     .await
 }
 
-/// Push, optionally pinned to the repo's bound GitHub account. The token
-/// is resolved server-side via the provider, never passed in from the frontend.
+/// Fetch + prune every non-skipped remote, each authenticated as **its own**
+/// bound account (GL-129, git-native): the account lives in the remote URL's
+/// username; `remote_accounts` only says which remotes should get the gh
+/// credential helper wired in. Unlisted remotes fetch through the system
+/// credential helpers / SSH. These auth refs never carry tokens — `gh auth
+/// git-credential` serves git directly, selected by the URL username.
 #[tauri::command]
-async fn push(path: String, account: Option<GithubAccountRef>) -> Result<String, String> {
+async fn fetch(
+    path: String,
+    remote_accounts: Option<Vec<RemoteAccountRef>>,
+) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::push(&path, auth_ref)
+        let mut gh_host_by_remote = std::collections::HashMap::new();
+        for pair in remote_accounts.unwrap_or_default() {
+            if let Some(host) =
+                git::transport_auth::helper_host_for_remote(&path, &pair.remote, Some(&pair.auth))?
+            {
+                gh_host_by_remote.insert(pair.remote, host);
+            }
+        }
+        git::write::fetch(&path, &gh_host_by_remote)
+    })
+    .await
+}
+
+/// Push the checked-out branch, optionally pinned to its target remote's bound
+/// GitHub account. The account is validated against the branch's push remote.
+/// The token is resolved server-side via the provider, never passed in from
+/// the frontend.
+#[tauri::command]
+async fn push(path: String, auth: Option<GitTransportAuthRef>) -> Result<String, String> {
+    blocking(move || {
+        let remote = git::write::head_push_remote(&path);
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::push(&path, gh_host.as_deref())
     })
     .await
 }
 
 /// Push a specific `branch` (used when it isn't the checked-out branch) to its
 /// configured remote, falling back to origin. Token resolved server-side from
-/// the bound `account`, like [`push`].
+/// the target remote's bound `account`, like [`push`].
 #[tauri::command]
 async fn push_branch(
     path: String,
     branch: String,
-    account: Option<GithubAccountRef>,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::push_branch(&path, &branch, auth_ref)
+        let remote = git::write::branch_push_remote(&path, &branch);
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::push_branch(&path, &branch, gh_host.as_deref())
     })
     .await
 }
 
 /// Publish a local branch to `upstream` (`remote/branch`) and set upstream in
-/// one push. Token resolved server-side from the bound `account`, like [`push`].
+/// one push. Token resolved server-side from the target remote's bound
+/// `account`, like [`push`].
 #[tauri::command]
 async fn publish_branch(
     path: String,
     branch: String,
     upstream: String,
-    account: Option<GithubAccountRef>,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let auth = git::github::git_auth(&path, account.as_ref())?;
-        let auth_ref = auth
-            .as_ref()
-            .map(|(host, token)| (host.as_str(), token.as_str()));
-        git::write::publish_branch(&path, &branch, &upstream, auth_ref)
+        let remote = git::write::publish_remote(&path, &upstream)?;
+        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::publish_branch(&path, &branch, &upstream, gh_host.as_deref())
     })
     .await
 }
@@ -838,6 +873,14 @@ fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(), Str
     git::github::cancel_sign_in(&state.0)
 }
 
+/// Sign one account out of `gh` (`gh auth logout`) — removes its credential-
+/// store entry. Remotes whose URL still carries that username fall back to the
+/// system credential lookup until the user re-signs-in or repoints them.
+#[tauri::command]
+async fn github_sign_out(host: String, login: String) -> Result<String, String> {
+    blocking(move || git::github::sign_out(&host, &login)).await
+}
+
 #[tauri::command]
 async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
     blocking(|| Ok(auth_providers::statuses())).await
@@ -846,6 +889,34 @@ async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
 #[tauri::command]
 async fn forge_account(provider: String) -> Result<Option<ForgeAccount>, String> {
     blocking(move || Ok(auth_providers::account(&provider))).await
+}
+
+#[tauri::command]
+async fn forge_sign_out(provider: String) -> Result<String, String> {
+    blocking(move || auth_providers::sign_out(&provider)).await
+}
+
+#[tauri::command]
+async fn credential_helper_status() -> Result<CredentialHelperStatus, String> {
+    blocking(|| Ok(git::credentials::helper_status())).await
+}
+
+#[tauri::command]
+async fn approve_https_credential(
+    credential_host: String,
+    path: Option<String>,
+    username: String,
+    password: String,
+) -> Result<CredentialSaveResult, String> {
+    blocking(move || {
+        git::credentials::approve_https_credential(
+            &credential_host,
+            path.as_deref(),
+            &username,
+            &password,
+        )
+    })
+    .await
 }
 
 /// Detect the open repo's remote forge for the toolbar provider indicator.
@@ -874,6 +945,17 @@ async fn add_remote(path: String, name: String, url: String) -> Result<String, S
 #[tauri::command]
 async fn set_remote_url(path: String, name: String, url: String) -> Result<String, String> {
     blocking(move || git::write::set_remote_url(&path, &name, &url)).await
+}
+
+/// Rewrite only the HTTPS username used for a remote's git-credential context,
+/// preserving distinct fetch/push URL hosts and paths.
+#[tauri::command]
+async fn set_remote_username(
+    path: String,
+    name: String,
+    username: Option<String>,
+) -> Result<String, String> {
+    blocking(move || git::write::set_remote_username(&path, &name, username.as_deref())).await
 }
 
 /// Remove a remote (`git remote remove`).
@@ -1089,9 +1171,14 @@ async fn clone_repo(
     state: tauri::State<'_, CloneState>,
     url: String,
     dest: String,
+    auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     let slot = state.0.clone();
-    blocking(move || git::write::clone(&app, slot, &url, &dest)).await
+    blocking(move || {
+        let gh_host = git::transport_auth::helper_host_for_url(&url, auth.as_ref())?;
+        git::write::clone(&app, slot, &url, &dest, gh_host.as_deref())
+    })
+    .await
 }
 
 /// Terminate an in-flight [`clone_repo`]. Instant (lock + kill), so it stays a
@@ -1393,12 +1480,17 @@ pub fn run() {
             github_accounts,
             github_sign_in,
             cancel_github_sign_in,
+            github_sign_out,
             forge_auth_statuses,
             forge_account,
+            forge_sign_out,
+            credential_helper_status,
+            approve_https_credential,
             repo_forge,
             list_remotes,
             add_remote,
             set_remote_url,
+            set_remote_username,
             remove_remote,
             list_pull_requests,
             pull_request_detail,

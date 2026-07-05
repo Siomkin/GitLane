@@ -223,4 +223,15 @@ describe("GithubSigninDialog", () => {
     await waitFor(() => expect(screen.getByText("Signed in to github.com")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Use for this repo" })).toBeNull();
   });
+
+  it("closing from inside Settings closes only the sign-in dialog", () => {
+    arm();
+    useUi.setState({ settingsOpen: true, githubSignin: { host: "github.com" } });
+    render(<GithubSigninDialog />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+
+    expect(useUi.getState().githubSignin).toBeNull();
+    expect(useUi.getState().settingsOpen).toBe(true);
+  });
 });

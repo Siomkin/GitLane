@@ -6,7 +6,7 @@ use crate::git::types::{
 };
 use crate::git::{forge, forge::ForgeKind};
 
-use super::domain::{GithubContext, GithubError, GithubGitAuth, GithubRepository, GH_PROVIDER};
+use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
 use super::service::GithubProvider;
 use super::{cli, diff, prs, threads};
 
@@ -47,30 +47,6 @@ impl GithubProvider for GhProvider {
 
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
         cli::accounts().map_err(|err| GithubError::from_command("github account discovery", err))
-    }
-
-    fn token_for_git(
-        &self,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Option<GithubGitAuth>, GithubError> {
-        account
-            .map(|account| {
-                cli::token_for(account)
-                    .map(|token| GithubGitAuth {
-                        host: account.host.clone(),
-                        token,
-                    })
-                    .map_err(
-                        |err| match GithubError::from_command("git credential token", err) {
-                            GithubError::CommandFailed(_) => GithubError::NotAuthenticated {
-                                host: account.host.clone(),
-                                account: Some(account.login.clone()),
-                            },
-                            other => other,
-                        },
-                    )
-            })
-            .transpose()
     }
 
     fn resolve_repository(
@@ -126,11 +102,7 @@ impl GithubProvider for GhProvider {
             .map_err(|err| GithubError::from_command("pull request checks", err))
     }
 
-    fn pr_commits(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-    ) -> Result<Vec<PrCommit>, GithubError> {
+    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCommit>, GithubError> {
         let token = self.token_for_context(ctx, "pull request commits")?;
         prs::pr_commits(&ctx.workdir, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request commits", err))

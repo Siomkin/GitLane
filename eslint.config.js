@@ -49,6 +49,7 @@ export default [
       "ds-bundle/**",
       ".design-sync/**",
       ".ds-sync/**",
+      ".claude/**",
       "scripts/**",
       "public/**",
       "*.config.{js,ts}",

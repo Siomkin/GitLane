@@ -428,7 +428,11 @@ fn extract_signin_error(transcript: &str) -> String {
             low.contains("error") || low.contains("failed") || low.contains("could not")
         })
         .last()
-        .map(|l| l.trim_start_matches(['x', '✗', '!', '-', ' ']).trim().to_string())
+        .map(|l| {
+            l.trim_start_matches(['x', '✗', '!', '-', ' '])
+                .trim()
+                .to_string()
+        })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "GitHub sign-in didn’t complete. Please try again.".to_string())
 }
@@ -507,7 +511,10 @@ mod tests {
             parse_login("✓ Authentication complete.\n✓ Logged in as octocat\n").as_deref(),
             Some("octocat")
         );
-        assert_eq!(parse_login("Logged in as @dana-work").as_deref(), Some("dana-work"));
+        assert_eq!(
+            parse_login("Logged in as @dana-work").as_deref(),
+            Some("dana-work")
+        );
         assert!(parse_login("still waiting").is_none());
     }
 

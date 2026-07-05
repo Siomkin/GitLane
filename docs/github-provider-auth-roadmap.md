@@ -492,7 +492,8 @@ Exit criteria:
 
 - two accounts with the same login on different hosts remain distinct;
 - repository and account host mismatches fail before an operation;
-- no token crosses IPC.
+- no GitHub provider token crosses IPC; any explicit user-entered credential-save flow must be
+  handled as a separate, transient OS credential-helper handoff.
 
 ### Phase 3 — provider interface behind existing commands ✅ done
 

@@ -27,19 +27,20 @@ pub use branches::{
     create_tag, delete_branch, delete_tag, fast_forward, fast_forward_branch, merge, rebase,
     rename_branch, reset, revert, revert_many, set_upstream,
 };
-pub use lifecycle::{cancel_clone, clone, init, CloneSlot};
 pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
     reconflict_file, resolve_conflict_file, skip_operation,
 };
 pub use identity::{clear_repo_identity, set_repo_identity};
+pub use lifecycle::{cancel_clone, clone, init, CloneSlot};
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_force_push,
     preview_reset, reflog_entries,
 };
 pub use remotes::{
-    add_remote, delete_remote_branch, delete_remote_tag, fetch, force_push, publish_branch, pull,
-    push, push_branch, push_tag, remove_remote, set_remote_url,
+    add_remote, branch_push_remote, delete_remote_branch, delete_remote_tag, fetch, force_push,
+    head_pull_remote, head_push_remote, publish_branch, publish_remote, pull, push, push_branch,
+    push_tag, remove_remote, set_remote_url, set_remote_username,
 };
 pub use staging::{
     apply_hunk, apply_line, commit, discard_all, discard_file, stage_all, stage_file, stage_files,

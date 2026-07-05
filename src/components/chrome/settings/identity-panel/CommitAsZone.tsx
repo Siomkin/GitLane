@@ -1,61 +1,66 @@
-// Zone A — who this repo commits as. State-first like the PR-account zone: the
-// collapsed view is one card with the current pick (default git identity, a
-// saved profile, or an unmanaged local identity), so both zones fit one screen
-// regardless of how many profiles exist; "Change" expands the radio picker.
-// Profile create/edit hands off to the global Settings → Profiles panel.
+// The repo's commit identity selector: pick the git profile written to this
+// repo's local git config. The profile list is the picker; a separate
+// unmanaged callout appears only when the current repo config does not match a
+// saved profile or this computer's global git identity.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
-import { appliedProfileId, useProfiles } from "../../../../store/profiles";
-import { profileInitials, selectProfile, type GitProfile } from "../../../../lib/profiles";
-import { useUi, type ProfilesIntent } from "../../../../store/ui";
-import { ArrowUpRightIcon, GitBranchIcon } from "../../../ui/icons";
-import { RadioCard } from "./RadioCard";
-import { CommitEmailField } from "./CommitEmailField";
-import { UnmanagedRow } from "./UnmanagedRow";
+import { appliedCommitSource, useIdentities } from "../../../../store/identities";
+import { selectCommitSource } from "../../../../lib/identities";
+import { profileInitials, type GitProfile } from "../../../../lib/profiles";
+import { useUi } from "../../../../store/ui";
+import { ArrowUpRightIcon, GitBranchIcon, UserIcon } from "../../../ui/icons";
 
 export function CommitAsZone() {
+  const [picking, setPicking] = useState(false);
   const summary = useRepo((s) => s.summary);
   const repoIdentity = useAccounts((s) => s.repoIdentity);
-  const profiles = useProfiles((s) => s.profiles);
-  const defaultIdentity = useProfiles((s) => s.defaultIdentity);
-  const applyProfile = useProfiles((s) => s.applyProfile);
-  const setCustomEmail = useProfiles((s) => s.setCustomEmail);
-  const resetCustomEmail = useProfiles((s) => s.resetCustomEmail);
+  const manuals = useIdentities((s) => s.manualIdentities);
+  const defaultIdentity = useIdentities((s) => s.defaultIdentity);
+  const applyCommitSource = useIdentities((s) => s.applyCommitSource);
+  const repoEmailOverrides = useIdentities((s) => s.repoEmailOverrides);
   const closeRepoSettings = useUi((s) => s.closeRepoSettings);
-  const openProfilesSettings = useUi((s) => s.openProfilesSettings);
-  const [picking, setPicking] = useState(false);
-
-  // Profile create/edit lives in the global Profiles panel — hand off to it.
-  const editInProfiles = (intent: ProfilesIntent) => {
-    closeRepoSettings();
-    openProfilesSettings(intent);
-  };
+  const openIdentitiesSettings = useUi((s) => s.openIdentitiesSettings);
 
   if (!summary) return null;
 
-  const selection = selectProfile(repoIdentity, profiles, appliedProfileId(summary.path));
-  const selectedProfile =
-    selection.kind === "profile" ? profiles.find((p) => p.id === selection.id) ?? null : null;
-  const customEmail = selection.kind === "profile" && selection.customEmail;
-
-  const pick = (id: string | null, alreadySelected: boolean) => {
-    // Re-picking the current row is just "close" — don't rewrite git config.
-    if (!alreadySelected) void applyProfile(id);
-    setPicking(false);
-  };
-
-  const defaultSubtitle = defaultIdentity
-    ? `${defaultIdentity.name} · ${defaultIdentity.email}`
-    : "No identity set in global git config";
-  const defaultBadge = (
-    <span className="px-1.5 h-[17px] grid place-items-center rounded text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 bg-black/[0.05] dark:bg-white/[0.07]">
-      Global config
-    </span>
+  const selection = selectCommitSource(
+    repoIdentity,
+    manuals,
+    appliedCommitSource(),
+    repoEmailOverrides(),
+    defaultIdentity,
   );
+  // What the repo currently commits as: the local pin, else the global config.
+  const effectiveName = repoIdentity?.name ?? defaultIdentity?.name ?? "";
+  const effectiveEmail = repoIdentity?.email ?? defaultIdentity?.email ?? "";
+  const selectedManual =
+    selection.kind === "manual" ? manuals.find((p) => p.id === selection.id) ?? null : null;
+
+  const adoptAsIdentity = () => {
+    if (!repoIdentity) return;
+    closeRepoSettings();
+    openIdentitiesSettings({
+      kind: "new",
+      prefill: {
+        name: repoIdentity.name,
+        email: repoIdentity.email,
+        signingKey: repoIdentity.signingKey,
+        gpgFormat:
+          repoIdentity.gpgFormat === "ssh"
+            ? "ssh"
+            : repoIdentity.gpgFormat === "openpgp"
+              ? "openpgp"
+              : undefined,
+        gpgSign: repoIdentity.gpgSign,
+        tagGpgSign: repoIdentity.tagGpgSign,
+      },
+    });
+  };
 
   return (
     <div className="mt-6">
@@ -66,7 +71,7 @@ export function CommitAsZone() {
         <button
           onClick={() => {
             closeRepoSettings();
-            openProfilesSettings();
+            openIdentitiesSettings();
           }}
           className={cn(
             "inline-flex items-center gap-1 text-[11.5px] font-semibold text-neutral-400 hover:text-neutral-600 dark:text-neutral-500 dark:hover:text-neutral-300",
@@ -78,58 +83,63 @@ export function CommitAsZone() {
         </button>
       </div>
       <p className="mt-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
-        The identity written to this repo's local git config — who shows up in{" "}
+        The name &amp; email written to this repo's local git config — who shows up in{" "}
         <span className="font-mono text-[12px]">git log</span>.
       </p>
 
       {picking ? (
-        <div className="mt-3 rounded-xl border border-black/[0.08] bg-black/[0.015] p-2 dark:border-white/[0.1] dark:bg-white/[0.02]">
-          <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Commit as">
-            <RadioCard
-              selected={selection.kind === "default"}
-              onSelect={() => pick(null, selection.kind === "default")}
-              label="Default git identity"
-              avatar={<DefaultAvatar />}
-              title="Default git identity"
-              badges={defaultBadge}
-              subtitle={defaultSubtitle}
-            />
-            {profiles.map((p) => (
-              <ProfileOptionRow
-                key={p.id}
-                profile={p}
-                selected={selection.kind === "profile" && selection.id === p.id}
-                custom={customEmail && selectedProfile?.id === p.id}
-                customSigning={
-                  selection.kind === "profile" && selection.id === p.id && selection.customSigning
-                }
-                customEmailValue={repoIdentity?.email}
-                onSelect={() => pick(p.id, selection.kind === "profile" && selection.id === p.id)}
-                onEdit={() => editInProfiles({ kind: "edit", id: p.id })}
-              />
-            ))}
-          </div>
-        </div>
-      ) : selection.kind === "unmanaged" && repoIdentity ? (
-        // An identity pinned outside GitLane: surface it with its own actions
-        // (adopt / clear) — plus Change to pick something else outright.
-        <div className="mt-3">
-          <UnmanagedRow
-            identity={repoIdentity}
-            onSaveAsProfile={() =>
-              editInProfiles({
-                kind: "new",
-                prefill: {
-                  name: repoIdentity.name,
-                  email: repoIdentity.email,
-                  signingKey: repoIdentity.signingKey,
-                  gpgFormat: repoIdentity.gpgFormat === "ssh" ? "ssh" : repoIdentity.gpgFormat === "openpgp" ? "openpgp" : undefined,
-                  gpgSign: repoIdentity.gpgSign,
-                  tagGpgSign: repoIdentity.tagGpgSign,
-                },
-              })
+        <div
+          className="mt-3 space-y-2 rounded-xl border border-black/[0.07] bg-black/[0.02] p-2 dark:border-white/[0.08] dark:bg-white/[0.03]"
+          role="group"
+          aria-label="Git profile choices"
+        >
+          <ProfileChoiceRow
+            title="Default git identity"
+            subtitle={
+              defaultIdentity
+                ? `${defaultIdentity.name || "No name set"} · ${defaultIdentity.email || "No email set"}`
+                : "No global git identity configured"
             }
-            onUseDefault={() => void applyProfile(null)}
+            icon={<GitBranchIcon className="h-[18px] w-[18px]" />}
+            active={selection.kind === "computer"}
+            badges={<Badge>GLOBAL CONFIG</Badge>}
+            onClick={() => {
+              if (selection.kind !== "computer") void applyCommitSource(null);
+              setPicking(false);
+            }}
+          />
+          {manuals.map((p) => {
+            const active = selection.kind === "manual" && selection.id === p.id;
+            return (
+              <ProfileChoiceRow
+                key={p.id}
+                title={p.label}
+                subtitle={`${p.name || "No name set"} · ${p.email || "No email set"}`}
+                swatch={p.color}
+                active={active}
+                badges={
+                  <>
+                    {p.isDefault && <Badge tone="amber">Suggested</Badge>}
+                    {signingLabel(p) && <Badge>{signingLabel(p)}</Badge>}
+                    {active && <HintBadges selection={selection} />}
+                  </>
+                }
+                onClick={() => {
+                  if (!active) void applyCommitSource({ kind: "manual", id: p.id });
+                  setPicking(false);
+                }}
+              />
+            );
+          })}
+        </div>
+      ) : selection.kind === "unmanaged" ? (
+        <>
+          <UnmanagedIdentityCard
+            name={effectiveName}
+            email={effectiveEmail}
+            signed={Boolean(repoIdentity?.gpgSign || repoIdentity?.tagGpgSign)}
+            onSave={adoptAsIdentity}
+            onClear={() => void applyCommitSource(null)}
           />
           <button
             onClick={() => setPicking(true)}
@@ -138,38 +148,51 @@ export function CommitAsZone() {
               focusRing,
             )}
           >
-            Choose a different identity…
+            Choose a different identity...
           </button>
-        </div>
+        </>
       ) : (
-        <div className="mt-3 flex items-center gap-3 p-3 rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03]">
-          {selectedProfile ? (
+        <div className="mt-3 flex items-center gap-3 rounded-xl border border-black/[0.07] bg-black/[0.02] p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+          {selectedManual ? (
             <span
-              className="w-9 h-9 shrink-0 rounded-[10px] grid place-items-center text-white text-[11px] font-bold"
-              style={{ background: selectedProfile.color }}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-[11px] font-bold text-white"
+              style={{ background: selectedManual.color }}
+              aria-hidden
             >
-              {profileInitials(selectedProfile.label)}
+              {profileInitials(selectedManual.label)}
             </span>
           ) : (
-            <DefaultAvatar size={9} />
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.06] text-neutral-500 dark:bg-white/[0.08] dark:text-neutral-300">
+              <GitBranchIcon className="h-[18px] w-[18px]" />
+            </span>
           )}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[13px] font-semibold text-neutral-900 dark:text-white">
-                {selectedProfile ? selectedProfile.label : "Default git identity"}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">
+                {selectedManual ? selectedManual.label : "Default git identity"}
               </span>
-              {selectedProfile ? <ProfileBadges profile={selectedProfile} custom={customEmail} customSigning={selection.kind === "profile" && selection.customSigning} /> : defaultBadge}
+              {selectedManual ? (
+                <>
+                  {selectedManual.isDefault && <Badge tone="amber">Suggested</Badge>}
+                  {signingLabel(selectedManual) && <Badge>{signingLabel(selectedManual)}</Badge>}
+                  <HintBadges selection={selection} />
+                </>
+              ) : (
+                <Badge>GLOBAL CONFIG</Badge>
+              )}
             </div>
-            <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
-              {selectedProfile
-                ? `${selectedProfile.name} · ${customEmail ? repoIdentity?.email ?? selectedProfile.email : selectedProfile.email}`
-                : defaultSubtitle}
+            <div className="mt-0.5 truncate font-mono text-[12px] text-neutral-500 dark:text-neutral-400">
+              {selectedManual
+                ? `${selectedManual.name || "No name set"} · ${selectedManual.email || "No email set"}`
+                : defaultIdentity
+                  ? `${defaultIdentity.name || "No name set"} · ${defaultIdentity.email || "No email set"}`
+                  : "No global git identity configured"}
             </div>
           </div>
           <button
             onClick={() => setPicking(true)}
             className={cn(
-              "shrink-0 text-[12.5px] font-medium px-3 h-8 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-neutral-700 dark:hover:text-neutral-200 transition",
+              "h-8 shrink-0 rounded-lg px-3 text-[12.5px] font-medium text-neutral-500 transition hover:bg-black/[0.06] hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-200",
               focusRing,
             )}
           >
@@ -177,128 +200,181 @@ export function CommitAsZone() {
           </button>
         </div>
       )}
-
-      {selection.kind === "profile" && selectedProfile && !picking && (
-        <CommitEmailField
-          profileLabel={selectedProfile.label}
-          profileEmail={selectedProfile.email}
-          currentEmail={repoIdentity?.email ?? selectedProfile.email}
-          custom={customEmail}
-          onSave={(email) => void setCustomEmail(email)}
-          onReset={() => void resetCustomEmail()}
-        />
-      )}
     </div>
   );
 }
 
-function DefaultAvatar({ size = 9.5 }: { size?: number }) {
-  const px = size === 9 ? "h-9 w-9" : "h-[38px] w-[38px]";
+/** The hint-line badges: which card the current name/email match, plus how
+ * they diverge from its saved values. Purely informational. */
+function HintBadges({
+  selection,
+}: {
+  selection: ReturnType<typeof selectCommitSource>;
+}) {
+  if (selection.kind === "manual") {
+    return (
+      <>
+        {selection.customEmail && <Badge tone="accent">custom email</Badge>}
+        {selection.customName &&
+          <Badge title="The author name differs from this profile's saved name — names are free-form; attribution follows the email.">
+            custom name
+          </Badge>}
+        {selection.customSigning && <Badge tone="amber">custom signing</Badge>}
+      </>
+    );
+  }
+  return null;
+}
+
+function UnmanagedIdentityCard({
+  name,
+  email,
+  signed,
+  onSave,
+  onClear,
+}: {
+  name: string;
+  email: string;
+  signed: boolean;
+  onSave: () => void;
+  onClear: () => void;
+}) {
   return (
-    <span className={cn(px, "shrink-0 rounded-[10px] grid place-items-center bg-black/[0.06] dark:bg-white/[0.08] text-neutral-500 dark:text-neutral-300")}>
-      <GitBranchIcon className="w-[18px] h-[18px]" />
+    <div className="mt-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-3.5">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+          <UserIcon className="h-[19px] w-[19px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">
+              Unmanaged local identity
+            </span>
+            {signed && <Badge>signed</Badge>}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[12px] text-neutral-600 dark:text-neutral-300">
+            {name || "No name set"} · {email || "No email set"}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={onSave}
+              className={cn(
+                "inline-flex h-8 items-center rounded-lg bg-emerald-600 px-3 text-[12.5px] font-semibold text-white hover:bg-emerald-500",
+                focusRing,
+              )}
+            >
+              Save as profile
+            </button>
+            <button
+              onClick={onClear}
+              className={cn(
+                "inline-flex h-8 items-center rounded-lg border border-black/10 px-3 text-[12.5px] font-semibold text-neutral-700 hover:bg-black/[0.04] dark:border-white/15 dark:text-neutral-200 dark:hover:bg-white/[0.06]",
+                focusRing,
+              )}
+            >
+              Clear &amp; use default
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileChoiceRow({
+  title,
+  subtitle,
+  active,
+  icon,
+  swatch,
+  badges,
+  onClick,
+}: {
+  title: string;
+  subtitle: string;
+  active: boolean;
+  icon?: ReactNode;
+  swatch?: string;
+  badges?: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={title}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-[10px] border p-3 text-left transition",
+        active
+          ? "border-[color:var(--accent)]/45 bg-[var(--accent-soft)]"
+          : "border-black/[0.06] bg-black/[0.02] hover:bg-black/[0.04] dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:bg-white/[0.06]",
+        focusRing,
+      )}
+    >
+      <span
+        className={cn(
+          "grid h-4 w-4 shrink-0 place-items-center rounded-full border",
+          active
+            ? "border-[color:var(--accent)]"
+            : "border-neutral-400/70 dark:border-neutral-500/80",
+        )}
+        aria-hidden
+      >
+        {active && <span className="h-2 w-2 rounded-full bg-[color:var(--accent)]" />}
+      </span>
+      {swatch ? (
+        <span
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-[11px] font-bold text-white"
+          style={{ background: swatch }}
+          aria-hidden
+        >
+          {profileInitials(title)}
+        </span>
+      ) : (
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-black/[0.06] text-neutral-500 dark:bg-white/[0.08] dark:text-neutral-300">
+          {icon}
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">{title}</span>
+          {badges}
+        </span>
+        <span className="mt-0.5 block truncate font-mono text-[12px] text-neutral-500 dark:text-neutral-400">
+          {subtitle}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function signingLabel(profile: GitProfile): string | null {
+  if (!profile.signingKey || (!profile.gpgSign && !profile.tagGpgSign)) return null;
+  return profile.gpgFormat === "ssh" ? "SSH signed" : "GPG signed";
+}
+
+function Badge({
+  children,
+  tone = "neutral",
+  title,
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "accent" | "amber";
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex h-[17px] items-center gap-1 rounded-full px-1.5 text-[10px] font-semibold",
+        tone === "accent"
+          ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
+          : tone === "amber"
+            ? "bg-amber-500/12 text-amber-600 dark:text-amber-400"
+            : "bg-black/[0.05] text-neutral-500 dark:bg-white/[0.07] dark:text-neutral-400",
+      )}
+    >
+      {children}
     </span>
-  );
-}
-
-function ProfileBadges({
-  profile,
-  custom,
-  customSigning,
-}: {
-  profile: GitProfile;
-  custom: boolean;
-  customSigning: boolean;
-}) {
-  const signLabel = profile.gpgFormat === "ssh" ? "SSH signed" : "GPG signed";
-  return (
-    <>
-      {profile.isDefault && (
-        <span
-          className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-amber-600 dark:text-amber-400"
-          title="Your suggested profile — pick it to apply (not auto-applied yet)"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
-            <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.3l6.5-.9z" />
-          </svg>
-          Suggested
-        </span>
-      )}
-      {profile.signingKey && (
-        <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 bg-black/[0.05] dark:bg-white/[0.08]" title="Signing key set">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
-            <rect x="5" y="11" width="14" height="10" rx="2" />
-            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-          </svg>
-          {signLabel}
-        </span>
-      )}
-      {custom && (
-        <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-[color:var(--accent)] bg-[var(--accent-soft)]">
-          custom email
-        </span>
-      )}
-      {customSigning && (
-        <span className="inline-flex items-center gap-1 px-1.5 h-[17px] rounded-full text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/12" title="Repo signing config differs from this profile">
-          custom signing
-        </span>
-      )}
-    </>
-  );
-}
-
-function ProfileOptionRow({
-  profile,
-  selected,
-  custom,
-  customSigning,
-  customEmailValue,
-  onSelect,
-  onEdit,
-}: {
-  profile: GitProfile;
-  selected: boolean;
-  custom: boolean;
-  customSigning: boolean;
-  customEmailValue?: string;
-  onSelect: () => void;
-  onEdit: () => void;
-}) {
-  const shownEmail = custom ? customEmailValue ?? profile.email : profile.email;
-  return (
-    <RadioCard
-      selected={selected}
-      onSelect={onSelect}
-      label={profile.label}
-      avatar={
-        <span
-          className="w-[38px] h-[38px] shrink-0 rounded-[11px] grid place-items-center text-white text-[12px] font-bold"
-          style={{ background: profile.color }}
-        >
-          {profileInitials(profile.label)}
-        </span>
-      }
-      title={profile.label}
-      badges={<ProfileBadges profile={profile} custom={custom} customSigning={customSigning} />}
-      subtitle={
-        <>
-          {profile.name} ·{" "}
-          <span className={cn(custom && "text-[color:var(--accent)] font-medium")}>{shownEmail}</span>
-        </>
-      }
-      action={
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          title="Edit this profile in Settings → Profiles"
-          className="shrink-0 inline-flex items-center gap-1 text-[12px] font-medium px-2.5 h-8 rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.06] dark:hover:bg-white/10 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
-        >
-          Edit
-          <ArrowUpRightIcon className="h-3 w-3" />
-        </button>
-      }
-    />
   );
 }

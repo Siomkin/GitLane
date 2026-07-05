@@ -71,6 +71,51 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
           )}
         </div>
 
+        {state === "valid" && ob.cloneRemoteInfo.valid && !ob.cloneRemoteInfo.ssh && (
+          <div className="mt-5 rounded-xl border border-black/[0.07] bg-black/[0.015] p-3.5 dark:border-white/[0.08] dark:bg-white/[0.025]">
+            <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
+              HTTPS auth
+            </div>
+            {ob.cloneAuthAccounts.length > 0 && (
+              <select
+                value={ob.cloneAccountId ?? ""}
+                onChange={(e) => ob.setCloneAccountId(e.target.value || null)}
+                className="mt-2 h-9 w-full rounded-lg border border-black/10 bg-white px-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+              >
+                <option value="">System git credentials / username below</option>
+                {ob.cloneAuthAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    @{a.login} via {a.forge}
+                  </option>
+                ))}
+              </select>
+            )}
+            {!ob.cloneAccountId && (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <input
+                  value={ob.cloneUsername}
+                  onChange={(e) => ob.setCloneUsername(e.target.value)}
+                  placeholder="HTTPS username"
+                  spellCheck={false}
+                  className="h-9 rounded-lg border border-black/10 bg-white px-2.5 font-mono text-[13px] text-neutral-700 placeholder:font-sans placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+                />
+                <input
+                  value={ob.clonePassword}
+                  onChange={(e) => ob.setClonePassword(e.target.value)}
+                  placeholder="Token / password"
+                  type="password"
+                  spellCheck={false}
+                  className="h-9 rounded-lg border border-black/10 bg-white px-2.5 text-[13px] text-neutral-700 placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+                />
+              </div>
+            )}
+            <p className="mt-2 text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
+              GitLane saves the token/password to your Git credential helper before clone. SSH URLs use your SSH key
+              instead.
+            </p>
+          </div>
+        )}
+
         {/* Destination */}
         <label className="mb-1.5 mt-5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
           Local destination

@@ -28,10 +28,34 @@ export interface ForgeAuthStatus {
   account?: ForgeAccount;
 }
 
+export interface CredentialHelperStatus {
+  configured: boolean;
+  helpers: string[];
+}
+
+export interface CredentialSaveResult {
+  username: string;
+  helper: string;
+}
+
 export const providersApi = {
   /** Auth-only status for non-GitHub forge providers (fast; no identity). */
   forgeAuthStatuses: () => invoke<ForgeAuthStatus[]>("forge_auth_statuses"),
   /** Resolve the signed-in account for one provider (a network whoami; slow). */
   forgeAccount: (provider: ForgeAuthProvider) =>
     invoke<ForgeAccount | null>("forge_account", { provider }),
+  forgeSignOut: (provider: ForgeAuthProvider) => invoke<string>("forge_sign_out", { provider }),
+  credentialHelperStatus: () => invoke<CredentialHelperStatus>("credential_helper_status"),
+  approveHttpsCredential: (
+    credentialHost: string,
+    path: string | null,
+    username: string,
+    password: string,
+  ) =>
+    invoke<CredentialSaveResult>("approve_https_credential", {
+      credentialHost,
+      path,
+      username,
+      password,
+    }),
 };

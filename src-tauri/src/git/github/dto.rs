@@ -498,14 +498,23 @@ mod tests {
 
     #[test]
     fn check_keeps_neutral_or_skipped_conclusion_distinct() {
-        assert_eq!(gh_check(None, None, Some("NEUTRAL"), None).status(), "skipped");
-        assert_eq!(gh_check(None, None, Some("SKIPPED"), None).status(), "skipped");
+        assert_eq!(
+            gh_check(None, None, Some("NEUTRAL"), None).status(),
+            "skipped"
+        );
+        assert_eq!(
+            gh_check(None, None, Some("SKIPPED"), None).status(),
+            "skipped"
+        );
     }
 
     #[test]
     fn check_fails_on_failure_conclusion() {
         assert_eq!(gh_check(None, None, Some("FAILURE"), None).status(), "fail");
-        assert_eq!(gh_check(None, None, Some("TIMED_OUT"), None).status(), "fail");
+        assert_eq!(
+            gh_check(None, None, Some("TIMED_OUT"), None).status(),
+            "fail"
+        );
         // A failing conclusion wins even when the state field looks healthy.
         assert_eq!(
             gh_check(None, None, Some("FAILURE"), Some("SUCCESS")).status(),
@@ -517,7 +526,10 @@ mod tests {
     fn check_falls_back_to_state_when_no_conclusion() {
         assert_eq!(gh_check(None, None, None, Some("SUCCESS")).status(), "pass");
         // In-flight checks are pending, NOT collapsed into a failure.
-        assert_eq!(gh_check(None, None, None, Some("PENDING")).status(), "pending");
+        assert_eq!(
+            gh_check(None, None, None, Some("PENDING")).status(),
+            "pending"
+        );
         assert_eq!(gh_check(None, None, None, None).status(), "pending");
     }
 

@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { detectRemoteUrl, isValidRemoteName, validateRemoteUrl } from "./remotes";
 
 describe("detectRemoteUrl", () => {
+  it("strips https userinfo and ports so the host matches account hosts (GL-129)", () => {
+    expect(detectRemoteUrl("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")).toMatchObject({
+      valid: true,
+      host: "bitbucket.org",
+      path: "darang/gitlanebucket",
+      provider: "bitbucket",
+    });
+    expect(detectRemoteUrl("https://github.corp.example:8443/team/repo.git")).toMatchObject({
+      valid: true,
+      host: "github.corp.example",
+      credentialHost: "github.corp.example:8443",
+    });
+  });
+
   it("parses https GitHub URLs (with and without .git)", () => {
     expect(detectRemoteUrl("https://github.com/Siomkin/GitLane.git")).toMatchObject({
       valid: true,
@@ -38,6 +52,18 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("")).toMatchObject({ empty: true, valid: false });
     expect(detectRemoteUrl("not a url")).toMatchObject({ empty: false, valid: false });
     expect(detectRemoteUrl("https://github.com/only-owner")).toMatchObject({ valid: false });
+  });
+
+  it("rejects credential protocol separators in URL fields", () => {
+    expect(detectRemoteUrl("https://github.com\nhost=evil.example/owner/repo.git")).toMatchObject({
+      valid: false,
+    });
+    expect(detectRemoteUrl("https://alice%0Ahost=evil.example@github.com/owner/repo.git")).toMatchObject({
+      valid: false,
+    });
+    expect(detectRemoteUrl("git@gitlab.com\rhost=evil.example:owner/repo.git")).toMatchObject({
+      valid: false,
+    });
   });
 });
 

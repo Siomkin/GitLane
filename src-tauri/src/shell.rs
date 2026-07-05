@@ -278,7 +278,10 @@ mod tests {
         // An explicit extension means the shell would not re-expand it — and the
         // bare name must NOT be a candidate for extensionless lookups (a plain
         // `git-lfs` file is not executable on Windows).
-        assert_eq!(expand_pathext("git-lfs.exe", ".COM;.EXE"), vec!["git-lfs.exe"]);
+        assert_eq!(
+            expand_pathext("git-lfs.exe", ".COM;.EXE"),
+            vec!["git-lfs.exe"]
+        );
         assert!(!expand_pathext("git-lfs", ".EXE").contains(&"git-lfs".to_string()));
     }
 
@@ -303,7 +306,10 @@ mod tests {
 
         let dirs = dir.to_str().unwrap();
         assert!(command_in_dirs("git-lfs", dirs));
-        assert!(!command_in_dirs("not-exec", dirs), "plain file must not match");
+        assert!(
+            !command_in_dirs("not-exec", dirs),
+            "plain file must not match"
+        );
         assert!(!command_in_dirs("absent", dirs));
 
         let _ = std::fs::remove_dir_all(&dir);

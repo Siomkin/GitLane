@@ -12,17 +12,13 @@ use crate::git::types::{
 use crate::git::{forge, forge::ForgeKind};
 
 use super::domain::{
-    normalize_account_ref, GithubContext, GithubError, GithubGitAuth, GithubRepository, GH_PROVIDER,
+    normalize_account_ref, GithubContext, GithubError, GithubRepository, GH_PROVIDER,
 };
 use super::gh_provider::GhProvider;
 
 pub trait GithubProvider {
     fn kind(&self) -> &'static str;
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError>;
-    fn token_for_git(
-        &self,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Option<GithubGitAuth>, GithubError>;
     fn resolve_repository(
         &self,
         workdir: &str,
@@ -32,8 +28,7 @@ pub trait GithubProvider {
     fn pr_detail(&self, ctx: &GithubContext, number: u64)
         -> Result<PullRequestDetail, GithubError>;
     fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError>;
-    fn pr_commits(&self, ctx: &GithubContext, number: u64)
-        -> Result<Vec<PrCommit>, GithubError>;
+    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCommit>, GithubError>;
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError>;
     fn review_threads(
         &self,
@@ -102,19 +97,6 @@ impl Default for GithubService {
 impl GithubService {
     pub fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
         self.gh.accounts()
-    }
-
-    pub fn git_auth(
-        &self,
-        workdir: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Option<GithubGitAuth>, GithubError> {
-        if account.is_none() {
-            return Ok(None);
-        }
-        let account = account.map(normalize_account_ref);
-        let (provider, ctx) = self.context(workdir, account.as_ref())?;
-        provider.token_for_git(ctx.account.as_ref())
     }
 
     pub fn list_prs(

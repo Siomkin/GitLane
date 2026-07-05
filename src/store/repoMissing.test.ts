@@ -259,7 +259,7 @@ describe("repo store — missing-repo state (GL-108)", () => {
       "gitlane.repoAccounts",
       JSON.stringify({ "/old": { version: 2, unbound: true } }),
     );
-    localStorage.setItem("gitlane.repoProfile", JSON.stringify({ "/old": "profile-1" }));
+    localStorage.setItem("gitlane.repoCommitSource", JSON.stringify({ "/old": { kind: "manual", id: "profile-1" } }));
     dialogMock.mockResolvedValue("/new");
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
       if (cmd === "open_repo") {
@@ -284,8 +284,8 @@ describe("repo store — missing-repo state (GL-108)", () => {
     expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")).toEqual({
       "/new": { version: 2, unbound: true },
     });
-    expect(JSON.parse(localStorage.getItem("gitlane.repoProfile") ?? "{}")).toEqual({
-      "/new": "profile-1",
+    expect(JSON.parse(localStorage.getItem("gitlane.repoCommitSource") ?? "{}")).toEqual({
+      "/new": { kind: "manual", id: "profile-1" },
     });
   });
 

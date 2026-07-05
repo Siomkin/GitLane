@@ -22,11 +22,13 @@ beforeEach(() => {
 describe("SigningKeyField", () => {
   it("lists discovered keys and reports value + inferred format on pick", async () => {
     const onChange = vi.fn();
-    render(<SigningKeyField value="" format="openpgp" onChange={onChange} />);
+    const { container } = render(<SigningKeyField value="" format="openpgp" onChange={onChange} />);
     // Wait for the async key load to populate the select.
     const select = await screen.findByRole("combobox", { name: "Signing key" });
-    expect(screen.getByRole("option", { name: /Ada <ada@example.com> \(GPG\)/ })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /ssh-ed25519 \(SSH\)/ })).toBeInTheDocument();
+    expect(container.querySelector('optgroup[label="GPG / OpenPGP"]')).not.toBeNull();
+    expect(container.querySelector('optgroup[label="SSH"]')).not.toBeNull();
+    expect(screen.getByRole("option", { name: "Ada <ada@example.com>" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "ada@laptop · ssh-ed25519" })).toBeInTheDocument();
 
     fireEvent.change(select, { target: { value: "/home/ada/.ssh/id_ed25519.pub" } });
     expect(onChange).toHaveBeenCalledWith("/home/ada/.ssh/id_ed25519.pub", "ssh");

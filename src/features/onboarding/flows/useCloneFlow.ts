@@ -7,8 +7,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the clone flow/session (architecture-rules-react.md §1)
-import { api, type CloneProgress } from "../../../lib/api";
+import { api, type CloneProgress, type GitTransportAuthRef } from "../../../lib/api";
 import { repoLabel } from "../../../lib/paths";
+import { detectRemoteUrl, withUrlUser } from "../../../lib/remotes";
+import { useAccounts } from "../../../store/accounts";
 import {
   canceledCloneCopy,
   classifyCloneError,
@@ -32,6 +34,9 @@ interface CloneFlowDeps {
 export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const [cloneUrl, setCloneUrl] = useState("");
   const [cloneParent, setCloneParent] = useState(defaultParent);
+  const [cloneAccountId, setCloneAccountId] = useState<string | null>(null);
+  const [cloneUsername, setCloneUsername] = useState("");
+  const [clonePassword, setClonePassword] = useState("");
   const [progress, setProgress] = useState<CloneProgress>(INITIAL_PROGRESS);
   const [error, setError] = useState<CloneErrorCopy | null>(null);
   const cancelingRef = useRef(false);
@@ -41,7 +46,22 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const cloningRef = useRef(false);
 
   const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
+  const remoteInfo = useMemo(() => detectRemoteUrl(cloneUrl), [cloneUrl]);
+  const accounts = useAccounts((s) => s.accounts);
+  const cloneAuthAccounts = useMemo(
+    () =>
+      remoteInfo.valid && !remoteInfo.ssh && remoteInfo.credentialHost
+        ? accounts.filter((a) => a.host === remoteInfo.credentialHost)
+        : [],
+    [accounts, remoteInfo.credentialHost, remoteInfo.ssh, remoteInfo.valid],
+  );
   const canClone = url.state === "valid" && cloneParent.trim() !== "";
+
+  useEffect(() => {
+    setCloneAccountId(null);
+    setCloneUsername(remoteInfo.user ?? "");
+    setClonePassword("");
+  }, [remoteInfo.credentialHost, remoteInfo.user]);
 
   // Live clone progress streamed from the backend.
   useEffect(() => {
@@ -85,7 +105,44 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     setScreen("progress");
     void (async () => {
       try {
-        const path = await api.cloneRepo(cloneUrl.trim(), dest);
+        const selectedAccount = cloneAuthAccounts.find((a) => a.id === cloneAccountId) ?? null;
+        const username = selectedAccount?.login ?? cloneUsername.trim();
+        const cloneRemoteUrl =
+          remoteInfo.valid && !remoteInfo.ssh && username
+            ? withUrlUser(cloneUrl.trim(), username)
+            : cloneUrl.trim();
+        const provider =
+          remoteInfo.provider === "azure"
+            ? "azure-devops"
+            : remoteInfo.provider === "github" ||
+                remoteInfo.provider === "gitlab" ||
+                remoteInfo.provider === "bitbucket"
+              ? remoteInfo.provider
+              : "other";
+        const auth: GitTransportAuthRef | null =
+          remoteInfo.valid && !remoteInfo.ssh && remoteInfo.host && remoteInfo.credentialHost && username
+            ? selectedAccount
+              ? {
+                  mode: "githubGh",
+                  provider: "github",
+                  host: remoteInfo.host,
+                  credentialHost: remoteInfo.credentialHost,
+                  username,
+                  accountRef: selectedAccount.ref,
+                }
+              : {
+                  mode: "credentialHelper",
+                  provider,
+                  host: remoteInfo.host,
+                  credentialHost: remoteInfo.credentialHost,
+                  username,
+                }
+            : null;
+        if (auth?.mode === "credentialHelper" && clonePassword) {
+          await api.approveHttpsCredential(auth.credentialHost, remoteInfo.path, username, clonePassword);
+          setClonePassword("");
+        }
+        const path = await api.cloneRepo(cloneRemoteUrl, dest, auth);
         if (cancelingRef.current) return;
         // Read the cloned repo so the confirmation shows its real branch/path.
         let name = parseRepoName(cloneUrl);
@@ -109,7 +166,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
         cloningRef.current = false;
       }
     })();
-  }, [cloneUrl, cloneParent, setScreen, setResult]);
+  }, [cloneUrl, cloneParent, cloneAccountId, cloneAuthAccounts, cloneUsername, clonePassword, remoteInfo, setScreen, setResult]);
 
   const cancelClone = useCallback(() => {
     cancelingRef.current = true;
@@ -138,6 +195,14 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     setCloneUrl,
     url,
     cloneParent,
+    cloneAccountId,
+    setCloneAccountId,
+    cloneUsername,
+    setCloneUsername,
+    clonePassword,
+    setClonePassword,
+    cloneAuthAccounts,
+    cloneRemoteInfo: remoteInfo,
     browseCloneParent,
     canClone,
     startClone,

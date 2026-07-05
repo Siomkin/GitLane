@@ -3,15 +3,16 @@ use super::operands::ensure_operand;
 use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, cherry_pick, cherry_pick_many,
-    clear_repo_identity, continue_operation, create_tag, delete_branch_with_worktree,
-    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch, fetch,
-    mark_conflict_resolved, merge, move_branch_to_worktree, preview_delete_branch,
-    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
-    publish_branch, reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file,
-    revert, revert_many, set_remote_url, set_repo_identity, set_upstream, skip_operation,
-    stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list, stash_pop,
-    unstage_all, unstage_file, unstage_files, worktrees,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_push_remote, cherry_pick,
+    cherry_pick_many, clear_repo_identity, continue_operation, create_tag,
+    delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
+    fast_forward_branch, fetch, head_push_remote, mark_conflict_resolved, merge,
+    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
+    preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
+    reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file, revert,
+    revert_many, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
+    skip_operation, stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list,
+    stash_pop, unstage_all, unstage_file, unstage_files, worktrees,
 };
 use crate::git::read::repo_identity;
 use std::path::PathBuf;
@@ -162,8 +163,14 @@ fn revert_many_splits_a_mixed_normal_and_merge_selection() {
     revert_many(repo.path(), &[extra_sha, merge_sha]).expect("revert normal + merge");
 
     assert!(!repo.0.join("extra.txt").exists(), "normal commit reverted");
-    assert!(!repo.0.join("feature.txt").exists(), "merge commit reverted");
-    assert!(repo.0.join("main.txt").exists(), "mainline history survives");
+    assert!(
+        !repo.0.join("feature.txt").exists(),
+        "merge commit reverted"
+    );
+    assert!(
+        repo.0.join("main.txt").exists(),
+        "mainline history survives"
+    );
 }
 
 #[test]
@@ -172,8 +179,7 @@ fn cherry_pick_many_splits_a_mixed_normal_and_merge_selection() {
     let mainline_sha = rev_parse(&repo, &format!("{merge_sha}~1"));
     repo.git_ok(&["checkout", "-q", "-b", "dest", &format!("{merge_sha}~2")]);
 
-    cherry_pick_many(repo.path(), &[mainline_sha, merge_sha])
-        .expect("cherry-pick normal + merge");
+    cherry_pick_many(repo.path(), &[mainline_sha, merge_sha]).expect("cherry-pick normal + merge");
 
     assert!(repo.0.join("main.txt").exists(), "normal commit applied");
     assert!(
@@ -211,8 +217,16 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
 
     // `None` leaves signing untouched — the legacy name/email editor must not
     // wipe a key the user (or a prior profile) set.
-    set_repo_identity(repo.path(), "Work Dev", "work@example.test", None, None, None, None)
-        .expect("re-save name/email only");
+    set_repo_identity(
+        repo.path(),
+        "Work Dev",
+        "work@example.test",
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("re-save name/email only");
     let id = repo_identity(repo.path()).unwrap().unwrap();
     assert_eq!(
         id.signing_key.as_deref(),
@@ -236,7 +250,11 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
     let id = repo_identity(repo.path()).unwrap().unwrap();
     assert_eq!(id.signing_key, None, "empty signing key unsets it");
     assert_eq!(id.gpg_format, None, "empty gpg.format unsets it");
-    assert_eq!(id.gpg_sign, Some(false), "gpgSign=false is written, not unset");
+    assert_eq!(
+        id.gpg_sign,
+        Some(false),
+        "gpgSign=false is written, not unset"
+    );
     assert_eq!(id.tag_gpg_sign, Some(false), "tag.gpgsign=false is written");
 }
 
@@ -422,8 +440,15 @@ fn move_branch_to_worktree_detaches_source_then_checks_out_branch() {
     let linked_str = linked.to_str().unwrap();
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
 
-    let result = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false, &|_| {})
-        .expect("move branch from linked worktree");
+    let result = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked_str,
+        repo.path(),
+        false,
+        &|_| {},
+    )
+    .expect("move branch from linked worktree");
     assert!(
         result.starts_with("Moved feature to "),
         "unexpected message: {result}"
@@ -471,9 +496,10 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
     // The dialog's checklist depends on these ids firing in this order, one per
     // phase as it begins (GL-107).
     let steps = std::cell::RefCell::new(Vec::new());
-    let result =
-        delete_branch_with_worktree(repo.path(), "feature", linked_str, &|s| steps.borrow_mut().push(s))
-            .expect("delete branch and its worktree");
+    let result = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|s| {
+        steps.borrow_mut().push(s)
+    })
+    .expect("delete branch and its worktree");
     assert_eq!(result, "Deleted feature and its worktree");
     assert_eq!(*steps.borrow(), ["removeWorktree", "deleteBranch"]);
 
@@ -567,7 +593,10 @@ fn delete_branch_with_worktree_refuses_when_path_no_longer_holds_the_branch() {
 
     let err = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
         .expect_err("a stale worktree path should abort the delete");
-    assert!(err.contains("feature"), "error should name the branch, got: {err}");
+    assert!(
+        err.contains("feature"),
+        "error should name the branch, got: {err}"
+    );
 
     // Both the branch and the (now detached) worktree survive untouched.
     let branches = repo.git(&["branch", "--list", "feature"]);
@@ -608,9 +637,19 @@ fn move_branch_to_worktree_refuses_when_path_no_longer_holds_the_branch() {
         .expect("git detaches the linked worktree");
     assert!(detach.status.success());
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked_str, repo.path(), false, &|_| {})
-        .expect_err("a stale worktree path should abort the move");
-    assert!(err.contains("feature"), "error should name the branch, got: {err}");
+    let err = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked_str,
+        repo.path(),
+        false,
+        &|_| {},
+    )
+    .expect_err("a stale worktree path should abort the move");
+    assert!(
+        err.contains("feature"),
+        "error should name the branch, got: {err}"
+    );
     // The current worktree was not switched onto the branch.
     let current = repo.git(&["branch", "--show-current"]);
     assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "main");
@@ -628,10 +667,8 @@ impl LinkedDir {
     fn new(tag: &str) -> Self {
         static SEQ: AtomicU32 = AtomicU32::new(0);
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "gitlane-{tag}-linked-{}-{n}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("gitlane-{tag}-linked-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         LinkedDir(dir)
     }
@@ -698,13 +735,24 @@ fn move_branch_to_worktree_reports_progress_steps_in_order() {
     std::fs::write(linked.0.join("file.txt"), "carried\n").unwrap();
 
     let steps = std::cell::RefCell::new(Vec::new());
-    move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|s| {
-        steps.borrow_mut().push(s)
-    })
+    move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|s| steps.borrow_mut().push(s),
+    )
     .expect("carry handoff");
     assert_eq!(
         steps.into_inner(),
-        vec!["stashSource", "detach", "checkout", "applySource", "finalize"]
+        vec![
+            "stashSource",
+            "detach",
+            "checkout",
+            "applySource",
+            "finalize"
+        ]
     );
 }
 
@@ -713,9 +761,14 @@ fn move_branch_to_worktree_skips_stash_steps_when_clean() {
     let (repo, linked) = repo_with_feature_worktree("handoff-progress-clean");
 
     let steps = std::cell::RefCell::new(Vec::new());
-    move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|s| {
-        steps.borrow_mut().push(s)
-    })
+    move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|s| steps.borrow_mut().push(s),
+    )
     .expect("clean handoff");
     assert_eq!(steps.into_inner(), vec!["detach", "checkout", "finalize"]);
 }
@@ -727,9 +780,19 @@ fn move_branch_to_worktree_carries_dirty_source_changes() {
     std::fs::write(linked.0.join("file.txt"), "carried\n").unwrap();
     std::fs::write(linked.0.join("new.txt"), "brand new\n").unwrap(); // untracked rides along
 
-    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
-        .expect("carry handoff");
-    assert!(msg.contains("feature"), "message should name the branch: {msg}");
+    let msg = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|_| {},
+    )
+    .expect("carry handoff");
+    assert!(
+        msg.contains("feature"),
+        "message should name the branch: {msg}"
+    );
 
     // The destination (main worktree) is now on feature with the carried work.
     let current = repo.git(&["branch", "--show-current"]);
@@ -738,7 +801,10 @@ fn move_branch_to_worktree_carries_dirty_source_changes() {
         std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
         "carried\n"
     );
-    assert!(repo.0.join("new.txt").exists(), "untracked file should carry");
+    assert!(
+        repo.0.join("new.txt").exists(),
+        "untracked file should carry"
+    );
     // Source worktree left detached; no stashes linger.
     assert!(is_detached(&linked.0), "source worktree should be detached");
     let stashes = repo.git(&["stash", "list"]);
@@ -753,8 +819,15 @@ fn move_branch_to_worktree_refuses_dirty_source_without_carry() {
     let (repo, linked) = repo_with_feature_worktree("handoff-nocarry");
     std::fs::write(linked.0.join("file.txt"), "dirty\n").unwrap();
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), false, &|_| {})
-        .expect_err("a dirty source without carry should be refused");
+    let err = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        false,
+        &|_| {},
+    )
+    .expect_err("a dirty source without carry should be refused");
     assert!(err.contains("uncommitted"), "error should explain: {err}");
 
     // Nothing moved or stashed: source still on feature, destination still on main.
@@ -772,9 +845,19 @@ fn move_branch_to_worktree_reapplies_dirty_destination() {
     // doesn't diverge between branches, so it re-applies cleanly after the switch.
     std::fs::write(repo.0.join("dest-wip.txt"), "dest work\n").unwrap();
 
-    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
-        .expect("handoff onto a dirty destination");
-    assert!(msg.contains("feature"), "message should name the branch: {msg}");
+    let msg = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|_| {},
+    )
+    .expect("handoff onto a dirty destination");
+    assert!(
+        msg.contains("feature"),
+        "message should name the branch: {msg}"
+    );
 
     let current = repo.git(&["branch", "--show-current"]);
     assert_eq!(String::from_utf8_lossy(&current.stdout).trim(), "feature");
@@ -802,8 +885,15 @@ fn move_branch_to_worktree_restores_the_source_stash_when_dest_stash_fails() {
     let lock = repo.0.join(".git").join("index.lock");
     std::fs::write(&lock, b"").unwrap();
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
-        .expect_err("a failed destination stash should abort the handoff");
+    let err = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|_| {},
+    )
+    .expect_err("a failed destination stash should abort the handoff");
     let _ = std::fs::remove_file(&lock); // let the TempRepo Drop clean up
     assert!(!err.is_empty(), "expected a git error, got empty");
 
@@ -814,7 +904,10 @@ fn move_branch_to_worktree_restores_the_source_stash_when_dest_stash_fails() {
         "carried\n",
         "the source's changes must be restored on rollback"
     );
-    assert!(!is_detached(&linked.0), "source must not be detached after a rollback");
+    assert!(
+        !is_detached(&linked.0),
+        "source must not be detached after a rollback"
+    );
     let current = repo.git(&["branch", "--show-current"]);
     assert_eq!(
         String::from_utf8_lossy(&current.stdout).trim(),
@@ -841,15 +934,25 @@ fn handoff_into_conflict(tag: &str) -> (TempRepo, LinkedDir, String) {
     // Destination has a conflicting uncommitted change to the same file.
     std::fs::write(repo.0.join("file.txt"), "destination wip\n").unwrap();
 
-    let msg = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
-        .expect("handoff should land structurally even when the carry conflicts");
+    let msg = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|_| {},
+    )
+    .expect("handoff should land structurally even when the carry conflicts");
     (repo, linked, msg)
 }
 
 #[test]
 fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     let (repo, _linked, msg) = handoff_into_conflict("handoff-conflict");
-    assert!(msg.contains("resolve"), "message should ask to resolve: {msg}");
+    assert!(
+        msg.contains("resolve"),
+        "message should ask to resolve: {msg}"
+    );
 
     // The conflict surfaces as a "carry" operation (marker + unmerged entries).
     let status = crate::git::conflicts::operation_status(repo.path()).expect("operation status");
@@ -868,12 +971,21 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     // carry must STAY active (its recovery stash is still on the stack) so the
     // frontend's worktree refresh doesn't drop "Finish carry" before it can run.
     let resolved = crate::git::conflicts::operation_status(repo.path()).expect("status resolved");
-    assert_eq!(resolved.kind, "carry", "carry must survive resolving the last conflict");
-    assert!(resolved.conflicts.is_empty(), "no conflicts remain once staged");
+    assert_eq!(
+        resolved.kind, "carry",
+        "carry must survive resolving the last conflict"
+    );
+    assert!(
+        resolved.conflicts.is_empty(),
+        "no conflicts remain once staged"
+    );
 
     // Finish the carry.
     let done = continue_operation(repo.path(), "carry", None, None).expect("continue carry");
-    assert!(done.contains("Carried"), "unexpected continue message: {done}");
+    assert!(
+        done.contains("Carried"),
+        "unexpected continue message: {done}"
+    );
 
     // Marker cleared (no operation) and the kept stash dropped.
     let after = crate::git::conflicts::operation_status(repo.path()).expect("status after");
@@ -896,7 +1008,10 @@ fn abort_carry_discards_the_merge_but_preserves_the_stash() {
     );
 
     let done = abort_operation(repo.path(), "carry").expect("abort carry");
-    assert!(done.contains("preserved"), "unexpected abort message: {done}");
+    assert!(
+        done.contains("preserved"),
+        "unexpected abort message: {done}"
+    );
 
     // Operation cleared; working tree back at the branch tip; the stash kept.
     let after = crate::git::conflicts::operation_status(repo.path()).expect("status after abort");
@@ -956,10 +1071,20 @@ fn move_branch_to_worktree_refuses_a_source_with_unresolved_conflicts() {
     git_ok_at(l, &["commit", "-q", "-am", "B"]);
     git_ok_at(l, &["checkout", "-q", "feature"]);
     let merge = git_at(l, &["merge", "sibling"]);
-    assert!(!merge.status.success(), "merge should conflict for the test setup");
+    assert!(
+        !merge.status.success(),
+        "merge should conflict for the test setup"
+    );
 
-    let err = move_branch_to_worktree(repo.path(), "feature", linked.as_str(), repo.path(), true, &|_| {})
-        .expect_err("a source mid-conflict should be refused up front");
+    let err = move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|_| {},
+    )
+    .expect_err("a source mid-conflict should be refused up front");
     assert!(
         err.contains("unresolved conflicts"),
         "error should explain the conflict, got: {err}"
@@ -996,9 +1121,15 @@ fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destinat
     );
 
     let linked = LinkedDir::new("wt-attrs-linked");
-    git_ok_at(bare.0.as_path(), &["worktree", "add", "-q", linked.as_str(), "feature"]);
+    git_ok_at(
+        bare.0.as_path(),
+        &["worktree", "add", "-q", linked.as_str(), "feature"],
+    );
     let gone = LinkedDir::new("wt-attrs-gone");
-    git_ok_at(bare.0.as_path(), &["worktree", "add", "-q", "--detach", gone.as_str()]);
+    git_ok_at(
+        bare.0.as_path(),
+        &["worktree", "add", "-q", "--detach", gone.as_str()],
+    );
     std::fs::remove_dir_all(&gone.0).unwrap(); // now prunable
 
     let list = worktrees(bare.path()).expect("list worktrees");
@@ -1018,8 +1149,15 @@ fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destinat
     );
 
     // Handing the feature branch off *into the bare repo* is refused up front.
-    let err = move_branch_to_worktree(bare.path(), "feature", linked.as_str(), bare.path(), true, &|_| {})
-        .expect_err("handoff into a bare repo should be refused");
+    let err = move_branch_to_worktree(
+        bare.path(),
+        "feature",
+        linked.as_str(),
+        bare.path(),
+        true,
+        &|_| {},
+    )
+    .expect_err("handoff into a bare repo should be refused");
     assert!(err.contains("bare repository"), "got: {err}");
     // The source was not detached by the refused handoff.
     let source_head = git_at(&linked.0, &["symbolic-ref", "--quiet", "--short", "HEAD"]);
@@ -1084,8 +1222,15 @@ fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
     )
     .unwrap();
 
-    apply_hunk(repo.path(), file, false, 0, "@@ -1,4 +1,4 @@", "-one\n+ONE\n 2\n 3\n 4")
-        .expect("stage first hunk");
+    apply_hunk(
+        repo.path(),
+        file,
+        false,
+        0,
+        "@@ -1,4 +1,4 @@",
+        "-one\n+ONE\n 2\n 3\n 4",
+    )
+    .expect("stage first hunk");
 
     let cached = repo.git(&["diff", "--cached", "--", file]);
     let cached_text = String::from_utf8_lossy(&cached.stdout);
@@ -1179,8 +1324,15 @@ fn apply_hunk_unstages_one_staged_hunk() {
     .unwrap();
     repo.git_ok(&["add", "file.txt"]);
 
-    apply_hunk(repo.path(), "file.txt", true, 0, "@@ -1,4 +1,4 @@", "-one\n+ONE\n 2\n 3\n 4")
-        .expect("unstage first hunk");
+    apply_hunk(
+        repo.path(),
+        "file.txt",
+        true,
+        0,
+        "@@ -1,4 +1,4 @@",
+        "-one\n+ONE\n 2\n 3\n 4",
+    )
+    .expect("unstage first hunk");
 
     let cached = repo.git(&["diff", "--cached", "--", "file.txt"]);
     let cached_text = String::from_utf8_lossy(&cached.stdout);
@@ -1202,8 +1354,15 @@ fn apply_hunk_stages_deleted_file_hunk() {
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
     std::fs::remove_file(repo.0.join("gone.txt")).unwrap();
 
-    apply_hunk(repo.path(), "gone.txt", false, 0, "@@ -1,3 +0,0 @@", "-one\n-two\n-three")
-        .expect("stage deletion hunk");
+    apply_hunk(
+        repo.path(),
+        "gone.txt",
+        false,
+        0,
+        "@@ -1,3 +0,0 @@",
+        "-one\n-two\n-three",
+    )
+    .expect("stage deletion hunk");
 
     let status = repo.git(&["diff", "--cached", "--name-status", "--", "gone.txt"]);
     assert_eq!(
@@ -1524,7 +1683,7 @@ fn fetch_imports_remote_only_tags() {
         "test setup should start with the remote tag absent locally",
     );
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(result.is_ok(), "fetch failed: {result:?}");
 
     let after = clone_repo.git(&["tag", "--list", "0.1.1"]);
@@ -1582,7 +1741,7 @@ fn fetch_tag_import_honors_skip_fetch_all_remotes() {
     clone_repo.git_ok(&["remote", "add", "backup", unreachable.to_str().unwrap()]);
     clone_repo.git_ok(&["config", "remote.backup.skipFetchAll", "true"]);
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(
         result.is_ok(),
         "skipped unreachable remote should not fail tag import: {result:?}",
@@ -1644,7 +1803,7 @@ fn fetch_preserves_local_only_tags_under_fetch_prune() {
     clone_repo.git_ok(&["config", "fetch.prune", "true"]);
     clone_repo.git_ok(&["tag", "keep-me", "HEAD"]);
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(result.is_ok(), "fetch failed: {result:?}");
 
     let local_only = clone_repo.git(&["tag", "--list", "keep-me"]);
@@ -1728,7 +1887,7 @@ fn fetch_ignores_tag_clobber_rejection_after_branch_updates() {
         .trim()
         .to_string();
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(
         result.is_ok(),
         "tag clobber rejection should not fail fetch: {result:?}"
@@ -1987,7 +2146,10 @@ fn reset_preview_target_uses_branch_not_same_named_tag() {
     // branch tip, so the preview says HEAD moves there — not to the tag at base.
     let preview = preview_reset(repo.path(), "dup", "mixed", "HEAD").expect("preview");
     assert!(
-        preview.details.iter().any(|line| line.contains(&dup_tip_short)),
+        preview
+            .details
+            .iter()
+            .any(|line| line.contains(&dup_tip_short)),
         "preview target must resolve to the branch tip {dup_tip_short}, not the tag: {:?}",
         preview.details
     );
@@ -2544,7 +2706,13 @@ fn set_remote_url_repoints_a_separate_push_url_too() {
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&["remote", "add", "origin", "https://github.com/old/repo.git"]);
     // A *separate* push URL — the case `set-url` (fetch only) would leave stale.
-    repo.git_ok(&["remote", "set-url", "--push", "origin", "https://github.com/old/push.git"]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "https://github.com/old/push.git",
+    ]);
 
     set_remote_url(repo.path(), "origin", "https://github.com/new/repo.git").unwrap();
 
@@ -2559,18 +2727,99 @@ fn set_remote_url_repoints_a_separate_push_url_too() {
 }
 
 #[test]
+fn set_remote_username_preserves_separate_push_url_destination() {
+    let repo = TempRepo::new("remote-username-pushurl");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://gitlab.com/upstream/repo.git",
+    ]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "https://gitlab.com/fork/repo.git",
+    ]);
+
+    set_remote_username(repo.path(), "origin", Some("alice")).unwrap();
+
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://alice@gitlab.com/upstream/repo.git"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "https://alice@gitlab.com/fork/repo.git"
+    );
+
+    set_remote_username(repo.path(), "origin", None).unwrap();
+
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://gitlab.com/upstream/repo.git"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "https://gitlab.com/fork/repo.git"
+    );
+}
+
+#[test]
+fn set_remote_username_does_not_create_push_url_when_push_follows_fetch() {
+    let repo = TempRepo::new("remote-username-no-pushurl");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/owner/repo.git",
+    ]);
+
+    set_remote_username(repo.path(), "origin", Some("octocat")).unwrap();
+
+    assert!(
+        !repo
+            .git(&["config", "--get-all", "remote.origin.pushurl"])
+            .status
+            .success(),
+        "username-only auth should not create a separate pushurl"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://octocat@github.com/owner/repo.git"
+    );
+}
+
+#[test]
 fn default_remote_drives_forge_even_when_listed_after_another() {
     let repo = TempRepo::new("remote-default");
     repo.git_ok(&["init", "-q"]);
     // upstream (GitLab) is added first; origin (GitHub) second. origin is the
     // default push remote, so it must win both the Remotes panel and the toolbar.
-    repo.git_ok(&["remote", "add", "upstream", "https://gitlab.com/up/stream.git"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "upstream",
+        "https://gitlab.com/up/stream.git",
+    ]);
     repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
 
     let remotes = crate::git::read::list_remotes(repo.path()).unwrap();
     let origin = remotes.iter().find(|r| r.name == "origin").unwrap();
-    assert!(origin.is_default, "origin should be the default push remote");
-    assert!(!remotes.iter().find(|r| r.name == "upstream").unwrap().is_default);
+    assert!(
+        origin.is_default,
+        "origin should be the default push remote"
+    );
+    assert!(
+        !remotes
+            .iter()
+            .find(|r| r.name == "upstream")
+            .unwrap()
+            .is_default
+    );
 
     // The toolbar provider reflects the default push remote (GitHub), not the
     // first-listed remote (GitLab).
@@ -2584,7 +2833,12 @@ fn forge_detect_prefers_the_default_remote() {
     let repo = TempRepo::new("detect-default");
     repo.git_ok(&["init", "-q"]);
     // upstream (GitLab) first, origin (GitHub, the default) second.
-    repo.git_ok(&["remote", "add", "upstream", "https://gitlab.com/up/stream.git"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "upstream",
+        "https://gitlab.com/up/stream.git",
+    ]);
     repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
 
     // `detect` (used for gh error classification) reflects the default remote.
@@ -2687,7 +2941,11 @@ fn merge_of_an_already_reachable_branch_reports_up_to_date_and_creates_nothing()
         out.contains("Already up to date"),
         "equal tips must report up-to-date: {out}"
     );
-    assert_eq!(head(&repo), before, "no commit may be created for equal tips");
+    assert_eq!(
+        head(&repo),
+        before,
+        "no commit may be created for equal tips"
+    );
 
     // Already-merged ancestor: same no-op once main moves ahead of feature.
     std::fs::write(repo.0.join("file.txt"), b"ahead\n").unwrap();
@@ -2698,7 +2956,11 @@ fn merge_of_an_already_reachable_branch_reports_up_to_date_and_creates_nothing()
         out.contains("Already up to date"),
         "an ancestor must report up-to-date: {out}"
     );
-    assert_eq!(head(&repo), before, "no commit may be created for an ancestor");
+    assert_eq!(
+        head(&repo),
+        before,
+        "no commit may be created for an ancestor"
+    );
 }
 
 #[test]
@@ -2826,13 +3088,16 @@ fn pull_stays_ff_only_under_pull_rebase_config() {
     let before = clone.git(&["rev-parse", "HEAD"]);
     let before_head = String::from_utf8_lossy(&before.stdout).trim().to_string();
 
-    let result = pull(clone.path());
+    let result = pull(clone.path(), None);
     assert!(result.is_err(), "divergent pull must fail, got {result:?}");
 
     // No rebase and no merge happened: the clone HEAD is untouched.
     let after = clone.git(&["rev-parse", "HEAD"]);
     let after_head = String::from_utf8_lossy(&after.stdout).trim().to_string();
-    assert_eq!(before_head, after_head, "HEAD must be unchanged after a failed pull");
+    assert_eq!(
+        before_head, after_head,
+        "HEAD must be unchanged after a failed pull"
+    );
 }
 
 #[test]
@@ -2847,12 +3112,15 @@ fn pull_fast_forwards_when_behind() {
         .trim()
         .to_string();
 
-    pull(clone.path()).expect("fast-forward pull when strictly behind");
+    pull(clone.path(), None).expect("fast-forward pull when strictly behind");
 
     let clone_head = String::from_utf8_lossy(&clone.git(&["rev-parse", "HEAD"]).stdout)
         .trim()
         .to_string();
-    assert_eq!(clone_head, seed_head, "clone HEAD fast-forwarded to seed HEAD");
+    assert_eq!(
+        clone_head, seed_head,
+        "clone HEAD fast-forwarded to seed HEAD"
+    );
 }
 
 /// A repo with one commit of `f.txt`, ready for stash churn (GL-117 tests).
@@ -2885,7 +3153,10 @@ fn stash_apply_by_oid_survives_index_churn() {
     stash_apply(repo.path(), &picked).expect("apply the picked stash by oid");
 
     let content = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
-    assert_eq!(content, "one\n", "the picked stash was applied, not stash@{{0}}");
+    assert_eq!(
+        content, "one\n",
+        "the picked stash was applied, not stash@{{0}}"
+    );
     assert_eq!(
         stash_list(repo.path()).expect("list after apply").len(),
         2,
@@ -2911,7 +3182,10 @@ fn stash_pop_by_oid_survives_index_churn() {
     stash_pop(repo.path(), &picked).expect("pop the picked stash by oid");
 
     let content = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
-    assert_eq!(content, "one\n", "the picked stash was applied, not stash@{{0}}");
+    assert_eq!(
+        content, "one\n",
+        "the picked stash was applied, not stash@{{0}}"
+    );
     let remaining = stash_list(repo.path()).expect("list after pop");
     assert_eq!(remaining.len(), 1, "only the picked stash was dropped");
     assert_eq!(remaining[0].message, "On main: two");
@@ -2930,7 +3204,10 @@ fn stash_drop_by_oid_survives_index_churn_and_refuses_when_gone() {
     stash_drop(repo.path(), &picked).expect("drop the picked stash by oid");
     let remaining = stash_list(repo.path()).expect("list after drop");
     assert_eq!(remaining.len(), 1);
-    assert_eq!(remaining[0].message, "On main: two", "the newer stash survived");
+    assert_eq!(
+        remaining[0].message, "On main: two",
+        "the newer stash survived"
+    );
 
     // Dropping again: the stash is gone, so the destructive op must refuse
     // rather than fall back to any index.
@@ -2959,7 +3236,9 @@ fn stash_branch_by_oid_still_drops_the_stash() {
     let content = std::fs::read_to_string(repo.0.join("f.txt")).unwrap();
     assert_eq!(content, "one\n", "the stash was applied on the new branch");
     assert!(
-        stash_list(repo.path()).expect("list after branch").is_empty(),
+        stash_list(repo.path())
+            .expect("list after branch")
+            .is_empty(),
         "stash branch must drop the consumed stash"
     );
 }
@@ -2985,8 +3264,15 @@ fn unstage_works_on_an_unborn_repo() {
     stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage on unborn HEAD");
 
     unstage_file(repo.path(), "a.txt").expect("unstage one file on unborn HEAD");
-    assert_eq!(index_entries(&repo), ["b.txt"], "only a.txt leaves the index");
-    assert!(repo.0.join("a.txt").exists(), "unstage must not touch the worktree copy");
+    assert_eq!(
+        index_entries(&repo),
+        ["b.txt"],
+        "only a.txt leaves the index"
+    );
+    assert!(
+        repo.0.join("a.txt").exists(),
+        "unstage must not touch the worktree copy"
+    );
 
     // Re-stage, then edit the worktree copy so index ≠ worktree — the unborn
     // fallback (`rm --cached`) must still unstage without tripping git's
@@ -2995,7 +3281,10 @@ fn unstage_works_on_an_unborn_repo() {
     std::fs::write(repo.0.join("a.txt"), "a edited\n").unwrap();
     unstage_files(repo.path(), &["a.txt".into(), "b.txt".into()])
         .expect("unstage several files on unborn HEAD");
-    assert!(index_entries(&repo).is_empty(), "index is empty after unstaging both");
+    assert!(
+        index_entries(&repo).is_empty(),
+        "index is empty after unstaging both"
+    );
     assert_eq!(
         std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
         "a edited\n",
@@ -3004,7 +3293,10 @@ fn unstage_works_on_an_unborn_repo() {
 
     stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage again");
     unstage_all(repo.path()).expect("unstage all on unborn HEAD");
-    assert!(index_entries(&repo).is_empty(), "index is empty after unstage-all");
+    assert!(
+        index_entries(&repo).is_empty(),
+        "index is empty after unstage-all"
+    );
     assert!(repo.0.join("a.txt").exists() && repo.0.join("b.txt").exists());
 }
 
@@ -3017,19 +3309,35 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&["config", "user.name", "GitLane Test"]);
     repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
-    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+    repo.git_ok(&[
+        "commit",
+        "-q",
+        "--no-gpg-sign",
+        "--allow-empty",
+        "-m",
+        "root",
+    ]);
 
     std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
     repo.git_ok(&["add", "staged_new.txt"]);
     std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
 
     discard_file(repo.path(), "staged_new.txt", false).expect("discard staged-new file");
-    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
-    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+    assert!(
+        index_entries(&repo).is_empty(),
+        "staged-new file leaves the index"
+    );
+    assert!(
+        !repo.0.join("staged_new.txt").exists(),
+        "staged-new file leaves the worktree"
+    );
 
     // The genuinely untracked path still goes through `git clean`.
     discard_file(repo.path(), "untracked.txt", false).expect("discard untracked file");
-    assert!(!repo.0.join("untracked.txt").exists(), "untracked file is cleaned");
+    assert!(
+        !repo.0.join("untracked.txt").exists(),
+        "untracked file is cleaned"
+    );
 }
 
 #[test]
@@ -3041,14 +3349,27 @@ fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&["config", "user.name", "GitLane Test"]);
     repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
-    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "--allow-empty", "-m", "root"]);
+    repo.git_ok(&[
+        "commit",
+        "-q",
+        "--no-gpg-sign",
+        "--allow-empty",
+        "-m",
+        "root",
+    ]);
 
     std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
     repo.git_ok(&["add", "staged_new.txt"]);
 
     discard_file(repo.path(), "staged_new.txt", true).expect("discard staged=true new file");
-    assert!(index_entries(&repo).is_empty(), "staged-new file leaves the index");
-    assert!(!repo.0.join("staged_new.txt").exists(), "staged-new file leaves the worktree");
+    assert!(
+        index_entries(&repo).is_empty(),
+        "staged-new file leaves the index"
+    );
+    assert!(
+        !repo.0.join("staged_new.txt").exists(),
+        "staged-new file leaves the worktree"
+    );
 }
 
 #[test]
@@ -3147,5 +3468,156 @@ fn reset_targets_a_branch_over_a_same_named_tag() {
         rev_parse(&repo, "HEAD"),
         branch_tip,
         "reset must land on the branch tip, not the same-named tag at base"
+    );
+}
+
+#[test]
+fn push_remote_helpers_resolve_branch_config_and_fall_back_to_origin() {
+    let repo = TempRepo::new("push-remote-helpers");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("f.txt"), "x\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+
+    // No branch config → origin fallback (mirrors push_target).
+    assert_eq!(branch_push_remote(repo.path(), "main"), "origin");
+    assert_eq!(head_push_remote(repo.path()), "origin");
+
+    // The configured push remote wins, for the named branch and for HEAD.
+    repo.git_ok(&["config", "branch.main.remote", "mirror"]);
+    assert_eq!(branch_push_remote(repo.path(), "main"), "mirror");
+    assert_eq!(head_push_remote(repo.path()), "mirror");
+}
+
+#[test]
+fn publish_remote_splits_on_longest_configured_remote() {
+    let repo = TempRepo::new("publish-remote-split");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["remote", "add", "origin", "https://example.test/a.git"]);
+    // git permits a slash in a remote name; configure via config keys so the
+    // test doesn't depend on `git remote add` accepting it.
+    repo.git_ok(&[
+        "config",
+        "remote.origin/x.url",
+        "https://example.test/b.git",
+    ]);
+    repo.git_ok(&[
+        "config",
+        "remote.origin/x.fetch",
+        "+refs/heads/*:refs/remotes/origin/x/*",
+    ]);
+
+    assert_eq!(
+        publish_remote(repo.path(), "origin/x/feature").expect("split"),
+        "origin/x",
+        "the longest configured remote name must win"
+    );
+    assert_eq!(
+        publish_remote(repo.path(), "origin/feature").expect("split"),
+        "origin"
+    );
+    assert!(publish_remote(repo.path(), "no-slash").is_err());
+}
+
+#[test]
+fn remote_credential_host_for_prefers_the_push_url_host() {
+    let repo = TempRepo::new("remote-host-for");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/owner/repo.git",
+    ]);
+    assert_eq!(
+        crate::git::forge::remote_credential_host_for(repo.path(), "origin").as_deref(),
+        Some("github.com")
+    );
+
+    // A separate push URL drives pushes, so it drives auth validation too.
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "git@bitbucket.org:team/repo.git",
+    ]);
+    assert_eq!(
+        crate::git::forge::remote_credential_host_for(repo.path(), "origin").as_deref(),
+        Some("bitbucket.org")
+    );
+
+    assert_eq!(
+        crate::git::forge::remote_credential_host_for(repo.path(), "missing"),
+        None
+    );
+}
+
+#[test]
+fn fetch_continues_past_a_failing_remote_and_labels_the_output() {
+    let root = TempRepo::new("fetch-multi-remote");
+    let origin = root.0.join("origin.git");
+    let source = root.0.join("source");
+    let clone = root.0.join("clone");
+
+    Command::new("git")
+        .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+        .output()
+        .expect("git init bare launches");
+    Command::new("git")
+        .args(["init", "-q", source.to_str().unwrap()])
+        .output()
+        .expect("git init launches");
+
+    let source_repo = TempRepo(source);
+    source_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    source_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    source_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(source_repo.0.join("file.txt"), b"v1\n").unwrap();
+    source_repo.git_ok(&["add", "file.txt"]);
+    source_repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    source_repo.git_ok(&["remote", "add", "origin", origin.to_str().unwrap()]);
+    source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+
+    let clone_out = Command::new("git")
+        .args([
+            "clone",
+            "-q",
+            origin.to_str().unwrap(),
+            clone.to_str().unwrap(),
+        ])
+        .output()
+        .expect("git clone launches");
+    assert!(clone_out.status.success(), "clone failed");
+    let clone_repo = TempRepo(clone);
+    clone_repo.git_ok(&[
+        "remote",
+        "add",
+        "broken",
+        root.0.join("missing.git").to_str().unwrap(),
+    ]);
+
+    // Advance origin so the reachable remote has something to fetch.
+    std::fs::write(source_repo.0.join("file.txt"), b"v2\n").unwrap();
+    source_repo.git_ok(&["add", "file.txt"]);
+    source_repo.git_ok(&["commit", "-q", "-m", "second"]);
+    source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+
+    let err = fetch(clone_repo.path(), &std::collections::HashMap::new())
+        .expect_err("an unreachable remote must fail the fetch overall");
+    assert!(
+        err.contains("broken"),
+        "the error should name the failing remote:\n{err}"
+    );
+
+    // The reachable remote was still fetched despite the failure.
+    let fetched = rev_parse(&clone_repo, "refs/remotes/origin/main");
+    let expected = rev_parse(&source_repo, "HEAD");
+    assert_eq!(
+        fetched, expected,
+        "origin must be up to date even though 'broken' failed"
     );
 }

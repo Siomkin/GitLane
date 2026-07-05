@@ -3,6 +3,7 @@ import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "..
 import { splitCommitMessage } from "../lib/commitMessage";
 import { findOtherBranchWorktree, type WorktreeRef } from "../lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "../lib/mergeOutcome";
+import { pushRemoteForBranch, remoteNameForUpstream } from "../lib/remoteAccounts";
 import { useAccounts } from "./accounts";
 import { takePendingRefresh } from "./repoRequests";
 import { validateSquashRange } from "./selection";
@@ -213,6 +214,17 @@ export function createRepoWriteActions(
   | "pull"
   | "push"
 > {
+  // Per-remote account resolution (GL-129): every push-family call sends the
+  // account bound to the remote it actually targets, not one repo-wide pick.
+  const authFor = (remote: string | null) =>
+    remote ? useAccounts.getState().transportAuthForRemote(remote) : null;
+  // The remote a push of `branch` targets — its configured remote from the
+  // branch list, with the backend's "origin" fallback.
+  const pushRemoteOf = (branch: string) =>
+    pushRemoteForBranch(get().branches.find((b) => b.kind === "local" && b.name === branch));
+  // The default push remote (tags land there when no remote is picked).
+  const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
+
   return {
     checkoutBranch: async (name) => {
       const { summary } = get();
@@ -268,13 +280,17 @@ export function createRepoWriteActions(
 
     pushBranch: (branch) =>
       runOp(get, async (summary) => {
-        await api.pushBranch(summary.path, branch, useAccounts.getState().repoAccountRef);
+        await api.pushBranch(summary.path, branch, authFor(pushRemoteOf(branch)));
         return `Pushed ${branch}`;
       }),
 
     publishBranch: (branch, upstream) =>
       runOp(get, async (summary) => {
-        await api.publishBranch(summary.path, branch, upstream, useAccounts.getState().repoAccountRef);
+        const remote = remoteNameForUpstream(
+          upstream,
+          get().remotes.map((r) => r.name),
+        );
+        await api.publishBranch(summary.path, branch, upstream, authFor(remote));
         return `Published ${branch} to ${upstream}`;
       }),
 
@@ -452,38 +468,40 @@ export function createRepoWriteActions(
 
     deleteTag: (name, alsoRemote = false) =>
       runOp(get, async (summary) => {
-        // Remote first: if origin rejects (auth, protected tag) the local ref
-        // survives, so the user retries from an unchanged state instead of a
-        // half-deleted one that fetch would resurrect anyway. A never-pushed
+        // Remote first: if the remote rejects (auth, protected tag) the local
+        // ref survives, so the user retries from an unchanged state instead of
+        // a half-deleted one that fetch would resurrect anyway. A never-pushed
         // tag is fine — the backend treats "remote ref does not exist" as the
         // desired end state.
         if (alsoRemote) {
-          await api.deleteRemoteTag(summary.path, name, useAccounts.getState().repoAccountRef);
+          const remote = defaultRemote();
+          await api.deleteRemoteTag(summary.path, name, remote, authFor(remote));
           try {
             await api.deleteTag(summary.path, name);
           } catch (e) {
-            // Origin has already changed but runOp only refreshes on success —
-            // re-sync quietly so the UI reflects whatever state the failed
-            // local half left, then name the half-applied state and the
+            // The remote has already changed but runOp only refreshes on
+            // success — re-sync quietly so the UI reflects whatever state the
+            // failed local half left, then name the half-applied state and the
             // remaining step instead of a bare local-delete error.
             await get()
               .refresh({ prs: false, quiet: true })
               .catch(() => undefined);
             const reason = e instanceof Error ? e.message : String(e);
             throw new Error(
-              `Deleted ${name} on origin, but the local delete failed: ${reason}. Use “Delete local tag” to finish.`,
+              `Deleted ${name} on ${remote}, but the local delete failed: ${reason}. Use “Delete local tag” to finish.`,
             );
           }
-          return `Deleted tag ${name} (local and origin)`;
+          return `Deleted tag ${name} (local and ${remote})`;
         }
         await api.deleteTag(summary.path, name);
         return `Deleted tag ${name}`;
       }),
 
-    pushTag: (name) =>
+    pushTag: (name, remote) =>
       runOp(get, async (summary) => {
-        await api.pushTag(summary.path, name, useAccounts.getState().repoAccountRef);
-        return `Pushed tag ${name}`;
+        const target = remote ?? defaultRemote();
+        await api.pushTag(summary.path, name, target, authFor(target));
+        return `Pushed tag ${name} to ${target}`;
       }),
 
     removeWorktree: (worktreePath, force = false) =>
@@ -553,13 +571,13 @@ export function createRepoWriteActions(
 
     deleteRemoteBranch: (remote, branch) =>
       runOp(get, async (summary) => {
-        await api.deleteRemoteBranch(summary.path, remote, branch, useAccounts.getState().repoAccountRef);
+        await api.deleteRemoteBranch(summary.path, remote, branch, authFor(remote));
         return `Deleted ${remote}/${branch}`;
       }),
 
     forcePush: (branch) =>
       runOp(get, async (summary) => {
-        await api.forcePush(summary.path, branch, useAccounts.getState().repoAccountRef);
+        await api.forcePush(summary.path, branch, authFor(pushRemoteOf(branch)));
         return `Force-pushed ${branch} (with lease)`;
       }),
 
@@ -857,7 +875,15 @@ export function createRepoWriteActions(
       if (!summary) return;
       set({ loading: true, error: null });
       try {
-        await api.fetch(summary.path, useAccounts.getState().repoAccountRef);
+        // One {remote, account} pair per bound remote (GL-129); remotes
+        // without a binding are omitted and fetch through the system
+        // credential helpers / SSH.
+        const remoteAccounts = get()
+          .remotes.map((r) => ({ remote: r.name, auth: authFor(r.name) }))
+          .filter((pair): pair is { remote: string; auth: NonNullable<typeof pair.auth> } =>
+            pair.auth !== null,
+          );
+        await api.fetch(summary.path, remoteAccounts);
         set({ loading: false });
         await get().refresh();
       } catch (e) {
@@ -872,7 +898,8 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) return;
       try {
-        await api.pull(summary.path);
+        const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+        await api.pull(summary.path, authFor(head?.upstreamRemote ?? null));
         await get().refresh();
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -883,7 +910,10 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) return;
       try {
-        await api.push(summary.path, useAccounts.getState().repoAccountRef);
+        // A bare push targets the checked-out branch's configured remote —
+        // send that remote's account (GL-129).
+        const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+        await api.push(summary.path, authFor(pushRemoteForBranch(head)));
         await get().refresh();
       } catch (e) {
         useUi.getState().showToast(String(e), "error");

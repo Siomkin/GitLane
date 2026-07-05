@@ -147,7 +147,10 @@ mod tests {
         // UI shows a blank failure.
         let err = finish(exit(1), "", "", &["stash", "push"]).unwrap_err();
         assert!(!err.is_empty(), "error must not be empty");
-        assert!(err.contains("stash push"), "error should name the command: {err}");
+        assert!(
+            err.contains("stash push"),
+            "error should name the command: {err}"
+        );
     }
 
     #[test]
@@ -158,7 +161,12 @@ mod tests {
             exit(128),
             "",
             "",
-            &["remote", "set-url", "origin", "https://user:secret@example.com/r.git"],
+            &[
+                "remote",
+                "set-url",
+                "origin",
+                "https://user:secret@example.com/r.git",
+            ],
         )
         .unwrap_err();
         assert!(err.contains("remote set-url"), "should name the op: {err}");

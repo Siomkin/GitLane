@@ -28,7 +28,9 @@ fn gpg_secret_keys() -> Vec<SigningKey> {
     crate::shell::hide_console(&mut cmd);
     let output = cmd.output();
     match output {
-        Ok(out) if out.status.success() => parse_gpg_secret_keys(&String::from_utf8_lossy(&out.stdout)),
+        Ok(out) if out.status.success() => {
+            parse_gpg_secret_keys(&String::from_utf8_lossy(&out.stdout))
+        }
         _ => Vec::new(),
     }
 }
@@ -44,7 +46,10 @@ fn parse_gpg_secret_keys(text: &str) -> Vec<SigningKey> {
         let fields: Vec<&str> = line.split(':').collect();
         match fields.first().copied() {
             Some("sec") => {
-                pending = fields.get(4).filter(|s| !s.is_empty()).map(|s| s.to_string());
+                pending = fields
+                    .get(4)
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
             }
             Some("uid") => {
                 if let Some(value) = pending.take() {
@@ -83,7 +88,7 @@ fn ssh_public_keys() -> Vec<SigningKey> {
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if let Some(label) = ssh_label(content.lines().next().unwrap_or("")) {
+        if let Some(label) = ssh_label(content.lines().next().unwrap_or(""), &path) {
             keys.push(SigningKey {
                 value: path.to_string_lossy().to_string(),
                 label,
@@ -97,7 +102,7 @@ fn ssh_public_keys() -> Vec<SigningKey> {
 
 /// Derive a display label from an SSH public-key line ("ssh-ed25519 AAAA… comment").
 /// Returns `None` for lines that don't look like a public key.
-fn ssh_label(line: &str) -> Option<String> {
+fn ssh_label(line: &str, path: &Path) -> Option<String> {
     let line = line.trim();
     let mut parts = line.splitn(3, ' ');
     let kind = parts.next().unwrap_or("");
@@ -106,10 +111,20 @@ fn ssh_label(line: &str) -> Option<String> {
     }
     parts.next()?; // skip the base64 blob
     let comment = parts.next().unwrap_or("").trim();
+    let file = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
     Some(if comment.is_empty() {
-        kind.to_string()
-    } else {
+        if file.is_empty() {
+            kind.to_string()
+        } else {
+            format!("{file} · {kind}")
+        }
+    } else if file.is_empty() {
         format!("{comment} · {kind}")
+    } else {
+        format!("{comment} · {kind} · {file}")
     })
 }
 
@@ -141,11 +156,20 @@ uid:u::::1700000000::HASH2::Grace Hopper <grace@example.com>::::::::::0:
     #[test]
     fn ssh_label_reads_type_and_comment() {
         assert_eq!(
-            ssh_label("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 ada@laptop"),
-            Some("ada@laptop · ssh-ed25519".into()),
+            ssh_label(
+                "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 ada@laptop",
+                Path::new("/home/ada/.ssh/id_ed25519.pub")
+            ),
+            Some("ada@laptop · ssh-ed25519 · id_ed25519.pub".into()),
         );
-        assert_eq!(ssh_label("ssh-rsa AAAAB3Nza"), Some("ssh-rsa".into()));
-        assert_eq!(ssh_label("not a key"), None);
-        assert_eq!(ssh_label(""), None);
+        assert_eq!(
+            ssh_label("ssh-rsa AAAAB3Nza", Path::new("/home/ada/.ssh/id_rsa.pub")),
+            Some("id_rsa.pub · ssh-rsa".into())
+        );
+        assert_eq!(
+            ssh_label("not a key", Path::new("/home/ada/.ssh/id_rsa.pub")),
+            None
+        );
+        assert_eq!(ssh_label("", Path::new("/home/ada/.ssh/id_rsa.pub")), None);
     }
 }

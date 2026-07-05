@@ -42,6 +42,8 @@ export function SigningKeyField({
 
   const inList = keys.some((k) => k.value === value);
   const noKeys = keys.length === 0;
+  const gpgKeys = keys.filter((k) => k.format === "openpgp");
+  const sshKeys = keys.filter((k) => k.format === "ssh");
   // Manual when there are no discovered keys, the user chose to paste, or the
   // current value isn't one of the discovered keys (e.g. seeded manually).
   const showManual = noKeys || manual || (Boolean(value) && !inList);
@@ -70,11 +72,24 @@ export function SigningKeyField({
           className={cn(fieldCls, "w-full px-3", focusRing)}
         >
           <option value="">No signing key</option>
-          {keys.map((k) => (
-            <option key={k.value} value={k.value}>
-              {k.label} ({k.format === "ssh" ? "SSH" : "GPG"})
-            </option>
-          ))}
+          {gpgKeys.length > 0 && (
+            <optgroup label="GPG / OpenPGP">
+              {gpgKeys.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {sshKeys.length > 0 && (
+            <optgroup label="SSH">
+              {sshKeys.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {k.label}
+                </option>
+              ))}
+            </optgroup>
+          )}
           <option value={MANUAL}>Paste a key manually…</option>
         </select>
       )}
