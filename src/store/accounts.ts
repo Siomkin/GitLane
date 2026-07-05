@@ -11,7 +11,13 @@
 
 import { create } from "zustand";
 
-import { api, type ForgeAuthStatus, type GithubAccountRef, type RepoIdentity } from "../lib/api";
+import {
+  api,
+  type ForgeAuthStatus,
+  type GithubAccountRef,
+  type GithubSignInResult,
+  type RepoIdentity,
+} from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
 import { repoIdentityKey } from "../lib/worktrees";
 import { useRepo } from "./repo";
@@ -164,6 +170,12 @@ interface AccountsState {
 
   /** Load the accounts the `gh` CLI is logged into. */
   loadAccounts: () => Promise<void>;
+  /** Start the in-app `gh auth login --web` device flow for `host` (GL-106),
+   * resolving with the newly added account once authorized. Emits
+   * `github-signin-progress` events; the dialog subscribes to them. */
+  signInGithub: (host: string) => Promise<GithubSignInResult>;
+  /** Cancel an in-flight [`signInGithub`] (kills the gh child). Idempotent. */
+  cancelGithubSignIn: () => Promise<void>;
   /** Load auth-only status for non-GitHub forge providers. Skips a re-probe if
    * already loaded/loading unless `force` is set (the explicit Refresh button). */
   loadForgeAuth: (force?: boolean) => Promise<void>;
@@ -218,6 +230,12 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   repoBindingKey: null,
   repoAccountRef: null,
   repoIdentity: null,
+
+  // Thin pass-throughs to the IPC layer: the sign-in dialog is UI and must not
+  // reach `api` directly (architecture-rules-react.md §1), so the boundary lives
+  // here. Account-list refresh + binding on success is the dialog's own flow.
+  signInGithub: (host) => api.githubSignIn(host),
+  cancelGithubSignIn: () => api.cancelGithubSignIn(),
 
   loadAccounts: async () => {
     set({ accountsLoading: true, accountsError: null });

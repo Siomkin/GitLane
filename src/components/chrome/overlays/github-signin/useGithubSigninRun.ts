@@ -6,7 +6,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
-import { api } from "@/lib/api";
 import { friendlyGitError } from "@/lib/gitError";
 import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
@@ -68,7 +67,7 @@ export function useGithubSigninRun(): GithubSigninRun {
 
   const cancel = () => {
     canceled.current = true;
-    void api.cancelGithubSignIn();
+    void useAccounts.getState().cancelGithubSignIn();
     // Act immediately rather than waiting for the killed child's rejection to
     // land — the backend still reaps the gh child in the background.
     setPhase("configure");
@@ -106,7 +105,7 @@ export function useGithubSigninRun(): GithubSigninRun {
         },
       );
       try {
-        const result = await api.githubSignIn(host);
+        const result = await useAccounts.getState().signInGithub(host);
         // Refresh even on a cancel/close: a resolved sign-in means the account was
         // added to gh (the token persisted before any kill landed), so the list
         // must reflect it whichever screen we end on. Then resolve the account for
