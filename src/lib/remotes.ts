@@ -43,6 +43,12 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   // Require a host and at least an owner/repo (two path segments).
   if (!host || !path || path.split("/").filter(Boolean).length < 2) return miss;
 
+  // Strip https userinfo (https://user@host/…) and any explicit port: auth
+  // matching compares this host against account hosts (GL-129), and
+  // "user@host" or "host:8443" would never match — the Rust side
+  // (forge::remote_host) normalises the same way.
+  host = host.split("@").pop() ?? host;
+  host = host.split(":")[0] || host;
   host = host.replace(/^www\./, "").toLowerCase();
   return { empty: false, valid: true, host, path, provider: providerForHost(host) };
 };

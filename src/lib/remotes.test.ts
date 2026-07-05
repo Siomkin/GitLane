@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { detectRemoteUrl, isValidRemoteName, validateRemoteUrl } from "./remotes";
 
 describe("detectRemoteUrl", () => {
+  it("strips https userinfo and ports so the host matches account hosts (GL-129)", () => {
+    expect(detectRemoteUrl("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")).toMatchObject({
+      valid: true,
+      host: "bitbucket.org",
+      path: "darang/gitlanebucket",
+      provider: "bitbucket",
+    });
+    expect(detectRemoteUrl("https://github.corp.example:8443/team/repo.git")).toMatchObject({
+      valid: true,
+      host: "github.corp.example",
+    });
+  });
+
   it("parses https GitHub URLs (with and without .git)", () => {
     expect(detectRemoteUrl("https://github.com/Siomkin/GitLane.git")).toMatchObject({
       valid: true,
