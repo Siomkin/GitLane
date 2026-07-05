@@ -184,6 +184,17 @@ export interface GithubSigninRequest {
   host: string;
 }
 
+/** A pending combined delete of a branch and its linked worktree (GL-107),
+ * rendered by DeleteWorktreeDialog: destructive preview/confirm → live step
+ * checklist → success/failure. Only the subject crosses the store; the dialog
+ * owns the impact preview and run/progress state (transient, per-open). */
+export interface DeleteWorktreeRequest {
+  /** The branch being deleted. */
+  branch: string;
+  /** Absolute path of the linked worktree removed before the branch is deleted. */
+  worktreePath: string;
+}
+
 export interface PromptRequest {
   title: string;
   /** Optional helper line under the title. */
@@ -367,6 +378,8 @@ interface UiState {
    * `loadRepo(destination)`, whose repo-switch cleanup must NOT close the
    * dialog then (it's about to show the result); any other repo switch does. */
   handoffRunning: boolean;
+  /** Pending delete-branch-and-worktree modal (GL-107), null = none open. */
+  deleteWorktree: DeleteWorktreeRequest | null;
 
   toast: Toast | null;
   /** Floating tooltip (e.g. full branch name on hover of a truncated pill). */
@@ -499,6 +512,10 @@ interface UiState {
   /** Flag a hand-off move as in flight (set by the dialog's run hook). */
   setHandoffRunning: (running: boolean) => void;
 
+  /** Open the delete-branch-and-worktree modal (GL-107). */
+  openDeleteWorktree: (req: DeleteWorktreeRequest) => void;
+  closeDeleteWorktree: () => void;
+
   showToast: (message: string, tone?: "ok" | "error") => void;
   dismissToast: () => void;
 }
@@ -591,6 +608,7 @@ export const useUi = create<UiState>()(
   githubSignin: null,
   handoff: null,
   handoffRunning: false,
+  deleteWorktree: null,
 
   toast: null,
   tooltip: null,
@@ -775,6 +793,10 @@ export const useUi = create<UiState>()(
   closeHandoff: () => set((s) => (s.handoff === null ? s : { handoff: null })),
   setHandoffRunning: (running) =>
     set((s) => (s.handoffRunning === running ? s : { handoffRunning: running })),
+
+  openDeleteWorktree: (req) => set({ ...noMenus, deleteWorktree: req }),
+  closeDeleteWorktree: () =>
+    set((s) => (s.deleteWorktree === null ? s : { deleteWorktree: null })),
 
   showToast: (message, tone = "ok") => {
     const id = (toastSeq += 1);

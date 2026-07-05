@@ -468,7 +468,7 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
     let linked_str = linked.to_str().unwrap();
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
 
-    let result = delete_branch_with_worktree(repo.path(), "feature", linked_str)
+    let result = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
         .expect("delete branch and its worktree");
     assert_eq!(result, "Deleted feature and its worktree");
 
@@ -512,7 +512,7 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
     // Make the worktree dirty so the (unforced) removal must refuse.
     std::fs::write(linked.join("file.txt"), "edited\n").unwrap();
 
-    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str)
+    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
         .expect_err("dirty worktree should abort the delete");
     assert!(!err.is_empty(), "expected a git error message");
 
@@ -560,7 +560,7 @@ fn delete_branch_with_worktree_refuses_when_path_no_longer_holds_the_branch() {
         .expect("git detaches the linked worktree");
     assert!(detach.status.success());
 
-    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str)
+    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
         .expect_err("a stale worktree path should abort the delete");
     assert!(err.contains("feature"), "error should name the branch, got: {err}");
 

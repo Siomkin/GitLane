@@ -467,15 +467,23 @@ fn carry_conflict(
 /// branch by removing its worktree, then force-delete the branch. The worktree
 /// removal runs first and is *not* forced, so a dirty or locked worktree aborts
 /// the whole operation (git's error surfaces) before the branch is touched.
+///
+/// `progress` is invoked as each phase *begins* (step ids: `removeWorktree`,
+/// `deleteBranch`) so the UI can show a live checklist. The command layer
+/// forwards them as `delete-worktree-progress` Tauri events; a lost event only
+/// degrades the progress UI.
 pub fn delete_branch_with_worktree(
     repo: &str,
     branch: &str,
     from_worktree_path: &str,
+    progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
     ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
+    progress("removeWorktree");
     remove_worktree(repo, from_worktree_path, false)?;
+    progress("deleteBranch");
     super::branches::delete_branch(repo, branch, true)?;
     Ok(format!("Deleted {branch} and its worktree"))
 }
