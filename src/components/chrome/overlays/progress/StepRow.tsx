@@ -1,12 +1,13 @@
-// One checklist row of the hand-off progress list: a status glyph (faint circle
-// → spinner → circled check) and the step label, dimmed until the step starts.
+// One checklist row of a live progress dialog: a status glyph (faint circle →
+// spinner → circled check) and the step label, dimmed until the step starts.
+// Shared by the hand-off, GitHub sign-in, and delete-branch-worktree dialogs.
 
 import { cn } from "@/lib/cn";
 import { CheckIcon } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
-import type { HandoffStepStatus } from "./steps";
+import type { StepStatus } from "./stepModel";
 
-export function StepRow({ label, status }: { label: string; status: HandoffStepStatus }) {
+export function StepRow({ label, status }: { label: string; status: StepStatus }) {
   return (
     <div className="flex items-center gap-3" data-status={status}>
       {status === "active" ? (

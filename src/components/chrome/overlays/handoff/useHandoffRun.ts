@@ -31,14 +31,17 @@ export function useHandoffRun(req: HandoffRequest): HandoffRun {
 
   // The dialog body unmounts when the user closes it mid-run; the move keeps
   // running, so its outcome must fall back to a toast instead of setState on an
-  // unmounted component.
+  // unmounted component. The effect body must re-arm the flag: under
+  // StrictMode's dev double-mount the cleanup runs once on the simulated
+  // unmount, and a cleanup-only effect would leave `mounted` permanently false
+  // on the real, visible instance (success would always divert to the toast).
   const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
   // Synchronous in-flight latch: `phase` is stale render state, so a fast
   // double-click could start two runs (the second bouncing off the store's
   // loading guard into a spurious error screen) before the re-render lands.

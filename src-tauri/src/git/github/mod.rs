@@ -29,6 +29,7 @@ mod dto;
 mod gh_provider;
 mod prs;
 mod service;
+mod signin;
 mod threads;
 
 use crate::git::types::{
@@ -37,6 +38,11 @@ use crate::git::types::{
 };
 
 use service::GithubService;
+
+// Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
+// response API above it drives a long-lived PTY child, so it manages its own
+// error mapping and is re-exported directly.
+pub use signin::{cancel_sign_in, sign_in_web, SignInSlot};
 
 fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
     result.map_err(|err| err.to_ipc_string())

@@ -19,7 +19,7 @@ use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame,
     FileChange,
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
-    HandoffProgressEvent, OperationStatus,
+    GithubSignInResult, HandoffProgressEvent, OperationStatus,
     PrCheck, PrCommit, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
     RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
@@ -34,6 +34,12 @@ const DEFAULT_GRAPH_LIMIT: usize = 2000;
 /// cloned out before the clone runs on the blocking pool.
 #[derive(Default)]
 struct CloneState(git::write::CloneSlot);
+
+/// Holds the in-flight `gh auth login --web` child so [`cancel_github_sign_in`]
+/// can terminate it while the device flow streams progress (GL-106). Mirrors
+/// [`CloneState`].
+#[derive(Default)]
+struct SignInState(git::github::SignInSlot);
 
 /// Run blocking work (a `git`/`gh` subprocess) off the webview's main thread.
 /// Synchronous Tauri commands execute on the main thread, so a blocking
@@ -796,6 +802,26 @@ async fn github_accounts() -> Result<Vec<GithubAccount>, String> {
     blocking(git::github::accounts).await
 }
 
+/// Sign in a GitHub account in-app via `gh auth login --web` (GL-106). Streams
+/// `github-signin-progress` events; the child is parked in [`SignInState`] so
+/// [`cancel_github_sign_in`] can stop it. Returns the newly added `{host, login}`.
+#[tauri::command]
+async fn github_sign_in(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, SignInState>,
+    host: String,
+) -> Result<GithubSignInResult, String> {
+    let slot = state.0.clone();
+    blocking(move || git::github::sign_in_web(&app, slot, &host)).await
+}
+
+/// Terminate an in-flight [`github_sign_in`]. Instant (lock + kill), so it stays a
+/// plain sync command and never queues behind the blocking pool.
+#[tauri::command]
+fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(), String> {
+    git::github::cancel_sign_in(&state.0)
+}
+
 #[tauri::command]
 async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, String> {
     blocking(|| Ok(auth_providers::statuses())).await
@@ -1184,6 +1210,7 @@ pub fn run() {
         .manage(WatcherState::default())
         .manage(TerminalState::default())
         .manage(CloneState::default())
+        .manage(SignInState::default())
         .setup(|app| {
             // Warm the login-shell PATH cache off the main thread at startup.
             // `shell::path()` resolves the user's real PATH by running a login
@@ -1348,6 +1375,8 @@ pub fn run() {
             push_branch,
             publish_branch,
             github_accounts,
+            github_sign_in,
+            cancel_github_sign_in,
             forge_auth_statuses,
             forge_account,
             repo_forge,

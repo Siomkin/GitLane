@@ -704,6 +704,16 @@ pub struct GithubAccount {
     pub health_error: String,
 }
 
+/// Result of an in-app `gh auth login --web` sign-in (GL-106): the host and the
+/// login that was just added, so the UI can refresh the account list and offer to
+/// bind the new account to the open repo. No token material.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubSignInResult {
+    pub host: String,
+    pub login: String,
+}
+
 /// Authentication status for a non-GitHub forge. This is auth-only metadata for
 /// Settings; it does not imply PR feature support.
 #[derive(Debug, Clone, Serialize)]

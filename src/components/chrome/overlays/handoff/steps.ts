@@ -1,7 +1,9 @@
-// Pure step-checklist model for the hand-off dialog (no React, no IPC) — maps
-// the backend's `handoff-progress` step ids onto the fixed display rows and
-// derives each row's pending/active/done status. Kept separate so the mapping
-// (including skipped steps) is unit-testable.
+// Hand-off dialog's step-checklist mapping: the backend's `handoff-progress` step
+// ids → the fixed display rows. The pending/active/done derivation now lives in
+// the shared `../progress` primitive (extracted in GL-106); this file keeps only
+// the hand-off-specific event map and labels.
+
+import { stepIndexIn, stepStatus, type StepStatus } from "../progress";
 
 /** Display rows, in execution order. Each row owns one or more backend step ids
  * (`stashSource` + `stashDestination` both surface as "Stashing…"); a step that
@@ -14,6 +16,8 @@ const STEP_EVENTS: readonly (readonly string[])[] = [
   ["finalize"],
 ];
 
+export type HandoffStepStatus = StepStatus;
+
 /** Labels for the checklist rows, in `STEP_EVENTS` order. */
 export function handoffStepLabels(branch: string, destLabel: string): string[] {
   return [
@@ -25,22 +29,10 @@ export function handoffStepLabels(branch: string, destLabel: string): string[] {
   ];
 }
 
-/** Row index a backend step id belongs to, or -1 for an unknown id (a newer
- * backend emitting a step this build doesn't know must not break the list). */
+/** Row index a backend step id belongs to, or -1 for an unknown id. */
 export function handoffStepIndex(step: string): number {
-  return STEP_EVENTS.findIndex((events) => events.includes(step));
+  return stepIndexIn(STEP_EVENTS, step);
 }
 
-export type HandoffStepStatus = "pending" | "active" | "done";
-
-/** Status of row `index` given the furthest row reached so far. Rows before the
- * reached one are done (this is what folds skipped steps in); the reached row
- * runs; `finished` (the IPC promise resolved) completes everything. */
-export function handoffStepStatus(
-  index: number,
-  reached: number,
-  finished: boolean,
-): HandoffStepStatus {
-  if (finished || index < reached) return "done";
-  return index === reached ? "active" : "pending";
-}
+/** Status of row `index` given the furthest row reached so far. */
+export const handoffStepStatus = stepStatus;
