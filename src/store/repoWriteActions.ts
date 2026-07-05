@@ -187,6 +187,7 @@ export function createRepoWriteActions(
   | "pushTag"
   | "removeWorktree"
   | "moveBranchToWorktree"
+  | "previewDeleteBranch"
   | "deleteBranchWithWorktree"
   | "deleteRemoteBranch"
   | "forcePush"
@@ -529,10 +530,26 @@ export function createRepoWriteActions(
       }
     },
 
-    deleteBranchWithWorktree: (branch, fromWorktreePath) =>
-      runOp(get, async (summary) =>
-        api.deleteBranchWithWorktree(summary.path, branch, fromWorktreePath),
-      ),
+    // Thin pass-throughs for the GL-107 delete-branch-and-worktree dialog: it is
+    // UI and must not reach `api` directly (architecture-rules-react.md §1), so
+    // the boundary lives here. Unlike the other branch writes these skip `runOp`'s
+    // refresh — the dialog owns the graph refresh so it can surface it as the
+    // checklist's "Refreshing" row (see useDeleteWorktreeRun).
+    previewDeleteBranch: (branch) => {
+      const { summary } = get();
+      if (!summary) return Promise.reject(new Error("No repository"));
+      return api.previewDeleteBranch(summary.path, branch);
+    },
+
+    // `repoPath` is passed explicitly (not read from `get().summary`) so the delete
+    // is pinned to the repo the dialog started on. The op runs after an `await` in
+    // the dialog's run hook, and a repo switch landing in that window would
+    // otherwise retarget the delete at the newly-active repo with the old
+    // branch/worktree subject. GL-107 review.
+    deleteBranchWithWorktree: (branch, fromWorktreePath, repoPath) => {
+      if (!repoPath) return Promise.reject(new Error("No repository"));
+      return api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath);
+    },
 
     deleteRemoteBranch: (remote, branch) =>
       runOp(get, async (summary) => {

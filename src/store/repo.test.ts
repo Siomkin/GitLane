@@ -1287,6 +1287,46 @@ describe("repo store — hand-off overlay lifecycle", () => {
   });
 });
 
+// The delete-branch-and-worktree dialog is repo-bound like confirm/prompt, but —
+// unlike hand-off — it never switches repos itself (success refreshes the same
+// repo). So ANY genuine switch must clear it, running or not; an in-flight delete
+// keeps going and reports via toast (GL-107).
+describe("repo store — delete-worktree overlay lifecycle", () => {
+  const openDeleteDialog = () =>
+    useUi.setState({
+      deleteWorktree: { branch: "feature", worktreePath: "/repo-feature" },
+      deleteWorktreeRunning: false,
+    });
+  const switchInvoke = (path: string) => (cmd: string) => {
+    if (cmd === "open_repo") return Promise.resolve({ ...summary, path, workdir: path });
+    if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+    return defaultInvoke(cmd);
+  };
+
+  it("closes the delete dialog on a genuine repo switch", async () => {
+    openDeleteDialog();
+    invokeMock.mockImplementation(switchInvoke("/other"));
+    await useRepo.getState().loadRepo("/other");
+    expect(useUi.getState().deleteWorktree).toBeNull();
+  });
+
+  it("closes it even while a delete is in flight (the run reports via toast)", async () => {
+    openDeleteDialog();
+    useUi.setState({ deleteWorktreeRunning: true });
+    invokeMock.mockImplementation(switchInvoke("/other"));
+    await useRepo.getState().loadRepo("/other");
+    expect(useUi.getState().deleteWorktree).toBeNull();
+    useUi.setState({ deleteWorktreeRunning: false });
+  });
+
+  it("closes the dialog when the last tab closes", async () => {
+    openDeleteDialog();
+    useRepo.setState({ summary, openPaths: ["/repo"] });
+    await useRepo.getState().closeRepo("/repo");
+    expect(useUi.getState().deleteWorktree).toBeNull();
+  });
+});
+
 describe("repo store — reorderOpenPaths", () => {
   it("reorders open repo tabs and keeps the active repo selected", () => {
     localStorage.clear();

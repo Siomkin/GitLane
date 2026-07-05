@@ -63,6 +63,7 @@ beforeEach(() => {
     confirm: null,
     prompt: null,
     toast: null,
+    deleteWorktree: null,
     createBranchOpen: false,
     createBranchStart: null,
   });
@@ -469,31 +470,26 @@ describe("BranchContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Hand off to…" })).not.toBeInTheDocument();
   });
 
-  // The combined action previews the delete (so unmerged commits are surfaced),
-  // then on confirm removes the worktree and deletes the branch in one step.
-  it("previews then removes the worktree and deletes the branch on confirm", async () => {
-    const deleteBranchWithWorktree = vi.fn().mockResolvedValue("Deleted feature and its worktree");
+  // The combined action opens the delete-branch-and-worktree modal (GL-107),
+  // which owns the impact preview + live progress checklist. The menu just hands
+  // it the subject; it no longer previews or runs the delete inline.
+  it("opens the delete-branch-and-worktree modal with the branch and worktree path", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
       branches: [localBranch("feature")],
       worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
-      deleteBranchWithWorktree,
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
     openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature & worktree…" }));
-    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
-    expect(invokeMock).toHaveBeenCalledWith(
-      "preview_delete_branch",
-      expect.objectContaining({ branch: "feature" }),
-    );
-    expect(useUi.getState().confirm?.warnings).toContain("Recovery warning");
-    useUi.getState().confirm!.onConfirm();
-    await waitFor(() =>
-      expect(deleteBranchWithWorktree).toHaveBeenCalledWith("feature", "/work/repo-feature"),
-    );
+    // The modal request is set (the menu closes); no inline confirm/preview fires.
+    expect(useUi.getState().deleteWorktree).toEqual({
+      branch: "feature",
+      worktreePath: "/work/repo-feature",
+    });
+    expect(useUi.getState().confirm).toBeNull();
   });
 
   // "Remove worktree" (in the Worktree group) keeps the branch — it only removes

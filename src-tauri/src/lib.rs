@@ -19,7 +19,7 @@ use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, DestructivePreview, FileBlame,
     FileChange,
     FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GithubAccount, GithubAccountRef,
-    GithubSignInResult, HandoffProgressEvent, OperationStatus,
+    DeleteWorktreeProgressEvent, GithubSignInResult, HandoffProgressEvent, OperationStatus,
     PrCheck, PrCommit, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
     RemoteInfo, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges,
     WorktreeInfo,
@@ -133,12 +133,28 @@ async fn move_branch_to_worktree(
 
 #[tauri::command]
 async fn delete_branch_with_worktree(
+    app: tauri::AppHandle,
     path: String,
     branch: String,
     from_worktree_path: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::delete_branch_with_worktree(&path, &branch, &from_worktree_path))
-        .await
+    use tauri::Emitter;
+    blocking(move || {
+        git::write::delete_branch_with_worktree(
+            &path,
+            &branch,
+            &from_worktree_path,
+            // Forward each phase to the webview so the delete dialog can tick its
+            // checklist live; a lost event only degrades the progress UI.
+            &|step| {
+                let _ = app.emit(
+                    "delete-worktree-progress",
+                    DeleteWorktreeProgressEvent { step: step.to_string() },
+                );
+            },
+        )
+    })
+    .await
 }
 
 #[tauri::command]

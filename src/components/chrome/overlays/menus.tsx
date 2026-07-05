@@ -472,6 +472,7 @@ export function BranchContextMenu() {
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
   const openHandoff = useUi((s) => s.openHandoff);
+  const openDeleteWorktree = useUi((s) => s.openDeleteWorktree);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openCompare = useRepo((s) => s.openCompare);
@@ -501,7 +502,6 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const deleteBranchWithWorktree = useRepo((s) => s.deleteBranchWithWorktree);
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const run = useBranchOp();
 
@@ -732,7 +732,7 @@ export function BranchContextMenu() {
       onClick: () => requestPrompt({ title: `Set upstream for ${b}`, message: "Remote-tracking ref to track (must already exist).", placeholder: "origin/branch", defaultValue: upstream ?? `origin/${b}`, confirmLabel: "Set upstream", onSubmit: (up) => void run(() => setUpstreamFor(b, up)) }),
     });
     if (!isCurrent && existingWt && !existingWtInfo?.isMain) {
-      danger.push({ label: `Delete ${b} & worktree…`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b} and its worktree?`, message: `Removes the linked worktree at ${existingWt.path}, then deletes ${b}. Unmerged commits may be lost.`, confirmLabel: "Delete branch & worktree", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteBranchWithWorktree(b, existingWt.path)) }) });
+      danger.push({ label: `Delete ${b} & worktree…`, danger: true, onClick: () => { close(); openDeleteWorktree({ branch: b, worktreePath: existingWt.path }); } });
     } else if (!isCurrent && existingWt) {
       danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: "Checked out in the main worktree." });
     } else if (!isCurrent) {

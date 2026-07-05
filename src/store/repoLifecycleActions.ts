@@ -330,6 +330,7 @@ export function createRepoLifecycleActions(
     // Match closeRepo's last-tab branch: a handoff dialog bound to the now-gone
     // worktree must not linger on the welcome screen (GL-42).
     useUi.getState().closeHandoff();
+    useUi.getState().closeDeleteWorktree();
   };
 
   // Route a vanished path (GL-108 + GL-126). A removed linked worktree falls
@@ -537,6 +538,13 @@ export function createRepoLifecycleActions(
       // through loadRepo(destination), and closing it then would drop the result
       // screen mid-hand-off. Only close it when no move is in flight (GL-105).
       if (!useUi.getState().handoffRunning) useUi.getState().closeHandoff();
+      // The delete-branch-and-worktree dialog is repo-bound (its preview/subject
+      // are the old repo's) and — unlike hand-off — never switches repos itself:
+      // success refreshes the same repo. So a genuine switch always invalidates
+      // it; close it unconditionally. A delete already in flight keeps running and
+      // reports via toast (deleteWorktreeRunning stays set until it settles, which
+      // also blocks a second delete from a reopened dialog). GL-107.
+      useUi.getState().closeDeleteWorktree();
 
       // Reset PR state and resolve the new repo's account binding the moment the
       // summary is published — before awaiting the graph — so the ActionBar can't
@@ -771,14 +779,15 @@ export function createRepoLifecycleActions(
         });
         usePulls.getState().reset();
         // Closing the last tab drops to the welcome screen; any open repo-bound
-        // overlay (destructive confirm, reflog-recovery dialog, prompt, or
-        // hand-off dialog) was bound to the now-closed repo, so clear them too.
-        // The switch-to-neighbour branch below routes through `loadRepo`, which
-        // already does this. GL-42.
+        // overlay (destructive confirm, reflog-recovery dialog, prompt, hand-off,
+        // or delete-branch-and-worktree dialog) was bound to the now-closed repo,
+        // so clear them too. The switch-to-neighbour branch below routes through
+        // `loadRepo`, which already does this. GL-42 / GL-107.
         useUi.getState().closeConfirm();
         useUi.getState().closeRecovery();
         useUi.getState().closePrompt();
         useUi.getState().closeHandoff();
+        useUi.getState().closeDeleteWorktree();
         return;
       }
       const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0];

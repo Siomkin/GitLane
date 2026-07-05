@@ -245,6 +245,17 @@ pub struct HandoffProgressEvent {
     pub step: String,
 }
 
+/// Payload of the `delete-worktree-progress` Tauri event emitted while
+/// `delete_branch_with_worktree` runs — one per phase as it begins, so the
+/// delete-branch-and-worktree dialog can tick its step checklist live. `step` is
+/// one of the ids documented on
+/// [`crate::git::write::delete_branch_with_worktree`].
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteWorktreeProgressEvent {
+    pub step: String,
+}
+
 /// A linked worktree entry for the sidebar's WORKTREES group.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
