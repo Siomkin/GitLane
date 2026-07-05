@@ -541,10 +541,14 @@ export function createRepoWriteActions(
       return api.previewDeleteBranch(summary.path, branch);
     },
 
-    deleteBranchWithWorktree: (branch, fromWorktreePath) => {
-      const { summary } = get();
-      if (!summary) return Promise.reject(new Error("No repository"));
-      return api.deleteBranchWithWorktree(summary.path, branch, fromWorktreePath);
+    // `repoPath` is passed explicitly (not read from `get().summary`) so the delete
+    // is pinned to the repo the dialog started on. The op runs after an `await` in
+    // the dialog's run hook, and a repo switch landing in that window would
+    // otherwise retarget the delete at the newly-active repo with the old
+    // branch/worktree subject. GL-107 review.
+    deleteBranchWithWorktree: (branch, fromWorktreePath, repoPath) => {
+      if (!repoPath) return Promise.reject(new Error("No repository"));
+      return api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath);
     },
 
     deleteRemoteBranch: (remote, branch) =>

@@ -6,13 +6,17 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 // tests can drive the checklist. The IPC boundary is mocked at `invoke` level
 // (the canonical pattern — see src/test/README.md), so the real api wrappers and
 // stores run.
-const { progressListeners, invokeMock } = vi.hoisted(() => ({
+const { progressListeners, invokeMock, listenGate } = vi.hoisted(() => ({
   progressListeners: [] as Array<(e: { payload: { step: string } }) => void>,
   invokeMock: vi.fn(),
+  // When set, `listen()` awaits this before registering — lets a test hold the
+  // listener-setup window open and interleave a repo switch (GL-107 race repro).
+  listenGate: { current: null as Promise<void> | null },
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (_event: string, cb: (e: { payload: { step: string } }) => void) => {
+    if (listenGate.current) await listenGate.current;
     progressListeners.push(cb);
     return () => {
       const i = progressListeners.indexOf(cb);
@@ -72,6 +76,7 @@ describe("DeleteWorktreeDialog", () => {
   beforeEach(() => {
     progressListeners.length = 0;
     invokeMock.mockReset();
+    listenGate.current = null;
     useUi.setState({ deleteWorktree: null, deleteWorktreeRunning: false, toast: null });
     // An open repo + a stub refresh the run hook can await after the delete.
     useRepo.setState({
@@ -131,6 +136,40 @@ describe("DeleteWorktreeDialog", () => {
     // The pinned repo no longer matches the active one, so the refresh is skipped
     // — refreshing /work/other would reload the wrong graph.
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("pins the delete to the starting repo when a switch lands during listener setup", async () => {
+    const del = arm();
+    useRepo.setState({
+      summary: { path: "/work/repo" } as never,
+      refresh: vi.fn().mockResolvedValue(undefined) as never,
+    });
+    // Hold the listener-setup window open so a repo switch can interleave between
+    // the click and the delete invoke (the exact race the reviewer flagged).
+    let openGate!: () => void;
+    listenGate.current = new Promise<void>((res) => (openGate = res));
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    const button = await screen.findByRole("button", { name: "Delete anyway" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+
+    fireEvent.click(button);
+    // Repo switch lands while listen() is still pending (loadRepo would close the
+    // dialog; the background run keeps going). Then let the listener finish.
+    useRepo.setState({ summary: { path: "/work/other" } as never });
+    await act(async () => {
+      openGate();
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(invokeMock.mock.calls.some(([cmd]) => cmd === "delete_branch_with_worktree")).toBe(true),
+    );
+    // The delete targets the repo the dialog started on (/work/repo), never the
+    // now-active /work/other.
+    const call = invokeMock.mock.calls.find(([cmd]) => cmd === "delete_branch_with_worktree");
+    expect(call?.[1]).toMatchObject({ path: "/work/repo", branch: "feature" });
+    await act(async () => del.resolve("Deleted feature and its worktree"));
   });
 
   it("shows the failure inline when the delete rejects", async () => {

@@ -347,10 +347,16 @@ export interface RepoState {
    * so it does not refresh. */
   previewDeleteBranch: (branch: string) => Promise<DestructivePreview>;
   /** Remove the linked worktree holding `branch`, then delete the branch — the
-   * one-step path when a branch's Delete is locked by its worktree. Does NOT
-   * refresh: the GL-107 dialog drives the graph refresh itself so it can surface
-   * it as the checklist's "Refreshing" row (see useDeleteWorktreeRun). */
-  deleteBranchWithWorktree: (branch: string, fromWorktreePath: string) => Promise<string>;
+   * one-step path when a branch's Delete is locked by its worktree. `repoPath` is
+   * explicit (not read from the live summary) so the op stays pinned to the repo
+   * the dialog started on across a mid-run switch. Does NOT refresh: the GL-107
+   * dialog drives the graph refresh itself so it can surface it as the checklist's
+   * "Refreshing" row (see useDeleteWorktreeRun). */
+  deleteBranchWithWorktree: (
+    branch: string,
+    fromWorktreePath: string,
+    repoPath: string,
+  ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
   deleteRemoteBranch: (remote: string, branch: string) => Promise<string>;

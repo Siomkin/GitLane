@@ -54,11 +54,12 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
     useUi.getState().setDeleteWorktreeRunning(true);
     setPhase("running");
     setReached(0);
-    // The repo this delete acts on, captured now. The delete itself targets this
-    // repo (the store action reads summary.path at invoke time, before any await),
-    // but the post-op refresh runs after an await — pin it to this path so a
-    // mid-run repo switch can't refresh the newly-active repo instead. loadRepo
-    // also closes the dialog on switch; this guards the background/in-flight case.
+    // The repo this delete acts on, captured now and passed explicitly into both
+    // the delete and the refresh guard. The op runs after `await listen(...)`
+    // below, and a repo switch landing in that window closes the dialog but leaves
+    // this background body running — pinning the path keeps the delete (and the
+    // post-op refresh) targeted at the repo the user acted on, never the
+    // newly-active one. GL-107 review.
     const repoAtStart = useRepo.getState().summary?.path ?? null;
     void (async () => {
       // Subscribe before invoking so the earliest steps can't be missed.
@@ -75,9 +76,10 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         },
       );
       try {
+        if (!repoAtStart) throw new Error("No repository");
         const msg = await useRepo
           .getState()
-          .deleteBranchWithWorktree(req.branch, req.worktreePath);
+          .deleteBranchWithWorktree(req.branch, req.worktreePath, repoAtStart);
         // The backend emits no event for the graph refresh — advance to the
         // terminal "Refreshing" row ourselves so it spins while the store reloads.
         // (The store action deliberately skips runOp's refresh so we own it here.)
