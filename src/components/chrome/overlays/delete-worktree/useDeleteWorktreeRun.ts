@@ -46,8 +46,12 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
   const inFlight = useRef(false);
 
   const start = () => {
-    if (inFlight.current) return;
+    // Two guards: `inFlight` stops a double-click on this instance; the store
+    // latch stops a *reopened* dialog (a fresh hook with inFlight=false) from
+    // starting a second delete while the first still runs in the background.
+    if (inFlight.current || useUi.getState().deleteWorktreeRunning) return;
     inFlight.current = true;
+    useUi.getState().setDeleteWorktreeRunning(true);
     setPhase("running");
     setReached(0);
     void (async () => {
@@ -56,6 +60,10 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         "delete-worktree-progress",
         ({ payload }) => {
           const i = deleteWorktreeStepIndex(payload.step);
+          // Ignore events after the body unmounted (mid-run close) — the run
+          // finishes in the background and reports via toast; touching state then
+          // is a no-op at best and a stray warning at worst.
+          if (!mounted.current) return;
           // Monotonic: a stale/duplicate event never moves the checklist backwards.
           if (i >= 0) setReached((r) => Math.max(r, i));
         },
@@ -87,6 +95,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         setPhase("error");
       } finally {
         inFlight.current = false;
+        useUi.getState().setDeleteWorktreeRunning(false);
         unlisten();
       }
     })();

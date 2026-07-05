@@ -72,7 +72,7 @@ describe("DeleteWorktreeDialog", () => {
   beforeEach(() => {
     progressListeners.length = 0;
     invokeMock.mockReset();
-    useUi.setState({ deleteWorktree: null, toast: null });
+    useUi.setState({ deleteWorktree: null, deleteWorktreeRunning: false, toast: null });
     // An open repo + a stub refresh the run hook can await after the delete.
     useRepo.setState({
       summary: { path: "/work/repo" } as never,
@@ -163,6 +163,36 @@ describe("DeleteWorktreeDialog", () => {
     await waitFor(() =>
       expect(useUi.getState().toast?.message).toBe("Deleted feature and its worktree"),
     );
+  });
+
+  it("a reopened dialog can't start a second delete while the first is still in flight", async () => {
+    const del = arm();
+    openDialog();
+    const first = render(<DeleteWorktreeDialog />);
+    const button = await screen.findByRole("button", { name: "Delete anyway" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+    expect(useUi.getState().deleteWorktreeRunning).toBe(true);
+
+    // Close mid-run (the body unmounts; the delete keeps running in the
+    // background) and reopen a fresh dialog — its hook has inFlight=false, so only
+    // the store latch stops a second invoke.
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    first.unmount();
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    const secondButton = await screen.findByRole("button", { name: "Delete anyway" });
+    await waitFor(() => expect(secondButton).not.toBeDisabled());
+    fireEvent.click(secondButton);
+
+    // The store latch swallowed the second run — still exactly one delete IPC.
+    expect(
+      invokeMock.mock.calls.filter(([cmd]) => cmd === "delete_branch_with_worktree"),
+    ).toHaveLength(1);
+    // Let the first delete settle so the latch clears.
+    await act(async () => del.resolve("Deleted feature and its worktree"));
+    expect(useUi.getState().deleteWorktreeRunning).toBe(false);
   });
 
   it("shows the success screen under StrictMode's dev double-mount", async () => {

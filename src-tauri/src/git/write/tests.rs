@@ -468,9 +468,14 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
     let linked_str = linked.to_str().unwrap();
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
 
-    let result = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
-        .expect("delete branch and its worktree");
+    // The dialog's checklist depends on these ids firing in this order, one per
+    // phase as it begins (GL-107).
+    let steps = std::cell::RefCell::new(Vec::new());
+    let result =
+        delete_branch_with_worktree(repo.path(), "feature", linked_str, &|s| steps.borrow_mut().push(s))
+            .expect("delete branch and its worktree");
     assert_eq!(result, "Deleted feature and its worktree");
+    assert_eq!(*steps.borrow(), ["removeWorktree", "deleteBranch"]);
 
     // The branch is gone...
     let branches = repo.git(&["branch", "--list", "feature"]);

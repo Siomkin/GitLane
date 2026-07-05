@@ -380,6 +380,10 @@ interface UiState {
   handoffRunning: boolean;
   /** Pending delete-branch-and-worktree modal (GL-107), null = none open. */
   deleteWorktree: DeleteWorktreeRequest | null;
+  /** True while a delete-branch-and-worktree op is in flight. A store-level latch
+   * (the dialog's own `inFlight` ref dies when it closes mid-run), so a reopened
+   * dialog can't start a second delete racing the first on shared git state. */
+  deleteWorktreeRunning: boolean;
 
   toast: Toast | null;
   /** Floating tooltip (e.g. full branch name on hover of a truncated pill). */
@@ -515,6 +519,8 @@ interface UiState {
   /** Open the delete-branch-and-worktree modal (GL-107). */
   openDeleteWorktree: (req: DeleteWorktreeRequest) => void;
   closeDeleteWorktree: () => void;
+  /** Flag a delete-branch-and-worktree op as in flight (set by the dialog's run hook). */
+  setDeleteWorktreeRunning: (running: boolean) => void;
 
   showToast: (message: string, tone?: "ok" | "error") => void;
   dismissToast: () => void;
@@ -609,6 +615,7 @@ export const useUi = create<UiState>()(
   handoff: null,
   handoffRunning: false,
   deleteWorktree: null,
+  deleteWorktreeRunning: false,
 
   toast: null,
   tooltip: null,
@@ -795,8 +802,13 @@ export const useUi = create<UiState>()(
     set((s) => (s.handoffRunning === running ? s : { handoffRunning: running })),
 
   openDeleteWorktree: (req) => set({ ...noMenus, deleteWorktree: req }),
+  // Deliberately does NOT clear `deleteWorktreeRunning`: a dismissed dialog leaves
+  // the delete running, and the flag must hold until it settles so a reopened
+  // dialog can't start a second, racing delete (mirrors handoff, GL-107).
   closeDeleteWorktree: () =>
     set((s) => (s.deleteWorktree === null ? s : { deleteWorktree: null })),
+  setDeleteWorktreeRunning: (running) =>
+    set((s) => (s.deleteWorktreeRunning === running ? s : { deleteWorktreeRunning: running })),
 
   showToast: (message, tone = "ok") => {
     const id = (toastSeq += 1);
