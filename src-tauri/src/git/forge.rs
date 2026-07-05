@@ -154,6 +154,28 @@ pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
     None
 }
 
+/// The repo's default push remote name resolved from a path (see
+/// [`default_remote_name`]). For commands that need a concrete remote when the
+/// frontend doesn't pass one (e.g. tag push).
+pub fn default_remote(path: &str) -> Option<String> {
+    let repo = Repository::discover(path).ok()?;
+    default_remote_name(&repo)
+}
+
+/// The host of a named remote's URL (push URL preferred, since that's where a
+/// push lands), regardless of whether the forge is recognised. Per-remote auth
+/// validates the bound account against this host — plain host equality, so
+/// GitHub Enterprise hosts work without being classifiable.
+pub fn remote_host_for(path: &str, remote: &str) -> Option<String> {
+    let repo = Repository::discover(path).ok()?;
+    let remote = repo.find_remote(remote).ok()?;
+    let host = [remote.pushurl().ok().flatten(), remote.url().ok()]
+        .into_iter()
+        .flatten()
+        .find_map(remote_host);
+    host
+}
+
 /// Extract the `owner/repo` path from a remote URL (scheme/host stripped,
 /// trailing `.git` removed). Returns None when no path component is present.
 fn remote_path(url: &str) -> Option<String> {

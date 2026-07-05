@@ -3,9 +3,10 @@ use super::operands::ensure_operand;
 use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, cherry_pick, cherry_pick_many,
-    clear_repo_identity, continue_operation, create_tag, delete_branch_with_worktree,
-    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch, fetch,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_push_remote, cherry_pick,
+    cherry_pick_many, clear_repo_identity, continue_operation, create_tag,
+    delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
+    fast_forward_branch, fetch, head_push_remote, publish_remote,
     mark_conflict_resolved, merge, move_branch_to_worktree, preview_delete_branch,
     preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset, pull,
     publish_branch, reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file,
@@ -1524,7 +1525,7 @@ fn fetch_imports_remote_only_tags() {
         "test setup should start with the remote tag absent locally",
     );
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(result.is_ok(), "fetch failed: {result:?}");
 
     let after = clone_repo.git(&["tag", "--list", "0.1.1"]);
@@ -1582,7 +1583,7 @@ fn fetch_tag_import_honors_skip_fetch_all_remotes() {
     clone_repo.git_ok(&["remote", "add", "backup", unreachable.to_str().unwrap()]);
     clone_repo.git_ok(&["config", "remote.backup.skipFetchAll", "true"]);
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(
         result.is_ok(),
         "skipped unreachable remote should not fail tag import: {result:?}",
@@ -1644,7 +1645,7 @@ fn fetch_preserves_local_only_tags_under_fetch_prune() {
     clone_repo.git_ok(&["config", "fetch.prune", "true"]);
     clone_repo.git_ok(&["tag", "keep-me", "HEAD"]);
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(result.is_ok(), "fetch failed: {result:?}");
 
     let local_only = clone_repo.git(&["tag", "--list", "keep-me"]);
@@ -1728,7 +1729,7 @@ fn fetch_ignores_tag_clobber_rejection_after_branch_updates() {
         .trim()
         .to_string();
 
-    let result = fetch(clone_repo.path(), None);
+    let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(
         result.is_ok(),
         "tag clobber rejection should not fail fetch: {result:?}"
@@ -3147,5 +3148,147 @@ fn reset_targets_a_branch_over_a_same_named_tag() {
         rev_parse(&repo, "HEAD"),
         branch_tip,
         "reset must land on the branch tip, not the same-named tag at base"
+    );
+}
+
+#[test]
+fn push_remote_helpers_resolve_branch_config_and_fall_back_to_origin() {
+    let repo = TempRepo::new("push-remote-helpers");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("f.txt"), "x\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+
+    // No branch config → origin fallback (mirrors push_target).
+    assert_eq!(branch_push_remote(repo.path(), "main"), "origin");
+    assert_eq!(head_push_remote(repo.path()), "origin");
+
+    // The configured push remote wins, for the named branch and for HEAD.
+    repo.git_ok(&["config", "branch.main.remote", "mirror"]);
+    assert_eq!(branch_push_remote(repo.path(), "main"), "mirror");
+    assert_eq!(head_push_remote(repo.path()), "mirror");
+}
+
+#[test]
+fn publish_remote_splits_on_longest_configured_remote() {
+    let repo = TempRepo::new("publish-remote-split");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["remote", "add", "origin", "https://example.test/a.git"]);
+    // git permits a slash in a remote name; configure via config keys so the
+    // test doesn't depend on `git remote add` accepting it.
+    repo.git_ok(&["config", "remote.origin/x.url", "https://example.test/b.git"]);
+    repo.git_ok(&[
+        "config",
+        "remote.origin/x.fetch",
+        "+refs/heads/*:refs/remotes/origin/x/*",
+    ]);
+
+    assert_eq!(
+        publish_remote(repo.path(), "origin/x/feature").expect("split"),
+        "origin/x",
+        "the longest configured remote name must win"
+    );
+    assert_eq!(
+        publish_remote(repo.path(), "origin/feature").expect("split"),
+        "origin"
+    );
+    assert!(publish_remote(repo.path(), "no-slash").is_err());
+}
+
+#[test]
+fn remote_host_for_prefers_the_push_url_host() {
+    let repo = TempRepo::new("remote-host-for");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/owner/repo.git"]);
+    assert_eq!(
+        crate::git::forge::remote_host_for(repo.path(), "origin").as_deref(),
+        Some("github.com")
+    );
+
+    // A separate push URL drives pushes, so it drives auth validation too.
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "git@bitbucket.org:team/repo.git",
+    ]);
+    assert_eq!(
+        crate::git::forge::remote_host_for(repo.path(), "origin").as_deref(),
+        Some("bitbucket.org")
+    );
+
+    assert_eq!(
+        crate::git::forge::remote_host_for(repo.path(), "missing"),
+        None
+    );
+}
+
+#[test]
+fn fetch_continues_past_a_failing_remote_and_labels_the_output() {
+    let root = TempRepo::new("fetch-multi-remote");
+    let origin = root.0.join("origin.git");
+    let source = root.0.join("source");
+    let clone = root.0.join("clone");
+
+    Command::new("git")
+        .args(["init", "--bare", "-q", origin.to_str().unwrap()])
+        .output()
+        .expect("git init bare launches");
+    Command::new("git")
+        .args(["init", "-q", source.to_str().unwrap()])
+        .output()
+        .expect("git init launches");
+
+    let source_repo = TempRepo(source);
+    source_repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    source_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    source_repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(source_repo.0.join("file.txt"), b"v1\n").unwrap();
+    source_repo.git_ok(&["add", "file.txt"]);
+    source_repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    source_repo.git_ok(&["remote", "add", "origin", origin.to_str().unwrap()]);
+    source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+
+    let clone_out = Command::new("git")
+        .args([
+            "clone",
+            "-q",
+            origin.to_str().unwrap(),
+            clone.to_str().unwrap(),
+        ])
+        .output()
+        .expect("git clone launches");
+    assert!(clone_out.status.success(), "clone failed");
+    let clone_repo = TempRepo(clone);
+    clone_repo.git_ok(&[
+        "remote",
+        "add",
+        "broken",
+        root.0.join("missing.git").to_str().unwrap(),
+    ]);
+
+    // Advance origin so the reachable remote has something to fetch.
+    std::fs::write(source_repo.0.join("file.txt"), b"v2\n").unwrap();
+    source_repo.git_ok(&["add", "file.txt"]);
+    source_repo.git_ok(&["commit", "-q", "-m", "second"]);
+    source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
+
+    let err = fetch(clone_repo.path(), &std::collections::HashMap::new())
+        .expect_err("an unreachable remote must fail the fetch overall");
+    assert!(
+        err.contains("broken"),
+        "the error should name the failing remote:\n{err}"
+    );
+
+    // The reachable remote was still fetched despite the failure.
+    let fetched = rev_parse(&clone_repo, "refs/remotes/origin/main");
+    let expected = rev_parse(&source_repo, "HEAD");
+    assert_eq!(
+        fetched, expected,
+        "origin must be up to date even though 'broken' failed"
     );
 }

@@ -140,6 +140,10 @@ export interface RepoState {
   /** The open repo's remote forge — drives the provider indicator and gates the
    * GitHub-only PR path (no `gh` resolution for non-GitHub remotes). */
   forge: RepoForge | null;
+  /** The open repo's configured remotes. Loaded with the other secondary reads
+   * on open/refresh; per-remote account resolution (GL-129) and the Remotes
+   * panel both read from here so they agree on the remote list. */
+  remotes: RemoteInfo[];
   graph: RepoGraph | null;
   branches: BranchInfo[];
   reflogEntries: ReflogEntry[];
@@ -329,7 +333,8 @@ export interface RepoState {
    * pass `alsoRemote` to delete it from origin in the same operation. */
   deleteTag: (name: string, alsoRemote?: boolean) => Promise<string>;
   /** Push a tag to origin as the repo's bound account. */
-  pushTag: (name: string) => Promise<string>;
+  /** Push a tag to `remote` (the default push remote when omitted). */
+  pushTag: (name: string, remote?: string) => Promise<string>;
   /** Remove a linked worktree (`force` drops the dirty/locked check). */
   removeWorktree: (worktreePath: string, force?: boolean) => Promise<string>;
   /** Hand a branch off from one worktree to another (GL-74): detach the source,
@@ -444,7 +449,8 @@ export interface RepoState {
   pull: () => Promise<void>;
   push: () => Promise<void>;
   // ---- remotes (Repository settings → Remotes) ----
-  /** List the open repo's configured remotes. */
+  /** Reload the open repo's configured remotes into [`remotes`] and re-resolve
+   * the per-remote account bindings, returning the fresh list. */
   listRemotes: () => Promise<RemoteInfo[]>;
   /** Add a remote `name` → `url` (`git remote add`). */
   addRemote: (name: string, url: string) => Promise<string>;
@@ -480,6 +486,7 @@ export type RepoDataState = Pick<
   RepoState,
   | "summary"
   | "forge"
+  | "remotes"
   | "graph"
   | "branches"
   | "reflogEntries"
@@ -528,6 +535,7 @@ export function createInitialRepoData(
   return {
     summary: null,
     forge: null,
+    remotes: [],
     graph: null,
     branches: [],
     reflogEntries: [],

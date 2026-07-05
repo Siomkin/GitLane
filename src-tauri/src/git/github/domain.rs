@@ -55,6 +55,15 @@ pub enum GithubError {
         repo_host: String,
         account_host: String,
     },
+    /// A per-remote auth pair whose account can't authenticate the remote's
+    /// host (GL-129). Distinct from [`Self::HostMismatch`], which speaks about
+    /// "this repository" — here the message names the specific remote so a
+    /// multi-remote repo's error points at the right row in the Remotes panel.
+    RemoteHostMismatch {
+        remote: String,
+        remote_host: String,
+        account_host: String,
+    },
     PermissionDenied {
         operation: &'static str,
     },
@@ -133,6 +142,9 @@ impl GithubError {
             }
             Self::HostMismatch { repo_host, account_host } => format!(
                 "The selected account is for {account_host}, but this repository resolves to {repo_host}. Choose an account for the same host before continuing."
+            ),
+            Self::RemoteHostMismatch { remote, remote_host, account_host } => format!(
+                "Remote '{remote}' is on {remote_host}, but the selected account signs in to {account_host}. Pick an account for {remote_host} or use system git credentials for this remote."
             ),
             Self::PermissionDenied { operation } => {
                 format!("GitHub denied permission for {operation}. Check the selected account and repository access.")

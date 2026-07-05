@@ -38,8 +38,9 @@ pub use recovery::{
     preview_reset, reflog_entries,
 };
 pub use remotes::{
-    add_remote, delete_remote_branch, delete_remote_tag, fetch, force_push, publish_branch, pull,
-    push, push_branch, push_tag, remove_remote, set_remote_url,
+    add_remote, branch_push_remote, delete_remote_branch, delete_remote_tag, fetch, force_push,
+    head_push_remote, publish_branch, publish_remote, pull, push, push_branch, push_tag,
+    remove_remote, set_remote_url,
 };
 pub use staging::{
     apply_hunk, apply_line, commit, discard_all, discard_file, stage_all, stage_file, stage_files,

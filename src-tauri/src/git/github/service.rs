@@ -104,17 +104,58 @@ impl GithubService {
         self.gh.accounts()
     }
 
-    pub fn git_auth(
+    /// Resolve git auth for a push/fetch that targets one named `remote`,
+    /// validating the account against **that remote's host** instead of the
+    /// repo's default remote (GL-129). Plain host equality — no forge
+    /// classification (so GitHub Enterprise hosts pass) and no
+    /// `resolve_repository` network round-trip: a push needs only a token whose
+    /// host matches the remote being touched.
+    pub fn git_auth_for_remote(
         &self,
         workdir: &str,
+        remote: &str,
         account: Option<&GithubAccountRef>,
     ) -> Result<Option<GithubGitAuth>, GithubError> {
-        if account.is_none() {
+        let Some(account) = account.map(normalize_account_ref) else {
             return Ok(None);
+        };
+        let provider = self.provider_for(Some(&account))?;
+        validate_remote_account(workdir, remote, &account)?;
+        provider.token_for_git(Some(&account))
+    }
+
+    /// Resolve auth for several `(remote, account)` pairs in one pass (the
+    /// multi-remote fetch). Every pair is host-validated individually, but the
+    /// token lookup (a `gh` subprocess) is deduplicated per account, so two
+    /// remotes bound to the same account cost one resolution. Remotes whose
+    /// account yields no token are omitted — the fetch falls back to system
+    /// credentials for them.
+    pub fn git_auth_for_remotes(
+        &self,
+        workdir: &str,
+        entries: &[(String, GithubAccountRef)],
+    ) -> Result<Vec<(String, GithubGitAuth)>, GithubError> {
+        let mut tokens: std::collections::HashMap<String, Option<GithubGitAuth>> =
+            std::collections::HashMap::new();
+        let mut out = Vec::new();
+        for (remote, account) in entries {
+            let account = normalize_account_ref(account);
+            let provider = self.provider_for(Some(&account))?;
+            validate_remote_account(workdir, remote, &account)?;
+            let key = format!("{}:{}:{}", account.provider, account.host, account.account_id);
+            let auth = match tokens.get(&key) {
+                Some(cached) => cached.clone(),
+                None => {
+                    let resolved = provider.token_for_git(Some(&account))?;
+                    tokens.insert(key, resolved.clone());
+                    resolved
+                }
+            };
+            if let Some(auth) = auth {
+                out.push((remote.clone(), auth));
+            }
         }
-        let account = account.map(normalize_account_ref);
-        let (provider, ctx) = self.context(workdir, account.as_ref())?;
-        provider.token_for_git(ctx.account.as_ref())
+        Ok(out)
     }
 
     pub fn list_prs(
@@ -316,4 +357,29 @@ impl GithubService {
             })
         }
     }
+}
+
+/// An account may only authenticate a remote whose URL host equals the
+/// account's host — the credential-helper injection is host-scoped, so a
+/// mismatched pair would silently push with the wrong (or no) token. Host
+/// equality alone, no forge classification: a GitHub Enterprise remote's host
+/// isn't recognisable by pattern but must still validate.
+fn validate_remote_account(
+    workdir: &str,
+    remote: &str,
+    account: &GithubAccountRef,
+) -> Result<(), GithubError> {
+    let Some(host) = forge::remote_host_for(workdir, remote) else {
+        return Err(GithubError::CommandFailed(format!(
+            "Remote '{remote}' was not found or has no URL configured."
+        )));
+    };
+    if host != account.host {
+        return Err(GithubError::RemoteHostMismatch {
+            remote: remote.to_string(),
+            remote_host: host,
+            account_host: account.host.clone(),
+        });
+    }
+    Ok(())
 }

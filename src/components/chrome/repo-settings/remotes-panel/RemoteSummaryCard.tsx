@@ -1,7 +1,7 @@
 import { cn } from "../../../../lib/cn";
 import type { RemoteInfo } from "../../../../lib/api";
 import { CloudIcon, GitHubIcon } from "../../../ui/icons";
-import { detectRemoteUrl, providerSupportsPrs } from "./remotes";
+import { detectRemoteUrl, providerSupportsPrs } from "../../../../lib/remotes";
 
 /** Headline card for the default push remote — its host, the remote name, PR
  * capability, and the bound PR account (when one is set). */

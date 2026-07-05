@@ -38,9 +38,18 @@ describe("repoRemoteActions", () => {
     useRepo.setState({ summary });
     const { listRemotes, addRemote, setRemoteUrl, removeRemote } = useRepo.getState();
 
-    invokeMock.mockResolvedValueOnce([{ name: "origin" }]);
-    await expect(listRemotes()).resolves.toEqual([{ name: "origin" }]);
-    expect(invokeMock).toHaveBeenLastCalledWith("list_remotes", { path: "/repo" });
+    const origin = {
+      name: "origin",
+      fetchUrl: "https://example.com/o/r.git",
+      pushUrl: "https://example.com/o/r.git",
+      isDefault: true,
+    };
+    invokeMock.mockResolvedValueOnce([origin]);
+    await expect(listRemotes()).resolves.toEqual([origin]);
+    // Not the *last* call: publishing the list re-resolves the per-remote
+    // account bindings (GL-129), which reads the repo identity afterwards.
+    expect(invokeMock).toHaveBeenCalledWith("list_remotes", { path: "/repo" });
+    expect(useRepo.getState().remotes).toEqual([origin]);
 
     await addRemote("upstream", "https://example.com/u/r.git");
     expect(invokeMock).toHaveBeenLastCalledWith("add_remote", {
@@ -64,7 +73,10 @@ describe("repoRemoteActions", () => {
     useRepo.setState({ summary });
     const { listRemotes } = useRepo.getState();
     useRepo.setState({ summary: { ...summary, path: "/other" } });
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "list_remotes" ? [] : ""),
+    );
     await listRemotes();
-    expect(invokeMock).toHaveBeenLastCalledWith("list_remotes", { path: "/other" });
+    expect(invokeMock).toHaveBeenCalledWith("list_remotes", { path: "/other" });
   });
 });

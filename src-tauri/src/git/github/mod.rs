@@ -52,12 +52,30 @@ pub fn accounts() -> Result<Vec<GithubAccount>, String> {
     ipc(GithubService::default().accounts())
 }
 
-pub fn git_auth(
+/// Auth for a push-family operation targeting one named `remote` (GL-129).
+/// Validates the account against that remote's host, then resolves the token.
+pub fn git_auth_for_remote(
     workdir: &str,
+    remote: &str,
     account: Option<&GithubAccountRef>,
 ) -> Result<Option<(String, String)>, String> {
-    ipc(GithubService::default().git_auth(workdir, account))
+    ipc(GithubService::default().git_auth_for_remote(workdir, remote, account))
         .map(|auth| auth.map(|auth| (auth.host, auth.token)))
+}
+
+/// Auth for a multi-remote fetch: validates each `(remote, account)` pair and
+/// resolves tokens with per-account deduplication. Returns `remote → (host,
+/// token)` pairs for the remotes that resolved one.
+pub fn git_auth_for_remotes(
+    workdir: &str,
+    entries: &[(String, GithubAccountRef)],
+) -> Result<Vec<(String, (String, String))>, String> {
+    ipc(GithubService::default().git_auth_for_remotes(workdir, entries)).map(|auths| {
+        auths
+            .into_iter()
+            .map(|(remote, auth)| (remote, (auth.host, auth.token)))
+            .collect()
+    })
 }
 
 pub fn list_prs(

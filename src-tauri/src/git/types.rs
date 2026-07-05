@@ -333,6 +333,12 @@ pub struct BranchInfo {
     /// branches. Lets the frontend address the remote/branch split without
     /// re-guessing it from the first `/`.
     pub remote: Option<String>,
+    /// For a local branch, its configured push/fetch remote
+    /// (`branch.<name>.remote`) when set and not the local-tracking `"."`.
+    /// This is the remote a push of this branch targets, so the frontend picks
+    /// the matching per-remote account (GL-129) without re-deriving it from
+    /// the upstream string. `None` for remote branches.
+    pub upstream_remote: Option<String>,
     /// Ahead/behind state against the configured upstream. Remote branches do
     /// not have their own upstream state, so this is `None` for them.
     pub sync: Option<BranchSyncState>,
@@ -688,6 +694,16 @@ pub struct GithubAccountRef {
     pub account_id: String,
     /// Display/login name. `gh auth token` still requires this alongside host.
     pub login: String,
+}
+
+/// One `remote → account` auth pair for the multi-remote fetch (GL-129).
+/// Input-only: the frontend sends the bound account per remote; remotes
+/// without an entry fetch through the system credential helpers / SSH.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteAccountRef {
+    pub remote: String,
+    pub account: GithubAccountRef,
 }
 
 /// A GitHub account `gh` is logged into. A repo is bound to one of these; its

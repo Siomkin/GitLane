@@ -24,6 +24,9 @@ export const RemotesPanel = () => {
   const setRemoteUrl = useRepo((s) => s.setRemoteUrl);
   const removeRemote = useRepo((s) => s.removeRemote);
   const repoAccountRef = useAccounts((s) => s.repoAccountRef);
+  const accounts = useAccounts((s) => s.accounts);
+  const repoRemoteAccountIds = useAccounts((s) => s.repoRemoteAccountIds);
+  const setRemoteAccount = useAccounts((s) => s.setRemoteAccount);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -150,7 +153,16 @@ export const RemotesPanel = () => {
           </div>
           <div className="mt-3 flex flex-col gap-2.5">
             {remotes.map((r) => (
-              <RemoteRow key={r.name} remote={r} busy={busy} onSave={handleSave} onRemove={handleRemove} />
+              <RemoteRow
+                key={r.name}
+                remote={r}
+                busy={busy}
+                accounts={accounts}
+                selectedAccountId={repoRemoteAccountIds[r.name] ?? null}
+                onPickAccount={(remote, id) => void setRemoteAccount(remote, id)}
+                onSave={handleSave}
+                onRemove={handleRemove}
+              />
             ))}
             <AddRemoteForm busy={busy} onAdd={handleAdd} />
           </div>

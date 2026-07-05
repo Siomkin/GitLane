@@ -158,9 +158,12 @@ describe("IdentityPanel", () => {
       repoAccountId: null,
     });
     render(<IdentityPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+    // Since GL-129 the picker lives on the Remotes rows — Zone B only deep-links
+    // there. Binding goes through the same store action the picker uses.
+    fireEvent.click(screen.getByRole("button", { name: "Choose account" }));
+    expect(useUi.getState().repoSettingsSection).toBe("remotes");
     invokeMock.mockClear();
-    fireEvent.click(screen.getByRole("radio", { name: "@octocat" }));
+    void useAccounts.getState().setRemoteAccount("origin", "gh:github.com:1");
     expect(useAccounts.getState().repoAccountId).toBe("gh:github.com:1");
     // Binding a PR account must not write the commit identity.
     const identityWrites = invokeMock.mock.calls.filter(

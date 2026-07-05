@@ -1,13 +1,15 @@
 // Account state (Tier 2) for the open repo, plus the current commit-identity
 // *read* (`repoIdentity`). Split out of `ui.ts` (the view-chrome store) because
 // it owns a distinct subsystem: the provider-aware GitHub account list and the
-// per-repo account binding that drives PR/push/fetch auth. Commit identity is
-// *owned* by `profiles.ts` (Tier 1) — it does the writes via git profiles; this
-// store only holds/reconciles the effective `repoIdentity` read back from git
-// config (via `pinRepoIdentity` / `hydrateRepoIdentity`). The repo path is
-// resolved lazily via `useRepo` — the same cross-store pattern `pulls.ts` uses.
-// Server-side token resolution is unchanged: commands receive account metadata,
-// never a token.
+// **per-remote** account bindings that drive PR/push/fetch auth (GL-129) —
+// each remote of a repo can authenticate as its own account, with the default
+// (PR) remote's binding mirrored into `repoAccountId`/`repoAccountRef` for the
+// PR feature surface. Commit identity is *owned* by `profiles.ts` (Tier 1) —
+// it does the writes via git profiles; this store only holds/reconciles the
+// effective `repoIdentity` read back from git config (via `pinRepoIdentity` /
+// `hydrateRepoIdentity`). The repo path is resolved lazily via `useRepo` — the
+// same cross-store pattern `pulls.ts` uses. Server-side token resolution is
+// unchanged: commands receive account metadata, never a token.
 
 import { create } from "zustand";
 
@@ -19,7 +21,16 @@ import {
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
+import { detectRemoteUrl } from "../lib/remotes";
 import { repoIdentityKey } from "../lib/worktrees";
+import {
+  accountKey,
+  accountMatchesLegacy,
+  isV3Entry,
+  migrateRepoAccountEntry,
+  resolveRemoteBinding,
+  type StoredRepoAccountEntry,
+} from "./accountBindings";
 import { useRepo } from "./repo";
 import { useUi } from "./ui";
 import { usePulls } from "./pulls";
@@ -53,24 +64,12 @@ export interface Account {
 // single import site.
 export type { RepoIdentity };
 
-interface RepoAccountBinding extends GithubAccountRef {
-  version: 2;
-}
-
-/** Explicit "no PR account for this repo". Persisted (rather than deleting the
- * entry) so the choice is durable — on reopen it stays unbound instead of
- * silently falling back to the active `gh` account. */
-interface RepoAccountUnbound {
-  version: 2;
-  unbound: true;
-}
-
-type StoredRepoAccountBinding = RepoAccountBinding | RepoAccountUnbound | string;
-
-// Per-repo account binding: { [repoPath]: RepoAccountBinding } drives PR/push auth.
-// Legacy string values are migrated only after they resolve against loaded accounts.
-// The commit identity (name + email) is stored separately so it can be edited
-// independently of the auth account (e.g. a private gh email vs. a public one).
+// Per-repo account bindings: { [repoKey]: RepoAccountBindingsV3 } — one
+// binding per remote — drive PR/push/fetch auth (shapes + migration rules live
+// in `accountBindings.ts`). Older v2 (repo-wide) and legacy string values are
+// migrated once the remote list is known. The commit identity (name + email)
+// is stored separately so it can be edited independently of the auth account
+// (e.g. a private gh email vs. a public one).
 const LS_REPO_ACCOUNTS = "gitlane.repoAccounts";
 const LS_REPO_IDENTITY = "gitlane.repoIdentity";
 
@@ -93,8 +92,8 @@ function writeJsonMap<T>(key: string, map: Record<string, T>) {
   }
 }
 
-const readBindings = () => readJsonMap<StoredRepoAccountBinding>(LS_REPO_ACCOUNTS);
-const writeBindings = (map: Record<string, StoredRepoAccountBinding>) =>
+const readBindings = () => readJsonMap<StoredRepoAccountEntry>(LS_REPO_ACCOUNTS);
+const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
   writeJsonMap(LS_REPO_ACCOUNTS, map);
 const readIdentities = () => readJsonMap<RepoIdentity>(LS_REPO_IDENTITY);
 const writeIdentities = (map: Record<string, RepoIdentity>) =>
@@ -112,10 +111,6 @@ function migratePathKey<T>(map: Record<string, T>, key: string, path: string): b
   return true;
 }
 
-function accountKey(ref: GithubAccountRef): string {
-  return `${ref.provider}:${ref.host}:${ref.accountId}`;
-}
-
 function accountRefFromApi(a: {
   provider?: GithubAccountRef["provider"];
   host?: string;
@@ -131,17 +126,11 @@ function accountRefFromApi(a: {
   };
 }
 
-function bindingFromAccount(account: Account): RepoAccountBinding {
-  return { version: 2, ...account.ref };
-}
-
-function accountMatchesLegacy(account: Account, legacy: string): boolean {
-  return (
-    account.id === legacy ||
-    account.username === legacy ||
-    account.login === legacy ||
-    account.accountId === legacy
-  );
+/** The host a remote's pushes land on (push URL, falling back to fetch URL) —
+ * what an account must match to authenticate it. `null` for unparsable URLs
+ * (e.g. a local path remote), which no account matches. */
+function remoteHost(remote: { fetchUrl: string; pushUrl: string }): string | null {
+  return detectRemoteUrl(remote.pushUrl || remote.fetchUrl).host;
 }
 
 interface AccountsState {
@@ -156,8 +145,15 @@ interface AccountsState {
   forgeAccountsLoading: string[];
   /** The `gh` active account — the default identity for unbound repos. */
   activeAccountId: string | null;
-  /** The account bound to the currently open repo (its id/username). */
+  /** The account bound to the open repo's **default (PR) remote** — the
+   * binding the PR feature surface uses. Mirrors
+   * `repoRemoteAccountIds[defaultRemote]` (GL-129). */
   repoAccountId: string | null;
+  /** Resolved account id per remote name for the open repo (GL-129). `null` =
+   * that remote uses system git credentials (explicitly unbound, unresolvable
+   * binding, or no host-matching default). A missing key means the remote list
+   * hasn't resolved yet. */
+  repoRemoteAccountIds: Record<string, string | null>;
   /** The key per-repo state persists under for the open repo: its repository
    * identity (main checkout's path), so all worktrees of a repo share the
    * account binding and cached commit identity (GL-109). */
@@ -192,10 +188,19 @@ interface AccountsState {
    * source of truth), falling back to the localStorage cache. Bails if a newer
    * identity write superseded this hydrate (generation guard). */
   hydrateRepoIdentity: (path: string) => Promise<void>;
-  /** Bind the open repo to a PR/push/fetch account (Tier 2). Persists the
-   * binding and reloads PRs; never writes the commit identity (that's owned by
-   * git profiles / `useProfiles`). `null` unbinds (PRs off for this repo). */
+  /** Bind one of the open repo's remotes to a PR/push/fetch account (Tier 2,
+   * GL-129). Persists into the repo's v3 entry and, when `remote` is the
+   * default (PR) remote, refreshes the `repoAccountId`/`repoAccountRef` mirror
+   * and reloads PRs. Never writes the commit identity (that's owned by git
+   * profiles / `useProfiles`). `null` binds the remote to system git
+   * credentials, durably. */
+  setRemoteAccount: (remote: string, id: string | null) => Promise<void>;
+  /** Bind the default (PR) remote — the pre-GL-129 per-repo semantics, kept
+   * for the sign-in flow and identity panel. Delegates to [`setRemoteAccount`]. */
   setRepoAccount: (id: string | null) => Promise<void>;
+  /** The account ref that authenticates `remote`, or null for system git
+   * credentials. What write actions send to push/fetch commands (GL-129). */
+  accountRefForRemote: (remote: string) => GithubAccountRef | null;
   /** Carry a relocated repo's per-path entries — the account binding and the
    * cached identity read — from its stale path to the new one (GL-108
    * Locate…). An entry already stored for the new path wins; the stale path's
@@ -227,6 +232,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   forgeAccountsLoading: [],
   activeAccountId: null,
   repoAccountId: null,
+  repoRemoteAccountIds: {},
   repoBindingKey: null,
   repoAccountRef: null,
   repoIdentity: null,
@@ -334,47 +340,92 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const bindings = readBindings();
     // Resolve pre-identity entries stored under this worktree's own path.
     if (migratePathKey(bindings, key, path)) writeBindings(bindings);
-    const bound = bindings[key];
+
+    // Per-remote resolution needs the remote list; it loads as a secondary
+    // read after open, so the first sync of a repo may run without it. A
+    // v2/legacy entry then stays unmigrated (it needs the default remote) and
+    // the mirror fields resolve repo-wide via the legacy rules below; the
+    // re-sync fired when the remotes land migrates and resolves fully.
+    const remotes = summary && summary.path === path ? useRepo.getState().remotes : [];
+    const defaultRemoteName = remotes.find((r) => r.isDefault)?.name ?? null;
+    const entry = bindings[key];
+    const v3 = migrateRepoAccountEntry(entry, defaultRemoteName);
+
     let selected: Account | null = null;
-    if (typeof bound === "string") {
-      selected = get().accounts.find((a) => accountMatchesLegacy(a, bound)) ?? null;
-      if (selected) {
-        bindings[key] = bindingFromAccount(selected);
+    const remoteAccountIds: Record<string, string | null> = {};
+    if (v3 !== null && remotes.length > 0) {
+      // Persist when a v2/legacy entry actually migrated — never materialise
+      // an empty v3 entry for a repo that had nothing stored.
+      let changed = entry !== undefined && !Object.is(v3, entry);
+      for (const remote of remotes) {
+        const resolved = resolveRemoteBinding(
+          v3,
+          remote.name,
+          remoteHost(remote),
+          get().accounts,
+          get().activeAccountId,
+        );
+        // A resolved legacy string re-keys to the stable account ref.
+        if (resolved.rewrite) {
+          v3.remotes[remote.name] = resolved.rewrite;
+          changed = true;
+        }
+        remoteAccountIds[remote.name] = resolved.account?.id ?? null;
+        if (remote.name === defaultRemoteName) {
+          selected = (resolved.account as Account | null) ?? null;
+        }
+      }
+      if (changed) {
+        bindings[key] = v3;
         writeBindings(bindings);
       }
-    } else if (bound && bound.version === 2) {
-      if (!("unbound" in bound)) {
-        // Exact id match first — while healthy an account's id keys on its
-        // stable numeric user id. Fall back to {provider, host, login} when the
-        // id doesn't match: an unhealthy account resolves its id to the login
-        // (the backend skips the whoami that yields the numeric id), so a repo
-        // bound while healthy must still resolve to it and surface the
-        // "needs re-auth" badge instead of silently vanishing (GL-119). The
-        // stored binding is left as-is so it re-pins to the numeric id once the
-        // account is healthy again. `login` is unique per host, so the fallback
-        // can't cross-match a different account.
-        const list = get().accounts;
-        selected =
-          list.find((a) => a.id === accountKey(bound)) ??
-          (bound.login
-            ? list.find(
-                (a) =>
-                  a.provider === bound.provider &&
-                  a.host === bound.host &&
-                  a.login === bound.login,
-              )
-            : undefined) ??
-          null;
+    } else {
+      // Remote list not available yet (or the repo has no remotes): resolve
+      // the mirror fields with the pre-GL-129 repo-wide rules so the PR chip
+      // isn't blank while the remotes load. Exact id match first, then the
+      // {provider, host, login} fallback (an unhealthy account's id degrades
+      // to its login — GL-119); a legacy string matches loosely; no entry
+      // defaults to the active gh account.
+      const bound = entry;
+      if (typeof bound === "string") {
+        selected = get().accounts.find((a) => accountMatchesLegacy(a, bound)) ?? null;
+      } else if (bound && bound.version === 2) {
+        if (!("unbound" in bound)) {
+          const list = get().accounts;
+          selected =
+            list.find((a) => a.id === accountKey(bound)) ??
+            (bound.login
+              ? list.find(
+                  (a) =>
+                    a.provider === bound.provider &&
+                    a.host === bound.host &&
+                    a.login === bound.login,
+                )
+              : undefined) ??
+            null;
+        }
+        // else: explicit "No account" — leave unbound (no active-account fallback).
+      } else if (!bound) {
+        // Never configured → default to the active gh account for convenience.
+        selected = get().accounts.find((a) => a.id === get().activeAccountId) ?? null;
       }
-      // else: explicit "No account" — leave unbound (no active-account fallback).
-    } else if (!bound) {
-      // Never configured → default to the active gh account for convenience.
-      selected = get().accounts.find((a) => a.id === get().activeAccountId) ?? null;
+      // A v3 entry without a loaded remote list can't resolve per-remote
+      // picks; leave the map empty (the remotes-land re-sync fills it). For
+      // the PR mirror, presume the default remote is "origin" — the backend's
+      // own push_target fallback — so the chip isn't blank in that window; a
+      // non-origin default is corrected by the re-sync. The active-account
+      // default is withheld (host unknown), hence the null activeAccountId.
+      if (bound && isV3Entry(bound)) {
+        const resolved = resolveRemoteBinding(bound, "origin", null, get().accounts, null);
+        selected = (resolved.account as Account | null) ?? null;
+      }
     }
+
     const identities = readIdentities();
     if (migratePathKey(identities, key, path)) writeIdentities(identities);
     set({
       repoAccountId: selected?.id ?? null,
+      repoRemoteAccountIds: remoteAccountIds,
       repoBindingKey: key,
       repoAccountRef: selected?.ref ?? null,
       // Optimistic: show the cached identity immediately (avoids a flash),
@@ -427,28 +478,67 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
   },
 
-  setRepoAccount: async (id) => {
+  setRemoteAccount: async (remote, id) => {
     const account = get().accounts.find((a) => a.id === id) ?? null;
-    set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
+    const remotes = useRepo.getState().remotes;
+    const defaultRemoteName = remotes.find((r) => r.isDefault)?.name ?? null;
+    // With the remote list not loaded yet (sign-in auto-bind right after
+    // open), "origin" is the presumed default — mirror + PR reload must still
+    // run or the flow silently half-applies.
+    const isDefault = defaultRemoteName ? remote === defaultRemoteName : remote === "origin";
     // Persist under the repository identity (set by syncRepoAccount on open)
     // so the binding covers every worktree of the repo (GL-109).
     const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
     if (key) {
       const bindings = readBindings();
-      // Persist an explicit unbound marker (not a delete) so "No account" is
-      // durable across reopen instead of reverting to the active gh account.
-      bindings[key] = account ? bindingFromAccount(account) : { version: 2, unbound: true };
+      const v3 = migrateRepoAccountEntry(bindings[key], defaultRemoteName) ?? {
+        version: 3 as const,
+        remotes: {},
+      };
+      // Persist an explicit unbound marker (not a delete) so "System git
+      // credentials" is durable across reopen instead of reverting to the
+      // active gh account.
+      v3.remotes[remote] = account ? { ...account.ref } : { unbound: true };
+      bindings[key] = v3;
       writeBindings(bindings);
     }
+    set((s) => ({
+      repoRemoteAccountIds: { ...s.repoRemoteAccountIds, [remote]: account?.id ?? null },
+      // The default (PR) remote's binding is mirrored for the PR surface.
+      ...(isDefault
+        ? { repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null }
+        : {}),
+    }));
     // Binding an account drives PR / push / fetch auth ONLY — it must never
     // touch the commit identity. Who the repo commits as is owned by git
     // profiles (`useProfiles`); a PR account (Tier 2) and a git profile
     // (Tier 1) are independent, so picking an account here leaves the applied
     // profile's `user.name` / `user.email` untouched. See GL-27 / GL-63.
     if (account) {
-      useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
+      useUi
+        .getState()
+        .showToast(
+          isDefault
+            ? `Pull requests for this repo use @${account.username}`
+            : `Pushes to ${remote} use @${account.username}`,
+        );
     }
-    void usePulls.getState().loadPullRequests();
+    if (isDefault) void usePulls.getState().loadPullRequests();
+  },
+
+  setRepoAccount: async (id) => {
+    // The pre-GL-129 entry point: bind the default (PR) remote. "origin" is
+    // the safe fallback when the remote list hasn't loaded yet (matching the
+    // backend's push_target fallback).
+    const remotes = useRepo.getState().remotes;
+    const remote = remotes.find((r) => r.isDefault)?.name ?? "origin";
+    await get().setRemoteAccount(remote, id);
+  },
+
+  accountRefForRemote: (remote) => {
+    const id = get().repoRemoteAccountIds[remote];
+    if (!id) return null;
+    return get().accounts.find((a) => a.id === id)?.ref ?? null;
   },
 
   migrateRepoBindings: (fromPath, toPath) => {

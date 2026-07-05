@@ -188,6 +188,12 @@ export interface RepoForge {
   webUrl: string | null;
 }
 
+/** One `remote → account` auth pair for the multi-remote fetch (GL-129). */
+export interface RemoteAccountRef {
+  remote: string;
+  account: GithubAccountRef;
+}
+
 /** A configured git remote (Repository settings → Remotes). */
 export interface RemoteInfo {
   /** Remote name (e.g. "origin"). */
@@ -209,6 +215,11 @@ export interface BranchInfo {
   /** For a remote branch, the remote it belongs to (resolved by the backend
    * against the known remote list). `null` for local branches. */
   remote: string | null;
+  /** For a local branch, its configured push/fetch remote
+   * (`branch.<name>.remote`) — the remote a push of this branch targets, so
+   * the matching per-remote account can be picked (GL-129). `null` for remote
+   * branches or when no remote is configured. */
+  upstreamRemote?: string | null;
   sync?: BranchSyncState | null;
 }
 
@@ -710,18 +721,40 @@ export const gitApi = {
     invoke<string>("create_patch", { path, sha }),
 
   /** Delete a local tag. The remote copy (if any) is untouched and fetch will
-   * re-import it — use `deleteRemoteTag` to remove it from `origin` too. */
+   * re-import it — use `deleteRemoteTag` to remove it from the remote too. */
   deleteTag: (path: string, name: string) =>
     invoke<string>("delete_tag", { path, name }),
 
-  /** Delete a tag on `origin` (`git push origin --delete refs/tags/<name>`),
-   * optionally as the repo's bound `account`. */
-  deleteRemoteTag: (path: string, name: string, account?: GithubAccountRef | null) =>
-    invoke<string>("delete_remote_tag", { path, name, account: account ?? null }),
+  /** Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`),
+   * defaulting to the repo's default push remote, optionally as that remote's
+   * bound `account`. */
+  deleteRemoteTag: (
+    path: string,
+    name: string,
+    remote?: string | null,
+    account?: GithubAccountRef | null,
+  ) =>
+    invoke<string>("delete_remote_tag", {
+      path,
+      name,
+      remote: remote ?? null,
+      account: account ?? null,
+    }),
 
-  /** Push a tag to `origin`, optionally as the repo's bound `account`. */
-  pushTag: (path: string, name: string, account?: GithubAccountRef | null) =>
-    invoke<string>("push_tag", { path, name, account: account ?? null }),
+  /** Push a tag to `remote` (defaulting to the repo's default push remote),
+   * optionally as that remote's bound `account`. */
+  pushTag: (
+    path: string,
+    name: string,
+    remote?: string | null,
+    account?: GithubAccountRef | null,
+  ) =>
+    invoke<string>("push_tag", {
+      path,
+      name,
+      remote: remote ?? null,
+      account: account ?? null,
+    }),
 
   /** Remove a linked worktree. `force` drops git's dirty/locked safety check. */
   removeWorktree: (path: string, worktreePath: string, force = false) =>
@@ -960,16 +993,20 @@ export const gitApi = {
 
   pull: (path: string) => invoke<string>("pull", { path }),
 
-  /** Fetch + prune all remotes, optionally as the repo's bound `account`. */
-  fetch: (path: string, account?: GithubAccountRef | null) =>
-    invoke<string>("fetch", { path, account: account ?? null }),
+  /** Fetch + prune every non-skipped remote, each authenticated as its own
+   * bound account (GL-129). `remoteAccounts` carries one `{remote, account}`
+   * pair per bound remote; unlisted remotes fall back to the system credential
+   * helpers / SSH. */
+  fetch: (path: string, remoteAccounts?: RemoteAccountRef[]) =>
+    invoke<string>("fetch", { path, remoteAccounts: remoteAccounts ?? [] }),
 
-  /** Push, optionally as the repo's bound `account` (gh username). */
+  /** Push the checked-out branch, optionally as its target remote's bound
+   * `account` (validated against that remote's host server-side). */
   push: (path: string, account?: GithubAccountRef | null) =>
     invoke<string>("push", { path, account: account ?? null }),
 
   /** Push a specific (possibly not-checked-out) `branch` to its configured
-   * remote (origin fallback), optionally as the repo's bound `account`. */
+   * remote (origin fallback), optionally as the target remote's bound `account`. */
   pushBranch: (path: string, branch: string, account?: GithubAccountRef | null) =>
     invoke<string>("push_branch", { path, branch, account: account ?? null }),
 

@@ -38,125 +38,55 @@ const githubForge: RepoForge = {
 };
 
 beforeEach(() => {
+  localStorage.clear();
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
-  useAccounts.setState({ accounts: [], repoAccountId: null });
-  useRepo.setState({ forge: null });
-  useUi.setState({ repoSettingsOpen: true, settingsOpen: false, settingsTab: "general" });
+  useAccounts.setState({ accounts: [], repoAccountId: null, repoRemoteAccountIds: {} });
+  useRepo.setState({ forge: null, remotes: [] });
+  useUi.setState({ repoSettingsOpen: true, repoSettingsSection: "identity" });
 });
 
+// Since GL-129 the zone is a read-only summary of the default (PR) remote's
+// binding; the picker lives on the Remotes rows. Every edit affordance here
+// deep-links to the Remotes section of the same window.
 describe("PrAccountZone", () => {
-  it("'add one in Accounts' closes the repo window and opens global Accounts", () => {
+  it("'Choose account' switches to the Remotes section without closing the window", () => {
     render(<PrAccountZone />);
-    // No account yet → open the picker, which (empty) shows the Accounts CTA.
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    fireEvent.click(screen.getByText(/add one in Accounts/));
+    fireEvent.click(screen.getByRole("button", { name: "Choose account" }));
 
-    expect(useUi.getState().repoSettingsOpen).toBe(false);
-    expect(useUi.getState().settingsOpen).toBe(true);
-    expect(useUi.getState().settingsTab).toBe("accounts");
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+    expect(useUi.getState().repoSettingsSection).toBe("remotes");
   });
 
-  it("disables accounts on a different host than the repo's PR remote", () => {
+  it("'Change' on a bound account deep-links to Remotes too", () => {
     useRepo.setState({ forge: githubForge });
-    useAccounts.setState({
-      accounts: [
-        ghAccount({}),
-        ghAccount({
-          id: "gh:ghe.corp:2",
-          host: "ghe.corp",
-          accountId: "2",
-          login: "worker",
-          username: "worker",
-          ref: { provider: "gh", host: "ghe.corp", accountId: "2", login: "worker" },
-        }),
+    useAccounts.setState({ accounts: [ghAccount({})], repoAccountId: "gh:github.com:1" });
+    render(<PrAccountZone />);
+
+    expect(screen.getByText("PRs enabled")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    expect(useUi.getState().repoSettingsSection).toBe("remotes");
+  });
+
+  it("names the default remote PRs follow", () => {
+    useRepo.setState({
+      forge: githubForge,
+      remotes: [
+        { name: "upstream", fetchUrl: "https://github.com/o/r.git", pushUrl: "https://github.com/o/r.git", isDefault: true },
       ],
     });
     render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    // Matching host stays selectable; the other host is visible but disabled.
-    expect(screen.getByRole("radio", { name: "@octocat" })).toBeEnabled();
-    const mismatched = screen.getByRole("radio", { name: "@worker" });
-    expect(mismatched).toBeDisabled();
-    expect(screen.getByText(/different host than this repo's remote/)).toBeInTheDocument();
-    // Picking the disabled row must not bind.
-    fireEvent.click(mismatched);
-    expect(useAccounts.getState().repoAccountId).toBeNull();
+    expect(screen.getByText("(upstream)")).toBeInTheDocument();
   });
 
-  it("offers an Accounts CTA when no connected account matches the PR remote's host", () => {
-    useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
-    useAccounts.setState({ accounts: [ghAccount({})] });
-    render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    expect(screen.getByText(/No accounts for ghe.corp/)).toBeInTheDocument();
-  });
-
-  it("states PRs are unsupported for a known non-GitHub forge instead of offering accounts", () => {
+  it("states PRs are unsupported for a known non-GitHub forge", () => {
     useRepo.setState({
       forge: { hasRemote: true, kind: "gitlab", forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/o/r" },
     });
     useAccounts.setState({ accounts: [ghAccount({})] });
     render(<PrAccountZone />);
     expect(screen.getByText("Pull requests aren't supported for GitLab yet")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Connect account" })).toBeNull();
-  });
-
-  it("binds a matching-host account from the picker", () => {
-    useRepo.setState({ forge: githubForge });
-    useAccounts.setState({ accounts: [ghAccount({})] });
-    render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    fireEvent.click(screen.getByRole("radio", { name: "@octocat" }));
-    expect(useAccounts.getState().repoAccountId).toBe("gh:github.com:1");
-  });
-
-  it("treats all accounts as selectable while the forge probe hasn't landed", () => {
-    useRepo.setState({ forge: null });
-    useAccounts.setState({ accounts: [ghAccount({ host: "ghe.corp" })] });
-    render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    expect(screen.getByRole("radio", { name: "@octocat" })).toBeEnabled();
-  });
-
-  it("rejects a pick that mismatches the forge host that loaded after render", () => {
-    // Forge unknown at render → the row is enabled…
-    useRepo.setState({ forge: null });
-    useAccounts.setState({ accounts: [ghAccount({})] });
-    render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    // …but the probe lands before the user clicks. pick() checks latest state.
-    useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
-    fireEvent.click(screen.getByRole("radio", { name: "@octocat" }));
-    expect(useAccounts.getState().repoAccountId).toBeNull();
-    // The rejection explains itself and keeps the picker open so the user
-    // sees the (re-rendered, now disabled) row instead of a silent no-op.
-    expect(useUi.getState().toast?.tone).toBe("error");
-    expect(useUi.getState().toast?.message).toMatch(/github.com/);
-    expect(screen.getByRole("radiogroup", { name: "Pull-request account for this repo" })).toBeInTheDocument();
-  });
-
-  it("shows a bound wrong-host account in the picker as selected but disabled", () => {
-    useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
-    useAccounts.setState({ accounts: [ghAccount({})], repoAccountId: "gh:github.com:1" });
-    render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Change" }));
-    const row = screen.getByRole("radio", { name: "@octocat" });
-    expect(row).toBeChecked();
-    expect(row).toBeDisabled();
-    // "No account" (or a matching account) is the way out.
-    fireEvent.click(screen.getByRole("radio", { name: "No account" }));
-    expect(useAccounts.getState().repoAccountId).toBeNull();
-  });
-
-  it("host-specific CTA hands off to global Accounts", () => {
-    useRepo.setState({ forge: { ...githubForge, host: "ghe.corp" } });
-    useAccounts.setState({ accounts: [ghAccount({})] });
-    render(<PrAccountZone />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
-    fireEvent.click(screen.getByText(/No accounts for ghe.corp/));
-    expect(useUi.getState().repoSettingsOpen).toBe(false);
-    expect(useUi.getState().settingsTab).toBe("accounts");
+    expect(screen.queryByRole("button", { name: "Choose account" })).toBeNull();
   });
 
   it("surfaces and clears a stale binding on an unsupported forge", () => {
@@ -169,6 +99,21 @@ describe("PrAccountZone", () => {
     expect(screen.getByText("not usable here")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(useAccounts.getState().repoAccountId).toBeNull();
+  });
+
+  it("clearing a stale binding never touches the commit identity (two-tier safety)", () => {
+    useRepo.setState({
+      forge: { hasRemote: true, kind: "gitlab", forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/o/r" },
+    });
+    useAccounts.setState({ accounts: [ghAccount({})], repoAccountId: "gh:github.com:1" });
+    render(<PrAccountZone />);
+    invokeMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+
+    const identityCmds = invokeMock.mock.calls.filter(
+      ([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity",
+    );
+    expect(identityCmds).toHaveLength(0);
   });
 
   it("flags a bound account whose host no longer matches the PR remote", () => {

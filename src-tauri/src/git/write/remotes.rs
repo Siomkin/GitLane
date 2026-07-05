@@ -1,5 +1,7 @@
 //! Remote, fetch, push, and authentication-aware git writes.
 
+use std::collections::HashMap;
+
 use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics};
 use super::operands::ensure_operand;
 
@@ -152,6 +154,31 @@ fn split_remote_ref(repo: &str, upstream: &str) -> Result<(String, String), Stri
     Ok((remote, remote_branch))
 }
 
+/// The remote half of an `upstream` (`remote/branch`) publish target — the same
+/// longest-prefix resolution [`publish_branch`] uses, exposed so per-remote auth
+/// can validate the account against the remote actually pushed to (GL-129).
+pub fn publish_remote(repo: &str, upstream: &str) -> Result<String, String> {
+    split_remote_ref(repo, upstream).map(|(remote, _)| remote)
+}
+
+/// The remote a push of `branch` targets (the remote half of [`push_target`]).
+/// For per-remote auth validation before [`push_branch`] / [`force_push`].
+pub fn branch_push_remote(repo: &str, branch: &str) -> String {
+    push_target(repo, branch).0
+}
+
+/// The remote a bare `git push` from the checked-out branch targets — that
+/// branch's [`push_target`] remote, falling back to `origin` on a detached or
+/// unborn HEAD (where the push itself will fail with git's own message anyway).
+pub fn head_push_remote(repo: &str) -> String {
+    run_git(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(|branch| push_target(repo, &branch).0)
+        .unwrap_or_else(|| "origin".to_string())
+}
+
 /// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
 /// falling back to `origin`) and refspec (honouring a divergent upstream branch
 /// name via `branch.<name>.merge`, else a plain `<branch>`). Shared by
@@ -173,92 +200,93 @@ pub(super) fn push_target(repo: &str, branch: &str) -> (String, String) {
     (remote, refspec)
 }
 
-/// Fetch from all remotes, prune deleted upstream refs, and import tags
-/// (shells out — libgit2 has no network here). `--tags` is intentional: Git's
-/// default tag auto-follow misses remote-only tags in some no-branch-update
-/// refreshes, but the UI derives visible tags from local `refs/tags/*`.
+/// Fetch every non-skipped remote, prune deleted upstream refs, and import
+/// tags (shells out — libgit2 has no network here). Explicit tag import is
+/// intentional: Git's default tag auto-follow misses remote-only tags in some
+/// no-branch-update refreshes, but the UI derives visible tags from local
+/// `refs/tags/*`.
 ///
-/// Tags are fetched per remote through an explicit tag-only refspec after a
-/// `--no-tags` branch/prune fetch. A remote tag that would clobber an existing
-/// local tag is left alone and treated as non-fatal, so the UI still refreshes
-/// branch updates and any tags that did import. Other tag-fetch failures still
-/// fail the operation. Local-only tags and tags deleted upstream are
-/// intentionally preserved unless the user deletes them explicitly: the
-/// per-remote tag fetch passes `--no-prune` (its explicit `refs/tags/*` refspec
-/// would otherwise prune local-only tags under `fetch.prune=true`), and the
-/// branch fetch forces `--no-prune-tags` so a repo with `fetch.pruneTags=true`
-/// (or `remote.<name>.pruneTags=true`) and a divergent local tag does not fail
-/// the whole Fetch with "would clobber existing tag" before the per-remote
-/// loop's clobber tolerance can run.
+/// Each remote is fetched **individually with its own credentials** (GL-129):
+/// `auth_by_remote` maps a remote name to the `(host, token)` its bound
+/// account resolved to, and remotes without an entry go through the system
+/// credential helpers / SSH untouched — that is what keeps unauthenticated
+/// Bitbucket/GitLab remotes working next to an account-bound GitHub remote.
+/// One failing remote does not stop the others (matching `git fetch --all`
+/// semantics); if any remote failed, the combined per-remote output comes back
+/// as the error so the toast attributes each part to its remote.
 ///
-/// When `token` is set (the repo is bound to an account) it authenticates as
-/// that account via the same inline `gh` git-credential wiring as [`push`], so
-/// private remotes resolve under the right identity.
-pub fn fetch(repo: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
-    match auth {
-        Some((host, token)) => {
-            let branch_args = credential_args(
-                host,
-                &["fetch", "--all", "--prune", "--no-tags", "--no-prune-tags"],
-            );
-            let branch_arg_refs: Vec<&str> = branch_args.iter().map(String::as_str).collect();
-            fetch_with_tag_import(
-                repo,
-                &branch_arg_refs,
-                Some((host, token)),
-                &[("GH_TOKEN", token)],
-            )
+/// Tags are fetched through an explicit tag-only refspec after a `--no-tags`
+/// branch/prune fetch. A remote tag that would clobber an existing local tag
+/// is left alone and treated as non-fatal, so the UI still refreshes branch
+/// updates and any tags that did import. Other tag-fetch failures fail that
+/// remote. Local-only tags and tags deleted upstream are intentionally
+/// preserved unless the user deletes them explicitly: the tag fetch passes
+/// `--no-prune` (its explicit `refs/tags/*` refspec would otherwise prune
+/// local-only tags under `fetch.prune=true`), and the branch fetch forces
+/// `--no-prune-tags` so a repo with `fetch.pruneTags=true` (or
+/// `remote.<name>.pruneTags=true`) and a divergent local tag does not fail the
+/// remote's fetch with "would clobber existing tag" before the clobber
+/// tolerance can run.
+pub fn fetch(repo: &str, auth_by_remote: &HashMap<String, (String, String)>) -> Result<String, String> {
+    let mut succeeded: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for remote in fetch_remotes(repo)? {
+        ensure_operand(&remote)?;
+        let auth = auth_by_remote
+            .get(&remote)
+            .map(|(host, token)| (host.as_str(), token.as_str()));
+        match fetch_remote(repo, &remote, auth) {
+            Ok(output) => succeeded.push(label_remote_output(&remote, &output)),
+            Err(err) => failed.push(label_remote_output(&remote, &err)),
         }
-        None => fetch_with_tag_import(
-            repo,
-            &["fetch", "--all", "--prune", "--no-tags", "--no-prune-tags"],
-            None,
-            &[],
-        ),
+    }
+    let mut combined = String::new();
+    for part in failed.iter().chain(succeeded.iter()) {
+        combined = join_git_outputs(&combined, part);
+    }
+    if failed.is_empty() {
+        Ok(combined)
+    } else {
+        Err(combined)
     }
 }
 
-fn fetch_with_tag_import(
-    repo: &str,
-    branch_args: &[&str],
-    auth: Option<(&str, &str)>,
-    envs: &[(&str, &str)],
-) -> Result<String, String> {
-    let branch_output = run_git_env_stable_diagnostics(repo, branch_args, envs)?;
-    let mut output = branch_output;
-    for remote in fetch_remotes(repo)? {
-        ensure_operand(&remote)?;
-        // `--no-prune` is essential: the explicit `refs/tags/*` refspec makes a
-        // repo with `fetch.prune=true` (or `remote.<name>.prune=true`) prune
-        // local tags absent on this remote, silently deleting the very
-        // local-only tags this loop promises to preserve.
-        let tag_args = match auth {
-            Some((host, _token)) => credential_args(
-                host,
-                &[
-                    "fetch",
-                    &remote,
-                    "--no-tags",
-                    "--no-prune",
-                    TAG_FETCH_REFSPEC,
-                ],
-            ),
-            None => vec![
-                "fetch".to_string(),
-                remote,
-                "--no-tags".to_string(),
-                "--no-prune".to_string(),
-                TAG_FETCH_REFSPEC.to_string(),
-            ],
-        };
-        let tag_arg_refs: Vec<&str> = tag_args.iter().map(String::as_str).collect();
-        match run_git_env_stable_diagnostics(repo, &tag_arg_refs, envs) {
-            Ok(tag_output) => output = join_git_outputs(&output, &tag_output),
-            Err(e) if is_tag_clobber_rejection(&e) => output = join_git_outputs(&output, &e),
-            Err(e) => return Err(e),
-        }
+/// Fetch one remote: a branch/prune pass, then the explicit tag-refspec pass
+/// with clobber tolerance (see [`fetch`] for the tag semantics).
+fn fetch_remote(repo: &str, remote: &str, auth: Option<(&str, &str)>) -> Result<String, String> {
+    let branch_cmd = ["fetch", remote, "--prune", "--no-tags", "--no-prune-tags"];
+    let tag_cmd = ["fetch", remote, "--no-tags", "--no-prune", TAG_FETCH_REFSPEC];
+    let (branch_args, tag_args, envs): (Vec<String>, Vec<String>, Vec<(&str, &str)>) = match auth {
+        Some((host, token)) => (
+            credential_args(host, &branch_cmd),
+            credential_args(host, &tag_cmd),
+            vec![("GH_TOKEN", token)],
+        ),
+        None => (
+            branch_cmd.iter().map(|s| (*s).to_string()).collect(),
+            tag_cmd.iter().map(|s| (*s).to_string()).collect(),
+            Vec::new(),
+        ),
+    };
+    let branch_refs: Vec<&str> = branch_args.iter().map(String::as_str).collect();
+    let output = run_git_env_stable_diagnostics(repo, &branch_refs, &envs)?;
+    let tag_refs: Vec<&str> = tag_args.iter().map(String::as_str).collect();
+    match run_git_env_stable_diagnostics(repo, &tag_refs, &envs) {
+        Ok(tag_output) => Ok(join_git_outputs(&output, &tag_output)),
+        Err(e) if is_tag_clobber_rejection(&e) => Ok(join_git_outputs(&output, &e)),
+        Err(e) => Err(e),
     }
-    Ok(output)
+}
+
+/// Prefix a remote's fetch output with its name so the combined multi-remote
+/// output stays attributable (the single `--all` invocation used to print
+/// "Fetching <remote>" headers itself).
+fn label_remote_output(remote: &str, output: &str) -> String {
+    if output.trim().is_empty() {
+        format!("{remote}: up to date")
+    } else {
+        format!("{remote}:\n{}", output.trim())
+    }
 }
 
 fn fetch_remotes(repo: &str) -> Result<Vec<String>, String> {

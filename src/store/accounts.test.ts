@@ -31,14 +31,24 @@ const account: Account = {
 const identityCmds = (calls: unknown[][]) =>
   calls.filter(([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity");
 
+const remoteInfo = (name: string, url: string, isDefault = false) => ({
+  name,
+  fetchUrl: url,
+  pushUrl: url,
+  isDefault,
+});
+const origin = remoteInfo("origin", "https://github.com/owner/repo.git", true);
+const bucket = remoteInfo("bucket", "https://alice@bitbucket.org/team/repo.git");
+
 beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(null);
-  useRepo.setState({ summary });
+  useRepo.setState({ summary, remotes: [] });
   useAccounts.setState({
     accounts: [account],
     repoAccountId: null,
+    repoRemoteAccountIds: {},
     repoBindingKey: null,
     repoAccountRef: null,
     repoIdentity: null,
@@ -275,6 +285,92 @@ describe("loadForgeAuth — fast auth, background identity", () => {
   });
 });
 
+describe("per-remote account bindings (GL-129)", () => {
+  it("migrates a v2 repo-wide binding onto the default remote once remotes are known", () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({ [path]: { version: 2, ...account.ref } }),
+    );
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts")!)[path];
+    expect(stored).toEqual({ version: 3, remotes: { origin: account.ref } });
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({
+      origin: account.id,
+      bucket: null,
+    });
+  });
+
+  it("defers v2 migration while the remote list is unknown, keeping the repo-wide resolution", () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({ [path]: { version: 2, ...account.ref } }),
+    );
+    useRepo.setState({ summary, remotes: [] });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    // Storage untouched (still v2) until the default remote is known…
+    const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts")!)[path];
+    expect(stored.version).toBe(2);
+    // …but the PR mirror still resolves so the chip isn't blank meanwhile.
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+  });
+
+  it("binding a non-default remote never touches the PR mirror or the commit identity", async () => {
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    useAccounts.setState({ activeAccountId: account.id });
+    useAccounts.getState().syncRepoAccount(path);
+    const mirrorBefore = useAccounts.getState().repoAccountId;
+    invokeMock.mockClear();
+
+    await useAccounts.getState().setRemoteAccount("bucket", account.id);
+
+    expect(useAccounts.getState().repoRemoteAccountIds.bucket).toBe(account.id);
+    expect(useAccounts.getState().repoAccountId).toBe(mirrorBefore);
+    // Tier 2 stays Tier 2: no identity writes from a push-auth binding.
+    expect(identityCmds(invokeMock.mock.calls)).toHaveLength(0);
+  });
+
+  it("never defaults the active GitHub account onto a non-GitHub remote", () => {
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    useAccounts.setState({ activeAccountId: account.id });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({
+      origin: account.id, // host matches → active-account default applies
+      bucket: null, // bitbucket.org → system git credentials
+    });
+  });
+
+  it("an explicit 'system git credentials' pick on the default remote is durable", async () => {
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    useAccounts.setState({ activeAccountId: account.id });
+    await useAccounts.getState().setRemoteAccount("origin", null);
+
+    // Reopen: resolution must honour the unbound marker, not the active account.
+    useAccounts.setState({ repoAccountId: account.id, repoAccountRef: account.ref });
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+    expect(useAccounts.getState().repoRemoteAccountIds.origin).toBeNull();
+  });
+
+  it("accountRefForRemote maps the resolved pick to the ref write actions send", () => {
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+    useAccounts.setState({ activeAccountId: account.id });
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().accountRefForRemote("origin")).toEqual(account.ref);
+    expect(useAccounts.getState().accountRefForRemote("bucket")).toBeNull();
+    expect(useAccounts.getState().accountRefForRemote("nonexistent")).toBeNull();
+  });
+});
+
 describe("repository-identity keying across worktrees (GL-109)", () => {
   const mainPath = "/repo";
   const wtPath = "/repo/.claude/worktrees/lewin";
@@ -317,7 +413,11 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     await useAccounts.getState().setRepoAccount(account.id);
 
     const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
-    expect(stored[mainPath]).toMatchObject({ version: 2, provider: "gh", accountId: "1" });
+    // Persisted in the v3 per-remote shape (GL-129), attached to the default remote.
+    expect(stored[mainPath]).toMatchObject({
+      version: 3,
+      remotes: { origin: { provider: "gh", accountId: "1" } },
+    });
     expect(stored[wtPath]).toBeUndefined();
   });
 
@@ -334,6 +434,22 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
     expect(stored[mainPath]).toMatchObject({ version: 2, accountId: "1" });
     expect(stored[wtPath]).toBeUndefined();
+  });
+
+  it("keeps a v3 per-remote binding across worktrees", async () => {
+    useRepo.setState({ summary: mainSummary, remotes: [origin, bucket] });
+    useAccounts.getState().syncRepoAccount(mainPath);
+    await useAccounts.getState().setRemoteAccount("origin", account.id);
+
+    useAccounts.setState({ repoAccountId: null, repoAccountRef: null, repoRemoteAccountIds: {} });
+    useRepo.setState({ summary: wtSummary, remotes: [origin, bucket] });
+    useAccounts.getState().syncRepoAccount(wtPath);
+
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({
+      origin: account.id,
+      bucket: null,
+    });
+    expect(useAccounts.getState().repoBindingKey).toBe(mainPath);
   });
 
   it("keeps the identity-keyed binding when a stale worktree shadow also exists", () => {
