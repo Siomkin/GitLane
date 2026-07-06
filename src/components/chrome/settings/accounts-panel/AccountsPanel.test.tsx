@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -46,6 +46,18 @@ const gitlabSignedIn: ForgeAuthStatus = {
   available: true,
   authenticated: true,
   account: { username: "ada" },
+};
+
+const bitbucketManual: ForgeAuthStatus = {
+  provider: "bitbucket",
+  forge: "Bitbucket",
+  cli: null,
+  authMethod: "API token or git credential helper",
+  available: false,
+  authenticated: null,
+  loginCommand: "Create a Bitbucket API token",
+  docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
+  notes: "Bitbucket has no bundled CLI probe in GitLane yet.",
 };
 
 beforeEach(() => {
@@ -101,5 +113,24 @@ describe("AccountsPanel (provider pages)", () => {
   it("frames accounts as auth-only (identity lives in Identities)", () => {
     render(<AccountsPanel />);
     expect(screen.getByText(/Who your commits are authored as\s+is separate/)).toBeInTheDocument();
+  });
+
+  it("marks a manual Bitbucket credential as saved after git credential approve succeeds", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "approve_https_credential") return { username: "ada", helper: "osxkeychain" };
+      return [];
+    });
+    useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
+    render(<AccountsPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /No CLI — manual setup|Bitbucket/ }));
+    fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "ada" } });
+    fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "secret-token" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    await waitFor(() => expect(screen.getByText("Credential saved for @ada")).toBeInTheDocument());
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+    expect(localStorage.getItem("gitlane.forgeCredentials")).toContain('"username":"ada"');
+    expect(localStorage.getItem("gitlane.forgeCredentials")).not.toContain("secret-token");
   });
 });

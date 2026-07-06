@@ -54,6 +54,8 @@ fn helper_host_for_credential_host(
         return Ok(None);
     }
 
+    validate_credential_authority(actual_credential_host)?;
+    validate_credential_authority(&auth.credential_host)?;
     let expected = normalize_credential_host(&auth.credential_host);
     let actual = normalize_credential_host(actual_credential_host);
     if !expected.is_empty() && expected != actual {
@@ -75,6 +77,7 @@ fn helper_host_for_credential_host(
                     account.provider
                 ));
             }
+            validate_credential_authority(&account.host)?;
             let account_host = normalize_credential_host(&account.host);
             if account_host != actual {
                 return Err(format!(
@@ -87,6 +90,37 @@ fn helper_host_for_credential_host(
         "credentialHelper" => Ok(None),
         other => Err(format!("Unsupported git transport auth mode '{other}'.")),
     }
+}
+
+fn validate_credential_authority(host: &str) -> Result<(), String> {
+    let value = host.trim();
+    if value.is_empty() {
+        return Err("Invalid git credential helper host.".into());
+    }
+    if value
+        .chars()
+        .any(|c| matches!(c, '/' | '\\' | '@' | '\n' | '\r' | '\0'))
+    {
+        return Err(format!("Invalid git credential helper host '{host}'."));
+    }
+    let (name, port) = match value.rsplit_once(':') {
+        Some((name, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => {
+            (name, Some(port))
+        }
+        Some(_) => return Err(format!("Invalid git credential helper host '{host}'.")),
+        None => (value, None),
+    };
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+    {
+        return Err(format!("Invalid git credential helper host '{host}'."));
+    }
+    if port == Some("0") {
+        return Err(format!("Invalid git credential helper host '{host}'."));
+    }
+    Ok(())
 }
 
 fn normalize_credential_host(host: &str) -> String {
@@ -149,5 +183,19 @@ mod tests {
         let err = helper_host_for_credential_host("github.com", &gh_auth("ghe.example.test"))
             .unwrap_err();
         assert!(err.contains("selected account"), "{err}");
+    }
+
+    #[test]
+    fn helper_host_rejects_malformed_config_scope_hosts() {
+        for host in [
+            "github.com/foo",
+            "github.com\nhelper=!evil",
+            "github.com@evil.example",
+            "github.com:abc",
+            "github.com:0",
+        ] {
+            let err = helper_host_for_credential_host(host, &gh_auth(host)).unwrap_err();
+            assert!(err.contains("Invalid git credential helper host"), "{err}");
+        }
     }
 }

@@ -28,7 +28,6 @@ export function ManualIdentitiesSection() {
   const accounts = useAccounts((s) => s.accounts);
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
-  const repoEmailOverrides = useIdentities((s) => s.repoEmailOverrides);
   const saveManualIdentity = useIdentities((s) => s.saveManualIdentity);
   const setDefaultManualIdentity = useIdentities((s) => s.setDefaultManualIdentity);
   const deleteManualIdentity = useIdentities((s) => s.deleteManualIdentity);
@@ -47,7 +46,7 @@ export function ManualIdentitiesSection() {
 
   const handleSave = (draft: ProfileDraft) => {
     const selection = summary
-      ? selectCommitSource(repoIdentity, manuals, appliedCommitSource(), repoEmailOverrides(), defaultIdentity)
+      ? selectCommitSource(repoIdentity, manuals, appliedCommitSource(), defaultIdentity)
       : null;
     // Keep the open repo's git config in sync when its applied identity
     // changes, and pin an adopted unmanaged identity (create-with-prefill).

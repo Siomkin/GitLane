@@ -3490,6 +3490,12 @@ fn push_remote_helpers_resolve_branch_config_and_fall_back_to_origin() {
     repo.git_ok(&["config", "branch.main.remote", "mirror"]);
     assert_eq!(branch_push_remote(repo.path(), "main"), "mirror");
     assert_eq!(head_push_remote(repo.path()), "mirror");
+
+    // A local-tracking branch (`.`) is not a network remote; push auth falls
+    // back to origin instead of looking for a remote literally named ".".
+    repo.git_ok(&["config", "branch.main.remote", "."]);
+    assert_eq!(branch_push_remote(repo.path(), "main"), "origin");
+    assert_eq!(head_push_remote(repo.path()), "origin");
 }
 
 #[test]

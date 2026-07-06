@@ -786,10 +786,14 @@ async fn fetch(
     blocking(move || {
         let mut gh_host_by_remote = std::collections::HashMap::new();
         for pair in remote_accounts.unwrap_or_default() {
-            if let Some(host) =
-                git::transport_auth::helper_host_for_remote(&path, &pair.remote, Some(&pair.auth))?
+            match git::transport_auth::helper_host_for_remote(&path, &pair.remote, Some(&pair.auth))
             {
-                gh_host_by_remote.insert(pair.remote, host);
+                Ok(Some(host)) => {
+                    gh_host_by_remote.insert(pair.remote, host);
+                }
+                Ok(None) => {}
+                Err(err) if err.contains("was not found or has no URL configured") => {}
+                Err(err) => return Err(err),
             }
         }
         git::write::fetch(&path, &gh_host_by_remote)

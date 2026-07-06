@@ -25,24 +25,17 @@ export type CommitSourceRef = { kind: "manual"; id: string };
  * this just labels what the current values match.
  *
  * The anchor is the **email**: forges attribute commits by email only, so a
- * card link holds while the email is one the card knows (its own email or the
- * stored per-repo override) and a custom author name is reported via
- * `customName`, never treated as a break. */
+ * card link holds while the email still matches the card. A custom author name
+ * is reported via `customName`, never treated as a break. */
 export type CommitSelection =
   | { kind: "computer" }
   | {
       kind: "manual";
       id: string;
-      customEmail: boolean;
       customName: boolean;
       customSigning: boolean;
     }
   | { kind: "unmanaged" };
-
-/** Stable per-card key for the custom-email override map. */
-export function sourceKey(ref: CommitSourceRef): string {
-  return `manual:${ref.id}`;
-}
 
 /** The GitHub noreply address for an account, or null when it can't be built:
  * the numeric user id is required (an unresolved/unhealthy account degrades
@@ -71,7 +64,7 @@ function sameSigning(
 }
 
 function sameAuthor(a: RepoIdentity, b: RepoIdentity): boolean {
-  return a.name === b.name && a.email === b.email;
+  return a.name === b.name && (a.email || "").toLowerCase() === (b.email || "").toLowerCase();
 }
 
 /**
@@ -84,11 +77,10 @@ function sameAuthor(a: RepoIdentity, b: RepoIdentity): boolean {
  *   also resolves as this computer; it is a redundant repo-local author, not a
  *   different profile. Signing config is intentionally ignored for this
  *   collapse because the visible "who commits as" identity is name/email.
- * - The explicitly applied card wins while the pinned **email** is still one
- *   it knows (its own email, or the per-repo override in `overrides`, keyed
- *   by source key). A custom author name is reported via `customName` — git
- *   names are free-form display text and never break the link. An email the
- *   card doesn't know does break it (attribution changed), falling through.
+ * - The explicitly applied card wins while the pinned **email** still matches
+ *   it. A custom author name is reported via `customName` — git names are
+ *   free-form display text and never break the link. An email change does
+ *   break it (attribution changed), falling through.
  * - Without an applied ref: an exact name+email match first, then an
  *   unambiguous email-only match.
  * - No match → unmanaged (a legitimate custom identity, not an error).
@@ -97,21 +89,17 @@ export function selectCommitSource(
   repoIdentity: RepoIdentity | null,
   manuals: ManualIdentity[],
   applied: CommitSourceRef | null,
-  overrides: Record<string, string> = {},
   defaultIdentity: RepoIdentity | null = null,
 ): CommitSelection {
   if (!repoIdentity) return { kind: "computer" };
   if (defaultIdentity && sameAuthor(repoIdentity, defaultIdentity)) return { kind: "computer" };
-  const email = repoIdentity.email;
+  const email = (repoIdentity.email || "").toLowerCase();
 
   const cardHint = (card: ManualIdentity): CommitSelection | null => {
-    const override = overrides[sourceKey({ kind: "manual", id: card.id })] ?? null;
-    const known = [card.email, override].filter((e): e is string => Boolean(e));
-    if (!known.includes(email)) return null;
+    if (card.email.toLowerCase() !== email) return null;
     return {
       kind: "manual",
       id: card.id,
-      customEmail: email === override && override !== card.email,
       customName: repoIdentity.name !== card.name,
       customSigning: !sameSigning(card, repoIdentity),
     };
@@ -123,9 +111,9 @@ export function selectCommitSource(
     if (hint) return hint;
   }
 
-  const exact = manuals.find((p) => p.name === repoIdentity.name && p.email === email);
+  const exact = manuals.find((p) => p.name === repoIdentity.name && p.email.toLowerCase() === email);
   if (exact) return cardHint(exact)!;
-  const byEmail = manuals.filter((p) => p.email === email);
+  const byEmail = manuals.filter((p) => p.email.toLowerCase() === email);
   if (byEmail.length === 1) return cardHint(byEmail[0])!;
 
   return { kind: "unmanaged" };
@@ -146,25 +134,6 @@ export function migrateAppliedProfileMap(
   const out: Record<string, CommitSourceRef> = {};
   for (const [path, id] of Object.entries(old)) {
     if (typeof id === "string" && id) out[path] = { kind: "manual", id };
-  }
-  return out;
-}
-
-/** `gitlane.repoProfileEmail` `{ [repoPath]: { [profileId]: email } }` →
- * `gitlane.repoCommitEmail` `{ [repoPath]: { ["manual:"+id]: email } }`. */
-export function migrateCustomEmailMap(
-  old: Record<string, unknown>,
-): Record<string, Record<string, string>> {
-  const out: Record<string, Record<string, string>> = {};
-  for (const [path, entry] of Object.entries(old)) {
-    if (!entry || typeof entry !== "object") continue;
-    const perSource: Record<string, string> = {};
-    for (const [profileId, email] of Object.entries(entry as Record<string, unknown>)) {
-      if (typeof email === "string" && email) {
-        perSource[sourceKey({ kind: "manual", id: profileId })] = email;
-      }
-    }
-    if (Object.keys(perSource).length > 0) out[path] = perSource;
   }
   return out;
 }

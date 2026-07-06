@@ -316,8 +316,9 @@ pub fn head_pull_remote(repo: &str) -> Option<String> {
 }
 
 /// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
-/// falling back to `origin`) and refspec (honouring a divergent upstream branch
-/// name via `branch.<name>.merge`, else a plain `<branch>`). Shared by
+/// with local-tracking `.` treated as unset and falling back to `origin`) and
+/// refspec (honouring a divergent upstream branch name via
+/// `branch.<name>.merge`, else a plain `<branch>`). Shared by
 /// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
 /// deferring to `push.default`. Both config reads exit non-zero when unset, which
 /// `.ok()` turns into the fallback.
@@ -325,7 +326,7 @@ pub(super) fn push_target(repo: &str, branch: &str) -> (String, String) {
     let remote = run_git(repo, &["config", &format!("branch.{branch}.remote")])
         .ok()
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty() && s != ".")
         .unwrap_or_else(|| "origin".to_string());
     let refspec = run_git(repo, &["config", &format!("branch.{branch}.merge")])
         .ok()

@@ -2,13 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RepoIdentity } from "./api";
 import type { GitProfile } from "./profiles";
-import {
-  migrateAppliedProfileMap,
-  migrateCustomEmailMap,
-  noreplyEmail,
-  selectCommitSource,
-  sourceKey,
-} from "./identities";
+import { migrateAppliedProfileMap, noreplyEmail, selectCommitSource } from "./identities";
 
 const card = (over: Partial<GitProfile> = {}): GitProfile => ({
   id: "p1",
@@ -23,12 +17,6 @@ const identity = (over: Partial<RepoIdentity> = {}): RepoIdentity => ({
   name: "Alex Dev",
   email: "alex@personal.dev",
   ...over,
-});
-
-describe("sourceKey", () => {
-  it("keys cards stably", () => {
-    expect(sourceKey({ kind: "manual", id: "p1" })).toBe("manual:p1");
-  });
 });
 
 describe("noreplyEmail", () => {
@@ -55,8 +43,14 @@ describe("selectCommitSource", () => {
     expect(selectCommitSource(identity(), [card()], null)).toMatchObject({
       kind: "manual",
       id: "p1",
-      customEmail: false,
       customName: false,
+    });
+  });
+
+  it("matches email case-insensitively", () => {
+    expect(selectCommitSource(identity({ email: "Alex@Personal.Dev" }), [card()], null)).toMatchObject({
+      kind: "manual",
+      id: "p1",
     });
   });
 
@@ -66,7 +60,6 @@ describe("selectCommitSource", () => {
         identity({ signingKey: "KEY1", gpgFormat: "ssh", gpgSign: true }),
         [],
         null,
-        {},
         identity({ signingKey: "KEY1", gpgFormat: "ssh", gpgSign: true }),
       ),
     ).toEqual({ kind: "computer" });
@@ -78,7 +71,6 @@ describe("selectCommitSource", () => {
         identity({ signingKey: "KEY2", gpgFormat: "ssh", gpgSign: true }),
         [],
         null,
-        {},
         identity({ signingKey: "KEY1", gpgFormat: "ssh", gpgSign: true }),
       ),
     ).toEqual({ kind: "computer" });
@@ -98,16 +90,6 @@ describe("selectCommitSource", () => {
       id: "p1",
     });
     expect(sel).toEqual({ kind: "unmanaged" });
-  });
-
-  it("a stored per-repo override counts as a known email and is flagged custom", () => {
-    const sel = selectCommitSource(
-      identity({ email: "alias@corp.dev" }),
-      [card()],
-      { kind: "manual", id: "p1" },
-      { "manual:p1": "alias@corp.dev" },
-    );
-    expect(sel).toMatchObject({ kind: "manual", id: "p1", customEmail: true });
   });
 
   it("matches an unambiguous email-only hit without an applied ref", () => {
@@ -139,17 +121,5 @@ describe("storage migrations", () => {
     expect(
       migrateAppliedProfileMap({ "/repo": "p1", "/other": "", "/bad": 42 as unknown as string }),
     ).toEqual({ "/repo": { kind: "manual", id: "p1" } });
-  });
-
-  it("migrates custom emails to source-keyed entries", () => {
-    expect(
-      migrateCustomEmailMap({
-        "/repo": { p1: "me@custom.dev", p2: "work@custom.dev" },
-        "/empty": {},
-        "/junk": "nope",
-      }),
-    ).toEqual({
-      "/repo": { "manual:p1": "me@custom.dev", "manual:p2": "work@custom.dev" },
-    });
   });
 });

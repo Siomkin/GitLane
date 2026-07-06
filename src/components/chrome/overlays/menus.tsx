@@ -1158,11 +1158,14 @@ export function TagContextMenu() {
       ? {
           label: "Push tag to",
           icon: <PushIcon className="h-4 w-4" />,
-          submenu: remotes.map((r) => ({
-            label: r.name,
-            onClick: () => void run(() => pushTag(name, r.name)),
-          })),
-        }
+	          submenu: remotes.map((r) => ({
+	            label: r.name,
+	            onClick: () => {
+	              close();
+	              void run(() => pushTag(name, r.name));
+	            },
+	          })),
+	        }
       : { label: `Push tag to ${defaultRemote}`, icon: <PushIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => pushTag(name)); } },
     {
       label: "Create",

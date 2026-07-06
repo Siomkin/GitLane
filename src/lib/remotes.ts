@@ -76,11 +76,16 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   let user: string | null = null;
   if (!ssh && host.includes("@")) {
     const at = host.lastIndexOf("@");
-    user = decodeURIComponent(host.slice(0, at) || "") || null;
+    const rawUser = (host.slice(0, at) || "").split(":")[0] ?? "";
+    try {
+      user = decodeURIComponent(rawUser) || null;
+    } catch {
+      return miss;
+    }
     host = host.slice(at + 1);
   }
   if (hasCredentialProtocolSeparator(user) || hasCredentialProtocolSeparator(host)) return miss;
-  const credentialHost = host.replace(/^www\./, "").toLowerCase();
+  const credentialHost = host.toLowerCase();
   host = host.split(":")[0] || host;
   host = host.replace(/^www\./, "").toLowerCase();
   return { empty: false, valid: true, host, credentialHost, path, user, ssh, provider: providerForHost(host) };

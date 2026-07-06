@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Simulated repo-local git config so apply/clear/read round-trip like the real
-// backend, letting us prove per-repo custom emails survive source switches.
+// backend.
 const state = vi.hoisted(() => ({
   cfg: new Map<string, { name: string; email: string }>(),
 }));
@@ -21,6 +21,14 @@ const summary: RepoSummary = {
   workdir: path,
   headBranch: "main",
   headOid: "abc",
+  detached: false,
+};
+const otherPath = "other-repo";
+const otherSummary: RepoSummary = {
+  path: otherPath,
+  workdir: otherPath,
+  headBranch: "main",
+  headOid: "def",
   detached: false,
 };
 
@@ -69,55 +77,16 @@ beforeEach(() => {
   });
 });
 
-describe("useIdentities — custom email persistence across source switches", () => {
-  it("restores a per-repo custom email when re-applying a source (A→B→A)", async () => {
-    const { applyCommitSource, setCustomEmail } = useIdentities.getState();
-
-    await applyCommitSource(manualRef("p2"));
-    expect(useAccounts.getState().repoIdentity).toEqual({ name: "Stepan Work", email: "work@acme.io" });
-
-    await setCustomEmail("stepan@contractor.dev");
-    expect(useAccounts.getState().repoIdentity?.email).toBe("stepan@contractor.dev");
-
-    await applyCommitSource(manualRef("p1"));
-    expect(useAccounts.getState().repoIdentity?.email).toBe("personal@example.dev");
-
-    await applyCommitSource(manualRef("p2"));
-    expect(useAccounts.getState().repoIdentity?.email).toBe("stepan@contractor.dev");
-  });
-
-  it("reset-to-default drops the override and re-applies the source email", async () => {
-    const { applyCommitSource, setCustomEmail, resetCustomEmail } = useIdentities.getState();
-    await applyCommitSource(manualRef("p2"));
-    await setCustomEmail("stepan@contractor.dev");
-
-    await resetCustomEmail();
-    expect(useAccounts.getState().repoIdentity?.email).toBe("work@acme.io");
-
-    await applyCommitSource(manualRef("p1"));
-    await applyCommitSource(manualRef("p2"));
-    expect(useAccounts.getState().repoIdentity?.email).toBe("work@acme.io");
-  });
-
-  it("scrubs the applied ref (and override) when the applied manual identity is deleted", async () => {
-    const { applyCommitSource, setCustomEmail, deleteManualIdentity } = useIdentities.getState();
-    await applyCommitSource(manualRef("p2"));
-    await setCustomEmail("custom@x.dev");
-    expect(appliedCommitSource()).toEqual({ kind: "manual", id: "p2" });
-
-    deleteManualIdentity("p2");
-    expect(appliedCommitSource()).toBeNull();
-    const overrides = JSON.parse(localStorage.getItem("gitlane.repoCommitEmail") ?? "{}");
-    expect(overrides[path]?.["manual:p2"]).toBeUndefined();
-  });
-});
-
 describe("useIdentities — storage migration and keying", () => {
-  it("migrates the pre-GL-130 keys once and deletes them", () => {
+  it("migrates the applied profile key once and deletes removed custom-email keys", () => {
     localStorage.setItem("gitlane.repoProfile", JSON.stringify({ [path]: "p2" }));
     localStorage.setItem(
       "gitlane.repoProfileEmail",
       JSON.stringify({ [path]: { p2: "old@custom.dev" } }),
+    );
+    localStorage.setItem(
+      "gitlane.repoCommitEmail",
+      JSON.stringify({ [path]: { "manual:p2": "stale@custom.dev" } }),
     );
 
     useIdentities.getState().loadIdentities();
@@ -125,9 +94,7 @@ describe("useIdentities — storage migration and keying", () => {
     expect(JSON.parse(localStorage.getItem("gitlane.repoCommitSource")!)).toEqual({
       [path]: { kind: "manual", id: "p2" },
     });
-    expect(JSON.parse(localStorage.getItem("gitlane.repoCommitEmail")!)).toEqual({
-      [path]: { "manual:p2": "old@custom.dev" },
-    });
+    expect(localStorage.getItem("gitlane.repoCommitEmail")).toBeNull();
     expect(localStorage.getItem("gitlane.repoProfile")).toBeNull();
     expect(localStorage.getItem("gitlane.repoProfileEmail")).toBeNull();
     // The migrated applied source resolves for the open repo.
@@ -169,6 +136,37 @@ describe("useIdentities — storage migration and keying", () => {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("useIdentities — identity write races", () => {
+  it("does not publish an applied identity after switching repos before the write resolves", async () => {
+    let releaseWrite!: () => void;
+    const pendingWrite = new Promise<void>((r) => {
+      releaseWrite = r;
+    });
+    invokeMock.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
+      const p = args?.path as string;
+      if (cmd === "set_repo_identity") {
+        await pendingWrite;
+        state.cfg.set(p, { name: args.name as string, email: args.email as string });
+        return "ok";
+      }
+      if (cmd === "repo_identity") return state.cfg.get(p) ?? null;
+      return null;
+    });
+
+    const applying = useIdentities.getState().applyCommitSource(manualRef("p2"));
+    await tick();
+    useRepo.setState({ summary: otherSummary });
+    useAccounts.setState({ repoIdentity: { name: "Other Repo", email: "other@example.dev" } });
+
+    releaseWrite();
+    await applying;
+
+    expect(state.cfg.get(path)).toEqual({ name: "Stepan Work", email: "work@acme.io" });
+    expect(useAccounts.getState().repoIdentity).toEqual({
+      name: "Other Repo",
+      email: "other@example.dev",
+    });
+  });
+
   it("publishes the applied identity optimistically and drops a superseded hydrate", async () => {
     let releaseFirstRead!: () => void;
     const firstRead = new Promise<void>((r) => {

@@ -6,13 +6,30 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")).toMatchObject({
       valid: true,
       host: "bitbucket.org",
+      credentialHost: "bitbucket.org",
       path: "darang/gitlanebucket",
+      user: "SiomkinAlexander",
       provider: "bitbucket",
     });
     expect(detectRemoteUrl("https://github.corp.example:8443/team/repo.git")).toMatchObject({
       valid: true,
       host: "github.corp.example",
       credentialHost: "github.corp.example:8443",
+    });
+  });
+
+  it("keeps credential authority exact while normalising provider host display", () => {
+    expect(detectRemoteUrl("https://www.github.com/owner/repo.git")).toMatchObject({
+      valid: true,
+      host: "github.com",
+      credentialHost: "www.github.com",
+      provider: "github",
+    });
+    expect(detectRemoteUrl("https://alice:secret@bitbucket.org/team/repo.git")).toMatchObject({
+      valid: true,
+      host: "bitbucket.org",
+      credentialHost: "bitbucket.org",
+      user: "alice",
     });
   });
 
@@ -62,6 +79,13 @@ describe("detectRemoteUrl", () => {
       valid: false,
     });
     expect(detectRemoteUrl("git@gitlab.com\rhost=evil.example:owner/repo.git")).toMatchObject({
+      valid: false,
+    });
+  });
+
+  it("rejects malformed percent-encoded userinfo without throwing", () => {
+    expect(() => detectRemoteUrl("https://100%@github.com/owner/repo.git")).not.toThrow();
+    expect(detectRemoteUrl("https://100%@github.com/owner/repo.git")).toMatchObject({
       valid: false,
     });
   });

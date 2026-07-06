@@ -25,13 +25,26 @@ pub struct CredentialSaveResult {
 }
 
 pub fn helper_status() -> CredentialHelperStatus {
-    let helpers = git_config_get_all("credential.helper")
+    let mut helpers = git_config_get_all("credential.helper")
         .unwrap_or_default()
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
+    helpers.extend(
+        git_config_get_regexp(r"^credential\..*\.helper$")
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| {
+                line.split_once(char::is_whitespace)
+                    .map(|(_, value)| value.trim())
+            })
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned),
+    );
+    helpers.sort();
+    helpers.dedup();
     CredentialHelperStatus {
         configured: !helpers.is_empty(),
         helpers,
@@ -55,9 +68,6 @@ pub fn approve_https_credential(
     if credential_host.trim().is_empty() {
         return Err("Credential host is missing.".into());
     }
-    if username.is_empty() {
-        return Err("Enter the HTTPS username for this provider.".into());
-    }
     if password.is_empty() {
         return Err("Enter the token or password to save in your Git credential helper.".into());
     }
@@ -74,10 +84,11 @@ pub fn approve_https_credential(
 
     let verify = credential_input(credential_host, path, username, None);
     let filled = run_git_credential("fill", &verify)?;
-    let has_username = filled.lines().any(|line| {
-        line.strip_prefix("username=")
-            .is_some_and(|value| value == username)
-    });
+    let has_username = username.is_empty()
+        || filled.lines().any(|line| {
+            line.strip_prefix("username=")
+                .is_some_and(|value| value == username)
+        });
     let has_password = filled.lines().any(|line| line.starts_with("password="));
     if !has_username || !has_password {
         return Err("Git credential helper did not return the saved credential.".into());
@@ -104,11 +115,12 @@ fn credential_input(
     username: &str,
     password: Option<&str>,
 ) -> String {
-    let mut input = format!(
-        "protocol=https\nhost={}\nusername={}\n",
-        credential_host.trim(),
-        username.trim()
-    );
+    let mut input = format!("protocol=https\nhost={}\n", credential_host.trim(),);
+    if !username.trim().is_empty() {
+        input.push_str("username=");
+        input.push_str(username.trim());
+        input.push('\n');
+    }
     if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
         input.push_str("path=");
         input.push_str(path.trim_start_matches('/'));
@@ -136,10 +148,24 @@ fn git_config_get_all(key: &str) -> Result<String, String> {
     }
 }
 
+fn git_config_get_regexp(pattern: &str) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(["config", "--get-regexp", pattern])
+        .env("PATH", crate::shell::path())
+        .output()
+        .map_err(|e| format!("failed to launch git config: {e}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
 fn run_git_credential(op: &str, input: &str) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.args(["credential", op])
         .env("PATH", crate::shell::path())
+        .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -184,6 +210,16 @@ mod tests {
         assert!(input.contains("path=org/project/_git/repo\n"));
         assert!(input.contains("username=alice\n"));
         assert!(input.contains("password=secret\n"));
+    }
+
+    #[test]
+    fn credential_input_omits_blank_username() {
+        let input = credential_input("gitlab.com", Some("group/repo"), " ", Some("token"));
+        assert!(input.contains("protocol=https\n"));
+        assert!(input.contains("host=gitlab.com\n"));
+        assert!(input.contains("path=group/repo\n"));
+        assert!(!input.contains("username="));
+        assert!(input.contains("password=token\n"));
     }
 
     #[test]

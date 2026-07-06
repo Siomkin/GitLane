@@ -51,7 +51,11 @@ export function capabilityHint(meta: ProviderMeta): string {
  * whether it's installed / signed in. `null` while the probe hasn't landed. */
 export function cliStatusLine(status: ForgeAuthStatus | undefined): string | null {
   if (!status) return null;
-  if (status.cli === null) return "No CLI — manual setup";
+  if (status.cli === null) {
+    return status.authenticated
+      ? `Credential saved${status.account ? ` for ${accountHandle(status.account)}` : ""}`
+      : "No CLI — manual setup";
+  }
   if (!status.available) return `${status.cli} CLI not installed`;
   return status.authenticated ? `Signed in via ${status.cli}` : `${status.cli} installed — not signed in`;
 }

@@ -11,8 +11,6 @@
 // - `gitlane.profiles` (legacy-named, kept) — the identity cards.
 // - `gitlane.repoCommitSource` `{ [repoKey]: {kind:"manual", id} }` — the
 //   applied card, migrated from `gitlane.repoProfile` on first load.
-// - `gitlane.repoCommitEmail` `{ [repoKey]: { [sourceKey]: email } }` —
-//   per-repo custom-email overrides, migrated from `gitlane.repoProfileEmail`.
 //
 // Per-repo entries key on the repository identity (`repoIdentityKey`, the main
 // checkout's path) so all worktrees of a repo share them — the old store keyed
@@ -23,9 +21,6 @@ import { create } from "zustand";
 import { api, type RepoIdentity } from "../lib/api";
 import {
   migrateAppliedProfileMap,
-  migrateCustomEmailMap,
-  selectCommitSource,
-  sourceKey,
   type CommitSourceRef,
 } from "../lib/identities";
 import { ACCOUNT_COLORS } from "../lib/palette";
@@ -42,10 +37,10 @@ export type { CommitSourceRef } from "../lib/identities";
 // material), so localStorage is the right tier per GL-48.
 const LS_PROFILES = "gitlane.profiles";
 const LS_COMMIT_SOURCE = "gitlane.repoCommitSource";
-const LS_CUSTOM_EMAIL = "gitlane.repoCommitEmail";
 // Pre-GL-130 keys, consumed (and deleted) by the one-shot migration below.
 const LS_OLD_REPO_PROFILE = "gitlane.repoProfile";
 const LS_OLD_CUSTOM_EMAIL = "gitlane.repoProfileEmail";
+const LS_REMOVED_CUSTOM_EMAIL = "gitlane.repoCommitEmail";
 
 function readJsonMap<T>(key: string): Record<string, T> {
   try {
@@ -97,11 +92,9 @@ function migrateLegacyStorage() {
     }
     const oldEmails = localStorage.getItem(LS_OLD_CUSTOM_EMAIL);
     if (oldEmails) {
-      const migrated = migrateCustomEmailMapSafe(oldEmails);
-      const current = readJsonMap<Record<string, string>>(LS_CUSTOM_EMAIL);
-      writeJsonMap(LS_CUSTOM_EMAIL, { ...migrated, ...current });
       localStorage.removeItem(LS_OLD_CUSTOM_EMAIL);
     }
+    localStorage.removeItem(LS_REMOVED_CUSTOM_EMAIL);
   } catch {
     /* malformed legacy data — leave the new keys as-is */
   }
@@ -115,22 +108,16 @@ function migrateAppliedProfileMapSafe(raw: string): Record<string, CommitSourceR
     return {};
   }
 }
-function migrateCustomEmailMapSafe(raw: string): Record<string, Record<string, string>> {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return migrateCustomEmailMap(parsed as Record<string, unknown>);
-  } catch {
-    return {};
-  }
-}
-
 /** The open repo's binding key (main checkout path) + its worktree path, for
  * the lazy path→identity key migration. Null when no repo is open. */
 function openRepoKeys(): { key: string; path: string } | null {
   const summary = useRepo.getState().summary;
   if (!summary) return null;
   return { key: repoIdentityKey(summary), path: summary.path };
+}
+
+function repoStillOpen(path: string): boolean {
+  return useRepo.getState().summary?.path === path;
 }
 
 // Applied-card persistence (the unambiguous "which card" signal).
@@ -153,22 +140,6 @@ export function appliedCommitSource(): CommitSourceRef | null {
   return readApplied(keys.key, keys.path);
 }
 
-// Custom-email overrides: { [repoKey]: { [sourceKey]: email } }.
-function readOverridesFor(key: string, path: string): Record<string, string> {
-  const all = readJsonMap<Record<string, string>>(LS_CUSTOM_EMAIL);
-  if (migratePathKey(all, key, path)) writeJsonMap(LS_CUSTOM_EMAIL, all);
-  return all[key] ?? {};
-}
-function setCustomEmailEntry(key: string, source: string, email: string | null) {
-  const all = readJsonMap<Record<string, string>>(LS_CUSTOM_EMAIL);
-  const repo = { ...(all[key] ?? {}) };
-  if (email === null) delete repo[source];
-  else repo[source] = email;
-  if (Object.keys(repo).length === 0) delete all[key];
-  else all[key] = repo;
-  writeJsonMap(LS_CUSTOM_EMAIL, all);
-}
-
 /** Carry a relocated repo's per-path identity entries (GL-108 Locate…). An
  * entry already stored for the new path wins; the stale path's entries are
  * dropped either way. The applied config itself lives in the repo's local git
@@ -180,20 +151,11 @@ export function migrateIdentityBindings(fromPath: string, toPath: string) {
   }
   delete applied[fromPath];
   writeJsonMap(LS_COMMIT_SOURCE, applied);
-
-  const overrides = readJsonMap<Record<string, string>>(LS_CUSTOM_EMAIL);
-  if (overrides[fromPath] !== undefined && overrides[toPath] === undefined) {
-    overrides[toPath] = overrides[fromPath];
-  }
-  delete overrides[fromPath];
-  writeJsonMap(LS_CUSTOM_EMAIL, overrides);
 }
 
 /** Remove every reference to a deleted card from the per-repo maps, so a
- * stale id can't reselect a wrong duplicate and orphaned overrides don't
- * linger. */
+ * stale id can't reselect a wrong duplicate. */
 function scrubManualId(id: string) {
-  const source = sourceKey({ kind: "manual", id });
   const applied = readJsonMap<CommitSourceRef>(LS_COMMIT_SOURCE);
   let appliedChanged = false;
   for (const key of Object.keys(applied)) {
@@ -203,19 +165,6 @@ function scrubManualId(id: string) {
     }
   }
   if (appliedChanged) writeJsonMap(LS_COMMIT_SOURCE, applied);
-
-  const overrides = readJsonMap<Record<string, string>>(LS_CUSTOM_EMAIL);
-  let overridesChanged = false;
-  for (const key of Object.keys(overrides)) {
-    if (overrides[key][source] !== undefined) {
-      const next = { ...overrides[key] };
-      delete next[source];
-      if (Object.keys(next).length === 0) delete overrides[key];
-      else overrides[key] = next;
-      overridesChanged = true;
-    }
-  }
-  if (overridesChanged) writeJsonMap(LS_CUSTOM_EMAIL, overrides);
 }
 
 /** Signing args for `api.setRepoIdentity`. Empty strings unset the key/format
@@ -267,16 +216,8 @@ interface IdentitiesState {
   /** Mark a card the suggested default (clears the flag on others). */
   setDefaultManualIdentity: (id: string) => void;
   /** Apply a card (or `null` = this computer) to the open repo: writes local
-   * git config, restoring any saved custom email for the pair. */
+   * git config. */
   applyCommitSource: (ref: CommitSourceRef | null) => Promise<void>;
-  /** Override the applied card's commit email for this repo (persisted per
-   * repo + card). */
-  setCustomEmail: (email: string) => Promise<void>;
-  /** Drop the per-repo custom email and re-apply the card's own email. */
-  resetCustomEmail: () => Promise<void>;
-  /** The per-repo custom-email overrides for the open repo, keyed by source
-   * key — input for [`selectCommitSource`]. */
-  repoEmailOverrides: () => Record<string, string>;
 }
 
 export const useIdentities = create<IdentitiesState>((set, get) => ({
@@ -353,6 +294,7 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
       }
       // This computer → nothing applied.
       writeApplied(key, null);
+      if (!repoStillOpen(path)) return;
       // Publish the cleared identity immediately so a commit in the reconcile
       // window doesn't pin the previous card's author.
       useAccounts.getState().pinRepoIdentity(null, path);
@@ -363,8 +305,7 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
 
     const card = get().manualIdentities.find((p) => p.id === ref.id);
     if (!card) return;
-    const overrides = readOverridesFor(key, path);
-    const email = overrides[sourceKey(ref)] ?? card.email;
+    const email = card.email;
 
     try {
       await api.setRepoIdentity(path, card.name, email, signingArgs(card));
@@ -374,65 +315,10 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
     }
     // Record the applied card so selection stays unambiguous.
     writeApplied(key, ref);
+    if (!repoStillOpen(path)) return;
     useAccounts.getState().pinRepoIdentity(expectedIdentity(card, card.name, email), path);
     await useAccounts.getState().hydrateRepoIdentity(path);
     useUi.getState().showToast(`This repo commits as ${card.label}`);
   },
 
-  setCustomEmail: async (email) => {
-    const keys = openRepoKeys();
-    if (!keys) return;
-    const { key, path } = keys;
-    const ref = currentAppliedSource(get(), key, path);
-    if (!ref) return;
-    const card = get().manualIdentities.find((p) => p.id === ref.id);
-    if (!card) return;
-
-    try {
-      await api.setRepoIdentity(path, card.name, email, signingArgs(card));
-    } catch (e) {
-      useUi.getState().showToast(String(e), "error");
-      return;
-    }
-    // Cache the override only after git config actually accepted it, so a failed
-    // write is never re-applied when the user later switches back to this card.
-    setCustomEmailEntry(key, sourceKey(ref), email);
-    useAccounts.getState().pinRepoIdentity(expectedIdentity(card, card.name, email), path);
-    await useAccounts.getState().hydrateRepoIdentity(path);
-  },
-
-  resetCustomEmail: async () => {
-    const keys = openRepoKeys();
-    if (!keys) return;
-    const { key, path } = keys;
-    const ref = currentAppliedSource(get(), key, path);
-    if (!ref) return;
-    setCustomEmailEntry(key, sourceKey(ref), null);
-    await get().applyCommitSource(ref);
-  },
-
-  repoEmailOverrides: () => {
-    const keys = openRepoKeys();
-    if (!keys) return {};
-    return readOverridesFor(keys.key, keys.path);
-  },
 }));
-
-/** The card the repo's current identity resolves to, as a ref — the applied
- * ref while its email still matches, else the matched card. Null for
- * this-computer / unmanaged (no card to edit). */
-function currentAppliedSource(
-  state: IdentitiesState,
-  key: string,
-  path: string,
-): CommitSourceRef | null {
-  const selection = selectCommitSource(
-    useAccounts.getState().repoIdentity,
-    state.manualIdentities,
-    readApplied(key, path),
-    readOverridesFor(key, path),
-    state.defaultIdentity,
-  );
-  if (selection.kind === "manual") return { kind: "manual", id: selection.id };
-  return null;
-}

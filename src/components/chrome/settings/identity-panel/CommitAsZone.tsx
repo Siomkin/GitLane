@@ -22,19 +22,12 @@ export function CommitAsZone() {
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const applyCommitSource = useIdentities((s) => s.applyCommitSource);
-  const repoEmailOverrides = useIdentities((s) => s.repoEmailOverrides);
   const closeRepoSettings = useUi((s) => s.closeRepoSettings);
   const openIdentitiesSettings = useUi((s) => s.openIdentitiesSettings);
 
   if (!summary) return null;
 
-  const selection = selectCommitSource(
-    repoIdentity,
-    manuals,
-    appliedCommitSource(),
-    repoEmailOverrides(),
-    defaultIdentity,
-  );
+  const selection = selectCommitSource(repoIdentity, manuals, appliedCommitSource(), defaultIdentity);
   // What the repo currently commits as: the local pin, else the global config.
   const effectiveName = repoIdentity?.name ?? defaultIdentity?.name ?? "";
   const effectiveEmail = repoIdentity?.email ?? defaultIdentity?.email ?? "";
@@ -214,7 +207,6 @@ function HintBadges({
   if (selection.kind === "manual") {
     return (
       <>
-        {selection.customEmail && <Badge tone="accent">custom email</Badge>}
         {selection.customName &&
           <Badge title="The author name differs from this profile's saved name — names are free-form; attribution follows the email.">
             custom name

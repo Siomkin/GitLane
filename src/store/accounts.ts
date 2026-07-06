@@ -19,6 +19,7 @@ import { create } from "zustand";
 import {
   api,
   type ForgeAuthStatus,
+  type ForgeAuthProvider,
   type GitTransportAuthRef,
   type GithubAccountRef,
   type GithubSignInResult,
@@ -73,6 +74,16 @@ export type { RepoIdentity };
 // is stored separately so it can be edited independently of the auth account.
 const LS_REPO_ACCOUNTS = "gitlane.repoAccounts";
 const LS_REPO_IDENTITY = "gitlane.repoIdentity";
+const LS_FORGE_CREDENTIALS = "gitlane.forgeCredentials";
+
+type StoredForgeCredential = {
+  provider: ForgeAuthProvider;
+  credentialHost: string;
+  path: string | null;
+  username: string;
+  helper: string;
+  savedAt: number;
+};
 
 function readJsonMap<T>(key: string): Record<string, T> {
   try {
@@ -99,6 +110,45 @@ const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
 const readIdentities = () => readJsonMap<RepoIdentity>(LS_REPO_IDENTITY);
 const writeIdentities = (map: Record<string, RepoIdentity>) =>
   writeJsonMap(LS_REPO_IDENTITY, map);
+const readForgeCredentials = () => readJsonMap<StoredForgeCredential>(LS_FORGE_CREDENTIALS);
+const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
+  writeJsonMap(LS_FORGE_CREDENTIALS, map);
+
+function rememberForgeCredential(
+  provider: ForgeAuthProvider,
+  credentialHost: string,
+  path: string | null,
+  username: string,
+  helper: string,
+) {
+  const credentials = readForgeCredentials();
+  credentials[provider] = {
+    provider,
+    credentialHost,
+    path,
+    username,
+    helper,
+    savedAt: Date.now(),
+  };
+  writeForgeCredentials(credentials);
+}
+
+function withSavedForgeCredentials(statuses: ForgeAuthStatus[]): ForgeAuthStatus[] {
+  const credentials = readForgeCredentials();
+  return statuses.map((status) => {
+    const saved = credentials[status.provider];
+    if (!saved) return status;
+    return {
+      ...status,
+      available: true,
+      authenticated: true,
+      account: { username: saved.username },
+      notes: `${status.notes} Credential saved for ${saved.credentialHost}${
+        saved.path ? `/${saved.path}` : ""
+      } in ${saved.helper || "Git credential helper"}.`,
+    };
+  });
+}
 
 /** One-shot migration of a per-repo map entry from a worktree-path key to the
  * repository-identity key (GL-109): pre-identity builds stored bindings under
@@ -213,6 +263,7 @@ interface AccountsState {
     path: string | null,
     username: string,
     password: string,
+    provider?: ForgeAuthProvider,
   ) => Promise<void>;
   /** Store a remote's HTTPS token/password and write its username into the URL. */
   saveRemoteCredential: (remote: string, username: string, password: string) => Promise<void>;
@@ -240,7 +291,7 @@ const remoteAccountMigrations = new Set<string>();
 
 type RemoteBindingV3 = Extract<StoredRepoAccountEntry, { version: 3; remotes: unknown }>;
 type RemoteBindingValue = RemoteBindingV3["remotes"][string];
-type ResolvedStoredAccount = Account | "unbound" | "unset";
+type ResolvedStoredAccount = Account | "unbound" | "unset" | "unresolved";
 
 function isV3Binding(entry: StoredRepoAccountEntry | undefined): entry is RemoteBindingV3 {
   return typeof entry === "object" && entry !== null && "remotes" in entry;
@@ -252,11 +303,13 @@ function resolveRemoteBinding(
 ): ResolvedStoredAccount {
   if (binding === undefined) return "unset";
   if (typeof binding === "string") {
-    return accounts.find((a) => accountMatchesLegacy(a, binding)) ?? "unset";
+    return accounts.find((a) => accountMatchesLegacy(a, binding)) ?? "unresolved";
   }
   if ("unbound" in binding) return "unbound";
   const resolved = resolvePrAccount({ version: 2, ...binding }, accounts);
-  return resolved === "unbound" || resolved === "unset" ? resolved : (resolved as Account);
+  if (resolved === "unbound") return "unbound";
+  if (resolved === "unset") return "unresolved";
+  return resolved as Account;
 }
 
 function prEntryFromRemoteBinding(
@@ -265,7 +318,7 @@ function prEntryFromRemoteBinding(
 ): StoredRepoAccountEntry | undefined {
   const resolved = resolveRemoteBinding(binding, accounts);
   if (resolved === "unbound") return { version: 2, unbound: true };
-  if (resolved === "unset") return undefined;
+  if (resolved === "unset" || resolved === "unresolved") return undefined;
   return { version: 2, ...resolved.ref };
 }
 
@@ -277,7 +330,9 @@ function legacyDefaultSelection(
   if (isV3Binding(entry)) {
     return defaultRemoteName ? resolveRemoteBinding(entry.remotes[defaultRemoteName], accounts) : "unset";
   }
-  return resolvePrAccount(entry, accounts) as ResolvedStoredAccount;
+  const resolved = resolvePrAccount(entry, accounts);
+  if (resolved === "unset" && entry !== undefined) return "unresolved";
+  return resolved as ResolvedStoredAccount;
 }
 
 async function migrateStoredRemoteUsernames(
@@ -289,6 +344,7 @@ async function migrateStoredRemoteUsernames(
   defaultRemoteName: string | null,
 ) {
   if (!entry || remotes.length === 0) return;
+  if (isV3Binding(entry) && accounts.length === 0) return;
 
   const writes: Array<{ remote: string; username: string | null }> = [];
   const addWrite = (remote: RemoteInfo, username: string | null) => {
@@ -305,6 +361,7 @@ async function migrateStoredRemoteUsernames(
   if (isV3Binding(entry)) {
     for (const remote of remotes) {
       const resolved = resolveRemoteBinding(entry.remotes[remote.name], accounts);
+      if (resolved === "unresolved") return;
       if (resolved === "unset") continue;
       addWrite(remote, resolved === "unbound" ? null : resolved.login);
     }
@@ -441,7 +498,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const gen = ++forgeAuthGen;
     set({ forgeAuthLoading: true, forgeAuthError: null });
     try {
-      const next = await api.forgeAuthStatuses();
+      const next = withSavedForgeCredentials(await api.forgeAuthStatuses());
       if (gen !== forgeAuthGen) return; // superseded by a newer load
       // Show the authenticated forges immediately; their real identity resolves
       // in the background (a per-provider network whoami) so the card can render
@@ -523,10 +580,14 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const storedDefault = legacyDefaultSelection(bindings[key], defaultRemoteName, accounts);
     let selected: Account | null;
     if (defaultRemote && defaultInfo && !defaultInfo.ssh) {
-      selected = derivedDefault ?? (storedDefault !== "unset" && storedDefault !== "unbound" ? storedDefault : null);
+      selected =
+        derivedDefault ??
+        (storedDefault !== "unset" && storedDefault !== "unbound" && storedDefault !== "unresolved"
+          ? storedDefault
+          : null);
     } else {
       selected =
-        storedDefault === "unbound"
+        storedDefault === "unbound" || storedDefault === "unresolved"
           ? null
           : storedDefault === "unset"
             ? accounts.find((a) => a.id === get().activeAccountId) ?? null
@@ -549,6 +610,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   pinRepoIdentity: (identity, path) => {
+    if (useRepo.getState().summary?.path !== path) return;
     repoIdentityGen += 1;
     set({ repoIdentity: identity });
     // The cache keys on the repository identity, like the git config it
@@ -615,6 +677,14 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi.getState().showToast(String(e), "error");
       return;
     }
+    if (target.isDefault) {
+      const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
+      if (key) {
+        const bindings = readBindings();
+        bindings[key] = account ? { version: 2, ...account.ref } : { version: 2, unbound: true };
+        writeBindings(bindings);
+      }
+    }
     // Re-read remotes → the derivation in syncRepoAccount updates every
     // consumer (picker, PR mirror) from git config, the source of truth.
     await useRepo.getState().listRemotes();
@@ -657,7 +727,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       .showToast(clean ? `${remote} uses @${clean} via system git credentials` : `${remote} uses system git credentials`);
   },
 
-  saveHttpsCredential: async (credentialHost, path, username, password) => {
+  saveHttpsCredential: async (credentialHost, path, username, password, provider) => {
     const cleanUser = username.trim();
     const cleanHost = credentialHost.trim();
     if (!cleanHost) {
@@ -674,9 +744,21 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
     try {
       const result = await api.approveHttpsCredential(cleanHost, path, cleanUser, password);
+      if (provider) {
+        rememberForgeCredential(provider, cleanHost, path, result.username, result.helper);
+        set((s) => ({
+          forgeAuth: withSavedForgeCredentials(s.forgeAuth),
+        }));
+      }
       useUi
         .getState()
-        .showToast(`Saved @${result.username} in Git credential helper${result.helper ? ` (${result.helper})` : ""}`);
+        .showToast(
+          provider
+            ? `Saved @${result.username} for ${cleanHost} in Git credential helper${
+                result.helper ? ` (${result.helper})` : ""
+              }`
+            : `Saved @${result.username} in Git credential helper${result.helper ? ` (${result.helper})` : ""}`,
+        );
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }

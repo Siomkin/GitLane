@@ -332,7 +332,6 @@ export interface RepoState {
   /** Delete a local tag. A copy still on origin is re-imported by fetch —
    * pass `alsoRemote` to delete it from origin in the same operation. */
   deleteTag: (name: string, alsoRemote?: boolean) => Promise<string>;
-  /** Push a tag to origin as the repo's bound account. */
   /** Push a tag to `remote` (the default push remote when omitted). */
   pushTag: (name: string, remote?: string) => Promise<string>;
   /** Remove a linked worktree (`force` drops the dirty/locked check). */

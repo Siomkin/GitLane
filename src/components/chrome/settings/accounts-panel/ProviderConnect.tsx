@@ -194,7 +194,9 @@ function CredentialHelperForm({
           type="button"
           disabled={disabled}
           onClick={() => {
-            void saveHttpsCredential(host, path.trim() || null, username, password).then(() => setPassword(""));
+            void saveHttpsCredential(host, path.trim() || null, username, password, status.provider).then(() =>
+              setPassword(""),
+            );
           }}
           className={cn(
             "h-9 rounded-lg bg-[var(--accent)] px-3.5 text-[12.5px] font-semibold text-white disabled:opacity-40",

@@ -120,7 +120,11 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
               ? remoteInfo.provider
               : "other";
         const auth: GitTransportAuthRef | null =
-          remoteInfo.valid && !remoteInfo.ssh && remoteInfo.host && remoteInfo.credentialHost && username
+          remoteInfo.valid &&
+          !remoteInfo.ssh &&
+          remoteInfo.host &&
+          remoteInfo.credentialHost &&
+          (username || clonePassword)
             ? selectedAccount
               ? {
                   mode: "githubGh",
@@ -135,7 +139,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
                   provider,
                   host: remoteInfo.host,
                   credentialHost: remoteInfo.credentialHost,
-                  username,
+                  username: username || null,
                 }
             : null;
         if (auth?.mode === "credentialHelper" && clonePassword) {

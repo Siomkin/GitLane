@@ -144,6 +144,51 @@ describe("openRecent — opening a present recent", () => {
 });
 
 describe("overlay unmount during clone", () => {
+  it("saves clone tokens even when the HTTPS username is blank", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "", helper: "store" });
+      if (cmd === "clone_repo") return Promise.resolve("/tmp/repo");
+      if (cmd === "open_repo") {
+        return Promise.resolve({
+          path: "/tmp/repo",
+          workdir: "/tmp/repo",
+          headBranch: "main",
+          headOid: null,
+          detached: false,
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://gitlab.com/group/repo.git"));
+    act(() => result.current.setCloneUsername(""));
+    act(() => result.current.setClonePassword("token"));
+    act(() => result.current.startClone());
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
+        credentialHost: "gitlab.com",
+        path: "group/repo",
+        username: "",
+        password: "token",
+      }),
+    );
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("clone_repo", {
+        url: "https://gitlab.com/group/repo.git",
+        dest: expect.any(String),
+        auth: {
+          mode: "credentialHelper",
+          provider: "gitlab",
+          host: "gitlab.com",
+          credentialHost: "gitlab.com",
+          username: null,
+        },
+      }),
+    );
+  });
+
   it("cancels an in-flight clone when the hook unmounts mid-progress", async () => {
     useRepo.setState({
       recents: [{ path: "/code/x", name: "x", branch: null, lastOpenedAt: 0 }],

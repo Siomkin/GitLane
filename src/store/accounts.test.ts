@@ -443,7 +443,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
           version: 3,
           remotes: {
             origin: account.ref,
-            bucket: { provider: "gh", host: "github.com", accountId: "missing", login: "missing" },
+            bucket: { unbound: true },
           },
         },
       }),
@@ -467,7 +467,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", {
       path,
       name: "bucket",
-      username: expect.anything(),
+      username: null,
     });
     await vi.waitFor(() => {
       const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
@@ -475,7 +475,42 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
   });
 
-  it("setRemoteAccount writes only the remote username, never localStorage", async () => {
+  it("does not delete interim v3 bindings before accounts are loaded", async () => {
+    const entry = {
+      version: 3,
+      remotes: {
+        origin: account.ref,
+      },
+    };
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: entry }));
+    useAccounts.setState({ accounts: [], activeAccountId: account.id });
+    useRepo.setState({ summary, remotes: [origin] });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path]).toEqual(entry);
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+  });
+
+  it("keeps unresolved interim v3 bindings for a later account refresh", async () => {
+    const entry = {
+      version: 3,
+      remotes: {
+        origin: account.ref,
+        bucket: { provider: "gh", host: "github.com", accountId: "missing", login: "missing" },
+      },
+    };
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: entry }));
+    useRepo.setState({ summary, remotes: [origin, bucket] });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path]).toEqual(entry);
+  });
+
+  it("setRemoteAccount writes the default remote username and updates the legacy PR binding", async () => {
     useRepo.setState({ summary, remotes: [origin, bucket] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [originWithUser, bucket];
@@ -489,12 +524,16 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
       name: "origin",
       username: "octocat",
     });
-    expect(localStorage.getItem("gitlane.repoAccounts")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path]).toEqual({
+      version: 2,
+      ...account.ref,
+    });
     // No identity writes from a push-auth change (two-tier safety).
     expect(identityCmds(invokeMock.mock.calls)).toHaveLength(0);
   });
 
-  it("clearing the account strips the username from the URL", async () => {
+  it("clearing the default remote strips the URL username and clears the legacy PR binding", async () => {
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: { version: 2, ...account.ref } }));
     useRepo.setState({ summary, remotes: [originWithUser, bucket] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [origin, bucket];
@@ -508,6 +547,27 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
       name: "origin",
       username: null,
     });
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path]).toEqual({
+      version: 2,
+      unbound: true,
+    });
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+  });
+
+  it("does not fall back to the active account when a stored binding cannot resolve", () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        [path]: { version: 2, provider: "gh", host: "github.com", accountId: "missing", login: "missing" },
+      }),
+    );
+    useAccounts.setState({ activeAccountId: account.id });
+    useRepo.setState({ summary, remotes: [] });
+
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+    expect(useAccounts.getState().repoAccountRef).toBeNull();
   });
 
   it("refuses to bind an SSH remote (the SSH key is the account)", async () => {

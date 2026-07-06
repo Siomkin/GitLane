@@ -23,7 +23,6 @@ export function IdentityChip() {
   const accounts = useAccounts((s) => s.accounts);
   const repoAccountId = useAccounts((s) => s.repoAccountId);
   const manuals = useIdentities((s) => s.manualIdentities);
-  const repoEmailOverrides = useIdentities((s) => s.repoEmailOverrides);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const loadIdentities = useIdentities((s) => s.loadIdentities);
   const loadDefaultIdentity = useIdentities((s) => s.loadDefaultIdentity);
@@ -40,13 +39,7 @@ export function IdentityChip() {
 
   if (!summary) return null;
 
-  const selection = selectCommitSource(
-    repoIdentity,
-    manuals,
-    appliedCommitSource(),
-    repoEmailOverrides(),
-    defaultIdentity,
-  );
+  const selection = selectCommitSource(repoIdentity, manuals, appliedCommitSource(), defaultIdentity);
   const activeManual =
     selection.kind === "manual" ? manuals.find((p) => p.id === selection.id) ?? null : null;
   const account = accounts.find((a) => a.id === repoAccountId) ?? null;
