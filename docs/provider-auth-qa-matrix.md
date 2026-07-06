@@ -32,7 +32,8 @@ Native OAuth device flows for GitLab/Bitbucket are **not** implemented: they
 require a registered OAuth application (client id) per provider/host, which is a
 product/infra decision. The in-app **PAT-into-keychain** path is the supported
 first-class sign-in until then; Azure's "OAuth" is delegated to GCM where
-present. See `docs/github-provider-auth-roadmap.md`.
+present. Native OAuth is tracked as **GL-139** (child of GL-131); see also
+`docs/github-provider-auth-roadmap.md`.
 
 ## Operation matrix (per HTTPS remote)
 
