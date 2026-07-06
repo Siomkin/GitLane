@@ -33,6 +33,14 @@ export interface RemoteAccountPickerModel {
   note: string | null;
 }
 
+function accountMatchesRemoteHost(
+  account: Pick<PickerAccount, "host">,
+  info: { host: string | null; credentialHost: string | null },
+) {
+  if (!info.host || !info.credentialHost) return false;
+  return account.host === info.credentialHost || (info.credentialHost.startsWith("www.") && account.host === info.host);
+}
+
 /** Map a remote's detected provider onto the forge-auth probe key. */
 const FORGE_PROVIDER: Partial<Record<RemoteProvider, string>> = {
   gitlab: "gitlab",
@@ -60,9 +68,7 @@ export function remoteAccountPickerModel(
       note: "SSH remote — the account is selected by your SSH key.",
     };
   }
-  const matching = info.host
-    ? accounts.filter((a) => a.host === info.credentialHost)
-    : [];
+  const matching = info.host ? accounts.filter((a) => accountMatchesRemoteHost(a, info)) : [];
   return {
     host: info.host,
     credentialHost: info.credentialHost,

@@ -610,6 +610,25 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
   });
 
+  it("matches www GitHub remotes to github.com accounts while preserving helper scope", () => {
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("origin", "https://octocat@www.github.com/owner/repo.git", true)],
+    });
+    useAccounts.getState().syncRepoAccount(path);
+
+    expect(useAccounts.getState().repoRemoteAccountIds).toEqual({ origin: account.id });
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toEqual({
+      mode: "githubGh",
+      provider: "github",
+      host: "github.com",
+      credentialHost: "www.github.com",
+      username: "octocat",
+      accountRef: account.ref,
+    });
+  });
+
   it("transportAuthForRemote requires an exact credential host for custom ports", () => {
     const portAccount: Account = {
       ...account,

@@ -293,6 +293,14 @@ type RemoteBindingV3 = Extract<StoredRepoAccountEntry, { version: 3; remotes: un
 type RemoteBindingValue = RemoteBindingV3["remotes"][string];
 type ResolvedStoredAccount = Account | "unbound" | "unset" | "unresolved";
 
+function accountMatchesRemoteHost(
+  account: Pick<Account, "host">,
+  info: { host: string | null; credentialHost: string | null },
+) {
+  if (!info.host || !info.credentialHost) return false;
+  return account.host === info.credentialHost || (info.credentialHost.startsWith("www.") && account.host === info.host);
+}
+
 function isV3Binding(entry: StoredRepoAccountEntry | undefined): entry is RemoteBindingV3 {
   return typeof entry === "object" && entry !== null && "remotes" in entry;
 }
@@ -561,7 +569,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         info.user !== null && info.credentialHost !== null
           ? accounts.find(
               (a) =>
-                a.host === info.credentialHost && a.login.toLowerCase() === info.user!.toLowerCase(),
+                accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
             ) ?? null
           : null;
       remoteAccountIds[remote.name] = match?.id ?? null;
@@ -841,7 +849,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
           ? info.provider
           : "other";
     const account = get().accounts.find(
-      (a) => a.host === info.credentialHost && a.login.toLowerCase() === info.user!.toLowerCase(),
+      (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
     );
     if (account) {
       return {

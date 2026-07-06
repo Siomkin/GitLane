@@ -23,6 +23,13 @@ describe("remoteAccountPickerModel", () => {
     expect(model.note).toMatch(/Use a connected GitHub account/);
   });
 
+  it("matches www GitHub remotes to github.com accounts while preserving credential scope", () => {
+    const model = remoteAccountPickerModel(remote("https://alice@www.github.com/o/r.git"), [github, ghe]);
+    expect(model.host).toBe("github.com");
+    expect(model.credentialHost).toBe("www.github.com");
+    expect(model.matching).toEqual([github]);
+  });
+
   it("matches on the push URL when it differs from fetch", () => {
     const model = remoteAccountPickerModel(
       { fetchUrl: "https://github.com/o/r.git", pushUrl: "https://ghe.corp/o/r.git" },

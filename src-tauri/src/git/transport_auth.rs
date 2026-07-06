@@ -128,6 +128,7 @@ fn normalize_credential_host(host: &str) -> String {
         .trim_start_matches("https://")
         .trim_start_matches("http://")
         .trim_end_matches('/')
+        .trim_start_matches("www.")
         .to_ascii_lowercase()
 }
 
@@ -160,6 +161,16 @@ mod tests {
         )
         .expect("valid auth");
         assert_eq!(helper.as_deref(), Some("ghe.example.test:8443"));
+    }
+
+    #[test]
+    fn github_helper_matches_www_host_but_preserves_scope() {
+        let mut auth = gh_auth("www.github.com");
+        auth.account_ref.as_mut().unwrap().host = "github.com".into();
+
+        let helper = helper_host_for_credential_host("www.github.com", &auth).expect("valid auth");
+
+        assert_eq!(helper.as_deref(), Some("www.github.com"));
     }
 
     #[test]
