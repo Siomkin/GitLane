@@ -18,6 +18,19 @@ export function repoIdentityKey(summary: RepoSummary): string {
   return trimTrailingSlash(summary.mainPath ?? summary.path);
 }
 
+/** One-shot migration of a per-repo map entry from a worktree-path key to the
+ * repository-identity key (GL-109): pre-identity builds stored per-repo state
+ * under whatever worktree path was open, so a value under `path` moves to
+ * `key` (the identity entry wins if both exist — the stale worktree shadow is
+ * dropped). Returns true when the map changed and needs persisting. Shared by
+ * the account bindings and the commit-source bindings. */
+export function migratePathKey<T>(map: Record<string, T>, key: string, path: string): boolean {
+  if (key === path || map[path] === undefined) return false;
+  if (map[key] === undefined) map[key] = map[path];
+  delete map[path];
+  return true;
+}
+
 /** Does `path` point at the worktree backing the currently open repo? Matched on
  * both the workdir and the canonical repo path (they diverge for a bare repo),
  * mirroring git's own porcelain canonicalization at the UI boundary. */

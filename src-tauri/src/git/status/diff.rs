@@ -72,7 +72,9 @@ pub(super) fn render_patch(
         let (hunk, line_count) = patch.hunk(h)?;
         let header = {
             let raw = String::from_utf8_lossy(hunk.header());
-            raw.trim_end_matches('\n').trim_end_matches('\r').to_string()
+            raw.trim_end_matches('\n')
+                .trim_end_matches('\r')
+                .to_string()
         };
         let mut lines = Vec::new();
         for l in 0..line_count {
@@ -146,7 +148,10 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
         let old_oid = (old_present && !old.id().is_zero()).then(|| old.id().to_string());
         let new_oid = (new_present && !new.id().is_zero()).then(|| new.id().to_string());
         let (old_size, new_size) = if binary {
-            (old_present.then(|| old.size()), new_present.then(|| new.size()))
+            (
+                old_present.then(|| old.size()),
+                new_present.then(|| new.size()),
+            )
         } else {
             (None, None)
         };

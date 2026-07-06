@@ -1,15 +1,17 @@
-// Repository settings: a repo-scoped window (Identity · Remotes) split out of the
-// global Settings modal. Reached from the toolbar provider indicator (hover
-// "Repo settings" link + popover "In GitLane" group), never the title-bar gear.
-// Identity is the per-repo *binding* panel (pick a profile / PR account); the
-// profile and account libraries are managed in global Settings. Remotes is its
-// own panel.
+// Repository settings: a repo-scoped window split out of the global Settings
+// modal, reached from the toolbar provider indicator. The content is ONE page
+// (GL-130): commit identity on top, remotes — with their per-remote account
+// pickers — right below, because the two picks belong together ("who authors"
+// directly above "who authenticates, per remote"). The left rail stays as the
+// window's anatomy: its Identity/Remotes entries scroll to the sections
+// instead of swapping pages, and `repoSettingsSection` doubles as the deep-
+// link scroll hint ("Manage remotes…" lands on the remotes section).
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
 import { useDismiss } from "../../../hooks/useDismiss";
-import { useUi } from "../../../store/ui";
+import { useUi, type RepoSettingsSection } from "../../../store/ui";
 import { useRepo } from "../../../store/repo";
 import { IdentityPanel } from "../settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
@@ -39,7 +41,18 @@ export function RepoSettingsModal() {
   // Escape / backdrop doesn't also tear down this window.
   const overlayBlocking = useUi((s) => s.confirm !== null || s.prompt !== null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const identityRef = useRef<HTMLDivElement>(null);
+  const remotesRef = useRef<HTMLDivElement>(null);
   useDismiss(open && !overlayBlocking, close, dialogRef);
+
+  // Sidebar clicks and deep links scroll to the section on the one page.
+  // (Optional chaining on the method too — jsdom has no scrollIntoView.)
+  useEffect(() => {
+    if (!open) return;
+    const target = section === "remotes" ? remotesRef : identityRef;
+    target.current?.scrollIntoView?.({ block: "start" });
+  }, [open, section]);
+
   if (!open) return null;
 
   const repoName = repoSlug(forge?.webUrl, summary?.workdir);
@@ -48,6 +61,13 @@ export function RepoSettingsModal() {
   const goGlobal = () => {
     close();
     openGlobalSettings();
+  };
+
+  const scrollTo = (next: RepoSettingsSection) => {
+    setSection(next);
+    // Same-section re-click still scrolls (the effect only fires on change).
+    const target = next === "remotes" ? remotesRef : identityRef;
+    target.current?.scrollIntoView?.({ block: "start" });
   };
 
   return (
@@ -65,7 +85,7 @@ export function RepoSettingsModal() {
         <RepoSettingsSidebar
           section={section}
           repoName={repoName}
-          onSelect={setSection}
+          onSelect={scrollTo}
           onOpenGlobalSettings={goGlobal}
         />
         <div className="relative flex min-w-0 flex-1 flex-col">
@@ -81,9 +101,17 @@ export function RepoSettingsModal() {
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
           </button>
+          {/* One page: identity, then remotes with their account pickers. */}
           <div className="min-h-0 flex-1 overflow-y-auto px-9 pb-10 pt-9">
-            {section === "identity" && <IdentityPanel />}
-            {section === "remotes" && <RemotesPanel />}
+            <div ref={identityRef} className="scroll-mt-4">
+              <IdentityPanel />
+            </div>
+            <div
+              ref={remotesRef}
+              className="mt-10 scroll-mt-4 border-t border-black/[0.07] pt-8 dark:border-white/[0.08]"
+            >
+              <RemotesPanel />
+            </div>
           </div>
         </div>
       </div>

@@ -11,7 +11,17 @@ export interface RemoteUrlInfo {
   /** Parses as a host + owner/repo path. */
   valid: boolean;
   host: string | null;
+  /** Exact credential authority (`host[:port]`) Git passes to helpers. */
+  credentialHost: string | null;
   path: string | null;
+  /** The https URL's userinfo (`https://USER@host/…`) — git's native carrier
+   * for "which account authenticates this remote" (gitcredentials(7): the
+   * username is part of the credential context helpers resolve against).
+   * `null` for SSH/scp URLs: their `git@` is the protocol user, and account
+   * selection happens via SSH keys instead. */
+  user: string | null;
+  /** SSH-style URL (`ssh://` or scp `git@host:`): auth = SSH key. */
+  ssh: boolean;
   provider: RemoteProvider;
 }
 
@@ -26,25 +36,71 @@ const providerForHost = (host: string): RemoteProvider => {
   return "other";
 };
 
+const hasCredentialProtocolSeparator = (value: string | null): boolean =>
+  value !== null && /[\r\n\0]/.test(value);
+
 /** Parse an https or SSH/scp git remote URL into host + path + provider. */
 export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   const url = (raw ?? "").trim();
-  const miss: RemoteUrlInfo = { empty: !url, valid: false, host: null, path: null, provider: "other" };
+  const miss: RemoteUrlInfo = {
+    empty: !url,
+    valid: false,
+    host: null,
+    credentialHost: null,
+    path: null,
+    user: null,
+    ssh: false,
+    provider: "other",
+  };
   if (!url) return miss;
+  if (hasCredentialProtocolSeparator(url)) return miss;
 
   let host: string | null = null;
   let path: string | null = null;
+  let ssh = false;
   let m: RegExpMatchArray | null;
-  if ((m = url.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?\/?$/i))) {
+  if ((m = url.match(/^https?:\/\/([^/\s]+)\/(.+?)(?:\.git)?\/?$/i))) {
     [, host, path] = m;
-  } else if ((m = url.match(/^(?:ssh:\/\/)?git@([^:/]+)[:/](.+?)(?:\.git)?\/?$/i))) {
+  } else if ((m = url.match(/^(?:ssh:\/\/)?git@([^:/\s]+)[:/](.+?)(?:\.git)?\/?$/i))) {
     [, host, path] = m;
+    ssh = true;
   }
   // Require a host and at least an owner/repo (two path segments).
   if (!host || !path || path.split("/").filter(Boolean).length < 2) return miss;
+  if (hasCredentialProtocolSeparator(host) || hasCredentialProtocolSeparator(path)) return miss;
 
+  // Split off the https userinfo (https://user@host/…) — that's the account
+  // selector git hands to credential helpers. Preserve the host[:port]
+  // authority for credential scoping while also exposing a portless display
+  // host for provider classification.
+  let user: string | null = null;
+  if (!ssh && host.includes("@")) {
+    const at = host.lastIndexOf("@");
+    const rawUser = (host.slice(0, at) || "").split(":")[0] ?? "";
+    try {
+      user = decodeURIComponent(rawUser) || null;
+    } catch {
+      return miss;
+    }
+    host = host.slice(at + 1);
+  }
+  if (hasCredentialProtocolSeparator(user) || hasCredentialProtocolSeparator(host)) return miss;
+  const credentialHost = host.toLowerCase();
+  host = host.split(":")[0] || host;
   host = host.replace(/^www\./, "").toLowerCase();
-  return { empty: false, valid: true, host, path, provider: providerForHost(host) };
+  return { empty: false, valid: true, host, credentialHost, path, user, ssh, provider: providerForHost(host) };
+};
+
+/** Rewrite an https remote URL's userinfo — the git-native way to pin which
+ * account authenticates the remote (`https://LOGIN@host/…`); `null` removes
+ * it (back to the default credential lookup). SSH/invalid URLs are returned
+ * unchanged: their account is the SSH key, not a username. */
+export const withUrlUser = (raw: string, user: string | null): string => {
+  const url = (raw ?? "").trim();
+  const m = url.match(/^(https?:\/\/)(?:[^/@]+@)?(.+)$/i);
+  if (!m) return url;
+  const [, scheme, rest] = m;
+  return user ? `${scheme}${encodeURIComponent(user)}@${rest}` : `${scheme}${rest}`;
 };
 
 /** A user-friendly subset of git's remote-name rules: start with a letter or

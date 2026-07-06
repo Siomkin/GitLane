@@ -11,11 +11,13 @@
 //! - [`types`]  — serializable types shared with the frontend.
 
 pub mod conflicts;
+pub mod credentials;
 pub mod forge;
 pub mod github;
 pub mod graph;
 pub mod handoff;
 pub mod read;
 pub mod status;
+pub mod transport_auth;
 pub mod types;
 pub mod write;

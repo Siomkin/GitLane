@@ -57,7 +57,9 @@ pub fn file_history(
     limit: Option<usize>,
 ) -> Result<FileHistoryPage, git2::Error> {
     let repo = open(path)?;
-    let requested = limit.unwrap_or(DEFAULT_HISTORY_LIMIT).clamp(1, MAX_HISTORY_LIMIT);
+    let requested = limit
+        .unwrap_or(DEFAULT_HISTORY_LIMIT)
+        .clamp(1, MAX_HISTORY_LIMIT);
     let skip = offset.unwrap_or(0);
     let mut current_path = file.to_string();
     let mut seen_matches = 0usize;
@@ -89,7 +91,9 @@ pub fn file_history(
                 Delta::Deleted => old_path.clone(),
                 _ => new_path.clone().or(old_path.clone()),
             };
-            let Some(delta_path) = delta_path else { continue };
+            let Some(delta_path) = delta_path else {
+                continue;
+            };
             if delta_path != current_path && old_path.as_deref() != Some(current_path.as_str()) {
                 continue;
             }
@@ -139,7 +143,11 @@ pub fn file_history(
     })
 }
 
-fn blob_text_at(repo: &Repository, revision: Option<&str>, file: &str) -> Result<Vec<String>, git2::Error> {
+fn blob_text_at(
+    repo: &Repository,
+    revision: Option<&str>,
+    file: &str,
+) -> Result<Vec<String>, git2::Error> {
     let bytes = if let Some(revision) = revision {
         let tree = repo.revparse_single(revision)?.peel_to_tree()?;
         let entry = tree.get_path(Path::new(file))?;
@@ -151,7 +159,8 @@ fn blob_text_at(repo: &Repository, revision: Option<&str>, file: &str) -> Result
             .ok_or_else(|| git2::Error::from_str("repository has no working tree"))?;
         std::fs::read(workdir.join(file)).map_err(|e| git2::Error::from_str(&e.to_string()))?
     };
-    let text = String::from_utf8(bytes).map_err(|_| git2::Error::from_str("file is not UTF-8 text"))?;
+    let text =
+        String::from_utf8(bytes).map_err(|_| git2::Error::from_str("file is not UTF-8 text"))?;
     Ok(text.lines().map(|line| line.to_string()).collect())
 }
 
@@ -164,7 +173,9 @@ pub fn file_blame(
     limit: Option<usize>,
 ) -> Result<FileBlame, git2::Error> {
     let repo = open(path)?;
-    let requested = limit.unwrap_or(DEFAULT_BLAME_LIMIT).clamp(1, MAX_BLAME_LIMIT);
+    let requested = limit
+        .unwrap_or(DEFAULT_BLAME_LIMIT)
+        .clamp(1, MAX_BLAME_LIMIT);
     let mut opts = BlameOptions::new();
     if let Some(revision) = revision.as_deref() {
         let oid = repo.revparse_single(revision)?.peel_to_commit()?.id();

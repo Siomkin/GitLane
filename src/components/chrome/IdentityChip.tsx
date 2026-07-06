@@ -1,18 +1,17 @@
-// Title-bar identity chip. Leads with the repo's commit identity — the git
-// profile you commit as (Tier 1) — because that's the primary concept after
-// the two-tier reframe. The popover is a status card, not a switcher: it shows
-// the current commit identity and the current pull-request account (Tier 2),
-// and every row opens the Identity settings page, which owns changing the
-// bindings. The libraries themselves are managed globally in Settings →
-// Profiles / Accounts.
+// Title-bar identity chip. Leads with the repo's commit identity — the source
+// you commit as (this computer / a manual identity, GL-130). The popover is a
+// status card, not a switcher: commit authorship opens Commit author settings;
+// provider-account auth opens Remote access, because the same provider account
+// is used for fetch/push and GitHub PRs on the default remote.
 
 import { useEffect, useRef, useState } from "react";
 import { useDismiss } from "../../hooks/useDismiss";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { useAccounts } from "../../store/accounts";
-import { appliedProfileId, useProfiles } from "../../store/profiles";
-import { profileInitials, selectProfile } from "../../lib/profiles";
+import { appliedCommitSource, useIdentities } from "../../store/identities";
+import { selectCommitSource } from "../../lib/identities";
+import { profileInitials } from "../../lib/profiles";
 import { accountMatchesPrRemote } from "../../lib/prRemote";
 import { GitBranchIcon } from "../ui/icons";
 import { repoLabel } from "../../lib/paths";
@@ -23,10 +22,10 @@ export function IdentityChip() {
   const repoIdentity = useAccounts((s) => s.repoIdentity);
   const accounts = useAccounts((s) => s.accounts);
   const repoAccountId = useAccounts((s) => s.repoAccountId);
-  const profiles = useProfiles((s) => s.profiles);
-  const defaultIdentity = useProfiles((s) => s.defaultIdentity);
-  const loadProfiles = useProfiles((s) => s.loadProfiles);
-  const loadDefaultIdentity = useProfiles((s) => s.loadDefaultIdentity);
+  const manuals = useIdentities((s) => s.manualIdentities);
+  const defaultIdentity = useIdentities((s) => s.defaultIdentity);
+  const loadIdentities = useIdentities((s) => s.loadIdentities);
+  const loadDefaultIdentity = useIdentities((s) => s.loadDefaultIdentity);
   const openRepoSettings = useUi((s) => s.openRepoSettings);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -34,28 +33,23 @@ export function IdentityChip() {
   useDismiss(open, close, ref);
 
   useEffect(() => {
-    loadProfiles();
+    loadIdentities();
     void loadDefaultIdentity();
-  }, [loadProfiles, loadDefaultIdentity]);
+  }, [loadIdentities, loadDefaultIdentity]);
 
   if (!summary) return null;
 
-  const path = summary.path;
-  const selection = selectProfile(repoIdentity, profiles, appliedProfileId(path));
-  const activeProfile =
-    selection.kind === "profile" ? profiles.find((p) => p.id === selection.id) ?? null : null;
+  const selection = selectCommitSource(repoIdentity, manuals, appliedCommitSource(), defaultIdentity);
+  const activeManual =
+    selection.kind === "manual" ? manuals.find((p) => p.id === selection.id) ?? null : null;
   const account = accounts.find((a) => a.id === repoAccountId) ?? null;
   // Same semantics as the Identity panel: a bound account only works when its
   // host matches the PR remote's. Unknown forge → assume fine (backend guards).
   const accountMismatch = account !== null && !accountMatchesPrRemote(account, forge);
 
   const label =
-    activeProfile?.label ??
-    (selection.kind === "default"
-      ? "Default identity"
-      : selection.kind === "unmanaged"
-        ? repoIdentity?.name ?? "Custom identity"
-        : "Set identity");
+    activeManual?.label ??
+    (selection.kind === "computer" ? "This computer" : repoIdentity?.name ?? "Custom identity");
 
   // What git config actually resolves to — shown under the commit-as row.
   const identityLine = repoIdentity
@@ -64,9 +58,13 @@ export function IdentityChip() {
       ? `${defaultIdentity.name} · ${defaultIdentity.email}`
       : "No identity set in git config";
 
-  const goIdentitySettings = () => {
+  const goCommitSettings = () => {
     close();
     openRepoSettings("identity");
+  };
+  const goAccessSettings = () => {
+    close();
+    openRepoSettings("remotes");
   };
 
   return (
@@ -76,12 +74,12 @@ export function IdentityChip() {
         title="Commit identity for this repository"
         className="flex h-8 items-center gap-1.5 rounded-full pl-1 pr-2.5 hover:bg-black/5 dark:hover:bg-white/5"
       >
-        {activeProfile ? (
+        {activeManual ? (
           <span
             className="grid h-6 w-6 place-items-center rounded-full text-[10px] font-semibold text-white"
-            style={{ background: activeProfile.color }}
+            style={{ background: activeManual.color }}
           >
-            {profileInitials(activeProfile.label)}
+            {profileInitials(activeManual.label)}
           </span>
         ) : (
           <span className="grid h-6 w-6 place-items-center rounded-full bg-black/[0.05] text-neutral-400 dark:bg-white/[0.06] dark:text-neutral-400">
@@ -102,17 +100,18 @@ export function IdentityChip() {
             </span>
           </div>
 
-          {/* Status only — changing either binding lives on the Identity page. */}
+          {/* Status only — changing happens on each row's owning settings page. */}
           <StatusRow
             heading="COMMIT AS"
-            onClick={goIdentitySettings}
+            onClick={goCommitSettings}
+            actionTitle="Change on the Commit author settings page"
             avatar={
-              activeProfile ? (
+              activeManual ? (
                 <span
                   className="grid h-[26px] w-[26px] place-items-center rounded-md text-[11px] font-bold text-white"
-                  style={{ background: activeProfile.color }}
+                  style={{ background: activeManual.color }}
                 >
-                  {profileInitials(activeProfile.label)}
+                  {profileInitials(activeManual.label)}
                 </span>
               ) : (
                 <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-400 dark:bg-white/[0.06]">
@@ -126,8 +125,9 @@ export function IdentityChip() {
 
           <div className="border-t border-black/10 dark:border-white/10">
             <StatusRow
-              heading="PULL REQUESTS AS"
-              onClick={goIdentitySettings}
+              heading="REMOTE & PR AS"
+              onClick={goAccessSettings}
+              actionTitle="Change on the Remote access settings page"
               avatar={
                 account ? (
                   <span
@@ -145,17 +145,17 @@ export function IdentityChip() {
               title={account ? `@${account.username}` : "No account"}
               subtitle={
                 account
-                  ? `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "PRs enabled" : "needs re-auth"}`
-                  : "Pull requests off for this repo"
+                  ? `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`
+                  : "System git credentials; PRs off"
               }
             />
           </div>
 
           <button
-            onClick={goIdentitySettings}
+            onClick={goAccessSettings}
             className="flex w-full items-center gap-2 border-t border-black/10 px-3.5 py-2.5 text-left text-[12px] text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100"
           >
-            <GitBranchIcon className="h-3.5 w-3.5" /> Identity settings…
+            <GitBranchIcon className="h-3.5 w-3.5" /> Remote access settings…
           </button>
         </div>
       )}
@@ -163,17 +163,19 @@ export function IdentityChip() {
   );
 }
 
-/** One display-only section (label + current value) that opens the Identity
+/** One display-only section (label + current value) that opens its owning
  * settings page — the popover reports state, the page changes it. */
 function StatusRow({
   heading,
   onClick,
+  actionTitle,
   avatar,
   title,
   subtitle,
 }: {
   heading: string;
   onClick: () => void;
+  actionTitle: string;
   avatar: React.ReactNode;
   title: string;
   subtitle: string;
@@ -183,7 +185,7 @@ function StatusRow({
       <div className="px-3.5 pt-2.5 text-[11px] font-semibold tracking-wider text-neutral-400">{heading}</div>
       <button
         onClick={onClick}
-        title="Change on the Identity settings page"
+        title={actionTitle}
         className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5"
       >
         {avatar}

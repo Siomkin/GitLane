@@ -1,25 +1,40 @@
-// Account state (Tier 2) for the open repo, plus the current commit-identity
-// *read* (`repoIdentity`). Split out of `ui.ts` (the view-chrome store) because
-// it owns a distinct subsystem: the provider-aware GitHub account list and the
-// per-repo account binding that drives PR/push/fetch auth. Commit identity is
-// *owned* by `profiles.ts` (Tier 1) — it does the writes via git profiles; this
-// store only holds/reconciles the effective `repoIdentity` read back from git
-// config (via `pinRepoIdentity` / `hydrateRepoIdentity`). The repo path is
-// resolved lazily via `useRepo` — the same cross-store pattern `pulls.ts` uses.
-// Server-side token resolution is unchanged: commands receive account metadata,
-// never a token.
+// Account state for the open repo, plus the current commit-identity *read*
+// (`repoIdentity`). Split out of `ui.ts` (the view-chrome store) because it
+// owns a distinct subsystem: the provider-aware GitHub account list and the
+// per-remote account resolution. Since the gitcredentials rework the
+// per-remote choice is **git-native**: the account is the https remote URL's
+// username (gitcredentials(7) — helpers resolve credentials by that
+// username), so `repoRemoteAccountIds` is *derived* from the remote list, and
+// `setRemoteAccount` writes the URL, never localStorage. Only the **PR API**
+// account (not a git operation) keeps a localStorage binding, in the v2 shape
+// released builds already wrote. Commit identity is owned by `identities.ts`;
+// this store only holds/reconciles the effective `repoIdentity` read back from
+// git config (via `pinRepoIdentity` / `hydrateRepoIdentity`). Transport auth
+// refs never carry tokens; the only secret IPC path is the explicit
+// "save HTTPS credential" action, which forwards the token/password once to
+// `git credential approve` and never stores it in app state.
 
 import { create } from "zustand";
 
 import {
   api,
   type ForgeAuthStatus,
+  type ForgeAuthProvider,
+  type GitTransportAuthRef,
   type GithubAccountRef,
   type GithubSignInResult,
+  type RemoteInfo,
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
+import { detectRemoteUrl } from "../lib/remotes";
 import { repoIdentityKey } from "../lib/worktrees";
+import {
+  accountKey,
+  accountMatchesLegacy,
+  resolvePrAccount,
+  type StoredRepoAccountEntry,
+} from "./accountBindings";
 import { useRepo } from "./repo";
 import { useUi } from "./ui";
 import { usePulls } from "./pulls";
@@ -53,26 +68,22 @@ export interface Account {
 // single import site.
 export type { RepoIdentity };
 
-interface RepoAccountBinding extends GithubAccountRef {
-  version: 2;
-}
-
-/** Explicit "no PR account for this repo". Persisted (rather than deleting the
- * entry) so the choice is durable — on reopen it stays unbound instead of
- * silently falling back to the active `gh` account. */
-interface RepoAccountUnbound {
-  version: 2;
-  unbound: true;
-}
-
-type StoredRepoAccountBinding = RepoAccountBinding | RepoAccountUnbound | string;
-
-// Per-repo account binding: { [repoPath]: RepoAccountBinding } drives PR/push auth.
-// Legacy string values are migrated only after they resolve against loaded accounts.
-// The commit identity (name + email) is stored separately so it can be edited
-// independently of the auth account (e.g. a private gh email vs. a public one).
+// Per-repo PR-account bindings. Per-remote auth moved to git config (URL
+// usernames); older v2 (repo-wide) and interim v3 (per-remote) values are
+// migrated once the remote list is known. The commit identity (name + email)
+// is stored separately so it can be edited independently of the auth account.
 const LS_REPO_ACCOUNTS = "gitlane.repoAccounts";
 const LS_REPO_IDENTITY = "gitlane.repoIdentity";
+const LS_FORGE_CREDENTIALS = "gitlane.forgeCredentials";
+
+type StoredForgeCredential = {
+  provider: ForgeAuthProvider;
+  credentialHost: string;
+  path: string | null;
+  username: string;
+  helper: string;
+  savedAt: number;
+};
 
 function readJsonMap<T>(key: string): Record<string, T> {
   try {
@@ -93,12 +104,51 @@ function writeJsonMap<T>(key: string, map: Record<string, T>) {
   }
 }
 
-const readBindings = () => readJsonMap<StoredRepoAccountBinding>(LS_REPO_ACCOUNTS);
-const writeBindings = (map: Record<string, StoredRepoAccountBinding>) =>
+const readBindings = () => readJsonMap<StoredRepoAccountEntry>(LS_REPO_ACCOUNTS);
+const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
   writeJsonMap(LS_REPO_ACCOUNTS, map);
 const readIdentities = () => readJsonMap<RepoIdentity>(LS_REPO_IDENTITY);
 const writeIdentities = (map: Record<string, RepoIdentity>) =>
   writeJsonMap(LS_REPO_IDENTITY, map);
+const readForgeCredentials = () => readJsonMap<StoredForgeCredential>(LS_FORGE_CREDENTIALS);
+const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
+  writeJsonMap(LS_FORGE_CREDENTIALS, map);
+
+function rememberForgeCredential(
+  provider: ForgeAuthProvider,
+  credentialHost: string,
+  path: string | null,
+  username: string,
+  helper: string,
+) {
+  const credentials = readForgeCredentials();
+  credentials[provider] = {
+    provider,
+    credentialHost,
+    path,
+    username,
+    helper,
+    savedAt: Date.now(),
+  };
+  writeForgeCredentials(credentials);
+}
+
+function withSavedForgeCredentials(statuses: ForgeAuthStatus[]): ForgeAuthStatus[] {
+  const credentials = readForgeCredentials();
+  return statuses.map((status) => {
+    const saved = credentials[status.provider];
+    if (!saved) return status;
+    return {
+      ...status,
+      available: true,
+      authenticated: true,
+      account: { username: saved.username },
+      notes: `${status.notes} Credential saved for ${saved.credentialHost}${
+        saved.path ? `/${saved.path}` : ""
+      } in ${saved.helper || "Git credential helper"}.`,
+    };
+  });
+}
 
 /** One-shot migration of a per-repo map entry from a worktree-path key to the
  * repository-identity key (GL-109): pre-identity builds stored bindings under
@@ -110,10 +160,6 @@ function migratePathKey<T>(map: Record<string, T>, key: string, path: string): b
   if (map[key] === undefined) map[key] = map[path];
   delete map[path];
   return true;
-}
-
-function accountKey(ref: GithubAccountRef): string {
-  return `${ref.provider}:${ref.host}:${ref.accountId}`;
 }
 
 function accountRefFromApi(a: {
@@ -131,19 +177,6 @@ function accountRefFromApi(a: {
   };
 }
 
-function bindingFromAccount(account: Account): RepoAccountBinding {
-  return { version: 2, ...account.ref };
-}
-
-function accountMatchesLegacy(account: Account, legacy: string): boolean {
-  return (
-    account.id === legacy ||
-    account.username === legacy ||
-    account.login === legacy ||
-    account.accountId === legacy
-  );
-}
-
 interface AccountsState {
   accounts: Account[];
   accountsLoading: boolean;
@@ -156,8 +189,15 @@ interface AccountsState {
   forgeAccountsLoading: string[];
   /** The `gh` active account — the default identity for unbound repos. */
   activeAccountId: string | null;
-  /** The account bound to the currently open repo (its id/username). */
+  /** The account bound to the open repo's **default (PR) remote** — the
+   * binding the PR feature surface uses. Mirrors
+   * `repoRemoteAccountIds[defaultRemote]` (GL-129). */
   repoAccountId: string | null;
+  /** Resolved account id per remote name for the open repo (GL-129). `null` =
+   * that remote uses system git credentials (explicitly unbound, unresolvable
+   * binding, or no host-matching default). A missing key means the remote list
+   * hasn't resolved yet. */
+  repoRemoteAccountIds: Record<string, string | null>;
   /** The key per-repo state persists under for the open repo: its repository
    * identity (main checkout's path), so all worktrees of a repo share the
    * account binding and cached commit identity (GL-109). */
@@ -176,9 +216,15 @@ interface AccountsState {
   signInGithub: (host: string) => Promise<GithubSignInResult>;
   /** Cancel an in-flight [`signInGithub`] (kills the gh child). Idempotent. */
   cancelGithubSignIn: () => Promise<void>;
+  /** Sign `account` out of `gh` (removes its credential-store entry) and
+   * refresh the account list. Remotes whose URL still carries the login fall
+   * back to the system credential lookup. */
+  signOutGithub: (account: Account) => Promise<void>;
   /** Load auth-only status for non-GitHub forge providers. Skips a re-probe if
    * already loaded/loading unless `force` is set (the explicit Refresh button). */
   loadForgeAuth: (force?: boolean) => Promise<void>;
+  /** Sign out of a non-GitHub provider CLI when GitLane knows a safe logout command. */
+  signOutForge: (provider: ForgeAuthStatus["provider"]) => Promise<void>;
   /** Resolve the bound account + commit identity for a repo path. Sets the
    * cached identity synchronously, then reconciles from git config. */
   syncRepoAccount: (path: string) => void;
@@ -192,10 +238,35 @@ interface AccountsState {
    * source of truth), falling back to the localStorage cache. Bails if a newer
    * identity write superseded this hydrate (generation guard). */
   hydrateRepoIdentity: (path: string) => Promise<void>;
-  /** Bind the open repo to a PR/push/fetch account (Tier 2). Persists the
-   * binding and reloads PRs; never writes the commit identity (that's owned by
-   * git profiles / `useProfiles`). `null` unbinds (PRs off for this repo). */
+  /** Bind one of the open repo's remotes to a PR/push/fetch account (Tier 2,
+   * GL-129). Writes the HTTPS URL username in git config and, when `remote`
+   * is the default (PR) remote, refreshes the `repoAccountId`/`repoAccountRef`
+   * mirror and reloads PRs. Never writes the commit identity (that's owned by
+   * git profiles / `useIdentities`). `null` binds the remote to system git
+   * credentials, durably. */
+  setRemoteAccount: (remote: string, id: string | null) => Promise<void>;
+  /** Bind the default (PR) remote — the pre-GL-129 per-repo semantics, kept
+   * for the sign-in flow and identity panel. Delegates to [`setRemoteAccount`]. */
   setRepoAccount: (id: string | null) => Promise<void>;
+  /** The account ref that authenticates `remote`, or null for system git
+   * credentials. What write actions send to push/fetch commands (GL-129). */
+  accountRefForRemote: (remote: string) => GithubAccountRef | null;
+  /** Provider-neutral git transport auth for `remote`, or null for system git
+   * credentials / SSH without inline helper injection. */
+  transportAuthForRemote: (remote: string) => GitTransportAuthRef | null;
+  /** Write an HTTPS username into a remote URL for non-GitHub/system-helper
+   * auth. `null` strips it back to system credentials. */
+  setRemoteUsername: (remote: string, username: string | null) => Promise<void>;
+  /** Store an HTTPS token/password in Git's configured credential helper. */
+  saveHttpsCredential: (
+    credentialHost: string,
+    path: string | null,
+    username: string,
+    password: string,
+    provider?: ForgeAuthProvider,
+  ) => Promise<void>;
+  /** Store a remote's HTTPS token/password and write its username into the URL. */
+  saveRemoteCredential: (remote: string, username: string, password: string) => Promise<void>;
   /** Carry a relocated repo's per-path entries — the account binding and the
    * cached identity read — from its stale path to the new one (GL-108
    * Locate…). An entry already stored for the new path wins; the stale path's
@@ -216,6 +287,131 @@ let forgeAuthGen = 0;
 // in-flight `hydrateRepoIdentity` that predates a newer write is dropped — a
 // slow reconcile read can't republish a superseded identity.
 let repoIdentityGen = 0;
+const remoteAccountMigrations = new Set<string>();
+
+type RemoteBindingV3 = Extract<StoredRepoAccountEntry, { version: 3; remotes: unknown }>;
+type RemoteBindingValue = RemoteBindingV3["remotes"][string];
+type ResolvedStoredAccount = Account | "unbound" | "unset" | "unresolved";
+
+function accountMatchesRemoteHost(
+  account: Pick<Account, "host">,
+  info: { host: string | null; credentialHost: string | null },
+) {
+  if (!info.host || !info.credentialHost) return false;
+  return account.host === info.credentialHost || (info.credentialHost.startsWith("www.") && account.host === info.host);
+}
+
+function isV3Binding(entry: StoredRepoAccountEntry | undefined): entry is RemoteBindingV3 {
+  return typeof entry === "object" && entry !== null && "remotes" in entry;
+}
+
+function resolveRemoteBinding(
+  binding: RemoteBindingValue | undefined,
+  accounts: Account[],
+): ResolvedStoredAccount {
+  if (binding === undefined) return "unset";
+  if (typeof binding === "string") {
+    return accounts.find((a) => accountMatchesLegacy(a, binding)) ?? "unresolved";
+  }
+  if ("unbound" in binding) return "unbound";
+  const resolved = resolvePrAccount({ version: 2, ...binding }, accounts);
+  if (resolved === "unbound") return "unbound";
+  if (resolved === "unset") return "unresolved";
+  return resolved as Account;
+}
+
+function prEntryFromRemoteBinding(
+  binding: RemoteBindingValue | undefined,
+  accounts: Account[],
+): StoredRepoAccountEntry | undefined {
+  const resolved = resolveRemoteBinding(binding, accounts);
+  if (resolved === "unbound") return { version: 2, unbound: true };
+  if (resolved === "unset" || resolved === "unresolved") return undefined;
+  return { version: 2, ...resolved.ref };
+}
+
+function legacyDefaultSelection(
+  entry: StoredRepoAccountEntry | undefined,
+  defaultRemoteName: string | null,
+  accounts: Account[],
+): ResolvedStoredAccount {
+  if (isV3Binding(entry)) {
+    return defaultRemoteName ? resolveRemoteBinding(entry.remotes[defaultRemoteName], accounts) : "unset";
+  }
+  const resolved = resolvePrAccount(entry, accounts);
+  if (resolved === "unset" && entry !== undefined) return "unresolved";
+  return resolved as ResolvedStoredAccount;
+}
+
+async function migrateStoredRemoteUsernames(
+  repoPath: string,
+  key: string,
+  entry: StoredRepoAccountEntry | undefined,
+  remotes: RemoteInfo[],
+  accounts: Account[],
+  defaultRemoteName: string | null,
+) {
+  if (!entry || remotes.length === 0) return;
+  if (isV3Binding(entry) && accounts.length === 0) return;
+
+  const writes: Array<{ remote: string; username: string | null }> = [];
+  const addWrite = (remote: RemoteInfo, username: string | null) => {
+    const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
+    if (!info.valid || info.ssh) return;
+    const current = info.user?.toLowerCase() ?? null;
+    const next = username?.toLowerCase() ?? null;
+    if (current === next) return;
+    if (current !== null) return; // git config already has the new source of truth; do not overwrite it.
+    writes.push({ remote: remote.name, username });
+  };
+
+  let nextEntry: StoredRepoAccountEntry | undefined = entry;
+  if (isV3Binding(entry)) {
+    for (const remote of remotes) {
+      const resolved = resolveRemoteBinding(entry.remotes[remote.name], accounts);
+      if (resolved === "unresolved") return;
+      if (resolved === "unset") continue;
+      addWrite(remote, resolved === "unbound" ? null : resolved.login);
+    }
+    nextEntry = defaultRemoteName
+      ? prEntryFromRemoteBinding(entry.remotes[defaultRemoteName], accounts)
+      : undefined;
+  } else {
+    const defaultRemote = remotes.find((r) => r.name === defaultRemoteName);
+    const resolved = resolvePrAccount(entry, accounts);
+    if (defaultRemote && resolved !== "unset") {
+      addWrite(defaultRemote, resolved === "unbound" ? null : (resolved as Account).login);
+    }
+  }
+
+  if (writes.length === 0) {
+    if (isV3Binding(entry)) {
+      const bindings = readBindings();
+      if (nextEntry) bindings[key] = nextEntry;
+      else delete bindings[key];
+      writeBindings(bindings);
+    }
+    return;
+  }
+
+  const migrationKey = `${key}\0${writes.map((w) => `${w.remote}:${w.username ?? ""}`).join("\0")}`;
+  if (remoteAccountMigrations.has(migrationKey)) return;
+  remoteAccountMigrations.add(migrationKey);
+  try {
+    await Promise.all(writes.map((w) => api.setRemoteUsername(repoPath, w.remote, w.username)));
+    if (isV3Binding(entry)) {
+      const bindings = readBindings();
+      if (nextEntry) bindings[key] = nextEntry;
+      else delete bindings[key];
+      writeBindings(bindings);
+    }
+    await useRepo.getState().listRemotes();
+  } catch (e) {
+    useUi.getState().showToast(String(e), "error");
+  } finally {
+    remoteAccountMigrations.delete(migrationKey);
+  }
+}
 
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
@@ -227,6 +423,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   forgeAccountsLoading: [],
   activeAccountId: null,
   repoAccountId: null,
+  repoRemoteAccountIds: {},
   repoBindingKey: null,
   repoAccountRef: null,
   repoIdentity: null,
@@ -236,6 +433,29 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   // here. Account-list refresh + binding on success is the dialog's own flow.
   signInGithub: (host) => api.githubSignIn(host),
   cancelGithubSignIn: () => api.cancelGithubSignIn(),
+
+  signOutGithub: async (account) => {
+    try {
+      await api.githubSignOut(account.host, account.login);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+      return;
+    }
+    useUi.getState().showToast(`Signed @${account.username} out of GitHub`);
+    await get().loadAccounts();
+  },
+
+  signOutForge: async (provider) => {
+    const status = get().forgeAuth.find((f) => f.provider === provider);
+    try {
+      await api.forgeSignOut(provider);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+      return;
+    }
+    useUi.getState().showToast(`Signed out of ${status?.forge ?? provider}`);
+    await get().loadForgeAuth(true);
+  },
 
   loadAccounts: async () => {
     set({ accountsLoading: true, accountsError: null });
@@ -266,9 +486,10 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       const path = useRepo.getState().summary?.path;
       if (path) {
         get().syncRepoAccount(path);
-        // Accounts may have arrived after the repo loaded — refetch PRs so they
-        // reflect the now-resolved bound account.
-        void usePulls.getState().loadPullRequests();
+        // Accounts may arrive before remotes. The repo-open flow performs a
+        // quiet PR load after remotes resolve; only refetch here when the
+        // remote-derived account context is already present.
+        if (useRepo.getState().remotes.length > 0) void usePulls.getState().loadPullRequests();
       }
     } catch (e) {
       set({ accountsLoading: false, accountsError: String(e) });
@@ -285,7 +506,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const gen = ++forgeAuthGen;
     set({ forgeAuthLoading: true, forgeAuthError: null });
     try {
-      const next = await api.forgeAuthStatuses();
+      const next = withSavedForgeCredentials(await api.forgeAuthStatuses());
       if (gen !== forgeAuthGen) return; // superseded by a newer load
       // Show the authenticated forges immediately; their real identity resolves
       // in the background (a per-provider network whoami) so the card can render
@@ -325,66 +546,79 @@ export const useAccounts = create<AccountsState>((set, get) => ({
 
   syncRepoAccount: (path) => {
     // Per-repo state keys on the repository identity — the main checkout's
-    // path — not the open worktree's path, so binding an account in any
-    // worktree of a repo applies to all of them (GL-109). The summary is the
-    // published source of that identity; a defensive fallback to the raw path
-    // covers a sync racing a repo switch (the next sync corrects it).
+    // path — not the open worktree's path, so per-repo state applies to all
+    // worktrees (GL-109). The summary is the published source of that
+    // identity; a defensive fallback to the raw path covers a sync racing a
+    // repo switch (the next sync corrects it).
     const summary = useRepo.getState().summary;
     const key = summary && summary.path === path ? repoIdentityKey(summary) : path;
     const bindings = readBindings();
     // Resolve pre-identity entries stored under this worktree's own path.
     if (migratePathKey(bindings, key, path)) writeBindings(bindings);
-    const bound = bindings[key];
-    let selected: Account | null = null;
-    if (typeof bound === "string") {
-      selected = get().accounts.find((a) => accountMatchesLegacy(a, bound)) ?? null;
-      if (selected) {
-        bindings[key] = bindingFromAccount(selected);
-        writeBindings(bindings);
-      }
-    } else if (bound && bound.version === 2) {
-      if (!("unbound" in bound)) {
-        // Exact id match first — while healthy an account's id keys on its
-        // stable numeric user id. Fall back to {provider, host, login} when the
-        // id doesn't match: an unhealthy account resolves its id to the login
-        // (the backend skips the whoami that yields the numeric id), so a repo
-        // bound while healthy must still resolve to it and surface the
-        // "needs re-auth" badge instead of silently vanishing (GL-119). The
-        // stored binding is left as-is so it re-pins to the numeric id once the
-        // account is healthy again. `login` is unique per host, so the fallback
-        // can't cross-match a different account.
-        const list = get().accounts;
-        selected =
-          list.find((a) => a.id === accountKey(bound)) ??
-          (bound.login
-            ? list.find(
-                (a) =>
-                  a.provider === bound.provider &&
-                  a.host === bound.host &&
-                  a.login === bound.login,
-              )
-            : undefined) ??
-          null;
-      }
-      // else: explicit "No account" — leave unbound (no active-account fallback).
-    } else if (!bound) {
-      // Never configured → default to the active gh account for convenience.
-      selected = get().accounts.find((a) => a.id === get().activeAccountId) ?? null;
+
+    // Per-remote accounts are DERIVED from git config (the https URL's
+    // username), never stored app-side — gitcredentials(7) semantics, so the
+    // same choice works in a terminal. SSH remotes and URLs without a
+    // username resolve to null (system credential lookup / SSH key).
+    const remotes = summary && summary.path === path ? useRepo.getState().remotes : [];
+    const accounts = get().accounts;
+    const remoteAccountIds: Record<string, string | null> = {};
+    for (const remote of remotes) {
+      const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
+      const match =
+        info.user !== null && info.credentialHost !== null
+          ? accounts.find(
+              (a) =>
+                accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
+            ) ?? null
+          : null;
+      remoteAccountIds[remote.name] = match?.id ?? null;
     }
+
+    // The PR/API account follows the default HTTPS remote's URL username. That
+    // keeps fetch/push auth and PR auth as one provider-account choice. Legacy
+    // v2/v3 bindings are used only as an upgrade bridge when the default HTTPS
+    // remote has not yet been rewritten with a username.
+    const defaultRemote = remotes.find((r) => r.isDefault) ?? null;
+    const defaultRemoteName = defaultRemote?.name ?? null;
+    const defaultInfo = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
+    const derivedDefault = defaultRemoteName
+      ? accounts.find((a) => a.id === remoteAccountIds[defaultRemoteName]) ?? null
+      : null;
+    const storedDefault = legacyDefaultSelection(bindings[key], defaultRemoteName, accounts);
+    let selected: Account | null;
+    if (defaultRemote && defaultInfo && !defaultInfo.ssh) {
+      selected =
+        derivedDefault ??
+        (storedDefault !== "unset" && storedDefault !== "unbound" && storedDefault !== "unresolved"
+          ? storedDefault
+          : null);
+    } else {
+      selected =
+        storedDefault === "unbound" || storedDefault === "unresolved"
+          ? null
+          : storedDefault === "unset"
+            ? accounts.find((a) => a.id === get().activeAccountId) ?? null
+            : storedDefault;
+    }
+
     const identities = readIdentities();
     if (migratePathKey(identities, key, path)) writeIdentities(identities);
     set({
       repoAccountId: selected?.id ?? null,
+      repoRemoteAccountIds: remoteAccountIds,
       repoBindingKey: key,
       repoAccountRef: selected?.ref ?? null,
       // Optimistic: show the cached identity immediately (avoids a flash),
       // then reconcile against git config — the build-independent truth.
       repoIdentity: identities[key] ?? null,
     });
+    void migrateStoredRemoteUsernames(path, key, bindings[key], remotes, accounts, defaultRemoteName);
     void get().hydrateRepoIdentity(path);
   },
 
   pinRepoIdentity: (identity, path) => {
+    if (useRepo.getState().summary?.path !== path) return;
     repoIdentityGen += 1;
     set({ repoIdentity: identity });
     // The cache keys on the repository identity, like the git config it
@@ -427,28 +661,221 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
   },
 
-  setRepoAccount: async (id) => {
+  setRemoteAccount: async (remote, id) => {
     const account = get().accounts.find((a) => a.id === id) ?? null;
-    set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
-    // Persist under the repository identity (set by syncRepoAccount on open)
-    // so the binding covers every worktree of the repo (GL-109).
+    const remotes = useRepo.getState().remotes;
+    const target = remotes.find((r) => r.name === remote);
+    if (!target) return;
+    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    if (info.ssh) {
+      // SSH remotes select their account via the SSH key, not a username —
+      // the picker disables this path; this is a race backstop.
+      useUi
+        .getState()
+        .showToast(`${remote} is an SSH remote — its account is your SSH key`, "error");
+      return;
+    }
+    // Git-native (gitcredentials(7)): the account IS the URL's username. The
+    // credential helper resolves that user's token; the choice is visible in
+    // `git remote -v` and works in a terminal too. `null` strips the username
+    // (back to the default credential lookup) — durable in git config itself.
+    try {
+      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, account?.login ?? null);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+      return;
+    }
+    if (target.isDefault) {
+      const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
+      if (key) {
+        const bindings = readBindings();
+        bindings[key] = account ? { version: 2, ...account.ref } : { version: 2, unbound: true };
+        writeBindings(bindings);
+      }
+    }
+    // Re-read remotes → the derivation in syncRepoAccount updates every
+    // consumer (picker, PR mirror) from git config, the source of truth.
+    await useRepo.getState().listRemotes();
+    // Setting a remote's account drives auth ONLY — it must never touch the
+    // commit identity; who the repo commits as is owned by `identities.ts`.
+    const isDefault = target.isDefault;
+    if (account) {
+      useUi
+        .getState()
+        .showToast(
+          isDefault
+            ? `${remote} (and pull requests) authenticate as @${account.username}`
+            : `${remote} authenticates as @${account.username}`,
+        );
+    } else {
+      useUi
+        .getState()
+        .showToast(
+          isDefault
+            ? `${remote} (and pull requests) use system git credentials`
+            : `${remote} uses system git credentials`,
+        );
+    }
+    if (isDefault) void usePulls.getState().loadPullRequests();
+  },
+
+  setRemoteUsername: async (remote, username) => {
+    const remotes = useRepo.getState().remotes;
+    const target = remotes.find((r) => r.name === remote);
+    if (!target) return;
+    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    if (info.ssh) {
+      useUi
+        .getState()
+        .showToast(`${remote} is an SSH remote — its account is your SSH key`, "error");
+      return;
+    }
+    const clean = username?.trim() || null;
+    try {
+      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, clean);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+      return;
+    }
+    await useRepo.getState().listRemotes();
+    useUi
+      .getState()
+      .showToast(clean ? `${remote} uses @${clean} via system git credentials` : `${remote} uses system git credentials`);
+  },
+
+  saveHttpsCredential: async (credentialHost, path, username, password, provider) => {
+    const cleanUser = username.trim();
+    const cleanHost = credentialHost.trim();
+    if (!cleanHost) {
+      useUi.getState().showToast("Credential host is missing.", "error");
+      return;
+    }
+    if (!cleanUser) {
+      useUi.getState().showToast("Enter the HTTPS username for this provider.", "error");
+      return;
+    }
+    if (!password) {
+      useUi.getState().showToast("Enter the token or password.", "error");
+      return;
+    }
+    try {
+      const result = await api.approveHttpsCredential(cleanHost, path, cleanUser, password);
+      if (provider) {
+        rememberForgeCredential(provider, cleanHost, path, result.username, result.helper);
+        set((s) => ({
+          forgeAuth: withSavedForgeCredentials(s.forgeAuth),
+        }));
+      }
+      useUi
+        .getState()
+        .showToast(
+          provider
+            ? `Saved @${result.username} for ${cleanHost} in Git credential helper${
+                result.helper ? ` (${result.helper})` : ""
+              }`
+            : `Saved @${result.username} in Git credential helper${result.helper ? ` (${result.helper})` : ""}`,
+        );
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+    }
+  },
+
+  saveRemoteCredential: async (remote, username, password) => {
+    const remotes = useRepo.getState().remotes;
+    const target = remotes.find((r) => r.name === remote);
+    if (!target) return;
+    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    if (!info.valid || info.ssh || !info.credentialHost) {
+      useUi
+        .getState()
+        .showToast(`${remote} must be an HTTPS remote to save credentials.`, "error");
+      return;
+    }
+    const clean = username.trim();
+    if (!clean) {
+      useUi.getState().showToast("Enter the HTTPS username for this remote.", "error");
+      return;
+    }
+    if (!password) {
+      useUi.getState().showToast("Enter the token or password.", "error");
+      return;
+    }
+    try {
+      await api.approveHttpsCredential(info.credentialHost, info.path, clean, password);
+      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, clean);
+      await useRepo.getState().listRemotes();
+      useUi
+        .getState()
+        .showToast(`${remote} now authenticates as @${clean} via Git credential helper`);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+    }
+  },
+
+  setRepoAccount: async (id) => {
+    // The PR-API account (not a git operation): persisted app-side in the v2
+    // shape. When the default remote is an https URL, also write the username
+    // there so git pushes agree with the PR tab.
+    const account = get().accounts.find((a) => a.id === id) ?? null;
     const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
     if (key) {
       const bindings = readBindings();
-      // Persist an explicit unbound marker (not a delete) so "No account" is
-      // durable across reopen instead of reverting to the active gh account.
-      bindings[key] = account ? bindingFromAccount(account) : { version: 2, unbound: true };
+      // An explicit unbound marker (not a delete) keeps "no account" durable.
+      bindings[key] = account
+        ? { version: 2, ...account.ref }
+        : { version: 2, unbound: true };
       writeBindings(bindings);
     }
-    // Binding an account drives PR / push / fetch auth ONLY — it must never
-    // touch the commit identity. Who the repo commits as is owned by git
-    // profiles (`useProfiles`); a PR account (Tier 2) and a git profile
-    // (Tier 1) are independent, so picking an account here leaves the applied
-    // profile's `user.name` / `user.email` untouched. See GL-27 / GL-63.
+    set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
+    const remotes = useRepo.getState().remotes;
+    const defaultRemote = remotes.find((r) => r.isDefault);
+    if (defaultRemote && !detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl).ssh) {
+      await get().setRemoteAccount(defaultRemote.name, id);
+      return;
+    }
     if (account) {
       useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }
     void usePulls.getState().loadPullRequests();
+  },
+
+  accountRefForRemote: (remote) => {
+    const id = get().repoRemoteAccountIds[remote];
+    if (!id) return null;
+    return get().accounts.find((a) => a.id === id)?.ref ?? null;
+  },
+
+  transportAuthForRemote: (remote) => {
+    const target = useRepo.getState().remotes.find((r) => r.name === remote);
+    if (!target) return null;
+    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    if (!info.valid || info.ssh || !info.host || !info.credentialHost || !info.user) return null;
+    const provider =
+      info.provider === "azure"
+        ? "azure-devops"
+        : info.provider === "github" || info.provider === "gitlab" || info.provider === "bitbucket"
+          ? info.provider
+          : "other";
+    const account = get().accounts.find(
+      (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
+    );
+    if (account) {
+      return {
+        mode: "githubGh",
+        provider: "github",
+        host: info.host,
+        credentialHost: info.credentialHost,
+        username: info.user,
+        accountRef: account.ref,
+      };
+    }
+    return {
+      mode: "credentialHelper",
+      provider,
+      host: info.host,
+      credentialHost: info.credentialHost,
+      username: info.user,
+    };
   },
 
   migrateRepoBindings: (fromPath, toPath) => {

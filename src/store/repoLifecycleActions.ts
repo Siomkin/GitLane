@@ -12,7 +12,7 @@ import {
 import { repoIdentityKey, trimTrailingSlash } from "../lib/worktrees";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
-import { migrateProfileBindings } from "./profiles";
+import { migrateIdentityBindings } from "./identities";
 import { usePulls } from "./pulls";
 import {
   beginGraphRequest,
@@ -131,6 +131,7 @@ export function createRepoLifecycleActions(
       openPaths,
       recents,
       forge: null,
+      remotes: [],
       graph: null,
       branches: [],
       reflogEntries: [],
@@ -296,6 +297,7 @@ export function createRepoLifecycleActions(
       missingRepo: null,
       summary: null,
       forge: null,
+      remotes: [],
       graph: null,
       branches: [],
       reflogEntries: [],
@@ -473,6 +475,7 @@ export function createRepoLifecycleActions(
         tabInfoByPath,
         recents,
         forge: null,
+        remotes: [],
         graph: null,
         branches: [],
         reflogEntries: [],
@@ -589,23 +592,39 @@ export function createRepoLifecycleActions(
       // The forge drives the toolbar provider indicator (which paints early), so
       // load it alongside the other secondary reads rather than behind the graph.
       // Best-effort: a detection failure degrades to "no forge", never the error bar.
-      void api
+      const forgeLoad = api
         .repoForge(summary.path)
         .then((forge) => {
           if (repoStillDisplayed(summary.path)) set({ forge });
         })
-        .catch(() => {})
-        .finally(() => {
-          // Fire the quiet PR-badge load only once the forge is known, so the
-          // GitHub-only gate in `loadPullRequests` applies on first paint — a
-          // non-GitHub / no-remote repo then skips `gh` instead of surfacing a
-          // confusing "couldn't resolve a GitHub repository" error. forge is a
-          // cheap libgit2 read and PRs don't gate first paint, so the wait is free.
-          // The panel isn't shown yet; opening it does its own foreground load.
+        .catch(() => {});
+      // The remote list feeds the per-remote account resolution (GL-129): URL
+      // usernames and any legacy binding migration need the remote names +
+      // default remote, so re-sync the account slice once the list lands (the
+      // early sync above ran without it).
+      // Best-effort like the other secondary reads.
+      const remotesLoad = api
+        .listRemotes(summary.path)
+        .then((remotes) => {
           if (repoStillDisplayed(summary.path)) {
-            void usePulls.getState().loadPullRequests(false, true);
+            set({ remotes });
+            useAccounts.getState().syncRepoAccount(summary.path);
           }
-        });
+        })
+        .catch(() => {});
+      void Promise.allSettled([forgeLoad, remotesLoad]).then(() => {
+        // Fire the quiet PR-badge load only once the forge is known, so the
+        // GitHub-only gate in `loadPullRequests` applies on first paint — a
+        // non-GitHub / no-remote repo then skips `gh` instead of surfacing a
+        // confusing "couldn't resolve a GitHub repository" error. Waiting on the
+        // remotes too means the load fetches as the *default remote's* bound
+        // account rather than racing the per-remote resolution (GL-129). Both
+        // are cheap libgit2 reads and PRs don't gate first paint, so the wait is
+        // free. The panel isn't shown yet; opening it does its own foreground load.
+        if (repoStillDisplayed(summary.path)) {
+          void usePulls.getState().loadPullRequests(false, true);
+        }
+      });
       void api
         .workingChanges(summary.path)
         .then((changes) => {
@@ -750,6 +769,7 @@ export function createRepoLifecycleActions(
           // `forge` keys the provider indicator independently of `summary`, so a
           // leak here would render a stale indicator on the welcome screen.
           forge: null,
+          remotes: [],
           graph: null,
           branches: [],
           reflogEntries: [],
@@ -799,6 +819,7 @@ export function createRepoLifecycleActions(
         tabInfoByPath: pruneTabInfo(get().tabInfoByPath, remaining),
         summary: null,
         forge: null,
+        remotes: [],
         graph: null,
         branches: [],
         reflogEntries: [],
@@ -995,7 +1016,7 @@ export function createRepoLifecycleActions(
         // entry that has no tab) and drop the dead recents entry — the open
         // below records the new location as active.
         useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
-        migrateProfileBindings(stalePath, probe.path);
+        migrateIdentityBindings(stalePath, probe.path);
         // The dead path may still hold a watch from before it went missing;
         // its tab is being re-keyed, so release the stale entry (GL-116).
         void unwatchRepo(stalePath);
@@ -1094,7 +1115,7 @@ export function createRepoLifecycleActions(
         // Promise.all (which rejects with whichever settles first). It's a
         // cheap in-process libgit2 metadata read — the serialization is free.
         const nextSummary = await api.openRepo(summary.path);
-        const [graph, branches, worktrees, stashes, changes, forge, opStatus] =
+        const [graph, branches, worktrees, stashes, changes, forge, remotes, opStatus] =
           await Promise.all([
             api.commitGraph(summary.path, graphLimit),
             api.listBranches(summary.path),
@@ -1102,6 +1123,10 @@ export function createRepoLifecycleActions(
             api.listStashes(summary.path).catch(() => []),
             api.workingChanges(summary.path),
             api.repoForge(summary.path).catch(() => null),
+            // A terminal `git remote add/remove` lands here via the watcher;
+            // keep the remote list (and the per-remote account resolution
+            // below) in step with it. Degrade to the previous list on failure.
+            api.listRemotes(summary.path).catch(() => get().remotes),
             api.operationStatus(summary.path).catch(() => null),
           ]);
         if (generation === null || !graphRequestIsCurrent(generation, summary.path)) {
@@ -1183,6 +1208,7 @@ export function createRepoLifecycleActions(
             [nextSummary.path]: tabInfoFromSummary(nextSummary),
           },
           forge,
+          remotes,
           graph,
           branches,
           worktrees,
@@ -1211,6 +1237,10 @@ export function createRepoLifecycleActions(
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
         persistTabInfo(get().tabInfoByPath);
+        // The remote list may have changed (terminal `git remote add/remove`),
+        // which changes what the per-remote bindings resolve to — re-sync before
+        // the PR reload below so it fetches as the right account (GL-129).
+        useAccounts.getState().syncRepoAccount(nextSummary.path);
         // The union needs (re)loading whenever we didn't reuse a healthy cached
         // one — set changed, or a prior error to retry. Fire-and-forget so it
         // doesn't delay the queue.

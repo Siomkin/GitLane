@@ -73,7 +73,7 @@ export function ProfileEditor({
           {profileInitials(label || profile?.label || "New")}
         </span>
         <div className="text-[14px] font-semibold text-neutral-900 dark:text-white">
-          {profile ? "Edit profile" : "New profile"}
+          {profile ? "Edit identity" : "New identity"}
         </div>
         <button
           onClick={onCancel}
@@ -91,7 +91,7 @@ export function ProfileEditor({
 
       <div className="mt-4">
         <label htmlFor={labelId} className={fieldLabelCls}>
-          PROFILE NAME
+          IDENTITY NAME
         </label>
         <input
           id={labelId}
@@ -131,9 +131,9 @@ export function ProfileEditor({
 
       <div className="mt-3.5">
         <span className={fieldLabelCls}>
-          SIGNING KEY{" "}
+          COMMIT SIGNING{" "}
           <span className="font-normal lowercase tracking-normal text-neutral-300 dark:text-neutral-600">
-            — pick one of yours, or paste manually (optional)
+            — choose one GPG/OpenPGP or SSH key (optional)
           </span>
         </span>
         <SigningKeyField
@@ -154,7 +154,7 @@ export function ProfileEditor({
           config="commit.gpgsign"
           hint={
             hasKey
-              ? "Signing fields write to local git config so signed commits keep working."
+              ? `${gpgFormat === "ssh" ? "SSH" : "GPG"} signing writes user.signingkey and gpg.format locally.`
               : "With no key set, git signs with your default signing key."
           }
         />
@@ -178,7 +178,7 @@ export function ProfileEditor({
             focusRing,
           )}
         >
-          Save profile
+          Save identity
         </button>
         <button
           onClick={onCancel}

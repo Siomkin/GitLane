@@ -251,7 +251,11 @@ fn continue_carry(repo: &str) -> Result<String, String> {
     }
     let git_dir = worktree_git_dir(repo)?;
     if let Some(marker) = handoff::read_marker(&git_dir) {
-        for oid in marker.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        for oid in marker
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
             drop_stash_by_oid(repo, oid)?;
         }
     }

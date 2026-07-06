@@ -25,6 +25,7 @@ struct ProviderSpec {
     status_args: &'static [&'static str],
     auth_method: &'static str,
     login_command: &'static str,
+    logout_args: Option<&'static [&'static str]>,
     docs_url: &'static str,
     notes: &'static str,
     /// When true, a zero-exit probe with empty stdout+stderr is treated as
@@ -43,6 +44,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         status_args: &["auth", "status"],
         auth_method: "GitLab CLI",
         login_command: "glab auth login",
+        logout_args: Some(&["auth", "logout"]),
         docs_url: "https://gitlab.com/gitlab-org/cli",
         notes: "Auth status only. Pull-request features are not implemented for GitLab.",
         require_output: false,
@@ -54,6 +56,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         status_args: &[],
         auth_method: "API token or git credential helper",
         login_command: "Create a Bitbucket API token and let git store it through your credential helper.",
+        logout_args: None,
         // Atlassian deprecated Bitbucket app passwords; the app-passwords doc now
         // redirects here, and API tokens are the supported replacement.
         docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
@@ -67,6 +70,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         status_args: &["account", "show", "--output", "none"],
         auth_method: "Azure CLI",
         login_command: "az login && az devops login",
+        logout_args: Some(&["logout"]),
         // The connect path's first step is installing `az`, so point at the
         // Azure CLI install guide rather than the Azure DevOps CLI extension docs.
         // Locale-less URL — Learn redirects to the visitor's locale.
@@ -81,6 +85,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         status_args: &["login", "list"],
         auth_method: "tea CLI",
         login_command: "tea login add",
+        logout_args: None,
         docs_url: "https://gitea.com/gitea/tea",
         notes: "Uses tea login metadata only. Gitea PR features are not implemented.",
         require_output: true,
@@ -92,6 +97,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         status_args: &["login", "list"],
         auth_method: "tea CLI",
         login_command: "tea login add",
+        logout_args: None,
         docs_url: "https://forgejo.org/docs/latest/user/cli/",
         notes: "Forgejo is Gitea-compatible for tea login metadata. PR features are not implemented.",
         require_output: true,
@@ -153,6 +159,36 @@ fn status_for(
 /// label. This is the slow, network-touching part — kept out of `statuses()`.
 pub fn account(provider: &str) -> Option<ForgeAccount> {
     fetch_account(provider)
+}
+
+pub fn sign_out(provider: &str) -> Result<String, String> {
+    let spec = PROVIDERS
+        .iter()
+        .find(|spec| spec.provider == provider)
+        .ok_or_else(|| format!("Unsupported provider '{provider}'."))?;
+    let cli = spec
+        .cli
+        .ok_or_else(|| format!("{} has no CLI sign-out path in GitLane.", spec.forge))?;
+    let args = spec
+        .logout_args
+        .ok_or_else(|| format!("{} sign-out is not available from GitLane yet.", spec.forge))?;
+    let out = run_bounded_with_stderr(cli, args)
+        .ok_or_else(|| format!("Failed to launch {cli} sign-out."))?;
+    if out.status.success() {
+        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        Ok(if text.is_empty() {
+            format!("Signed out of {}", spec.forge)
+        } else {
+            text
+        })
+    } else {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("{} sign-out failed.", spec.forge)
+        } else {
+            stderr
+        })
+    }
 }
 
 // NOTE: the set of providers handled here must stay in sync with `FORGE_WHOAMI`
@@ -250,6 +286,37 @@ fn run_bounded(cli: &str, args: &[&str]) -> Option<Output> {
     child.wait_with_output().ok()
 }
 
+fn run_bounded_with_stderr(cli: &str, args: &[&str]) -> Option<Output> {
+    let mut cmd = Command::new(cli);
+    cmd.args(args)
+        .env("PATH", crate::shell::path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    crate::shell::hide_console(&mut cmd);
+    wait_bounded(cmd)
+}
+
+fn wait_bounded(mut cmd: Command) -> Option<Output> {
+    let mut child = cmd.spawn().ok()?;
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return None,
+        }
+    }
+    child.wait_with_output().ok()
+}
+
 fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bool>) {
     let mut cmd = Command::new(cli);
     cmd.args(args)
@@ -326,7 +393,8 @@ mod tests {
 
     #[test]
     fn parses_az_account_user() {
-        let json = r#"{"id":"sub-guid","name":"My Sub","user":{"name":"alex@contoso.com","type":"user"}}"#;
+        let json =
+            r#"{"id":"sub-guid","name":"My Sub","user":{"name":"alex@contoso.com","type":"user"}}"#;
         let account = parse_azure_account(json).expect("account parsed");
         assert_eq!(account.username, "alex@contoso.com");
         assert_eq!(account.name, None);

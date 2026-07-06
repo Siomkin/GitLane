@@ -52,7 +52,14 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
 
     for line in raw.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
-            flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut locked, &mut first);
+            flush(
+                &mut path,
+                &mut branch,
+                &mut bare,
+                &mut prunable,
+                &mut locked,
+                &mut first,
+            );
             path = Some(p.trim().to_string());
         } else if let Some(b) = line.strip_prefix("branch ") {
             branch = Some(b.trim().trim_start_matches("refs/heads/").to_string());
@@ -64,7 +71,14 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
             locked = true;
         }
     }
-    flush(&mut path, &mut branch, &mut bare, &mut prunable, &mut locked, &mut first);
+    flush(
+        &mut path,
+        &mut branch,
+        &mut bare,
+        &mut prunable,
+        &mut locked,
+        &mut first,
+    );
     Ok(out)
 }
 
@@ -90,12 +104,11 @@ pub fn add_worktree(
     ensure_opt(new_branch)?;
     match (new_branch, reference) {
         // `-b <new> <path> <start>` — create the branch at its start point.
-        (Some(branch), Some(start)) => {
-            run_git(repo, &["worktree", "add", "-b", branch, worktree_path, start])
-        }
-        (Some(branch), None) => {
-            run_git(repo, &["worktree", "add", "-b", branch, worktree_path])
-        }
+        (Some(branch), Some(start)) => run_git(
+            repo,
+            &["worktree", "add", "-b", branch, worktree_path, start],
+        ),
+        (Some(branch), None) => run_git(repo, &["worktree", "add", "-b", branch, worktree_path]),
         (None, Some(r)) => run_git(repo, &["worktree", "add", worktree_path, r]),
         (None, None) => run_git(repo, &["worktree", "add", worktree_path]),
     }
@@ -150,7 +163,11 @@ fn same_path(a: &str, b: &str) -> bool {
 /// branch elsewhere (or detach that worktree), so verify against live state and
 /// fail closed *before* removing/detaching anything — otherwise we could destroy
 /// a clean, unrelated worktree and delete the branch regardless.
-fn ensure_worktree_has_branch(repo: &str, from_worktree_path: &str, branch: &str) -> Result<(), String> {
+fn ensure_worktree_has_branch(
+    repo: &str,
+    from_worktree_path: &str,
+    branch: &str,
+) -> Result<(), String> {
     match worktrees(repo)?
         .into_iter()
         .find(|w| same_path(&w.path, from_worktree_path))
@@ -189,7 +206,9 @@ fn ensure_worktree_registered(repo: &str, to: &str, from: &str) -> Result<(), St
 }
 
 fn is_dirty(worktree: &str) -> Result<bool, String> {
-    Ok(!run_git(worktree, &["status", "--porcelain"])?.trim().is_empty())
+    Ok(!run_git(worktree, &["status", "--porcelain"])?
+        .trim()
+        .is_empty())
 }
 
 /// True when the worktree has unmerged (conflicted) index entries.
@@ -217,7 +236,9 @@ fn push_stash(worktree: &str, message: &str) -> Result<String, String> {
         worktree,
         &["stash", "push", "--include-untracked", "-m", message],
     )?;
-    Ok(run_git(worktree, &["rev-parse", "refs/stash"])?.trim().to_string())
+    Ok(run_git(worktree, &["rev-parse", "refs/stash"])?
+        .trim()
+        .to_string())
 }
 
 /// Drop the stash whose commit oid is `oid`, wherever it sits in the (global)
@@ -286,7 +307,9 @@ pub fn move_branch_to_worktree(
     // index entries with an opaque error, and moving a branch into/out of an
     // unresolved merge would strand that operation. Fail with a clear message.
     if has_unmerged(from) {
-        return Err("The source worktree has unresolved conflicts. Resolve them first.".to_string());
+        return Err(
+            "The source worktree has unresolved conflicts. Resolve them first.".to_string(),
+        );
     }
     if has_unmerged(to) {
         return Err(
@@ -295,7 +318,10 @@ pub fn move_branch_to_worktree(
     }
 
     let source_status = run_git(from, &["status", "--porcelain"])?;
-    let source_changes = source_status.lines().filter(|l| !l.trim().is_empty()).count();
+    let source_changes = source_status
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
     let source_dirty = source_changes > 0;
     if source_dirty && !carry {
         return Err(format!(
@@ -384,7 +410,14 @@ pub fn move_branch_to_worktree(
             Ok(_) => applied.push(o.clone()),
             Err(_) if has_unmerged(to) => {
                 progress("finalize");
-                return carry_conflict(to, branch, dest_label, &applied, o, "resolve the carried changes");
+                return carry_conflict(
+                    to,
+                    branch,
+                    dest_label,
+                    &applied,
+                    o,
+                    "resolve the carried changes",
+                );
             }
             Err(_) => {
                 progress("finalize");

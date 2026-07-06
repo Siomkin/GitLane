@@ -1,10 +1,10 @@
 import { cn } from "../../../../lib/cn";
 import type { RemoteInfo } from "../../../../lib/api";
 import { CloudIcon, GitHubIcon } from "../../../ui/icons";
-import { detectRemoteUrl, providerSupportsPrs } from "./remotes";
+import { detectRemoteUrl, providerSupportsPrs } from "../../../../lib/remotes";
 
 /** Headline card for the default push remote — its host, the remote name, PR
- * capability, and the bound PR account (when one is set). */
+ * capability, and the account derived from that remote's auth context. */
 export const RemoteSummaryCard = ({
   remote,
   accountLabel,
@@ -12,9 +12,10 @@ export const RemoteSummaryCard = ({
   remote: RemoteInfo;
   accountLabel: string | null;
 }) => {
-  const info = detectRemoteUrl(remote.fetchUrl);
+  const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
   const isGithub = info.provider === "github";
   const prs = providerSupportsPrs(info.provider);
+  const prsReady = prs && Boolean(accountLabel);
 
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-black/[0.07] bg-white p-4 dark:border-white/[0.08] dark:bg-neutral-800/60">
@@ -33,11 +34,20 @@ export const RemoteSummaryCard = ({
         <span
           className={cn(
             "inline-flex items-center gap-1.5 text-[12px] font-medium",
-            prs ? "text-emerald-600 dark:text-emerald-400" : "text-neutral-500 dark:text-neutral-400",
+            prsReady
+              ? "text-emerald-600 dark:text-emerald-400"
+              : prs
+                ? "text-amber-600 dark:text-amber-400"
+                : "text-neutral-500 dark:text-neutral-400",
           )}
         >
-          <span className={cn("h-1.5 w-1.5 rounded-full", prs ? "bg-emerald-500" : "bg-neutral-400")} />
-          {prs ? "Pull requests enabled" : "Pull requests unavailable"}
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              prsReady ? "bg-emerald-500" : prs ? "bg-amber-500" : "bg-neutral-400",
+            )}
+          />
+          {prsReady ? "Pull requests enabled" : prs ? "Select account for PRs" : "Pull requests unavailable"}
         </span>
         {accountLabel && (
           <span className="text-[12.5px] text-neutral-500 dark:text-neutral-400">

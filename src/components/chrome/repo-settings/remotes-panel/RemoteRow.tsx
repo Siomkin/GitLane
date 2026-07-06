@@ -3,7 +3,10 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import type { RemoteInfo } from "../../../../lib/api";
 import { CloudIcon, GitHubIcon, TrashIcon } from "../../../ui/icons";
-import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "./remotes";
+import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
+import { RemoteAccountPicker } from "./RemoteAccountPicker";
+import type { PickerAccount } from "./remoteAccountOptions";
+import type { ForgeAuthStatus } from "../../../../lib/api";
 import { RemoteUrlField } from "./RemoteUrlField";
 import { RemoteValidityLine } from "./RemoteValidityLine";
 
@@ -16,11 +19,25 @@ const URL_VAL = "truncate font-mono text-neutral-600 dark:text-neutral-300";
 export const RemoteRow = ({
   remote,
   busy,
+  accounts,
+  forgeAuth,
+  selectedAccountId,
+  onPickAccount,
+  onSetUsername,
+  onSaveCredential,
   onSave,
   onRemove,
 }: {
   remote: RemoteInfo;
   busy: boolean;
+  /** Connected accounts (host-filtered by the picker itself, GL-129). */
+  accounts: PickerAccount[];
+  forgeAuth: ForgeAuthStatus[];
+  /** The account bound to this remote, or null for system git credentials. */
+  selectedAccountId: string | null;
+  onPickAccount: (remote: string, id: string | null) => void;
+  onSetUsername: (remote: string, username: string | null) => void;
+  onSaveCredential: (remote: string, username: string, password: string) => void;
   /** Resolves true when the URL was saved; false keeps the row in edit mode. */
   onSave: (name: string, url: string) => Promise<boolean>;
   onRemove: (remote: RemoteInfo) => void;
@@ -115,6 +132,16 @@ export const RemoteRow = ({
             <span className={URL_KEY}>push</span>
             <span className={URL_VAL}>{remote.pushUrl || "—"}</span>
           </div>
+          <RemoteAccountPicker
+            remote={remote}
+            accounts={accounts}
+            forgeAuth={forgeAuth}
+            selectedId={selectedAccountId}
+            busy={busy}
+            onPick={(id) => onPickAccount(remote.name, id)}
+            onSetUsername={(username) => onSetUsername(remote.name, username)}
+            onSaveCredential={(username, password) => onSaveCredential(remote.name, username, password)}
+          />
         </div>
       ) : (
         <div className="mt-3">

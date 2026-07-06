@@ -216,7 +216,11 @@ fn extract_single_hunk_patch(
     }
 
     let mut patch = String::new();
-    patch.extend(header.into_iter().filter(|&line| !is_mode_change_line(line)));
+    patch.extend(
+        header
+            .into_iter()
+            .filter(|&line| !is_mode_change_line(line)),
+    );
     patch.extend(current_hunk);
     if !patch.ends_with('\n') {
         patch.push('\n');
@@ -269,7 +273,11 @@ fn extract_single_line_patch(
     let (old_start, new_start, old_count, new_count) =
         single_line_range(&lines, line_index, &hunk_header)?;
     let mut patch = String::new();
-    patch.extend(file_header.into_iter().filter(|&line| !is_mode_change_line(line)));
+    patch.extend(
+        file_header
+            .into_iter()
+            .filter(|&line| !is_mode_change_line(line)),
+    );
     patch.push_str(&format!(
         "@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"
     ));

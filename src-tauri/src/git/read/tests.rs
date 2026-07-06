@@ -203,7 +203,10 @@ fn worktree_join_rejects_escapes_and_accepts_safe_paths() {
     let wd = Path::new("/work/repo");
     // Safe relative paths join under the worktree.
     assert_eq!(worktree_join(wd, "a/b.png").unwrap(), wd.join("a/b.png"));
-    assert_eq!(worktree_join(wd, "deep/nested/x.bin").unwrap(), wd.join("deep/nested/x.bin"));
+    assert_eq!(
+        worktree_join(wd, "deep/nested/x.bin").unwrap(),
+        wd.join("deep/nested/x.bin")
+    );
     // Traversal / absolute / drive-prefix paths are rejected.
     assert!(worktree_join(wd, "../escape").is_err());
     assert!(worktree_join(wd, "a/../../escape").is_err());
@@ -229,7 +232,10 @@ fn summary_flags_an_unborn_head_then_clears_it_after_the_first_commit() {
     let path = dir.path().to_str().unwrap();
 
     let fresh = summary(path).unwrap();
-    assert!(fresh.unborn, "a repo with no commits reports an unborn HEAD");
+    assert!(
+        fresh.unborn,
+        "a repo with no commits reports an unborn HEAD"
+    );
     // The unborn branch is resolved from HEAD's symbolic target (GL-115
     // follow-up): a branch *exists*, it just has no commits yet, so downstream
     // consumers can treat it like a checked-out branch instead of "No branch".
@@ -251,7 +257,10 @@ fn summary_flags_an_unborn_head_then_clears_it_after_the_first_commit() {
         Some("master"),
         "the branch name persists once the first commit is born"
     );
-    assert!(born.head_oid.is_some(), "HEAD resolves after the first commit");
+    assert!(
+        born.head_oid.is_some(),
+        "HEAD resolves after the first commit"
+    );
 }
 
 #[test]
@@ -276,13 +285,23 @@ fn summary_reports_linked_worktree_identity() {
     let canon = |p: &str| std::fs::canonicalize(p).unwrap();
 
     let main = summary(dir.path().to_str().unwrap()).unwrap();
-    assert!(!main.is_worktree, "the main checkout is not a linked worktree");
-    assert_eq!(main.main_path, None, "the main checkout is its own identity");
+    assert!(
+        !main.is_worktree,
+        "the main checkout is not a linked worktree"
+    );
+    assert_eq!(
+        main.main_path, None,
+        "the main checkout is its own identity"
+    );
 
     let wt = summary(wt_dir.to_str().unwrap()).unwrap();
     assert!(wt.is_worktree, "a linked worktree reports itself as one");
     assert_eq!(
-        canon(wt.main_path.as_deref().expect("linked worktree has a main path")),
+        canon(
+            wt.main_path
+                .as_deref()
+                .expect("linked worktree has a main path")
+        ),
         canon(&main.path),
         "a linked worktree's identity is the main checkout's path"
     );

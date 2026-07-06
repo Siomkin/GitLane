@@ -333,6 +333,12 @@ pub struct BranchInfo {
     /// branches. Lets the frontend address the remote/branch split without
     /// re-guessing it from the first `/`.
     pub remote: Option<String>,
+    /// For a local branch, its configured push/fetch remote
+    /// (`branch.<name>.remote`) when set and not the local-tracking `"."`.
+    /// This is the remote a push of this branch targets, so the frontend picks
+    /// the matching per-remote account (GL-129) without re-deriving it from
+    /// the upstream string. `None` for remote branches.
+    pub upstream_remote: Option<String>,
     /// Ahead/behind state against the configured upstream. Remote branches do
     /// not have their own upstream state, so this is `None` for them.
     pub sync: Option<BranchSyncState>,
@@ -690,8 +696,47 @@ pub struct GithubAccountRef {
     pub login: String,
 }
 
-/// A GitHub account `gh` is logged into. A repo is bound to one of these; its
-/// `email`/`name` drive commit identity and its account ref drives PR/push auth.
+/// Provider-neutral git transport auth for clone/fetch/pull/push.
+///
+/// This is intentionally not a token carrier. For HTTPS remotes the account
+/// selector is the URL username (`gitcredentials(7)`); GitHub can additionally
+/// ask `gh auth git-credential` for that username's token per invocation. Other
+/// providers use the user's configured credential helper / GCM.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitTransportAuthRef {
+    /// "system" | "ssh" | "githubGh" | "credentialHelper".
+    pub mode: String,
+    /// "github" | "gitlab" | "bitbucket" | "azure-devops" | "other".
+    #[serde(default)]
+    pub provider: Option<String>,
+    /// Normalized display host, without scheme or port.
+    pub host: String,
+    /// Exact credential authority (`host[:port]`) Git sees.
+    pub credential_host: String,
+    /// HTTPS URL username, when one is selected.
+    #[serde(default)]
+    pub username: Option<String>,
+    /// GitHub account metadata for `githubGh`; never contains a token.
+    #[serde(default)]
+    pub account_ref: Option<GithubAccountRef>,
+}
+
+/// One `remote → auth` pair for the multi-remote fetch.
+/// Input-only: remotes without an entry fetch through the system credential
+/// helpers / SSH.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteAccountRef {
+    pub remote: String,
+    pub auth: GitTransportAuthRef,
+}
+
+pub use crate::git::credentials::{CredentialHelperStatus, CredentialSaveResult};
+
+/// A GitHub account `gh` is logged into. Its account ref drives GitHub PR/API
+/// auth and can be used for git transport auth; commit identity is configured
+/// separately through repo-local git identity settings.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GithubAccount {

@@ -8,7 +8,7 @@ import type { RepoSummary } from "@/lib/api";
 import type { GitProfile } from "@/lib/profiles";
 import { useRepo } from "@/store/repo";
 import { useAccounts } from "@/store/accounts";
-import { useProfiles } from "@/store/profiles";
+import { useIdentities } from "@/store/identities";
 import { useUi } from "@/store/ui";
 import { IdentityChip } from "./IdentityChip";
 
@@ -32,7 +32,7 @@ beforeEach(() => {
   });
   // Seed state directly (not only localStorage) so the label doesn't depend on
   // the mount effect's timing.
-  useProfiles.setState({ profiles: [personal, work], defaultIdentity: null });
+  useIdentities.setState({ manualIdentities: [personal, work], defaultIdentity: null });
   useUi.setState({ repoSettingsOpen: false, repoSettingsSection: "remotes" });
 });
 
@@ -51,7 +51,7 @@ describe("IdentityChip", () => {
     expect(screen.getAllByText("Work")).toHaveLength(2);
     expect(screen.getByText("Stepan Work · work@acme.io")).toBeInTheDocument();
     expect(screen.queryByText("Personal")).toBeNull();
-    expect(screen.getByText("PULL REQUESTS AS")).toBeInTheDocument();
+    expect(screen.getByText("REMOTE & PR AS")).toBeInTheDocument();
     expect(screen.getByText("No account")).toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe("IdentityChip", () => {
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
     expect(screen.getByText("github.com · host mismatch")).toBeInTheDocument();
-    expect(screen.queryByText(/PRs enabled/)).toBeNull();
+    expect(screen.queryByText(/remote \+ PRs/)).toBeNull();
   });
 
   it("flags a stale binding on an unsupported forge as host mismatch", () => {
@@ -125,7 +125,7 @@ describe("IdentityChip", () => {
 
   it("shows needs re-auth for a bound account gh reported as broken", () => {
     // Consistency with PrAccountZone: a revoked/timed-out account must not read
-    // "PRs enabled" in the chip while settings flags it as needing re-auth.
+    // "remote + PRs" in the chip while settings flags it as needing re-auth.
     useAccounts.setState({
       accounts: [
         {
@@ -151,10 +151,10 @@ describe("IdentityChip", () => {
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
     expect(screen.getByText("github.com · needs re-auth")).toBeInTheDocument();
-    expect(screen.queryByText(/PRs enabled/)).toBeNull();
+    expect(screen.queryByText(/remote \+ PRs/)).toBeNull();
   });
 
-  it("shows the current PR account display-only and links to Identity settings", () => {
+  it("shows the current provider account display-only and links to Remote access", () => {
     useAccounts.setState({
       accounts: [
         {
@@ -181,24 +181,32 @@ describe("IdentityChip", () => {
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
     // The current binding is shown, not an inline switcher.
     expect(screen.getByText("@octocat")).toBeInTheDocument();
-    expect(screen.getByText("github.com · PRs enabled")).toBeInTheDocument();
-    // Changing happens on the Identity settings page.
+    expect(screen.getByText("github.com · remote + PRs")).toBeInTheDocument();
+    // Changing happens on the Remote access settings page.
     fireEvent.click(screen.getByText("@octocat"));
     expect(useUi.getState().repoSettingsOpen).toBe(true);
-    expect(useUi.getState().repoSettingsSection).toBe("identity");
+    expect(useUi.getState().repoSettingsSection).toBe("remotes");
   });
 
-  it("never writes git config from the popover — rows open Identity settings", () => {
+  it("never writes git config from the popover — rows only navigate to settings", () => {
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
     invokeMock.mockClear();
-    // The commit-as status row (first of the two Identity-settings rows).
-    fireEvent.click(screen.getAllByTitle("Change on the Identity settings page")[0]);
+    // The commit-as status row opens Commit author settings.
+    fireEvent.click(screen.getByTitle("Change on the Commit author settings page"));
     expect(useUi.getState().repoSettingsOpen).toBe(true);
     expect(useUi.getState().repoSettingsSection).toBe("identity");
     const identityWrites = invokeMock.mock.calls.filter(
       ([cmd]) => cmd === "set_repo_identity" || cmd === "clear_repo_identity",
     );
     expect(identityWrites).toHaveLength(0);
+  });
+
+  it("opens Remote access from the provider-account row", () => {
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    fireEvent.click(screen.getByTitle("Change on the Remote access settings page"));
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+    expect(useUi.getState().repoSettingsSection).toBe("remotes");
   });
 });

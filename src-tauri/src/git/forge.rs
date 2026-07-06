@@ -154,6 +154,54 @@ pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
     None
 }
 
+/// The repo's default push remote name resolved from a path (see
+/// [`default_remote_name`]). For commands that need a concrete remote when the
+/// frontend doesn't pass one (e.g. tag push).
+pub fn default_remote(path: &str) -> Option<String> {
+    let repo = Repository::discover(path).ok()?;
+    default_remote_name(&repo)
+}
+
+/// The exact credential authority (`host[:port]`) for a named remote's push URL
+/// (falling back to fetch URL). This preserves the port because Git credential
+/// helpers scope by protocol + host/port + username; display/provider matching
+/// must normalize separately when it wants a portless host.
+pub fn remote_credential_host_for(path: &str, remote: &str) -> Option<String> {
+    let repo = Repository::discover(path).ok()?;
+    let remote = repo.find_remote(remote).ok()?;
+    let urls = [
+        remote.pushurl().ok().flatten().map(str::to_string),
+        remote.url().ok().map(str::to_string),
+    ];
+    urls.into_iter()
+        .flatten()
+        .find_map(|url| credential_host_for_url(&url))
+}
+
+/// The exact credential authority (`host[:port]`) from an HTTPS/SSH/scp remote
+/// URL. Userinfo is stripped; ports are preserved.
+pub fn credential_host_for_url(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if let Some(rest) = trimmed
+        .strip_prefix("https://")
+        .or_else(|| trimmed.strip_prefix("http://"))
+        .or_else(|| trimmed.strip_prefix("ssh://"))
+        .or_else(|| trimmed.strip_prefix("git://"))
+    {
+        let authority = rest.split('/').next()?.split('@').next_back()?;
+        return Some(authority.trim().trim_end_matches('/').to_ascii_lowercase());
+    }
+
+    if let Some((user_host, _path)) = trimmed.split_once(':') {
+        if user_host.contains('@') {
+            let host = user_host.split('@').next_back()?;
+            return Some(host.trim().trim_end_matches('/').to_ascii_lowercase());
+        }
+    }
+
+    None
+}
+
 /// Extract the `owner/repo` path from a remote URL (scheme/host stripped,
 /// trailing `.git` removed). Returns None when no path component is present.
 fn remote_path(url: &str) -> Option<String> {
@@ -276,6 +324,18 @@ mod tests {
         assert_eq!(
             remote_host("git@ssh.dev.azure.com:v3/org/project/repo"),
             Some("ssh.dev.azure.com".into())
+        );
+    }
+
+    #[test]
+    fn credential_host_preserves_ports_and_strips_userinfo() {
+        assert_eq!(
+            credential_host_for_url("https://octo@ghe.example.test:8443/owner/repo.git"),
+            Some("ghe.example.test:8443".into())
+        );
+        assert_eq!(
+            credential_host_for_url("ssh://git@gitlab.example.com:2222/group/repo.git"),
+            Some("gitlab.example.com:2222".into())
         );
     }
 

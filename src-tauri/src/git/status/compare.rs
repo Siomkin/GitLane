@@ -63,7 +63,13 @@ pub fn compare_refs(
         None => (0, 0),
     };
 
-    Ok(CompareResult { files, add, del, ahead, behind })
+    Ok(CompareResult {
+        files,
+        add,
+        del,
+        ahead,
+        behind,
+    })
 }
 
 /// Full diff for one file within a comparison (see [`compare_refs`]).

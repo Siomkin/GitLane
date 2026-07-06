@@ -42,7 +42,8 @@ fn commit_at(repo: &Repository, dir: &Path, name: &str, content: &str, secs: i64
     let sig = Signature::new("Bench", "bench@example.test", &git2::Time::new(secs, 0)).unwrap();
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     let parents: Vec<&git2::Commit> = parent.iter().collect();
-    repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents).unwrap()
+    repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents)
+        .unwrap()
 }
 
 fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
@@ -643,7 +644,11 @@ fn untracked_image_is_flagged_binary_and_previewable() {
     fs::write(dir.join("pic.png"), png).unwrap();
 
     let changes = working_changes(path).unwrap();
-    let entry = changes.unstaged.iter().find(|f| f.path == "pic.png").unwrap();
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "pic.png")
+        .unwrap();
     assert!(entry.binary);
 
     // The single-file diff goes through the untracked fallback → a binary card
@@ -765,7 +770,10 @@ fn selection_diff_unions_disjoint_commits_excluding_unselected() {
     let names: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
     assert!(names.contains(&"fa.txt"));
     assert!(names.contains(&"fc.txt"));
-    assert!(!names.contains(&"fb.txt"), "unselected commit must not leak in: {names:?}");
+    assert!(
+        !names.contains(&"fb.txt"),
+        "unselected commit must not leak in: {names:?}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -800,12 +808,21 @@ fn selection_diff_excludes_unselected_edits_to_a_shared_file() {
     assert!(lines.contains(&("del", "1")));
     assert!(lines.contains(&("del", "5")));
     // ...and the unselected commit's edit (line 3 → "B") never appears.
-    assert!(!lines.iter().any(|(_, c)| *c == "B"), "unselected edit leaked: {lines:?}");
-    assert!(!lines.contains(&("del", "3")), "line 3 was wrongly changed: {lines:?}");
+    assert!(
+        !lines.iter().any(|(_, c)| *c == "B"),
+        "unselected edit leaked: {lines:?}"
+    );
+    assert!(
+        !lines.contains(&("del", "3")),
+        "line 3 was wrongly changed: {lines:?}"
+    );
 
     // The file list agrees on the net status.
     let files = selection_diff(path, &oids).unwrap();
-    assert_eq!(files.iter().find(|f| f.path == "f.txt").unwrap().status, "M");
+    assert_eq!(
+        files.iter().find(|f| f.path == "f.txt").unwrap().status,
+        "M"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -833,7 +850,10 @@ fn selection_diff_orders_by_ancestry_not_timestamp() {
         .filter(|l| l.kind == "add")
         .map(|l| l.content.as_str())
         .collect();
-    assert!(adds.contains(&"2"), "missing +2 (wrong base from timestamp order?): {adds:?}");
+    assert!(
+        adds.contains(&"2"),
+        "missing +2 (wrong base from timestamp order?): {adds:?}"
+    );
     assert!(adds.contains(&"3"), "missing +3: {adds:?}");
     let dels: Vec<&str> = diff
         .hunks
@@ -842,7 +862,10 @@ fn selection_diff_orders_by_ancestry_not_timestamp() {
         .filter(|l| l.kind == "del")
         .map(|l| l.content.as_str())
         .collect();
-    assert!(dels.is_empty(), "spurious deletions (wrong base?): {dels:?}");
+    assert!(
+        dels.is_empty(),
+        "spurious deletions (wrong base?): {dels:?}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -892,7 +915,10 @@ fn selection_diff_file_carries_blob_oids_for_content_previews() {
     let diff = selection_diff_file(path, &oids, "README.md", false).unwrap();
     assert_eq!(diff.status, "A");
     assert_eq!(diff.old_oid, None);
-    let new_oid = diff.new_oid.clone().expect("selection text diff carries the new-side oid");
+    let new_oid = diff
+        .new_oid
+        .clone()
+        .expect("selection text diff carries the new-side oid");
     use base64::Engine as _;
     let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();
     let decoded = base64::engine::general_purpose::STANDARD
@@ -1181,8 +1207,17 @@ fn staging_a_worktree_rename_records_a_single_rename() {
     fs::rename(dir.join("old.txt"), dir.join("new.txt")).unwrap();
 
     let before = working_changes(path).unwrap();
-    assert!(before.staged.is_empty(), "nothing staged yet: {:?}", before.staged);
-    assert_eq!(before.unstaged.len(), 1, "one unstaged entry: {:?}", before.unstaged);
+    assert!(
+        before.staged.is_empty(),
+        "nothing staged yet: {:?}",
+        before.staged
+    );
+    assert_eq!(
+        before.unstaged.len(),
+        1,
+        "one unstaged entry: {:?}",
+        before.unstaged
+    );
     let entry = &before.unstaged[0];
     assert_eq!(entry.status, "R");
     assert_eq!(entry.path, "new.txt");
@@ -1190,16 +1225,18 @@ fn staging_a_worktree_rename_records_a_single_rename() {
 
     // Stage the rename the way the store's `stageFile` does for an "R": both the
     // old and new path together, atomically.
-    let paths = vec![
-        entry.previous_path.clone().unwrap(),
-        entry.path.clone(),
-    ];
+    let paths = vec![entry.previous_path.clone().unwrap(), entry.path.clone()];
     crate::git::write::stage_files(path, &paths).expect("stage both sides of the rename");
 
     // The index now holds a single staged rename and nothing is left unstaged —
     // no orphaned "D old.txt".
     let after = working_changes(path).unwrap();
-    assert_eq!(after.staged.len(), 1, "one staged entry: {:?}", after.staged);
+    assert_eq!(
+        after.staged.len(),
+        1,
+        "one staged entry: {:?}",
+        after.staged
+    );
     assert_eq!(after.staged[0].status, "R");
     assert_eq!(after.staged[0].path, "new.txt");
     assert_eq!(after.staged[0].previous_path.as_deref(), Some("old.txt"));
@@ -1231,7 +1268,12 @@ fn unstaging_a_staged_rename_restores_both_sides() {
         .expect("stage the rename");
 
     let staged = working_changes(path).unwrap();
-    assert_eq!(staged.staged.len(), 1, "one staged rename: {:?}", staged.staged);
+    assert_eq!(
+        staged.staged.len(),
+        1,
+        "one staged rename: {:?}",
+        staged.staged
+    );
     let entry = &staged.staged[0];
     assert_eq!(entry.status, "R");
     assert_eq!(entry.previous_path.as_deref(), Some("old.txt"));
@@ -1247,7 +1289,12 @@ fn unstaging_a_staged_rename_restores_both_sides() {
         "no leftover staged deletion: {:?}",
         after.staged
     );
-    assert_eq!(after.unstaged.len(), 1, "one unstaged rename: {:?}", after.unstaged);
+    assert_eq!(
+        after.unstaged.len(),
+        1,
+        "one unstaged rename: {:?}",
+        after.unstaged
+    );
     assert_eq!(after.unstaged[0].status, "R");
     assert_eq!(after.unstaged[0].path, "new.txt");
     assert_eq!(after.unstaged[0].previous_path.as_deref(), Some("old.txt"));

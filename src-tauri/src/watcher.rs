@@ -323,32 +323,31 @@ fn spawn_commondir_watcher(
 ) -> Result<RecommendedWatcher, String> {
     let fan_app = app.clone();
     let fan_subscribers = subscribers;
-    let mut watcher =
-        notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            let Ok(event) = res else { return };
-            if event.kind.is_access() {
-                return;
-            }
-            // Recover a poisoned lock rather than silencing every subscriber's
-            // events until restart — consistent with `detach` (GL-125 review).
-            let subscribers = fan_subscribers
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            for (sub_key, sub) in subscribers.iter() {
-                // Common-dir paths never reach `classify_path`'s ignore branch
-                // (that is workdir-only), so no repo handle is needed here.
-                handle_event(
-                    &fan_app,
-                    sub_key,
-                    &sub.roots,
-                    &sub.fingerprint_root,
-                    |_| false,
-                    &sub.emit,
-                    &event,
-                );
-            }
-        })
-        .map_err(|e| format!("failed to create watcher: {e}"))?;
+    let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let Ok(event) = res else { return };
+        if event.kind.is_access() {
+            return;
+        }
+        // Recover a poisoned lock rather than silencing every subscriber's
+        // events until restart — consistent with `detach` (GL-125 review).
+        let subscribers = fan_subscribers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        for (sub_key, sub) in subscribers.iter() {
+            // Common-dir paths never reach `classify_path`'s ignore branch
+            // (that is workdir-only), so no repo handle is needed here.
+            handle_event(
+                &fan_app,
+                sub_key,
+                &sub.roots,
+                &sub.fingerprint_root,
+                |_| false,
+                &sub.emit,
+                &event,
+            );
+        }
+    })
+    .map_err(|e| format!("failed to create watcher: {e}"))?;
     watcher
         .watch(common, RecursiveMode::Recursive)
         .map_err(|e| format!("failed to watch {}: {e}", common.display()))?;
@@ -530,7 +529,11 @@ fn more_severe(a: PathImpact, b: PathImpact) -> PathImpact {
     }
 }
 
-fn classify_path(roots: &WatchRoots, path: &Path, is_ignored: &impl Fn(&Path) -> bool) -> PathImpact {
+fn classify_path(
+    roots: &WatchRoots,
+    path: &Path,
+    is_ignored: &impl Fn(&Path) -> bool,
+) -> PathImpact {
     // Linked-worktree git roots first: the private gitdir nests inside the
     // common dir, so match the deepest root before its container.
     if let Some(gitdir) = &roots.gitdir {
@@ -754,7 +757,13 @@ fn graph_fingerprint(root: &Path) -> Option<u64> {
             let target = reference
                 .target()
                 .map(|oid| oid.to_string())
-                .or_else(|| reference.symbolic_target().ok().flatten().map(str::to_string))
+                .or_else(|| {
+                    reference
+                        .symbolic_target()
+                        .ok()
+                        .flatten()
+                        .map(str::to_string)
+                })
                 .unwrap_or_default();
             entries.push((name.to_string(), target));
         }
@@ -913,7 +922,10 @@ mod tests {
         std::fs::write(dir.join(".gitignore"), "target/\nnode_modules/\n").expect("write ignore");
 
         assert!(is_ignored(Some(&repo), Path::new("target/debug/app.o")));
-        assert!(is_ignored(Some(&repo), Path::new("node_modules/react/index.js")));
+        assert!(is_ignored(
+            Some(&repo),
+            Path::new("node_modules/react/index.js")
+        ));
         assert!(!is_ignored(Some(&repo), Path::new("src/main.rs")));
         assert!(!is_ignored(Some(&repo), Path::new(".gitignore")));
         // Without a repository the filter fails open: nothing is dropped.
@@ -929,8 +941,7 @@ mod tests {
     /// naming one of its parents — must fail open rather than be dropped.
     #[test]
     fn force_added_files_under_ignored_patterns_are_not_dropped() {
-        let dir =
-            std::env::temp_dir().join(format!("gitlane-watch-forced-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("gitlane-watch-forced-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("target/debug")).expect("create dirs");
         let repo = git2::Repository::init(&dir).expect("init repo");
@@ -964,8 +975,7 @@ mod tests {
     /// tracked child, and must still find a real one.
     #[test]
     fn descendant_probe_is_not_fooled_by_byte_order_neighbours() {
-        let dir =
-            std::env::temp_dir().join(format!("gitlane-watch-probe-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("gitlane-watch-probe-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("dir")).expect("create dirs");
         let repo = git2::Repository::init(&dir).expect("init repo");
@@ -1373,7 +1383,11 @@ mod tests {
     #[test]
     fn root_events_use_the_ref_fingerprint() {
         assert_eq!(
-            classify_paths(&WatchRoots::plain("/repo"), &paths(&["/repo"]), none_ignored),
+            classify_paths(
+                &WatchRoots::plain("/repo"),
+                &paths(&["/repo"]),
+                none_ignored
+            ),
             PathImpact::Ambiguous
         );
         let mut fingerprint = Some(10);

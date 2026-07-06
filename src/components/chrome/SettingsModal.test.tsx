@@ -10,7 +10,13 @@ import { SettingsModal } from "./SettingsModal";
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]); // terminal_agents_get etc.
-  useUi.setState({ settingsOpen: true, settingsTab: "general", confirm: null, prompt: null });
+  useUi.setState({
+    settingsOpen: true,
+    settingsTab: "general",
+    confirm: null,
+    prompt: null,
+    githubSignin: null,
+  });
 });
 
 describe("SettingsModal", () => {
@@ -38,6 +44,12 @@ describe("SettingsModal", () => {
     expect(useUi.getState().settingsTab).toBe("accounts");
     expect(accountsNav).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+
+    const identitiesNav = screen.getByRole("button", { name: "Identities" });
+    fireEvent.click(identitiesNav);
+    expect(useUi.getState().settingsTab).toBe("identities");
+    expect(identitiesNav).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Manual identities")).toBeInTheDocument();
 
     // Per-repo Identity is now its own window (RepoSettingsModal), so the global
     // nav only carries GLOBAL tabs — switch to another to confirm routing.
@@ -79,6 +91,15 @@ describe("SettingsModal", () => {
     // A delete/reset confirm renders as an App-level sibling; its Escape and
     // backdrop clicks must not also tear down Settings.
     useUi.setState({ confirm: { title: "Delete agent?", onConfirm: () => {} } });
+    render(<SettingsModal />);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(document.body);
+    expect(useUi.getState().settingsOpen).toBe(true);
+  });
+
+  it("does not self-dismiss while the GitHub sign-in overlay is open", () => {
+    useUi.setState({ githubSignin: { host: "github.com" } });
     render(<SettingsModal />);
 
     fireEvent.keyDown(document, { key: "Escape" });

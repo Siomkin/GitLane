@@ -213,7 +213,8 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                     delta.and_then(|d| d.old_file().path().map(|x| x.to_string_lossy().to_string()))
                 })
                 .flatten();
-            let (mut add, del, mut binary) = unstaged_counts.get(&p).copied().unwrap_or((0, 0, false));
+            let (mut add, del, mut binary) =
+                unstaged_counts.get(&p).copied().unwrap_or((0, 0, false));
             // Untracked files don't appear in the index-to-workdir diff stats
             // above unless include_untracked content was diffed; ensure a
             // sensible count by reading the file when needed. The same probe

@@ -188,6 +188,30 @@ export interface RepoForge {
   webUrl: string | null;
 }
 
+export type GitTransportAuthMode = "system" | "ssh" | "githubGh" | "credentialHelper";
+export type GitTransportProvider = "github" | "gitlab" | "bitbucket" | "azure-devops" | "other";
+
+/** Provider-neutral git transport auth for clone/fetch/pull/push. Never carries
+ * tokens; HTTPS identities are URL usernames resolved by git credential helpers. */
+export interface GitTransportAuthRef {
+  mode: GitTransportAuthMode;
+  provider?: GitTransportProvider;
+  /** Display/classification host, without port. */
+  host: string;
+  /** Exact credential authority (`host[:port]`) Git passes to helpers. */
+  credentialHost: string;
+  /** HTTPS URL username, if one is selected. */
+  username?: string | null;
+  /** GitHub account metadata for `githubGh`; still no token. */
+  accountRef?: GithubAccountRef | null;
+}
+
+/** One `remote → auth` pair for the multi-remote fetch. */
+export interface RemoteAccountRef {
+  remote: string;
+  auth: GitTransportAuthRef;
+}
+
 /** A configured git remote (Repository settings → Remotes). */
 export interface RemoteInfo {
   /** Remote name (e.g. "origin"). */
@@ -209,6 +233,11 @@ export interface BranchInfo {
   /** For a remote branch, the remote it belongs to (resolved by the backend
    * against the known remote list). `null` for local branches. */
   remote: string | null;
+  /** For a local branch, its configured push/fetch remote
+   * (`branch.<name>.remote`) — the remote a push of this branch targets, so
+   * the matching per-remote account can be picked (GL-129). `null` for remote
+   * branches or when no remote is configured. */
+  upstreamRemote?: string | null;
   sync?: BranchSyncState | null;
 }
 
@@ -518,6 +547,10 @@ export const gitApi = {
   setRemoteUrl: (path: string, name: string, url: string) =>
     invoke<string>("set_remote_url", { path, name, url }),
 
+  /** Rewrite only a remote's HTTPS username, preserving distinct fetch/push URLs. */
+  setRemoteUsername: (path: string, name: string, username?: string | null) =>
+    invoke<string>("set_remote_username", { path, name, username: username ?? null }),
+
   /** Remove a remote (`git remote remove`). */
   removeRemote: (path: string, name: string) =>
     invoke<string>("remove_remote", { path, name }),
@@ -710,36 +743,58 @@ export const gitApi = {
     invoke<string>("create_patch", { path, sha }),
 
   /** Delete a local tag. The remote copy (if any) is untouched and fetch will
-   * re-import it — use `deleteRemoteTag` to remove it from `origin` too. */
+   * re-import it — use `deleteRemoteTag` to remove it from the remote too. */
   deleteTag: (path: string, name: string) =>
     invoke<string>("delete_tag", { path, name }),
 
-  /** Delete a tag on `origin` (`git push origin --delete refs/tags/<name>`),
-   * optionally as the repo's bound `account`. */
-  deleteRemoteTag: (path: string, name: string, account?: GithubAccountRef | null) =>
-    invoke<string>("delete_remote_tag", { path, name, account: account ?? null }),
+  /** Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`),
+   * defaulting to the repo's default push remote, optionally as that remote's
+   * bound auth. */
+  deleteRemoteTag: (
+    path: string,
+    name: string,
+    remote?: string | null,
+    auth?: GitTransportAuthRef | null,
+  ) =>
+    invoke<string>("delete_remote_tag", {
+      path,
+      name,
+      remote: remote ?? null,
+      auth: auth ?? null,
+    }),
 
-  /** Push a tag to `origin`, optionally as the repo's bound `account`. */
-  pushTag: (path: string, name: string, account?: GithubAccountRef | null) =>
-    invoke<string>("push_tag", { path, name, account: account ?? null }),
+  /** Push a tag to `remote` (defaulting to the repo's default push remote),
+   * optionally as that remote's bound auth. */
+  pushTag: (
+    path: string,
+    name: string,
+    remote?: string | null,
+    auth?: GitTransportAuthRef | null,
+  ) =>
+    invoke<string>("push_tag", {
+      path,
+      name,
+      remote: remote ?? null,
+      auth: auth ?? null,
+    }),
 
   /** Remove a linked worktree. `force` drops git's dirty/locked safety check. */
   removeWorktree: (path: string, worktreePath: string, force = false) =>
     invoke<string>("remove_worktree", { path, worktreePath, force }),
 
   /** Delete `branch` on `remote` (`git push <remote> --delete`), optionally as
-   * the repo's bound `account`. `branch` is the short name (no `remote/` prefix). */
+   * the repo's bound auth. `branch` is the short name (no `remote/` prefix). */
   deleteRemoteBranch: (
     path: string,
     remote: string,
     branch: string,
-    account?: GithubAccountRef | null,
-  ) => invoke<string>("delete_remote_branch", { path, remote, branch, account: account ?? null }),
+    auth?: GitTransportAuthRef | null,
+  ) => invoke<string>("delete_remote_branch", { path, remote, branch, auth: auth ?? null }),
 
   /** Force-push a specific `branch` with `--force-with-lease` (targets only that
-   * branch, never the whole push.default set), optionally as the bound `account`. */
-  forcePush: (path: string, branch: string, account?: GithubAccountRef | null) =>
-    invoke<string>("force_push", { path, branch, account: account ?? null }),
+   * branch, never the whole push.default set), optionally as the bound auth. */
+  forcePush: (path: string, branch: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("force_push", { path, branch, auth: auth ?? null }),
 
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */
@@ -958,25 +1013,30 @@ export const gitApi = {
 
   stashDrop: (path: string, oid: string) => invoke<string>("stash_drop", { path, oid }),
 
-  pull: (path: string) => invoke<string>("pull", { path }),
+  pull: (path: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("pull", { path, auth: auth ?? null }),
 
-  /** Fetch + prune all remotes, optionally as the repo's bound `account`. */
-  fetch: (path: string, account?: GithubAccountRef | null) =>
-    invoke<string>("fetch", { path, account: account ?? null }),
+  /** Fetch + prune every non-skipped remote, each authenticated as its own
+   * bound account (GL-129). `remoteAccounts` carries one `{remote, account}`
+   * pair per bound remote; unlisted remotes fall back to the system credential
+   * helpers / SSH. */
+  fetch: (path: string, remoteAccounts?: RemoteAccountRef[]) =>
+    invoke<string>("fetch", { path, remoteAccounts: remoteAccounts ?? [] }),
 
-  /** Push, optionally as the repo's bound `account` (gh username). */
-  push: (path: string, account?: GithubAccountRef | null) =>
-    invoke<string>("push", { path, account: account ?? null }),
+  /** Push the checked-out branch, optionally as its target remote's bound auth
+   * (validated against that remote's host server-side). */
+  push: (path: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("push", { path, auth: auth ?? null }),
 
   /** Push a specific (possibly not-checked-out) `branch` to its configured
-   * remote (origin fallback), optionally as the repo's bound `account`. */
-  pushBranch: (path: string, branch: string, account?: GithubAccountRef | null) =>
-    invoke<string>("push_branch", { path, branch, account: account ?? null }),
+   * remote (origin fallback), optionally as the target remote's bound auth. */
+  pushBranch: (path: string, branch: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("push_branch", { path, branch, auth: auth ?? null }),
 
   /** First-push flow: create/update `upstream` (`remote/branch`) and set it as
    * `branch`'s upstream in the same git push. */
-  publishBranch: (path: string, branch: string, upstream: string, account?: GithubAccountRef | null) =>
-    invoke<string>("publish_branch", { path, branch, upstream, account: account ?? null }),
+  publishBranch: (path: string, branch: string, upstream: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("publish_branch", { path, branch, upstream, auth: auth ?? null }),
   /** Write a commit identity into the repo's local git config. `signing` is
    * optional; when given, its fields apply per-key (empty string unsets). */
   setRepoIdentity: (path: string, name: string, email: string, signing?: RepoSigningConfig) =>
@@ -1011,7 +1071,8 @@ export const gitApi = {
   /** Clone `url` into `dest`, streaming `clone-progress` events while it runs.
    * Resolves with the cloned repo's path; the caller then opens it. Reject with
    * the git failure text (classified UI-side into exists/auth/unreachable). */
-  cloneRepo: (url: string, dest: string) => invoke<string>("clone_repo", { url, dest }),
+  cloneRepo: (url: string, dest: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("clone_repo", { url, dest, auth: auth ?? null }),
 
   /** Cancel an in-flight {@link cloneRepo} (kills the `git clone` child). */
   cancelClone: () => invoke<void>("cancel_clone"),

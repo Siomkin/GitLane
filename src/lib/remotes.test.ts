@@ -2,6 +2,37 @@ import { describe, expect, it } from "vitest";
 import { detectRemoteUrl, isValidRemoteName, validateRemoteUrl } from "./remotes";
 
 describe("detectRemoteUrl", () => {
+  it("strips https userinfo and ports so the host matches account hosts (GL-129)", () => {
+    expect(detectRemoteUrl("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")).toMatchObject({
+      valid: true,
+      host: "bitbucket.org",
+      credentialHost: "bitbucket.org",
+      path: "darang/gitlanebucket",
+      user: "SiomkinAlexander",
+      provider: "bitbucket",
+    });
+    expect(detectRemoteUrl("https://github.corp.example:8443/team/repo.git")).toMatchObject({
+      valid: true,
+      host: "github.corp.example",
+      credentialHost: "github.corp.example:8443",
+    });
+  });
+
+  it("keeps credential authority exact while normalising provider host display", () => {
+    expect(detectRemoteUrl("https://www.github.com/owner/repo.git")).toMatchObject({
+      valid: true,
+      host: "github.com",
+      credentialHost: "www.github.com",
+      provider: "github",
+    });
+    expect(detectRemoteUrl("https://alice:secret@bitbucket.org/team/repo.git")).toMatchObject({
+      valid: true,
+      host: "bitbucket.org",
+      credentialHost: "bitbucket.org",
+      user: "alice",
+    });
+  });
+
   it("parses https GitHub URLs (with and without .git)", () => {
     expect(detectRemoteUrl("https://github.com/Siomkin/GitLane.git")).toMatchObject({
       valid: true,
@@ -38,6 +69,25 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("")).toMatchObject({ empty: true, valid: false });
     expect(detectRemoteUrl("not a url")).toMatchObject({ empty: false, valid: false });
     expect(detectRemoteUrl("https://github.com/only-owner")).toMatchObject({ valid: false });
+  });
+
+  it("rejects credential protocol separators in URL fields", () => {
+    expect(detectRemoteUrl("https://github.com\nhost=evil.example/owner/repo.git")).toMatchObject({
+      valid: false,
+    });
+    expect(detectRemoteUrl("https://alice%0Ahost=evil.example@github.com/owner/repo.git")).toMatchObject({
+      valid: false,
+    });
+    expect(detectRemoteUrl("git@gitlab.com\rhost=evil.example:owner/repo.git")).toMatchObject({
+      valid: false,
+    });
+  });
+
+  it("rejects malformed percent-encoded userinfo without throwing", () => {
+    expect(() => detectRemoteUrl("https://100%@github.com/owner/repo.git")).not.toThrow();
+    expect(detectRemoteUrl("https://100%@github.com/owner/repo.git")).toMatchObject({
+      valid: false,
+    });
   });
 });
 

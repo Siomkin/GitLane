@@ -175,6 +175,12 @@ export const githubApi = {
     await invoke("cancel_github_sign_in");
   },
 
+  /** Sign one account out of `gh` (`gh auth logout`) — removes its
+   * credential-store entry. */
+  githubSignOut: async (host: string, login: string): Promise<void> => {
+    await invoke("github_sign_out", { host, login });
+  },
+
   /** Pull requests for the repo, fetched as the bound `account` if given. */
   listPullRequests: async (
     path: string,

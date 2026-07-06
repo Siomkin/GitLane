@@ -1,6 +1,6 @@
 // Global settings modal shell: owns the dialog chrome and sidebar navigation,
 // and routes the active tab to one of the global panels under `settings/`
-// (Appearance, Profiles, Accounts, Terminal Agents, About). It holds no
+// (Appearance, Identities, Terminal Agents, About). It holds no
 // settings-domain logic itself — each panel owns its presentation and store
 // wiring. Per-repo config (Identity, Remotes) lives in the separate
 // `RepoSettingsModal`, opened from the toolbar. Open/active-tab state comes
@@ -16,18 +16,21 @@ import { useUpdates } from "../../store/updates";
 import { GitLaneMarkIcon } from "../ui/icons";
 import { TerminalAgentsSettings } from "../../features/terminal/TerminalAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
-import { ProfilesPanel } from "./settings/profiles-panel";
 import { AccountsPanel } from "./settings/accounts-panel";
+import { IdentitiesPanel } from "./settings/identities-panel";
 import { AboutPanel } from "./settings/AboutPanel";
 
 const TITLE_ID = "settings-modal-title";
 
+// Accounts & identities lead the nav in their own group — they're the two
+// halves of the identity model (accounts authenticate, identities author),
+// distinct from app-level preferences.
 const NAV: { key: SettingsTab; group: string; label: string }[] = [
-  { key: "general", group: "GLOBAL", label: "Appearance" },
-  { key: "profiles", group: "GLOBAL", label: "Profiles" },
-  { key: "accounts", group: "GLOBAL", label: "Accounts" },
-  { key: "terminal", group: "GLOBAL", label: "Terminal Agents" },
-  { key: "about", group: "GLOBAL", label: "About" },
+  { key: "accounts", group: "ACCOUNTS & IDENTITIES", label: "Accounts" },
+  { key: "identities", group: "ACCOUNTS & IDENTITIES", label: "Identities" },
+  { key: "general", group: "APPLICATION", label: "Appearance" },
+  { key: "terminal", group: "APPLICATION", label: "Terminal Agents" },
+  { key: "about", group: "APPLICATION", label: "About" },
 ];
 
 export function SettingsModal() {
@@ -37,11 +40,13 @@ export function SettingsModal() {
   const setTab = useUi((s) => s.setSettingsTab);
   const enabledAgentCount = useTerminalAgents((s) => s.agents.filter((a) => a.enabled).length);
   const version = useUpdates((s) => s.version);
-  // A confirm/prompt dialog (e.g. delete-agent, reset) renders as an App-level
+  // A confirm/prompt/sign-in dialog renders as an App-level
   // sibling at the same z-layer, outside our `dialogRef`. Suspend dismissal while
   // one is open so its Escape / backdrop click doesn't also tear down Settings
   // (which would drop the terminal editor's unsaved draft).
-  const overlayBlocking = useUi((s) => s.confirm !== null || s.prompt !== null);
+  const overlayBlocking = useUi(
+    (s) => s.confirm !== null || s.prompt !== null || s.githubSignin !== null,
+  );
   const dialogRef = useRef<HTMLDivElement>(null);
   // Escape + outside-mousedown (backdrop) dismissal in one place. No-ops while closed.
   useDismiss(open && !overlayBlocking, close, dialogRef);
@@ -131,8 +136,8 @@ export function SettingsModal() {
             )}
           >
             {tab === "general" && <GeneralPanel />}
-            {tab === "profiles" && <ProfilesPanel />}
             {tab === "accounts" && <AccountsPanel />}
+            {tab === "identities" && <IdentitiesPanel />}
             {tab === "terminal" && <TerminalAgentsSettings />}
             {tab === "about" && <AboutPanel />}
           </div>

@@ -38,7 +38,13 @@ pub type CloneSlot = Arc<Mutex<Option<Child>>>;
 /// to EOF (emitting `clone-progress` as phases advance) and then the real exit
 /// status decides success. On failure the meaningful `fatal:`/`error:` lines are
 /// returned so the UI can classify the failure (exists / auth / unreachable).
-pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<String, String> {
+pub fn clone(
+    app: &AppHandle,
+    slot: CloneSlot,
+    url: &str,
+    dest: &str,
+    gh_host: Option<&str>,
+) -> Result<String, String> {
     let url = url.trim();
     let dest = dest.trim();
     if url.is_empty() {
@@ -66,7 +72,9 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
     // the progress text English and byte-stable for the parser regardless of the
     // user's locale. git Command construction (incl. PATH) is centralized in
     // cli::git_command_bare.
-    let mut cmd = super::cli::git_command_bare(&["clone", "--progress", "--", url, dest]);
+    let args = clone_args(url, dest, gh_host);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut cmd = super::cli::git_command_bare(&arg_refs);
     cmd.env("LC_ALL", "C")
         .env("LANG", "C")
         // git writes progress + errors to stderr; stdout carries nothing we need,
@@ -166,6 +174,26 @@ pub fn clone(app: &AppHandle, slot: CloneSlot, url: &str, dest: &str) -> Result<
         }
         Err(extract_error(&transcript))
     }
+}
+
+fn clone_args(url: &str, dest: &str, gh_host: Option<&str>) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(host) = gh_host {
+        args.push("-c".to_string());
+        args.push(format!("credential.https://{host}.helper="));
+        args.push("-c".to_string());
+        args.push(format!(
+            "credential.https://{host}.helper=!gh auth git-credential"
+        ));
+    }
+    args.extend([
+        "clone".to_string(),
+        "--progress".to_string(),
+        "--".to_string(),
+        url.to_string(),
+        dest.to_string(),
+    ]);
+    args
 }
 
 /// Parse one stderr `segment`, emitting `clone-progress` when it advances the
@@ -380,9 +408,18 @@ mod tests {
 
     #[test]
     fn parse_percent_reads_digits_before_the_sign() {
-        assert_eq!(parse_percent("Receiving objects:  73% (730/1000)"), Some(73));
-        assert_eq!(parse_percent("Resolving deltas: 100% (50/50), done."), Some(100));
-        assert_eq!(parse_percent("remote: Counting objects: 5% (1/20)"), Some(5));
+        assert_eq!(
+            parse_percent("Receiving objects:  73% (730/1000)"),
+            Some(73)
+        );
+        assert_eq!(
+            parse_percent("Resolving deltas: 100% (50/50), done."),
+            Some(100)
+        );
+        assert_eq!(
+            parse_percent("remote: Counting objects: 5% (1/20)"),
+            Some(5)
+        );
     }
 
     #[test]
@@ -448,7 +485,10 @@ mod tests {
     fn record_transcript_is_bounded_and_char_safe() {
         let mut t = String::new();
         for _ in 0..2000 {
-            record_transcript(&mut t, "Receiving objects: 50% (500/1000), 12.30 MiB | 4 MiB/s");
+            record_transcript(
+                &mut t,
+                "Receiving objects: 50% (500/1000), 12.30 MiB | 4 MiB/s",
+            );
         }
         assert!(t.len() <= 8 * 1024 + 64);
         // Still valid UTF-8 / not split mid-char (String guarantees this; the
@@ -469,7 +509,10 @@ mod tests {
 
         assert!(clone_cleanup_eligible(&absent), "absent dir is eligible");
         assert!(clone_cleanup_eligible(&empty), "empty dir is eligible");
-        assert!(!clone_cleanup_eligible(&nonempty), "non-empty dir is not eligible");
+        assert!(
+            !clone_cleanup_eligible(&nonempty),
+            "non-empty dir is not eligible"
+        );
 
         let _ = std::fs::remove_dir_all(&base);
     }

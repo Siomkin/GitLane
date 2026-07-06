@@ -52,12 +52,11 @@ pub fn accounts() -> Result<Vec<GithubAccount>, String> {
     ipc(GithubService::default().accounts())
 }
 
-pub fn git_auth(
-    workdir: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<Option<(String, String)>, String> {
-    ipc(GithubService::default().git_auth(workdir, account))
-        .map(|auth| auth.map(|auth| (auth.host, auth.token)))
+/// Sign one account out of `gh` (removes its credential-store entry). Like
+/// [`sign_in_web`], this is gh-plumbing rather than a provider operation, so
+/// it goes straight to the CLI layer.
+pub fn sign_out(host: &str, login: &str) -> Result<String, String> {
+    cli::sign_out(host, login)
 }
 
 pub fn list_prs(

@@ -77,16 +77,24 @@ any read. The engine dictates sync-vs-async, not the read/write label.
   the webview on large histories.
 - Reads return rich serializable structs; writes return the raw combined stdout/stderr
   `String` so the UI can surface git's own message verbatim.
-- GitHub commands must enter through `GithubService`. The optional account argument is a
-  frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. The
+- GitHub PR/API commands must enter through `GithubService`. The optional account argument is
+  a frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. The
   provider resolves tokens immediately before use and validates repository/account host
-  compatibility before writes.
+  compatibility before PR operations.
+- Git transport auth (clone/fetch/pull/push/tag/delete-remote) uses `GitTransportAuthRef`,
+  never provider tokens. GitHub may inject `gh auth git-credential`; GitLab/Bitbucket/Azure
+  and other HTTPS remotes use URL usernames plus the user's configured git credential helper /
+  GCM. SSH remotes use SSH keys.
+- The explicit HTTPS credential setup flow may receive a token/password once and must pass it
+  directly to `git credential approve`. GitLane must not persist it in app state, localStorage,
+  logs, or command errors.
 - Use `git/forge.rs` for remote forge detection. Do not infer Bitbucket/GitLab/Azure/Gitea
   support from the GitHub provider boundary; unsupported forges should fail explicitly until
   their own provider contract is implemented.
 - Non-GitHub provider auth status lives in `auth_providers.rs` and Settings only. It must not
   return tokens or enable PR operations; each forge needs its own provider implementation before
-  it appears in PR workflows.
+  it appears in PR workflows. Basic git transport auth for those providers still works through
+  Git's credential helpers.
 
 ### Tauri plugin allowlist
 
@@ -151,7 +159,9 @@ bun run build                     # tsc --noEmit + vite build passes
 - ❌ Calling `gh` module internals directly from Tauri commands instead of going through `GithubService`.
 - ❌ A sync Tauri command that shells out (freezes the UI).
 - ❌ Caching/threading a `git2::Repository` across calls.
-- ❌ Returning a token (or any secret) across the IPC boundary.
+- ❌ Returning, logging, storing, or surfacing a token (or any secret) across the IPC boundary.
+  The explicit HTTPS credential-save command may receive a user-entered token/password only to
+  pipe it directly into `git credential approve`.
 - ❌ Adding a TS interface field with no matching `serde` field (or vice versa).
 - ❌ Layout/positioning math in the frontend instead of `graph.rs`.
 

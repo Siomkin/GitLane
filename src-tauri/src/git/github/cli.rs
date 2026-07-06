@@ -219,6 +219,24 @@ pub(super) fn token_for(account: &GithubAccountRef) -> Result<String, String> {
     })
 }
 
+/// Sign a specific account out of `gh` (`gh auth logout --hostname --user`) —
+/// the credential store entry is removed by `gh` itself; nothing else to clean
+/// up on our side (per-repo bindings resolve to null and show as "system git
+/// credentials" once the account list refreshes).
+pub(super) fn sign_out(host: &str, login: &str) -> Result<String, String> {
+    ensure_supported().map_err(|err| err.to_ipc_string())?;
+    let host = normalize_host(host);
+    let login = login.trim();
+    if host.is_empty() || login.is_empty() {
+        return Err("GitHub account reference is incomplete.".to_string());
+    }
+    run_gh(
+        ".",
+        &["auth", "logout", "--hostname", &host, "--user", login],
+        None,
+    )
+}
+
 /// Fetch the authenticated user behind `token` via `gh api user`.
 fn user_info(host: &str, token: &str) -> Option<GhUser> {
     let raw = run_gh(".", &["api", "--hostname", host, "user"], Some(token)).ok()?;

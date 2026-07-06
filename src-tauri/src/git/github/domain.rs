@@ -25,12 +25,6 @@ pub struct GithubContext {
     pub account: Option<GithubAccountRef>,
 }
 
-#[derive(Debug, Clone)]
-pub struct GithubGitAuth {
-    pub host: String,
-    pub token: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GithubError {
     ProviderUnavailable {
