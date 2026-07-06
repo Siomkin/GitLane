@@ -315,6 +315,30 @@ mod tests {
     }
 
     #[test]
+    fn same_login_on_different_github_hosts_stays_distinct() {
+        // Two GitHub accounts share a login across github.com and a GHES host
+        // (GL-133): each authenticates only its own host, and the GHES host is
+        // never collapsed to github.com.
+        let dotcom = gh_auth("github.com");
+        let ghes = gh_auth("ghe.example.test");
+
+        assert_eq!(
+            credential_for_credential_host("github.com", &dotcom).unwrap(),
+            TransportCredential::Gh {
+                host: "github.com".into()
+            }
+        );
+        assert_eq!(
+            credential_for_credential_host("ghe.example.test", &ghes).unwrap(),
+            TransportCredential::Gh {
+                host: "ghe.example.test".into()
+            }
+        );
+        // The github.com account must not authenticate the GHES remote.
+        assert!(credential_for_credential_host("ghe.example.test", &dotcom).is_err());
+    }
+
+    #[test]
     fn helper_host_rejects_malformed_config_scope_hosts() {
         for host in [
             "github.com/foo",

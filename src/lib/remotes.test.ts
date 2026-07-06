@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { detectRemoteUrl, isValidRemoteName, validateRemoteUrl } from "./remotes";
+import {
+  azureOrg,
+  credentialScopePath,
+  detectRemoteUrl,
+  forgeAuthProviderFor,
+  isValidRemoteName,
+  validateRemoteUrl,
+} from "./remotes";
 
 describe("detectRemoteUrl", () => {
   it("strips https userinfo and ports so the host matches account hosts (GL-129)", () => {
@@ -56,6 +63,15 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("https://dev.azure.com/org/proj/_git/repo").provider).toBe("azure");
   });
 
+  it("detects Gitea and Forgejo hosts, matching the backend classify_host", () => {
+    // Forgejo: Codeberg by name, or any host containing "forgejo".
+    expect(detectRemoteUrl("https://codeberg.org/owner/repo.git").provider).toBe("forgejo");
+    expect(detectRemoteUrl("https://forgejo.example.test/owner/repo.git").provider).toBe("forgejo");
+    // Gitea: any host containing "gitea".
+    expect(detectRemoteUrl("https://gitea.company.test/team/app.git").provider).toBe("gitea");
+    expect(detectRemoteUrl("git@gitea.company.test:team/app.git").provider).toBe("gitea");
+  });
+
   it("flags unrecognised but valid hosts as 'other'", () => {
     expect(detectRemoteUrl("https://git.internal.example/team/app.git").provider).toBe("other");
   });
@@ -88,6 +104,41 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("https://100%@github.com/owner/repo.git")).toMatchObject({
       valid: false,
     });
+  });
+});
+
+describe("forgeAuthProviderFor", () => {
+  it("maps classified providers to their ForgeAuthProvider (normalising azure)", () => {
+    expect(forgeAuthProviderFor("gitlab")).toBe("gitlab");
+    expect(forgeAuthProviderFor("bitbucket")).toBe("bitbucket");
+    expect(forgeAuthProviderFor("azure")).toBe("azure-devops");
+    expect(forgeAuthProviderFor("gitea")).toBe("gitea");
+    expect(forgeAuthProviderFor("forgejo")).toBe("forgejo");
+  });
+
+  it("returns null for GitHub (gh-owned) and unclassified hosts", () => {
+    expect(forgeAuthProviderFor("github")).toBeNull();
+    expect(forgeAuthProviderFor("other")).toBeNull();
+  });
+});
+
+describe("azureOrg + credentialScopePath (GL-136)", () => {
+  it("extracts the org from a dev.azure.com URL", () => {
+    const info = detectRemoteUrl("https://dev.azure.com/contoso/proj/_git/repo");
+    expect(azureOrg(info)).toBe("contoso");
+    // Credentials scope by org, so multiple orgs on dev.azure.com don't collide.
+    expect(credentialScopePath(info)).toBe("contoso");
+  });
+
+  it("extracts the org from a legacy {org}.visualstudio.com URL", () => {
+    const info = detectRemoteUrl("https://contoso.visualstudio.com/proj/_git/repo");
+    expect(info.provider).toBe("azure");
+    expect(azureOrg(info)).toBe("contoso");
+  });
+
+  it("scopes non-Azure providers by host only (no path scope)", () => {
+    expect(credentialScopePath(detectRemoteUrl("https://gitlab.com/group/repo.git"))).toBeNull();
+    expect(azureOrg(detectRemoteUrl("https://gitlab.com/group/repo.git"))).toBeNull();
   });
 });
 

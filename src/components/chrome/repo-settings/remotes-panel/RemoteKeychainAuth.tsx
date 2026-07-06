@@ -1,18 +1,8 @@
 import { useEffect, useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
-import { detectRemoteUrl } from "../../../../lib/remotes";
-import type { ForgeAuthProvider } from "../../../../lib/api";
+import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor } from "../../../../lib/remotes";
 import { useAccounts } from "../../../../store/accounts";
-
-/** The classified non-GitHub providers GitLane can hold a keychain token for
- * today (GL-132). GitHub uses `gh`; SSH uses keys; unclassified "other" hosts are
- * deferred to the per-provider work (GL-137). */
-const PROVIDER_FOR: Partial<Record<string, ForgeAuthProvider>> = {
-  gitlab: "gitlab",
-  bitbucket: "bitbucket",
-  azure: "azure-devops",
-};
 
 const INPUT = cn(
   "h-8 rounded-lg border border-black/10 bg-white px-2.5 text-[12.5px] text-neutral-700 placeholder:text-neutral-400 disabled:opacity-40 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200",
@@ -39,7 +29,7 @@ export const RemoteKeychainAuth = ({
   const forgetHttpsCredential = useAccounts((s) => s.forgetHttpsCredential);
 
   const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
-  const provider = info.provider ? PROVIDER_FOR[info.provider] : undefined;
+  const provider = forgeAuthProviderFor(info.provider) ?? undefined;
 
   const [draft, setDraft] = useState(info.user ?? "");
   const [secret, setSecret] = useState("");
@@ -144,7 +134,10 @@ export const RemoteKeychainAuth = ({
         disabled={pending || user === ""}
         title="Erase a credential your Git credential helper saved (not a GitLane keychain token)"
         onClick={() =>
-          void run(() => forgetHttpsCredential(credentialHost, info.path, user, provider))
+          void run(() =>
+            // Azure scopes credentials by org, not the full repo path.
+            forgetHttpsCredential(credentialHost, credentialScopePath(info), user, provider),
+          )
         }
         className={cn(
           "h-8 rounded-lg px-2 text-[12px] font-medium text-neutral-500 hover:bg-black/[0.04] disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-white/[0.06]",

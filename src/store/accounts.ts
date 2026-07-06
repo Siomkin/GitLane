@@ -27,7 +27,7 @@ import {
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
-import { detectRemoteUrl } from "../lib/remotes";
+import { credentialScopePath, detectRemoteUrl } from "../lib/remotes";
 import { repoIdentityKey } from "../lib/worktrees";
 import {
   accountKey,
@@ -869,7 +869,10 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       return;
     }
     try {
-      await api.approveHttpsCredential(info.credentialHost, info.path, clean, password);
+      // Azure Repos scopes credentials by org (dev.azure.com/{org}); other
+      // providers keep the remote's own path scope.
+      const scopePath = credentialScopePath(info) ?? info.path;
+      await api.approveHttpsCredential(info.credentialHost, scopePath, clean, password);
       await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, clean);
       await useRepo.getState().listRemotes();
       useUi
@@ -997,12 +1000,16 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     if (!target) return null;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     if (!info.valid || info.ssh || !info.host || !info.credentialHost || !info.user) return null;
-    const provider =
+    // Map the remote's classified provider to the transport provider tag. Azure
+    // normalizes "azure" → "azure-devops"; github/gitlab/bitbucket/gitea/forgejo
+    // pass through (all valid transport providers now they classify); "other"
+    // stays "other".
+    const provider: GitTransportAuthRef["provider"] =
       info.provider === "azure"
         ? "azure-devops"
-        : info.provider === "github" || info.provider === "gitlab" || info.provider === "bitbucket"
-          ? info.provider
-          : "other";
+        : info.provider === "other"
+          ? "other"
+          : info.provider;
     const account = get().accounts.find(
       (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
     );

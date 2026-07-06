@@ -87,6 +87,44 @@ describe("provider-token transport auth (GL-132)", () => {
     expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
   });
 
+  it("selects providerToken for a self-hosted Gitea remote (GL-137)", async () => {
+    const gitea: RemoteInfo = {
+      name: "origin",
+      fetchUrl: "https://bob@gitea.example.test:8443/team/app.git",
+      pushUrl: "https://bob@gitea.example.test:8443/team/app.git",
+      isDefault: true,
+    };
+    useRepo.setState({ remotes: [gitea] });
+    await useAccounts.getState().saveProviderToken("gitea", "gitea.example.test:8443", "bob", "tok");
+
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      provider: "gitea",
+      // Custom port preserved in the credential authority (GL-137).
+      credentialHost: "gitea.example.test:8443",
+      username: "bob",
+      providerAccountId: "bob",
+    });
+  });
+
+  it("selects providerToken for an Azure DevOps remote (GL-136)", async () => {
+    const azure: RemoteInfo = {
+      name: "origin",
+      fetchUrl: "https://contoso@dev.azure.com/contoso/proj/_git/repo",
+      pushUrl: "https://contoso@dev.azure.com/contoso/proj/_git/repo",
+      isDefault: true,
+    };
+    useRepo.setState({ remotes: [azure] });
+    await useAccounts.getState().saveProviderToken("azure-devops", "dev.azure.com", "contoso", "pat");
+
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      provider: "azure-devops",
+      credentialHost: "dev.azure.com",
+      username: "contoso",
+    });
+  });
+
   it("forget-credential erases a Git-helper credential without touching the keychain token", async () => {
     await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-secret");
     invokeMock.mockClear();

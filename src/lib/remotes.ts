@@ -3,7 +3,16 @@
 // list chips, the summary card, and the add/edit forms all classify URLs the
 // same way — ported from the Repo Settings design's `detect`/`cap`/`validity`.
 
-export type RemoteProvider = "github" | "gitlab" | "bitbucket" | "azure" | "other";
+import type { ForgeAuthProvider } from "./api/providers";
+
+export type RemoteProvider =
+  | "github"
+  | "gitlab"
+  | "bitbucket"
+  | "azure"
+  | "gitea"
+  | "forgejo"
+  | "other";
 
 export interface RemoteUrlInfo {
   /** No URL entered yet. */
@@ -26,15 +35,65 @@ export interface RemoteUrlInfo {
 }
 
 const providerForHost = (host: string): RemoteProvider => {
-  // GitHub detection is exact (github.com / *.github.com) to match the backend's
-  // classify_host — a host that merely contains "github" (e.g. github.corp.example
-  // GHE) isn't github.com, so it must not claim PR support the toolbar would deny.
+  // Mirrors the backend `forge::classify_host` (same order, same rules) so the
+  // frontend and Rust agree on which forge a remote belongs to. GitHub detection
+  // is exact (github.com / *.github.com) — a host that merely contains "github"
+  // (e.g. github.corp.example GHE) isn't github.com, so it must not claim PR
+  // support the toolbar would deny. Forgejo is checked before Gitea because
+  // Codeberg (a Forgejo instance) has a bespoke host.
   if (host === "github.com" || host.endsWith(".github.com")) return "github";
   if (host.includes("gitlab")) return "gitlab";
   if (host.includes("bitbucket")) return "bitbucket";
   if (host.includes("dev.azure") || host.includes("visualstudio")) return "azure";
+  if (host === "codeberg.org" || host.includes("forgejo")) return "forgejo";
+  if (host.includes("gitea")) return "gitea";
   return "other";
 };
+
+/** Map a remote's classified provider to the `ForgeAuthProvider` used by the
+ * accounts/keychain surfaces, or `null` for providers that own auth another way
+ * (GitHub via `gh`) or that can't be classified (`other`). Azure normalizes the
+ * `"azure"` classification to the `"azure-devops"` provider key. */
+export const forgeAuthProviderFor = (p: RemoteProvider): ForgeAuthProvider | null => {
+  switch (p) {
+    case "gitlab":
+      return "gitlab";
+    case "bitbucket":
+      return "bitbucket";
+    case "azure":
+      return "azure-devops";
+    case "gitea":
+      return "gitea";
+    case "forgejo":
+      return "forgejo";
+    default:
+      return null;
+  }
+};
+
+/** The Azure DevOps organization from a remote path. Azure hosts many orgs on
+ * one host (`dev.azure.com/{org}/…`, or the legacy `{org}.visualstudio.com`),
+ * so credentials must scope by org — the git credential context needs the org
+ * as its path (with `credential.useHttpPath=true`) or credentials collide across
+ * orgs on `dev.azure.com`. Returns the org, or `null` when the URL isn't Azure
+ * or the org can't be determined. */
+export const azureOrg = (info: Pick<RemoteUrlInfo, "provider" | "host" | "path">): string | null => {
+  if (info.provider !== "azure") return null;
+  // Legacy `{org}.visualstudio.com`: the org is the leading host label.
+  if (info.host && info.host.endsWith(".visualstudio.com")) {
+    const org = info.host.slice(0, -".visualstudio.com".length);
+    return org || null;
+  }
+  // `dev.azure.com/{org}/{project}/_git/{repo}`: the org is the first segment.
+  const first = info.path?.split("/").filter(Boolean)[0];
+  return first || null;
+};
+
+/** The credential-context path git should scope by for `info`, or `null` for the
+ * host-only scope. Azure scopes by org (see {@link azureOrg}); every other
+ * provider scopes by host alone, matching how their credential helpers behave. */
+export const credentialScopePath = (info: RemoteUrlInfo): string | null =>
+  info.provider === "azure" ? azureOrg(info) : null;
 
 const hasCredentialProtocolSeparator = (value: string | null): boolean =>
   value !== null && /[\r\n\0]/.test(value);
@@ -116,6 +175,8 @@ const PROVIDER_LABEL: Record<RemoteProvider, string> = {
   gitlab: "GitLab",
   bitbucket: "Bitbucket",
   azure: "Azure DevOps",
+  gitea: "Gitea",
+  forgejo: "Forgejo",
   other: "This host",
 };
 
