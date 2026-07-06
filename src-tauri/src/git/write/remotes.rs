@@ -2,10 +2,52 @@
 
 use std::collections::HashMap;
 
-use super::cli::{run_git, run_git_env_stable_diagnostics};
+use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics};
 use super::operands::ensure_operand;
+use crate::git::credential_bridge::{self, GitInvocation};
+use crate::git::transport_auth::TransportCredential;
 
 const TAG_FETCH_REFSPEC: &str = "refs/tags/*:refs/tags/*";
+
+/// Run a git network command under a resolved [`TransportCredential`]: prepend
+/// the bridge's `-c` config and apply its env. For `None`/`Gh` the env is empty,
+/// so those paths are byte-identical to a plain `run_git`.
+fn run_transport(
+    repo: &str,
+    cred: &TransportCredential,
+    command: &[&str],
+) -> Result<String, String> {
+    let inv = credential_bridge::git_invocation(cred)?;
+    let (args, env) = merge_invocation(&inv, command);
+    run_git_env(repo, &args_refs(&args), &env_refs(&env))
+}
+
+/// Like [`run_transport`] but with locale-stable diagnostics (`LC_ALL=C`), for
+/// commands whose output is pattern-matched (fetch tag-clobber, delete-tag
+/// missing-ref tolerance).
+fn run_transport_stable(
+    repo: &str,
+    cred: &TransportCredential,
+    command: &[&str],
+) -> Result<String, String> {
+    let inv = credential_bridge::git_invocation(cred)?;
+    let (args, env) = merge_invocation(&inv, command);
+    run_git_env_stable_diagnostics(repo, &args_refs(&args), &env_refs(&env))
+}
+
+fn merge_invocation(inv: &GitInvocation, command: &[&str]) -> (Vec<String>, Vec<(String, String)>) {
+    let mut args = inv.config.clone();
+    args.extend(command.iter().map(|s| (*s).to_string()));
+    (args, inv.env.clone())
+}
+
+fn args_refs(args: &[String]) -> Vec<&str> {
+    args.iter().map(String::as_str).collect()
+}
+
+fn env_refs(env: &[(String, String)]) -> Vec<(&str, &str)> {
+    env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
+}
 
 /// Add a new remote `name` pointing at `url` (`git remote add`).
 pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
@@ -163,33 +205,20 @@ pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
 /// precedence over `pull.rebase=true`, but older versions rebased on divergence
 /// instead of failing — passing `--no-rebase` makes the ff-only behaviour
 /// identical everywhere rather than depending on the git version and config.
-pub fn pull(repo: &str, gh_host: Option<&str>) -> Result<String, String> {
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["pull", "--no-rebase", "--ff-only"]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["pull", "--no-rebase", "--ff-only"]),
-    }
+pub fn pull(repo: &str, cred: &TransportCredential) -> Result<String, String> {
+    run_transport(repo, cred, &["pull", "--no-rebase", "--ff-only"])
 }
 
 /// Push to the upstream remote (shells out — libgit2 has no network here).
 ///
-/// When `gh_host` is set (the remote is bound to a gh account via the URL
-/// username), gh's git-credential helper is wired in inline for that host —
-/// git passes the URL username through the credential context, and the helper
-/// returns that account's token (gitcredentials(7) semantics). No token ever
-/// crosses our process boundary.
-pub fn push(repo: &str, gh_host: Option<&str>) -> Result<String, String> {
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push"]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["push"]),
-    }
+/// `cred` selects how credentials are supplied for this invocation: `Gh` wires
+/// in `gh auth git-credential` inline (the URL username picks the account, and
+/// gh returns that account's token per gitcredentials(7)); `ProviderToken` feeds
+/// a GitLane-owned keychain token via the `GIT_ASKPASS` bridge; `None` leaves the
+/// user's own credential helper / SSH untouched. No token ever crosses our
+/// process boundary in any case.
+pub fn push(repo: &str, cred: &TransportCredential) -> Result<String, String> {
+    run_transport(repo, cred, &["push"])
 }
 
 /// Push a specific `branch` without checking it out first (shells out — libgit2
@@ -197,21 +226,14 @@ pub fn push(repo: &str, gh_host: Option<&str>) -> Result<String, String> {
 /// (`branch.<name>.remote`), falling back to `origin` when none is set, and
 /// honours a divergent upstream branch name (`branch.<name>.merge`) so a local
 /// branch tracking a differently-named remote branch still lands on the right
-/// ref. Does **not** set upstream — use [`set_upstream`] for that. `token` is
-/// wired in exactly as [`push`] does.
-pub fn push_branch(repo: &str, branch: &str, gh_host: Option<&str>) -> Result<String, String> {
+/// ref. Does **not** set upstream — use [`set_upstream`] for that. `cred` is
+/// applied exactly as [`push`] does.
+pub fn push_branch(repo: &str, branch: &str, cred: &TransportCredential) -> Result<String, String> {
     // `branch` becomes a positional refspec in `git push <remote> <refspec>`, so
     // guard it against option injection (e.g. --receive-pack=…) like the others.
     ensure_operand(branch)?;
     let (remote, refspec) = push_target(repo, branch);
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push", &remote, &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["push", &remote, &refspec]),
-    }
+    run_transport(repo, cred, &["push", &remote, &refspec])
 }
 
 /// Publish `branch` to `upstream` (`remote/branch`) and set it as the branch's
@@ -221,21 +243,14 @@ pub fn publish_branch(
     repo: &str,
     branch: &str,
     upstream: &str,
-    gh_host: Option<&str>,
+    cred: &TransportCredential,
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     let (remote, remote_branch) = split_remote_ref(repo, upstream)?;
     ensure_operand(&remote)?;
     ensure_operand(&remote_branch)?;
     let refspec = format!("refs/heads/{branch}:refs/heads/{remote_branch}");
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push", "--set-upstream", &remote, &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["push", "--set-upstream", &remote, &refspec]),
-    }
+    run_transport(repo, cred, &["push", "--set-upstream", &remote, &refspec])
 }
 
 /// Split an `upstream` string like `origin/main` into its `(remote, branch)`
@@ -345,7 +360,7 @@ pub(super) fn push_target(repo: &str, branch: &str) -> (String, String) {
 /// `refs/tags/*`.
 ///
 /// Each remote is fetched **individually with its own credentials** (GL-129):
-/// `auth_by_remote` maps a remote name to the `(host, token)` its bound
+/// `cred_by_remote` maps a remote name to the [`TransportCredential`] its bound
 /// account resolved to, and remotes without an entry go through the system
 /// credential helpers / SSH untouched — that is what keeps unauthenticated
 /// Bitbucket/GitLab remotes working next to an account-bound GitHub remote.
@@ -365,13 +380,17 @@ pub(super) fn push_target(repo: &str, branch: &str) -> (String, String) {
 /// `remote.<name>.pruneTags=true`) and a divergent local tag does not fail the
 /// remote's fetch with "would clobber existing tag" before the clobber
 /// tolerance can run.
-pub fn fetch(repo: &str, gh_host_by_remote: &HashMap<String, String>) -> Result<String, String> {
+pub fn fetch(
+    repo: &str,
+    cred_by_remote: &HashMap<String, TransportCredential>,
+) -> Result<String, String> {
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
+    let default_cred = TransportCredential::None;
     for remote in fetch_remotes(repo)? {
         ensure_operand(&remote)?;
-        let gh_host = gh_host_by_remote.get(&remote).map(String::as_str);
-        match fetch_remote(repo, &remote, gh_host) {
+        let cred = cred_by_remote.get(&remote).unwrap_or(&default_cred);
+        match fetch_remote(repo, &remote, cred) {
             Ok(output) => succeeded.push(label_remote_output(&remote, &output)),
             Err(err) => failed.push(label_remote_output(&remote, &err)),
         }
@@ -389,7 +408,7 @@ pub fn fetch(repo: &str, gh_host_by_remote: &HashMap<String, String>) -> Result<
 
 /// Fetch one remote: a branch/prune pass, then the explicit tag-refspec pass
 /// with clobber tolerance (see [`fetch`] for the tag semantics).
-fn fetch_remote(repo: &str, remote: &str, gh_host: Option<&str>) -> Result<String, String> {
+fn fetch_remote(repo: &str, remote: &str, cred: &TransportCredential) -> Result<String, String> {
     let branch_cmd = ["fetch", remote, "--prune", "--no-tags", "--no-prune-tags"];
     let tag_cmd = [
         "fetch",
@@ -398,20 +417,8 @@ fn fetch_remote(repo: &str, remote: &str, gh_host: Option<&str>) -> Result<Strin
         "--no-prune",
         TAG_FETCH_REFSPEC,
     ];
-    let (branch_args, tag_args): (Vec<String>, Vec<String>) = match gh_host {
-        Some(host) => (
-            credential_args(host, &branch_cmd),
-            credential_args(host, &tag_cmd),
-        ),
-        None => (
-            branch_cmd.iter().map(|s| (*s).to_string()).collect(),
-            tag_cmd.iter().map(|s| (*s).to_string()).collect(),
-        ),
-    };
-    let branch_refs: Vec<&str> = branch_args.iter().map(String::as_str).collect();
-    let output = run_git_env_stable_diagnostics(repo, &branch_refs, &[])?;
-    let tag_refs: Vec<&str> = tag_args.iter().map(String::as_str).collect();
-    match run_git_env_stable_diagnostics(repo, &tag_refs, &[]) {
+    let output = run_transport_stable(repo, cred, &branch_cmd)?;
+    match run_transport_stable(repo, cred, &tag_cmd) {
         Ok(tag_output) => Ok(join_git_outputs(&output, &tag_output)),
         Err(e) if is_tag_clobber_rejection(&e) => Ok(join_git_outputs(&output, &e)),
         Err(e) => Err(e),
@@ -470,31 +477,26 @@ pub(super) fn is_tag_clobber_rejection(output: &str) -> bool {
 }
 
 /// Push a tag to `remote` (`git push <remote> refs/tags/<name>`). The explicit
-/// `refs/tags/` refspec avoids any ambiguity with a same-named branch. `gh_host` is /// wired in exactly as [`push`] does.
+/// `refs/tags/` refspec avoids any ambiguity with a same-named branch. `cred` is
+/// applied exactly as [`push`] does.
 pub fn push_tag(
     repo: &str,
     name: &str,
     remote: &str,
-    gh_host: Option<&str>,
+    cred: &TransportCredential,
 ) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_operand(remote)?;
     let refspec = format!("refs/tags/{name}");
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push", remote, &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["push", remote, &refspec]),
-    }
+    run_transport(repo, cred, &["push", remote, &refspec])
 }
 
 /// Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`).
 /// The fully-qualified `refs/tags/` refspec guarantees a same-named branch on
 /// the remote is never deleted. Local deletion is separate ([`super::delete_tag`]);
 /// without this, a tag deleted locally but still on the remote is re-imported by
-/// the next Fetch's explicit `refs/tags/*` refspec. `gh_host` selects the /// account like [`push`] (URL-username selection).
+/// the next Fetch's explicit `refs/tags/*` refspec. `cred` selects the account
+/// like [`push`].
 ///
 /// A tag that was never pushed is not an error: absence upstream is the desired
 /// end state, so "remote ref does not exist" maps to `Ok` and a combined
@@ -505,20 +507,12 @@ pub fn delete_remote_tag(
     repo: &str,
     remote: &str,
     name: &str,
-    gh_host: Option<&str>,
+    cred: &TransportCredential,
 ) -> Result<String, String> {
     ensure_operand(remote)?;
     ensure_operand(name)?;
     let refspec = format!("refs/tags/{name}");
-    let result = match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push", remote, "--delete", &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git_env_stable_diagnostics(repo, &arg_refs, &[])
-        }
-        None => run_git_env_stable_diagnostics(repo, &["push", remote, "--delete", &refspec], &[]),
-    };
-    match result {
+    match run_transport_stable(repo, cred, &["push", remote, "--delete", &refspec]) {
         Err(output) if is_missing_remote_ref(&output) => {
             Ok(format!("Tag {name} was not on {remote}"))
         }
@@ -532,23 +526,16 @@ pub(super) fn is_missing_remote_ref(output: &str) -> bool {
 
 /// Delete a branch on `remote` (`git push <remote> --delete <branch>`). `branch`
 /// is the short name on the remote (e.g. `feature/x`, not `origin/feature/x`).
-/// `gh_host` selects the  account like [`push`] (URL-username selection).
+/// `cred` selects the account like [`push`].
 pub fn delete_remote_branch(
     repo: &str,
     remote: &str,
     branch: &str,
-    gh_host: Option<&str>,
+    cred: &TransportCredential,
 ) -> Result<String, String> {
     ensure_operand(remote)?;
     ensure_operand(branch)?;
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push", remote, "--delete", branch]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["push", remote, "--delete", branch]),
-    }
+    run_transport(repo, cred, &["push", remote, "--delete", branch])
 }
 
 /// Force-push a single `branch` with `--force-with-lease` — the *safe* force:
@@ -559,28 +546,14 @@ pub fn delete_remote_branch(
 /// An explicit `<remote> <refspec>` is always supplied (via [`push_target`]) so
 /// the force applies to **only** the selected branch. A bare `git push
 /// --force-with-lease` would defer to `push.default`/configured refspecs and
-/// could rewrite several remote branches at once. `gh_host` is  wired in as
+/// could rewrite several remote branches at once. `cred` is applied as
 /// [`push`] does.
-pub fn force_push(repo: &str, branch: &str, gh_host: Option<&str>) -> Result<String, String> {
+pub fn force_push(repo: &str, branch: &str, cred: &TransportCredential) -> Result<String, String> {
     ensure_operand(branch)?;
     let (remote, refspec) = push_target(repo, branch);
-    match gh_host {
-        Some(host) => {
-            let args = credential_args(host, &["push", "--force-with-lease", &remote, &refspec]);
-            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(repo, &arg_refs)
-        }
-        None => run_git(repo, &["push", "--force-with-lease", &remote, &refspec]),
-    }
-}
-
-fn credential_args(host: &str, command: &[&str]) -> Vec<String> {
-    let mut args = vec![
-        "-c".to_string(),
-        format!("credential.https://{host}.helper="),
-        "-c".to_string(),
-        format!("credential.https://{host}.helper=!gh auth git-credential"),
-    ];
-    args.extend(command.iter().map(|arg| (*arg).to_string()));
-    args
+    run_transport(
+        repo,
+        cred,
+        &["push", "--force-with-lease", &remote, &refspec],
+    )
 }

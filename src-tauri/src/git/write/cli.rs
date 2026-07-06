@@ -28,7 +28,8 @@ fn finish(status: ExitStatus, stdout: &str, stderr: &str, args: &[&str]) -> Resu
         let op = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
         Err(format!("git {op} failed ({how})"))
     } else {
-        Err(combined)
+        // Scrub any credential git echoed in a URL before it reaches a toast/log.
+        Err(crate::redact::redact_secrets(&combined))
     }
 }
 

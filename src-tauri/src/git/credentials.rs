@@ -24,6 +24,13 @@ pub struct CredentialSaveResult {
     pub helper: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialForgetResult {
+    /// The credential helper(s) the erase request was sent to.
+    pub helper: String,
+}
+
 pub fn helper_status() -> CredentialHelperStatus {
     let mut helpers = git_config_get_all("credential.helper")
         .unwrap_or_default()
@@ -96,6 +103,45 @@ pub fn approve_https_credential(
 
     Ok(CredentialSaveResult {
         username: username.to_string(),
+        helper: status.helpers.join(", "),
+    })
+}
+
+/// Forget a saved HTTPS credential via the user's Git credential helper
+/// (`git credential reject`). This is the **"forget saved HTTPS credential"**
+/// action — deliberately distinct from provider sign-out, which deletes a
+/// GitLane-owned keychain token (`provider_tokens::delete_provider_token`). It
+/// erases only the helper entry matching this host/path/username and never
+/// touches GitLane's own keychain or unrelated credentials. Erasing an absent
+/// credential is a success (idempotent).
+pub fn reject_https_credential(
+    credential_host: &str,
+    path: Option<&str>,
+    username: &str,
+) -> Result<CredentialForgetResult, String> {
+    validate_credential_field("credential host", credential_host)?;
+    if let Some(path) = path {
+        validate_credential_field("credential path", path)?;
+    }
+    validate_credential_field("username", username)?;
+
+    if credential_host.trim().is_empty() {
+        return Err("Credential host is missing.".into());
+    }
+
+    let status = helper_status();
+    if !status.configured {
+        return Err(
+            "No Git credential helper is configured, so there is no saved credential to forget."
+                .into(),
+        );
+    }
+
+    // No password: `reject` scopes by protocol/host/[path]/[username] only.
+    let input = credential_input(credential_host, path, username, None);
+    run_git_credential("reject", &input)?;
+
+    Ok(CredentialForgetResult {
         helper: status.helpers.join(", "),
     })
 }
@@ -188,7 +234,7 @@ fn run_git_credential(op: &str, input: &str) -> Result<String, String> {
         Err(if stderr.is_empty() {
             format!("git credential {op} failed")
         } else {
-            stderr
+            crate::redact::redact_secrets(&stderr)
         })
     }
 }

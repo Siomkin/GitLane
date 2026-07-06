@@ -145,8 +145,18 @@ credential helpers resolve by that username), written by the Remotes picker via
 terminal. GitHub remotes can inject `gh auth git-credential` per invocation; GitLab,
 Bitbucket, Azure Repos, and unknown HTTPS remotes use the user's configured git credential
 helper / GCM. The app can send a non-GitHub token/password once to `git credential approve`
-so Git's helper stores it; GitLane itself must never store it. SSH remotes select their
-account via the SSH key. Only the PR-API account keeps a small localStorage binding.
+so Git's helper stores it; GitLane itself must never store it. **GitLane can also *own* a
+provider token itself** (`providerToken` transport mode, GL-132): a token stored in the OS
+keychain (`src-tauri/src/secrets.rs`, `keyring` crate, GitLane-namespaced service) and fed to
+git by pointing `GIT_ASKPASS` at this binary — the re-entrant credential bridge
+(`src-tauri/src/git/credential_bridge.rs`) reads it from the keychain in a child process and
+answers git's prompt, so the token never crosses IPC. Transport auth resolves to a
+`TransportCredential` (`None` / `Gh` / `ProviderToken`) in `git/transport_auth.rs`; the ref
+that crosses IPC carries only a non-secret `providerAccountId` locator. **Two distinct verbs:**
+provider **sign-out** (`delete_provider_token`) deletes GitLane's keychain token; **forget
+saved HTTPS credential** (`reject_https_credential` → `git credential reject`) erases what the
+user's own Git helper stored. `git`/`gh` errors are secret-redacted (`src-tauri/src/redact.rs`)
+before surfacing. SSH remotes select their account via the SSH key. Only the PR-API account keeps a small localStorage binding.
 Accounts never set the commit identity. Who the repo commits as is an
 **identity card** (GL-130): a plain name/email (+ optional signing) entry applied to the
 repo's *local* git config via `set_repo_identity` (never global; `commit` can also pin

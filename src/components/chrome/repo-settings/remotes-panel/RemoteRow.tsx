@@ -5,6 +5,7 @@ import type { RemoteInfo } from "../../../../lib/api";
 import { CloudIcon, GitHubIcon, TrashIcon } from "../../../ui/icons";
 import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
+import { RemoteKeychainAuth } from "./RemoteKeychainAuth";
 import type { PickerAccount } from "./remoteAccountOptions";
 import type { ForgeAuthStatus } from "../../../../lib/api";
 import { RemoteUrlField } from "./RemoteUrlField";
@@ -142,6 +143,7 @@ export const RemoteRow = ({
             onSetUsername={(username) => onSetUsername(remote.name, username)}
             onSaveCredential={(username, password) => onSaveCredential(remote.name, username, password)}
           />
+          <RemoteKeychainAuth remote={remote} />
         </div>
       ) : (
         <div className="mt-3">

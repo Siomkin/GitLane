@@ -53,7 +53,8 @@ and the reason is documented in this file.
 | Updater | Installed | Keep under GL-24. Updates must remain signed and configured in `tauri.conf.json`. |
 | Process | Installed | Keep only `process:allow-restart` for updater relaunch. Do not grant `allow-exit` without a product need. |
 | Store | Deferred — prefer Rust-owned app-data | Not currently needed: terminal agents already use Rust-owned app-data (`terminal_agents.rs`), the preferred home for durable non-secret app metadata (see the persistence inventory below). Adopt the Store plugin only if a settings migration genuinely needs frontend-written, file-backed storage. Never store tokens, OAuth codes, refresh tokens, keychain handles, or provider credentials. |
-| Stronghold | Deferred to GL-49 / GL-3 | Evaluate only for future native GitHub provider secret storage. If adopted, secret create/read/use must be Rust-side; do not expose a JS path that can retrieve token material. |
+| Stronghold | Not adopted — superseded by the `keyring` crate (GL-132) | We evaluated secure-storage options for GitLane-owned provider tokens and chose the `keyring` crate over the Stronghold plugin: it targets the OS-native keychain directly (macOS Security.framework, Windows Credential Manager, Linux Secret Service), is Rust-only with no JS surface, and needs no encrypted vault file to manage. See "Secret-storage posture" below. Revisit Stronghold only if a portable app-managed vault is ever needed. |
+| `keyring` crate (not a Tauri plugin) | Installed (GL-132) | Backend-only OS-keychain access for GitLane-owned provider transport tokens (`src-tauri/src/secrets.rs`). Platform-native features only (`apple-native` / `windows-native` / `sync-secret-service`) — no JS package, no capability/permission, no CSP change. Secrets are written/read solely in Rust and reach git via the `GIT_ASKPASS` credential bridge (`src-tauri/src/git/credential_bridge.rs`); they never cross IPC. macOS access to the app's own generic-password items needs no entitlement; an unsigned dev build may prompt once on first read. |
 | Deep Link | Deferred to GL-50 | Add only when auth callbacks or app links have a concrete flow. Desktop schemes must be configured deliberately; do not reserve schemes speculatively. |
 | Single Instance | Deferred with Deep Link | Add with deep-link work if duplicate app launches would lose auth/app-link events. Register it before deep-link handling, per Tauri's desktop guidance. |
 | Shell | Avoid | GitLane already shells out from Rust through audited helpers (`run_git`, `run_git_env`, `run_gh`) and PTY code. Do not expose generic frontend process spawning. Use Opener for external URLs. |
@@ -147,6 +148,32 @@ rule is stricter than "use a plugin":
    needs reauth, or permission failure.
 4. Keep token material, refresh tokens, OAuth device codes, and recovery data out
    of JS-visible APIs and persistent JSON stores.
+
+### GL-132 — GitLane-owned provider transport tokens
+
+The foundation for provider auth parity (GL-131 epic) makes GitLane a secret
+*owner* for provider accounts it authenticates itself (e.g. a GitLab/Bitbucket
+PAT captured in-app), while `gh` remains the GitHub owner. It follows the rule
+above:
+
+- **Storage** — the OS keychain via the `keyring` crate, in a GitLane-namespaced
+  service (`space.gitlane.provider-token`), keyed by `(provider, host, account
+  id)`. Code: `src-tauri/src/secrets.rs` (`SecretStore` trait + `KeyringStore`).
+- **Use** — a git network op under `providerToken` transport auth points git at
+  this binary as its `GIT_ASKPASS` helper; the helper reads the token from the
+  keychain in a short-lived child process and answers git's prompt. The token
+  lives only in the git↔helper process pair. Code:
+  `src-tauri/src/git/credential_bridge.rs`.
+- **IPC** — only non-secret handles cross the boundary: the transport ref carries
+  a `providerAccountId` locator, and `save_provider_token` receives a token once
+  (like `approve_https_credential`) but returns only a `ProviderTokenStatus`
+  (`hasToken` presence, never the value).
+- **Two distinct verbs** — provider **sign-out** (`delete_provider_token`)
+  removes GitLane's own keychain secret; **forget saved HTTPS credential**
+  (`reject_https_credential` → `git credential reject`) erases what the user's own
+  Git credential helper stored. Neither touches the other's store.
+- **Redaction** — surfaced `git`/`gh` errors are scrubbed of URL-embedded
+  credentials (`src-tauri/src/redact.rs`) before crossing IPC.
 
 ## Content Security Policy
 

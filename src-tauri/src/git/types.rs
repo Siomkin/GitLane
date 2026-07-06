@@ -701,13 +701,18 @@ pub struct GithubAccountRef {
 /// This is intentionally not a token carrier. For HTTPS remotes the account
 /// selector is the URL username (`gitcredentials(7)`); GitHub can additionally
 /// ask `gh auth git-credential` for that username's token per invocation. Other
-/// providers use the user's configured credential helper / GCM.
+/// providers use the user's configured credential helper / GCM. When GitLane
+/// owns the secret for a provider account (`providerToken` mode, GL-132) the
+/// token is fetched from the OS keychain by the backend credential bridge and
+/// handed to git via `GIT_ASKPASS`; `providerAccountId` is the non-secret
+/// keychain locator, never the token itself.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitTransportAuthRef {
-    /// "system" | "ssh" | "githubGh" | "credentialHelper".
+    /// "system" | "ssh" | "githubGh" | "credentialHelper" | "providerToken".
     pub mode: String,
-    /// "github" | "gitlab" | "bitbucket" | "azure-devops" | "other".
+    /// "github" | "gitlab" | "bitbucket" | "azure-devops" | "gitea" | "forgejo"
+    /// | "other".
     #[serde(default)]
     pub provider: Option<String>,
     /// Normalized display host, without scheme or port.
@@ -720,6 +725,11 @@ pub struct GitTransportAuthRef {
     /// GitHub account metadata for `githubGh`; never contains a token.
     #[serde(default)]
     pub account_ref: Option<GithubAccountRef>,
+    /// Stable, non-secret keychain locator for `providerToken` mode — the
+    /// provider account id whose token GitLane stored in the OS keychain. Absent
+    /// for every other mode. Never a token.
+    #[serde(default)]
+    pub provider_account_id: Option<String>,
 }
 
 /// One `remote → auth` pair for the multi-remote fetch.
@@ -732,7 +742,10 @@ pub struct RemoteAccountRef {
     pub auth: GitTransportAuthRef,
 }
 
-pub use crate::git::credentials::{CredentialHelperStatus, CredentialSaveResult};
+pub use crate::git::credentials::{
+    CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult,
+};
+pub use crate::git::provider_tokens::ProviderTokenStatus;
 
 /// A GitHub account `gh` is logged into. Its account ref drives GitHub PR/API
 /// auth and can be used for git transport auth; commit identity is configured

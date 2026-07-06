@@ -5,6 +5,8 @@
 
 mod auth_providers;
 mod git;
+mod redact;
+mod secrets;
 mod shell;
 mod signing_keys;
 mod terminal;
@@ -16,13 +18,13 @@ use terminal_agents::TerminalAgent;
 use watcher::WatcherState;
 
 use git::types::{
-    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialHelperStatus,
-    CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview, FileBlame, FileChange,
-    FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef, GithubAccount,
-    GithubAccountRef, GithubSignInResult, HandoffProgressEvent, OperationStatus, PrCheck, PrCommit,
-    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo,
-    RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThread, SigningKey,
-    StashEntry, WorkingChanges, WorktreeInfo,
+    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
+    CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
+    FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
+    GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
+    OperationStatus, PrCheck, PrCommit, ProviderTokenStatus, PullRequestDetail, PullRequestSummary,
+    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoForge, RepoGraph, RepoIdentity,
+    RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -387,8 +389,8 @@ async fn push_tag(
         let remote = remote
             .or_else(|| git::forge::default_remote(&path))
             .unwrap_or_else(|| "origin".to_string());
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::push_tag(&path, &name, &remote, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::push_tag(&path, &name, &remote, &cred)
     })
     .await
 }
@@ -409,8 +411,8 @@ async fn delete_remote_tag(
         let remote = remote
             .or_else(|| git::forge::default_remote(&path))
             .unwrap_or_else(|| "origin".to_string());
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::delete_remote_tag(&path, &remote, &name, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::delete_remote_tag(&path, &remote, &name, &cred)
     })
     .await
 }
@@ -434,8 +436,8 @@ async fn delete_remote_branch(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::delete_remote_branch(&path, &remote, &branch, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::delete_remote_branch(&path, &remote, &branch, &cred)
     })
     .await
 }
@@ -452,8 +454,8 @@ async fn force_push(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::force_push(&path, &branch, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::force_push(&path, &branch, &cred)
     })
     .await
 }
@@ -761,13 +763,13 @@ async fn stash_drop(path: String, oid: String) -> Result<String, String> {
 #[tauri::command]
 async fn pull(path: String, auth: Option<GitTransportAuthRef>) -> Result<String, String> {
     blocking(move || {
-        let gh_host = match git::write::head_pull_remote(&path) {
+        let cred = match git::write::head_pull_remote(&path) {
             Some(remote) => {
-                git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?
+                git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?
             }
-            None => None,
+            None => git::transport_auth::TransportCredential::None,
         };
-        git::write::pull(&path, gh_host.as_deref())
+        git::write::pull(&path, &cred)
     })
     .await
 }
@@ -784,19 +786,19 @@ async fn fetch(
     remote_accounts: Option<Vec<RemoteAccountRef>>,
 ) -> Result<String, String> {
     blocking(move || {
-        let mut gh_host_by_remote = std::collections::HashMap::new();
+        let mut cred_by_remote = std::collections::HashMap::new();
         for pair in remote_accounts.unwrap_or_default() {
-            match git::transport_auth::helper_host_for_remote(&path, &pair.remote, Some(&pair.auth))
+            match git::transport_auth::credential_for_remote(&path, &pair.remote, Some(&pair.auth))
             {
-                Ok(Some(host)) => {
-                    gh_host_by_remote.insert(pair.remote, host);
+                Ok(git::transport_auth::TransportCredential::None) => {}
+                Ok(cred) => {
+                    cred_by_remote.insert(pair.remote, cred);
                 }
-                Ok(None) => {}
                 Err(err) if err.contains("was not found or has no URL configured") => {}
                 Err(err) => return Err(err),
             }
         }
-        git::write::fetch(&path, &gh_host_by_remote)
+        git::write::fetch(&path, &cred_by_remote)
     })
     .await
 }
@@ -809,8 +811,8 @@ async fn fetch(
 async fn push(path: String, auth: Option<GitTransportAuthRef>) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::head_push_remote(&path);
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::push(&path, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::push(&path, &cred)
     })
     .await
 }
@@ -826,8 +828,8 @@ async fn push_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::push_branch(&path, &branch, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::push_branch(&path, &branch, &cred)
     })
     .await
 }
@@ -844,8 +846,8 @@ async fn publish_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::publish_remote(&path, &upstream)?;
-        let gh_host = git::transport_auth::helper_host_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::publish_branch(&path, &branch, &upstream, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        git::write::publish_branch(&path, &branch, &upstream, &cred)
     })
     .await
 }
@@ -919,6 +921,68 @@ async fn approve_https_credential(
             &username,
             &password,
         )
+    })
+    .await
+}
+
+/// Forget a saved HTTPS credential from the user's Git credential helper
+/// (`git credential reject`). This is "forget saved HTTPS credential" — distinct
+/// from provider sign-out ([`delete_provider_token`]), which removes a
+/// GitLane-owned keychain token. Touches only the helper entry matching this
+/// host/path/username.
+#[tauri::command]
+async fn reject_https_credential(
+    credential_host: String,
+    path: Option<String>,
+    username: String,
+) -> Result<CredentialForgetResult, String> {
+    blocking(move || {
+        git::credentials::reject_https_credential(&credential_host, path.as_deref(), &username)
+    })
+    .await
+}
+
+/// Store a provider account's transport token in the OS keychain (GL-132). The
+/// `token` is a secret: it is written straight to the keychain and never logged,
+/// echoed, or returned — only the non-secret [`ProviderTokenStatus`] comes back.
+#[tauri::command]
+async fn save_provider_token(
+    provider: String,
+    host: String,
+    account_id: String,
+    login: String,
+    token: String,
+) -> Result<ProviderTokenStatus, String> {
+    blocking(move || {
+        git::provider_tokens::save_provider_token(&provider, &host, &account_id, &login, &token)
+    })
+    .await
+}
+
+/// Delete a GitLane-owned provider token from the keychain — **provider
+/// sign-out**. Idempotent; removes only GitLane's own keychain entry and leaves
+/// the user's git credential-helper credentials untouched.
+#[tauri::command]
+async fn delete_provider_token(
+    provider: String,
+    host: String,
+    account_id: String,
+) -> Result<(), String> {
+    blocking(move || git::provider_tokens::delete_provider_token(&provider, &host, &account_id))
+        .await
+}
+
+/// Whether a keychain token is currently stored for a provider account, without
+/// ever returning the token itself.
+#[tauri::command]
+async fn provider_token_status(
+    provider: String,
+    host: String,
+    account_id: String,
+    login: String,
+) -> Result<ProviderTokenStatus, String> {
+    blocking(move || {
+        git::provider_tokens::provider_token_status(&provider, &host, &account_id, &login)
     })
     .await
 }
@@ -1179,8 +1243,8 @@ async fn clone_repo(
 ) -> Result<String, String> {
     let slot = state.0.clone();
     blocking(move || {
-        let gh_host = git::transport_auth::helper_host_for_url(&url, auth.as_ref())?;
-        git::write::clone(&app, slot, &url, &dest, gh_host.as_deref())
+        let cred = git::transport_auth::credential_for_url(&url, auth.as_ref())?;
+        git::write::clone(&app, slot, &url, &dest, &cred)
     })
     .await
 }
@@ -1308,6 +1372,16 @@ fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // If git spawned this binary as its GIT_ASKPASS helper (provider-token
+    // transport auth), answer the credential prompt from the OS keychain and
+    // exit before Tauri initialises — the helper process opens no window and
+    // touches no IPC. Must stay first so a normal launch is never mistaken for
+    // it (the marker env var is set only on the git child we spawn).
+    if git::credential_bridge::is_askpass_invocation() {
+        git::credential_bridge::respond_to_askpass();
+        return;
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1490,6 +1564,10 @@ pub fn run() {
             forge_sign_out,
             credential_helper_status,
             approve_https_credential,
+            reject_https_credential,
+            save_provider_token,
+            delete_provider_token,
+            provider_token_status,
             repo_forge,
             list_remotes,
             add_remote,
