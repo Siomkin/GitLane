@@ -130,7 +130,7 @@ jobs:
       # override disables updater-artifact signing, so no signing key is needed —
       # real signed bundles + latest.json come from release.yml.
       - name: Build app bundle (debug, unsigned)
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         with:
           tauriScript: bun tauri
           args: --debug --config src-tauri/tauri.ci.conf.json
