@@ -78,6 +78,20 @@ so verifying one auth path per provider exercises the rest.
 - **Host mismatch** — an account bound to host A against a remote on host B fails
   *before* the network op, with a redacted, actionable message.
 
+## Known limitations
+
+- **HTTPS only for the keychain path.** The `providerToken` bridge is scoped to
+  `https://` remotes. Plain `http://` remotes fall through to the user's Git
+  credential helper (sending a token over cleartext is unsafe by design).
+- **Same-user local trust.** The `GIT_ASKPASS` helper reads the keychain from a
+  child of the signed GitLane binary, so a local same-user process that can exec
+  GitLane with the right env could read a token — inherent to the
+  GIT_ASKPASS + OS-keychain pattern; hardening to a parent-brokered socket is
+  future work.
+- **Azure multi-org on the keychain path** keys by host + username; two Azure
+  orgs that share both would collide. Use the credential-helper path (org-scoped)
+  when that applies.
+
 ## Sign-out vs. forget (must stay distinct)
 
 - **Provider sign-out** (`delete_provider_token`) removes only GitLane's own

@@ -70,6 +70,24 @@ pub fn provider_token_status(
     provider_token_status_in(&KeyringStore::new(), provider, host, account_id, login)
 }
 
+/// Reject a provider that isn't a simple lowercase slug (`gitlab`,
+/// `azure-devops`, …). Defence in depth against a malformed value creating an
+/// orphan keychain entry — the frontend only ever sends known `ForgeAuthProvider`
+/// values, but the IPC command accepts a raw string.
+fn validate_provider(provider: &str) -> Result<(), String> {
+    let p = provider.trim();
+    let ok = !p.is_empty()
+        && p.len() <= 40
+        && p.starts_with(|c: char| c.is_ascii_lowercase())
+        && p.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("Unsupported provider '{provider}'."))
+    }
+}
+
 // ---- store-injectable cores (unit-tested against MemoryStore) ----
 
 fn save_provider_token_in(
@@ -80,13 +98,17 @@ fn save_provider_token_in(
     login: &str,
     token: &str,
 ) -> Result<ProviderTokenStatus, String> {
+    validate_provider(provider)?;
     let key = SecretKey::new(provider, host, account_id);
     key.validate()?;
     let login = login.trim();
     if login.is_empty() {
         return Err("Enter the account username for this token.".into());
     }
-    if token.trim().is_empty() {
+    // Trim before storing: a pasted token often carries a trailing newline, which
+    // would otherwise be stored verbatim and cause confusing auth failures.
+    let token = token.trim();
+    if token.is_empty() {
         return Err("Enter the token to store in your keychain.".into());
     }
     store.set(&key, token)?;
@@ -195,5 +217,42 @@ mod tests {
         let store = MemoryStore::new();
         // Deleting a never-stored token is not an error.
         delete_provider_token_in(&store, "gitea", "gitea.example", "7").unwrap();
+    }
+
+    #[test]
+    fn save_trims_a_pasted_token_before_storing() {
+        let store = MemoryStore::new();
+        save_provider_token_in(
+            &store,
+            "gitlab",
+            "gitlab.com",
+            "42",
+            "alice",
+            "  glpat-secret\n",
+        )
+        .unwrap();
+        assert_eq!(
+            store
+                .get(&SecretKey::new("gitlab", "gitlab.com", "42"))
+                .unwrap()
+                .as_deref(),
+            Some("glpat-secret"),
+            "surrounding whitespace/newlines must be stripped before storing"
+        );
+    }
+
+    #[test]
+    fn save_rejects_a_malformed_provider() {
+        let store = MemoryStore::new();
+        for bad in ["", "Git Lab", "gitlab/evil", "9gag", "GITLAB"] {
+            assert!(
+                save_provider_token_in(&store, bad, "gitlab.com", "42", "alice", "tok").is_err(),
+                "provider {bad:?} should be rejected"
+            );
+        }
+        assert!(
+            save_provider_token_in(&store, "azure-devops", "dev.azure.com", "1", "org", "tok")
+                .is_ok()
+        );
     }
 }

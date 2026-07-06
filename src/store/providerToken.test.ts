@@ -38,6 +38,54 @@ describe("provider-token transport auth (GL-132)", () => {
     expect(auth?.providerAccountId ?? null).toBeNull();
   });
 
+  it("saveRemoteProviderToken pins the username so a bare-URL remote uses the token (review #1)", async () => {
+    // A bare URL with no @user — the common case. Before the fix, storing a
+    // token left transport on the credential helper because there was no account
+    // selector in the URL.
+    const bare: RemoteInfo = {
+      name: "origin",
+      fetchUrl: "https://gitlab.com/group/repo.git",
+      pushUrl: "https://gitlab.com/group/repo.git",
+      isDefault: true,
+    };
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false },
+      remotes: [bare],
+    });
+    // No account selector yet → nothing to authenticate as.
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toBeNull();
+
+    // After pinning, the reloaded remote carries @alice in its URL.
+    const pinned: RemoteInfo = {
+      ...bare,
+      fetchUrl: "https://alice@gitlab.com/group/repo.git",
+      pushUrl: "https://alice@gitlab.com/group/repo.git",
+    };
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "list_remotes" ? [pinned] : undefined),
+    );
+
+    await useAccounts.getState().saveRemoteProviderToken("origin", "alice", "glpat-secret");
+
+    // Token stored in the keychain AND the username pinned into the URL.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_provider_token",
+      expect.objectContaining({ provider: "gitlab", host: "gitlab.com", login: "alice" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path: "/repo",
+      name: "origin",
+      username: "alice",
+    });
+    // Now transport actually selects the keychain token.
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      provider: "gitlab",
+      username: "alice",
+      providerAccountId: "alice",
+    });
+  });
+
   it("selects providerToken mode once a keychain token is stored", async () => {
     await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-secret");
 
@@ -123,6 +171,38 @@ describe("provider-token transport auth (GL-132)", () => {
       credentialHost: "dev.azure.com",
       username: "contoso",
     });
+  });
+
+  it("reconciles away metadata whose keychain secret vanished externally (review #4)", async () => {
+    await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-secret");
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+
+    // Backend reports the keychain no longer has the token (deleted outside GitLane).
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "provider_token_status"
+          ? { provider: "gitlab", host: "gitlab.com", accountId: "alice", login: "alice", hasToken: false }
+          : undefined,
+      ),
+    );
+
+    await useAccounts.getState().reconcileProviderTokens();
+
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(false);
+    // Transport reverts to the credential helper for the (still @alice) remote.
+    expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
+  });
+
+  it("keeps metadata when the keychain status check throws (review #4, no false prune)", async () => {
+    await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-secret");
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_token_status" ? Promise.reject("keychain locked") : Promise.resolve(undefined),
+    );
+
+    await useAccounts.getState().reconcileProviderTokens();
+
+    // A transient error must never drop a still-valid entry.
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
   });
 
   it("forget-credential erases a Git-helper credential without touching the keychain token", async () => {

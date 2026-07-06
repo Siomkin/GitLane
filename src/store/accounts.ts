@@ -27,7 +27,7 @@ import {
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
-import { credentialScopePath, detectRemoteUrl } from "../lib/remotes";
+import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor } from "../lib/remotes";
 import { repoIdentityKey } from "../lib/worktrees";
 import {
   accountKey,
@@ -101,7 +101,9 @@ type StoredProviderToken = {
 };
 
 /** Metadata map key: a stored token is looked up by the remote's credential host
- * + URL username, both lowercased so matching is case-insensitive. */
+ * + URL username, both lowercased so matching is case-insensitive. Joined with a
+ * NUL — which appears in neither a host nor a login — so the two fields can never
+ * collide (the `\0`-separated key idiom used elsewhere in this store). */
 const providerTokenKey = (credentialHost: string, login: string) =>
   `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
 
@@ -317,6 +319,12 @@ interface AccountsState {
     login: string,
     token: string,
   ) => Promise<void>;
+  /** Store a keychain token **for a specific remote** and pin `login` into the
+   * remote's HTTPS URL, so `transportAuthForRemote` immediately selects
+   * `providerToken` — even for a bare `https://host/owner/repo.git` URL with no
+   * embedded username. This is the remote-scoped wrapper `RemoteKeychainAuth`
+   * uses; the git-native username is the account selector. */
+  saveRemoteProviderToken: (remote: string, login: string, token: string) => Promise<void>;
   /** Provider **sign-out**: delete a GitLane-owned keychain token and forget its
    * metadata. Distinct from [`forgetHttpsCredential`] — this removes GitLane's
    * own secret and leaves the user's git credential-helper credentials alone. */
@@ -334,6 +342,11 @@ interface AccountsState {
     username: string,
     provider?: ForgeAuthProvider,
   ) => Promise<void>;
+  /** Prune keychain-token metadata that no longer has a backing secret — e.g. a
+   * token deleted outside GitLane (Keychain Access, `secret-tool`). Best-effort,
+   * so a transient keychain error never drops a still-valid entry. Keeps the
+   * "signed in" UI + `providerToken` selection honest. */
+  reconcileProviderTokens: () => Promise<void>;
   /** Carry a relocated repo's per-path entries — the account binding and the
    * cached identity read — from its stale path to the new one (GL-108
    * Locate…). An entry already stored for the new path wins; the stale path's
@@ -584,6 +597,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         .filter((f) => f.authenticated === true && FORGE_WHOAMI.has(f.provider))
         .map((f) => f.provider);
       set({ forgeAuth: next, forgeAuthLoading: false, forgeAccountsLoading: pending });
+      // Drop any keychain-token metadata whose secret vanished outside GitLane,
+      // so a "signed in" row can't linger while transport silently fails.
+      void get().reconcileProviderTokens();
       for (const provider of pending) {
         const done = () =>
           set((s) => ({ forgeAccountsLoading: s.forgeAccountsLoading.filter((p) => p !== provider) }));
@@ -923,6 +939,51 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
   },
 
+  saveRemoteProviderToken: async (remote, login, token) => {
+    const target = useRepo.getState().remotes.find((r) => r.name === remote);
+    if (!target) return;
+    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    const provider = forgeAuthProviderFor(info.provider);
+    if (!info.valid || info.ssh || !info.credentialHost || !provider) {
+      useUi
+        .getState()
+        .showToast(`${remote} isn't a supported HTTPS remote for a keychain token.`, "error");
+      return;
+    }
+    const user = login.trim();
+    if (!user) {
+      useUi.getState().showToast("Enter the account username for this token.", "error");
+      return;
+    }
+    if (!token) {
+      useUi.getState().showToast("Enter the token to store in your keychain.", "error");
+      return;
+    }
+    const host = info.credentialHost;
+    const accountId = user;
+    try {
+      await api.saveProviderToken(provider, host, accountId, user, token);
+      const entry: StoredProviderToken = {
+        provider,
+        credentialHost: host,
+        accountId,
+        login: user,
+        savedAt: Date.now(),
+      };
+      const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
+      writeProviderTokens(next);
+      set({ providerTokens: next });
+      // Pin the account into the remote URL — the git-native account selector —
+      // so fetch/push actually resolve `providerToken` mode. Without this a
+      // bare `https://host/owner/repo.git` would keep using system credentials.
+      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, user);
+      await useRepo.getState().listRemotes();
+      useUi.getState().showToast(`${remote} now authenticates as @${user} with a keychain token`);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+    }
+  },
+
   signOutProviderToken: async (provider, credentialHost, login) => {
     const host = credentialHost.trim();
     const user = login.trim();
@@ -960,6 +1021,29 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }
+  },
+
+  reconcileProviderTokens: async () => {
+    const entries = Object.entries(get().providerTokens);
+    if (entries.length === 0) return;
+    // Ask the backend (keychain is authoritative) which tokens still exist. A
+    // check that throws is treated as "keep" — never prune on a transient error.
+    const results = await Promise.all(
+      entries.map(async ([key, t]) => {
+        try {
+          const status = await api.providerTokenStatus(t.provider, t.credentialHost, t.accountId, t.login);
+          return status.hasToken ? null : key;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const stale = results.filter((k): k is string => k !== null);
+    if (stale.length === 0) return;
+    const next = { ...get().providerTokens };
+    for (const key of stale) delete next[key];
+    writeProviderTokens(next);
+    set({ providerTokens: next });
   },
 
   setRepoAccount: async (id) => {

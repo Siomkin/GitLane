@@ -24,7 +24,7 @@ export const RemoteKeychainAuth = ({
   remote: { name: string; fetchUrl: string; pushUrl: string };
 }) => {
   const providerTokens = useAccounts((s) => s.providerTokens);
-  const saveProviderToken = useAccounts((s) => s.saveProviderToken);
+  const saveRemoteProviderToken = useAccounts((s) => s.saveRemoteProviderToken);
   const signOutProviderToken = useAccounts((s) => s.signOutProviderToken);
   const forgetHttpsCredential = useAccounts((s) => s.forgetHttpsCredential);
 
@@ -115,7 +115,9 @@ export const RemoteKeychainAuth = ({
               disabled={pending || user === "" || secret === ""}
               onClick={() =>
                 void run(async () => {
-                  await saveProviderToken(provider, credentialHost, user, secret);
+                  // Remote-scoped: stores the token AND pins @user into the URL,
+                  // so transport immediately uses the keychain token.
+                  await saveRemoteProviderToken(remote.name, user, secret);
                   setSecret("");
                 })
               }
@@ -127,6 +129,11 @@ export const RemoteKeychainAuth = ({
               Store in keychain
             </button>
           </div>
+          <span className="text-pretty text-[12px] text-neutral-500 dark:text-neutral-400">
+            GitLane keeps this token in your OS keychain and feeds it to git for
+            you — an alternative to saving it in your system Git credential helper
+            above.
+          </span>
         </div>
       )}
       <button

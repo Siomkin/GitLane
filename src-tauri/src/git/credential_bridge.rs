@@ -98,6 +98,20 @@ fn gh_helper_config(host: &str) -> Vec<String> {
 /// helper so git falls through to the bridge (rather than returning a different
 /// stored credential). The env carries only non-secret locators; the token is
 /// fetched from the keychain by the helper child.
+///
+/// The single empty `credential.https://<host>.helper=` reliably overrides a
+/// *global* `credential.helper` too: git treats an empty value as a reset of the
+/// accumulated helper list for that credential context, and `-c` config is
+/// applied last — this is the documented "per-URL setting overrides a wider
+/// default" behaviour, and the same mechanism the `gh` path (GL-129) relies on to
+/// pin a specific account. It is deliberately scoped to this host so a submodule
+/// on another host keeps using the user's helper.
+///
+/// Threat model: the helper reads the keychain from a child of this same signed
+/// binary, so a local, same-user process that can exec GitLane with the right env
+/// could invoke it and read a token. That is inherent to the GIT_ASKPASS +
+/// OS-keychain pattern (VS Code, GitKraken, etc. share it); hardening it to a
+/// parent-brokered socket with a per-run nonce is tracked as future work.
 fn provider_token_invocation(bridge: &ProviderTokenBridge, exe: &str) -> GitInvocation {
     GitInvocation {
         config: vec![
@@ -181,16 +195,18 @@ fn answer_askpass(prompt: &str, env: &AskpassEnv, store: &dyn SecretStore) -> Op
             (!username.is_empty()).then(|| username.to_string())
         }
         AskpassField::Password => {
-            // Defence in depth: only hand the token to the host it was scoped to.
-            // If git names a different host (a cross-host redirect or submodule
-            // while our env is still set), refuse rather than leak the token.
-            if let Some(host) = prompt_host(prompt) {
-                if !hosts_match(&host, &env.host) {
-                    return None;
+            // Fail closed: only hand the token to the exact host it was scoped to.
+            // `GIT_ASKPASS` is inherited by nested git processes (submodule
+            // fetches, cross-host redirects), so if the prompt names a different
+            // host — or no parseable host at all — refuse rather than risk leaking
+            // the token to the wrong authority.
+            match prompt_host(prompt) {
+                Some(host) if hosts_match(&host, &env.host) => {
+                    let key = SecretKey::new(&env.provider, &env.host, &env.account_id);
+                    store.get(&key).ok().flatten()
                 }
+                _ => None,
             }
-            let key = SecretKey::new(&env.provider, &env.host, &env.account_id);
-            store.get(&key).ok().flatten()
         }
     }
 }
@@ -286,6 +302,21 @@ mod tests {
             answer_askpass("Password for 'https://alice@evil.example': ", &env, &store),
             None
         );
+    }
+
+    #[test]
+    fn refuses_a_password_prompt_with_no_parseable_host() {
+        // Fail closed: a prompt we cannot attribute to our host must not yield the
+        // token (GIT_ASKPASS is inherited by nested git processes).
+        let store = MemoryStore::new();
+        store
+            .set(
+                &SecretKey::new("gitlab", "gitlab.com", "42"),
+                "glpat-secret",
+            )
+            .unwrap();
+        let env = env("gitlab.com");
+        assert_eq!(answer_askpass("Password: ", &env, &store), None);
     }
 
     #[test]
