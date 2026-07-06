@@ -81,12 +81,38 @@ describe("classifyCloneError", () => {
     expect(classifyCloneError("remote: Permission denied (publickey).").kind).toBe("auth");
   });
 
+  it("reuses friendly git auth copy for credential and SSH failures", () => {
+    const bitbucket = classifyCloneError(
+      "fatal: could not read Password for 'https://SiomkinAlexander@bitbucket.org': terminal prompts disabled",
+    );
+    expect(bitbucket.message).toBe(
+      "Bitbucket credentials are missing or invalid for @SiomkinAlexander. Save a Bitbucket API token or app password, then try again.",
+    );
+
+    const ssh = classifyCloneError(
+      "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+    );
+    expect(ssh.message).toBe(
+      "SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.",
+    );
+  });
+
   it("maps unreachable / not-found remotes", () => {
     expect(classifyCloneError("fatal: repository 'https://x/y.git' not found").kind).toBe(
       "unreachable",
     );
     expect(classifyCloneError("fatal: could not resolve host: example.invalid").kind).toBe(
       "unreachable",
+    );
+  });
+
+  it("reuses friendly git copy for unreachable clone failures", () => {
+    const c = classifyCloneError(
+      "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com",
+    );
+    expect(c.kind).toBe("unreachable");
+    expect(c.message).toBe(
+      "Remote could not be reached. Check the remote URL, network connection, and host availability.",
     );
   });
 

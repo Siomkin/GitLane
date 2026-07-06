@@ -3,6 +3,8 @@
 // presentation (relative time + avatar), and path math. No React, no IPC — all
 // of this is unit-tested in onboarding.test.ts.
 
+import { friendlyGitError } from "../../lib/gitError";
+
 /** The seven onboarding screens (mirrors the RepoOnboarding mockup's `screen`). */
 export type OnboardingScreen =
   | "home"
@@ -108,15 +110,19 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
   if (
     lower.includes("authentication failed") ||
     lower.includes("could not read username") ||
+    lower.includes("could not read password") ||
     lower.includes("invalid username or password") ||
     lower.includes("permission denied") ||
     lower.includes("terminal prompts disabled")
   ) {
+    const friendly = friendlyGitError(message, { credentialHelp: "generic" });
     return {
       kind: "auth",
       title: "Authentication failed",
       message:
-        "GitLane couldn't authenticate with the remote. Check your saved credentials or SSH key, then try again.",
+        friendly !== message
+          ? friendly
+          : "GitLane couldn't authenticate with the remote. Check your saved credentials or SSH key, then try again.",
       cmd,
       fail: true,
       retryLabel: "Retry",
@@ -130,11 +136,14 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
     lower.includes("connection refused") ||
     lower.includes("network is unreachable")
   ) {
+    const friendly = friendlyGitError(message, { credentialHelp: "generic" });
     return {
       kind: "unreachable",
       title: "Couldn't reach that repository",
       message:
-        "The remote URL looks wrong or the host can't be reached. Double-check the address and your network connection.",
+        friendly !== message
+          ? friendly
+          : "The remote URL looks wrong or the host can't be reached. Double-check the address and your network connection.",
       cmd,
       fail: true,
       retryLabel: "Edit URL",
