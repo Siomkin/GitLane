@@ -44,14 +44,15 @@ pub fn set_remote_username(
 
     let fetch_url = remote_get_url(repo, name, false)?;
     let next_fetch = rewrite_https_user(&fetch_url, username)?;
-    let fetch = run_git(repo, &["remote", "set-url", name, &next_fetch])?;
 
     if has_push_url(repo, name) {
         let push_url = remote_get_url(repo, name, true)?;
         let next_push = rewrite_https_user(&push_url, username)?;
+        let fetch = run_git(repo, &["remote", "set-url", name, &next_fetch])?;
         let push = run_git(repo, &["remote", "set-url", "--push", name, &next_push])?;
         return Ok(join_git_outputs(&fetch, &push));
     }
+    let fetch = run_git(repo, &["remote", "set-url", name, &next_fetch])?;
     Ok(fetch)
 }
 

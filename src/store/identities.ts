@@ -268,8 +268,8 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
       manuals[0] = { ...manuals[0], isDefault: true };
     }
     writeManuals(manuals);
-    // Drop the deleted id from per-repo applied/override maps so selection
-    // can't fall back to a wrong duplicate or re-apply an orphaned override.
+    // Drop the deleted id from per-repo applied maps so selection can't fall
+    // back to a wrong duplicate.
     scrubManualId(id);
     set({ manualIdentities: manuals });
   },

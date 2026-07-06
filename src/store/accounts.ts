@@ -698,8 +698,8 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     await useRepo.getState().listRemotes();
     // Setting a remote's account drives auth ONLY — it must never touch the
     // commit identity; who the repo commits as is owned by `identities.ts`.
+    const isDefault = target.isDefault;
     if (account) {
-      const isDefault = target.isDefault;
       useUi
         .getState()
         .showToast(
@@ -707,8 +707,16 @@ export const useAccounts = create<AccountsState>((set, get) => ({
             ? `${remote} (and pull requests) authenticate as @${account.username}`
             : `${remote} authenticates as @${account.username}`,
         );
-      if (isDefault) void usePulls.getState().loadPullRequests();
+    } else {
+      useUi
+        .getState()
+        .showToast(
+          isDefault
+            ? `${remote} (and pull requests) use system git credentials`
+            : `${remote} uses system git credentials`,
+        );
     }
+    if (isDefault) void usePulls.getState().loadPullRequests();
   },
 
   setRemoteUsername: async (remote, username) => {

@@ -2768,6 +2768,37 @@ fn set_remote_username_preserves_separate_push_url_destination() {
 }
 
 #[test]
+fn set_remote_username_does_not_half_update_when_push_url_is_not_https() {
+    let repo = TempRepo::new("remote-username-pushurl-ssh");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://gitlab.com/upstream/repo.git",
+    ]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "git@gitlab.com:fork/repo.git",
+    ]);
+
+    let err = set_remote_username(repo.path(), "origin", Some("alice")).unwrap_err();
+
+    assert!(err.contains("HTTPS remotes"), "{err}");
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://gitlab.com/upstream/repo.git"
+    );
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "--push", "origin"]),
+        "git@gitlab.com:fork/repo.git"
+    );
+}
+
+#[test]
 fn set_remote_username_does_not_create_push_url_when_push_follows_fetch() {
     let repo = TempRepo::new("remote-username-no-pushurl");
     repo.git_ok(&["init", "-q"]);

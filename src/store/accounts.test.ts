@@ -535,6 +535,8 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
   it("clearing the default remote strips the URL username and clears the legacy PR binding", async () => {
     localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: { version: 2, ...account.ref } }));
     useRepo.setState({ summary, remotes: [originWithUser, bucket] });
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [origin, bucket];
       return null;
@@ -552,6 +554,28 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
       unbound: true,
     });
     expect(useAccounts.getState().repoAccountId).toBeNull();
+    expect(loadPrs).toHaveBeenCalledTimes(1);
+    expect(useUi.getState().toast?.message).toBe("origin (and pull requests) use system git credentials");
+  });
+
+  it("setRepoAccount(null) also refreshes PRs when it clears a plain HTTPS default remote", async () => {
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: { version: 2, ...account.ref } }));
+    useRepo.setState({ summary, remotes: [originWithUser] });
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remotes") return [origin];
+      return null;
+    });
+
+    await useAccounts.getState().setRepoAccount(null);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "origin",
+      username: null,
+    });
+    expect(loadPrs).toHaveBeenCalledTimes(1);
   });
 
   it("does not fall back to the active account when a stored binding cannot resolve", () => {

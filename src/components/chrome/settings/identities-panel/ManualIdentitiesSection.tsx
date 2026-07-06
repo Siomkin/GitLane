@@ -35,6 +35,7 @@ export function ManualIdentitiesSection() {
   const intent = useUi((s) => s.identitiesIntent);
   const clearIdentitiesIntent = useUi((s) => s.clearIdentitiesIntent);
   const [editing, setEditing] = useState<Editing>(null);
+  const accountsWithEmail = accounts.filter((a) => a.email);
 
   // A repo-scoped surface (repo Identity panel, identity chip) handed off a
   // create/edit request. Consume it exactly once.
@@ -116,30 +117,28 @@ export function ManualIdentitiesSection() {
         {/* One-click prefills from connected accounts: copies the provider's
             name/email into a NEW ordinary card — no live link back (accounts
             authenticate, identities author). */}
-        {accounts.length > 0 && editing?.kind !== "new" && (
+        {accountsWithEmail.length > 0 && editing?.kind !== "new" && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="text-[11.5px] text-neutral-400 dark:text-neutral-500">Prefill from account:</span>
-            {accounts
-              .filter((a) => a.email)
-              .map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() =>
-                    setEditing({
-                      kind: "new",
-                      prefill: { name: a.name || a.login, email: a.email },
-                    })
-                  }
-                  title={`${a.name || a.login} · ${a.email}`}
-                  className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-full border border-black/10 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/[0.04] dark:border-white/[0.12] dark:text-neutral-300 dark:hover:bg-white/[0.06]",
-                    focusRing,
-                  )}
-                >
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.color }} />
-                  From @{a.login}
-                </button>
-              ))}
+            {accountsWithEmail.map((a) => (
+              <button
+                key={a.id}
+                onClick={() =>
+                  setEditing({
+                    kind: "new",
+                    prefill: { name: a.name || a.login, email: a.email },
+                  })
+                }
+                title={`${a.name || a.login} · ${a.email}`}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded-full border border-black/10 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/[0.04] dark:border-white/[0.12] dark:text-neutral-300 dark:hover:bg-white/[0.06]",
+                  focusRing,
+                )}
+              >
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.color }} />
+                From @{a.login}
+              </button>
+            ))}
           </div>
         )}
       </div>
