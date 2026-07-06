@@ -39,7 +39,7 @@ serde_json = "1"
 # all write operations shell out to the real `git` binary instead.
 git2 = { version = "0.21", default-features = false }
 # Base64-encodes binary blob bytes (image previews) for transport over IPC.
-base64 = "0.21"
+base64 = "0.22"
 notify = "8.2.0"
 # Pseudo-terminal for the in-app integrated terminal (xterm.js frontend).
 portable-pty = "0.9"
