@@ -15,6 +15,7 @@ use super::{
     stash_pop, unstage_all, unstage_file, unstage_files, worktrees,
 };
 use crate::git::read::repo_identity;
+use crate::git::transport_auth::TransportCredential;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -335,7 +336,8 @@ fn delete_remote_tag_removes_only_the_tag_on_the_remote() {
     repo.git_ok(&["remote", "add", "origin", remote.path()]);
     repo.git_ok(&["push", "-q", "origin", "refs/tags/v1", "refs/heads/v1"]);
 
-    delete_remote_tag(repo.path(), "origin", "v1", None).expect("delete tag on remote");
+    delete_remote_tag(repo.path(), "origin", "v1", &TransportCredential::None)
+        .expect("delete tag on remote");
 
     let tags = remote.git(&["tag"]);
     assert!(
@@ -375,7 +377,7 @@ fn delete_remote_tag_tolerates_a_tag_that_was_never_pushed() {
     // exit 0 with a "deleting a non-existent ref" warning, smart-HTTP servers
     // reject with "remote ref does not exist" (mapped to Ok by the tolerance
     // tested below) — so assert the behavior, not the message.
-    delete_remote_tag(repo.path(), "origin", "v9", None)
+    delete_remote_tag(repo.path(), "origin", "v9", &TransportCredential::None)
         .expect("missing remote ref is not a failure");
 
     let local = repo.git(&["show-ref", "--verify", "refs/tags/v9"]);
@@ -2426,19 +2428,31 @@ fn publish_branch_validates_upstream_format_before_pushing() {
     // All of these fail format/operand validation before any network push, so
     // the offline origin is never contacted.
     assert!(
-        publish_branch(repo.path(), "main", "originmain", None).is_err(),
+        publish_branch(
+            repo.path(),
+            "main",
+            "originmain",
+            &TransportCredential::None
+        )
+        .is_err(),
         "missing slash must be rejected"
     );
     assert!(
-        publish_branch(repo.path(), "main", "/main", None).is_err(),
+        publish_branch(repo.path(), "main", "/main", &TransportCredential::None).is_err(),
         "empty remote half must be rejected"
     );
     assert!(
-        publish_branch(repo.path(), "main", "origin/", None).is_err(),
+        publish_branch(repo.path(), "main", "origin/", &TransportCredential::None).is_err(),
         "empty branch half must be rejected"
     );
     assert!(
-        publish_branch(repo.path(), "--upload-pack=x", "origin/main", None).is_err(),
+        publish_branch(
+            repo.path(),
+            "--upload-pack=x",
+            "origin/main",
+            &TransportCredential::None
+        )
+        .is_err(),
         "option-like branch operand must be rejected"
     );
 }
@@ -3119,7 +3133,7 @@ fn pull_stays_ff_only_under_pull_rebase_config() {
     let before = clone.git(&["rev-parse", "HEAD"]);
     let before_head = String::from_utf8_lossy(&before.stdout).trim().to_string();
 
-    let result = pull(clone.path(), None);
+    let result = pull(clone.path(), &TransportCredential::None);
     assert!(result.is_err(), "divergent pull must fail, got {result:?}");
 
     // No rebase and no merge happened: the clone HEAD is untouched.
@@ -3143,7 +3157,7 @@ fn pull_fast_forwards_when_behind() {
         .trim()
         .to_string();
 
-    pull(clone.path(), None).expect("fast-forward pull when strictly behind");
+    pull(clone.path(), &TransportCredential::None).expect("fast-forward pull when strictly behind");
 
     let clone_head = String::from_utf8_lossy(&clone.git(&["rev-parse", "HEAD"]).stdout)
         .trim()

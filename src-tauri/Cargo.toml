@@ -46,3 +46,20 @@ portable-pty = "0.9"
 # Tokenizes a user-configured agent command (honoring quotes) so the executable
 # can be extracted and PATH-probed without shell interpolation. See terminal_agents.rs.
 shell-words = "1"
+
+# OS-native secret storage for GitLane-owned provider transport tokens (GL-132).
+# Secrets live only in the platform keychain — never in IPC, localStorage, repo
+# config, command args, or logs. Platform-native backends keep the dependency
+# light and avoid a hard system-library link: Security.framework on macOS,
+# Credential Manager on Windows, and Secret Service over pure-Rust zbus on Linux.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", default-features = false, features = [
+    "sync-secret-service",
+    "crypto-rust",
+] }

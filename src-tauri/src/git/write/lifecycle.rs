@@ -15,6 +15,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use super::operands::{ensure_operand, ensure_safe_leaf};
+use crate::git::transport_auth::TransportCredential;
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -43,7 +44,7 @@ pub fn clone(
     slot: CloneSlot,
     url: &str,
     dest: &str,
-    gh_host: Option<&str>,
+    cred: &TransportCredential,
 ) -> Result<String, String> {
     let url = url.trim();
     let dest = dest.trim();
@@ -71,8 +72,10 @@ pub fn clone(
     // is an absolute path the UI built, so it can never be one. `LC_ALL=C` keeps
     // the progress text English and byte-stable for the parser regardless of the
     // user's locale. git Command construction (incl. PATH) is centralized in
-    // cli::git_command_bare.
-    let args = clone_args(url, dest, gh_host);
+    // cli::git_command_bare. The credential bridge contributes the `-c` config
+    // prefix (gh helper or GIT_ASKPASS clear) and any env (the askpass locator).
+    let inv = crate::git::credential_bridge::git_invocation(cred)?;
+    let args = clone_args(&inv.config, url, dest);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut cmd = super::cli::git_command_bare(&arg_refs);
     cmd.env("LC_ALL", "C")
@@ -81,6 +84,9 @@ pub fn clone(
         // so null it to avoid an unread pipe.
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+    for (key, value) in &inv.env {
+        cmd.env(key, value);
+    }
 
     // Spawn and park the child atomically under the slot lock, refusing to start
     // a second clone while one is already in flight — that would orphan the first
@@ -176,16 +182,8 @@ pub fn clone(
     }
 }
 
-fn clone_args(url: &str, dest: &str, gh_host: Option<&str>) -> Vec<String> {
-    let mut args = Vec::new();
-    if let Some(host) = gh_host {
-        args.push("-c".to_string());
-        args.push(format!("credential.https://{host}.helper="));
-        args.push("-c".to_string());
-        args.push(format!(
-            "credential.https://{host}.helper=!gh auth git-credential"
-        ));
-    }
+fn clone_args(config_prefix: &[String], url: &str, dest: &str) -> Vec<String> {
+    let mut args = config_prefix.to_vec();
     args.extend([
         "clone".to_string(),
         "--progress".to_string(),
@@ -238,21 +236,26 @@ fn record_transcript(transcript: &mut String, line: &str) {
 /// `fatal:`/`error:` lines git prints on failure. Falls back to the last
 /// non-empty line, then the whole transcript, so an error is never empty.
 fn extract_error(transcript: &str) -> String {
-    let fatal: Vec<&str> = transcript
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with("fatal:") || l.starts_with("error:"))
-        .collect();
-    if !fatal.is_empty() {
-        return fatal.join("\n");
-    }
-    transcript
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .last()
-        .map(str::to_string)
-        .unwrap_or_else(|| transcript.trim().to_string())
+    let raw = {
+        let fatal: Vec<&str> = transcript
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("fatal:") || l.starts_with("error:"))
+            .collect();
+        if !fatal.is_empty() {
+            fatal.join("\n")
+        } else {
+            transcript
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .last()
+                .map(str::to_string)
+                .unwrap_or_else(|| transcript.trim().to_string())
+        }
+    };
+    // A failed clone often echoes the source URL; scrub any embedded credential.
+    crate::redact::redact_secrets(&raw)
 }
 
 /// Map one git progress line to a blended overall-percent + friendly stage.

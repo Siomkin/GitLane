@@ -188,11 +188,26 @@ export interface RepoForge {
   webUrl: string | null;
 }
 
-export type GitTransportAuthMode = "system" | "ssh" | "githubGh" | "credentialHelper";
-export type GitTransportProvider = "github" | "gitlab" | "bitbucket" | "azure-devops" | "other";
+export type GitTransportAuthMode =
+  | "system"
+  | "ssh"
+  | "githubGh"
+  | "credentialHelper"
+  | "providerToken";
+export type GitTransportProvider =
+  | "github"
+  | "gitlab"
+  | "bitbucket"
+  | "azure-devops"
+  | "gitea"
+  | "forgejo"
+  | "other";
 
 /** Provider-neutral git transport auth for clone/fetch/pull/push. Never carries
- * tokens; HTTPS identities are URL usernames resolved by git credential helpers. */
+ * tokens; HTTPS identities are URL usernames resolved by git credential helpers,
+ * except `providerToken` mode, where the backend fetches a GitLane-owned token
+ * from the OS keychain via GIT_ASKPASS (GL-132) using `providerAccountId` — a
+ * non-secret keychain locator — rather than any token on this ref. */
 export interface GitTransportAuthRef {
   mode: GitTransportAuthMode;
   provider?: GitTransportProvider;
@@ -204,6 +219,8 @@ export interface GitTransportAuthRef {
   username?: string | null;
   /** GitHub account metadata for `githubGh`; still no token. */
   accountRef?: GithubAccountRef | null;
+  /** Keychain locator for `providerToken` mode; never a token. */
+  providerAccountId?: string | null;
 }
 
 /** One `remote → auth` pair for the multi-remote fetch. */

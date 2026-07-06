@@ -115,7 +115,10 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
     } else {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("{stdout}{stderr}").trim().to_string())
+        // Scrub any credential a remote URL in gh's output might carry.
+        Err(crate::redact::redact_secrets(
+            format!("{stdout}{stderr}").trim(),
+        ))
     }
 }
 

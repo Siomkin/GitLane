@@ -75,6 +75,7 @@ export type { RepoIdentity };
 const LS_REPO_ACCOUNTS = "gitlane.repoAccounts";
 const LS_REPO_IDENTITY = "gitlane.repoIdentity";
 const LS_FORGE_CREDENTIALS = "gitlane.forgeCredentials";
+const LS_PROVIDER_TOKENS = "gitlane.providerTokens";
 
 type StoredForgeCredential = {
   provider: ForgeAuthProvider;
@@ -84,6 +85,25 @@ type StoredForgeCredential = {
   helper: string;
   savedAt: number;
 };
+
+/** Non-secret metadata for a GitLane-owned provider token (GL-132). The token
+ * itself lives only in the OS keychain; this record just remembers *that* a
+ * token exists for an account so the transport layer can select `providerToken`
+ * mode and the UI can show sign-out. Never contains token material. */
+type StoredProviderToken = {
+  provider: ForgeAuthProvider;
+  /** Exact credential authority (`host[:port]`) — the keychain host locator. */
+  credentialHost: string;
+  /** Stable keychain account id (the login for a PAT sign-in). */
+  accountId: string;
+  login: string;
+  savedAt: number;
+};
+
+/** Metadata map key: a stored token is looked up by the remote's credential host
+ * + URL username, both lowercased so matching is case-insensitive. */
+const providerTokenKey = (credentialHost: string, login: string) =>
+  `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
 
 function readJsonMap<T>(key: string): Record<string, T> {
   try {
@@ -113,6 +133,19 @@ const writeIdentities = (map: Record<string, RepoIdentity>) =>
 const readForgeCredentials = () => readJsonMap<StoredForgeCredential>(LS_FORGE_CREDENTIALS);
 const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
   writeJsonMap(LS_FORGE_CREDENTIALS, map);
+const readProviderTokens = () => readJsonMap<StoredProviderToken>(LS_PROVIDER_TOKENS);
+const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
+  writeJsonMap(LS_PROVIDER_TOKENS, map);
+
+/** Drop the saved-credential marker for `provider` (used by "forget saved
+ * HTTPS credential"), returning the pruned status list for the UI. */
+function forgetForgeCredential(provider: ForgeAuthProvider) {
+  const credentials = readForgeCredentials();
+  if (credentials[provider]) {
+    delete credentials[provider];
+    writeForgeCredentials(credentials);
+  }
+}
 
 function rememberForgeCredential(
   provider: ForgeAuthProvider,
@@ -267,6 +300,40 @@ interface AccountsState {
   ) => Promise<void>;
   /** Store a remote's HTTPS token/password and write its username into the URL. */
   saveRemoteCredential: (remote: string, username: string, password: string) => Promise<void>;
+  /** GitLane-owned provider tokens by `credentialHost login` key (GL-132). Backs
+   * `providerToken` transport selection and the keychain sign-out UI. Non-secret
+   * metadata only — the token itself lives in the OS keychain. */
+  providerTokens: Record<string, StoredProviderToken>;
+  /** True when a GitLane-owned keychain token is stored for `credentialHost` +
+   * `login`. Drives the transport `providerToken` mode and the sign-out control. */
+  hasProviderToken: (credentialHost: string, login: string) => boolean;
+  /** Store a provider account's transport token in the OS keychain (GL-132) and
+   * remember its non-secret metadata. The token is sent once and never returned.
+   * After this, `transportAuthForRemote` selects `providerToken` for remotes
+   * whose URL username matches. */
+  saveProviderToken: (
+    provider: ForgeAuthProvider,
+    credentialHost: string,
+    login: string,
+    token: string,
+  ) => Promise<void>;
+  /** Provider **sign-out**: delete a GitLane-owned keychain token and forget its
+   * metadata. Distinct from [`forgetHttpsCredential`] — this removes GitLane's
+   * own secret and leaves the user's git credential-helper credentials alone. */
+  signOutProviderToken: (
+    provider: ForgeAuthProvider,
+    credentialHost: string,
+    login: string,
+  ) => Promise<void>;
+  /** **Forget saved HTTPS credential**: ask Git's credential helper to erase a
+   * saved credential (`git credential reject`). Distinct from provider sign-out —
+   * this touches only the user's helper, not a GitLane-owned keychain token. */
+  forgetHttpsCredential: (
+    credentialHost: string,
+    path: string | null,
+    username: string,
+    provider?: ForgeAuthProvider,
+  ) => Promise<void>;
   /** Carry a relocated repo's per-path entries — the account binding and the
    * cached identity read — from its stale path to the new one (GL-108
    * Locate…). An entry already stored for the new path wins; the stale path's
@@ -427,6 +494,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   repoBindingKey: null,
   repoAccountRef: null,
   repoIdentity: null,
+  providerTokens: readProviderTokens(),
 
   // Thin pass-throughs to the IPC layer: the sign-in dialog is UI and must not
   // reach `api` directly (architecture-rules-react.md §1), so the boundary lives
@@ -812,6 +880,85 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
   },
 
+  hasProviderToken: (credentialHost, login) =>
+    get().providerTokens[providerTokenKey(credentialHost, login)] !== undefined,
+
+  saveProviderToken: async (provider, credentialHost, login, token) => {
+    const host = credentialHost.trim();
+    const user = login.trim();
+    if (!host) {
+      useUi.getState().showToast("Credential host is missing.", "error");
+      return;
+    }
+    if (!user) {
+      useUi.getState().showToast("Enter the account username for this token.", "error");
+      return;
+    }
+    if (!token) {
+      useUi.getState().showToast("Enter the token to store in your keychain.", "error");
+      return;
+    }
+    // For a personal-access-token sign-in the login is the stable account id.
+    const accountId = user;
+    try {
+      // The token crosses IPC exactly once, straight into the OS keychain; only
+      // non-secret status comes back.
+      await api.saveProviderToken(provider, host, accountId, user, token);
+      const entry: StoredProviderToken = {
+        provider,
+        credentialHost: host,
+        accountId,
+        login: user,
+        savedAt: Date.now(),
+      };
+      const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
+      writeProviderTokens(next);
+      set({ providerTokens: next });
+      useUi.getState().showToast(`Stored a keychain token for @${user} on ${host}`);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+    }
+  },
+
+  signOutProviderToken: async (provider, credentialHost, login) => {
+    const host = credentialHost.trim();
+    const user = login.trim();
+    const accountId = user;
+    try {
+      await api.deleteProviderToken(provider, host, accountId);
+      const next = { ...get().providerTokens };
+      delete next[providerTokenKey(host, user)];
+      writeProviderTokens(next);
+      set({ providerTokens: next });
+      useUi.getState().showToast(`Signed out of @${user} on ${host} (keychain token removed)`);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+    }
+  },
+
+  forgetHttpsCredential: async (credentialHost, path, username, provider) => {
+    const host = credentialHost.trim();
+    const user = username.trim();
+    if (!host) {
+      useUi.getState().showToast("Credential host is missing.", "error");
+      return;
+    }
+    if (!user) {
+      useUi.getState().showToast("Enter the HTTPS username to forget.", "error");
+      return;
+    }
+    try {
+      await api.rejectHttpsCredential(host, path, user);
+      if (provider) {
+        forgetForgeCredential(provider);
+        set((s) => ({ forgeAuth: withSavedForgeCredentials(s.forgeAuth) }));
+      }
+      useUi.getState().showToast(`Forgot the saved credential for @${user} on ${host}`);
+    } catch (e) {
+      useUi.getState().showToast(String(e), "error");
+    }
+  },
+
   setRepoAccount: async (id) => {
     // The PR-API account (not a git operation): persisted app-side in the v2
     // shape. When the default remote is an https URL, also write the username
@@ -867,6 +1014,20 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         credentialHost: info.credentialHost,
         username: info.user,
         accountRef: account.ref,
+      };
+    }
+    // GitLane-owned keychain token for this account (GL-132): the backend feeds
+    // it to git via GIT_ASKPASS. The stored provider wins over URL classification
+    // (it knows a "other"-classified self-hosted host is really GitLab/Gitea).
+    const token = get().providerTokens[providerTokenKey(info.credentialHost, info.user)];
+    if (token) {
+      return {
+        mode: "providerToken",
+        provider: token.provider,
+        host: info.host,
+        credentialHost: info.credentialHost,
+        username: info.user,
+        providerAccountId: token.accountId,
       };
     }
     return {
