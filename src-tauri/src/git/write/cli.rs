@@ -3,6 +3,10 @@
 use std::io::Write;
 use std::process::{Command, ExitStatus, Stdio};
 
+// Stops git's own HTTPS username/password prompts from blocking the app/dev
+// terminal. SSH and external askpass helpers have their own prompting paths.
+const GIT_TERMINAL_PROMPT_DISABLED: &str = "0";
+
 /// Turn a finished git process into a `Result`, guaranteeing a **non-empty**
 /// error message. Some git versions fail a command without writing anything to
 /// stdout/stderr — notably git 2.43 (the default on Ubuntu 24.04 LTS / Debian
@@ -46,6 +50,10 @@ pub(super) fn run_git_env(
     // macOS GUI apps launch with a minimal PATH; use the augmented one so a
     // Homebrew git (and any credential helpers/signing tools it invokes) is found.
     cmd.env("PATH", crate::shell::path());
+    // GitLane must surface missing credentials through IPC instead of letting
+    // git block the dev/app terminal with an invisible password prompt.
+    cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
+        .stdin(Stdio::null());
     for (k, v) in envs {
         cmd.env(k, v);
     }
@@ -68,6 +76,7 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
         .arg(repo)
         .args(args)
         .env("PATH", crate::shell::path())
+        .env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -99,7 +108,10 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
 /// most callers use the buffered [`run_git_bare`].
 pub(super) fn git_command_bare(args: &[&str]) -> Command {
     let mut cmd = Command::new("git");
-    cmd.args(args).env("PATH", crate::shell::path());
+    cmd.args(args)
+        .env("PATH", crate::shell::path())
+        .env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
+        .stdin(Stdio::null());
     crate::shell::hide_console(&mut cmd);
     cmd
 }
@@ -131,9 +143,10 @@ pub(super) fn run_git_env_stable_diagnostics(
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::finish;
+    use super::{finish, run_git_env};
     use std::os::unix::process::ExitStatusExt;
-    use std::process::ExitStatus;
+    use std::process::{Command, ExitStatus};
+    use std::{io::Write, net::TcpListener};
 
     // On unix a raw wait status encodes the exit code in the high byte.
     fn exit(code: i32) -> ExitStatus {
@@ -183,5 +196,70 @@ mod tests {
     fn success_returns_trimmed_combined_output() {
         let out = finish(exit(0), "ok\n", "", &["status"]).unwrap();
         assert_eq!(out, "ok");
+    }
+
+    #[test]
+    fn https_auth_failure_does_not_prompt_on_terminal() {
+        let repo = TestRepo::new("gitlane-no-prompt");
+        let init = Command::new("git")
+            .args(["init", "-q", repo.path()])
+            .output()
+            .expect("git init launches");
+        assert!(init.status.success(), "git init failed");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("local addr");
+        let handle = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let _ = stream.write_all(
+                    b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"test\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                );
+            }
+        });
+
+        let url = format!("http://alice@{addr}/repo.git");
+        let err = run_git_env(
+            repo.path(),
+            &["fetch", &url, "HEAD"],
+            &[
+                ("GIT_CONFIG_GLOBAL", "/dev/null"),
+                ("GIT_CONFIG_NOSYSTEM", "1"),
+            ],
+        )
+        .expect_err("missing credentials should fail instead of prompting");
+        handle.join().expect("server thread joins");
+
+        assert!(
+            err.contains("terminal prompts disabled") || err.contains("could not read Password"),
+            "error should report a non-interactive credential failure:\n{err}"
+        );
+    }
+
+    struct TestRepo(std::path::PathBuf);
+
+    impl TestRepo {
+        fn new(name: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            path.push(format!("{name}-{}-{}", std::process::id(), unique_id()));
+            std::fs::create_dir_all(&path).expect("create temp repo");
+            Self(path)
+        }
+
+        fn path(&self) -> &str {
+            self.0.to_str().expect("utf8 temp path")
+        }
+    }
+
+    impl Drop for TestRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn unique_id() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     }
 }
