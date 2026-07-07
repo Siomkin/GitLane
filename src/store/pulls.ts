@@ -223,11 +223,16 @@ export const usePulls = create<PullsState>((set, get) => ({
       set({ pullRequests: [], prError: null });
       return;
     }
-    // Pull requests are supported for GitHub (via `gh`) and GitLab (via glab /
-    // REST v4, GL-140). For any other forge — or a repo with no remote — skip the
-    // provider resolution entirely instead of surfacing a confusing "couldn't
-    // resolve a repository" error.
-    if (forge && forge.kind !== ForgeKind.GitHub && forge.kind !== ForgeKind.GitLab) {
+    // Pull requests are supported for GitHub (via `gh`), GitLab (via glab /
+    // REST v4, GL-140), and Bitbucket Cloud (via REST 2.0, GL-141). For any other
+    // forge — or a repo with no remote — skip the provider resolution entirely
+    // instead of surfacing a confusing "couldn't resolve a repository" error.
+    if (
+      forge &&
+      forge.kind !== ForgeKind.GitHub &&
+      forge.kind !== ForgeKind.GitLab &&
+      forge.kind !== ForgeKind.Bitbucket
+    ) {
       set({
         pullRequests: [],
         prsLoading: false,

@@ -82,16 +82,41 @@ describe("providerPopoverModel", () => {
     expect(m.note).toMatch(/glab or a token/i);
   });
 
-  it("connected non-PR forge (Bitbucket): no-PRs shape, open-on-forge primary, no link sections", () => {
+  const bitbucket = () =>
+    forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org", webUrl: "https://bitbucket.org/team/app" });
+
+  it("connected Bitbucket: PRs-on pill, view-PRs primary, Bitbucket links, no settings (GL-141)", () => {
+    const m = providerPopoverModel("connected", bitbucket(), 2);
+    expect(m.headerIcon).toBe("bitbucket");
+    expect(m.title).toBe("team/app");
+    expect(m.capability).toEqual({ label: "PRs on", tone: expect.stringContaining("emerald") });
+    expect(m.primary).toMatchObject({ label: "View 2 pull requests", suffix: "→", action: { kind: "view-prs" } });
+    expect(m.githubEyebrow).toBe("On bitbucket.org");
+    expect(m.githubLinks.map((l) => l.href)).toEqual([
+      "https://bitbucket.org/team/app/pull-requests",
+      "https://bitbucket.org/team/app/issues",
+    ]);
+    expect(m.githubLinks[0].label).toBe("Pull requests (2)");
+    expect(m.settings).toBeNull();
+  });
+
+  it("needs-auth Bitbucket: sign-in pill + token guidance, key primary (GL-141)", () => {
+    const m = providerPopoverModel("needs-auth", bitbucket(), 0);
+    expect(m.headerIcon).toBe("bitbucket");
+    expect(m.capability?.label).toBe("Sign in");
+    expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to Bitbucket", action: { kind: "sign-in" } });
+    expect(m.note).toMatch(/token/i);
+  });
+
+  it("connected non-PR forge (Azure): no-PRs shape, open-on-forge primary, no link sections", () => {
     const m = providerPopoverModel(
       "connected",
-      forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org", webUrl: "https://bitbucket.org/team/app" }),
+      forge({ kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com", webUrl: "https://dev.azure.com/org/proj" }),
       0,
     );
-    expect(m.headerIcon).toBe("bitbucket");
     expect(m.capability?.label).toBe("No PRs");
-    expect(m.note).toMatch(/aren't available for Bitbucket remotes/);
-    expect(m.primary).toMatchObject({ icon: "external", label: "Open on Bitbucket", suffix: "↗" });
+    expect(m.note).toMatch(/aren't available for Azure DevOps remotes/);
+    expect(m.primary).toMatchObject({ icon: "external", label: "Open on Azure DevOps", suffix: "↗" });
     expect(m.githubEyebrow).toBeNull();
     expect(m.settings).toBeNull();
   });

@@ -290,13 +290,14 @@ describe("pulls lazy-load error isolation", () => {
   });
 });
 
-// PRs are supported for GitHub (via `gh`) and GitLab (via glab / REST v4). The
-// list load must NOT attempt the provider resolution for any *other* forge or a
-// remote-less repo — that's the "asks GitHub for a non-GitHub repo" bug.
+// PRs are supported for GitHub (via `gh`), GitLab (via glab / REST v4), and
+// Bitbucket (via REST 2.0). The list load must NOT attempt the provider
+// resolution for any *other* forge or a remote-less repo — that's the "asks
+// GitHub for a non-GitHub repo" bug.
 describe("pulls forge gating", () => {
   it("skips the provider call for an unsupported forge and explains why", async () => {
     useRepo.setState({
-      forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" }),
+      forge: forge({ kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" }),
     });
 
     await usePulls.getState().loadPullRequests();
@@ -305,7 +306,19 @@ describe("pulls forge gating", () => {
     expect(invokeMock).not.toHaveBeenCalled(); // never resolved a repo
     expect(s.pullRequests).toEqual([]);
     expect(s.prsLoading).toBe(false);
-    expect(s.prError).toContain("Bitbucket");
+    expect(s.prError).toContain("Azure DevOps");
+  });
+
+  it("runs the load for a Bitbucket forge (GL-141)", async () => {
+    invokeMock.mockResolvedValueOnce([]);
+    useRepo.setState({ forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" }) });
+
+    await usePulls.getState().loadPullRequests();
+
+    // No stored Bitbucket token in the test env → the account resolves to null;
+    // the backend (dispatching by forge) then reports how to sign in.
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", { path: SUMMARY.path, account: null });
+    expect(usePulls.getState().prError).toBeNull();
   });
 
   it("runs the load for a GitLab forge (GL-140)", async () => {

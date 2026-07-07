@@ -3,7 +3,8 @@
 // status card, not a switcher: commit authorship opens Commit author settings;
 // provider-account auth opens Remote access, because the same provider account
 // is used for fetch/push and pull/merge requests on the default remote — a bound
-// gh account for GitHub, or glab / a stored token for GitLab (GL-146).
+// gh account for GitHub, or glab / a stored token for GitLab (GL-146) and
+// Bitbucket (GL-141).
 
 import { useEffect, useRef, useState } from "react";
 import { ForgeKind } from "../../lib/api";
@@ -15,7 +16,7 @@ import { appliedCommitSource, useIdentities } from "../../store/identities";
 import { selectCommitSource } from "../../lib/identities";
 import { profileInitials } from "../../lib/profiles";
 import { accountMatchesPrRemote } from "../../lib/prRemote";
-import { GitBranchIcon, GitLabIcon } from "../ui/icons";
+import { BitbucketIcon, GitBranchIcon, GitLabIcon } from "../ui/icons";
 import { repoLabel } from "../../lib/paths";
 
 export function IdentityChip() {
@@ -28,6 +29,8 @@ export function IdentityChip() {
   // select primitives so the object gitlabPr() returns doesn't force re-renders.
   const gitlabReady = useAccounts((s) => s.gitlabPr().ready);
   const gitlabLabel = useAccounts((s) => s.gitlabPr().label);
+  const bitbucketReady = useAccounts((s) => s.bitbucketPr().ready);
+  const bitbucketLabel = useAccounts((s) => s.bitbucketPr().label);
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const loadIdentities = useIdentities((s) => s.loadIdentities);
@@ -53,11 +56,13 @@ export function IdentityChip() {
   // host matches the PR remote's. Unknown forge → assume fine (backend guards).
   const accountMismatch = account !== null && !accountMatchesPrRemote(account, forge);
 
-  // The "REMOTE & PR AS" row is provider-aware (GL-146): GitHub reads the bound
-  // gh account; GitLab reads its glab/token PR account (`gitlabPr`), so a GitLab
-  // repo shows the real account + "merge requests" instead of a false "PRs off".
+  // The "REMOTE & PR AS" row is provider-aware (GL-146/GL-141): GitHub reads the
+  // bound gh account; GitLab reads its glab/token PR account (`gitlabPr`) and
+  // Bitbucket its token PR account (`bitbucketPr`), so those repos show the real
+  // account + the right request noun instead of a false "PRs off".
   const isGitlab = forge?.kind === ForgeKind.GitLab;
-  const remotePr: { title: string; subtitle: string; kind: "github" | "gitlab" | "none" } = isGitlab
+  const isBitbucket = forge?.kind === ForgeKind.Bitbucket;
+  const remotePr: { title: string; subtitle: string; kind: "github" | "gitlab" | "bitbucket" | "none" } = isGitlab
     ? gitlabReady
       ? {
           title: gitlabLabel ?? "Signed in",
@@ -65,13 +70,21 @@ export function IdentityChip() {
           kind: "gitlab",
         }
       : { title: "No account", subtitle: "System git credentials; merge requests off", kind: "none" }
-    : account
-      ? {
-          title: `@${account.username}`,
-          subtitle: `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`,
-          kind: "github",
-        }
-      : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
+    : isBitbucket
+      ? bitbucketReady
+        ? {
+            title: bitbucketLabel ?? "Signed in",
+            subtitle: `${forge?.host ?? "bitbucket.org"} · remote + pull requests`,
+            kind: "bitbucket",
+          }
+        : { title: "No account", subtitle: "System git credentials; pull requests off", kind: "none" }
+      : account
+        ? {
+            title: `@${account.username}`,
+            subtitle: `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`,
+            kind: "github",
+          }
+        : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
 
   const label =
     activeManual?.label ??
@@ -165,6 +178,10 @@ export function IdentityChip() {
                 ) : remotePr.kind === "gitlab" ? (
                   <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
                     <GitLabIcon className="h-3.5 w-3.5" />
+                  </span>
+                ) : remotePr.kind === "bitbucket" ? (
+                  <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+                    <BitbucketIcon className="h-3.5 w-3.5" />
                   </span>
                 ) : (
                   <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-[11px] text-neutral-400 dark:bg-white/[0.06] dark:text-neutral-500">

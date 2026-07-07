@@ -289,6 +289,47 @@ pub fn gitlab_project(path: &str) -> Option<(String, String)> {
     None
 }
 
+/// Resolve the Bitbucket Cloud remote's `(host, workspace, repo_slug)` for
+/// `path`, or `None` when no Bitbucket remote is configured (GL-141). Bitbucket
+/// Cloud repos are always `bitbucket.org/{workspace}/{repo_slug}` — a flat
+/// two-segment path with no nested namespaces — so the first path segment is the
+/// workspace and the remainder is the slug. `host` is the bare host (the REST API
+/// authority is the fixed `api.bitbucket.org`, resolved in the provider, not
+/// here). Pure libgit2 read of the remote URLs; no network. Follows the same
+/// default-push-remote-first ordering as [`detect`].
+pub fn bitbucket_repo(path: &str) -> Option<(String, String, String)> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            let Some(host) = remote_host(url) else {
+                continue;
+            };
+            if classify_host(&host) != Some(ForgeKind::Bitbucket) {
+                continue;
+            }
+            // A Bitbucket Cloud repo is always `workspace/repo_slug`; a
+            // single-segment path is not a valid repo, so skip it (the provider
+            // then reports a clear "couldn't resolve a Bitbucket repository"
+            // rather than building an invalid API path that 404s).
+            if let Some((workspace, slug)) = remote_path(url).and_then(|p| {
+                p.split_once('/')
+                    .filter(|(w, s)| !w.is_empty() && !s.is_empty())
+                    .map(|(w, s)| (w.to_string(), s.to_string()))
+            }) {
+                return Some((host, workspace, slug));
+            }
+        }
+    }
+    None
+}
+
 /// The API host for a remote URL, preserving a custom port only for HTTP(S) URLs
 /// (whose port is the API port). Returns `None` for SSH/scp/git URLs, whose port
 /// is the transport port, not the REST endpoint.
@@ -483,5 +524,30 @@ mod tests {
         // A non-GitLab remote yields nothing.
         let gh = TempRepo::init("gh", "https://github.com/o/r.git");
         assert_eq!(gitlab_project(gh.0.to_str().unwrap()), None);
+    }
+
+    #[test]
+    fn bitbucket_repo_parses_workspace_and_slug_from_https_and_ssh() {
+        let https = TempRepo::init("bb-https", "https://bitbucket.org/team/app.git");
+        assert_eq!(
+            bitbucket_repo(https.0.to_str().unwrap()),
+            Some(("bitbucket.org".into(), "team".into(), "app".into()))
+        );
+
+        // scp-form SSH remote resolves the same workspace/slug.
+        let ssh = TempRepo::init("bb-ssh", "git@bitbucket.org:team/app.git");
+        assert_eq!(
+            bitbucket_repo(ssh.0.to_str().unwrap()),
+            Some(("bitbucket.org".into(), "team".into(), "app".into()))
+        );
+
+        // A non-Bitbucket remote yields nothing.
+        let gh = TempRepo::init("bb-gh", "https://github.com/o/r.git");
+        assert_eq!(bitbucket_repo(gh.0.to_str().unwrap()), None);
+
+        // A malformed single-segment path is not a valid workspace/slug → None,
+        // so the provider reports a clear resolution error rather than a bad path.
+        let bare = TempRepo::init("bb-bare", "https://bitbucket.org/loneslug.git");
+        assert_eq!(bitbucket_repo(bare.0.to_str().unwrap()), None);
     }
 }

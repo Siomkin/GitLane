@@ -30,6 +30,14 @@ const GITLAB: RepoForge = {
   webUrl: "https://gitlab.com/siomkin/gitlane",
 };
 
+const BITBUCKET: RepoForge = {
+  hasRemote: true,
+  kind: ForgeKind.Bitbucket,
+  forge: "Bitbucket",
+  host: "bitbucket.org",
+  webUrl: "https://bitbucket.org/team/app",
+};
+
 // The "In GitLane" footer renders only while the popover is open, so its
 // presence is a reliable open/closed signal now that there's no dialog role.
 const popoverOpen = () => screen.queryByText("In GitLane") !== null;
@@ -108,6 +116,26 @@ describe("ProviderIndicator", () => {
     const { toggle, onSignIn } = renderIndicator("needs-auth", GITLAB, 0);
     fireEvent.click(toggle);
     fireEvent.click(screen.getByText("Sign in to GitLab"));
+    expect(onSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("connected Bitbucket: tooltip says PRs enabled (not 'unavailable') and shows the view-PRs primary (GL-141)", () => {
+    const { toggle, onViewPrs } = renderIndicator("connected", BITBUCKET, 2);
+    // The button tooltip/accessible name must not claim PRs are unavailable.
+    expect(toggle).toHaveAccessibleName(/pull requests enabled/);
+    expect(toggle).not.toHaveAccessibleName(/unavailable/);
+    fireEvent.click(toggle);
+    expect(screen.getByText("team/app")).toBeInTheDocument();
+    expect(screen.getByText("Pull requests (2)")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("View 2 pull requests"));
+    expect(onViewPrs).toHaveBeenCalledTimes(1);
+  });
+
+  it("needs-auth Bitbucket: the primary opens Accounts settings to sign in (GL-141)", () => {
+    const { toggle, onSignIn } = renderIndicator("needs-auth", BITBUCKET, 0);
+    expect(toggle).toHaveAccessibleName(/sign in to view pull requests/);
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Sign in to Bitbucket"));
     expect(onSignIn).toHaveBeenCalledTimes(1);
   });
 

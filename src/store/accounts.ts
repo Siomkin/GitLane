@@ -152,6 +152,21 @@ function gitlabRemoteHosts(): { host: string; credentialHost: string } | null {
   return host && credentialHost ? { host, credentialHost } : null;
 }
 
+/** Host + credential authority for the open repo's default **Bitbucket** remote,
+ * or null when the repo isn't Bitbucket or no host can be resolved. Shared by
+ * `bitbucketPr()` and `prAccountRef()` so the Bitbucket PR-account host
+ * resolution lives in one place (GL-141), mirroring {@link gitlabRemoteHosts}. */
+function bitbucketRemoteHosts(): { host: string; credentialHost: string } | null {
+  const forge = useRepo.getState().forge;
+  if (!forge || forge.kind !== ForgeKind.Bitbucket) return null;
+  const remotes = useRepo.getState().remotes ?? [];
+  const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
+  const info = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
+  const host = info?.host ?? forge.host ?? null;
+  const credentialHost = info?.credentialHost ?? host;
+  return host && credentialHost ? { host, credentialHost } : null;
+}
+
 const readBindings = () => readJsonMap<StoredRepoAccountEntry>(LS_REPO_ACCOUNTS);
 const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
   writeJsonMap(LS_REPO_ACCOUNTS, map);
@@ -168,14 +183,19 @@ const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
 /** The keychain token to use for `credentialHost`, chosen deterministically when
  * several tokens share a host (an OAuth token + a PAT): prefer the OAuth token
  * (it carries a sentinel transport username), then the most recently saved.
- * Shared by transport and the clone flow so both resolve the same one. */
+ * Shared by transport and the clone flow so both resolve the same one. When
+ * `provider` is given, only tokens for that provider family match — the PR-account
+ * resolution scopes to the repo's forge so a co-hosted token for another provider
+ * can't be picked (GL-141). */
 export function pickProviderTokenForHost(
   tokens: Record<string, StoredProviderToken>,
   credentialHost: string,
+  provider?: ForgeAuthProvider,
 ): StoredProviderToken | undefined {
   const norm = (h: string) => h.trim().toLowerCase();
   return Object.values(tokens)
     .filter((t) => norm(t.credentialHost) === norm(credentialHost))
+    .filter((t) => provider === undefined || t.provider === provider)
     .sort((a, b) => (b.transportUsername ? 1 : 0) - (a.transportUsername ? 1 : 0) || b.savedAt - a.savedAt)[0];
 }
 
@@ -364,6 +384,10 @@ interface AccountsState {
    * non-GitLab repo. Shared by the toolbar provider popover (connected vs
    * needs-auth) and the remotes-settings card. Never carries token material. */
   gitlabPr: () => { ready: boolean; label: string | null };
+  /** Whether Bitbucket pull requests can be fetched for the open repo — a stored
+   * Bitbucket token (OAuth or API token) exists for the host — plus its display
+   * label. Bitbucket has no CLI, so a token is the only path (GL-141). */
+  bitbucketPr: () => { ready: boolean; label: string | null };
   /** The account ref the PR surface passes for the open repo. For a GitHub repo
    * it's the gh-derived `repoAccountRef`. For a GitLab repo (GL-140) it prefers
    * glab's zero-config transport — returning `null` so the backend uses glab —
@@ -1301,7 +1325,17 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       return { ready: true, label: username ? `@${username}` : "glab" };
     }
     // A stored OAuth/PAT token authenticates the REST client.
-    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost);
+    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "gitlab");
+    if (token) return { ready: true, label: `@${token.login}` };
+    return { ready: false, label: null };
+  },
+
+  bitbucketPr: () => {
+    const hosts = bitbucketRemoteHosts();
+    if (!hosts) return { ready: false, label: null };
+    // Bitbucket has no first-party CLI, so readiness depends solely on a stored
+    // Bitbucket token (OAuth from GL-139 or an API token) for the host (GL-141).
+    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "bitbucket");
     if (token) return { ready: true, label: `@${token.login}` };
     return { ready: false, label: null };
   },
@@ -1311,7 +1345,28 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // GitHub — or an unknown forge still loading — uses the gh binding, which is
     // the historical behaviour (the store's PR gate treats unknown as capable).
     if (!forge || forge.kind === ForgeKind.GitHub) return get().repoAccountRef;
-    // Only GitLab has a native PR provider today; other forges have none.
+    // Bitbucket (GL-141): a GitLane-owned keychain token is required (no CLI
+    // fallback). Pass the token's non-secret keychain locator — the `native`
+    // provider tag routes to the Bitbucket provider (dispatch is by the repo's
+    // forge, not this field); the token itself never leaves Rust.
+    if (forge.kind === ForgeKind.Bitbucket) {
+      const hosts = bitbucketRemoteHosts();
+      if (!hosts) return null;
+      const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "bitbucket");
+      // `login` carries the git HTTPS *username* the backend authenticates as,
+      // which picks the REST auth scheme: an OAuth token's `x-token-auth` sentinel
+      // → Bearer; a manually-stored API token / app password's real username →
+      // Basic. The token itself never leaves Rust.
+      return token
+        ? {
+            provider: "native",
+            host: token.credentialHost,
+            accountId: token.accountId,
+            login: token.transportUsername ?? token.login,
+          }
+        : null;
+    }
+    // Only GitLab has a native PR provider besides GitHub/Bitbucket today.
     const hosts = gitlabRemoteHosts();
     if (!hosts) return null;
     // Prefer glab: a null ref makes the backend use glab's zero-config transport
@@ -1322,7 +1377,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // backend's REST client. Pass the token's non-secret keychain locator — the
     // `native` provider tag routes to the GitLab provider (dispatch is by the
     // repo's forge, not this field); the token itself never leaves Rust.
-    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost);
+    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "gitlab");
     if (token) {
       return {
         provider: "native",

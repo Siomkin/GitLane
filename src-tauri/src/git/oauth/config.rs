@@ -54,7 +54,11 @@ pub fn provider_config(provider: &str) -> Option<ProviderConfig> {
         }),
         "bitbucket" => Some(ProviderConfig {
             flow: OauthFlow::Pkce,
-            scopes: "account repository repository:write",
+            // account → identity whoami; repository[:write] → git transport;
+            // pullrequest[:write] → the PR list/diff reads and create/merge/approve
+            // writes (GL-141). Without the pullrequest scopes an OAuth grant looks
+            // connected but 403s on every PR call.
+            scopes: "account repository repository:write pullrequest pullrequest:write",
             transport_username: "x-token-auth",
         }),
         _ => None,
@@ -146,6 +150,11 @@ mod tests {
         let bb = provider_config("bitbucket").unwrap();
         assert_eq!(bb.flow, OauthFlow::Pkce);
         assert_eq!(bb.transport_username, "x-token-auth");
+        // The Bitbucket grant must include PR scopes, else PR calls 403 despite a
+        // "connected" grant (GL-141). GitLab authorises PRs via its repo scopes.
+        assert!(bb.scopes.contains("pullrequest"), "read PRs: {}", bb.scopes);
+        assert!(bb.scopes.contains("pullrequest:write"), "write PRs: {}", bb.scopes);
+        assert!(bb.scopes.contains("account"), "identity whoami: {}", bb.scopes);
         assert!(provider_config("github").is_none());
         assert!(provider_config("gitea").is_none());
     }

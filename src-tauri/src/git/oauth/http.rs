@@ -53,6 +53,21 @@ pub trait HttpTransport: Send + Sync {
         Err("PUT is not supported by this transport.".to_string())
     }
 
+    /// POST an `application/json` body. Used by the Bitbucket REST client (GL-141),
+    /// whose create/merge endpoints take nested JSON (`source`/`destination`
+    /// branches, `merge_strategy`) that a flat form body cannot express. The OAuth
+    /// flows never call it, so a default impl keeps them (and any other transport)
+    /// unaffected; the mock/ureq clients override it.
+    fn post_json(
+        &self,
+        url: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<HttpResponse, String> {
+        let _ = (url, body, headers);
+        Err("JSON POST is not supported by this transport.".to_string())
+    }
+
     /// GET a resource (used for the post-token identity whoami).
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse, String>;
 }
@@ -109,6 +124,19 @@ impl HttpTransport for UreqTransport {
         to_response(req.send_form(form))
     }
 
+    fn post_json(
+        &self,
+        url: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<HttpResponse, String> {
+        let mut req = self.agent.post(url).set("Content-Type", "application/json");
+        for (k, v) in headers {
+            req = req.set(k, v);
+        }
+        to_response(req.send_string(body))
+    }
+
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse, String> {
         let mut req = self.agent.get(url);
         for (k, v) in headers {
@@ -160,6 +188,13 @@ pub mod testing {
         pub method: String,
         pub url: String,
         pub form: Vec<(String, String)>,
+        /// Raw JSON body for a `post_json` call (Bitbucket, GL-141); `None` for
+        /// form/GET requests. Lets tests assert the JSON the caller sent.
+        pub body: Option<String>,
+        /// Request headers the caller set (e.g. `Accept`), so tests can assert
+        /// content negotiation — the Bitbucket `/diff` GET must ask for text, not
+        /// JSON (GL-141).
+        pub headers: Vec<(String, String)>,
     }
 
     #[derive(Default)]
@@ -192,11 +227,18 @@ pub mod testing {
             method: &str,
             url: &str,
             form: &[(&str, &str)],
+            body: Option<&str>,
+            headers: &[(&str, &str)],
         ) -> Result<HttpResponse, String> {
             self.requests.lock().unwrap().push(RecordedRequest {
                 method: method.to_string(),
                 url: url.to_string(),
                 form: form
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                body: body.map(str::to_string),
+                headers: headers
                     .iter()
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect(),
@@ -214,22 +256,31 @@ pub mod testing {
             &self,
             url: &str,
             form: &[(&str, &str)],
-            _headers: &[(&str, &str)],
+            headers: &[(&str, &str)],
         ) -> Result<HttpResponse, String> {
-            self.next("POST", url, form)
+            self.next("POST", url, form, None, headers)
         }
 
         fn put_form(
             &self,
             url: &str,
             form: &[(&str, &str)],
-            _headers: &[(&str, &str)],
+            headers: &[(&str, &str)],
         ) -> Result<HttpResponse, String> {
-            self.next("PUT", url, form)
+            self.next("PUT", url, form, None, headers)
         }
 
-        fn get(&self, url: &str, _headers: &[(&str, &str)]) -> Result<HttpResponse, String> {
-            self.next("GET", url, &[])
+        fn post_json(
+            &self,
+            url: &str,
+            body: &str,
+            headers: &[(&str, &str)],
+        ) -> Result<HttpResponse, String> {
+            self.next("POST", url, &[], Some(body), headers)
+        }
+
+        fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse, String> {
+            self.next("GET", url, &[], None, headers)
         }
     }
 }

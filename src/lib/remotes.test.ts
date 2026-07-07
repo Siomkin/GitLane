@@ -163,8 +163,14 @@ describe("validateRemoteUrl", () => {
     expect(v.message).toMatch(/GitLab · gitlab\.com — merge requests enabled/);
   });
 
-  it("warns for a valid non-PR forge (Bitbucket) but still allows saving", () => {
+  it("is ok for Bitbucket (PRs enabled), labelled Bitbucket, and savable (GL-141)", () => {
     const v = validateRemoteUrl("https://alice@bitbucket.org/team/repo.git");
+    expect(v).toMatchObject({ level: "ok", ok: true });
+    expect(v.message).toMatch(/Bitbucket · bitbucket\.org — pull requests enabled/);
+  });
+
+  it("warns for a valid non-PR forge (Azure DevOps) but still allows saving", () => {
+    const v = validateRemoteUrl("https://dev.azure.com/org/proj/_git/repo");
     expect(v).toMatchObject({ level: "warn", ok: true });
     expect(v.message).toMatch(/pull requests unavailable/);
   });

@@ -6,8 +6,8 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
-import { pickProviderTokenForHost, useAccounts } from "./accounts";
-import type { RemoteInfo } from "../lib/api";
+import { pickProviderTokenForHost, useAccounts, type StoredProviderToken } from "./accounts";
+import { ForgeKind, type RemoteInfo, type RepoForge } from "../lib/api";
 
 const gitlabRemote: RemoteInfo = {
   name: "origin",
@@ -431,5 +431,78 @@ describe("pickProviderTokenForHost", () => {
       newer: tok({ accountId: "newer", savedAt: 2 }),
     } as never;
     expect(pickProviderTokenForHost(tokens, "gitlab.com")?.accountId).toBe("newer");
+  });
+
+  it("scopes to the requested provider so a co-hosted token isn't cross-picked (GL-141)", () => {
+    const tokens = {
+      bb: tok({ provider: "bitbucket", credentialHost: "bitbucket.org", accountId: "bb", savedAt: 2 }),
+      other: tok({ provider: "gitea", credentialHost: "bitbucket.org", accountId: "gitea", savedAt: 9 }),
+    } as never;
+    // Without a provider filter the newer gitea token would win; scoped to
+    // "bitbucket" it must pick the Bitbucket one.
+    expect(pickProviderTokenForHost(tokens, "bitbucket.org", "bitbucket")?.accountId).toBe("bb");
+    expect(pickProviderTokenForHost(tokens, "bitbucket.org", "gitea")?.accountId).toBe("gitea");
+    // No filter → host-only match keeps the previous behaviour (newest wins).
+    expect(pickProviderTokenForHost(tokens, "bitbucket.org")?.accountId).toBe("gitea");
+  });
+});
+
+describe("prAccountRef for Bitbucket (GL-141)", () => {
+  const bbForge: RepoForge = {
+    hasRemote: true,
+    kind: ForgeKind.Bitbucket,
+    forge: "Bitbucket",
+    host: "bitbucket.org",
+    webUrl: "https://bitbucket.org/team/app",
+  };
+  const bbRemote: RemoteInfo = {
+    name: "origin",
+    fetchUrl: "https://bitbucket.org/team/app.git",
+    pushUrl: "https://bitbucket.org/team/app.git",
+    isDefault: true,
+  };
+  const store = (token?: StoredProviderToken) => {
+    useRepo.setState({ forge: bbForge, remotes: [bbRemote] });
+    useAccounts.setState({
+      providerTokens: token ? { [`bitbucket.org\u0000${token.login}`]: token } : {},
+    });
+  };
+
+  it("returns null when no Bitbucket token is stored (backend then reports sign-in)", () => {
+    store();
+    expect(useAccounts.getState().prAccountRef()).toBeNull();
+  });
+
+  it("returns a native ref whose login is the OAuth sentinel → backend uses Bearer", () => {
+    store({
+      provider: "bitbucket",
+      credentialHost: "bitbucket.org",
+      accountId: "uuid-1",
+      login: "ada",
+      transportUsername: "x-token-auth",
+      savedAt: 1,
+    });
+    expect(useAccounts.getState().prAccountRef()).toEqual({
+      provider: "native",
+      host: "bitbucket.org",
+      accountId: "uuid-1",
+      login: "x-token-auth",
+    });
+  });
+
+  it("returns a native ref whose login is the username → backend uses Basic (API token)", () => {
+    store({
+      provider: "bitbucket",
+      credentialHost: "bitbucket.org",
+      accountId: "alice",
+      login: "alice",
+      savedAt: 1,
+    });
+    expect(useAccounts.getState().prAccountRef()).toEqual({
+      provider: "native",
+      host: "bitbucket.org",
+      accountId: "alice",
+      login: "alice",
+    });
   });
 });

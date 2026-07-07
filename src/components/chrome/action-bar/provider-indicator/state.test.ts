@@ -19,6 +19,7 @@ const ctx = (over: Partial<ProviderAuthCtx> = {}): ProviderAuthCtx => ({
   accountsLoading: false,
   repoAccountRef: null,
   gitlabReady: false,
+  bitbucketReady: false,
   ...over,
 });
 
@@ -29,7 +30,7 @@ describe("deriveProviderState", () => {
 
   it("reports connected for a non-PR forge (repo link works, no PR surface)", () => {
     expect(
-      deriveProviderState(forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket" }), ctx()),
+      deriveProviderState(forge({ kind: ForgeKind.AzureDevOps, forge: "Azure DevOps" }), ctx()),
     ).toBe("connected");
   });
 
@@ -37,6 +38,12 @@ describe("deriveProviderState", () => {
     const gitlab = forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" });
     expect(deriveProviderState(gitlab, ctx({ gitlabReady: true }))).toBe("connected");
     expect(deriveProviderState(gitlab, ctx({ gitlabReady: false }))).toBe("needs-auth");
+  });
+
+  it("reports Bitbucket connected when PRs can be fetched, else needs-auth (GL-141)", () => {
+    const bitbucket = forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" });
+    expect(deriveProviderState(bitbucket, ctx({ bitbucketReady: true }))).toBe("connected");
+    expect(deriveProviderState(bitbucket, ctx({ bitbucketReady: false }))).toBe("needs-auth");
   });
 
   it("reports unsupported only for a remote on an unrecognised host", () => {

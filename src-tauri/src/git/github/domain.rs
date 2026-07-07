@@ -116,7 +116,7 @@ impl GithubError {
                 "GitHub CLI version {installed} is unsupported. GitLane requires gh {required} or newer; upgrade from {GH_UPGRADE_URL}."
             ),
             Self::UnsupportedForge { forge, host } => {
-                format!("GitLane supports GitHub pull requests and GitLab merge requests; the {forge} remote at {host} isn't supported yet.")
+                format!("GitLane supports GitHub pull requests, GitLab merge requests, and Bitbucket pull requests; the {forge} remote at {host} isn't supported yet.")
             }
             Self::NotAuthenticated { host, account } => match account {
                 Some(login) => format!("GitHub account @{login} is not authenticated for {host}. Run `gh auth login --hostname {host}` or refresh accounts."),

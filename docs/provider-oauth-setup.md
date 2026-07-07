@@ -58,7 +58,10 @@ consumer**):
   sign-in (RFC 8252). If your Bitbucket setup requires an exact port match,
   register a fixed one and open an issue — a configurable fixed port is a small
   follow-up.
-- **Permissions:** **Account** (read) and **Repositories** (read *and* write).
+- **Permissions:** **Account** (read), **Repositories** (read *and* write), and
+  **Pull requests** (read *and* write). The pull-request permission is what lets
+  GitLane list, open, merge, and approve PRs (GL-141); without it PR calls fail
+  with a 403 even though sign-in succeeds.
 - This is a public client using PKCE; no client secret is embedded.
 - Copy the **Key** — that is the client id.
 
@@ -123,8 +126,9 @@ id, so multiple hosts and accounts stay isolated.
   multiple PAT accounts, work today.
 - **Bitbucket Cloud only** for native OAuth; **HTTPS only** (the keychain bridge
   is scoped to `https://` remotes, per GL-132).
-- **PR/MR features stay GitHub-only.** OAuth sign-in enables git transport;
-  GitLab/Bitbucket merge-request surfaces are still not implemented.
+- **PR/MR features work for GitLab (GL-140) and Bitbucket (GL-141)** as well as
+  GitHub: an OAuth sign-in enables git transport *and* the pull/merge-request
+  surface, provided the consumer grants the pull-request permission/scope above.
 
 ## Security notes
 

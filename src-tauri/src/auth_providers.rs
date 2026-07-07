@@ -67,7 +67,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         // Atlassian deprecated Bitbucket app passwords; the app-passwords doc now
         // redirects here, and API tokens are the supported replacement.
         docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
-        notes: "Bitbucket has no bundled CLI probe in GitLane yet. Auth metadata only; PR features are not implemented.",
+        notes: "Bitbucket has no bundled CLI. Pull requests (list, view, create, merge, approve) work when a Bitbucket token (OAuth sign-in or an API token) is stored.",
         require_output: false,
     },
     ProviderSpec {

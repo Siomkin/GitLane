@@ -168,8 +168,9 @@ export const withUrlUser = (raw: string, user: string | null): string => {
 export const isValidRemoteName = (raw: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(raw.trim());
 
 /** Forges with an in-app pull/merge-request surface (mirrors the toolbar provider
- * model): GitHub PRs and GitLab MRs (GL-140). */
-export const providerSupportsPrs = (p: RemoteProvider): boolean => p === "github" || p === "gitlab";
+ * model): GitHub PRs, GitLab MRs (GL-140), and Bitbucket Cloud PRs (GL-141). */
+export const providerSupportsPrs = (p: RemoteProvider): boolean =>
+  p === "github" || p === "gitlab" || p === "bitbucket";
 
 /** The request noun a provider uses in copy — GitLab has "merge requests",
  * everyone else "pull requests" — so GitLab-facing text reads correctly (GL-145). */
@@ -199,7 +200,8 @@ export interface RemoteValidity {
 }
 
 /** Validate a remote URL for the add/edit forms: neutral (empty), bad (invalid),
- * ok (GitHub/GitLab — PRs) or warn (valid other forge — no PRs, still usable). */
+ * ok (GitHub/GitLab/Bitbucket — PRs) or warn (valid other forge — no PRs, still
+ * usable). */
 export const validateRemoteUrl = (raw: string): RemoteValidity => {
   const d = detectRemoteUrl(raw);
   if (d.empty) return { level: "neutral", message: "Enter an https or SSH git URL.", ok: false };
