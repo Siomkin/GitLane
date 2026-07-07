@@ -252,4 +252,25 @@ describe("TerminalAgentsSettings", () => {
     const grip = screen.getByRole("button", { name: "Drag Claude to reorder" });
     expect(grip.className).toMatch(/focus-visible:opacity-100/);
   });
+
+  it("ends a drag on pointercancel so a row never sticks in its lifted state", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
+
+    const grip = screen.getByRole("button", { name: "Drag Claude to reorder" });
+    const card = document.querySelector("[data-agent-card]") as HTMLElement;
+    expect(card.style.boxShadow).toBe("");
+
+    // Grab the grip → the row lifts (dragging style applied).
+    fireEvent.pointerDown(grip, { pointerId: 1 });
+    expect(card.style.boxShadow).not.toBe("");
+
+    // An OS gesture / alt-tab cancels the pointer mid-drag — teardown must run
+    // even though no `pointerup` ever arrives, so the row settles back down.
+    act(() => {
+      window.dispatchEvent(new Event("pointercancel"));
+    });
+    expect(card.style.boxShadow).toBe("");
+  });
 });

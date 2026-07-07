@@ -36,14 +36,18 @@ export function TerminalAgentsSettings() {
   const moveRef = useRef(editor.move);
   moveRef.current = editor.move;
   const dragIdRef = useRef<string | null>(null);
-  const handlersRef = useRef<{ move: (e: PointerEvent) => void; up: () => void } | null>(null);
+  // Everything needed to tear a drag down from any exit path: the window
+  // listeners we attached plus the element/pointer we captured.
+  const dragRef = useRef<{ detach: () => void; el: Element; pointerId: number } | null>(null);
 
   const endDrag = () => {
-    const h = handlersRef.current;
-    if (h) {
-      window.removeEventListener("pointermove", h.move);
-      window.removeEventListener("pointerup", h.up);
-      handlersRef.current = null;
+    const d = dragRef.current;
+    if (d) {
+      // Null out first so releasing capture (which re-fires `lostpointercapture`)
+      // can't re-enter this teardown.
+      dragRef.current = null;
+      d.detach();
+      if (d.el.hasPointerCapture?.(d.pointerId)) d.el.releasePointerCapture(d.pointerId);
     }
     dragIdRef.current = null;
     setDragId(null);
@@ -70,13 +74,35 @@ export function TerminalAgentsSettings() {
 
   const startDrag = (id: string) => (e: React.PointerEvent) => {
     e.preventDefault();
+    const el = e.currentTarget;
+    const { pointerId } = e;
     dragIdRef.current = id;
     setDragId(id);
+    // Capture the pointer so moves/ups keep flowing even if it leaves the grip
+    // or the window, and end the drag on every terminal signal — normal release,
+    // `pointercancel`, or a `lostpointercapture` from an OS gesture / alt-tab —
+    // so a row can never stick in its lifted state. Capture is best-effort.
+    try {
+      el.setPointerCapture(pointerId);
+    } catch {
+      // ignore: drag still works via the window listeners below
+    }
     const move = (ev: PointerEvent) => onDragMove(ev);
-    const up = () => endDrag();
-    handlersRef.current = { move, up };
+    const end = () => endDrag();
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("lostpointercapture", end);
+    dragRef.current = {
+      el,
+      pointerId,
+      detach: () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+        window.removeEventListener("lostpointercapture", end);
+      },
+    };
   };
 
   // Detach any live drag listeners if the panel unmounts mid-drag.
