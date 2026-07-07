@@ -2,9 +2,11 @@
 // you commit as (this computer / a manual identity, GL-130). The popover is a
 // status card, not a switcher: commit authorship opens Commit author settings;
 // provider-account auth opens Remote access, because the same provider account
-// is used for fetch/push and GitHub PRs on the default remote.
+// is used for fetch/push and pull/merge requests on the default remote — a bound
+// gh account for GitHub, or glab / a stored token for GitLab (GL-146).
 
 import { useEffect, useRef, useState } from "react";
+import { ForgeKind } from "../../lib/api";
 import { useDismiss } from "../../hooks/useDismiss";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
@@ -13,7 +15,7 @@ import { appliedCommitSource, useIdentities } from "../../store/identities";
 import { selectCommitSource } from "../../lib/identities";
 import { profileInitials } from "../../lib/profiles";
 import { accountMatchesPrRemote } from "../../lib/prRemote";
-import { GitBranchIcon } from "../ui/icons";
+import { GitBranchIcon, GitLabIcon } from "../ui/icons";
 import { repoLabel } from "../../lib/paths";
 
 export function IdentityChip() {
@@ -22,6 +24,10 @@ export function IdentityChip() {
   const repoIdentity = useAccounts((s) => s.repoIdentity);
   const accounts = useAccounts((s) => s.accounts);
   const repoAccountId = useAccounts((s) => s.repoAccountId);
+  // GitLab authenticates via glab / a stored token, not a gh account (GL-146);
+  // select primitives so the object gitlabPr() returns doesn't force re-renders.
+  const gitlabReady = useAccounts((s) => s.gitlabPr().ready);
+  const gitlabLabel = useAccounts((s) => s.gitlabPr().label);
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const loadIdentities = useIdentities((s) => s.loadIdentities);
@@ -46,6 +52,26 @@ export function IdentityChip() {
   // Same semantics as the Identity panel: a bound account only works when its
   // host matches the PR remote's. Unknown forge → assume fine (backend guards).
   const accountMismatch = account !== null && !accountMatchesPrRemote(account, forge);
+
+  // The "REMOTE & PR AS" row is provider-aware (GL-146): GitHub reads the bound
+  // gh account; GitLab reads its glab/token PR account (`gitlabPr`), so a GitLab
+  // repo shows the real account + "merge requests" instead of a false "PRs off".
+  const isGitlab = forge?.kind === ForgeKind.GitLab;
+  const remotePr: { title: string; subtitle: string; kind: "github" | "gitlab" | "none" } = isGitlab
+    ? gitlabReady
+      ? {
+          title: gitlabLabel ?? "Signed in",
+          subtitle: `${forge?.host ?? "gitlab.com"} · remote + merge requests`,
+          kind: "gitlab",
+        }
+      : { title: "No account", subtitle: "System git credentials; merge requests off", kind: "none" }
+    : account
+      ? {
+          title: `@${account.username}`,
+          subtitle: `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`,
+          kind: "github",
+        }
+      : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
 
   const label =
     activeManual?.label ??
@@ -129,12 +155,16 @@ export function IdentityChip() {
               onClick={goAccessSettings}
               actionTitle="Change on the Remote access settings page"
               avatar={
-                account ? (
+                remotePr.kind === "github" && account ? (
                   <span
                     className="grid h-[26px] w-[26px] place-items-center rounded-md text-[11px] font-bold text-white"
                     style={{ background: account.color }}
                   >
                     {account.username.slice(0, 2).toUpperCase()}
+                  </span>
+                ) : remotePr.kind === "gitlab" ? (
+                  <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+                    <GitLabIcon className="h-3.5 w-3.5" />
                   </span>
                 ) : (
                   <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-[11px] text-neutral-400 dark:bg-white/[0.06] dark:text-neutral-500">
@@ -142,12 +172,8 @@ export function IdentityChip() {
                   </span>
                 )
               }
-              title={account ? `@${account.username}` : "No account"}
-              subtitle={
-                account
-                  ? `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`
-                  : "System git credentials; PRs off"
-              }
+              title={remotePr.title}
+              subtitle={remotePr.subtitle}
             />
           </div>
 
