@@ -1,11 +1,12 @@
 import { cn } from "../../../../lib/cn";
 import type { RemoteInfo } from "../../../../lib/api";
-import { CloudIcon, GitHubIcon, GitLabIcon } from "../../../ui/icons";
+import { BitbucketIcon, CloudIcon, GitHubIcon, GitLabIcon } from "../../../ui/icons";
 import { detectRemoteUrl, providerSupportsPrs } from "../../../../lib/remotes";
 
 /** Headline card for the default push remote — its host, the remote name, PR
  * capability, and the account derived from that remote's auth context. For a
- * GitLab remote the account label is the glab / stored-token handle (GL-145). */
+ * GitLab (GL-145) or Bitbucket (GL-141) remote the account label is the
+ * glab / stored-token handle rather than a bound gh account. */
 export const RemoteSummaryCard = ({
   remote,
   accountLabel,
@@ -16,6 +17,7 @@ export const RemoteSummaryCard = ({
   const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
   const isGithub = info.provider === "github";
   const isGitlab = info.provider === "gitlab";
+  const isBitbucket = info.provider === "bitbucket";
   const prs = providerSupportsPrs(info.provider);
   const prsReady = prs && Boolean(accountLabel);
   // The forge's own request noun, so a GitLab card doesn't say "pull requests".
@@ -33,6 +35,8 @@ export const RemoteSummaryCard = ({
           <GitHubIcon className="h-5 w-5" />
         ) : isGitlab ? (
           <GitLabIcon className="h-5 w-5" />
+        ) : isBitbucket ? (
+          <BitbucketIcon className="h-5 w-5" />
         ) : (
           <CloudIcon className="h-5 w-5" />
         )}

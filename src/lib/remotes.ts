@@ -200,7 +200,8 @@ export interface RemoteValidity {
 }
 
 /** Validate a remote URL for the add/edit forms: neutral (empty), bad (invalid),
- * ok (GitHub/GitLab — PRs) or warn (valid other forge — no PRs, still usable). */
+ * ok (GitHub/GitLab/Bitbucket — PRs) or warn (valid other forge — no PRs, still
+ * usable). */
 export const validateRemoteUrl = (raw: string): RemoteValidity => {
   const d = detectRemoteUrl(raw);
   if (d.empty) return { level: "neutral", message: "Enter an https or SSH git URL.", ok: false };

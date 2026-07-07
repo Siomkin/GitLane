@@ -3,7 +3,8 @@
 // status card, not a switcher: commit authorship opens Commit author settings;
 // provider-account auth opens Remote access, because the same provider account
 // is used for fetch/push and pull/merge requests on the default remote — a bound
-// gh account for GitHub, or glab / a stored token for GitLab (GL-146).
+// gh account for GitHub, or glab / a stored token for GitLab (GL-146) and
+// Bitbucket (GL-141).
 
 import { useEffect, useRef, useState } from "react";
 import { ForgeKind } from "../../lib/api";
