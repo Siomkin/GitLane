@@ -32,6 +32,9 @@ export const RemotesPanel = () => {
   // GitLab remotes authenticate via glab / a stored token rather than a gh
   // account, so their PR account label comes from `gitlabPr()` (GL-145).
   const gitlabAccountLabel = useAccounts((s) => s.gitlabPr().label);
+  // Bitbucket remotes authenticate via a stored token (no gh account), so their
+  // label comes from `bitbucketPr()` (GL-141) — same pattern as GitLab.
+  const bitbucketAccountLabel = useAccounts((s) => s.bitbucketPr().label);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -125,19 +128,22 @@ export const RemotesPanel = () => {
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0];
   const defaultRemoteAccountId = defaultRemote ? repoRemoteAccountIds[defaultRemote.name] : null;
   const defaultRemoteAccount = accounts.find((a) => a.id === defaultRemoteAccountId) ?? null;
-  // Pick the label source by the default remote's forge so the two never mix: a
-  // GitLab remote uses its glab / stored-token label (never a stray legacy gh
-  // binding, which would show a github account + a false "enabled"); everything
-  // else uses the bound gh account. Both null leaves the card unbound.
+  // Pick the label source by the default remote's forge so they never mix: a
+  // GitLab remote uses its glab / stored-token label and a Bitbucket remote its
+  // stored-token label (never a stray legacy gh binding, which would show a
+  // github account + a false "enabled"); everything else uses the bound gh
+  // account. All null leaves the card unbound.
   const defaultRemoteProvider = defaultRemote
     ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl).provider
     : null;
   const accountLabel =
     defaultRemoteProvider === "gitlab"
       ? gitlabAccountLabel
-      : defaultRemoteAccount
-        ? `@${defaultRemoteAccount.login}`
-        : null;
+      : defaultRemoteProvider === "bitbucket"
+        ? bitbucketAccountLabel
+        : defaultRemoteAccount
+          ? `@${defaultRemoteAccount.login}`
+          : null;
 
   if (!summary) return null;
 

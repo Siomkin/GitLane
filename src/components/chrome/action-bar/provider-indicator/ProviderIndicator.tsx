@@ -60,7 +60,10 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
       return "GitHub CLI unavailable — pull requests unavailable";
     case "connected":
       if (forge.kind === ForgeKind.GitLab) return `${slug} · merge requests enabled`;
-      return forge.kind === ForgeKind.GitHub
+      // GitHub and Bitbucket (GL-141) both use the "pull requests" noun and reach
+      // "connected" only when their PR surface is available; every other forge is
+      // repo-link-only.
+      return forge.kind === ForgeKind.GitHub || forge.kind === ForgeKind.Bitbucket
         ? `${slug} · pull requests enabled`
         : `${slug} · pull requests unavailable`;
     case "needs-auth":

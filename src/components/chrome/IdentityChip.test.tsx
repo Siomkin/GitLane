@@ -152,6 +152,45 @@ describe("IdentityChip", () => {
     expect(screen.getByText("gitlab.com · remote + merge requests")).toBeInTheDocument();
   });
 
+  it("shows the Bitbucket token account + 'pull requests' for a Bitbucket repo (GL-141)", () => {
+    useRepo.setState({
+      summary,
+      forge: { hasRemote: true, kind: "bitbucket", forge: "Bitbucket", host: "bitbucket.org", webUrl: "https://bitbucket.org/team/app" },
+    });
+    useAccounts.setState({
+      accounts: [],
+      repoAccountId: null,
+      forgeAuth: [],
+      providerTokens: {
+        "bitbucket.org ada": {
+          provider: "bitbucket",
+          credentialHost: "bitbucket.org",
+          accountId: "uuid-1",
+          login: "ada",
+          transportUsername: "x-token-auth",
+          savedAt: 1,
+        },
+      },
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+    expect(screen.getByText("bitbucket.org · remote + pull requests")).toBeInTheDocument();
+    // A false "PRs off" must NOT appear for a signed-in Bitbucket repo.
+    expect(screen.queryByText(/pull requests off/)).toBeNull();
+  });
+
+  it("shows 'pull requests off' for a Bitbucket repo with no stored token (GL-141)", () => {
+    useRepo.setState({
+      summary,
+      forge: { hasRemote: true, kind: "bitbucket", forge: "Bitbucket", host: "bitbucket.org", webUrl: "https://bitbucket.org/team/app" },
+    });
+    useAccounts.setState({ accounts: [], repoAccountId: null, forgeAuth: [], providerTokens: {} });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("System git credentials; pull requests off")).toBeInTheDocument();
+  });
+
   it("shows needs re-auth for a bound account gh reported as broken", () => {
     // Consistency with PrAccountZone: a revoked/timed-out account must not read
     // "remote + PRs" in the chip while settings flags it as needing re-auth.

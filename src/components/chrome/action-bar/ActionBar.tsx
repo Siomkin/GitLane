@@ -120,10 +120,10 @@ export const ActionBar = ({
       : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
 
   // Remote-provider status: forge detection (backend) combined with auth state
-  // (accounts store). GitHub and GitLab support PRs (each surfaces needs-auth
-  // when its sign-in is missing); other recognised forges (Bitbucket, …) are
-  // "connected" (repo link works, no PRs), and an unrecognised host is
-  // "unsupported". See the popover model.
+  // (accounts store). GitHub, GitLab, and Bitbucket support PRs (each surfaces
+  // needs-auth when its sign-in is missing); other recognised forges (Azure
+  // DevOps, …) are "connected" (repo link works, no PRs), and an unrecognised
+  // host is "unsupported". See the popover model.
   const providerState: ProviderState | null = forge
     ? deriveProviderState(forge, {
         accounts,
