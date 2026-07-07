@@ -10,14 +10,15 @@ export type ProviderKey = "github" | ForgeAuthProvider;
 export interface ProviderMeta {
   key: ProviderKey;
   name: string;
-  /** GitLane can run pull-request workflows for this provider (GitHub only). */
+  /** GitLane can run pull/merge-request workflows for this provider — GitHub PRs
+   * and GitLab MRs (GL-140). */
   prSupported: boolean;
 }
 
 /** Every provider the picker offers, GitHub first. */
 export const PROVIDERS: ProviderMeta[] = [
   { key: "github", name: "GitHub", prSupported: true },
-  { key: "gitlab", name: "GitLab", prSupported: false },
+  { key: "gitlab", name: "GitLab", prSupported: true },
   { key: "bitbucket", name: "Bitbucket", prSupported: false },
   { key: "azure-devops", name: "Azure DevOps", prSupported: false },
   { key: "gitea", name: "Gitea", prSupported: false },

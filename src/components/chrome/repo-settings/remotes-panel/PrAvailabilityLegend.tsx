@@ -3,8 +3,13 @@
 const ROWS: { dot: string; label: string; note: string }[] = [
   { dot: "bg-emerald-500", label: "GitHub", note: "pull requests, checks and review threads are available." },
   {
+    dot: "bg-emerald-500",
+    label: "GitLab",
+    note: "merge requests (list, view, create, merge, approve) via glab or a token.",
+  },
+  {
     dot: "bg-neutral-400",
-    label: "GitLab · Bitbucket · Azure",
+    label: "Bitbucket · Azure · Gitea",
     note: "browsing, push, fetch and pull work; PR features are unavailable.",
   },
   { dot: "bg-rose-500", label: "Invalid URL", note: "not saved; fix the host or owner/repo path." },

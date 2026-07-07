@@ -2,8 +2,8 @@ import { useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import type { RemoteInfo } from "../../../../lib/api";
-import { CloudIcon, GitHubIcon, TrashIcon } from "../../../ui/icons";
-import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
+import { CloudIcon, GitHubIcon, GitLabIcon, TrashIcon } from "../../../ui/icons";
+import { detectRemoteUrl, prAbbr, prNoun, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
 import type { ForgeAuthStatus } from "../../../../lib/api";
@@ -43,6 +43,7 @@ export const RemoteRow = ({
 
   const info = detectRemoteUrl(remote.fetchUrl);
   const isGithub = info.provider === "github";
+  const isGitlab = info.provider === "gitlab";
   const prs = providerSupportsPrs(info.provider);
   const validity = validateRemoteUrl(draft);
 
@@ -66,15 +67,21 @@ export const RemoteRow = ({
             "bg-black/[0.03] text-neutral-600 dark:bg-white/[0.05] dark:text-neutral-300",
           )}
         >
-          {isGithub ? <GitHubIcon className="h-3.5 w-3.5" /> : <CloudIcon className="h-3.5 w-3.5" />}
+          {isGithub ? (
+            <GitHubIcon className="h-3.5 w-3.5" />
+          ) : isGitlab ? (
+            <GitLabIcon className="h-3.5 w-3.5" />
+          ) : (
+            <CloudIcon className="h-3.5 w-3.5" />
+          )}
           {info.host ?? "unknown host"}
         </span>
         <span
           title={
             prs
               ? remote.isDefault
-                ? "This remote drives pull requests and PR auth — the bound account must match its host."
-                : "This provider supports PRs, but pull requests follow the PR remote (the default)."
+                ? `This remote drives ${prNoun(info.provider)} and ${prAbbr(info.provider)} auth — the bound account must match its host.`
+                : `This provider supports ${prAbbr(info.provider)}s, but ${prNoun(info.provider)} follow the ${prAbbr(info.provider)} remote (the default).`
               : undefined
           }
           className={cn(
@@ -85,8 +92,16 @@ export const RemoteRow = ({
           )}
         >
           {/* The default remote is what the PR tab and provider auth follow —
-              name it, instead of the ambiguous "PRs on". */}
-          {prs ? (remote.isDefault ? "PR remote" : "PRs on") : "No PRs"}
+              name it, instead of the ambiguous "PRs on". GitLab speaks MRs. */}
+          {prs
+            ? isGitlab
+              ? remote.isDefault
+                ? "MR remote"
+                : "MRs on"
+              : remote.isDefault
+                ? "PR remote"
+                : "PRs on"
+            : "No PRs"}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {!editing && (

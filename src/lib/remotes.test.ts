@@ -154,11 +154,17 @@ describe("validateRemoteUrl", () => {
   it("is ok for GitHub (PRs enabled) and savable", () => {
     const v = validateRemoteUrl("https://github.com/Siomkin/GitLane.git");
     expect(v).toMatchObject({ level: "ok", ok: true });
-    expect(v.message).toMatch(/pull requests enabled/);
+    expect(v.message).toMatch(/GitHub · github\.com — pull requests enabled/);
   });
 
-  it("warns for valid non-GitHub remotes but still allows saving", () => {
+  it("is ok for GitLab (PRs enabled), labelled GitLab, and savable (GL-140)", () => {
     const v = validateRemoteUrl("git@gitlab.com:siomkin/gitlane.git");
+    expect(v).toMatchObject({ level: "ok", ok: true });
+    expect(v.message).toMatch(/GitLab · gitlab\.com — merge requests enabled/);
+  });
+
+  it("warns for a valid non-PR forge (Bitbucket) but still allows saving", () => {
+    const v = validateRemoteUrl("https://alice@bitbucket.org/team/repo.git");
     expect(v).toMatchObject({ level: "warn", ok: true });
     expect(v.message).toMatch(/pull requests unavailable/);
   });
