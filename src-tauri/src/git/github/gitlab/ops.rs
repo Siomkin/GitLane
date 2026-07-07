@@ -22,9 +22,10 @@ const MAX_DIFF_PAGES: usize = 20;
 const COMMIT_PER_PAGE: usize = 100;
 const MAX_COMMIT_PAGES: usize = 20;
 
-/// List merge requests (most recent 50, newest first, all states) for the
-/// project. `state=all` is passed explicitly — it is GitLab's default when
-/// omitted, but stating it keeps parity with `gh pr list --state all` unambiguous.
+/// List merge requests (most recent 50, newest first) for the project.
+/// `state=all` explicitly requests every state (opened/closed/locked/merged),
+/// matching `gh pr list --state all` — so the list is state-complete regardless
+/// of the endpoint's default.
 pub fn list_prs(api: &dyn GitlabApi, project_id: &str) -> Result<Vec<PullRequestSummary>, GithubError> {
     let path =
         format!("projects/{project_id}/merge_requests?state=all&per_page=50&order_by=created_at&sort=desc");

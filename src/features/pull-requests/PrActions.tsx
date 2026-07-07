@@ -6,13 +6,13 @@
 import { useRef, useState } from "react";
 import { openExternalUrl } from "../../lib/openExternal";
 import { cn } from "../../lib/cn";
-import type { MergeMethod } from "../../lib/api";
+import { ForgeKind, type MergeMethod } from "../../lib/api";
 import type { PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { useDismiss } from "../../hooks/useDismiss";
-import { GitHubIcon } from "@/components/ui/icons";
+import { GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useKeyedPrAction, useRunPrAction } from "./usePrAction";
 
@@ -27,27 +27,36 @@ const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] = [
   { key: "rebase", label: "Rebase and merge", sub: "Replay commits onto base" },
 ];
 
-/** The full right-side action cluster for the PR detail header. */
+/** The full right-side action cluster for the PR detail header. GitLab is MR-
+ * aware (GL-145): the external link + icon follow the forge, "Rebase and merge"
+ * is dropped (GitLab has no rebase-merge), and the close/reopen/ready lifecycle
+ * actions are hidden — GL-140 doesn't implement them for GitLab merge requests. */
 export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
   const showToast = useUi((s) => s.showToast);
-  const hasStateActions = pr.state !== "merged";
+  const forge = useRepo((s) => s.forge);
+  const isGitlab = forge?.kind === ForgeKind.GitLab;
+  const forgeName = forge?.forge ?? "the remote";
+  const ForgeIcon = isGitlab ? GitLabIcon : GitHubIcon;
+  const requestNoun = isGitlab ? "MR" : "PR";
+  // Lifecycle (reopen/ready/close) is GitHub-only until GL-140 grows it for GitLab.
+  const hasStateActions = pr.state !== "merged" && !isGitlab;
 
   return (
     <div className="ml-auto flex flex-none items-center gap-2">
       <button
-        title="Open on GitHub"
+        title={`Open on ${forgeName}`}
         onClick={() => {
           if (pr.url) openExternalUrl(pr.url);
-          else showToast("No GitHub URL for this PR", "error");
+          else showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");
         }}
         className={utilBtn}
       >
-        <GitHubIcon className="h-4 w-4" />
+        <ForgeIcon className="h-4 w-4" />
       </button>
       {hasStateActions && <span className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
-      <LifecycleControls pr={pr} />
-      {pr.state === "open" && !pr.draft && <MergeMenu pr={pr} />}
-      <MoreMenu pr={pr} />
+      {!isGitlab && <LifecycleControls pr={pr} />}
+      {pr.state === "open" && !pr.draft && <MergeMenu pr={pr} isGitlab={isGitlab} />}
+      <MoreMenu pr={pr} isGitlab={isGitlab} />
     </div>
   );
 };
@@ -114,9 +123,11 @@ const LifecycleControls = ({ pr }: { pr: PullRequest }) => {
   return null;
 };
 
-/** Merge split-button (label + chevron) with the strategy/delete-branch dropdown. */
-const MergeMenu = ({ pr }: { pr: PullRequest }) => {
+/** Merge split-button (label + chevron) with the strategy/delete-branch dropdown.
+ * GitLab drops "Rebase and merge" — its merge endpoint has no rebase-merge. */
+const MergeMenu = ({ pr, isGitlab }: { pr: PullRequest; isGitlab: boolean }) => {
   const mergePr = usePulls((s) => s.mergePr);
+  const methods = isGitlab ? MERGE_METHODS.filter((m) => m.key !== "rebase") : MERGE_METHODS;
   // "Merging…" shows only while a merge is in flight, but the control disables
   // while ANY PR write runs so the user can't start a concurrent merge.
   const merging = usePulls((s) => s.prPendingActions.includes("merge"));
@@ -198,7 +209,7 @@ const MergeMenu = ({ pr }: { pr: PullRequest }) => {
       {open && (
         <div className="gp-pop absolute right-0 top-[calc(100%+6px)] z-50 w-[260px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_22px_50px_-10px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-800">
           <div className="p-1.5">
-            {MERGE_METHODS.map((m) => (
+            {methods.map((m) => (
               <button
                 key={m.key}
                 onClick={() => doMerge(m.key)}
@@ -239,8 +250,9 @@ const MergeMenu = ({ pr }: { pr: PullRequest }) => {
   );
 };
 
-/** "..." overflow menu for secondary PR actions. */
-const MoreMenu = ({ pr }: { pr: PullRequest }) => {
+/** "..." overflow menu for secondary PR actions. "Checkout branch" is a local
+ * git op (any forge); "Close" is GitHub-only until GL-140 adds it for GitLab. */
+const MoreMenu = ({ pr, isGitlab }: { pr: PullRequest; isGitlab: boolean }) => {
   const setPrState = usePulls((s) => s.setPrState);
   // Close is a PR write (setPrState); gate it on the same flag as the other
   // controls so a concurrent write can't start while one is already in flight.
@@ -308,8 +320,8 @@ const MoreMenu = ({ pr }: { pr: PullRequest }) => {
             )}
             {checkingOut ? "Checking out…" : "Checkout branch"}
           </button>
-          {pr.state === "open" && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
-          {pr.state === "open" && (
+          {pr.state === "open" && !isGitlab && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
+          {pr.state === "open" && !isGitlab && (
             <button
               disabled={busy}
               onClick={() => {

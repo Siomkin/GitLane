@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RemoteInfo } from "../../../../lib/api";
+import { detectRemoteUrl } from "../../../../lib/remotes";
 import { useRepo } from "../../../../store/repo";
 import { useAccounts } from "../../../../store/accounts";
 import { useUi } from "../../../../store/ui";
@@ -124,9 +125,19 @@ export const RemotesPanel = () => {
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0];
   const defaultRemoteAccountId = defaultRemote ? repoRemoteAccountIds[defaultRemote.name] : null;
   const defaultRemoteAccount = accounts.find((a) => a.id === defaultRemoteAccountId) ?? null;
-  // GitHub uses the bound gh account; a GitLab default remote falls back to its
-  // glab / stored-token label (null for both leaves the card in its unbound state).
-  const accountLabel = (defaultRemoteAccount ? `@${defaultRemoteAccount.login}` : null) ?? gitlabAccountLabel;
+  // Pick the label source by the default remote's forge so the two never mix: a
+  // GitLab remote uses its glab / stored-token label (never a stray legacy gh
+  // binding, which would show a github account + a false "enabled"); everything
+  // else uses the bound gh account. Both null leaves the card unbound.
+  const defaultRemoteProvider = defaultRemote
+    ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl).provider
+    : null;
+  const accountLabel =
+    defaultRemoteProvider === "gitlab"
+      ? gitlabAccountLabel
+      : defaultRemoteAccount
+        ? `@${defaultRemoteAccount.login}`
+        : null;
 
   if (!summary) return null;
 

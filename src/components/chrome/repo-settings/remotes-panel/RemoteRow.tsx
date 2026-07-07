@@ -92,8 +92,16 @@ export const RemoteRow = ({
           )}
         >
           {/* The default remote is what the PR tab and provider auth follow —
-              name it, instead of the ambiguous "PRs on". */}
-          {prs ? (remote.isDefault ? "PR remote" : "PRs on") : "No PRs"}
+              name it, instead of the ambiguous "PRs on". GitLab speaks MRs. */}
+          {prs
+            ? isGitlab
+              ? remote.isDefault
+                ? "MR remote"
+                : "MRs on"
+              : remote.isDefault
+                ? "PR remote"
+                : "PRs on"
+            : "No PRs"}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {!editing && (

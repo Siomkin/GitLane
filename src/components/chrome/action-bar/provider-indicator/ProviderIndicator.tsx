@@ -59,11 +59,14 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
     case "error":
       return "GitHub CLI unavailable — pull requests unavailable";
     case "connected":
-      return forge.kind === ForgeKind.GitHub || forge.kind === ForgeKind.GitLab
+      if (forge.kind === ForgeKind.GitLab) return `${slug} · merge requests enabled`;
+      return forge.kind === ForgeKind.GitHub
         ? `${slug} · pull requests enabled`
         : `${slug} · pull requests unavailable`;
     case "needs-auth":
-      return `${slug} · sign in to view pull requests`;
+      return forge.kind === ForgeKind.GitLab
+        ? `${slug} · sign in to view merge requests`
+        : `${slug} · sign in to view pull requests`;
     case "unsupported":
       return `${slug} · pull requests unavailable`;
   }

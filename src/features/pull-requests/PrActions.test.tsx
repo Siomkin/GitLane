@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ForgeKind } from "../../lib/api";
 import type { PrAuthor, PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { useRepo } from "../../store/repo";
@@ -206,5 +207,49 @@ describe("PrHeaderActions merge", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Closing pull request…" })).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe("PrHeaderActions — GitLab (GL-145)", () => {
+  beforeEach(() => {
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitLab,
+        forge: "GitLab",
+        host: "gitlab.com",
+        webUrl: "https://gitlab.com/x/y",
+      },
+    });
+  });
+
+  it("labels the external link 'Open on GitLab'", () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.getByTitle("Open on GitLab")).toBeInTheDocument();
+  });
+
+  it("drops 'Rebase and merge' from the merge menu — GitLab has no rebase-merge", async () => {
+    usePulls.setState({ mergePr: vi.fn() });
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+    expect(screen.getByText("Create a merge commit")).toBeInTheDocument();
+    expect(screen.queryByText("Rebase and merge")).toBeNull();
+  });
+
+  it("hides the reopen/ready/close lifecycle actions (unsupported for GitLab MRs)", async () => {
+    const closed = render(<PrHeaderActions pr={openPr({ state: "closed" })} />);
+    expect(screen.queryByText("Reopen")).toBeNull();
+    closed.unmount();
+
+    const draft = render(<PrHeaderActions pr={openPr({ draft: true })} />);
+    expect(screen.queryByText("Ready")).toBeNull();
+    draft.unmount();
+
+    // The overflow menu keeps the local "Checkout branch" op but drops "Close".
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+    expect(screen.queryByText("Close pull request")).toBeNull();
   });
 });
