@@ -20,19 +20,22 @@ work for every provider** through one of three auth paths:
 | Provider | Classified by | Transport auth | PR/API | In-app sign-in | Sign-out |
 | --- | --- | --- | --- | --- | --- |
 | GitHub | `github.com` / `*.github.com` (exact) | gh | ✅ | `gh auth login --web` | `gh auth logout` |
-| GitLab | host contains `gitlab` | keychain **or** helper (glab optional) | ❌ (MR API pending) | keychain PAT; or `glab auth login` | keychain token; or `glab auth logout` |
-| Bitbucket | `bitbucket.org` / contains `bitbucket` | keychain **or** helper | ❌ | keychain PAT; or saved credential | keychain token; or forget credential |
+| GitLab | host contains `gitlab` | keychain **or** helper (glab optional) | ❌ (MR API pending) | **OAuth device flow** (GL-139); keychain PAT; or `glab auth login` | keychain token; or `glab auth logout` |
+| Bitbucket | `bitbucket.org` / contains `bitbucket` | keychain **or** helper | ❌ | **OAuth PKCE loopback** (GL-139); keychain PAT; or saved credential | keychain token; or forget credential |
 | Azure Repos | `dev.azure.com` / `ssh.dev.azure.com` / `*.visualstudio.com` | keychain **or** helper/GCM | ❌ | keychain PAT; or GCM; org-scoped | keychain token; or `az logout` |
 | Gitea | host contains `gitea` | keychain **or** helper | ❌ | keychain PAT; or saved credential | keychain token; or forget credential |
 | Forgejo | `codeberg.org` / contains `forgejo` | keychain **or** helper | ❌ | keychain PAT; or saved credential | keychain token; or forget credential |
 | Unknown HTTPS | none (`other`) | helper only | ❌ | saved credential (username + token) | forget credential |
 | SSH (any) | scheme | SSH key (no HTTPS binding) | n/a | SSH key | remove key |
 
-Native OAuth device flows for GitLab/Bitbucket are **not** implemented: they
-require a registered OAuth application (client id) per provider/host, which is a
-product/infra decision. The in-app **PAT-into-keychain** path is the supported
-first-class sign-in until then; Azure's "OAuth" is delegated to GCM where
-present. Native OAuth is tracked as **GL-139** (child of GL-131); see also
+Native OAuth sign-in for GitLab (device flow) and Bitbucket (PKCE loopback) is
+implemented (**GL-139**): sign-in stores an access token in the same keychain and
+authenticates git the same way. It needs a **registered OAuth app (public client
+id) per provider/host** — see `docs/provider-oauth-setup.md` for registration,
+scopes, and how the client id is configured (compile-time default + per-host
+override). When no client id is configured for a host the OAuth button is hidden
+and the **PAT-into-keychain** path is the first-class fallback. Azure's "OAuth" is
+still delegated to GCM where present. See also
 `docs/github-provider-auth-roadmap.md`.
 
 ## Operation matrix (per HTTPS remote)
@@ -78,7 +81,55 @@ so verifying one auth path per provider exercises the rest.
 - **Host mismatch** — an account bound to host A against a remote on host B fails
   *before* the network op, with a redacted, actionable message.
 
+## Native OAuth sign-in (GL-139)
+
+Verify with a registered OAuth app (see `docs/provider-oauth-setup.md`); the
+polling/PKCE state machines and identity parsing are also covered by unit tests
+against a mock HTTP transport, so most of this is checkable without a real app.
+
+- **GitLab device flow** — Settings → Accounts → GitLab → Sign in with OAuth
+  shows a user code, opens the verification page, ticks the checklist, and lands
+  signed in; a subsequent fetch/push on that remote authenticates via the keychain
+  bridge (`oauth2` username).
+- **Bitbucket PKCE loopback** — the authorize page opens, approval redirects back
+  to the loopback, and sign-in completes (`x-token-auth` username).
+- **Transport activation** — after OAuth sign-in from Settings → Accounts, a
+  fetch/push (or clone) on any remote for that host authenticates via the keychain
+  token with no per-remote binding: transport resolves `providerToken` by host
+  (`transportAuthForRemote` / the clone flow look the token up by credentialHost).
+  The keychain account also shows in Settings → Accounts with its own sign-out.
+- **Unconfigured host** — with no client id set, the OAuth button is hidden and the
+  PAT form is offered; setting a per-host client id in Settings enables it.
+- **Cancellation** — Cancel (or closing the dialog) stops polling / drops the
+  loopback listener and discards the codes; no account is added.
+- **Secrets** — the access token, device code, PKCE verifier, and authorization
+  code never appear in logs, errors, the frontend, or the returned metadata.
+- **Sign-out** — provider sign-out deletes the keychain token by the resolved
+  provider account id (not the sentinel username).
+
 ## Known limitations
+
+- **OAuth access-token lifetime.** GitLab/Bitbucket OAuth access tokens are
+  short-lived; on expiry git auth fails and the user re-runs OAuth sign-in (or uses
+  a PAT). Refresh-token rotation is future work (GL-139 follow-up).
+- **One OAuth account per host at a time.** OAuth accounts on a host share the
+  sentinel git username (`oauth2` / `x-token-auth`), so GitLane keeps **one** OAuth
+  account per host: re-signing in on the same host as a different account replaces
+  the previous one (its keychain token is deleted first — no orphan). Multiple
+  hosts and PAT accounts are unaffected. Simultaneous OAuth accounts on the same
+  host are not supported.
+- **Self-managed OAuth on a non-standard port.** The keychain token is keyed by
+  the OAuth host you configure; transport looks it up by the remote's exact
+  credential authority (with port). If those differ (e.g. you configure
+  `gitlab.example.com` but the remote is `gitlab.example.com:8443`), sign-in can
+  succeed while fetch/push don't find the token — configure the OAuth host exactly
+  as it appears in your remote URLs. Port-canonicalization is a GL-139 follow-up;
+  `gitlab.com` / `bitbucket.org` are unaffected.
+- **glab authenticates as its own account.** glab is single-account and
+  host-scoped, so for a GitLab remote whose URL embeds a *different* username and
+  has no matching keychain token, transport authenticates as the glab account, not
+  the URL username. Store a keychain token (or use a bare URL) to pin a specific
+  identity.
 
 - **HTTPS only for the keychain path.** The `providerToken` bridge is scoped to
   `https://` remotes. Plain `http://` remotes fall through to the user's Git
@@ -131,3 +182,9 @@ Commands: `bunx tsc --noEmit`, `bun run lint`, `bun run test`,
   scp-style SSH left intact).
 - **Secret handling** — `secrets.rs` (keychain round-trip, isolation, control-char
   rejection); provider-token IPC shapes carry no token.
+- **Native OAuth (GL-139)** — `git/oauth/` (device polling state machine incl.
+  slow_down / expiry / denied / cancel against a mock transport; PKCE RFC 7636
+  challenge + state-mismatch + redirect parse; GitLab/Bitbucket identity parsing;
+  endpoint/host validation; client-id shape) and, on the TS side,
+  `overlays/provider-oauth/*.test.tsx` (device + PKCE dialog runs) and the
+  `providerToken.test.ts` OAuth binding/sign-out case.

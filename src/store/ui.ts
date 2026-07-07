@@ -8,6 +8,7 @@ import { persist } from "zustand/middleware";
 
 import { usePulls } from "./pulls";
 import { friendlyGitError } from "../lib/gitError";
+import type { ForgeAuthProvider } from "../lib/api";
 import type { PrFilter } from "../lib/prs";
 import type { AccentColor } from "../lib/accent";
 import type { BranchDragRef, GraphDropTarget } from "../lib/graphActions";
@@ -182,6 +183,18 @@ export interface HandoffRequest {
 export interface GithubSigninRequest {
   /** Host to sign in to, e.g. "github.com" or a GHES hostname. */
   host: string;
+}
+
+/** A pending native provider OAuth sign-in modal (GL-139). Only the provider +
+ * host (and an optional remote to bind on success) cross the store; the dialog
+ * owns the device code / authorize URL and run/progress state. */
+export interface ProviderOauthSigninRequest {
+  provider: ForgeAuthProvider;
+  /** Credential host to sign in to, e.g. "gitlab.com" or "bitbucket.org". */
+  host: string;
+  /** When set, the remote whose URL username is pinned to the OAuth transport
+   * username on success (so it immediately authenticates via `providerToken`). */
+  remote?: string;
 }
 
 /** A pending combined delete of a branch and its linked worktree (GL-107),
@@ -372,6 +385,8 @@ interface UiState {
   /** Pending in-app GitHub sign-in modal (GL-106), null = none open. Carries the
    * initial host; the dialog owns host choice and run/progress state. */
   githubSignin: GithubSigninRequest | null;
+  /** Pending native provider OAuth sign-in modal (GL-139), null = none open. */
+  providerOauthSignin: ProviderOauthSigninRequest | null;
   /** Pending worktree branch hand-off modal (null = none open). */
   handoff: HandoffRequest | null;
   /** True while a hand-off move is in flight. The success path routes through
@@ -510,6 +525,10 @@ interface UiState {
   openGithubSignin: (host: string) => void;
   closeGithubSignin: () => void;
 
+  /** Open the native provider OAuth sign-in modal (GL-139). */
+  openProviderOauthSignin: (req: ProviderOauthSigninRequest) => void;
+  closeProviderOauthSignin: () => void;
+
   /** Open the worktree hand-off modal. */
   openHandoff: (req: HandoffRequest) => void;
   closeHandoff: () => void;
@@ -612,6 +631,7 @@ export const useUi = create<UiState>()(
   confirm: null,
   prompt: null,
   githubSignin: null,
+  providerOauthSignin: null,
   handoff: null,
   handoffRunning: false,
   deleteWorktree: null,
@@ -792,6 +812,10 @@ export const useUi = create<UiState>()(
 
   openGithubSignin: (host) => set({ ...noMenus, githubSignin: { host } }),
   closeGithubSignin: () => set((s) => (s.githubSignin === null ? s : { githubSignin: null })),
+
+  openProviderOauthSignin: (req) => set({ ...noMenus, providerOauthSignin: req }),
+  closeProviderOauthSignin: () =>
+    set((s) => (s.providerOauthSignin === null ? s : { providerOauthSignin: null })),
 
   openHandoff: (req) => set({ ...noMenus, handoff: req }),
   // Deliberately does NOT clear `handoffRunning`: a dismissed dialog leaves the

@@ -6,7 +6,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
-import { useAccounts } from "./accounts";
+import { pickProviderTokenForHost, useAccounts } from "./accounts";
 import type { RemoteInfo } from "../lib/api";
 
 const gitlabRemote: RemoteInfo = {
@@ -135,6 +135,183 @@ describe("provider-token transport auth (GL-132)", () => {
     expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
   });
 
+  it("activates a stored keychain token by host on a bare remote URL — no binding needed (GL-139)", () => {
+    // The OAuth activation path the review flagged: token stored, remote URL has
+    // NO username, yet transport must still find and use the keychain token.
+    const bare: RemoteInfo = {
+      name: "origin",
+      fetchUrl: "https://gitlab.com/group/repo.git",
+      pushUrl: "https://gitlab.com/group/repo.git",
+      isDefault: true,
+    };
+    useRepo.setState({ remotes: [bare] });
+    useAccounts.setState({
+      providerTokens: {
+        "gitlab-oauth": {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          accountId: "42",
+          login: "ada",
+          transportUsername: "oauth2",
+          savedAt: 0,
+        },
+      },
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      provider: "gitlab",
+      credentialHost: "gitlab.com",
+      // git is answered as the sentinel, not the human handle.
+      username: "oauth2",
+      providerAccountId: "42",
+    });
+  });
+
+  it("prefers the OAuth token over a PAT when both exist for a host (deterministic)", () => {
+    const bare: RemoteInfo = {
+      name: "origin",
+      fetchUrl: "https://gitlab.com/g/r.git",
+      pushUrl: "https://gitlab.com/g/r.git",
+      isDefault: true,
+    };
+    useRepo.setState({ remotes: [bare] });
+    useAccounts.setState({
+      providerTokens: {
+        // A PAT saved more recently than the OAuth token — OAuth must still win.
+        pat: { provider: "gitlab", credentialHost: "gitlab.com", accountId: "alice", login: "alice", savedAt: 2 },
+        oauth: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          accountId: "42",
+          login: "ada",
+          transportUsername: "oauth2",
+          savedAt: 1,
+        },
+      },
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      username: "oauth2",
+      providerAccountId: "42",
+    });
+  });
+
+  it("re-signing OAuth as a different account on the same host deletes the orphan first (GL-139)", async () => {
+    const results = [
+      { provider: "gitlab", host: "gitlab.com", accountId: "1", login: "ada", transportUsername: "oauth2", hasToken: true },
+      { provider: "gitlab", host: "gitlab.com", accountId: "2", login: "bob", transportUsername: "oauth2", hasToken: true },
+    ];
+    let call = 0;
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "provider_oauth_sign_in" ? results[call++] : undefined),
+    );
+
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
+
+    // Account A's keychain token is deleted before B overwrites the sentinel-keyed
+    // metadata — otherwise A's token is orphaned (no card, reconcile can't find it).
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "1",
+    });
+    const tokens = Object.values(useAccounts.getState().providerTokens);
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]).toMatchObject({ accountId: "2", login: "bob" });
+  });
+
+  it("rolls back the replacement when the old token's delete fails — no orphan (GL-139)", async () => {
+    const A = { provider: "gitlab", host: "gitlab.com", accountId: "1", login: "ada", transportUsername: "oauth2", hasToken: true };
+    const B = { provider: "gitlab", host: "gitlab.com", accountId: "2", login: "bob", transportUsername: "oauth2", hasToken: true };
+    let signIn = 0;
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (cmd === "provider_oauth_sign_in") return Promise.resolve([A, B][signIn++]);
+      // Deleting account A's token fails; the rollback delete of B succeeds.
+      if (cmd === "delete_provider_token")
+        return (args as { accountId: string }).accountId === "1"
+          ? Promise.reject(new Error("keychain locked"))
+          : Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
+    await expect(useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com")).rejects.toThrow(
+      /previous token/,
+    );
+
+    // A stays signed in (metadata + token intact); B's just-written token is
+    // rolled back — so there is no orphan and no phantom B card.
+    const tokens = Object.values(useAccounts.getState().providerTokens);
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]).toMatchObject({ accountId: "1", login: "ada" });
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "2",
+    });
+  });
+
+  it("signInProviderOauth binds the remote to the OAuth sentinel, not the handle (GL-139)", async () => {
+    // An OAuth token authenticates git as `oauth2` (GitLab), not the human handle.
+    const oauthResult = {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "42",
+      login: "ada",
+      transportUsername: "oauth2",
+      hasToken: true,
+    };
+    // After binding, the remote's URL username becomes the sentinel.
+    const rebound: RemoteInfo = {
+      name: "origin",
+      fetchUrl: "https://oauth2@gitlab.com/group/repo.git",
+      pushUrl: "https://oauth2@gitlab.com/group/repo.git",
+      isDefault: true,
+    };
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false },
+      remotes: [gitlabRemote],
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "provider_oauth_sign_in" ? oauthResult : cmd === "list_remotes" ? [rebound] : undefined,
+      ),
+    );
+
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
+
+    // The sentinel is pinned into the URL — the git-native selector — not @ada.
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path: "/repo",
+      name: "origin",
+      username: "oauth2",
+    });
+    // Recorded under the sentinel, with the provider account id as the keychain
+    // locator and the human handle kept for display.
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    const auth = useAccounts.getState().transportAuthForRemote("origin");
+    expect(auth).toMatchObject({
+      mode: "providerToken",
+      provider: "gitlab",
+      username: "oauth2",
+      providerAccountId: "42",
+    });
+
+    // Sign-out by the sentinel deletes the keychain entry by its provider id.
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValue(undefined);
+    await useAccounts.getState().signOutProviderToken("gitlab", "gitlab.com", "oauth2");
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "42",
+    });
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(false);
+  });
+
   it("selects providerToken for a self-hosted Gitea remote (GL-137)", async () => {
     const gitea: RemoteInfo = {
       name: "origin",
@@ -225,5 +402,34 @@ describe("provider-token transport auth (GL-132)", () => {
     );
     // The GitLane-owned keychain token is untouched.
     expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+  });
+});
+
+describe("pickProviderTokenForHost", () => {
+  const tok = (over: Partial<Record<string, unknown>>) => ({
+    provider: "gitlab",
+    credentialHost: "gitlab.com",
+    accountId: "x",
+    login: "x",
+    savedAt: 0,
+    ...over,
+  });
+
+  it("prefers an OAuth token over a more recent PAT, matching host case-insensitively", () => {
+    const tokens = {
+      pat: tok({ accountId: "pat", login: "pat", credentialHost: "GitLab.com", savedAt: 9 }),
+      oauth: tok({ accountId: "oauth", login: "ada", transportUsername: "oauth2", savedAt: 1 }),
+      elsewhere: tok({ accountId: "bb", credentialHost: "bitbucket.org", savedAt: 100 }),
+    } as never;
+    expect(pickProviderTokenForHost(tokens, "gitlab.com")?.accountId).toBe("oauth");
+    expect(pickProviderTokenForHost(tokens, "nope.example")).toBeUndefined();
+  });
+
+  it("prefers the most recent among PATs when no OAuth token exists", () => {
+    const tokens = {
+      older: tok({ accountId: "older", savedAt: 1 }),
+      newer: tok({ accountId: "newer", savedAt: 2 }),
+    } as never;
+    expect(pickProviderTokenForHost(tokens, "gitlab.com")?.accountId).toBe("newer");
   });
 });

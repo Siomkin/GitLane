@@ -109,55 +109,11 @@ describe("ManualIdentitiesSection", () => {
     expect(screen.getByLabelText("EMAIL")).toHaveValue("ext@elsewhere.dev");
   });
 
-  it("does not render the account prefill label when no account has an email", () => {
+  it("does not couple accounts into the identity section (no account prefill row)", () => {
+    // Identities author, accounts authenticate — the section no longer offers
+    // account-derived prefills.
     useAccounts.setState({
       accounts: [
-        {
-          id: "gh:github.com:1",
-          forge: "GitHub",
-          provider: "gh",
-          host: "github.com",
-          accountId: "1",
-          login: "octocat",
-          label: "octocat",
-          username: "octocat",
-          name: "Octo Cat",
-          email: "",
-          color: "#5b8def",
-          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
-          active: true,
-          healthy: true,
-          healthError: "",
-        },
-      ],
-    });
-
-    render(<ManualIdentitiesSection />);
-
-    expect(screen.queryByText("Prefill from account:")).toBeNull();
-    expect(screen.queryByText("From @octocat")).toBeNull();
-  });
-
-  it("renders account prefill chips only for accounts with email", () => {
-    useAccounts.setState({
-      accounts: [
-        {
-          id: "gh:github.com:1",
-          forge: "GitHub",
-          provider: "gh",
-          host: "github.com",
-          accountId: "1",
-          login: "octocat",
-          label: "octocat",
-          username: "octocat",
-          name: "Octo Cat",
-          email: "",
-          color: "#5b8def",
-          ref: { provider: "gh", host: "github.com", accountId: "1", login: "octocat" },
-          active: true,
-          healthy: true,
-          healthError: "",
-        },
         {
           id: "gh:github.com:2",
           forge: "GitHub",
@@ -180,9 +136,8 @@ describe("ManualIdentitiesSection", () => {
 
     render(<ManualIdentitiesSection />);
 
-    expect(screen.getByText("Prefill from account:")).toBeInTheDocument();
-    expect(screen.queryByText("From @octocat")).toBeNull();
-    expect(screen.getByText("From @hubot")).toBeInTheDocument();
+    expect(screen.queryByText("Prefill from account:")).toBeNull();
+    expect(screen.queryByText("From @hubot")).toBeNull();
   });
 
   it("applies an adopted profile to the open repo on save", () => {

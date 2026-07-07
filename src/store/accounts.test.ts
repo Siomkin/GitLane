@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import type { RepoSummary } from "../lib/api";
+import type { ForgeAuthStatus, RepoSummary } from "../lib/api";
 import { useRepo } from "./repo";
 import { useAccounts, type Account } from "./accounts";
 import { useUi } from "./ui";
@@ -650,6 +650,61 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
       credentialHost: "www.github.com",
       username: "octocat",
       accountRef: account.ref,
+    });
+  });
+
+  it("transportAuthForRemote wires glab for a signed-in GitLab remote, even with no URL username", () => {
+    const glabStatus: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "x",
+      notes: "y",
+      account: { username: "siomkin" },
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [glabStatus] });
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("lab", "https://gitlab.com/siomkin/gitlanelab.git")],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
+      mode: "gitlabGlab",
+      provider: "gitlab",
+      host: "gitlab.com",
+      credentialHost: "gitlab.com",
+      username: null,
+    });
+  });
+
+  it("transportAuthForRemote falls back to the credential helper when glab isn't signed in", () => {
+    const glabStatus: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "GitLab CLI",
+      available: true,
+      authenticated: false,
+      loginCommand: "glab auth login",
+      docsUrl: "x",
+      notes: "y",
+    };
+    useAccounts.setState({ accounts: [], forgeAuth: [glabStatus] });
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("lab", "https://siomkin@gitlab.com/siomkin/gitlanelab.git")],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
+      mode: "credentialHelper",
+      provider: "gitlab",
+      host: "gitlab.com",
+      credentialHost: "gitlab.com",
+      username: "siomkin",
     });
   });
 

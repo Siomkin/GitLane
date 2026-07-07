@@ -26,6 +26,11 @@ struct ProviderSpec {
     auth_method: &'static str,
     login_command: &'static str,
     logout_args: Option<&'static [&'static str]>,
+    /// When true, `logout_args` alone is insufficient: the CLI's `logout` refuses
+    /// to run without an explicit `--hostname` and cannot prompt in our
+    /// non-interactive spawn (glab). Sign-out then resolves the signed-in host(s)
+    /// from `status_args` and appends `--hostname <host>` per host.
+    logout_needs_hostname: bool,
     docs_url: &'static str,
     notes: &'static str,
     /// When true, a zero-exit probe with empty stdout+stderr is treated as
@@ -45,6 +50,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         auth_method: "GitLab CLI",
         login_command: "glab auth login",
         logout_args: Some(&["auth", "logout"]),
+        logout_needs_hostname: true,
         docs_url: "https://gitlab.com/gitlab-org/cli",
         notes: "Auth status only. Pull-request features are not implemented for GitLab.",
         require_output: false,
@@ -57,6 +63,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         auth_method: "API token or git credential helper",
         login_command: "Create a Bitbucket API token and let git store it through your credential helper.",
         logout_args: None,
+        logout_needs_hostname: false,
         // Atlassian deprecated Bitbucket app passwords; the app-passwords doc now
         // redirects here, and API tokens are the supported replacement.
         docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
@@ -71,6 +78,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         auth_method: "Azure CLI",
         login_command: "az login && az devops login",
         logout_args: Some(&["logout"]),
+        logout_needs_hostname: false,
         // The connect path's first step is installing `az`, so point at the
         // Azure CLI install guide rather than the Azure DevOps CLI extension docs.
         // Locale-less URL — Learn redirects to the visitor's locale.
@@ -86,6 +94,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         auth_method: "tea CLI",
         login_command: "tea login add",
         logout_args: None,
+        logout_needs_hostname: false,
         docs_url: "https://gitea.com/gitea/tea",
         notes: "Uses tea login metadata only. Gitea PR features are not implemented.",
         require_output: true,
@@ -98,6 +107,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         auth_method: "tea CLI",
         login_command: "tea login add",
         logout_args: None,
+        logout_needs_hostname: false,
         docs_url: "https://forgejo.org/docs/latest/user/cli/",
         notes: "Forgejo is Gitea-compatible for tea login metadata. PR features are not implemented.",
         require_output: true,
@@ -172,6 +182,13 @@ pub fn sign_out(provider: &str) -> Result<String, String> {
     let args = spec
         .logout_args
         .ok_or_else(|| format!("{} sign-out is not available from GitLane yet.", spec.forge))?;
+
+    // glab's `auth logout` rejects an invocation without `--hostname` and cannot
+    // prompt for one in a non-interactive spawn, so log out of each signed-in host.
+    if spec.logout_needs_hostname {
+        return sign_out_per_host(spec, cli, args);
+    }
+
     let out = run_bounded_with_stderr(cli, args)
         .ok_or_else(|| format!("Failed to launch {cli} sign-out."))?;
     if out.status.success() {
@@ -189,6 +206,96 @@ pub fn sign_out(provider: &str) -> Result<String, String> {
             stderr
         })
     }
+}
+
+/// Sign out of a CLI whose `logout` needs an explicit `--hostname` (glab):
+/// resolve the signed-in host(s) from the status probe and run `logout
+/// --hostname <host>` for each. Reports honestly: full success only when every
+/// host cleared, a partial error naming the hosts that remain otherwise, so a
+/// half-failed logout never reads as done.
+fn sign_out_per_host(spec: &ProviderSpec, cli: &str, base_args: &[&str]) -> Result<String, String> {
+    let hosts = logged_in_hosts(cli, spec.status_args);
+    if hosts.is_empty() {
+        return Err(format!(
+            "Could not determine which {} host to sign out of.",
+            spec.forge
+        ));
+    }
+    let mut ok_hosts: Vec<&String> = Vec::new();
+    let mut failed_hosts: Vec<&String> = Vec::new();
+    let mut last_err: Option<String> = None;
+    for host in &hosts {
+        let mut args: Vec<&str> = base_args.to_vec();
+        args.push("--hostname");
+        args.push(host);
+        match run_bounded_with_stderr(cli, &args) {
+            Some(out) if out.status.success() => ok_hosts.push(host),
+            Some(out) => {
+                failed_hosts.push(host);
+                let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                if !stderr.is_empty() {
+                    last_err = Some(stderr);
+                }
+            }
+            None => {
+                failed_hosts.push(host);
+                last_err = Some(format!("Failed to launch {cli} sign-out."));
+            }
+        }
+    }
+    match (ok_hosts.is_empty(), failed_hosts.is_empty()) {
+        (false, true) => Ok(format!("Signed out of {}", spec.forge)),
+        (true, _) => Err(last_err.unwrap_or_else(|| format!("{} sign-out failed.", spec.forge))),
+        // Partial: some hosts cleared, some remain — say so instead of claiming success.
+        (false, false) => Err(format!(
+            "Signed out of {}, but {} still signed in{}.",
+            join_hosts(&ok_hosts),
+            join_hosts(&failed_hosts),
+            last_err.map(|e| format!(" ({e})")).unwrap_or_default(),
+        )),
+    }
+}
+
+fn join_hosts(hosts: &[&String]) -> String {
+    hosts.iter().map(|h| h.as_str()).collect::<Vec<_>>().join(", ")
+}
+
+/// The hosts a CLI reports as signed in, parsed from its `status` output. glab
+/// prints `auth status` to stderr with each host un-indented and that host's
+/// details indented beneath, so a host line is a bare authority with no leading
+/// whitespace.
+fn logged_in_hosts(cli: &str, status_args: &[&str]) -> Vec<String> {
+    let Some(out) = run_bounded_with_stderr(cli, status_args) else {
+        return Vec::new();
+    };
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    text.push('\n');
+    text.push_str(&String::from_utf8_lossy(&out.stderr));
+    parse_status_hosts(&text)
+}
+
+fn parse_status_hosts(text: &str) -> Vec<String> {
+    let mut hosts: Vec<String> = Vec::new();
+    for line in text.lines() {
+        // Detail lines are indented; only the bare host lines start at column 0.
+        if line.is_empty() || line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let host = line.trim();
+        if looks_like_host(host) && !hosts.iter().any(|h| h == host) {
+            hosts.push(host.to_string());
+        }
+    }
+    hosts
+}
+
+/// A conservative authority shape (`host` or `host:port`) — enough to reject the
+/// glyph/prose lines in status output while accepting real GitLab hostnames.
+fn looks_like_host(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 253
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'))
 }
 
 // NOTE: the set of providers handled here must stay in sync with `FORGE_WHOAMI`
@@ -374,6 +481,43 @@ mod tests {
         assert!(statuses.iter().any(|s| s.provider == "gitlab"));
         assert!(statuses.iter().all(|s| !s.login_command.is_empty()));
         assert!(statuses.iter().all(|s| !s.docs_url.is_empty()));
+    }
+
+    #[test]
+    fn gitlab_is_the_only_hostname_scoped_logout() {
+        for spec in PROVIDERS {
+            assert_eq!(
+                spec.logout_needs_hostname,
+                spec.provider == "gitlab",
+                "{} hostname-scoped logout flag",
+                spec.provider
+            );
+        }
+    }
+
+    #[test]
+    fn parses_signed_in_hosts_from_glab_status() {
+        // Real `glab auth status` shape: host un-indented, details indented.
+        let out = "gitlab.com\n  ✓ Logged in to gitlab.com as siomkin (…)\n  ✓ Token found: ***\ngitlab.example.com:8443\n  ✓ Logged in as ada\n";
+        assert_eq!(
+            parse_status_hosts(out),
+            vec!["gitlab.com".to_string(), "gitlab.example.com:8443".to_string()]
+        );
+    }
+
+    #[test]
+    fn status_host_parsing_ignores_detail_and_prose_lines() {
+        // Blank lines, indented detail, and glyph/prose lines are not hosts.
+        assert!(parse_status_hosts("\n  ✓ Logged in\n  Not logged in\n").is_empty());
+        // De-dupes a host repeated across the listing.
+        assert_eq!(
+            parse_status_hosts("gitlab.com\n  ✓ x\ngitlab.com\n  ✓ y\n"),
+            vec!["gitlab.com".to_string()]
+        );
+        assert!(looks_like_host("gitlab.com"));
+        assert!(looks_like_host("gitlab.example.com:8443"));
+        assert!(!looks_like_host("✓ Logged in to gitlab.com"));
+        assert!(!looks_like_host(""));
     }
 
     #[test]

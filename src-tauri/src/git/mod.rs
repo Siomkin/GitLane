@@ -8,6 +8,7 @@
 //! - [`forge`]  — remote URL forge detection for provider routing/errors.
 //! - [`github`] — GitHub accounts + pull requests, shelled out to the `gh` CLI.
 //! - [`handoff`] — shared marker for the worktree branch-handoff carry flow.
+//! - [`oauth`]  — native provider OAuth sign-in (GitLab device / Bitbucket PKCE).
 //! - [`types`]  — serializable types shared with the frontend.
 
 pub mod conflicts;
@@ -17,6 +18,7 @@ pub mod forge;
 pub mod github;
 pub mod graph;
 pub mod handoff;
+pub mod oauth;
 pub mod provider_tokens;
 pub mod read;
 pub mod status;

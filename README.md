@@ -153,7 +153,10 @@ Package-manager channels (Flathub, AUR) are tracked in
   **2.95.0 or newer**, logged in (`gh auth login`).
 - Other forges (GitLab, Bitbucket, Azure DevOps, Gitea, Forgejo): core git
   features work; PR browsing is GitHub-only for now, with clear guidance
-  instead of silent failures.
+  instead of silent failures. GitLab and Bitbucket also support in-app **OAuth
+  sign-in** (GitLab device flow / Bitbucket PKCE) once a public OAuth client id
+  is configured — see [`docs/provider-oauth-setup.md`](docs/provider-oauth-setup.md);
+  a personal access token works with no setup either way.
 
 ## Develop
 

@@ -63,7 +63,7 @@ export function isSafeLeafName(name: string): boolean {
   );
 }
 
-export type CloneErrorKind = "exists" | "auth" | "unreachable" | "canceled" | "failed";
+export type CloneErrorKind = "exists" | "auth" | "denied" | "unreachable" | "canceled" | "failed";
 
 /** Actionable copy for a clone failure — title, explanation, the raw git line to
  * show in the terminal block, whether it's a hard failure (red) vs. a benign
@@ -126,6 +126,25 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
       cmd,
       fail: true,
       retryLabel: "Retry",
+    };
+  }
+  // A 403 is reached-but-refused, not unreachable: the credential was accepted
+  // but lacks permission (token scope / repo or workspace access / wrong username
+  // convention for the token type). Must be checked before "unable to access",
+  // which git prefixes onto the same line.
+  if (lower.includes("error: 403") || lower.includes("403 forbidden")) {
+    const bitbucket = lower.includes("bitbucket");
+    return {
+      kind: "denied",
+      title: "Access denied (403)",
+      message:
+        "The host accepted the connection but refused access. The token or password is valid but lacks permission for this repository — check its repository scope and that this account can access the repo." +
+        (bitbucket
+          ? " Bitbucket app passwords are deprecated: create a Repository or Workspace Access Token with Repositories: Read, and use x-token-auth as the username."
+          : ""),
+      cmd,
+      fail: true,
+      retryLabel: "Edit URL",
     };
   }
   if (

@@ -71,51 +71,76 @@ beforeEach(() => {
     forgeAuth: [gitlabMissing],
     forgeAuthError: null,
     forgeAccountsLoading: [],
+    providerTokens: {},
   });
   useUi.setState({ githubSignin: null, confirm: null });
 });
 
-// Provider-first navigation: a persistent provider list, one page per provider.
-describe("AccountsPanel (provider pages)", () => {
-  it("lists every provider with a status line, GitHub selected by default", () => {
+// No rail: connected accounts + a single "Add a provider" button → picker → connect page.
+describe("AccountsPanel", () => {
+  it("lists connected accounts and offers Add a provider", () => {
     render(<AccountsPanel />);
-    const nav = screen.getByRole("navigation", { name: "Providers" });
-    expect(nav).toBeInTheDocument();
-    // Status lines: GitHub connected count; GitLab CLI probe result.
-    expect(screen.getByText("1 account connected")).toBeInTheDocument();
-    expect(screen.getByText("glab CLI not installed")).toBeInTheDocument();
-    // The GitHub page shows the connected account card.
     expect(screen.getByText("@octocat")).toBeInTheDocument();
-  });
-
-  it("adding a GitHub account opens the device sign-in dialog", () => {
-    render(<AccountsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "Add another account" }));
-    expect(useUi.getState().githubSignin).toEqual({ host: "github.com" });
-  });
-
-  it("selecting a non-GitHub provider shows its connect page", () => {
-    render(<AccountsPanel />);
-    fireEvent.click(screen.getByRole("button", { name: /GitLab CLI not installed|GitLab/ }));
-    expect(screen.getByText("Connect GitLab")).toBeInTheDocument();
-  });
-
-  it("shows sign out for an authenticated GitLab provider", () => {
-    useAccounts.setState({ forgeAuth: [gitlabSignedIn] });
-    render(<AccountsPanel />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Signed in via glab|GitLab/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-
-    expect(useUi.getState().confirm?.title).toBe("Sign out of GitLab?");
+    expect(screen.getByRole("button", { name: "Add a provider" })).toBeInTheDocument();
   });
 
   it("frames accounts as auth-only (identity lives in Identities)", () => {
     render(<AccountsPanel />);
-    expect(screen.getByText(/Who your commits are authored as\s+is separate/)).toBeInTheDocument();
+    expect(screen.getByText(/Who your commits are authored as is separate/)).toBeInTheDocument();
   });
 
-  it("marks a manual Bitbucket credential as saved after git credential approve succeeds", async () => {
+  it("Add a provider → GitHub opens the device sign-in dialog", () => {
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
+    fireEvent.click(screen.getByRole("button", { name: /GitHub/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(useUi.getState().githubSignin).toEqual({ host: "github.com" });
+  });
+
+  it("Add a provider → GitLab shows its connect page", () => {
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
+    fireEvent.click(screen.getByRole("button", { name: /GitLab/ }));
+    expect(screen.getByText("Connect GitLab")).toBeInTheDocument();
+  });
+
+  it("shows a keychain-token (OAuth/PAT) account with sign out", () => {
+    // Backend reports the token still present so reconcile doesn't prune it.
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "provider_token_status" ? { hasToken: true } : []),
+    );
+    useAccounts.setState({
+      accounts: [],
+      forgeAuth: [],
+      providerTokens: {
+        "gitlab.com:oauth2": {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          accountId: "42",
+          login: "ada",
+          transportUsername: "oauth2",
+          savedAt: 0,
+        },
+      },
+    });
+    render(<AccountsPanel />);
+
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+    expect(screen.getByText("Keychain token")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(useUi.getState().confirm?.title).toBe("Sign out of GitLab?");
+  });
+
+  it("shows a connected forge card with sign out for an authenticated GitLab", () => {
+    // Isolate the forge card: no GitHub account (whose card also has a Sign out).
+    useAccounts.setState({ accounts: [], forgeAuth: [gitlabSignedIn] });
+    render(<AccountsPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    expect(useUi.getState().confirm?.title).toBe("Sign out of GitLab?");
+  });
+
+  it("saves a manual Bitbucket credential via git credential approve", async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "approve_https_credential") return { username: "ada", helper: "osxkeychain" };
       return [];
@@ -123,13 +148,13 @@ describe("AccountsPanel (provider pages)", () => {
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
     render(<AccountsPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: /No CLI — manual setup|Bitbucket/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
+    fireEvent.click(screen.getByRole("button", { name: /Bitbucket/ }));
     fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "ada" } });
     fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "secret-token" } });
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
 
-    await waitFor(() => expect(screen.getByText("Credential saved for @ada")).toBeInTheDocument());
-    expect(screen.getByText("@ada")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Signed in as @ada")).toBeInTheDocument());
     expect(localStorage.getItem("gitlane.forgeCredentials")).toContain('"username":"ada"');
     expect(localStorage.getItem("gitlane.forgeCredentials")).not.toContain("secret-token");
   });

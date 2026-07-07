@@ -22,7 +22,8 @@ use git::types::{
     CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
     FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
     GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
-    OperationStatus, PrCheck, PrCommit, ProviderTokenStatus, PullRequestDetail, PullRequestSummary,
+    OauthClientStatus, OperationStatus, PrCheck, PrCommit, ProviderOauthResult, ProviderTokenStatus,
+    PullRequestDetail, PullRequestSummary,
     RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoForge, RepoGraph, RepoIdentity,
     RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
@@ -42,6 +43,12 @@ struct CloneState(git::write::CloneSlot);
 /// [`CloneState`].
 #[derive(Default)]
 struct SignInState(git::github::SignInSlot);
+
+/// Holds the in-flight native provider OAuth sign-in (GL-139) so
+/// [`cancel_provider_oauth_sign_in`] can stop it while it streams progress.
+/// Mirrors [`SignInState`].
+#[derive(Default)]
+struct OauthState(git::oauth::SignInSlot);
 
 /// Run blocking work (a `git`/`gh` subprocess) off the webview's main thread.
 /// Synchronous Tauri commands execute on the main thread, so a blocking
@@ -987,6 +994,53 @@ async fn provider_token_status(
     .await
 }
 
+/// Run a native OAuth sign-in for a non-GitHub provider (GL-139) — GitLab's
+/// device flow or Bitbucket's PKCE loopback. Streams `provider-oauth-progress`
+/// events; the flow is parked in [`OauthState`] so [`cancel_provider_oauth_sign_in`]
+/// can stop it. The resolved token is written straight to the OS keychain and
+/// never crosses IPC; only the non-secret [`ProviderOauthResult`] comes back.
+#[tauri::command]
+async fn provider_oauth_sign_in(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OauthState>,
+    provider: String,
+    host: String,
+) -> Result<ProviderOauthResult, String> {
+    let slot = state.0.clone();
+    blocking(move || git::oauth::run_sign_in(&app, slot, &provider, &host)).await
+}
+
+/// Terminate an in-flight [`provider_oauth_sign_in`], discarding any device /
+/// authorization codes. Instant (lock + flag), so it stays a plain sync command.
+#[tauri::command]
+fn cancel_provider_oauth_sign_in(state: tauri::State<'_, OauthState>) -> Result<(), String> {
+    git::oauth::cancel_sign_in(&state.0)
+}
+
+/// Whether native OAuth is configured for a provider/host (GL-139) and where its
+/// public client id comes from. Never returns the client id itself.
+#[tauri::command]
+async fn oauth_client_status(
+    app: tauri::AppHandle,
+    provider: String,
+    host: String,
+) -> Result<OauthClientStatus, String> {
+    blocking(move || Ok(git::oauth::client_status(&app, &provider, &host))).await
+}
+
+/// Set (or clear, when empty) the per-host public OAuth client-id override
+/// (GL-139), stored in Rust-owned app-data. The client id is public, not a
+/// secret.
+#[tauri::command]
+async fn set_oauth_client_id(
+    app: tauri::AppHandle,
+    provider: String,
+    host: String,
+    client_id: String,
+) -> Result<(), String> {
+    blocking(move || git::oauth::set_client_id(&app, &provider, &host, &client_id)).await
+}
+
 /// Detect the open repo's remote forge for the toolbar provider indicator.
 /// A cheap synchronous libgit2 read of the configured remotes (no network, no
 /// auth probing) — kept sync like the other `read.rs`-style reads; only
@@ -1392,6 +1446,7 @@ pub fn run() {
         .manage(TerminalState::default())
         .manage(CloneState::default())
         .manage(SignInState::default())
+        .manage(OauthState::default())
         .setup(|app| {
             // Warm the login-shell PATH cache off the main thread at startup.
             // `shell::path()` resolves the user's real PATH by running a login
@@ -1568,6 +1623,10 @@ pub fn run() {
             save_provider_token,
             delete_provider_token,
             provider_token_status,
+            provider_oauth_sign_in,
+            cancel_provider_oauth_sign_in,
+            oauth_client_status,
+            set_oauth_client_id,
             repo_forge,
             list_remotes,
             add_remote,

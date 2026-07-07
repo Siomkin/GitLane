@@ -1,9 +1,13 @@
+import { useState } from "react";
 import type { OnboardingApi } from "../flows/useOnboarding";
 import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "../icons";
 
 /** The clone form: a validated remote-URL field and a destination chooser. */
 export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
   const { state, repo } = ob.url;
+  // When glab covers the clone, the token fields are hidden behind this opt-in so
+  // the form isn't a confusing wall of empty credential inputs.
+  const [tokenOverride, setTokenOverride] = useState(false);
   const borderCls =
     state === "valid"
       ? "border-emerald-400 dark:border-emerald-500/60 focus:ring-emerald-400/40"
@@ -90,29 +94,47 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
                 ))}
               </select>
             )}
-            {!ob.cloneAccountId && (
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <input
-                  value={ob.cloneUsername}
-                  onChange={(e) => ob.setCloneUsername(e.target.value)}
-                  placeholder="HTTPS username"
-                  spellCheck={false}
-                  className="h-9 rounded-lg border border-black/10 bg-white px-2.5 font-mono text-[13px] text-neutral-700 placeholder:font-sans placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
-                />
-                <input
-                  value={ob.clonePassword}
-                  onChange={(e) => ob.setClonePassword(e.target.value)}
-                  placeholder="Token / password"
-                  type="password"
-                  spellCheck={false}
-                  className="h-9 rounded-lg border border-black/10 bg-white px-2.5 text-[13px] text-neutral-700 placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
-                />
+            {!ob.cloneAccountId && ob.cloneGlabReady && !tokenOverride ? (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12.5px] font-medium text-emerald-600 dark:text-emerald-400">
+                  Signed in via glab — this clone authenticates automatically. Nothing to enter.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTokenOverride(true)}
+                  className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+                >
+                  Use a token instead
+                </button>
               </div>
+            ) : (
+              <>
+                {!ob.cloneAccountId && (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <input
+                      value={ob.cloneUsername}
+                      onChange={(e) => ob.setCloneUsername(e.target.value)}
+                      placeholder="HTTPS username"
+                      spellCheck={false}
+                      className="h-9 rounded-lg border border-black/10 bg-white px-2.5 font-mono text-[13px] text-neutral-700 placeholder:font-sans placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+                    />
+                    <input
+                      value={ob.clonePassword}
+                      onChange={(e) => ob.setClonePassword(e.target.value)}
+                      placeholder="Token / password"
+                      type="password"
+                      spellCheck={false}
+                      className="h-9 rounded-lg border border-black/10 bg-white px-2.5 text-[13px] text-neutral-700 placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+                    />
+                  </div>
+                )}
+                <p className="mt-2 text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
+                  GitLane saves the token/password to your Git credential helper before clone. SSH URLs use your SSH key
+                  instead.
+                  {ob.cloneGlabReady ? " Or leave blank to authenticate via glab." : ""}
+                </p>
+              </>
             )}
-            <p className="mt-2 text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
-              GitLane saves the token/password to your Git credential helper before clone. SSH URLs use your SSH key
-              instead.
-            </p>
           </div>
         )}
 

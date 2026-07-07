@@ -192,6 +192,7 @@ export type GitTransportAuthMode =
   | "system"
   | "ssh"
   | "githubGh"
+  | "gitlabGlab"
   | "credentialHelper"
   | "providerToken";
 export type GitTransportProvider =
