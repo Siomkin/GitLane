@@ -704,8 +704,9 @@ export const useUi = create<UiState>()(
   openWorktreeMenu: (menu) => set({ ...noMenus, worktreeMenu: menu }),
   openRecovery: () => set({ ...noMenus, recoveryOpen: true }),
   closeRecovery: () => set({ recoveryOpen: false }),
-  // Toolbar button cycles the visible terminal chrome. Only the panel close
-  // button kills the PTY and moves the view back to hidden.
+  // Toolbar button cycles the visible terminal chrome. Hiding never kills a
+  // shell — panes persist per repo so reopening restores them; a PTY dies only
+  // when the user closes its tab (see `store/terminals`).
   toggleTerminal: () =>
     set((s) => ({
       terminalView:

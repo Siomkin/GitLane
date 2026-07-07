@@ -14,6 +14,7 @@ import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
 import { migrateIdentityBindings } from "./identities";
 import { usePulls } from "./pulls";
+import { useTerminals } from "./terminals";
 import {
   beginGraphRequest,
   claimOpenIntent,
@@ -737,6 +738,11 @@ export function createRepoLifecycleActions(
       // Sequenced per path so an immediate reopen's watch can't be reordered
       // ahead of this unwatch (GL-125).
       void unwatchRepo(path);
+      // Closing a repo tab closes its terminals too: drop this repo's tab
+      // metadata so the panes manager disposes their PTYs (otherwise a
+      // background-repo close would leave shells running with no UI). Keyed by
+      // the same identity path as `openPaths`.
+      useTerminals.getState().closeRepoTerminals(path);
       // Closing the missing-repo tab (its X, or Remove on the screen): the repo
       // data was already cleared when the state was entered, so just drop the
       // tab + state and land on a neighbour or the welcome screen (GL-108).

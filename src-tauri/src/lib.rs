@@ -1374,8 +1374,9 @@ async fn terminal_agent_probe(command: String) -> Result<bool, String> {
     blocking(move || Ok(terminal_agents::probe(&command))).await
 }
 
-/// Spawn (or replace) the in-app terminal's PTY running the user's login shell
-/// in `path`. Output streams back as `pty-data` events; exit fires `pty-exit`.
+/// Spawn a new in-app terminal PTY running the user's login shell in `path` and
+/// return its `sessionId`; existing sessions keep running. Output streams back as
+/// `pty-data` events tagged with that id; exit fires `pty-exit`.
 #[tauri::command]
 fn pty_spawn(
     app: tauri::AppHandle,
@@ -1387,22 +1388,31 @@ fn pty_spawn(
     terminal::spawn(&state, &app, &path, cols, rows)
 }
 
-/// Forward user keystrokes (from xterm.js) to the PTY's stdin.
+/// Forward user keystrokes (from xterm.js) to session `session_id`'s stdin.
 #[tauri::command]
-fn pty_write(state: tauri::State<'_, TerminalState>, data: Vec<u8>) -> Result<(), String> {
-    terminal::write(&state, &data)
+fn pty_write(
+    state: tauri::State<'_, TerminalState>,
+    session_id: u64,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    terminal::write(&state, session_id, &data)
 }
 
-/// Resize the PTY to match the xterm.js viewport.
+/// Resize session `session_id`'s PTY to match the xterm.js viewport.
 #[tauri::command]
-fn pty_resize(state: tauri::State<'_, TerminalState>, cols: u16, rows: u16) -> Result<(), String> {
-    terminal::resize(&state, cols, rows)
+fn pty_resize(
+    state: tauri::State<'_, TerminalState>,
+    session_id: u64,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    terminal::resize(&state, session_id, cols, rows)
 }
 
-/// Kill the terminal's shell and clear state. Called on panel close / repo switch.
+/// Kill one terminal tab's shell and drop its session.
 #[tauri::command]
-fn pty_kill(state: tauri::State<'_, TerminalState>) -> Result<(), String> {
-    terminal::kill(&state)
+fn pty_kill(state: tauri::State<'_, TerminalState>, session_id: u64) -> Result<(), String> {
+    terminal::kill(&state, session_id)
 }
 
 /// Start (or replace) the filesystem watch for `path`, emitting path-tagged

@@ -277,10 +277,17 @@ const App = () => {
         </div>
       )}
 
-      {summary ? (
-        <>
-          <ActionBar activeTab={leftTab} onTabChange={setLeftTab} />
-          <div className="relative flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
+      {summary && <ActionBar activeTab={leftTab} onTabChange={setLeftTab} />}
+
+      {/* Persistent positioned shell spanning the area below the toolbar (or
+          below the title bar when no repo is open). It is ALWAYS mounted so the
+          floating TerminalLayer inside it never unmounts on a repo open/close/
+          switch — that's what lets each repo's panes + PTYs survive (closing the
+          active repo no longer resets the neighbour's terminal). It also gives
+          the absolutely-positioned drawer its positioning context. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {summary ? (
+          <div className="flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
             {operationAdvisory && !inConflict && (
               <OperationAdvisoryBanner advisory={operationAdvisory} hasConflicts={hasConflictedFiles} />
             )}
@@ -301,25 +308,28 @@ const App = () => {
                 </>
               )}
             </div>
-            {/* Floating terminal overlay — overlays the grid without resizing it.
-                Boundaried so a PTY/render crash drops only the terminal. */}
-            <ErrorBoundary
-              resetKeys={[summary?.path]}
-              fallback={({ reset }) => (
-                <ErrorFallback message="The terminal panel hit an error." onRetry={reset} />
-              )}
-            >
-              <TerminalLayer />
-            </ErrorBoundary>
           </div>
-        </>
-      ) : missingRepo ? (
-        // A tab whose path no longer resolves (GL-108): the dedicated recovery
-        // state replaces the workspace — never a banner over another repo.
-        <MissingRepoScreen />
-      ) : (
-        <RepoOnboarding />
-      )}
+        ) : missingRepo ? (
+          // A tab whose path no longer resolves (GL-108): the dedicated recovery
+          // state replaces the workspace — never a banner over another repo.
+          <MissingRepoScreen />
+        ) : (
+          <RepoOnboarding />
+        )}
+
+        {/* Floating terminal overlay — overlays the workspace without resizing
+            it, and stays mounted across repo switches/closes (its own drawer
+            hides itself when no repo is open). Boundaried so a PTY/render crash
+            drops only the terminal. */}
+        <ErrorBoundary
+          resetKeys={[summary?.path]}
+          fallback={({ reset }) => (
+            <ErrorFallback message="The terminal panel hit an error." onRetry={reset} />
+          )}
+        >
+          <TerminalLayer />
+        </ErrorBoundary>
+      </div>
 
       {/* Onboarding raised from the tab strip while a repo (or the missing-repo
           state) is showing; the no-repo start state renders it inline instead. */}
