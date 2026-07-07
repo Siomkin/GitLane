@@ -22,6 +22,7 @@
 //! are insulated from the internal layout. Sibling modules depend only on
 //! `cli`/`dto` and the output types — never on each other or on this facade.
 
+mod bitbucket;
 mod cli;
 mod diff;
 mod domain;

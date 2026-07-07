@@ -14,6 +14,7 @@ use crate::git::{forge, forge::ForgeKind};
 use super::domain::{
     normalize_account_ref, GithubContext, GithubError, GithubRepository,
 };
+use super::bitbucket::BitbucketProvider;
 use super::gh_provider::GhProvider;
 use super::gitlab::GitLabProvider;
 
@@ -91,6 +92,7 @@ pub trait GithubProvider {
 pub struct GithubService {
     gh: GhProvider,
     gitlab: GitLabProvider,
+    bitbucket: BitbucketProvider,
 }
 
 impl Default for GithubService {
@@ -98,6 +100,7 @@ impl Default for GithubService {
         Self {
             gh: GhProvider,
             gitlab: GitLabProvider,
+            bitbucket: BitbucketProvider,
         }
     }
 }
@@ -295,14 +298,15 @@ impl GithubService {
 
     /// Choose the provider for the repo's detected remote forge. GitHub and an
     /// unrecognised/absent remote resolve to the gh provider (github.com is gh's
-    /// default); GitLab to the GitLab provider; any other known forge is an
-    /// explicit unsupported error.
+    /// default); GitLab to the GitLab provider; Bitbucket to the Bitbucket
+    /// provider; any other known forge is an explicit unsupported error.
     fn provider_for(
         &self,
         remote: Option<&forge::RemoteForge>,
     ) -> Result<&dyn GithubProvider, GithubError> {
         match remote.map(|r| &r.kind) {
             Some(ForgeKind::GitLab) => Ok(&self.gitlab),
+            Some(ForgeKind::Bitbucket) => Ok(&self.bitbucket),
             Some(ForgeKind::GitHub) | None => Ok(&self.gh),
             Some(other) => Err(GithubError::UnsupportedForge {
                 forge: other.label().to_string(),
@@ -344,7 +348,8 @@ mod tests {
     #[test]
     fn provider_for_selects_by_forge() {
         let service = GithubService::default();
-        // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab.
+        // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab;
+        // Bitbucket → bitbucket.
         assert_eq!(
             service
                 .provider_for(Some(&remote(ForgeKind::GitHub, "github.com")))
@@ -360,12 +365,19 @@ mod tests {
                 .kind(),
             "gitlab"
         );
+        assert_eq!(
+            service
+                .provider_for(Some(&remote(ForgeKind::Bitbucket, "bitbucket.org")))
+                .unwrap()
+                .kind(),
+            "bitbucket"
+        );
     }
 
     #[test]
     fn provider_for_rejects_other_forges() {
         let service = GithubService::default();
-        for kind in [ForgeKind::Bitbucket, ForgeKind::AzureDevOps, ForgeKind::Gitea] {
+        for kind in [ForgeKind::AzureDevOps, ForgeKind::Gitea, ForgeKind::Forgejo] {
             // `&dyn GithubProvider` isn't Debug, so match rather than unwrap_err.
             let result = service.provider_for(Some(&remote(kind.clone(), "example.test")));
             assert!(
