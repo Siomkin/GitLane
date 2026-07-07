@@ -268,10 +268,49 @@ describe("TerminalAgentsSettings", () => {
 
     // An OS gesture / alt-tab cancels the pointer mid-drag — teardown must run
     // even though no `pointerup` ever arrives, so the row settles back down.
-    act(() => {
-      window.dispatchEvent(new Event("pointercancel"));
-    });
+    fireEvent.pointerCancel(window, { pointerId: 1 });
     expect(card.style.boxShadow).toBe("");
+  });
+
+  it("ignores window pointer events from a different pointer mid-drag", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    const grip = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+    const card = document.querySelector("[data-agent-card]") as HTMLElement;
+
+    fireEvent.pointerDown(grip, { pointerId: 1, button: 0, isPrimary: true });
+    expect(card.style.boxShadow).not.toBe("");
+
+    // A second (different) pointer's release must NOT end our drag.
+    fireEvent.pointerUp(window, { pointerId: 2 });
+    expect(card.style.boxShadow).not.toBe("");
+
+    // The captured pointer's release ends it.
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(card.style.boxShadow).toBe("");
+  });
+
+  it("reorders rows when the captured pointer crosses a row midpoint", async () => {
+    stubBackend([agent(), agent({ id: "codex", name: "Codex", command: "codex" })]);
+    render(<TerminalAgentsSettings />);
+    const gripA = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+
+    // jsdom has no layout — give the two rows distinct vertical rects so the
+    // midpoint math has something to cross.
+    const cards = [...document.querySelectorAll("[data-agent-card]")] as HTMLElement[];
+    const rectAt = (top: number) =>
+      ({ top, bottom: top + 46, height: 46, left: 0, right: 0, width: 0, x: 0, y: top, toJSON() {} }) as DOMRect;
+    cards[0].getBoundingClientRect = () => rectAt(0); // Claude
+    cards[1].getBoundingClientRect = () => rectAt(46); // Codex
+
+    fireEvent.pointerDown(gripA, { pointerId: 1, button: 0, isPrimary: true });
+    // Move below Codex's midpoint (46 + 23) → Claude should land at index 1.
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 80 });
+
+    const orderNow = screen
+      .getAllByRole("button", { name: /^Edit / })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(orderNow).toEqual(["Edit Codex", "Edit Claude"]);
   });
 
   it("tears down an in-flight drag before starting another (no listener leak)", async () => {

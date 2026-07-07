@@ -54,8 +54,11 @@ export function TerminalAgentsSettings() {
   };
 
   const onDragMove = (e: PointerEvent) => {
+    const drag = dragRef.current;
     const id = dragIdRef.current;
-    if (id === null) return;
+    // Only the captured pointer drives the reorder — a second finger's move must
+    // not hijack the drag.
+    if (id === null || !drag || e.pointerId !== drag.pointerId) return;
     const agents = draftRef.current;
     const from = agents.findIndex((a) => a.id === id);
     if (from < 0) return;
@@ -96,7 +99,12 @@ export function TerminalAgentsSettings() {
       // ignore: drag still works via the window listeners below
     }
     const move = (ev: PointerEvent) => onDragMove(ev);
-    const end = () => endDrag();
+    // End only on the captured pointer's release/cancel/lost-capture — a stray
+    // release from another pointer must not end this drag.
+    const end = (ev: PointerEvent) => {
+      if (dragRef.current && ev.pointerId !== dragRef.current.pointerId) return;
+      endDrag();
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
@@ -126,9 +134,19 @@ export function TerminalAgentsSettings() {
   const layoutKey = draft.map((a) => `${a.id}${editor.isEditing(a.id) ? "*" : ""}`).join(" ");
   const prevRects = useRef<Map<string, DOMRect>>(new Map());
   const prevOrder = useRef(order);
+  const flipRafs = useRef<Map<string, number>>(new Map());
   useLayoutEffect(() => {
     const els = rowEls.current;
-    // Measure current post-layout positions before touching any transform.
+    const rafs = flipRafs.current; // stable Map ref; capture for the cleanup closure
+    // Clear any transform still applied from an animation that the cleanup below
+    // just cancelled, so the measurement reads TRUE layout positions — a rapid
+    // consecutive reorder must not baseline off a mid-animation (transformed) rect.
+    els.forEach((el) => {
+      if (el.style.transform) {
+        el.style.transition = "none";
+        el.style.transform = "";
+      }
+    });
     const nextRects = new Map<string, DOMRect>();
     els.forEach((el, id) => nextRects.set(id, el.getBoundingClientRect()));
     // Only animate on a real reorder; an expand/collapse just refreshes the baseline.
@@ -141,15 +159,23 @@ export function TerminalAgentsSettings() {
           el.style.transition = "none";
           el.style.transform = `translateY(${dy}px)`;
           void el.offsetHeight; // force reflow so the start position sticks
-          requestAnimationFrame(() => {
+          const raf = requestAnimationFrame(() => {
             el.style.transition = "transform 220ms cubic-bezier(0.2,0,0,1)";
             el.style.transform = "";
+            rafs.delete(id);
           });
+          rafs.set(id, raf);
         }
       });
     }
     prevRects.current = nextRects;
     prevOrder.current = order;
+    return () => {
+      // Cancel pending FLIP frames on re-run / unmount so a stale frame can't
+      // reset a transform mid-flight (which would make a rapid reorder jump).
+      rafs.forEach((raf) => cancelAnimationFrame(raf));
+      rafs.clear();
+    };
   }, [order, layoutKey]);
 
   const registerEl = (id: string) => (el: HTMLElement | null) => {
