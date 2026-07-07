@@ -293,7 +293,9 @@ describe("TerminalAgentsSettings", () => {
   it("reorders rows when the captured pointer crosses a row midpoint", async () => {
     stubBackend([agent(), agent({ id: "codex", name: "Codex", command: "codex" })]);
     render(<TerminalAgentsSettings />);
-    const gripA = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+    // Both rows load asynchronously — wait for the second before measuring.
+    await screen.findByRole("button", { name: "Drag Codex to reorder" });
+    const gripA = screen.getByRole("button", { name: "Drag Claude to reorder" });
 
     // jsdom has no layout — give the two rows distinct vertical rects so the
     // midpoint math has something to cross.
@@ -316,8 +318,9 @@ describe("TerminalAgentsSettings", () => {
   it("tears down an in-flight drag before starting another (no listener leak)", async () => {
     stubBackend([agent(), agent({ id: "codex", name: "Codex", command: "codex" })]);
     render(<TerminalAgentsSettings />);
-    const gripA = await screen.findByRole("button", { name: "Drag Claude to reorder" });
-    const gripB = screen.getByRole("button", { name: "Drag Codex to reorder" });
+    // The second agent loads asynchronously — wait for it before touching either grip.
+    const gripB = await screen.findByRole("button", { name: "Drag Codex to reorder" });
+    const gripA = screen.getByRole("button", { name: "Drag Claude to reorder" });
 
     const removeSpy = vi.spyOn(window, "removeEventListener");
 
