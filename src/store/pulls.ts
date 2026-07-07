@@ -223,20 +223,21 @@ export const usePulls = create<PullsState>((set, get) => ({
       set({ pullRequests: [], prError: null });
       return;
     }
-    // Pull requests are GitHub-only (they run through `gh`). For any other forge
-    // — or a repo with no remote — skip the `gh` resolution entirely instead of
-    // surfacing a confusing "couldn't resolve a GitHub repository" error.
-    if (forge && forge.kind !== ForgeKind.GitHub) {
+    // Pull requests are supported for GitHub (via `gh`) and GitLab (via glab /
+    // REST v4, GL-140). For any other forge — or a repo with no remote — skip the
+    // provider resolution entirely instead of surfacing a confusing "couldn't
+    // resolve a repository" error.
+    if (forge && forge.kind !== ForgeKind.GitHub && forge.kind !== ForgeKind.GitLab) {
       set({
         pullRequests: [],
         prsLoading: false,
         prError: forge.hasRemote
-          ? `Pull requests are only available for GitHub repositories. This repo's remote is ${forge.forge ?? forge.host ?? "not GitHub"}.`
+          ? `Pull requests aren't available for ${forge.forge ?? forge.host ?? "this remote"}.`
           : "This repository has no remote, so there are no pull requests.",
       });
       return;
     }
-    const account = useAccounts.getState().repoAccountRef;
+    const account = useAccounts.getState().prAccountRef();
     const path = summary.path;
     const key = prListRequestKey(path, account);
     if (get().prsRefreshInFlight) {
@@ -379,7 +380,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     const summary = useRepo.getState().summary;
     if (!summary) return;
     if (!force && get().prDetails[num]) return;
-    const account = useAccounts.getState().repoAccountRef;
+    const account = useAccounts.getState().prAccountRef();
     const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prDetailLoading: true, prDetailError: omit(s.prDetailError, num) }));
     try {
@@ -412,7 +413,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prChecksLoadingByNum[num]) return;
     if (!force && get().prChecks[num]) return;
-    const account = useAccounts.getState().repoAccountRef;
+    const account = useAccounts.getState().prAccountRef();
     const path = summary.path;
     // Pin the response to the repo+account it was fetched under, so an in-flight
     // checks request can't pin stale checks after the bound account changes.
@@ -457,7 +458,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!force && get().prCommitsLoaded[num]) return;
     const detail = get().prDetails[num];
     if (!detail) return;
-    const account = useAccounts.getState().repoAccountRef;
+    const account = useAccounts.getState().prAccountRef();
     const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prCommitsError: omit(s.prCommitsError, num) }));
     try {
@@ -484,7 +485,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     const summary = useRepo.getState().summary;
     if (!summary) return;
     if (!force && get().prDiffs[num]) return;
-    const account = useAccounts.getState().repoAccountRef;
+    const account = useAccounts.getState().prAccountRef();
     const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prDiffLoading: true, prDiffError: omit(s.prDiffError, num) }));
     try {
@@ -510,7 +511,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     const summary = useRepo.getState().summary;
     if (!summary) return;
     if (!force && get().prThreads[num]) return;
-    const account = useAccounts.getState().repoAccountRef;
+    const account = useAccounts.getState().prAccountRef();
     const version = get().prResourceVersion[num] ?? 0;
     set((s) => ({ prThreadsLoading: true, prThreadsError: omit(s.prThreadsError, num) }));
     try {
@@ -745,7 +746,7 @@ function prListRequestKey(path: string, account: GithubAccountRef | null): strin
 function currentPrListRequestKey(): string | null {
   const summary = useRepo.getState().summary;
   if (!summary) return null;
-  return prListRequestKey(summary.path, useAccounts.getState().repoAccountRef);
+  return prListRequestKey(summary.path, useAccounts.getState().prAccountRef());
 }
 
 // Whether this load still owns the in-flight slot. False only after reset()
@@ -799,7 +800,7 @@ async function runPrAction(
 ): Promise<string> {
   const summary = useRepo.getState().summary;
   if (!summary) throw new Error("No repository");
-  const account = useAccounts.getState().repoAccountRef;
+  const account = useAccounts.getState().prAccountRef();
   if (!trackPending || !action) return await body(summary.path, account);
   // Write errors surface via the caller's toast, not `prError` (which is the
   // list-load error and must not be cleared/clobbered by a write op). Track the

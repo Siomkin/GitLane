@@ -125,7 +125,10 @@ export const ActionBar = ({
   // before the PR panel opens. Foreground loads still happen in LeftPanel for a
   // visible spinner; these quiet loads just keep the badge current.
   useEffect(() => {
-    if (!summary || forge?.kind !== ForgeKind.GitHub) return;
+    // PRs are supported on GitHub and GitLab (GL-140); the store's gate handles
+    // the account/transport resolution per forge.
+    const prForge = forge?.kind === ForgeKind.GitHub || forge?.kind === ForgeKind.GitLab;
+    if (!summary || !prForge) return;
     void loadPullRequests(false, true);
     const id = window.setInterval(() => {
       if (document.hidden) return;

@@ -18,6 +18,7 @@ import { create } from "zustand";
 
 import {
   api,
+  ForgeKind,
   type ForgeAuthStatus,
   type ForgeAuthProvider,
   type GitTransportAuthRef,
@@ -341,6 +342,14 @@ interface AccountsState {
   /** Bind the default (PR) remote — the pre-GL-129 per-repo semantics, kept
    * for the sign-in flow and identity panel. Delegates to [`setRemoteAccount`]. */
   setRepoAccount: (id: string | null) => Promise<void>;
+  /** The account ref the PR surface passes for the open repo. For a GitHub repo
+   * it's the gh-derived `repoAccountRef`. For a GitLab repo (GL-140) it prefers
+   * glab's zero-config transport — returning `null` so the backend uses glab —
+   * else a GitLab keychain-token account (OAuth from GL-139 or a PAT from GL-132)
+   * so the backend's REST client can resolve the token by its non-secret locator;
+   * `null` when neither is available (the backend then reports how to sign in).
+   * Never carries token material. */
+  prAccountRef: () => GithubAccountRef | null;
   /** The account ref that authenticates `remote`, or null for system git
    * credentials. What write actions send to push/fetch commands (GL-129). */
   accountRefForRemote: (remote: string) => GithubAccountRef | null;
@@ -1253,6 +1262,44 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }
     void usePulls.getState().loadPullRequests();
+  },
+
+  prAccountRef: () => {
+    const forge = useRepo.getState().forge;
+    // GitHub — or an unknown forge still loading — uses the gh binding, which is
+    // the historical behaviour (the store's PR gate treats unknown as capable).
+    if (!forge || forge.kind === ForgeKind.GitHub) return get().repoAccountRef;
+    // Only GitLab has a native PR provider today; other forges have none.
+    if (forge.kind !== ForgeKind.GitLab) return null;
+    const remotes = useRepo.getState().remotes ?? [];
+    const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
+    const info = defaultRemote
+      ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl)
+      : null;
+    const host = info?.host ?? forge.host ?? null;
+    const credentialHost = info?.credentialHost ?? host;
+    // Prefer glab: a null ref makes the backend use glab's zero-config transport
+    // (it owns its own token + host). `gitlabGlabAuth` is non-null exactly when
+    // glab can serve this host, mirroring how git transport resolves for GitLab.
+    if (host && credentialHost && get().gitlabGlabAuth(host, credentialHost, "gitlab")) {
+      return null;
+    }
+    // Otherwise a GitLane-owned keychain token (OAuth/PAT) authenticates the
+    // backend's REST client. Pass the token's non-secret keychain locator — the
+    // `native` provider tag routes to the GitLab provider (dispatch is by the
+    // repo's forge, not this field); the token itself never leaves Rust.
+    const token = credentialHost
+      ? pickProviderTokenForHost(get().providerTokens, credentialHost)
+      : undefined;
+    if (token) {
+      return {
+        provider: "native",
+        host: token.credentialHost,
+        accountId: token.accountId,
+        login: token.login,
+      };
+    }
+    return null;
   },
 
   accountRefForRemote: (remote) => {

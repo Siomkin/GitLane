@@ -40,6 +40,19 @@ pub trait HttpTransport: Send + Sync {
         headers: &[(&str, &str)],
     ) -> Result<HttpResponse, String>;
 
+    /// PUT an `application/x-www-form-urlencoded` body. Used by the GitLab REST
+    /// client (GL-140) for `PUT …/merge`; the OAuth flows never call it, so it
+    /// carries a default `Method not allowed` impl the mock/ureq clients override.
+    fn put_form(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        headers: &[(&str, &str)],
+    ) -> Result<HttpResponse, String> {
+        let _ = (url, form, headers);
+        Err("PUT is not supported by this transport.".to_string())
+    }
+
     /// GET a resource (used for the post-token identity whoami).
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<HttpResponse, String>;
 }
@@ -77,6 +90,19 @@ impl HttpTransport for UreqTransport {
         headers: &[(&str, &str)],
     ) -> Result<HttpResponse, String> {
         let mut req = self.agent.post(url);
+        for (k, v) in headers {
+            req = req.set(k, v);
+        }
+        to_response(req.send_form(form))
+    }
+
+    fn put_form(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        headers: &[(&str, &str)],
+    ) -> Result<HttpResponse, String> {
+        let mut req = self.agent.put(url);
         for (k, v) in headers {
             req = req.set(k, v);
         }
@@ -129,6 +155,9 @@ pub mod testing {
 
     #[derive(Debug, Clone)]
     pub struct RecordedRequest {
+        /// HTTP method the caller used: "GET" | "POST" | "PUT". Lets tests assert
+        /// the GitLab REST client picks the right verb per operation.
+        pub method: String,
         pub url: String,
         pub form: Vec<(String, String)>,
     }
@@ -158,8 +187,14 @@ pub mod testing {
             self.requests.lock().unwrap().len()
         }
 
-        fn next(&self, url: &str, form: &[(&str, &str)]) -> Result<HttpResponse, String> {
+        fn next(
+            &self,
+            method: &str,
+            url: &str,
+            form: &[(&str, &str)],
+        ) -> Result<HttpResponse, String> {
             self.requests.lock().unwrap().push(RecordedRequest {
+                method: method.to_string(),
                 url: url.to_string(),
                 form: form
                     .iter()
@@ -181,11 +216,20 @@ pub mod testing {
             form: &[(&str, &str)],
             _headers: &[(&str, &str)],
         ) -> Result<HttpResponse, String> {
-            self.next(url, form)
+            self.next("POST", url, form)
+        }
+
+        fn put_form(
+            &self,
+            url: &str,
+            form: &[(&str, &str)],
+            _headers: &[(&str, &str)],
+        ) -> Result<HttpResponse, String> {
+            self.next("PUT", url, form)
         }
 
         fn get(&self, url: &str, _headers: &[(&str, &str)]) -> Result<HttpResponse, String> {
-            self.next(url, &[])
+            self.next("GET", url, &[])
         }
     }
 }

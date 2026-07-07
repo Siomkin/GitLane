@@ -86,9 +86,22 @@ describe("ActionBar layout order", () => {
     });
   });
 
-  it("does not prefetch PRs for non-GitHub remotes", () => {
+  it("quietly loads GitLab MRs for the toolbar badge before PRs mode opens", () => {
+    // GitLab merge requests light up the same PR surface (GL-140); with no glab
+    // or keychain token in the test env the account resolves to null (glab path).
     useRepo.setState({
       forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+    });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
+      path: SUMMARY.path,
+      account: null,
+    });
+  });
+
+  it("does not prefetch PRs for unsupported remotes", () => {
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
     });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(invokeMock).not.toHaveBeenCalledWith("list_pull_requests", expect.anything());

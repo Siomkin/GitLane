@@ -253,6 +253,39 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
     None
 }
 
+/// Resolve the GitLab remote's `(host, project_path)` for `path`, or `None` when
+/// no GitLab remote is configured. `host` is the normalized (portless) authority
+/// — matching [`detect`] and the account-ref host, so the REST base URL and the
+/// service host-mismatch check agree — and `project_path` is the full namespace
+/// path (`group[/subgroup]/repo`, `.git` stripped), which URL-encoded is GitLab's
+/// project id. Pure libgit2 read of the remote URLs; no network. Follows the same
+/// default-push-remote-first ordering as [`detect`] so it names the remote that
+/// drives the operation.
+pub fn gitlab_project(path: &str) -> Option<(String, String)> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            let Some(host) = remote_host(url) else {
+                continue;
+            };
+            if classify_host(&host) != Some(ForgeKind::GitLab) {
+                continue;
+            }
+            if let Some(project) = remote_path(url) {
+                return Some((host, project));
+            }
+        }
+    }
+    None
+}
+
 fn classify_host(host: &str) -> Option<ForgeKind> {
     let host = normalize_host(host);
     if host == "github.com" || host.ends_with(".github.com") {

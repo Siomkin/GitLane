@@ -12,12 +12,12 @@ use crate::git::types::{
 use crate::git::{forge, forge::ForgeKind};
 
 use super::domain::{
-    normalize_account_ref, GithubContext, GithubError, GithubRepository, GH_PROVIDER,
+    normalize_account_ref, GithubContext, GithubError, GithubRepository,
 };
 use super::gh_provider::GhProvider;
+use super::gitlab::GitLabProvider;
 
 pub trait GithubProvider {
-    fn kind(&self) -> &'static str;
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError>;
     fn resolve_repository(
         &self,
@@ -86,11 +86,15 @@ pub trait GithubProvider {
 
 pub struct GithubService {
     gh: GhProvider,
+    gitlab: GitLabProvider,
 }
 
 impl Default for GithubService {
     fn default() -> Self {
-        Self { gh: GhProvider }
+        Self {
+            gh: GhProvider,
+            gitlab: GitLabProvider,
+        }
     }
 }
 
@@ -246,22 +250,22 @@ impl GithubService {
         account: Option<&GithubAccountRef>,
     ) -> Result<(&'a dyn GithubProvider, GithubContext), GithubError> {
         let account = account.map(normalize_account_ref);
-        let provider = self.provider_for(account.as_ref())?;
-        // Pre-check the repo's remote host from local git config (no token, no
-        // network) before `resolve_repository` runs with the account's token —
-        // otherwise a wrong-host binding sends that token to the mismatched
-        // endpoint first and the clear HostMismatch/UnsupportedForge message is
-        // buried under the resulting auth failure.
-        if let (Some(account), Some(remote)) = (account.as_ref(), forge::detect(workdir)) {
-            if remote.kind != ForgeKind::GitHub {
-                return Err(GithubError::UnsupportedForge {
-                    forge: remote.kind.label().to_string(),
-                    host: remote.host,
-                });
-            }
+        // Select the provider by the repo's detected forge (GL-140): GitHub
+        // (and an unrecognised host, which `gh` may still resolve as github.com)
+        // dispatch to the gh provider; a GitLab remote to the GitLab provider;
+        // any other recognised forge is unsupported. The account ref no longer
+        // drives selection — its token/keychain locator is used by the chosen
+        // provider, not to pick one.
+        let remote = forge::detect(workdir);
+        let provider = self.provider_for(remote.as_ref())?;
+        // Pre-check the account's host against the remote (no token, no network)
+        // before `resolve_repository` runs — otherwise a wrong-host binding sends
+        // that token to the mismatched endpoint first and the clear HostMismatch
+        // message is buried under the resulting auth failure.
+        if let (Some(account), Some(remote)) = (account.as_ref(), remote.as_ref()) {
             if remote.host != account.host {
                 return Err(GithubError::HostMismatch {
-                    repo_host: remote.host,
+                    repo_host: remote.host.clone(),
                     account_host: account.host.clone(),
                 });
             }
@@ -285,17 +289,21 @@ impl GithubService {
         ))
     }
 
+    /// Choose the provider for the repo's detected remote forge. GitHub and an
+    /// unrecognised/absent remote resolve to the gh provider (github.com is gh's
+    /// default); GitLab to the GitLab provider; any other known forge is an
+    /// explicit unsupported error.
     fn provider_for(
         &self,
-        account: Option<&GithubAccountRef>,
+        remote: Option<&forge::RemoteForge>,
     ) -> Result<&dyn GithubProvider, GithubError> {
-        let provider = account.map(|a| a.provider.as_str()).unwrap_or(GH_PROVIDER);
-        if provider == self.gh.kind() {
-            Ok(&self.gh)
-        } else {
-            Err(GithubError::ProviderUnavailable {
-                provider: provider.to_string(),
-            })
+        match remote.map(|r| &r.kind) {
+            Some(ForgeKind::GitLab) => Ok(&self.gitlab),
+            Some(ForgeKind::GitHub) | None => Ok(&self.gh),
+            Some(other) => Err(GithubError::UnsupportedForge {
+                forge: other.label().to_string(),
+                host: remote.map(|r| r.host.clone()).unwrap_or_default(),
+            }),
         }
     }
 }

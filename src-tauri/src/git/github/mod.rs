@@ -27,6 +27,7 @@ mod diff;
 mod domain;
 mod dto;
 mod gh_provider;
+mod gitlab;
 mod prs;
 mod service;
 mod signin;
