@@ -150,7 +150,19 @@ fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) 
     match status {
         // Bitbucket-specific guidance, not the gh-worded NotAuthenticated string.
         401 => super::no_bitbucket_auth(host),
-        403 => GithubError::PermissionDenied { operation },
+        // A 403 from an OAuth grant that predates GL-141 means the token lacks the
+        // `pullrequest` scopes: Bitbucket says so in the body ("… required
+        // privilege scopes"). Surface that with a re-authorize hint instead of the
+        // generic "permission denied", which wouldn't tell the user how to fix it.
+        403 => match detail {
+            Some(msg) if msg.to_ascii_lowercase().contains("scope") => {
+                GithubError::CommandFailed(format!(
+                    "{msg} Re-authorize your Bitbucket account in Settings to grant pull-request access."
+                ))
+            }
+            Some(msg) => GithubError::CommandFailed(msg),
+            None => GithubError::PermissionDenied { operation },
+        },
         404 => GithubError::CommandFailed(
             detail.unwrap_or_else(|| format!("Bitbucket returned 404 for {operation}.")),
         ),
@@ -242,10 +254,25 @@ mod tests {
             }
             other => panic!("expected CommandFailed for 401, got {other:?}"),
         }
+        // A bare 403 (no body) stays a generic permission error.
         assert!(matches!(
             map_http_error("merge", "bitbucket.org", 403, ""),
             GithubError::PermissionDenied { .. }
         ));
+        // A 403 whose body names insufficient scopes surfaces that text plus a
+        // re-authorize hint (an OAuth grant predating the PR scopes, GL-141).
+        match map_http_error(
+            "approve",
+            "bitbucket.org",
+            403,
+            r#"{"type":"error","error":{"message":"Your credentials lack one or more required privilege scopes."}}"#,
+        ) {
+            GithubError::CommandFailed(msg) => {
+                assert!(msg.contains("privilege scopes"), "{msg}");
+                assert!(msg.contains("Re-authorize"), "{msg}");
+            }
+            other => panic!("expected CommandFailed for a scope 403, got {other:?}"),
+        }
         assert!(matches!(
             map_http_error("list", "bitbucket.org", 429, ""),
             GithubError::RateLimited { .. }

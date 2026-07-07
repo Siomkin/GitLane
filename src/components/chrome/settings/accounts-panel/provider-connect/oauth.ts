@@ -71,7 +71,10 @@ export const OAUTH_HELP: Record<string, OauthHelp> = {
     where: "Workspace settings → OAuth consumers → Add consumer",
     settings: [
       { label: "Callback URL", value: "http://127.0.0.1/callback" },
-      { label: "Permissions", value: "Account (read), Repositories (read and write)" },
+      {
+        label: "Permissions",
+        value: "Account (read), Repositories (read and write), Pull requests (read and write)",
+      },
       {
         label: "This is a private consumer",
         value: "leave unchecked — GitLane uses PKCE without a secret",
