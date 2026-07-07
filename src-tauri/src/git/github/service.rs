@@ -345,6 +345,47 @@ mod tests {
         }
     }
 
+    /// A throwaway git repo with a single `origin` remote, so a service call runs
+    /// the real forge-detection + dispatch path against a concrete workdir.
+    struct TempRepo(std::path::PathBuf);
+    impl TempRepo {
+        fn init(tag: &str, remote_url: &str) -> Self {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static SEQ: AtomicU32 = AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("gitlane-svc-{tag}-{}-{n}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let repo = git2::Repository::init(&dir).unwrap();
+            repo.remote("origin", remote_url).unwrap();
+            TempRepo(dir)
+        }
+        fn path(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+    }
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn list_prs_on_a_bitbucket_repo_dispatches_and_requires_a_token() {
+        // A Bitbucket remote with no bound account: dispatch resolves the
+        // Bitbucket provider and its repository, then fails at token resolution
+        // with Bitbucket-specific guidance — no network or keychain token needed.
+        let repo = TempRepo::init("bb", "https://bitbucket.org/team/app.git");
+        let err = GithubService::default()
+            .list_prs(repo.path(), None)
+            .expect_err("no token → error");
+        let msg = err.to_ipc_string();
+        assert!(msg.contains("Bitbucket"), "{msg}");
+        assert!(msg.contains("Settings"), "{msg}");
+        assert!(!msg.contains("gh auth"), "must not use gh wording: {msg}");
+    }
+
     #[test]
     fn provider_for_selects_by_forge() {
         let service = GithubService::default();

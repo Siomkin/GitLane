@@ -314,13 +314,15 @@ pub fn bitbucket_repo(path: &str) -> Option<(String, String, String)> {
             if classify_host(&host) != Some(ForgeKind::Bitbucket) {
                 continue;
             }
-            if let Some(project) = remote_path(url) {
-                // Split the flat path into workspace + slug; a single-segment path
-                // has no workspace, so keep it whole as the slug.
-                let (workspace, slug) = project
-                    .split_once('/')
+            // A Bitbucket Cloud repo is always `workspace/repo_slug`; a
+            // single-segment path is not a valid repo, so skip it (the provider
+            // then reports a clear "couldn't resolve a Bitbucket repository"
+            // rather than building an invalid API path that 404s).
+            if let Some((workspace, slug)) = remote_path(url).and_then(|p| {
+                p.split_once('/')
+                    .filter(|(w, s)| !w.is_empty() && !s.is_empty())
                     .map(|(w, s)| (w.to_string(), s.to_string()))
-                    .unwrap_or_else(|| (String::new(), project.clone()));
+            }) {
                 return Some((host, workspace, slug));
             }
         }
@@ -542,5 +544,10 @@ mod tests {
         // A non-Bitbucket remote yields nothing.
         let gh = TempRepo::init("bb-gh", "https://github.com/o/r.git");
         assert_eq!(bitbucket_repo(gh.0.to_str().unwrap()), None);
+
+        // A malformed single-segment path is not a valid workspace/slug → None,
+        // so the provider reports a clear resolution error rather than a bad path.
+        let bare = TempRepo::init("bb-bare", "https://bitbucket.org/loneslug.git");
+        assert_eq!(bitbucket_repo(bare.0.to_str().unwrap()), None);
     }
 }

@@ -65,7 +65,9 @@ pub fn pr_diff(
     number: u64,
 ) -> Result<Vec<FileDiff>, GithubError> {
     let path = format!("{repo}/pullrequests/{number}/diff");
-    let patch = api.get("pull request diff", &path)?;
+    // The `/diff` endpoint returns a raw git patch, not JSON — request text/plain
+    // so Bitbucket does not answer 406 (see `BitbucketApi::get_text`).
+    let patch = api.get_text("pull request diff", &path)?;
     Ok(parse_unified_diff(&patch))
 }
 
@@ -299,6 +301,14 @@ mod tests {
         assert_eq!(files[0].status, "M");
         let reqs = http.requests.lock().unwrap();
         assert!(reqs[0].url.ends_with("/pullrequests/5/diff"));
+        // The diff GET must ask for text, not JSON — Bitbucket answers 406 to
+        // `Accept: application/json` on `/diff` (GL-141).
+        let accept = reqs[0]
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("accept"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(accept, Some("text/plain"));
     }
 
     #[test]

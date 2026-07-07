@@ -29,6 +29,10 @@ const API_BASE: &str = "https://api.bitbucket.org/2.0";
 /// Bitbucket's create/merge endpoints read nested JSON, not a form.
 pub trait BitbucketApi {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError>;
+    /// GET an endpoint that returns a non-JSON body — the `/diff` endpoint serves
+    /// a raw git patch, and requesting `application/json` there makes Bitbucket
+    /// answer `406 Not Acceptable`. Sends `Accept: text/plain` instead.
+    fn get_text(&self, operation: &'static str, path: &str) -> Result<String, GithubError>;
     fn post_json(
         &self,
         operation: &'static str,
@@ -86,6 +90,12 @@ impl BitbucketApi for RestClient<'_> {
             ("Authorization", auth.as_str()),
             ("Accept", "application/json"),
         ];
+        self.finish(operation, self.http.get(&self.url(path), &headers))
+    }
+
+    fn get_text(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
+        let auth = self.auth_header();
+        let headers = [("Authorization", auth.as_str()), ("Accept", "text/plain")];
         self.finish(operation, self.http.get(&self.url(path), &headers))
     }
 
