@@ -464,7 +464,7 @@ describe("prAccountRef for Bitbucket (GL-141)", () => {
   const store = (token?: StoredProviderToken) => {
     useRepo.setState({ forge: bbForge, remotes: [bbRemote] });
     useAccounts.setState({
-      providerTokens: token ? { [`bitbucket.org ${token.login}`]: token } : {},
+      providerTokens: token ? { [`bitbucket.org\u0000${token.login}`]: token } : {},
     });
   };
 
