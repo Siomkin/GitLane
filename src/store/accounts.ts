@@ -1353,8 +1353,17 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       const hosts = bitbucketRemoteHosts();
       if (!hosts) return null;
       const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "bitbucket");
+      // `login` carries the git HTTPS *username* the backend authenticates as,
+      // which picks the REST auth scheme: an OAuth token's `x-token-auth` sentinel
+      // → Bearer; a manually-stored API token / app password's real username →
+      // Basic. The token itself never leaves Rust.
       return token
-        ? { provider: "native", host: token.credentialHost, accountId: token.accountId, login: token.login }
+        ? {
+            provider: "native",
+            host: token.credentialHost,
+            accountId: token.accountId,
+            login: token.transportUsername ?? token.login,
+          }
         : null;
     }
     // Only GitLab has a native PR provider besides GitHub/Bitbucket today.

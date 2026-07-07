@@ -259,7 +259,7 @@ mod tests {
                 "destination":{"branch":{"name":"main"}},"author":{"nickname":"ada"},
                 "created_on":"t","links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/3"}}}]}"#,
         )]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let prs = list_prs(&client, REPO).expect("list");
         assert_eq!(prs.len(), 1);
         assert_eq!(prs[0].number, 3);
@@ -280,7 +280,7 @@ mod tests {
         let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n\
                      diff --git a/b.txt b/b.txt\nnew file mode 100644\n--- /dev/null\n+++ b/b.txt\n@@ -0,0 +1 @@\n+hello\n";
         let http = MockTransport::new(vec![ok(pr), ok(patch)]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let detail = pr_detail(&client, REPO, 5).expect("detail");
         assert_eq!(detail.number, 5);
         assert_eq!(detail.body, "Body");
@@ -294,7 +294,7 @@ mod tests {
     fn pr_diff_parses_the_git_patch_directly() {
         let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
         let http = MockTransport::new(vec![ok(patch)]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let files = pr_diff(&client, REPO, 5).expect("diff");
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "a.txt");
@@ -318,7 +318,7 @@ mod tests {
                 "destination":{"branch":{"name":"main"}},"author":{"nickname":"u"},"created_on":"t",
                 "links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/10"}}}"#,
         )]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let url = create_pr(&client, REPO, "main", "feat", "New", "desc", true).expect("create");
         assert_eq!(url, "https://bitbucket.org/team/app/pull-requests/10");
         let reqs = http.requests.lock().unwrap();
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn create_pr_rejects_empty_title_before_calling() {
         let http = MockTransport::new(vec![]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         assert!(create_pr(&client, REPO, "main", "feat", "  ", "", false).is_err());
         assert_eq!(http.request_count(), 0, "no request on a rejected title");
     }
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn merge_pr_rejects_rebase_before_calling() {
         let http = MockTransport::new(vec![]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         assert!(merge_pr(&client, REPO, 7, "rebase", false).is_err());
         assert_eq!(http.request_count(), 0, "no request on an unsupported method");
     }
@@ -355,7 +355,7 @@ mod tests {
                 "destination":{"branch":{"name":"main"}},"author":{"nickname":"u"},"created_on":"t",
                 "links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/7"}}}"#,
         )]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let out = merge_pr(&client, REPO, 7, "squash", true).expect("merge");
         assert!(out.contains("pull-requests/7"));
         let reqs = http.requests.lock().unwrap();
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn review_pr_approves_and_rejects_other_actions() {
         let http = MockTransport::new(vec![ok(r#"{"approved":true}"#)]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let out = review_pr(&client, REPO, 9, "approve").expect("approve");
         assert!(out.contains("Approved #9"));
         {
@@ -379,7 +379,7 @@ mod tests {
             assert!(reqs[0].url.ends_with("/pullrequests/9/approve"));
         }
         let http2 = MockTransport::new(vec![]);
-        let client2 = RestClient::new(&http2, "bitbucket.org", "tok");
+        let client2 = RestClient::new(&http2, "bitbucket.org", "x-token-auth", "tok");
         assert!(review_pr(&client2, REPO, 9, "request-changes").is_err());
         assert_eq!(http2.request_count(), 0);
     }
@@ -390,7 +390,7 @@ mod tests {
             r#"{"values":[{"hash":"deadbeef","message":"Fix\n\nbody","date":"2026-01-01",
                 "author":{"raw":"Ada <a@x.io>","user":{"display_name":"Ada L.","nickname":"ada"}}}]}"#,
         )]);
-        let client = RestClient::new(&http, "bitbucket.org", "tok");
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let commits = pr_commits(&client, REPO, 2).expect("commits");
         assert_eq!(commits.len(), 1);
         assert_eq!(commits[0].oid, "deadbeef");

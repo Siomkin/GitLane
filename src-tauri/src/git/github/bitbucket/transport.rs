@@ -2,17 +2,25 @@
 //!
 //! Unlike GitLab (which has the `glab` CLI) Bitbucket ships no first-party CLI, so
 //! there is a single transport: a direct HTTP client over the shared
-//! [`HttpTransport`], authenticating with a GitLane-owned keychain token as a
-//! `Authorization: Bearer` header. Bearer is the documented scheme for the OAuth
-//! access tokens this builds on (GL-139) and for Bitbucket Access Tokens; the
-//! token stays in this process, riding only in the request header, never a URL or
-//! log. Confining the client behind the [`BitbucketApi`] trait lets [`super::ops`]
-//! be written once and unit-tested against the mock transport with no network.
+//! [`HttpTransport`], authenticating with a GitLane-owned keychain token. The
+//! scheme follows the account's git HTTPS username, exactly as git transport does
+//! (GL-132/GL-139):
+//! - an **OAuth** access token authenticates as the sentinel `x-token-auth`
+//!   ([`OAUTH_USERNAME`]) → `Authorization: Bearer`, the documented OAuth scheme;
+//! - a manually-stored **API token / app password** carries a real username →
+//!   `Authorization: Basic base64(username:token)`, which is how Bitbucket accepts
+//!   those credentials (Bearer only fits OAuth/access tokens).
+//!
+//! The token stays in this process, riding only in the request header, never a URL
+//! or log. Confining the client behind the [`BitbucketApi`] trait lets
+//! [`super::ops`] be written once and unit-tested against the mock transport with
+//! no network.
 //!
 //! The API authority is the fixed `api.bitbucket.org` (Bitbucket Cloud only —
 //! Server/Data Center has a different API and is out of scope); the repo host
 //! (`bitbucket.org`) is carried only for actionable auth errors.
 
+use base64::Engine as _;
 use serde::Deserialize;
 
 use crate::git::oauth::http::HttpTransport;
@@ -22,6 +30,12 @@ use super::super::domain::GithubError;
 /// The fixed Bitbucket Cloud REST API 2.0 base. Cloud repos are always served
 /// here regardless of the `bitbucket.org` web host.
 const API_BASE: &str = "https://api.bitbucket.org/2.0";
+
+/// The git HTTPS username a Bitbucket **OAuth** access token authenticates as
+/// (matches `oauth::config`'s `transport_username` for Bitbucket). When the
+/// account's username is this sentinel, the REST client uses Bearer auth; any
+/// other username is a real credential and uses Basic auth.
+pub const OAUTH_USERNAME: &str = "x-token-auth";
 
 /// A Bitbucket Cloud REST 2.0 transport. `path` is an API path relative to the
 /// `/2.0` base (e.g. `repositories/team/app/pullrequests?state=OPEN`), already
@@ -48,14 +62,18 @@ pub struct RestClient<'a> {
     http: &'a dyn HttpTransport,
     /// The repo host (`bitbucket.org`), for actionable auth errors only.
     host: String,
+    /// The account's git HTTPS username — [`OAUTH_USERNAME`] for an OAuth token
+    /// (→ Bearer) or a real username for an API token / app password (→ Basic).
+    username: String,
     token: String,
 }
 
 impl<'a> RestClient<'a> {
-    pub fn new(http: &'a dyn HttpTransport, host: &str, token: &str) -> Self {
+    pub fn new(http: &'a dyn HttpTransport, host: &str, username: &str, token: &str) -> Self {
         Self {
             http,
             host: host.to_string(),
+            username: username.to_string(),
             token: token.to_string(),
         }
     }
@@ -64,8 +82,19 @@ impl<'a> RestClient<'a> {
         format!("{API_BASE}/{path}")
     }
 
+    /// The `Authorization` header value: Bearer for an OAuth token (the
+    /// `x-token-auth` sentinel username), Basic `username:token` otherwise. An
+    /// empty username is treated as OAuth (Bearer) — a Basic realm needs a
+    /// username, so this is the safe default.
     fn auth_header(&self) -> String {
-        format!("Bearer {}", self.token)
+        let user = self.username.trim();
+        if user.is_empty() || user == OAUTH_USERNAME {
+            format!("Bearer {}", self.token)
+        } else {
+            let creds = base64::engine::general_purpose::STANDARD
+                .encode(format!("{user}:{}", self.token));
+            format!("Basic {creds}")
+        }
     }
 
     fn finish(
@@ -160,6 +189,33 @@ fn bitbucket_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::oauth::http::testing::MockTransport;
+
+    fn auth_header_for(username: &str) -> String {
+        let http = MockTransport::new(vec![MockTransport::ok(200, "{}")]);
+        let client = RestClient::new(&http, "bitbucket.org", username, "tok");
+        client.get("probe", "user").expect("get");
+        let reqs = http.requests.lock().unwrap();
+        reqs[0]
+            .headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+            .map(|(_, v)| v.clone())
+            .expect("authorization header")
+    }
+
+    #[test]
+    fn oauth_username_uses_bearer_others_use_basic() {
+        // OAuth sentinel (and an empty username) → Bearer.
+        assert_eq!(auth_header_for(OAUTH_USERNAME), "Bearer tok");
+        assert_eq!(auth_header_for(""), "Bearer tok");
+        // A real username (API token / app password) → Basic base64(user:token).
+        let expected = format!(
+            "Basic {}",
+            base64::engine::general_purpose::STANDARD.encode("alice:tok")
+        );
+        assert_eq!(auth_header_for("alice"), expected);
+    }
 
     #[test]
     fn extracts_bitbucket_error_message() {
