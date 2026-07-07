@@ -67,10 +67,8 @@ impl GitLabProvider {
         if transport::glab_available() {
             return Ok(Selected::Glab);
         }
-        Err(GithubError::NotAuthenticated {
-            host: ctx.repository.host.clone(),
-            account: ctx.account.as_ref().map(|a| a.login.clone()),
-        })
+        // GitLab-specific guidance — never the gh-worded NotAuthenticated string.
+        Err(no_gitlab_auth(&ctx.repository.host))
     }
 
     /// Resolve the transport and run `f` against it with the project id, so every
@@ -97,6 +95,10 @@ impl GitLabProvider {
 }
 
 impl GithubProvider for GitLabProvider {
+    fn kind(&self) -> &'static str {
+        GITLAB_PROVIDER
+    }
+
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
         // GitLab accounts are surfaced through the forge-auth / OAuth flows, not
         // this gh-shaped account list — the service only calls the gh provider's
@@ -113,9 +115,9 @@ impl GithubProvider for GitLabProvider {
         // namespace path becomes the REST project id; keep the last segment as
         // `name` and the namespace as `owner` so the shared repository shape holds.
         let (host, project) = forge::gitlab_project(workdir).ok_or_else(|| {
-            GithubError::RepositoryNotFound {
-                workdir: workdir.to_string(),
-            }
+            GithubError::CommandFailed(format!(
+                "Could not resolve a GitLab project for {workdir}. Check that the repo has a GitLab remote."
+            ))
         })?;
         let (owner, name) = project
             .rsplit_once('/')
@@ -238,5 +240,27 @@ impl GithubProvider for GitLabProvider {
         self.with_api(ctx, |api, id| {
             ops::create_pr(api, id, base, head, title, body, draft)
         })
+    }
+}
+
+/// GitLab-specific "no authentication available" guidance — used instead of the
+/// gh-worded `NotAuthenticated` so GitLab users get the right recovery steps.
+pub(super) fn no_gitlab_auth(host: &str) -> GithubError {
+    GithubError::CommandFailed(format!(
+        "No GitLab sign-in found for {host}. Run `glab auth login`, or add a GitLab token (OAuth or a personal access token) in Settings."
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_gitlab_auth_names_glab_and_settings_not_gh() {
+        let msg = no_gitlab_auth("gitlab.example.com").to_ipc_string();
+        assert!(msg.contains("glab auth login"), "{msg}");
+        assert!(msg.contains("Settings"), "{msg}");
+        assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
+        assert!(msg.contains("gitlab.example.com"), "{msg}");
     }
 }

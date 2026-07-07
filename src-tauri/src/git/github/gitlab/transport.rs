@@ -231,10 +231,8 @@ impl GitlabApi for RestClient<'_> {
 fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) -> GithubError {
     let detail = gitlab_message(body);
     match status {
-        401 => GithubError::NotAuthenticated {
-            host: host.to_string(),
-            account: None,
-        },
+        // GitLab-specific guidance, not the gh-worded NotAuthenticated string.
+        401 => super::no_gitlab_auth(host),
         403 => GithubError::PermissionDenied { operation },
         404 => GithubError::CommandFailed(
             detail.unwrap_or_else(|| format!("GitLab returned 404 for {operation}.")),
@@ -289,10 +287,14 @@ mod tests {
 
     #[test]
     fn maps_http_status_to_categories() {
-        assert!(matches!(
-            map_http_error("list", "gitlab.com", 401, ""),
-            GithubError::NotAuthenticated { .. }
-        ));
+        // 401 → GitLab-specific guidance (glab / Settings token), never gh wording.
+        match map_http_error("list", "gitlab.com", 401, "") {
+            GithubError::CommandFailed(msg) => {
+                assert!(msg.contains("glab auth login"), "{msg}");
+                assert!(!msg.contains("gh auth"), "{msg}");
+            }
+            other => panic!("expected CommandFailed for 401, got {other:?}"),
+        }
         assert!(matches!(
             map_http_error("merge", "gitlab.com", 403, ""),
             GithubError::PermissionDenied { .. }

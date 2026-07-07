@@ -18,9 +18,16 @@ use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummar
 const DIFF_PER_PAGE: usize = 100;
 const MAX_DIFF_PAGES: usize = 20;
 
-/// List merge requests (most recent 50, newest first, all states) for the project.
+/// Page size / hard page cap for the `/commits` walk (2000 commits max).
+const COMMIT_PER_PAGE: usize = 100;
+const MAX_COMMIT_PAGES: usize = 20;
+
+/// List merge requests (most recent 50, newest first, all states) for the
+/// project. `state=all` is passed explicitly — it is GitLab's default when
+/// omitted, but stating it keeps parity with `gh pr list --state all` unambiguous.
 pub fn list_prs(api: &dyn GitlabApi, project_id: &str) -> Result<Vec<PullRequestSummary>, GithubError> {
-    let path = format!("projects/{project_id}/merge_requests?per_page=50&order_by=created_at&sort=desc");
+    let path =
+        format!("projects/{project_id}/merge_requests?state=all&per_page=50&order_by=created_at&sort=desc");
     let raw = api.get("list merge requests", &path)?;
     let mrs: Vec<GitlabMr> = parse(&raw, "merge request list")?;
     Ok(mrs.into_iter().map(GitlabMr::into_summary).collect())
@@ -55,6 +62,7 @@ pub fn pr_diff(
     number: u64,
 ) -> Result<Vec<FileDiff>, GithubError> {
     let mut diffs: Vec<GitlabDiff> = Vec::new();
+    let mut hit_cap = false;
     for page in 1..=MAX_DIFF_PAGES {
         let path = format!(
             "projects/{project_id}/merge_requests/{number}/diffs?per_page={DIFF_PER_PAGE}&page={page}"
@@ -66,20 +74,48 @@ pub fn pr_diff(
         if !full_page {
             break;
         }
+        hit_cap = page == MAX_DIFF_PAGES;
+    }
+    // Same runaway-guard breadcrumb as the gh commits reader: don't let a
+    // pathologically large MR drop its tail silently.
+    if hit_cap {
+        eprintln!(
+            "gitlane: MR !{number} diff hit the {MAX_DIFF_PAGES}-page cap; {} files fetched, later files omitted",
+            diffs.len()
+        );
     }
     Ok(parse_unified_diff(&reconstruct_patch(&diffs)))
 }
 
-/// The merge request's commit list (`/commits`), newest GitLab returns first.
+/// The merge request's commit list (`/commits`), paginated so a large MR keeps
+/// every commit (parity with the gh provider's full commit read).
 pub fn pr_commits(
     api: &dyn GitlabApi,
     project_id: &str,
     number: u64,
 ) -> Result<Vec<PrCommit>, GithubError> {
-    let path = format!("projects/{project_id}/merge_requests/{number}/commits?per_page=100");
-    let raw = api.get("merge request commits", &path)?;
-    let commits: Vec<GitlabCommit> = parse(&raw, "merge request commits")?;
-    Ok(commits.into_iter().map(GitlabCommit::into_commit).collect())
+    let mut commits: Vec<PrCommit> = Vec::new();
+    let mut hit_cap = false;
+    for page in 1..=MAX_COMMIT_PAGES {
+        let path = format!(
+            "projects/{project_id}/merge_requests/{number}/commits?per_page={COMMIT_PER_PAGE}&page={page}"
+        );
+        let raw = api.get("merge request commits", &path)?;
+        let batch: Vec<GitlabCommit> = parse(&raw, "merge request commits")?;
+        let full_page = batch.len() == COMMIT_PER_PAGE;
+        commits.extend(batch.into_iter().map(GitlabCommit::into_commit));
+        if !full_page {
+            break;
+        }
+        hit_cap = page == MAX_COMMIT_PAGES;
+    }
+    if hit_cap {
+        eprintln!(
+            "gitlane: MR !{number} commits hit the {MAX_COMMIT_PAGES}-page cap; {} fetched, later commits omitted",
+            commits.len()
+        );
+    }
+    Ok(commits)
 }
 
 /// Open a new merge request from `head` into `base`. Returns the new MR's web URL.
@@ -97,9 +133,11 @@ pub fn create_pr(
             "A title is required to open a merge request.".to_string(),
         ));
     }
-    // GitLab marks a draft MR by a `Draft:` title prefix rather than a flag.
+    // GitLab marks a draft MR by a `Draft:` title prefix rather than a flag —
+    // add it only when the title isn't already a draft, so a user who typed
+    // "Draft: …" and also ticked the box doesn't get "Draft: Draft: …".
     let draft_title;
-    let title = if draft {
+    let title = if draft && !is_draft_title(title) {
         draft_title = format!("Draft: {title}");
         draft_title.as_str()
     } else {
@@ -131,6 +169,13 @@ pub fn merge_pr(
     method: &str,
     delete_branch: bool,
 ) -> Result<String, GithubError> {
+    // GitLab's merge endpoint has no rebase-merge (rebase is a separate async
+    // job), so refuse it explicitly rather than silently doing a plain merge.
+    if method == "rebase" {
+        return Err(unsupported(
+            "Rebase-and-merge isn't supported for GitLab merge requests. Use Merge or Squash.",
+        ));
+    }
     let path = format!("projects/{project_id}/merge_requests/{number}/merge");
     let mut form: Vec<(&str, &str)> = Vec::new();
     if method == "squash" {
@@ -189,6 +234,14 @@ pub fn project_id(owner: &str, name: &str) -> String {
         format!("{owner}/{name}")
     };
     percent_encode(&path)
+}
+
+/// Whether a title is already a GitLab draft, so `create_pr` doesn't double the
+/// prefix. Mirrors GitLab's own draft detection (case-insensitive `Draft:` /
+/// `[Draft]` / the legacy `WIP:`).
+fn is_draft_title(title: &str) -> bool {
+    let t = title.trim_start().to_ascii_lowercase();
+    t.starts_with("draft:") || t.starts_with("[draft]") || t.starts_with("wip:")
 }
 
 /// Percent-encode everything outside the RFC 3986 unreserved set — critically
@@ -275,7 +328,7 @@ mod tests {
         assert_eq!(reqs[0].method, "GET");
         assert!(reqs[0]
             .url
-            .contains("/api/v4/projects/group%2Frepo/merge_requests?per_page=50"));
+            .contains("/api/v4/projects/group%2Frepo/merge_requests?state=all&per_page=50"));
     }
 
     #[test]
@@ -342,6 +395,28 @@ mod tests {
         let client = RestClient::new(&http, "gitlab.com", "tok");
         assert!(create_pr(&client, "p", "main", "feat", "  ", "", false).is_err());
         assert_eq!(http.request_count(), 0, "no request on a rejected title");
+    }
+
+    #[test]
+    fn create_pr_does_not_double_the_draft_prefix() {
+        let http = MockTransport::new(vec![ok(
+            r#"{"iid":11,"title":"Draft: New","state":"opened","source_branch":"f","target_branch":"main",
+                "author":{"username":"u"},"created_at":"t","web_url":"https://gitlab.com/x/-/merge_requests/11"}"#,
+        )]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+        // User already typed a draft title AND ticked draft → prefix added once.
+        create_pr(&client, "p", "main", "f", "Draft: New", "", true).expect("create");
+        let reqs = http.requests.lock().unwrap();
+        assert!(reqs[0].form.iter().any(|(k, v)| k == "title" && v == "Draft: New"));
+    }
+
+    #[test]
+    fn merge_pr_rejects_rebase_before_calling() {
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+        let err = merge_pr(&client, "p", 7, "rebase", false).unwrap_err();
+        assert!(matches!(err, GithubError::CommandFailed(_)));
+        assert_eq!(http.request_count(), 0, "no request on an unsupported method");
     }
 
     #[test]

@@ -6,7 +6,7 @@ use crate::git::types::{
 };
 use crate::git::{forge, forge::ForgeKind};
 
-use super::domain::{GithubContext, GithubError, GithubRepository};
+use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
 use super::service::GithubProvider;
 use super::{cli, diff, prs, threads};
 
@@ -41,6 +41,10 @@ impl GhProvider {
 }
 
 impl GithubProvider for GhProvider {
+    fn kind(&self) -> &'static str {
+        GH_PROVIDER
+    }
+
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
         cli::accounts().map_err(|err| GithubError::from_command("github account discovery", err))
     }

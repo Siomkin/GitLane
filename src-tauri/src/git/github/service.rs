@@ -18,6 +18,10 @@ use super::gh_provider::GhProvider;
 use super::gitlab::GitLabProvider;
 
 pub trait GithubProvider {
+    /// Provider family key (`gh` / `gitlab`). Consumed by the dispatch tests; the
+    /// allow keeps non-test builds quiet without dropping the contract.
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn kind(&self) -> &'static str;
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError>;
     fn resolve_repository(
         &self,
@@ -263,7 +267,7 @@ impl GithubService {
         // that token to the mismatched endpoint first and the clear HostMismatch
         // message is buried under the resulting auth failure.
         if let (Some(account), Some(remote)) = (account.as_ref(), remote.as_ref()) {
-            if remote.host != account.host {
+            if !hosts_match(&remote.host, &account.host) {
                 return Err(GithubError::HostMismatch {
                     repo_host: remote.host.clone(),
                     account_host: account.host.clone(),
@@ -272,7 +276,7 @@ impl GithubService {
         }
         let repository = provider.resolve_repository(workdir, account.as_ref())?;
         if let Some(account) = account.as_ref() {
-            if repository.host != account.host {
+            if !hosts_match(&repository.host, &account.host) {
                 return Err(GithubError::HostMismatch {
                     repo_host: repository.host,
                     account_host: account.host.clone(),
@@ -305,5 +309,79 @@ impl GithubService {
                 host: remote.map(|r| r.host.clone()).unwrap_or_default(),
             }),
         }
+    }
+}
+
+/// Compare two hosts ignoring a trailing numeric port. Forge detection reports a
+/// portless host, while a self-hosted GitLab account ref can carry a custom HTTPS
+/// port (`gitlab.example.com:8443`); matching by name keeps the REST base URL's
+/// port without failing the host check. GitHub hosts never carry a port, so this
+/// is a no-op there.
+fn hosts_match(a: &str, b: &str) -> bool {
+    fn strip_port(host: &str) -> &str {
+        match host.rsplit_once(':') {
+            Some((name, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
+                name
+            }
+            _ => host,
+        }
+    }
+    strip_port(a).eq_ignore_ascii_case(strip_port(b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::forge::{ForgeKind, RemoteForge};
+
+    fn remote(kind: ForgeKind, host: &str) -> RemoteForge {
+        RemoteForge {
+            kind,
+            host: host.to_string(),
+        }
+    }
+
+    #[test]
+    fn provider_for_selects_by_forge() {
+        let service = GithubService::default();
+        // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab.
+        assert_eq!(
+            service
+                .provider_for(Some(&remote(ForgeKind::GitHub, "github.com")))
+                .unwrap()
+                .kind(),
+            "gh"
+        );
+        assert_eq!(service.provider_for(None).unwrap().kind(), "gh");
+        assert_eq!(
+            service
+                .provider_for(Some(&remote(ForgeKind::GitLab, "gitlab.com")))
+                .unwrap()
+                .kind(),
+            "gitlab"
+        );
+    }
+
+    #[test]
+    fn provider_for_rejects_other_forges() {
+        let service = GithubService::default();
+        for kind in [ForgeKind::Bitbucket, ForgeKind::AzureDevOps, ForgeKind::Gitea] {
+            // `&dyn GithubProvider` isn't Debug, so match rather than unwrap_err.
+            let result = service.provider_for(Some(&remote(kind.clone(), "example.test")));
+            assert!(
+                matches!(result, Err(GithubError::UnsupportedForge { .. })),
+                "{kind:?} should be unsupported"
+            );
+        }
+    }
+
+    #[test]
+    fn hosts_match_ignores_a_numeric_port() {
+        assert!(hosts_match("gitlab.example.com", "gitlab.example.com:8443"));
+        assert!(hosts_match("gitlab.example.com:8443", "gitlab.example.com"));
+        assert!(hosts_match("github.com", "github.com"));
+        // Different hosts never match, port or not.
+        assert!(!hosts_match("gitlab.com", "gitlab.example.com"));
+        assert!(!hosts_match("gitlab.com:443", "gitlab.example.com:443"));
     }
 }
