@@ -10,6 +10,7 @@ vi.mock("../lib/updater", () => mocks);
 
 import type { Update } from "../lib/updater";
 import { useUi } from "./ui";
+import { useNotifications } from "./notifications";
 import { useUpdates, hasPendingUpdate } from "./updates";
 
 const INITIAL = useUpdates.getState();
@@ -23,7 +24,8 @@ beforeEach(() => {
   mocks.checkForUpdate.mockReset();
   mocks.currentVersion.mockReset();
   mocks.relaunchApp.mockReset();
-  useUi.setState({ toast: null, lastUpdateCheckAt: 0 });
+  useUi.setState({ lastUpdateCheckAt: 0 });
+  useNotifications.setState({ toasts: [] });
   useUpdates.setState(
     { status: "idle", version: "", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
@@ -103,12 +105,12 @@ describe("useUpdates", () => {
   it("toasts on a non-quiet up-to-date check but stays silent when quiet", async () => {
     mocks.checkForUpdate.mockResolvedValue(null);
     await INITIAL.check(); // non-quiet
-    expect(useUi.getState().toast?.message).toMatch(/up to date/i);
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/up to date/i);
 
-    useUi.setState({ toast: null });
+    useNotifications.setState({ toasts: [] });
     useUpdates.setState({ status: "idle" });
     await INITIAL.check({ quiet: true });
-    expect(useUi.getState().toast).toBeNull();
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("does not re-check while downloading (re-entrancy guard)", async () => {
@@ -167,6 +169,6 @@ describe("useUpdates", () => {
   it("toasts when relaunch fails", async () => {
     mocks.relaunchApp.mockRejectedValue(new Error("relaunch boom"));
     await INITIAL.restart();
-    expect(useUi.getState().toast?.message).toMatch(/relaunch boom/i);
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/relaunch boom/i);
   });
 });

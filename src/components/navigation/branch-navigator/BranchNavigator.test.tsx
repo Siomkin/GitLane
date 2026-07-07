@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { BranchInfo, CommitNode, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 import { BranchNavigator } from "./BranchNavigator";
 
 const branch = (name: string, kind: BranchInfo["kind"], over: Partial<BranchInfo> = {}): BranchInfo => ({
@@ -60,6 +61,7 @@ beforeEach(() => {
     revealTarget: null,
   });
   useUi.setState({ filter: "", navOpen: true, stackedReview: null });
+  useNotifications.setState({ toasts: [] });
 });
 
 describe("BranchNavigator", () => {
@@ -191,8 +193,10 @@ describe("BranchNavigator", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open worktree feature/search" }));
 
-    await waitFor(() => expect(useUi.getState().toast?.message).toContain("worktree gone"));
-    expect(useUi.getState().toast?.tone).toBe("error");
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("worktree gone"),
+    );
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.kind).toBe("error");
   });
 
   it("clicking a stash reveals it in history without opening its file review", () => {

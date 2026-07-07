@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { ForgeKind, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "../lib/api";
 import { useRepo } from "./repo";
 import { useAccounts, type Account, type StoredProviderToken } from "./accounts";
-import { useUi } from "./ui";
+import { useNotifications } from "./notifications";
 import { usePulls } from "./pulls";
 
 const path = "repo-under-test";
@@ -48,7 +48,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue(null);
   useRepo.setState({ summary, remotes: [] });
-  useUi.setState({ toast: null });
+  useNotifications.setState({ toasts: [] });
   usePulls.setState({ loadPullRequests });
   useAccounts.setState({
     accounts: [account],
@@ -334,7 +334,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
     expect(invokeMock).toHaveBeenCalledWith("forge_sign_out", { provider: "gitlab" });
     expect(statusCalls).toBe(1);
     expect(useAccounts.getState().forgeAuth[0].authenticated).toBe(false);
-    expect(useUi.getState().toast?.message).toBe("Signed out of GitLab");
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Signed out of GitLab");
   });
 });
 
@@ -555,7 +555,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
     expect(useAccounts.getState().repoAccountId).toBeNull();
     expect(loadPrs).toHaveBeenCalledTimes(1);
-    expect(useUi.getState().toast?.message).toBe("origin (and pull requests) use system git credentials");
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("origin (and pull requests) use system git credentials");
   });
 
   it("setRepoAccount(null) also refreshes PRs when it clears a plain HTTPS default remote", async () => {

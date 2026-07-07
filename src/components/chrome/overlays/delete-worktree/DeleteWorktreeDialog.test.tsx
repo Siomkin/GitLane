@@ -28,6 +28,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { DeleteWorktreeDialog } from "./DeleteWorktreeDialog";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 
 const preview = {
   summary: "Delete local branch feature",
@@ -77,7 +78,8 @@ describe("DeleteWorktreeDialog", () => {
     progressListeners.length = 0;
     invokeMock.mockReset();
     listenGate.current = null;
-    useUi.setState({ deleteWorktree: null, deleteWorktreeRunning: false, toast: null });
+    useUi.setState({ deleteWorktree: null, deleteWorktreeRunning: false });
+    useNotifications.setState({ toasts: [] });
     // An open repo + a stub refresh the run hook can await after the delete.
     useRepo.setState({
       summary: { path: "/work/repo" } as never,
@@ -221,7 +223,7 @@ describe("DeleteWorktreeDialog", () => {
 
     await act(async () => del.resolve("Deleted feature and its worktree"));
     await waitFor(() =>
-      expect(useUi.getState().toast?.message).toBe("Deleted feature and its worktree"),
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Deleted feature and its worktree"),
     );
   });
 
@@ -278,6 +280,6 @@ describe("DeleteWorktreeDialog", () => {
     await waitFor(() => expect(progressListeners.length).toBeGreaterThan(0));
     await act(async () => del.resolve("Deleted feature and its worktree"));
     await waitFor(() => expect(screen.getByText("Deleted feature")).toBeInTheDocument());
-    expect(useUi.getState().toast).toBeNull();
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 });

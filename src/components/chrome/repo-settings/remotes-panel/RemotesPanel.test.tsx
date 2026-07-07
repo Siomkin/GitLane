@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { ForgeKind, type RemoteInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 import { useAccounts, type Account, type StoredProviderToken } from "@/store/accounts";
 import { RemotesPanel } from "./RemotesPanel";
 
@@ -41,7 +42,8 @@ beforeEach(() => {
     refresh: vi.fn().mockResolvedValue(undefined),
   });
   useAccounts.setState({ repoAccountRef: null });
-  useUi.setState({ toast: null, confirm: null });
+  useUi.setState({ confirm: null });
+  useNotifications.setState({ toasts: [] });
 });
 
 describe("RemotesPanel add UX", () => {
@@ -55,7 +57,7 @@ describe("RemotesPanel add UX", () => {
 
     // Form is still open and the URL the user typed is preserved.
     expect(screen.getByLabelText("Remote URL")).toHaveValue(NEW_URL);
-    expect(useUi.getState().toast?.message).toMatch(/Couldn't add upstream/);
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/Couldn't add upstream/);
   });
 
   it("collapses the form after a successful add", async () => {

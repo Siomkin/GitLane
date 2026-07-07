@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { usePulls } from "./pulls";
+import { useNotifications } from "./notifications";
 import { friendlyGitError } from "../lib/gitError";
 import type { ForgeAuthProvider } from "../lib/api";
 import type { PrFilter } from "../lib/prs";
@@ -122,12 +123,6 @@ export interface FileMenu {
    * "Discard"/"Unstage & discard" item); omitted for committed files, whose
    * changes can't be discarded — they get a copy-only menu. */
   discard?: { staged: boolean };
-}
-
-export interface Toast {
-  id: number;
-  message: string;
-  tone: "ok" | "error";
 }
 
 /** A pending confirmation prompt for a destructive action (drop stash, delete
@@ -400,7 +395,6 @@ interface UiState {
    * dialog can't start a second delete racing the first on shared git state. */
   deleteWorktreeRunning: boolean;
 
-  toast: Toast | null;
   /** Floating tooltip (e.g. full branch name on hover of a truncated pill). */
   tooltip: { text: string; x: number; y: number } | null;
   showTooltip: (text: string, x: number, y: number) => void;
@@ -541,12 +535,13 @@ interface UiState {
   /** Flag a delete-branch-and-worktree op as in flight (set by the dialog's run hook). */
   setDeleteWorktreeRunning: (running: boolean) => void;
 
+  /** Legacy one-line toast. Thin forwarder into the notifications store
+   *  (see store/notifications.ts) — "ok" → a success toast, "error" → a
+   *  persistent, scrollable error toast with `friendlyGitError` applied. New
+   *  code with a title/body/actions/progress should call `useNotifications`. */
   showToast: (message: string, tone?: "ok" | "error") => void;
   dismissToast: () => void;
 }
-
-let toastSeq = 0;
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Every transient context/action menu cleared at once. Spread into any `set`
  * that opens a menu, modal, or review so exactly one menu is ever live. */
@@ -637,7 +632,6 @@ export const useUi = create<UiState>()(
   deleteWorktree: null,
   deleteWorktreeRunning: false,
 
-  toast: null,
   tooltip: null,
 
   showTooltip: (text, x, y) => set({ tooltip: { text, x, y } }),
@@ -835,22 +829,22 @@ export const useUi = create<UiState>()(
   setDeleteWorktreeRunning: (running) =>
     set((s) => (s.deleteWorktreeRunning === running ? s : { deleteWorktreeRunning: running })),
 
-  showToast: (message, tone = "ok") => {
-    const id = (toastSeq += 1);
-    // Rewrite raw git/hook failures into a readable message (no-op for other text).
-    const text = tone === "error" ? friendlyGitError(message) : message;
-    set({ toast: { id, message: text, tone } });
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = undefined;
-    // Errors — especially multi-line hook output — stay until dismissed so they can
-    // actually be read; success/info toasts auto-clear.
-    if (tone !== "error") {
-      toastTimer = setTimeout(() => {
-        if (get().toast?.id === id) set({ toast: null });
-      }, 2400);
-    }
+  showToast: (message, tone = "ok") =>
+    // Errors — especially multi-line hook output — persist until dismissed and
+    // render scrollable/selectable; success toasts auto-clear. `friendlyGitError`
+    // rewrites raw git/hook failures into readable text (no-op otherwise).
+    void useNotifications.getState().notify(
+      tone === "error"
+        ? { kind: "error", title: friendlyGitError(message), raw: true }
+        : { kind: "success", title: message },
+    ),
+  dismissToast: () => {
+    // Legacy single-slot API → dismiss the most recent toast (not the whole
+    // stack), preserving the old "hide the current notification" meaning.
+    const { toasts, dismiss } = useNotifications.getState();
+    const latest = toasts[toasts.length - 1];
+    if (latest) dismiss(latest.id);
   },
-  dismissToast: () => set({ toast: null }),
     }),
     {
       name: "gitlane.ui",

@@ -4,7 +4,10 @@ import { splitCommitMessage } from "../lib/commitMessage";
 import { findOtherBranchWorktree, type WorktreeRef } from "../lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "../lib/mergeOutcome";
 import { pushRemoteForBranch, remoteNameForUpstream } from "../lib/remoteAccounts";
+import { branchWebUrl } from "../lib/forgeUrls";
+import { openExternalUrl } from "../lib/openExternal";
 import { useAccounts } from "./accounts";
+import { useNotifications } from "./notifications";
 import { takePendingRefresh } from "./repoRequests";
 import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
@@ -871,9 +874,21 @@ export function createRepoWriteActions(
     },
 
     fetch: async () => {
-      const { summary } = get();
+      const { summary, forge } = get();
       if (!summary) return;
       set({ loading: true, error: null });
+      // Capture how far behind the tracked branch is *before* fetching so the
+      // success toast can report how many commits the remote ref gained.
+      const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const behindBefore = head?.sync?.behind ?? 0;
+      const only = get().remotes.length === 1 ? get().remotes[0].name : null;
+      const notes = useNotifications.getState();
+      const toastId = notes.notify({
+        kind: "progress",
+        title: only ? `Fetching ${only}…` : "Fetching…",
+        body: forge?.host ? `Contacting ${forge.host}` : undefined,
+        progress: "indeterminate",
+      });
       try {
         // One {remote, account} pair per bound remote (GL-129); remotes
         // without a binding are omitted and fetch through the system
@@ -884,39 +899,150 @@ export function createRepoWriteActions(
             pair.auth !== null,
           );
         await api.fetch(summary.path, remoteAccounts);
-        set({ loading: false });
-        await get().refresh();
       } catch (e) {
         // Replay any re-sync deferred while this fetch held `loading` (GL-20 review).
         set({ loading: false });
         flushPendingRefresh(get);
+        notes.dismiss(toastId);
         useUi.getState().showToast(String(e), "error");
+        return;
       }
+      set({ loading: false });
+      // Fetch succeeded — refresh (best-effort) so the count reflects new refs,
+      // then report. A refresh failure can't relabel a successful fetch.
+      let refreshed = true;
+      try {
+        await get().refresh();
+      } catch (err) {
+        refreshed = false;
+        console.warn("fetch: post-fetch refresh failed", err);
+      }
+      const headAfter = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const gained = Math.max(0, (headAfter?.sync?.behind ?? 0) - behindBefore);
+      const on = headAfter?.name ?? head?.name;
+      notes.update(toastId, {
+        kind: "success",
+        title: only ? `Fetched ${only}` : "Fetched",
+        // The count comes from post-fetch branch state, so it's only trustworthy
+        // when the refresh landed. If refresh failed, drop the detail rather than
+        // claim "No new commits" (which could be wrong). "No new commits" (vs "up
+        // to date") because a fetch that gained nothing doesn't mean the branch is
+        // synced — it may still be behind; only pull can claim sync.
+        body: !refreshed
+          ? undefined
+          : gained > 0 && on
+            ? `↓${gained} new commit${gained === 1 ? "" : "s"} on ${on}`
+            : "No new commits",
+        progress: undefined,
+        duration: 5000,
+      });
     },
 
     pull: async () => {
       const { summary } = get();
       if (!summary) return;
+      const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const remote = head?.upstreamRemote ?? "origin";
+      const branch = head?.name ?? "HEAD";
+      const upstream = head?.upstream ?? `${remote}/${branch}`;
+      // Compare the branch tip across the pull to tell "fast-forwarded/merged"
+      // from "already up to date".
+      const tipBefore = head?.target ?? null;
+      const notes = useNotifications.getState();
+      const toastId = notes.notify({
+        kind: "progress",
+        title: `Pulling ${remote}…`,
+        body: `from ${upstream}`,
+        progress: "indeterminate",
+      });
       try {
-        const head = get().branches.find((b) => b.kind === "local" && b.isHead);
         await api.pull(summary.path, authFor(head?.upstreamRemote ?? null));
-        await get().refresh();
       } catch (e) {
+        notes.dismiss(toastId);
         useUi.getState().showToast(String(e), "error");
+        return;
       }
+      // Pull succeeded — refresh (best-effort) to observe the new tip, then
+      // report. A refresh failure can't relabel a successful pull.
+      let refreshed = true;
+      try {
+        await get().refresh();
+      } catch (err) {
+        refreshed = false;
+        console.warn("pull: post-pull refresh failed", err);
+      }
+      const tipAfter = get().branches.find((b) => b.kind === "local" && b.isHead)?.target ?? null;
+      // The pulled-vs-up-to-date distinction relies on the tip observed after
+      // refresh; if refresh failed the tip is stale, so report a neutral success
+      // rather than risk claiming "Already up to date" on a pull that moved HEAD.
+      const changed = refreshed && tipBefore !== null && tipAfter !== null && tipBefore !== tipAfter;
+      notes.update(toastId, {
+        kind: "success",
+        title: !refreshed ? "Pulled" : changed ? "Pulled changes" : "Already up to date",
+        body: !refreshed || changed ? `from ${upstream}` : `${branch} is up to date`,
+        progress: undefined,
+        duration: 5000,
+      });
     },
 
     push: async () => {
-      const { summary } = get();
+      const { summary, forge } = get();
       if (!summary) return;
+      // A bare push targets the checked-out branch's configured remote — send
+      // that remote's account (GL-129). Capture the ahead count *before* the
+      // push so the success toast can report how many commits went out.
+      const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const remote = pushRemoteForBranch(head);
+      // A bare push follows the configured upstream, whose branch name can differ
+      // from the local branch — report the *upstream* branch (from `head.upstream`,
+      // "remote/branch") for the copy + forge link, falling back to the local name.
+      const remoteBranch =
+        head?.upstream && head.upstream.startsWith(`${remote}/`)
+          ? head.upstream.slice(remote.length + 1)
+          : (head?.name ?? "HEAD");
+      const aheadBefore = head?.sync?.ahead ?? 0;
+      const target = `${remote}/${remoteBranch}`;
+      const notes = useNotifications.getState();
+      // git push doesn't stream progress through our transport, so the toast is
+      // indeterminate ("working") until the invoke resolves, then it morphs into
+      // the success card in place.
+      const toastId = notes.notify({
+        kind: "progress",
+        title: `Pushing to ${remote}…`,
+        body: `to ${target}`,
+        progress: "indeterminate",
+      });
       try {
-        // A bare push targets the checked-out branch's configured remote —
-        // send that remote's account (GL-129).
-        const head = get().branches.find((b) => b.kind === "local" && b.isHead);
-        await api.push(summary.path, authFor(pushRemoteForBranch(head)));
-        await get().refresh();
+        await api.push(summary.path, authFor(remote));
       } catch (e) {
+        // Drop the in-flight progress toast; the error keeps its own persistent,
+        // scrollable toast (via the legacy forwarder → friendlyGitError).
+        notes.dismiss(toastId);
         useUi.getState().showToast(String(e), "error");
+        return;
+      }
+      // The push landed — report it authoritatively *before* the refresh, so a
+      // post-push refresh hiccup can't relabel a successful push as failed.
+      const webUrl = branchWebUrl(forge, remoteBranch);
+      notes.update(toastId, {
+        kind: "success",
+        title:
+          aheadBefore > 0
+            ? `Pushed ${aheadBefore} commit${aheadBefore === 1 ? "" : "s"}`
+            : `Pushed to ${remote}`,
+        body: `to ${target}`,
+        progress: undefined,
+        duration: 5000,
+        actions: webUrl
+          ? [{ label: `View on ${forge?.forge ?? "web"}`, onClick: () => openExternalUrl(webUrl) }]
+          : undefined,
+      });
+      try {
+        await get().refresh();
+      } catch (err) {
+        // The filesystem watcher will re-sync anyway; don't surface a refresh
+        // failure as a push failure.
+        console.warn("push: post-push refresh failed", err);
       }
     },
   };
