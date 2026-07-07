@@ -253,6 +253,54 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
     None
 }
 
+/// Resolve the GitLab remote's `(host, project_path)` for `path`, or `None` when
+/// no GitLab remote is configured. `host` is the API authority — a custom HTTPS
+/// port is preserved (`gitlab.example.com:8443`) so the REST base URL targets the
+/// right endpoint on a self-hosted instance; SSH/scp remotes fall back to the
+/// bare host, since their port is the SSH port, not the API port. `project_path`
+/// is the full namespace path (`group[/subgroup]/repo`, `.git` stripped), which
+/// URL-encoded is GitLab's project id. Pure libgit2 read of the remote URLs; no
+/// network. Follows the same default-push-remote-first ordering as [`detect`] so
+/// it names the remote that drives the operation.
+pub fn gitlab_project(path: &str) -> Option<(String, String)> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            // Classify on the bare host; return the API host (with HTTPS port).
+            let Some(bare_host) = remote_host(url) else {
+                continue;
+            };
+            if classify_host(&bare_host) != Some(ForgeKind::GitLab) {
+                continue;
+            }
+            if let Some(project) = remote_path(url) {
+                let host = api_host_for(url).unwrap_or(bare_host);
+                return Some((host, project));
+            }
+        }
+    }
+    None
+}
+
+/// The API host for a remote URL, preserving a custom port only for HTTP(S) URLs
+/// (whose port is the API port). Returns `None` for SSH/scp/git URLs, whose port
+/// is the transport port, not the REST endpoint.
+fn api_host_for(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.starts_with("https://") || trimmed.starts_with("http://") {
+        credential_host_for_url(trimmed)
+    } else {
+        None
+    }
+}
+
 fn classify_host(host: &str) -> Option<ForgeKind> {
     let host = normalize_host(host);
     if host == "github.com" || host.ends_with(".github.com") {
@@ -378,5 +426,62 @@ mod tests {
         assert_eq!(ForgeKind::AzureDevOps.key(), "azure-devops");
         assert_eq!(ForgeKind::Gitea.key(), "gitea");
         assert_eq!(ForgeKind::Forgejo.key(), "forgejo");
+    }
+
+    // --- gitlab_project: parse (host, project_path) from the configured remote ---
+
+    struct TempRepo(std::path::PathBuf);
+    impl TempRepo {
+        fn init(tag: &str, remote_url: &str) -> Self {
+            use std::sync::atomic::{AtomicU32, Ordering};
+            static SEQ: AtomicU32 = AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("gitlane-forge-{tag}-{}-{n}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let repo = Repository::init(&dir).unwrap();
+            repo.remote("origin", remote_url).unwrap();
+            TempRepo(dir)
+        }
+    }
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn gitlab_project_parses_https_ssh_and_preserves_https_port() {
+        let https = TempRepo::init("https", "https://gitlab.com/group/repo.git");
+        assert_eq!(
+            gitlab_project(https.0.to_str().unwrap()),
+            Some(("gitlab.com".into(), "group/repo".into()))
+        );
+
+        // Nested subgroups keep the full namespace path (the REST project id).
+        let ssh = TempRepo::init("ssh", "git@gitlab.com:group/sub/repo.git");
+        assert_eq!(
+            gitlab_project(ssh.0.to_str().unwrap()),
+            Some(("gitlab.com".into(), "group/sub/repo".into()))
+        );
+
+        // A custom HTTPS port is preserved so the REST base URL is correct.
+        let ported = TempRepo::init("port", "https://gitlab.example.com:8443/team/app.git");
+        assert_eq!(
+            gitlab_project(ported.0.to_str().unwrap()),
+            Some(("gitlab.example.com:8443".into(), "team/app".into()))
+        );
+
+        // An SSH custom port is the transport port, not the API port — dropped.
+        let ssh_port = TempRepo::init("sshport", "ssh://git@gitlab.example.com:2222/team/app.git");
+        assert_eq!(
+            gitlab_project(ssh_port.0.to_str().unwrap()),
+            Some(("gitlab.example.com".into(), "team/app".into()))
+        );
+
+        // A non-GitLab remote yields nothing.
+        let gh = TempRepo::init("gh", "https://github.com/o/r.git");
+        assert_eq!(gitlab_project(gh.0.to_str().unwrap()), None);
     }
 }

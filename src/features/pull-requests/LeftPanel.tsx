@@ -37,13 +37,16 @@ function PullRequestsPanel() {
   // An unborn branch resolves a name but has no commits, so there's nothing to
   // open a PR from — keep "New PR" disabled even though `headBranch` is set.
   const unborn = useRepo((state) => state.summary?.unborn ?? false);
-  // PRs run through `gh`, so creating one only makes sense on a GitHub remote.
-  // Treat an unknown forge (`null` — still loading, or detection failed) as
-  // capable, matching the store's load gate (`loadPullRequests` only blocks a
-  // *known* non-GitHub forge); otherwise a GitHub repo whose list still loads
-  // would have "New PR" wrongly disabled.
+  // Creating a PR is supported on GitHub (via `gh`) and GitLab (via glab / REST
+  // v4, GL-140). Treat an unknown forge (`null` — still loading, or detection
+  // failed) as capable, matching the store's load gate (`loadPullRequests` only
+  // blocks a *known* unsupported forge); otherwise a supported repo whose list
+  // still loads would have "New PR" wrongly disabled.
   const prsUnsupported = useRepo(
-    (state) => state.forge != null && state.forge.kind !== ForgeKind.GitHub,
+    (state) =>
+      state.forge != null &&
+      state.forge.kind !== ForgeKind.GitHub &&
+      state.forge.kind !== ForgeKind.GitLab,
   );
   const [now, setNow] = useState(() => Date.now());
 
@@ -95,7 +98,7 @@ function PullRequestsPanel() {
               disabled={!headBranch || unborn || prsUnsupported}
               title={
                 prsUnsupported
-                  ? "Pull requests are only available for GitHub repositories"
+                  ? "Pull requests aren't available for this repository's remote"
                   : unborn
                     ? "Make the first commit before opening a pull request"
                     : headBranch

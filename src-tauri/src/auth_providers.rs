@@ -52,7 +52,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         logout_args: Some(&["auth", "logout"]),
         logout_needs_hostname: true,
         docs_url: "https://gitlab.com/gitlab-org/cli",
-        notes: "Auth status only. Pull-request features are not implemented for GitLab.",
+        notes: "Signed in with glab. Merge requests (list, view, create, merge, approve) work when glab is signed in or a GitLab token is stored.",
         require_output: false,
     },
     ProviderSpec {

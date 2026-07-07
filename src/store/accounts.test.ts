@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import type { ForgeAuthStatus, RepoSummary } from "../lib/api";
+import { ForgeKind, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "../lib/api";
 import { useRepo } from "./repo";
-import { useAccounts, type Account } from "./accounts";
+import { useAccounts, type Account, type StoredProviderToken } from "./accounts";
 import { useUi } from "./ui";
 import { usePulls } from "./pulls";
 
@@ -867,5 +867,71 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     const stored = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
     expect(stored[mainPath]).toEqual({ version: 2, unbound: true });
     expect(stored[wtPath]).toBeUndefined();
+  });
+});
+
+// prAccountRef() — the account ref the PR surface passes per forge (GL-140).
+describe("prAccountRef — PR account resolution per forge", () => {
+  const forge = (over: Partial<RepoForge>): RepoForge => ({
+    hasRemote: true,
+    kind: ForgeKind.GitLab,
+    forge: "GitLab",
+    host: "gitlab.com",
+    webUrl: "https://gitlab.com/group/repo",
+    ...over,
+  });
+  const glabRow: ForgeAuthStatus = {
+    provider: "gitlab",
+    forge: "GitLab",
+    cli: "glab",
+    authMethod: "GitLab CLI",
+    available: true,
+    authenticated: true,
+    loginCommand: "glab auth login",
+    docsUrl: "d",
+    notes: "n",
+  };
+  const gitlabRemote = remoteInfo("origin", "https://gitlab.com/group/repo.git", true);
+  const token: StoredProviderToken = {
+    provider: "gitlab",
+    credentialHost: "gitlab.com",
+    accountId: "42",
+    login: "ada",
+    savedAt: 1,
+  };
+
+  it("returns the gh binding unchanged for a GitHub repo", () => {
+    useRepo.setState({ forge: forge({ kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com" }) });
+    useAccounts.setState({ repoAccountRef: account.ref });
+    expect(useAccounts.getState().prAccountRef()).toEqual(account.ref);
+  });
+
+  it("prefers glab (null ref) for a GitLab repo when glab is signed in", () => {
+    useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+    useAccounts.setState({ forgeAuth: [glabRow], providerTokens: {} });
+    expect(useAccounts.getState().prAccountRef()).toBeNull();
+  });
+
+  it("uses a GitLab keychain-token account when glab isn't available", () => {
+    useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+    // No glab row → falls back to the stored token; keyed by host+login.
+    useAccounts.setState({ forgeAuth: [], providerTokens: { "gitlab.com ada": token } });
+    expect(useAccounts.getState().prAccountRef()).toEqual({
+      provider: "native",
+      host: "gitlab.com",
+      accountId: "42",
+      login: "ada",
+    });
+  });
+
+  it("returns null for a GitLab repo with neither glab nor a token", () => {
+    useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+    useAccounts.setState({ forgeAuth: [], providerTokens: {} });
+    expect(useAccounts.getState().prAccountRef()).toBeNull();
+  });
+
+  it("returns null for an unsupported forge", () => {
+    useRepo.setState({ forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" }) });
+    expect(useAccounts.getState().prAccountRef()).toBeNull();
   });
 });

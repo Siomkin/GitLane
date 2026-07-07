@@ -290,21 +290,34 @@ describe("pulls lazy-load error isolation", () => {
   });
 });
 
-// PRs are GitHub-only (they run through `gh`). The list load must NOT attempt
-// the `gh` resolution for a non-GitHub forge or a remote-less repo — that's the
-// "asks GitHub for a non-GitHub repo" bug.
-describe("pulls GitHub-only gating", () => {
-  it("skips the gh call for a non-GitHub forge and explains why", async () => {
-    useRepo.setState({ forge: forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" }) });
+// PRs are supported for GitHub (via `gh`) and GitLab (via glab / REST v4). The
+// list load must NOT attempt the provider resolution for any *other* forge or a
+// remote-less repo — that's the "asks GitHub for a non-GitHub repo" bug.
+describe("pulls forge gating", () => {
+  it("skips the provider call for an unsupported forge and explains why", async () => {
+    useRepo.setState({
+      forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" }),
+    });
 
     await usePulls.getState().loadPullRequests();
 
     const s = usePulls.getState();
-    expect(invokeMock).not.toHaveBeenCalled(); // never resolved a GitHub repo
+    expect(invokeMock).not.toHaveBeenCalled(); // never resolved a repo
     expect(s.pullRequests).toEqual([]);
     expect(s.prsLoading).toBe(false);
-    expect(s.prError).toContain("GitHub");
-    expect(s.prError).toContain("GitLab");
+    expect(s.prError).toContain("Bitbucket");
+  });
+
+  it("runs the load for a GitLab forge (GL-140)", async () => {
+    invokeMock.mockResolvedValueOnce([]);
+    useRepo.setState({ forge: forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" }) });
+
+    await usePulls.getState().loadPullRequests();
+
+    // No glab/keychain token in the test env → the account resolves to null and
+    // the backend (dispatching by forge) uses glab's zero-config transport.
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", { path: SUMMARY.path, account: null });
+    expect(usePulls.getState().prError).toBeNull();
   });
 
   it("skips the gh call for a repo with no remote", async () => {

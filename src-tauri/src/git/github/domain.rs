@@ -116,7 +116,7 @@ impl GithubError {
                 "GitHub CLI version {installed} is unsupported. GitLane requires gh {required} or newer; upgrade from {GH_UPGRADE_URL}."
             ),
             Self::UnsupportedForge { forge, host } => {
-                format!("{forge} remote detected at {host}, but GitLane only supports GitHub pull requests right now.")
+                format!("GitLane supports GitHub pull requests and GitLab merge requests; the {forge} remote at {host} isn't supported yet.")
             }
             Self::NotAuthenticated { host, account } => match account {
                 Some(login) => format!("GitHub account @{login} is not authenticated for {host}. Run `gh auth login --hostname {host}` or refresh accounts."),
@@ -128,12 +128,14 @@ impl GithubError {
             Self::HostMismatch { repo_host, account_host } => format!(
                 "The selected account is for {account_host}, but this repository resolves to {repo_host}. Choose an account for the same host before continuing."
             ),
+            // Provider-neutral: this variant is produced by both the gh and the
+            // GitLab REST paths, so the wording must not name one forge.
             Self::PermissionDenied { operation } => {
-                format!("GitHub denied permission for {operation}. Check the selected account and repository access.")
+                format!("Permission denied for {operation}. Check the selected account and repository access.")
             }
             Self::RateLimited { reset_at } => match reset_at {
-                Some(reset) => format!("GitHub rate limit reached. Try again after {reset}."),
-                None => "GitHub rate limit reached. Try again later.".to_string(),
+                Some(reset) => format!("Rate limit reached. Try again after {reset}."),
+                None => "Rate limit reached. Try again later.".to_string(),
             },
             Self::Network(msg) | Self::InvalidResponse(msg) | Self::CommandFailed(msg) => msg.clone(),
         }

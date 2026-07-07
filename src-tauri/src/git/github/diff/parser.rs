@@ -13,7 +13,7 @@ use crate::git::types::{DiffHunk, DiffLine, FileDiff};
 ///   bodies and diffstats can't mutate the previous commit's file;
 /// - hunk bodies are bounded by their `@@` header counts, so trailing lines
 ///   (format-patch's `-- ` signature, stray text) never extend a hunk.
-pub(super) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
+pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     let mut files: Vec<FileDiff> = Vec::new();
     let mut old_no = 0u32;
     let mut new_no = 0u32;
