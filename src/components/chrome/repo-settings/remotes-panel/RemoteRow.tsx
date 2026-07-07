@@ -3,7 +3,7 @@ import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import type { RemoteInfo } from "../../../../lib/api";
 import { CloudIcon, GitHubIcon, GitLabIcon, TrashIcon } from "../../../ui/icons";
-import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
+import { detectRemoteUrl, prAbbr, prNoun, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
 import type { ForgeAuthStatus } from "../../../../lib/api";
@@ -80,8 +80,8 @@ export const RemoteRow = ({
           title={
             prs
               ? remote.isDefault
-                ? "This remote drives pull requests and PR auth — the bound account must match its host."
-                : "This provider supports PRs, but pull requests follow the PR remote (the default)."
+                ? `This remote drives ${prNoun(info.provider)} and ${prAbbr(info.provider)} auth — the bound account must match its host.`
+                : `This provider supports ${prAbbr(info.provider)}s, but ${prNoun(info.provider)} follow the ${prAbbr(info.provider)} remote (the default).`
               : undefined
           }
           className={cn(

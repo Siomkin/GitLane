@@ -30,7 +30,7 @@ import {
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
-import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor } from "../lib/remotes";
+import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor, prNoun } from "../lib/remotes";
 import { repoIdentityKey } from "../lib/worktrees";
 import {
   accountKey,
@@ -971,12 +971,15 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // Setting a remote's account drives auth ONLY — it must never touch the
     // commit identity; who the repo commits as is owned by `identities.ts`.
     const isDefault = target.isDefault;
+    // The default remote also drives the PR surface — name the forge's requests
+    // ("merge requests" on GitLab) so the toast reads correctly (GL-145).
+    const requests = prNoun(info.provider);
     if (account) {
       useUi
         .getState()
         .showToast(
           isDefault
-            ? `${remote} (and pull requests) authenticate as @${account.username}`
+            ? `${remote} (and ${requests}) authenticate as @${account.username}`
             : `${remote} authenticates as @${account.username}`,
         );
     } else {
@@ -984,7 +987,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         .getState()
         .showToast(
           isDefault
-            ? `${remote} (and pull requests) use system git credentials`
+            ? `${remote} (and ${requests}) use system git credentials`
             : `${remote} uses system git credentials`,
         );
     }

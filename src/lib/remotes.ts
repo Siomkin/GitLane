@@ -171,6 +171,12 @@ export const isValidRemoteName = (raw: string): boolean => /^[A-Za-z0-9][A-Za-z0
  * model): GitHub PRs and GitLab MRs (GL-140). */
 export const providerSupportsPrs = (p: RemoteProvider): boolean => p === "github" || p === "gitlab";
 
+/** The request noun a provider uses in copy — GitLab has "merge requests",
+ * everyone else "pull requests" — so GitLab-facing text reads correctly (GL-145). */
+export const prNoun = (p: RemoteProvider): string => (p === "gitlab" ? "merge requests" : "pull requests");
+/** The short form of {@link prNoun} ("MR" / "PR"). */
+export const prAbbr = (p: RemoteProvider): string => (p === "gitlab" ? "MR" : "PR");
+
 const PROVIDER_LABEL: Record<RemoteProvider, string> = {
   github: "GitHub",
   gitlab: "GitLab",
@@ -199,7 +205,7 @@ export const validateRemoteUrl = (raw: string): RemoteValidity => {
   if (d.empty) return { level: "neutral", message: "Enter an https or SSH git URL.", ok: false };
   if (!d.valid) return { level: "bad", message: "Not a valid git remote URL.", ok: false };
   if (providerSupportsPrs(d.provider)) {
-    return { level: "ok", message: `${providerLabel(d.provider)} · ${d.host} — pull requests enabled`, ok: true };
+    return { level: "ok", message: `${providerLabel(d.provider)} · ${d.host} — ${prNoun(d.provider)} enabled`, ok: true };
   }
   return { level: "warn", message: `${d.host} — ${providerLabel(d.provider)} · pull requests unavailable`, ok: true };
 };

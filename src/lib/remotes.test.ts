@@ -160,7 +160,7 @@ describe("validateRemoteUrl", () => {
   it("is ok for GitLab (PRs enabled), labelled GitLab, and savable (GL-140)", () => {
     const v = validateRemoteUrl("git@gitlab.com:siomkin/gitlane.git");
     expect(v).toMatchObject({ level: "ok", ok: true });
-    expect(v.message).toMatch(/GitLab · gitlab\.com — pull requests enabled/);
+    expect(v.message).toMatch(/GitLab · gitlab\.com — merge requests enabled/);
   });
 
   it("warns for a valid non-PR forge (Bitbucket) but still allows saving", () => {
