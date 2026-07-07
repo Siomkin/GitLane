@@ -5,7 +5,9 @@ import {
   agentSignature,
   areAgentsValid,
   bin,
+  copyOf,
   duplicateAgent,
+  insertAfter,
   isAgentValid,
   isDraftDirty,
   moveAgent,
@@ -79,6 +81,30 @@ describe("updateAgent", () => {
   it("is a no-op for an unknown id", () => {
     const before = list("a");
     expect(updateAgent(before, "missing", { name: "X" })).toEqual(before);
+  });
+});
+
+describe("copyOf", () => {
+  it("clones with a fresh id, a ' copy' suffix, and availability reset", () => {
+    const copy = copyOf(agent({ id: "a", name: "Claude", available: true }));
+    expect(copy.id).not.toBe("a");
+    expect(copy.name).toBe("Claude copy");
+    expect(copy.command).toBe("a");
+    expect(copy.available).toBe(false);
+  });
+  it("keeps a blank name blank", () => {
+    expect(copyOf(agent({ id: "a", name: "" })).name).toBe("");
+  });
+});
+
+describe("insertAfter", () => {
+  it("inserts right after the matching id", () => {
+    const item = agent({ id: "x" });
+    expect(insertAfter(list("a", "b"), "a", item).map((x) => x.id)).toEqual(["a", "x", "b"]);
+  });
+  it("appends when the id is absent", () => {
+    const item = agent({ id: "x" });
+    expect(insertAfter(list("a", "b"), "missing", item).map((x) => x.id)).toEqual(["a", "b", "x"]);
   });
 });
 

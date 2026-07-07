@@ -1,10 +1,12 @@
-// The "Terminal" settings panel: a CRUD + reorder editor for the user's terminal
-// agents (the AI CLIs launched from the terminal panel). Draft state, validation,
-// and save/reset orchestration live in `useTerminalAgentDraft`; each row is the
-// presentational `AgentRow`. This container owns only the list-level view
-// concerns: the drag-to-reorder gesture and the FLIP reorder animation.
+// The "Terminal Agents" settings panel: a CRUD + reorder editor for the user's
+// terminal agents (the AI CLIs launched from the terminal panel). Rows are
+// compact by default and expand into an inline editor on click; draft state,
+// validation, and save/reset orchestration live in `useTerminalAgentDraft`, and
+// each row is the presentational `AgentRow`. This container owns only the
+// list-level view concerns: the pointer drag-to-reorder gesture and the FLIP
+// reorder animation.
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import { focusRing } from "../../lib/ui";
 import { type TerminalAgent } from "../../lib/api";
@@ -20,141 +22,233 @@ export function TerminalAgentsSettings() {
   const editor = useTerminalAgentDraft();
   const { draft, saved, loading, error, saving, dirty, valid, checks } = editor;
 
-  // Native HTML5 drag-and-drop reorder. Only the handle is `draggable`, so text
-  // inputs stay editable. We reorder *live* while dragging: as the pointer
-  // crosses a row's midpoint, the dragged agent moves into that slot and the
-  // FLIP effect glides every row to its new position — so it's always obvious
-  // where the agent will land, and the move can't be "missed" on release.
+  // Pointer-driven reorder: only the grip starts a drag (so inputs stay usable).
+  // While dragging we reorder *live* — as the pointer crosses a row's midpoint,
+  // the dragged agent moves into that slot and the FLIP effect glides every row
+  // to its new position, so it's always obvious where the agent will land.
   const [dragId, setDragId] = useState<string | null>(null);
 
-  // FLIP: glide rows to their new positions on reorder instead of snapping.
+  // Refs read by the window-level pointer handlers, which are registered once
+  // per drag and must see the latest draft / move fn without re-subscribing.
   const rowEls = useRef<Map<string, HTMLElement>>(new Map());
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const moveRef = useRef(editor.move);
+  moveRef.current = editor.move;
+  const dragIdRef = useRef<string | null>(null);
+  // Everything needed to tear a drag down from any exit path: the window
+  // listeners we attached plus the element/pointer we captured.
+  const dragRef = useRef<{ detach: () => void; el: Element; pointerId: number } | null>(null);
+
+  const endDrag = () => {
+    const d = dragRef.current;
+    if (d) {
+      // Null out first so releasing capture (which re-fires `lostpointercapture`)
+      // can't re-enter this teardown.
+      dragRef.current = null;
+      d.detach();
+      if (d.el.hasPointerCapture?.(d.pointerId)) d.el.releasePointerCapture(d.pointerId);
+    }
+    dragIdRef.current = null;
+    setDragId(null);
+  };
+
+  const onDragMove = (e: PointerEvent) => {
+    const drag = dragRef.current;
+    const id = dragIdRef.current;
+    // Only the captured pointer drives the reorder — a second finger's move must
+    // not hijack the drag.
+    if (id === null || !drag || e.pointerId !== drag.pointerId) return;
+    const agents = draftRef.current;
+    const from = agents.findIndex((a) => a.id === id);
+    if (from < 0) return;
+    // Target slot = number of rows whose midpoint the pointer has passed.
+    let to = 0;
+    for (let i = 0; i < agents.length; i++) {
+      const el = rowEls.current.get(agents[i].id);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (e.clientY > rect.top + rect.height / 2) to = i + 1;
+    }
+    if (to > from) to--;
+    to = Math.max(0, Math.min(agents.length - 1, to));
+    if (to !== from) moveRef.current(from, to);
+  };
+
+  const startDrag = (id: string) => (e: React.PointerEvent) => {
+    // Only a primary-button / primary-pointer press starts a reorder — ignore
+    // right/middle clicks and secondary (multi-touch) pointers, which would
+    // otherwise enter drag state and attach global listeners for no gesture.
+    if (e.button !== 0 || !e.isPrimary) return;
+    e.preventDefault();
+    // Defensively end any drag still in flight (e.g. a pointerup we missed)
+    // before starting a new one, so the previous drag's window listeners and
+    // pointer capture can't leak.
+    if (dragRef.current) endDrag();
+    const el = e.currentTarget;
+    const { pointerId } = e;
+    dragIdRef.current = id;
+    setDragId(id);
+    // Capture the pointer so moves/ups keep flowing even if it leaves the grip
+    // or the window, and end the drag on every terminal signal — normal release,
+    // `pointercancel`, or a `lostpointercapture` from an OS gesture / alt-tab —
+    // so a row can never stick in its lifted state. Capture is best-effort.
+    try {
+      el.setPointerCapture(pointerId);
+    } catch {
+      // ignore: drag still works via the window listeners below
+    }
+    const move = (ev: PointerEvent) => onDragMove(ev);
+    // End only on the captured pointer's release/cancel/lost-capture — a stray
+    // release from another pointer must not end this drag.
+    const end = (ev: PointerEvent) => {
+      if (dragRef.current && ev.pointerId !== dragRef.current.pointerId) return;
+      endDrag();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("lostpointercapture", end);
+    dragRef.current = {
+      el,
+      pointerId,
+      detach: () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+        window.removeEventListener("lostpointercapture", end);
+      },
+    };
+  };
+
+  // Detach any live drag listeners if the panel unmounts mid-drag.
+  useEffect(() => endDrag, []);
+
+  // FLIP: glide rows to their new positions on reorder instead of snapping.
+  // `order` (ids) detects an actual reorder — the only thing we animate; a text
+  // edit (name/command) mutates `draft` without moving any row, so it must not
+  // re-measure. `layoutKey` additionally flips when a row expands/collapses, so
+  // we refresh the measured baseline on those height changes too — otherwise a
+  // reorder right after an expand would animate from stale pre-expand positions.
+  const order = draft.map((a) => a.id).join(" ");
+  const layoutKey = draft.map((a) => `${a.id}${editor.isEditing(a.id) ? "*" : ""}`).join(" ");
   const prevRects = useRef<Map<string, DOMRect>>(new Map());
+  const prevOrder = useRef(order);
+  const flipRafs = useRef<Map<string, number>>(new Map());
   useLayoutEffect(() => {
     const els = rowEls.current;
-    els.forEach((el, id) => {
-      const prev = prevRects.current.get(id);
-      const next = el.getBoundingClientRect();
-      const dy = prev ? prev.top - next.top : 0;
-      if (dy) {
+    const rafs = flipRafs.current; // stable Map ref; capture for the cleanup closure
+    // Clear any transform still applied from an animation that the cleanup below
+    // just cancelled, so the measurement reads TRUE layout positions — a rapid
+    // consecutive reorder must not baseline off a mid-animation (transformed) rect.
+    els.forEach((el) => {
+      if (el.style.transform) {
         el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
-        void el.offsetHeight; // force reflow so the start position sticks
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 220ms ease";
-          el.style.transform = "";
-        });
+        el.style.transform = "";
       }
     });
-    const snapshot = new Map<string, DOMRect>();
-    els.forEach((el, id) => snapshot.set(id, el.getBoundingClientRect()));
-    prevRects.current = snapshot;
-  }, [draft]);
+    const nextRects = new Map<string, DOMRect>();
+    els.forEach((el, id) => nextRects.set(id, el.getBoundingClientRect()));
+    // Only animate on a real reorder; an expand/collapse just refreshes the baseline.
+    if (order !== prevOrder.current) {
+      els.forEach((el, id) => {
+        const prev = prevRects.current.get(id);
+        const next = nextRects.get(id);
+        const dy = prev && next ? prev.top - next.top : 0;
+        if (dy) {
+          el.style.transition = "none";
+          el.style.transform = `translateY(${dy}px)`;
+          void el.offsetHeight; // force reflow so the start position sticks
+          const raf = requestAnimationFrame(() => {
+            el.style.transition = "transform 220ms cubic-bezier(0.2,0,0,1)";
+            el.style.transform = "";
+            rafs.delete(id);
+          });
+          rafs.set(id, raf);
+        }
+      });
+    }
+    prevRects.current = nextRects;
+    prevOrder.current = order;
+    return () => {
+      // Cancel pending FLIP frames on re-run / unmount so a stale frame can't
+      // reset a transform mid-flight (which would make a rapid reorder jump).
+      rafs.forEach((raf) => cancelAnimationFrame(raf));
+      rafs.clear();
+    };
+  }, [order, layoutKey]);
 
   const registerEl = (id: string) => (el: HTMLElement | null) => {
     if (el) rowEls.current.set(id, el);
     else rowEls.current.delete(id);
   };
 
-  const onRowDragOver = (agent: TerminalAgent, index: number) => (e: React.DragEvent) => {
-    if (dragId === null) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dragId === agent.id) return;
-    const from = draft.findIndex((a) => a.id === dragId);
-    if (from < 0) return;
-    // Only swap once the pointer has crossed this row's midpoint in the
-    // direction of travel — prevents jitter between two rows.
-    const rect = e.currentTarget.getBoundingClientRect();
-    const past = e.clientY > rect.top + rect.height / 2;
-    if ((from < index && past) || (from > index && !past)) editor.move(from, index);
-  };
-
   const previewAgents = draft.filter((a) => a.enabled && a.name.trim() && a.command.trim());
   const savedAgents = new Map(saved.map((agent) => [agent.id, agent]));
   const saveDisabled = !dirty || !valid || saving;
-  const saveStatus = "Each agent needs a name and command.";
 
   return (
     <div className="flex h-full max-w-[860px] flex-col">
-      <div className="-mx-1 flex flex-none items-center justify-between gap-4 bg-white px-1 pb-4 pt-1 dark:bg-neutral-800">
+      <div className="-mx-1 flex flex-none items-start justify-between gap-4 bg-white px-1 pb-5 pt-1 dark:bg-neutral-800">
         <div className="min-w-0">
           <h2 className="text-[30px] font-bold tracking-tight text-neutral-900 dark:text-white">
             Terminal Agents
           </h2>
+          <p className="mt-2 max-w-[560px] text-[15px] text-neutral-500 text-pretty dark:text-neutral-400">
+            AI CLIs launched from the terminal panel. Toggle to show or hide; hover a row to
+            reorder, edit, or remove.
+          </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={editor.reset}
-              disabled={saving}
-              className={cn(
-                "h-9 px-3 rounded-lg text-[13px] font-medium text-neutral-500 dark:text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-neutral-800 dark:hover:text-neutral-200 disabled:opacity-40",
-                focusRing,
-              )}
-            >
-              Reset to defaults
-            </button>
-            <button
-              disabled={saveDisabled}
-              onClick={() => void editor.save()}
-              className={cn(
-                "h-9 px-4 rounded-lg text-[13px] font-semibold text-white bg-[var(--accent)] shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:opacity-45 disabled:cursor-default disabled:hover:brightness-100 disabled:active:scale-100",
-                focusRing,
-              )}
-            >
-              {saving ? "Saving..." : "Save agents"}
-            </button>
-          </div>
-          {dirty && !valid && (
-            <span
-              className="text-[12px] text-amber-600 dark:text-amber-400"
-            >
-              {saveStatus}
-            </span>
-          )}
+        <div className="flex shrink-0 items-center gap-2 pt-1.5">
+          <button
+            onClick={editor.reset}
+            disabled={saving}
+            className={cn(
+              "h-9 rounded-lg px-3.5 text-[13px] font-semibold text-neutral-500 transition hover:bg-black/[0.04] hover:text-neutral-800 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200",
+              focusRing,
+            )}
+          >
+            Reset to defaults
+          </button>
+          <button
+            disabled={saveDisabled}
+            onClick={() => void editor.save()}
+            className={cn(
+              "h-9 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:cursor-default disabled:opacity-45 disabled:hover:brightness-100 disabled:active:scale-100",
+              focusRing,
+            )}
+          >
+            {saving ? "Saving…" : "Save agents"}
+          </button>
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto pb-9 pr-2">
-        <p className="max-w-[520px] text-[13px] leading-relaxed text-neutral-500 text-pretty dark:text-neutral-400">
-          The AI CLIs launched from the terminal panel. Drag to reorder, toggle to show or hide,
-          and edit the command to pin a model or flags.
-        </p>
-
         {error && (
-          <div className="mt-6 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-3 text-[12.5px] text-rose-600 dark:text-rose-400">
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-3 text-[12.5px] text-rose-600 dark:text-rose-400">
             {error}
           </div>
         )}
 
         {!error && draft.length === 0 && !loading && (
-          <div className="mt-6 rounded-xl border border-black/[0.07] bg-black/[0.02] p-5 text-[13px] leading-relaxed text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-neutral-400">
+          <div className="rounded-xl border border-black/[0.07] bg-black/[0.02] p-5 text-[13px] leading-relaxed text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-neutral-400">
             No agents configured. Click <span className="font-semibold">Add agent</span>, or reset to
             the built-ins.
           </div>
         )}
 
-        <div className="mt-7 flex flex-col gap-2.5">
-          {draft.map((agent, i) => (
+        <div className="flex flex-col gap-1">
+          {draft.map((agent) => (
             <AgentRow
               key={agent.id}
               agent={agent}
+              editing={editor.isEditing(agent.id)}
               check={editor.checkOf(agent)}
-              isDragging={dragId === agent.id}
+              dragging={dragId === agent.id}
               registerEl={registerEl(agent.id)}
-              onDragStart={(e) => {
-                setDragId(agent.id);
-                e.dataTransfer.effectAllowed = "move";
-                const card = e.currentTarget.closest("[data-agent-card]");
-                if (card instanceof HTMLElement) e.dataTransfer.setDragImage(card, 14, 14);
-              }}
-              onDragEnd={() => setDragId(null)}
-              onDragOver={onRowDragOver(agent, i)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragId(null);
-              }}
+              onHandleDown={startDrag(agent.id)}
+              onEdit={() => editor.startEdit(agent.id)}
+              onDone={() => editor.stopEdit(agent.id)}
               onToggleEnabled={() => editor.update(agent.id, { enabled: !agent.enabled })}
               onNameChange={(value) => editor.update(agent.id, { name: value })}
               onCommandChange={(value) => editor.editCommand(agent.id, value)}
@@ -170,7 +264,7 @@ export function TerminalAgentsSettings() {
           type="button"
           onClick={editor.add}
           className={cn(
-            "mt-2.5 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 text-[13.5px] font-medium text-neutral-500 hover:border-black/25 hover:text-neutral-700 dark:border-white/15 dark:text-neutral-400 dark:hover:border-white/25 dark:hover:text-neutral-200",
+            "mt-1.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 text-[13.5px] font-medium text-neutral-500 hover:border-black/25 hover:text-neutral-700 dark:border-white/15 dark:text-neutral-400 dark:hover:border-white/25 dark:hover:text-neutral-200",
             focusRing,
           )}
         >
@@ -180,7 +274,7 @@ export function TerminalAgentsSettings() {
           Add agent
         </button>
 
-        <div className="mt-8 rounded-xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/[0.08] dark:bg-black/20">
+        <div className="mt-7 rounded-xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/[0.08] dark:bg-black/20">
           <div className="mb-3 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
             TERMINAL PANEL PREVIEW
           </div>
@@ -204,7 +298,6 @@ export function TerminalAgentsSettings() {
           </div>
         </div>
       </div>
-
     </div>
   );
 }
@@ -226,11 +319,11 @@ function PreviewAgent({
     <span
       title={title}
       className={cn(
-        "px-2.5 h-8 grid place-items-center rounded-md text-[12.5px] font-medium",
+        "grid h-8 place-items-center rounded-md px-2.5 text-[12.5px] font-medium",
         availability === "available"
           ? "cursor-pointer text-neutral-600 hover:bg-black/[0.05] dark:text-neutral-300 dark:hover:bg-white/10"
           : availability === "missing"
-            ? "text-neutral-300 dark:text-neutral-600 cursor-not-allowed"
+            ? "cursor-not-allowed text-neutral-300 dark:text-neutral-600"
             : "border border-dashed border-black/10 text-neutral-400 dark:border-white/10 dark:text-neutral-500",
       )}
     >

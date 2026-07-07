@@ -12,11 +12,12 @@ import { api, type TerminalAgent } from "../../lib/api";
 import {
   type AgentCheck,
   type CheckStatus,
-  addAgent,
   agentSignature,
   areAgentsValid,
   bin,
-  duplicateAgent,
+  blankAgent,
+  copyOf,
+  insertAfter,
   isDraftDirty,
   moveAgent,
   removeAgent,
@@ -38,6 +39,14 @@ export interface TerminalAgentDraft {
   /** Live check status for a row, or "idle" when nothing has been probed for
    *  its current command. */
   checkOf: (agent: TerminalAgent) => CheckStatus | "idle";
+  /** Is this row expanded into its editor? Rows are compact (view-only) until
+   *  opened, and newly added / duplicated rows open expanded. Transient UI
+   *  state — never part of the saved list. */
+  isEditing: (id: string) => boolean;
+  /** Expand a row into its editor. */
+  startEdit: (id: string) => void;
+  /** Collapse a row back to its compact view. */
+  stopEdit: (id: string) => void;
   add: () => void;
   update: (id: string, patch: Partial<TerminalAgent>) => void;
   duplicate: (id: string) => void;
@@ -110,13 +119,38 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
     setChecks({});
   };
 
+  // Which rows are expanded into their editor. Purely transient view state kept
+  // out of `draft` so it never enters the saved signature. New/duplicated rows
+  // open expanded; ids that leave the draft are pruned on delete/reset.
+  const [editingIds, setEditingIds] = useState<Set<string>>(() => new Set());
+  const isEditing = (id: string) => editingIds.has(id);
+  const startEdit = (id: string) =>
+    setEditingIds((s) => (s.has(id) ? s : new Set(s).add(id)));
+  const stopEdit = (id: string) =>
+    setEditingIds((s) => {
+      if (!s.has(id)) return s;
+      const next = new Set(s);
+      next.delete(id);
+      return next;
+    });
+
   const dirty = isDraftDirty(draft, saved);
   const valid = areAgentsValid(draft);
 
-  const add = () => setDraft(addAgent);
+  const add = () => {
+    const row = blankAgent();
+    setDraft((d) => [...d, row]);
+    startEdit(row.id);
+  };
   const update = (id: string, patch: Partial<TerminalAgent>) =>
     setDraft((d) => updateAgent(d, id, patch));
-  const duplicate = (id: string) => setDraft((d) => duplicateAgent(d, id));
+  const duplicate = (id: string) => {
+    const src = draft.find((a) => a.id === id);
+    if (!src) return;
+    const copy = copyOf(src);
+    setDraft((d) => insertAfter(d, id, copy));
+    startEdit(copy.id);
+  };
   const editCommand = (id: string, command: string) => {
     setDraft((d) => updateAgent(d, id, { command }));
     clearCheck(id);
@@ -152,6 +186,7 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
       onConfirm: () => {
         setDraft((d) => removeAgent(d, agent.id));
         clearCheck(agent.id);
+        stopEdit(agent.id);
       },
     });
   };
@@ -186,6 +221,7 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
           setDraft(fresh);
           syncedSig.current = agentSignature(fresh);
           clearAllChecks();
+          setEditingIds(new Set());
           showToast("Reset to default agents");
         } catch (e) {
           showToast(String(e instanceof Error ? e.message : e), "error");
@@ -204,6 +240,9 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
     valid,
     checks,
     checkOf,
+    isEditing,
+    startEdit,
+    stopEdit,
     add,
     update,
     duplicate,

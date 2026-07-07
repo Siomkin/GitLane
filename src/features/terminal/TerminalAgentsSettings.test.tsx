@@ -44,6 +44,12 @@ beforeEach(() => {
   useUi.setState({ toast: null, confirm: null });
 });
 
+/** Rows render compact by default; click the row's pencil to expand its editor
+ *  (which reveals the name/command inputs, Check, and Done). */
+async function openEditor(name: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Edit ${name}` }));
+}
+
 describe("TerminalAgentsSettings", () => {
   it("keeps Save visible but disabled until the draft changes", async () => {
     stubBackend();
@@ -52,6 +58,7 @@ describe("TerminalAgentsSettings", () => {
     const save = await screen.findByRole("button", { name: "Save agents" });
     expect(save).toBeDisabled();
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
 
     expect(save).not.toBeDisabled();
@@ -66,6 +73,7 @@ describe("TerminalAgentsSettings", () => {
     });
 
     render(<TerminalAgentsSettings />);
+    await openEditor("Claude");
     fireEvent.click(screen.getByRole("button", { name: "Check" }));
     fireEvent.change(screen.getByPlaceholderText("command --flags"), {
       target: { value: "different-agent" },
@@ -83,7 +91,7 @@ describe("TerminalAgentsSettings", () => {
   it("adopts a background agent-list change while the draft is pristine", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
-    await screen.findByDisplayValue("Claude");
+    await screen.findByRole("button", { name: "Edit Claude" });
 
     // A background source (e.g. the toolbar re-probing) updates the shared store.
     act(() => {
@@ -92,14 +100,14 @@ describe("TerminalAgentsSettings", () => {
       });
     });
 
-    expect(await screen.findByDisplayValue("Codex")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Claude")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Edit Codex" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Claude" })).not.toBeInTheDocument();
   });
 
   it("preserves a dirty draft against a background change", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
-    await screen.findByDisplayValue("Claude");
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "My Edit" } });
 
     act(() => {
@@ -109,13 +117,14 @@ describe("TerminalAgentsSettings", () => {
     });
 
     expect(screen.getByDisplayValue("My Edit")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Codex")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Codex" })).not.toBeInTheDocument();
   });
 
   it("saves the edited draft and toasts success", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
@@ -131,6 +140,7 @@ describe("TerminalAgentsSettings", () => {
     });
     render(<TerminalAgentsSettings />);
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Edited" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
@@ -157,17 +167,21 @@ describe("TerminalAgentsSettings", () => {
     expect(invokeMock).toHaveBeenCalledWith("terminal_agents_reset");
   });
 
-  it("duplicate inserts a second editable row and marks the draft dirty", async () => {
+  it("duplicate inserts a copy that opens expanded and marks the draft dirty", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
 
-    expect(screen.getAllByLabelText("Agent name")).toHaveLength(1);
+    // The source row starts collapsed, so nothing is in edit mode yet.
+    expect(screen.queryByLabelText("Agent name")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Duplicate Claude" }));
 
-    expect(screen.getAllByLabelText("Agent name")).toHaveLength(2);
+    // The copy lands expanded (one editor open) while the source stays compact.
+    expect(screen.getAllByLabelText("Agent name")).toHaveLength(1);
     expect(screen.getByDisplayValue("Claude copy")).toBeInTheDocument();
-    // A new draft entry enables the always-visible Save button.
-    expect(await screen.findByRole("button", { name: "Save agents" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Claude" })).toBeInTheDocument();
+    // The copy is a complete (valid) draft entry, so Save is enabled.
+    expect(await screen.findByRole("button", { name: "Save agents" })).not.toBeDisabled();
   });
 
   it("reset replaces a dirty draft with the defaults", async () => {
@@ -179,6 +193,7 @@ describe("TerminalAgentsSettings", () => {
     });
     render(<TerminalAgentsSettings />);
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Edited Claude" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
 
@@ -187,13 +202,16 @@ describe("TerminalAgentsSettings", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(screen.getByDisplayValue("Default")).toBeInTheDocument());
+    // Reset collapses everything back to compact rows, so assert by the row's
+    // edit affordance rather than an editor input value.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit Default" })).toBeInTheDocument());
     expect(screen.queryByDisplayValue("Edited Claude")).not.toBeInTheDocument();
   });
 
   it("delete asks for confirmation before dropping the row from the draft", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
 
     fireEvent.click(screen.getByRole("button", { name: "Delete Claude" }));
     const confirm = useUi.getState().confirm;
@@ -201,6 +219,152 @@ describe("TerminalAgentsSettings", () => {
 
     act(() => confirm!.onConfirm());
 
-    expect(screen.queryByDisplayValue("Claude")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Claude" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a visible reason on a collapsed invalid row while Save stays disabled", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
+
+    // Add a blank agent — it opens expanded with empty name/command…
+    fireEvent.click(screen.getByRole("button", { name: "Add agent" }));
+    // …then collapse it back to compact without filling anything in.
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    // The collapsed row still explains why the draft can't be saved.
+    expect(screen.getByTitle("Name and command are required")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save agents" })).toBeDisabled();
+  });
+
+  it("reveals compact-row controls on keyboard focus, not just hover", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    // The hover-hidden action cluster must also reveal on keyboard focus so
+    // tabbing never lands on an invisible, unreachable-looking control.
+    const duplicate = await screen.findByRole("button", { name: "Duplicate Claude" });
+    expect(duplicate.parentElement!.className).toMatch(/group-focus-within\/row:opacity-100/);
+    duplicate.focus();
+    expect(duplicate).toHaveFocus();
+
+    // The reorder grip has its own focus fallback.
+    const grip = screen.getByRole("button", { name: "Drag Claude to reorder" });
+    expect(grip.className).toMatch(/focus-visible:opacity-100/);
+  });
+
+  it("ends a drag on pointercancel so a row never sticks in its lifted state", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
+
+    const grip = screen.getByRole("button", { name: "Drag Claude to reorder" });
+    const card = document.querySelector("[data-agent-card]") as HTMLElement;
+    expect(card.style.boxShadow).toBe("");
+
+    // Grab the grip → the row lifts (dragging style applied).
+    fireEvent.pointerDown(grip, { pointerId: 1, button: 0, isPrimary: true });
+    expect(card.style.boxShadow).not.toBe("");
+
+    // An OS gesture / alt-tab cancels the pointer mid-drag — teardown must run
+    // even though no `pointerup` ever arrives, so the row settles back down.
+    fireEvent.pointerCancel(window, { pointerId: 1 });
+    expect(card.style.boxShadow).toBe("");
+  });
+
+  it("ignores window pointer events from a different pointer mid-drag", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    const grip = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+    const card = document.querySelector("[data-agent-card]") as HTMLElement;
+
+    fireEvent.pointerDown(grip, { pointerId: 1, button: 0, isPrimary: true });
+    expect(card.style.boxShadow).not.toBe("");
+
+    // A second (different) pointer's release must NOT end our drag.
+    fireEvent.pointerUp(window, { pointerId: 2 });
+    expect(card.style.boxShadow).not.toBe("");
+
+    // The captured pointer's release ends it.
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    expect(card.style.boxShadow).toBe("");
+  });
+
+  it("reorders rows when the captured pointer crosses a row midpoint", async () => {
+    stubBackend([agent(), agent({ id: "codex", name: "Codex", command: "codex" })]);
+    render(<TerminalAgentsSettings />);
+    // Both rows load asynchronously — wait for the second before measuring.
+    await screen.findByRole("button", { name: "Drag Codex to reorder" });
+    const gripA = screen.getByRole("button", { name: "Drag Claude to reorder" });
+
+    // jsdom has no layout — give the two rows distinct vertical rects so the
+    // midpoint math has something to cross.
+    const cards = [...document.querySelectorAll("[data-agent-card]")] as HTMLElement[];
+    const rectAt = (top: number) =>
+      ({ top, bottom: top + 46, height: 46, left: 0, right: 0, width: 0, x: 0, y: top, toJSON() {} }) as DOMRect;
+    cards[0].getBoundingClientRect = () => rectAt(0); // Claude
+    cards[1].getBoundingClientRect = () => rectAt(46); // Codex
+
+    fireEvent.pointerDown(gripA, { pointerId: 1, button: 0, isPrimary: true });
+    // Move below Codex's midpoint (46 + 23) → Claude should land at index 1.
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 80 });
+
+    const orderNow = screen
+      .getAllByRole("button", { name: /^Edit / })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(orderNow).toEqual(["Edit Codex", "Edit Claude"]);
+  });
+
+  it("tears down an in-flight drag before starting another (no listener leak)", async () => {
+    stubBackend([agent(), agent({ id: "codex", name: "Codex", command: "codex" })]);
+    render(<TerminalAgentsSettings />);
+    // The second agent loads asynchronously — wait for it before touching either grip.
+    const gripB = await screen.findByRole("button", { name: "Drag Codex to reorder" });
+    const gripA = screen.getByRole("button", { name: "Drag Claude to reorder" });
+
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+
+    // Start dragging A, then start dragging B before A's pointerup arrives.
+    fireEvent.pointerDown(gripA, { pointerId: 1, button: 0, isPrimary: true });
+    fireEvent.pointerDown(gripB, { pointerId: 2, button: 0, isPrimary: true });
+
+    // The second start must have detached A's window listeners.
+    for (const type of ["pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
+      expect(removeSpy).toHaveBeenCalledWith(type, expect.any(Function));
+    }
+    removeSpy.mockRestore();
+  });
+
+  it("does not start a drag on a non-primary pointer (right-click / secondary touch)", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    const grip = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+    const card = document.querySelector("[data-agent-card]") as HTMLElement;
+
+    // Right mouse button — must not enter drag state or attach global listeners.
+    const addSpy = vi.spyOn(window, "addEventListener");
+    fireEvent.pointerDown(grip, { pointerId: 1, button: 2, isPrimary: true });
+    expect(card.style.boxShadow).toBe("");
+    expect(addSpy).not.toHaveBeenCalledWith("pointermove", expect.any(Function));
+
+    // Secondary (non-primary) touch point — likewise ignored.
+    fireEvent.pointerDown(grip, { pointerId: 2, button: 0, isPrimary: false });
+    expect(card.style.boxShadow).toBe("");
+    addSpy.mockRestore();
+  });
+
+  it("does not re-run the FLIP measure on a text edit (only on reorder)", async () => {
+    stubBackend();
+    const measure = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    render(<TerminalAgentsSettings />);
+    await openEditor("Claude");
+
+    // The FLIP layout effect is keyed on row order, so typing (which doesn't
+    // move any row) must not trigger a re-measure of the cards.
+    measure.mockClear();
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
+    expect(measure).not.toHaveBeenCalled();
+
+    measure.mockRestore();
   });
 });
