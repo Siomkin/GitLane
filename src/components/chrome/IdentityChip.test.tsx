@@ -88,10 +88,10 @@ describe("IdentityChip", () => {
     expect(screen.queryByText(/remote \+ PRs/)).toBeNull();
   });
 
-  it("flags a stale binding on an unsupported forge as host mismatch", () => {
-    // Intentional wording difference: the Identity panel has room to explain
-    // ("not usable here" + Clear); the chip's compact line says the same fact
-    // as "host mismatch" — both agree the binding can't work.
+  it("ignores a stale gh binding on a GitLab repo — shows the MR state, not the gh account (GL-146)", () => {
+    // GitLab authenticates via glab / a stored token, not a gh account, so a
+    // legacy gh binding is irrelevant: the row reads an honest "merge requests
+    // off" rather than the gh @octocat or "host mismatch".
     useRepo.setState({
       summary,
       forge: { hasRemote: true, kind: "gitlab", forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/o/r" },
@@ -117,10 +117,39 @@ describe("IdentityChip", () => {
         },
       ],
       repoAccountId: "gh:github.com:1",
+      forgeAuth: [],
+      providerTokens: {},
     });
     render(<IdentityChip />);
     fireEvent.click(screen.getByTitle("Commit identity for this repository"));
-    expect(screen.getByText("github.com · host mismatch")).toBeInTheDocument();
+    expect(screen.getByText("System git credentials; merge requests off")).toBeInTheDocument();
+    expect(screen.queryByText("@octocat")).toBeNull();
+    expect(screen.queryByText(/host mismatch/)).toBeNull();
+  });
+
+  it("shows the GitLab glab/token account + 'merge requests' for a GitLab repo (GL-146)", () => {
+    useRepo.setState({
+      summary,
+      forge: { hasRemote: true, kind: "gitlab", forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/o/r" },
+    });
+    useAccounts.setState({
+      accounts: [],
+      repoAccountId: null,
+      forgeAuth: [],
+      providerTokens: {
+        "gitlab.com ada": {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          accountId: "42",
+          login: "ada",
+          savedAt: 1,
+        },
+      },
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+    expect(screen.getByText("gitlab.com · remote + merge requests")).toBeInTheDocument();
   });
 
   it("shows needs re-auth for a bound account gh reported as broken", () => {
