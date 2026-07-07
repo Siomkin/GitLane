@@ -97,6 +97,14 @@ impl GithubProvider for BitbucketProvider {
                 "Could not resolve a Bitbucket repository for {workdir}. Check that the repo has a Bitbucket remote."
             ))
         })?;
+        // Only Bitbucket Cloud (bitbucket.org) is supported — Server/Data Center
+        // has a different REST API and auth. Reject a self-hosted host with a
+        // clear message instead of misrouting it to the cloud API (GL-141).
+        if !host.eq_ignore_ascii_case("bitbucket.org") {
+            return Err(GithubError::CommandFailed(format!(
+                "GitLane supports Bitbucket Cloud (bitbucket.org); the Bitbucket Server/Data Center host {host} isn't supported yet."
+            )));
+        }
         Ok(GithubRepository {
             host,
             owner: workspace,

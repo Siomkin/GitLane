@@ -387,6 +387,20 @@ mod tests {
     }
 
     #[test]
+    fn list_prs_rejects_a_bitbucket_server_host() {
+        // A self-hosted Bitbucket (Server/Data Center) remote is detected as
+        // Bitbucket but must be refused with a clear message rather than
+        // misrouted to the cloud API (GL-141).
+        let repo = TempRepo::init("bbserver", "https://bitbucket.example.com/team/app.git");
+        let err = GithubService::default()
+            .list_prs(repo.path(), None)
+            .expect_err("server host → error");
+        let msg = err.to_ipc_string();
+        assert!(msg.contains("Bitbucket Cloud"), "{msg}");
+        assert!(msg.contains("bitbucket.example.com"), "{msg}");
+    }
+
+    #[test]
     fn provider_for_selects_by_forge() {
         let service = GithubService::default();
         // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab;
