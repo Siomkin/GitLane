@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import type { TerminalAgent } from "@/lib/api";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 import { TerminalAgentsSettings } from "./TerminalAgentsSettings";
 
 const agent = (over: Partial<TerminalAgent> = {}): TerminalAgent => ({
@@ -41,7 +42,8 @@ function stubBackend(get: TerminalAgent[] = [agent()]) {
 beforeEach(() => {
   invokeMock.mockReset();
   useTerminalAgents.setState({ agents: [agent()], loading: false, error: null });
-  useUi.setState({ toast: null, confirm: null });
+  useUi.setState({ confirm: null });
+  useNotifications.setState({ toasts: [] });
 });
 
 /** Rows render compact by default; click the row's pencil to expand its editor
@@ -128,7 +130,9 @@ describe("TerminalAgentsSettings", () => {
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
-    await waitFor(() => expect(useUi.getState().toast?.message).toBe("Saved terminal agents"));
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Saved terminal agents"),
+    );
     expect(invokeMock).toHaveBeenCalledWith("terminal_agents_set", expect.anything());
   });
 
@@ -145,8 +149,8 @@ describe("TerminalAgentsSettings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
     await waitFor(() => {
-      expect(useUi.getState().toast?.tone).toBe("error");
-      expect(useUi.getState().toast?.message).toContain("disk full");
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.kind).toBe("error");
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("disk full");
     });
   });
 
@@ -163,7 +167,9 @@ describe("TerminalAgentsSettings", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(useUi.getState().toast?.message).toBe("Reset to default agents"));
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Reset to default agents"),
+    );
     expect(invokeMock).toHaveBeenCalledWith("terminal_agents_reset");
   });
 

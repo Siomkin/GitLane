@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
+import { useNotifications } from "../../../store/notifications";
 import { emptyAdvancedState } from "../../../lib/advancedRepoState";
 import { BranchRow } from "../../navigation/branch-navigator/rows";
 import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
@@ -62,11 +63,11 @@ beforeEach(() => {
     actionMenu: null,
     confirm: null,
     prompt: null,
-    toast: null,
     deleteWorktree: null,
     createBranchOpen: false,
     createBranchStart: null,
   });
+  useNotifications.setState({ toasts: [] });
 });
 
 const localBranch = (name: string) => ({
@@ -621,7 +622,7 @@ describe("BranchContextMenu", () => {
     pending.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: [] });
 
     await waitFor(() =>
-      expect(useUi.getState().toast?.message).toContain("HEAD changed"),
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("HEAD changed"),
     );
     expect(useUi.getState().confirm).toBeNull();
   });

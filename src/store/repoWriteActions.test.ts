@@ -10,11 +10,14 @@ import type {
   BranchInfo,
   GitTransportAuthRef,
   GithubAccountRef,
+  RepoForge,
   RepoGraph,
   RepoSummary,
   WorkingChanges,
 } from "../lib/api";
+import { ForgeKind } from "../lib/api";
 import { useAccounts, type Account } from "./accounts";
+import { useNotifications } from "./notifications";
 import { useRepo } from "./repo";
 
 const summary: RepoSummary = {
@@ -106,6 +109,7 @@ beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
   invokeMock.mockImplementation(refreshInvoke);
+  useNotifications.setState({ toasts: [] });
   useRepo.setState({
     summary,
     remotes: [
@@ -142,6 +146,163 @@ describe("fetch — per-remote transport auth pairs", () => {
   });
 });
 
+describe("fetch / pull — progress toast → success (or dropped on error)", () => {
+  it("fetch resolves into a Fetched success with the new-commit count", async () => {
+    // Single remote → named title; the post-fetch branch read reports the
+    // tracked branch fell 2 behind (i.e. 2 commits were fetched).
+    useRepo.setState({
+      remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
+      branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_branches"
+        ? Promise.resolve([
+            branch({
+              name: "main",
+              isHead: true,
+              upstreamRemote: "origin",
+              sync: { status: "behind", upstream: "origin/main", ahead: 0, behind: 2 },
+            }),
+          ])
+        : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().fetch();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("success");
+    expect(toast?.title).toBe("Fetched origin");
+    expect(toast?.body).toBe("↓2 new commits on main");
+    expect(toast?.duration).toBe(5000);
+  });
+
+  it("fetch drops its progress toast and shows an error on failure", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "fetch" ? Promise.reject("network down") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().fetch();
+
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe("error");
+    expect(toasts[0].title).toContain("network down");
+  });
+
+  it("pull reports Pulled changes when the branch tip advances", async () => {
+    useRepo.setState({
+      branches: [
+        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+      ],
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_branches"
+        ? Promise.resolve([
+            branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "bbbb" }),
+          ])
+        : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().pull();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("success");
+    expect(toast?.title).toBe("Pulled changes");
+    expect(toast?.body).toBe("from mirror/main");
+  });
+
+  it("pull reports up to date when the tip is unchanged", async () => {
+    useRepo.setState({
+      branches: [
+        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+      ],
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_branches"
+        ? Promise.resolve([
+            branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+          ])
+        : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().pull();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.title).toBe("Already up to date");
+    expect(toast?.body).toBe("main is up to date");
+  });
+
+  it("fetch reports 'No new commits' when nothing new arrived (still may be behind)", async () => {
+    useRepo.setState({
+      remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
+      branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_branches"
+        ? Promise.resolve([
+            branch({
+              name: "main",
+              isHead: true,
+              upstreamRemote: "origin",
+              sync: { status: "upToDate", upstream: "origin/main", ahead: 0, behind: 0 },
+            }),
+          ])
+        : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().fetch();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.title).toBe("Fetched origin");
+    expect(toast?.body).toBe("No new commits");
+  });
+
+  it("keeps the fetch success toast when the post-fetch refresh fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const realRefresh = useRepo.getState().refresh;
+    useRepo.setState({
+      remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
+      branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
+      refresh: vi.fn().mockRejectedValue(new Error("refresh boom")),
+    });
+    try {
+      await useRepo.getState().fetch();
+      const toasts = useNotifications.getState().toasts;
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].kind).toBe("success");
+      expect(toasts[0].title).toBe("Fetched origin");
+      // Refresh failed → drop the (now-untrustworthy) count rather than claim
+      // "No new commits".
+      expect(toasts[0].body).toBeUndefined();
+    } finally {
+      useRepo.setState({ refresh: realRefresh });
+      warn.mockRestore();
+    }
+  });
+
+  it("keeps the pull success toast when the post-pull refresh fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const realRefresh = useRepo.getState().refresh;
+    useRepo.setState({
+      branches: [
+        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+      ],
+      refresh: vi.fn().mockRejectedValue(new Error("refresh boom")),
+    });
+    try {
+      await useRepo.getState().pull();
+      const toasts = useNotifications.getState().toasts;
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].kind).toBe("success");
+      // Refresh failed → neutral "Pulled", never a stale "Already up to date".
+      expect(toasts[0].title).toBe("Pulled");
+    } finally {
+      useRepo.setState({ refresh: realRefresh });
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("push family — the target remote's account, not a repo-wide one", () => {
   it("pull sends the head branch's upstream remote auth", async () => {
     await useRepo.getState().pull();
@@ -155,6 +316,107 @@ describe("push family — the target remote's account, not a repo-wide one", () 
     // Head branch `main` pushes to `mirror`, bound to bob — not the default
     // remote's alice.
     expect(invokeMock).toHaveBeenCalledWith("push", { path: "/repo", auth: ghAuth(bob) });
+  });
+
+  it("resolves the push progress toast into a success card with commit count + View action", async () => {
+    const forge: RepoForge = {
+      hasRemote: true,
+      kind: ForgeKind.GitHub,
+      forge: "GitHub",
+      host: "github.com",
+      webUrl: "https://github.com/owner/mirror",
+    };
+    useRepo.setState({
+      branches: [
+        branch({
+          name: "main",
+          isHead: true,
+          upstreamRemote: "mirror",
+          sync: { status: "ahead", upstream: "mirror/main", ahead: 3, behind: 0 },
+        }),
+      ],
+      forge,
+    });
+
+    await useRepo.getState().push();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("success");
+    expect(toast?.title).toBe("Pushed 3 commits");
+    expect(toast?.body).toBe("to mirror/main");
+    expect(toast?.duration).toBe(5000);
+    expect(toast?.actions?.[0]?.label).toBe("View on GitHub");
+  });
+
+  it("drops the progress toast and surfaces an error toast when the push fails", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "push" ? Promise.reject("remote rejected") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().push();
+
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe("error");
+    expect(toasts[0].title).toContain("remote rejected");
+  });
+
+  it("labels the push success with the upstream branch name, not the local name", async () => {
+    const forge: RepoForge = {
+      hasRemote: true,
+      kind: ForgeKind.GitHub,
+      forge: "GitHub",
+      host: "github.com",
+      webUrl: "https://github.com/owner/repo",
+    };
+    useRepo.setState({
+      remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
+      branches: [
+        branch({
+          name: "feature-x",
+          isHead: true,
+          upstreamRemote: "origin",
+          upstream: "origin/main",
+          sync: { status: "ahead", upstream: "origin/main", ahead: 1, behind: 0 },
+        }),
+      ],
+      forge,
+    });
+
+    await useRepo.getState().push();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.title).toBe("Pushed 1 commit");
+    // "origin/main" (the upstream), not the local "feature-x".
+    expect(toast?.body).toBe("to origin/main");
+    expect(toast?.actions?.[0]?.label).toBe("View on GitHub");
+  });
+
+  it("keeps the push success toast when the post-push refresh fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const realRefresh = useRepo.getState().refresh;
+    useRepo.setState({
+      branches: [
+        branch({
+          name: "main",
+          isHead: true,
+          upstreamRemote: "mirror",
+          sync: { status: "ahead", upstream: "mirror/main", ahead: 2, behind: 0 },
+        }),
+      ],
+      refresh: vi.fn().mockRejectedValue(new Error("refresh boom")),
+    });
+
+    try {
+      await useRepo.getState().push();
+      const toasts = useNotifications.getState().toasts;
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].kind).toBe("success");
+      expect(toasts[0].title).toBe("Pushed 2 commits");
+    } finally {
+      useRepo.setState({ refresh: realRefresh });
+      warn.mockRestore();
+    }
   });
 
   it("pushBranch resolves the named branch's remote (origin fallback)", async () => {

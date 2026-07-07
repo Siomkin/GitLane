@@ -32,6 +32,7 @@ import { GithubSigninDialog } from "./GithubSigninDialog";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 
 const ghAccount = (login: string) => ({
   provider: "gh",
@@ -84,7 +85,8 @@ describe("GithubSigninDialog", () => {
   beforeEach(() => {
     progressListeners.length = 0;
     invokeMock.mockReset();
-    useUi.setState({ githubSignin: null, toast: null });
+    useUi.setState({ githubSignin: null });
+    useNotifications.setState({ toasts: [] });
     useAccounts.setState({ accounts: [] });
     useRepo.setState({ summary: null });
   });
@@ -147,7 +149,7 @@ describe("GithubSigninDialog", () => {
     await act(async () => signin.resolve({ host: "github.com", login: "octocat" }));
     expect(screen.queryByText(/Signed in as/)).toBeNull();
     await waitFor(() =>
-      expect(useUi.getState().toast?.message).toBe("Signed in as @octocat — the account was added."),
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Signed in as @octocat — the account was added."),
     );
   });
 
@@ -183,7 +185,7 @@ describe("GithubSigninDialog", () => {
 
     await act(async () => signin.resolve({ host: "github.com", login: "octocat" }));
     await waitFor(() => expect(screen.getByText(/Signed in as/)).toBeInTheDocument());
-    expect(useUi.getState().toast).toBeNull();
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("offers and performs the repo bind when a repo is open and the login resolves", async () => {

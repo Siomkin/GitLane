@@ -130,6 +130,38 @@ textarea {
   --overlay: rgba(20, 25, 35, 0.34);
 }
 
+/* Notification (toast) palette — six statuses, each a solid stroke/text colour
+   plus a low-alpha "soft" chip wash, tuned per theme so the icon chips read on
+   both surfaces. `--shadow-pop` is the floating-card shadow. Mirrors
+   Notifications.dc.html. Dark values on `.gp-root`, light overrides below. */
+.gp-root {
+  --nf-info: #7c9cf4;
+  --nf-info-soft: rgba(124, 156, 244, 0.16);
+  --nf-success: #35b070;
+  --nf-success-soft: rgba(53, 176, 112, 0.18);
+  --nf-warning: #fbbf24;
+  --nf-warning-soft: rgba(251, 191, 36, 0.16);
+  --nf-error: #f43f5e;
+  --nf-error-soft: rgba(244, 63, 94, 0.16);
+  --nf-neutral: var(--text2);
+  --nf-neutral-soft: rgba(255, 255, 255, 0.06);
+  --shadow-pop: 0 18px 44px -8px rgba(0, 0, 0, 0.5);
+}
+
+.gp-root:not(.dark) {
+  --nf-info: #3b7ff5;
+  --nf-info-soft: rgba(59, 127, 245, 0.12);
+  --nf-success: #2e9e62;
+  --nf-success-soft: rgba(46, 158, 98, 0.13);
+  --nf-warning: #b45309;
+  --nf-warning-soft: rgba(180, 83, 9, 0.12);
+  --nf-error: #e11d48;
+  --nf-error-soft: rgba(225, 29, 72, 0.1);
+  --nf-neutral: var(--text3);
+  --nf-neutral-soft: rgba(0, 0, 0, 0.05);
+  --shadow-pop: 0 14px 36px -10px rgba(20, 25, 35, 0.28);
+}
+
 ::-webkit-scrollbar {
   width: 11px;
   height: 11px;
@@ -185,14 +217,43 @@ textarea {
   animation: gp-reveal 0.75s ease-out;
 }
 
-@keyframes gp-toast {
+/* Toast stack (Notifications.dc.html): cards rise on entry (`nf-in`), the
+   auto-dismiss countdown bar shrinks left-to-right (`nf-timer`), the progress
+   spinner rotates (`nf-spin`), and an unknown-length progress fill sweeps
+   (`nf-indet`). The timer/indeterminate animations are paused via
+   `animation-play-state` while the pointer is over the stack. */
+@keyframes nf-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(12px);
+    transform: translateY(10px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: none;
+  }
+}
+
+@keyframes nf-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes nf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes nf-indet {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
   }
 }
 

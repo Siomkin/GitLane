@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { HandoffDialog } from "./HandoffDialog";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 import type { WorktreeInfo } from "@/lib/api";
 
 const worktrees: WorktreeInfo[] = [
@@ -40,7 +41,8 @@ const emitStep = (step: string) =>
 describe("HandoffDialog", () => {
   beforeEach(() => {
     progressListeners.length = 0;
-    useUi.setState({ handoff: null, toast: null });
+    useUi.setState({ handoff: null });
+    useNotifications.setState({ toasts: [] });
     useRepo.setState({ worktrees });
   });
 
@@ -146,6 +148,6 @@ describe("HandoffDialog", () => {
     expect(useUi.getState().handoff).toBeNull();
 
     await act(async () => resolveMove("Moved feature to main"));
-    expect(useUi.getState().toast?.message).toBe("Moved feature to main");
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Moved feature to main");
   });
 });

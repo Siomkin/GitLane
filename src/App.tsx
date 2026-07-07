@@ -14,7 +14,7 @@ import {
   PromptDialog,
   StashContextMenu,
   TagContextMenu,
-  Toast,
+  Toasts,
   Tooltip,
   WipContextMenu,
   WorktreeContextMenu,
@@ -356,7 +356,7 @@ const App = () => {
       <GithubSigninDialog />
       <ProviderOauthDialog />
       <DeleteWorktreeDialog />
-      <Toast />
+      <Toasts />
       <Tooltip />
 
       {/* Frameless-window edge resize grips (Windows/Linux only, inside Tauri). */}

@@ -31,6 +31,7 @@ vi.mock("@/lib/openExternal", () => ({ openExternalUrl: vi.fn() }));
 import { ProviderOauthDialog } from "./ProviderOauthDialog";
 import { openExternalUrl } from "@/lib/openExternal";
 import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 import { useAccounts } from "@/store/accounts";
 
@@ -78,7 +79,8 @@ describe("ProviderOauthDialog", () => {
     progressListeners.length = 0;
     invokeMock.mockReset();
     vi.mocked(openExternalUrl).mockClear();
-    useUi.setState({ providerOauthSignin: null, toast: null });
+    useUi.setState({ providerOauthSignin: null });
+    useNotifications.setState({ toasts: [] });
     useRepo.setState({ summary: null });
     useAccounts.setState({ providerTokens: {} });
     localStorage.clear();
