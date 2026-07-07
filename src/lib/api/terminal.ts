@@ -47,17 +47,19 @@ export const terminalApi = {
   terminalAgentProbe: (command: string) =>
     invoke<boolean>("terminal_agent_probe", { command }),
 
-  /** Spawn (or replace) the in-app terminal PTY running the user's shell in `path`. */
+  /** Spawn a new in-app terminal PTY running the user's shell in `path`.
+   *  Returns its `sessionId`; existing sessions keep running. */
   ptySpawn: (path: string, cols: number, rows: number) =>
     invoke<PtySpawnResponse>("pty_spawn", { path, cols, rows }),
 
-  /** Forward user keystrokes (from xterm.js) to the terminal's stdin. */
-  ptyWrite: (data: Uint8Array) => invoke<void>("pty_write", { data }),
+  /** Forward user keystrokes (from xterm.js) to session `sessionId`'s stdin. */
+  ptyWrite: (sessionId: number, data: Uint8Array) =>
+    invoke<void>("pty_write", { sessionId, data }),
 
-  /** Resize the PTY to match the xterm.js viewport. */
-  ptyResize: (cols: number, rows: number) =>
-    invoke<void>("pty_resize", { cols, rows }),
+  /** Resize session `sessionId`'s PTY to match the xterm.js viewport. */
+  ptyResize: (sessionId: number, cols: number, rows: number) =>
+    invoke<void>("pty_resize", { sessionId, cols, rows }),
 
-  /** Kill the terminal's shell. Called on panel close / repo switch. */
-  ptyKill: () => invoke<void>("pty_kill"),
+  /** Kill one terminal tab's shell. Called when the user closes that tab. */
+  ptyKill: (sessionId: number) => invoke<void>("pty_kill", { sessionId }),
 };

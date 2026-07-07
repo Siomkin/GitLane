@@ -1,22 +1,26 @@
-//! In-app integrated terminal backed by a pseudo-terminal (PTY).
+//! In-app integrated terminal backed by pseudo-terminals (PTYs).
 //!
-//! One persistent PTY runs the user's login shell with cwd = the open repo;
-//! xterm.js on the frontend renders the output and sends keystrokes back. The
-//! launchable agent entries (opencode / kimi / claude / codex, plus anything the
-//! user adds) live in [`crate::terminal_agents`] — they aren't separate
-//! processes, they're typed into this shell as a command, so the user keeps
-//! full interactive control and the agent inherits the repo's environment.
+//! Each PTY runs the user's login shell with cwd = a repo; xterm.js on the
+//! frontend renders the output and sends keystrokes back. Many PTYs run at once
+//! — the frontend keeps one per terminal tab and per repo, so switching repos or
+//! tabs never kills a shell (sessions are keyed by `session_id`). The launchable
+//! agent entries (opencode / kimi / claude / codex, plus anything the user adds)
+//! live in [`crate::terminal_agents`] — they aren't separate processes, they're
+//! typed into a shell as a command, so the user keeps full interactive control
+//! and the agent inherits the repo's environment.
 //!
 //! Mirrors the watcher's state + events pattern: `TerminalState` is managed by
-//! Tauri, the reader thread emits `pty-data` (and `pty-exit`) events, and the
-//! frontend calls `pty_write` / `pty_resize` / `pty_kill`.
+//! Tauri, each session's reader thread emits `pty-data` (and `pty-exit`) events
+//! tagged with its `session_id`, and the frontend calls
+//! `pty_write` / `pty_resize` / `pty_kill` with that id.
 
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, PtySystem};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,51 +42,38 @@ struct PtyExitEvent {
     session_id: u64,
 }
 
-/// The active PTY session. `master` drives resize; `writer` sends bytes;
-/// `child` is explicitly signalled on close. All behind one lock so spawn/kill
-/// stay atomic.
-pub struct TerminalState {
-    inner: Mutex<Session>,
+/// One live PTY session. `master` drives resize; `writer` sends bytes; `child`
+/// is explicitly signalled on close.
+struct Session {
+    master: Box<dyn MasterPty + Send>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn portable_pty::Child + Send>,
 }
 
-struct Session {
-    session_id: u64,
+/// All live PTY sessions, keyed by a monotonic `session_id`. The frontend keeps
+/// one entry per terminal tab (per repo), so several shells coexist.
+struct Terminals {
+    sessions: HashMap<u64, Session>,
     next_session_id: u64,
-    master: Option<Box<dyn MasterPty + Send>>,
-    writer: Option<Box<dyn Write + Send>>,
-    child: Option<Box<dyn portable_pty::Child + Send>>,
+}
+
+/// Managed by Tauri. `Arc` so a session's reader thread can clone a handle and
+/// remove itself from the map when its shell exits; `Mutex` keeps spawn/kill
+/// atomic.
+#[derive(Clone)]
+pub struct TerminalState {
+    inner: Arc<Mutex<Terminals>>,
 }
 
 impl Default for TerminalState {
     fn default() -> Self {
         Self {
-            inner: Mutex::new(Session {
-                session_id: 0,
+            inner: Arc::new(Mutex::new(Terminals {
+                sessions: HashMap::new(),
                 next_session_id: 1,
-                master: None,
-                writer: None,
-                child: None,
-            }),
+            })),
         }
     }
-}
-
-/// Kill and discard the current PTY, if any. The handles are cleared even if the
-/// process ignores the signal so the UI can recover and start a fresh session.
-fn kill_locked(session: &mut Session) -> Result<(), String> {
-    let kill_result = session
-        .child
-        .take()
-        .map(|mut child| {
-            child
-                .kill()
-                .map_err(|e| format!("failed to kill pty child: {e}"))
-        })
-        .transpose();
-    session.writer = None;
-    session.master = None;
-    session.session_id = 0;
-    kill_result.map(|_| ())
 }
 
 #[cfg(windows)]
@@ -105,9 +96,9 @@ fn shell_command() -> (String, Vec<String>) {
     (shell, vec!["-l".to_string()])
 }
 
-/// Spawn (or replace) the PTY: open a pseudo-terminal, start the user's login
-/// shell in `path`, and kick off a reader thread that streams output to the
-/// frontend until the shell exits.
+/// Spawn a PTY: open a pseudo-terminal, start the user's login shell in `path`,
+/// and kick off a reader thread that streams output to the frontend until the
+/// shell exits. Adds a new session — existing sessions are left running.
 pub fn spawn(
     state: &TerminalState,
     app: &AppHandle,
@@ -155,22 +146,28 @@ pub fn spawn(
         .take_writer()
         .map_err(|e| format!("failed to take pty writer: {e}"))?;
 
-    // Replace any prior session first, then store the new handles.
+    // Register the new session alongside any others already running.
     let session_id = {
-        let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-        let _ = kill_locked(&mut session);
-        let session_id = session.next_session_id;
-        session.next_session_id = session.next_session_id.saturating_add(1);
-        session.session_id = session_id;
-        session.master = Some(pair.master);
-        session.writer = Some(writer);
-        session.child = Some(child);
+        let mut terminals = state.inner.lock().map_err(|e| e.to_string())?;
+        let session_id = terminals.next_session_id;
+        terminals.next_session_id = terminals.next_session_id.saturating_add(1);
+        terminals.sessions.insert(
+            session_id,
+            Session {
+                master: pair.master,
+                writer,
+                child,
+            },
+        );
         session_id
     };
 
     // Stream PTY output to the frontend until EOF (shell exit). Runs on its own
-    // thread; emits raw bytes as `pty-data`, then a final `pty-exit`.
+    // thread; emits raw bytes as `pty-data`, then a final `pty-exit`. On exit it
+    // drops its own map entry so a shell that `exit`s self-cleans (the writer
+    // handle is also released, letting the child be reaped).
     let app_for_thread = app.clone();
+    let inner_for_thread = Arc::clone(&state.inner);
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
@@ -189,36 +186,42 @@ pub fn spawn(
                 Err(_) => break,
             }
         }
+        if let Ok(mut terminals) = inner_for_thread.lock() {
+            terminals.sessions.remove(&session_id);
+        }
         let _ = app_for_thread.emit("pty-exit", PtyExitEvent { session_id });
     });
 
     Ok(PtySpawnResponse { session_id })
 }
 
-/// Forward `data` (user keystrokes from xterm.js) to the shell's stdin.
-pub fn write(state: &TerminalState, data: &[u8]) -> Result<(), String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    let writer = session
+/// Forward `data` (user keystrokes from xterm.js) to session `session_id`'s stdin.
+pub fn write(state: &TerminalState, session_id: u64, data: &[u8]) -> Result<(), String> {
+    let mut terminals = state.inner.lock().map_err(|e| e.to_string())?;
+    let session = terminals
+        .sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| format!("terminal {session_id} is not running"))?;
+    session
         .writer
-        .as_mut()
-        .ok_or_else(|| "terminal is not running".to_string())?;
-    writer
         .write_all(data)
         .map_err(|e| format!("failed to write to pty: {e}"))?;
-    writer
+    session
+        .writer
         .flush()
         .map_err(|e| format!("failed to flush pty: {e}"))?;
     Ok(())
 }
 
-/// Resize the PTY to match the xterm.js viewport (cols/rows).
-pub fn resize(state: &TerminalState, cols: u16, rows: u16) -> Result<(), String> {
-    let session = state.inner.lock().map_err(|e| e.to_string())?;
-    let master = session
+/// Resize session `session_id`'s PTY to match the xterm.js viewport (cols/rows).
+pub fn resize(state: &TerminalState, session_id: u64, cols: u16, rows: u16) -> Result<(), String> {
+    let terminals = state.inner.lock().map_err(|e| e.to_string())?;
+    let session = terminals
+        .sessions
+        .get(&session_id)
+        .ok_or_else(|| format!("terminal {session_id} is not running"))?;
+    session
         .master
-        .as_ref()
-        .ok_or_else(|| "terminal is not running".to_string())?;
-    master
         .resize(PtySize {
             rows,
             cols,
@@ -228,8 +231,20 @@ pub fn resize(state: &TerminalState, cols: u16, rows: u16) -> Result<(), String>
         .map_err(|e| format!("failed to resize pty: {e}"))
 }
 
-/// Kill the shell and clear state. Called on panel close and repo switch.
-pub fn kill(state: &TerminalState) -> Result<(), String> {
-    let mut session = state.inner.lock().map_err(|e| e.to_string())?;
-    kill_locked(&mut session)
+/// Kill one shell and drop its session. Called when the user closes that tab.
+/// Removes the session under the lock, then signals the child *after* releasing
+/// it, so a slow-to-die shell can't stall spawns/writes/kills on other tabs. The
+/// handle is dropped even if the process ignores the signal so the UI recovers.
+pub fn kill(state: &TerminalState, session_id: u64) -> Result<(), String> {
+    let session = {
+        let mut terminals = state.inner.lock().map_err(|e| e.to_string())?;
+        terminals.sessions.remove(&session_id)
+    };
+    match session {
+        Some(mut session) => session
+            .child
+            .kill()
+            .map_err(|e| format!("failed to kill pty child: {e}")),
+        None => Ok(()),
+    }
 }

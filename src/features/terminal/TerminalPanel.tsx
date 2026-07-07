@@ -1,26 +1,31 @@
-// The in-app integrated terminal: an xterm.js emulator wired to a Rust PTY.
+// The in-app integrated terminal: xterm.js emulators wired to Rust PTYs.
 //
-// One persistent PTY runs the user's login shell with cwd = the open repo.
-// Output streams back via the `pty-data` Tauri event; keystrokes go out through
-// `ptyWrite`. Agent buttons (opencode/kimi/claude/codex) just type their command into
-// the running shell — they're not separate processes, so the user keeps full
-// interactive control and the agent inherits the repo's environment.
+// Each terminal tab runs its own PTY (the user's login shell, cwd = a repo), and
+// tabs are kept per repo — switching repos or tabs just shows a different live
+// pane, so no shell or scrollback is ever reset. Output streams back via the
+// `pty-data` Tauri event; keystrokes go out through `ptyWrite`. Agent buttons
+// (opencode/kimi/claude/codex) type their command into the active tab's shell —
+// they're not separate processes, so the user keeps full interactive control and
+// the agent inherits the repo's environment.
 //
-// Rendered as a floating popup at the bottom of the window. It collapses to a
-// small status pill without unmounting (the PTY and its scrollback keep
-// running); only the close button kills the PTY.
-//
-// This file is the presentational shell only — the xterm/PTY lifecycle lives in
-// `hooks/useTerminalSession`.
+// Rendered as a floating popup at the bottom of the window. It stays mounted
+// across repo/tab switches and hide/collapse (just visually gone) so every
+// pane's PTY + scrollback survive. App mounts it only while a repo is open, so
+// it unmounts when the last repo closes (or during closeRepo's transient null
+// summary) — at which point `useTerminalPanes` disposes every pane's PTY.
+// Otherwise a PTY dies only when the user closes its tab (or its repo). The tab
+// strip lives in `TerminalTabs`, the xterm/PTY lifecycle in `useTerminalPanes`.
 
 import { cn } from "@/lib/cn";
 import { useUi } from "@/store/ui";
-import { useTerminalSession } from "@/hooks/useTerminalSession";
+import { useTerminalPanes } from "@/features/terminal/useTerminalPanes";
+import { TerminalTabs } from "./TerminalTabs";
 import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./terminalIcons";
 
 /**
- * The terminal layer. Rendered once in App; never unmounts while the terminal
- * is non-hidden, so the xterm instance + PTY survive collapse/expand.
+ * The terminal layer. Stays mounted across repo/tab switches and
+ * hide/collapse/expand so every pane's xterm instance + PTY survive; it unmounts
+ * only when no repo is open, and the panes manager disposes the PTYs then.
  */
 export function TerminalLayer() {
   const terminalView = useUi((s) => s.terminalView);
@@ -30,21 +35,31 @@ export function TerminalLayer() {
   const collapseTerminal = useUi((s) => s.collapseTerminal);
   const expandTerminal = useUi((s) => s.expandTerminal);
   const toggleTerminalExpanded = useUi((s) => s.toggleTerminalExpanded);
+  const hideTerminal = useUi((s) => s.hideTerminal);
 
-  const { containerRef, alive, agents, terminalPath, runAgent, clearTerminal, kill } =
-    useTerminalSession();
+  const { hostRef, alive, agents, terminalPath, runAgent, clearTerminal } = useTerminalPanes();
 
-  if (terminalView === "hidden") return null;
+  // The layer is always mounted (App hoists it out of the repo-summary gate so
+  // panes survive repo switches), so hide the drawer itself when there's no repo
+  // open — otherwise an empty panel would show over the welcome screen and flash
+  // during closeRepo's transient null summary. The host stays mounted (just
+  // display:none) so panes are never disposed.
+  const visible = terminalView !== "hidden" && !!terminalPath;
 
   return (
     <>
-      {/* Open drawer. Kept mounted (just visually hidden) while collapsed so the
-          xterm instance + PTY survive the collapse/expand cycle. */}
+      {/* Open drawer. Kept mounted (just hidden) while collapsed/hidden/no-repo so
+          the xterm instances + PTYs survive the whole app session. */}
       <div
-        aria-hidden={terminalView === "collapsed"}
+        aria-hidden={!visible || terminalView !== "open"}
         className={cn(
-          "absolute left-2.5 right-2.5 bottom-2.5 z-[45] flex min-w-0 flex-col overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_-12px_44px_-12px_rgba(0,0,0,0.35)] transition duration-150 dark:border-white/10 dark:bg-neutral-900",
-          terminalView === "collapsed" &&
+          "absolute left-2.5 right-2.5 bottom-2.5 z-[45] min-w-0 overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_-12px_44px_-12px_rgba(0,0,0,0.35)] transition duration-150 dark:border-white/10 dark:bg-neutral-900",
+          // Mutually exclusive display: `hidden` (display:none, panes persist)
+          // vs. the drawer's flex column — never both, so display:none can't lose
+          // to `flex` on class ordering.
+          !visible ? "hidden" : "flex flex-col",
+          visible &&
+            terminalView === "collapsed" &&
             "pointer-events-none translate-y-3 scale-[0.98] opacity-0",
         )}
         style={{ height: terminalExpanded ? "calc(100% - 20px)" : terminalHeight }}
@@ -121,8 +136,8 @@ export function TerminalLayer() {
               <CollapseIcon />
             </button>
             <button
-              onClick={kill}
-              title="Close terminal"
+              onClick={hideTerminal}
+              title="Hide terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               <CloseIcon />
@@ -130,11 +145,18 @@ export function TerminalLayer() {
           </div>
         </div>
 
-        {/* xterm mount — kept exactly as before, just wrapped to flex the body. */}
-        <div ref={containerRef} className="min-h-0 flex-1 bg-[var(--code)] px-3 py-2" />
+        {/* Tab strip — one shell per tab, scoped to the active repo. */}
+        <div className="flex h-9 shrink-0 items-center border-b border-black/5 px-2 dark:border-white/10">
+          <TerminalTabs repoPath={terminalPath} />
+        </div>
+
+        {/* Pane host — every tab's xterm mounts here as an absolute child; only
+            the active one is shown (see useTerminalPanes). `relative` so the
+            absolute panes fill the content box inside the padding. */}
+        <div ref={hostRef} className="relative min-h-0 flex-1 bg-[var(--code)] px-3 py-2" />
       </div>
 
-      {terminalView === "collapsed" && (
+      {visible && terminalView === "collapsed" && (
         <button
           onClick={expandTerminal}
           title="Expand terminal"

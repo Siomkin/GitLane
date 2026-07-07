@@ -82,9 +82,10 @@ export default [
     rules: restrict({ paths: [RAW_INVOKE] }),
   },
   // Documented boundary sites that legitimately import the `api` object: the PTY
-  // session hook and the action-menu probe (architecture-rules-react.md §1).
+  // panes manager (imperative xterm/PTY lifecycle) and the action-menu probe
+  // (architecture-rules-react.md §1).
   {
-    files: ["src/hooks/useTerminalSession.ts", "src/components/chrome/overlays/menus.tsx"],
+    files: ["src/features/terminal/useTerminalPanes.ts", "src/components/chrome/overlays/menus.tsx"],
     rules: restrict({ paths: [RAW_INVOKE] }),
   },
   // components/ui primitives stay domain-free.
