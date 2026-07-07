@@ -180,8 +180,8 @@ describe("TerminalAgentsSettings", () => {
     expect(screen.getAllByLabelText("Agent name")).toHaveLength(1);
     expect(screen.getByDisplayValue("Claude copy")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Claude" })).toBeInTheDocument();
-    // A new draft entry enables the always-visible Save button.
-    expect(await screen.findByRole("button", { name: "Save agents" })).toBeInTheDocument();
+    // The copy is a complete (valid) draft entry, so Save is enabled.
+    expect(await screen.findByRole("button", { name: "Save agents" })).not.toBeDisabled();
   });
 
   it("reset replaces a dirty draft with the defaults", async () => {
@@ -220,5 +220,36 @@ describe("TerminalAgentsSettings", () => {
     act(() => confirm!.onConfirm());
 
     expect(screen.queryByRole("button", { name: "Edit Claude" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a visible reason on a collapsed invalid row while Save stays disabled", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
+
+    // Add a blank agent — it opens expanded with empty name/command…
+    fireEvent.click(screen.getByRole("button", { name: "Add agent" }));
+    // …then collapse it back to compact without filling anything in.
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    // The collapsed row still explains why the draft can't be saved.
+    expect(screen.getByTitle("Name and command are required")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save agents" })).toBeDisabled();
+  });
+
+  it("reveals compact-row controls on keyboard focus, not just hover", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    // The hover-hidden action cluster must also reveal on keyboard focus so
+    // tabbing never lands on an invisible, unreachable-looking control.
+    const duplicate = await screen.findByRole("button", { name: "Duplicate Claude" });
+    expect(duplicate.parentElement!.className).toMatch(/group-focus-within\/row:opacity-100/);
+    duplicate.focus();
+    expect(duplicate).toHaveFocus();
+
+    // The reorder grip has its own focus fallback.
+    const grip = screen.getByRole("button", { name: "Drag Claude to reorder" });
+    expect(grip.className).toMatch(/focus-visible:opacity-100/);
   });
 });

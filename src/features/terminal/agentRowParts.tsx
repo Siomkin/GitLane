@@ -6,8 +6,9 @@
 import { cn } from "../../lib/cn";
 import { focusRing } from "../../lib/ui";
 
-/** Six-dot reorder grip. In the compact row it reveals on hover (`revealOnHover`);
- *  in the editor it stays visible. Drag is pointer-driven — see the container. */
+/** Six-dot reorder grip. In the compact row it reveals on hover *or keyboard
+ *  focus* (`revealOnHover`) so tabbing never lands on an invisible control; in
+ *  the editor it stays visible. Drag is pointer-driven — see the container. */
 export function DragHandle({
   label,
   onPointerDown,
@@ -28,7 +29,8 @@ export function DragHandle({
       className={cn(
         "shrink-0 w-5 grid place-items-center rounded-md cursor-grab active:cursor-grabbing text-neutral-300 hover:bg-black/[0.04] hover:text-neutral-500 dark:text-neutral-600 dark:hover:bg-white/[0.06] dark:hover:text-neutral-400 touch-none transition-opacity",
         tall ? "h-8" : "h-7",
-        revealOnHover && "opacity-0 group-hover/row:opacity-100",
+        revealOnHover &&
+          "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100",
         focusRing,
       )}
     >
