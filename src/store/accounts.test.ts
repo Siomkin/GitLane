@@ -915,7 +915,7 @@ describe("prAccountRef — PR account resolution per forge", () => {
   it("uses a GitLab keychain-token account when glab isn't available", () => {
     useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
     // No glab row → falls back to the stored token; keyed by host+login.
-    useAccounts.setState({ forgeAuth: [], providerTokens: { "gitlab.com ada": token } });
+    useAccounts.setState({ forgeAuth: [], providerTokens: { "gitlab.com\u0000ada": token } });
     expect(useAccounts.getState().prAccountRef()).toEqual({
       provider: "native",
       host: "gitlab.com",
