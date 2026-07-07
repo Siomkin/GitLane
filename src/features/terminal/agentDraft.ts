@@ -75,20 +75,34 @@ export function updateAgent(
   return list.map((a) => (a.id === id ? { ...a, ...patch } : a));
 }
 
-/** Insert a copy of an agent (fresh id, " copy" suffix) right after it. */
-export function duplicateAgent(list: TerminalAgent[], id: string): TerminalAgent[] {
-  const i = list.findIndex((a) => a.id === id);
-  if (i < 0) return list;
-  const src = list[i];
-  const copy: TerminalAgent = {
+/** A duplicate of an agent: fresh id, " copy" suffix, availability re-probed. */
+export function copyOf(src: TerminalAgent): TerminalAgent {
+  return {
     ...src,
     id: crypto.randomUUID(),
     name: src.name.trim() ? `${src.name} copy` : src.name,
     available: false,
   };
+}
+
+/** Insert `item` right after the agent with `id` (appended if the id is gone). */
+export function insertAfter(
+  list: TerminalAgent[],
+  id: string,
+  item: TerminalAgent,
+): TerminalAgent[] {
+  const i = list.findIndex((a) => a.id === id);
+  if (i < 0) return [...list, item];
   const next = [...list];
-  next.splice(i + 1, 0, copy);
+  next.splice(i + 1, 0, item);
   return next;
+}
+
+/** Insert a copy of an agent (fresh id, " copy" suffix) right after it. */
+export function duplicateAgent(list: TerminalAgent[], id: string): TerminalAgent[] {
+  const i = list.findIndex((a) => a.id === id);
+  if (i < 0) return list;
+  return insertAfter(list, id, copyOf(list[i]));
 }
 
 /** Drop an agent by id. */

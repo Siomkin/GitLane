@@ -44,6 +44,12 @@ beforeEach(() => {
   useUi.setState({ toast: null, confirm: null });
 });
 
+/** Rows render compact by default; click the row's pencil to expand its editor
+ *  (which reveals the name/command inputs, Check, and Done). */
+async function openEditor(name: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Edit ${name}` }));
+}
+
 describe("TerminalAgentsSettings", () => {
   it("keeps Save visible but disabled until the draft changes", async () => {
     stubBackend();
@@ -52,6 +58,7 @@ describe("TerminalAgentsSettings", () => {
     const save = await screen.findByRole("button", { name: "Save agents" });
     expect(save).toBeDisabled();
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
 
     expect(save).not.toBeDisabled();
@@ -66,6 +73,7 @@ describe("TerminalAgentsSettings", () => {
     });
 
     render(<TerminalAgentsSettings />);
+    await openEditor("Claude");
     fireEvent.click(screen.getByRole("button", { name: "Check" }));
     fireEvent.change(screen.getByPlaceholderText("command --flags"), {
       target: { value: "different-agent" },
@@ -83,7 +91,7 @@ describe("TerminalAgentsSettings", () => {
   it("adopts a background agent-list change while the draft is pristine", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
-    await screen.findByDisplayValue("Claude");
+    await screen.findByRole("button", { name: "Edit Claude" });
 
     // A background source (e.g. the toolbar re-probing) updates the shared store.
     act(() => {
@@ -92,14 +100,14 @@ describe("TerminalAgentsSettings", () => {
       });
     });
 
-    expect(await screen.findByDisplayValue("Codex")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Claude")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Edit Codex" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Claude" })).not.toBeInTheDocument();
   });
 
   it("preserves a dirty draft against a background change", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
-    await screen.findByDisplayValue("Claude");
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "My Edit" } });
 
     act(() => {
@@ -109,13 +117,14 @@ describe("TerminalAgentsSettings", () => {
     });
 
     expect(screen.getByDisplayValue("My Edit")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Codex")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Codex" })).not.toBeInTheDocument();
   });
 
   it("saves the edited draft and toasts success", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
@@ -131,6 +140,7 @@ describe("TerminalAgentsSettings", () => {
     });
     render(<TerminalAgentsSettings />);
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Edited" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
@@ -157,15 +167,19 @@ describe("TerminalAgentsSettings", () => {
     expect(invokeMock).toHaveBeenCalledWith("terminal_agents_reset");
   });
 
-  it("duplicate inserts a second editable row and marks the draft dirty", async () => {
+  it("duplicate inserts a copy that opens expanded and marks the draft dirty", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
 
-    expect(screen.getAllByLabelText("Agent name")).toHaveLength(1);
+    // The source row starts collapsed, so nothing is in edit mode yet.
+    expect(screen.queryByLabelText("Agent name")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Duplicate Claude" }));
 
-    expect(screen.getAllByLabelText("Agent name")).toHaveLength(2);
+    // The copy lands expanded (one editor open) while the source stays compact.
+    expect(screen.getAllByLabelText("Agent name")).toHaveLength(1);
     expect(screen.getByDisplayValue("Claude copy")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Claude" })).toBeInTheDocument();
     // A new draft entry enables the always-visible Save button.
     expect(await screen.findByRole("button", { name: "Save agents" })).toBeInTheDocument();
   });
@@ -179,6 +193,7 @@ describe("TerminalAgentsSettings", () => {
     });
     render(<TerminalAgentsSettings />);
 
+    await openEditor("Claude");
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Edited Claude" } });
     fireEvent.click(screen.getByRole("button", { name: "Reset to defaults" }));
 
@@ -187,13 +202,16 @@ describe("TerminalAgentsSettings", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(screen.getByDisplayValue("Default")).toBeInTheDocument());
+    // Reset collapses everything back to compact rows, so assert by the row's
+    // edit affordance rather than an editor input value.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit Default" })).toBeInTheDocument());
     expect(screen.queryByDisplayValue("Edited Claude")).not.toBeInTheDocument();
   });
 
   it("delete asks for confirmation before dropping the row from the draft", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
+    await screen.findByRole("button", { name: "Edit Claude" });
 
     fireEvent.click(screen.getByRole("button", { name: "Delete Claude" }));
     const confirm = useUi.getState().confirm;
@@ -201,6 +219,6 @@ describe("TerminalAgentsSettings", () => {
 
     act(() => confirm!.onConfirm());
 
-    expect(screen.queryByDisplayValue("Claude")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Claude" })).not.toBeInTheDocument();
   });
 });
