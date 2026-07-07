@@ -73,6 +73,10 @@ export function TerminalAgentsSettings() {
   };
 
   const startDrag = (id: string) => (e: React.PointerEvent) => {
+    // Only a primary-button / primary-pointer press starts a reorder — ignore
+    // right/middle clicks and secondary (multi-touch) pointers, which would
+    // otherwise enter drag state and attach global listeners for no gesture.
+    if (e.button !== 0 || !e.isPrimary) return;
     e.preventDefault();
     // Defensively end any drag still in flight (e.g. a pointerup we missed)
     // before starting a new one, so the previous drag's window listeners and
@@ -113,32 +117,40 @@ export function TerminalAgentsSettings() {
   useEffect(() => endDrag, []);
 
   // FLIP: glide rows to their new positions on reorder instead of snapping.
-  // Keyed on row *order* only: a text edit (name/command/description) mutates
-  // `draft` without moving any row, so depending on `draft` would re-measure
-  // every card on every keystroke for nothing. Reorders, adds, and deletes all
-  // change this key.
+  // `order` (ids) detects an actual reorder — the only thing we animate; a text
+  // edit (name/command) mutates `draft` without moving any row, so it must not
+  // re-measure. `layoutKey` additionally flips when a row expands/collapses, so
+  // we refresh the measured baseline on those height changes too — otherwise a
+  // reorder right after an expand would animate from stale pre-expand positions.
   const order = draft.map((a) => a.id).join(" ");
+  const layoutKey = draft.map((a) => `${a.id}${editor.isEditing(a.id) ? "*" : ""}`).join(" ");
   const prevRects = useRef<Map<string, DOMRect>>(new Map());
+  const prevOrder = useRef(order);
   useLayoutEffect(() => {
     const els = rowEls.current;
-    els.forEach((el, id) => {
-      const prev = prevRects.current.get(id);
-      const next = el.getBoundingClientRect();
-      const dy = prev ? prev.top - next.top : 0;
-      if (dy) {
-        el.style.transition = "none";
-        el.style.transform = `translateY(${dy}px)`;
-        void el.offsetHeight; // force reflow so the start position sticks
-        requestAnimationFrame(() => {
-          el.style.transition = "transform 220ms cubic-bezier(0.2,0,0,1)";
-          el.style.transform = "";
-        });
-      }
-    });
-    const snapshot = new Map<string, DOMRect>();
-    els.forEach((el, id) => snapshot.set(id, el.getBoundingClientRect()));
-    prevRects.current = snapshot;
-  }, [order]);
+    // Measure current post-layout positions before touching any transform.
+    const nextRects = new Map<string, DOMRect>();
+    els.forEach((el, id) => nextRects.set(id, el.getBoundingClientRect()));
+    // Only animate on a real reorder; an expand/collapse just refreshes the baseline.
+    if (order !== prevOrder.current) {
+      els.forEach((el, id) => {
+        const prev = prevRects.current.get(id);
+        const next = nextRects.get(id);
+        const dy = prev && next ? prev.top - next.top : 0;
+        if (dy) {
+          el.style.transition = "none";
+          el.style.transform = `translateY(${dy}px)`;
+          void el.offsetHeight; // force reflow so the start position sticks
+          requestAnimationFrame(() => {
+            el.style.transition = "transform 220ms cubic-bezier(0.2,0,0,1)";
+            el.style.transform = "";
+          });
+        }
+      });
+    }
+    prevRects.current = nextRects;
+    prevOrder.current = order;
+  }, [order, layoutKey]);
 
   const registerEl = (id: string) => (el: HTMLElement | null) => {
     if (el) rowEls.current.set(id, el);

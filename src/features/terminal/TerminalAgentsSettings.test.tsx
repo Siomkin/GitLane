@@ -263,7 +263,7 @@ describe("TerminalAgentsSettings", () => {
     expect(card.style.boxShadow).toBe("");
 
     // Grab the grip → the row lifts (dragging style applied).
-    fireEvent.pointerDown(grip, { pointerId: 1 });
+    fireEvent.pointerDown(grip, { pointerId: 1, button: 0, isPrimary: true });
     expect(card.style.boxShadow).not.toBe("");
 
     // An OS gesture / alt-tab cancels the pointer mid-drag — teardown must run
@@ -283,14 +283,32 @@ describe("TerminalAgentsSettings", () => {
     const removeSpy = vi.spyOn(window, "removeEventListener");
 
     // Start dragging A, then start dragging B before A's pointerup arrives.
-    fireEvent.pointerDown(gripA, { pointerId: 1 });
-    fireEvent.pointerDown(gripB, { pointerId: 2 });
+    fireEvent.pointerDown(gripA, { pointerId: 1, button: 0, isPrimary: true });
+    fireEvent.pointerDown(gripB, { pointerId: 2, button: 0, isPrimary: true });
 
     // The second start must have detached A's window listeners.
     for (const type of ["pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
       expect(removeSpy).toHaveBeenCalledWith(type, expect.any(Function));
     }
     removeSpy.mockRestore();
+  });
+
+  it("does not start a drag on a non-primary pointer (right-click / secondary touch)", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+    const grip = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+    const card = document.querySelector("[data-agent-card]") as HTMLElement;
+
+    // Right mouse button — must not enter drag state or attach global listeners.
+    const addSpy = vi.spyOn(window, "addEventListener");
+    fireEvent.pointerDown(grip, { pointerId: 1, button: 2, isPrimary: true });
+    expect(card.style.boxShadow).toBe("");
+    expect(addSpy).not.toHaveBeenCalledWith("pointermove", expect.any(Function));
+
+    // Secondary (non-primary) touch point — likewise ignored.
+    fireEvent.pointerDown(grip, { pointerId: 2, button: 0, isPrimary: false });
+    expect(card.style.boxShadow).toBe("");
+    addSpy.mockRestore();
   });
 
   it("does not re-run the FLIP measure on a text edit (only on reorder)", async () => {
