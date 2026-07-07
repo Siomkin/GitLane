@@ -106,6 +106,18 @@ describe("classifyCloneError", () => {
     );
   });
 
+  it("maps a 403 to access-denied, not unreachable (reached but refused)", () => {
+    const c = classifyCloneError(
+      "fatal: unable to access 'https://bitbucket.org/darang/repo.git/': The requested URL returned error: 403",
+    );
+    expect(c.kind).toBe("denied");
+    expect(c.title).toMatch(/denied/i);
+    // Bitbucket-specific hint since the URL is bitbucket.
+    expect(c.message).toMatch(/x-token-auth/);
+    // Retry returns to the form so the URL/username/token can be fixed.
+    expect(retryRerunsClone(c.kind)).toBe(false);
+  });
+
   it("reuses friendly git copy for unreachable clone failures", () => {
     const c = classifyCloneError(
       "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com",

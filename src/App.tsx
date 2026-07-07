@@ -37,6 +37,7 @@ import { ReflogRecoveryDialog } from "./features/recovery";
 import { ReviewWorkspace } from "./features/review/ReviewWorkspace";
 import { AgentMessageDialog } from "./features/review-notes/ReviewNotes";
 import { GithubSigninDialog } from "./components/chrome/overlays/github-signin";
+import { ProviderOauthDialog } from "./components/chrome/overlays/provider-oauth";
 import { DeleteWorktreeDialog } from "./components/chrome/overlays/delete-worktree";
 import { StackedReview } from "./features/review/StackedReview";
 import { CommitModal } from "./features/changes/CommitModal";
@@ -343,6 +344,7 @@ const App = () => {
       <PromptDialog />
       <HandoffDialog />
       <GithubSigninDialog />
+      <ProviderOauthDialog />
       <DeleteWorktreeDialog />
       <Toast />
       <Tooltip />

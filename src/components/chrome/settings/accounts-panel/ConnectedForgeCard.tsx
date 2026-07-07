@@ -25,18 +25,26 @@ export function ConnectedForgeCard({
   loading?: boolean;
 }) {
   const signOutForge = useAccounts((s) => s.signOutForge);
+  const signOutForgeCredential = useAccounts((s) => s.signOutForgeCredential);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const account = status.account;
   const resolving = loading && !account;
-  const canSignOut = SIGNOUT_SUPPORTED.has(status.provider);
+  // A CLI-less provider (Bitbucket) is only ever "signed in" via a saved HTTPS
+  // credential — sign-out there means forgetting that credential, not a CLI logout.
+  const savedCredentialSignIn = status.cli === null && status.authenticated === true;
+  const canSignOut = SIGNOUT_SUPPORTED.has(status.provider) || savedCredentialSignIn;
   const signOut = () =>
     requestConfirm({
       title: `Sign out of ${status.forge}?`,
-      message:
-        "This signs out of the provider CLI on this machine. Existing remotes still keep their HTTPS usernames and any credentials saved in your Git credential helper.",
+      message: savedCredentialSignIn
+        ? "Forgets the saved HTTPS credential for this host from your Git credential helper. Remotes stay configured; they'll just need a credential again."
+        : "This signs out of the provider CLI on this machine. Existing remotes still keep their HTTPS usernames and any credentials saved in your Git credential helper.",
       confirmLabel: "Sign out",
       danger: true,
-      onConfirm: () => void signOutForge(status.provider),
+      onConfirm: () =>
+        void (savedCredentialSignIn
+          ? signOutForgeCredential(status.provider)
+          : signOutForge(status.provider)),
     });
   return (
     <div className="flex items-center gap-3 rounded-xl border border-black/[0.07] bg-black/[0.02] p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
@@ -63,8 +71,10 @@ export function ConnectedForgeCard({
         ) : (
           <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
             {account?.name ? `${account.name} · ` : ""}
-            {status.cli ? `signed in via ${status.cli}` : status.authMethod} · git transport uses remote usernames
-            and your credential helper
+            {status.cli ? `signed in via ${status.cli}` : status.authMethod} ·{" "}
+            {status.provider === "gitlab" && status.cli === "glab" && status.available === true
+              ? "git transport authenticates through glab"
+              : "git transport uses remote usernames and your credential helper"}
           </div>
         )}
       </div>

@@ -63,7 +63,7 @@ frontend** (`src/`). The frontend calls Rust via `invoke()`.
 Adding or changing a command means editing all of these:
 
 1. `src-tauri/src/lib.rs` — `#[tauri::command]` fns **and** the `generate_handler!` list (easy to forget the registration).
-2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `write.rs` + `write/`, or the `github/` directory (see the read/write split below).
+2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `write.rs` + `write/`, the `github/` directory, or the `oauth/` directory (native provider OAuth sign-in, GL-139) — see the read/write split below.
 3. `src-tauri/src/git/types.rs` — serde structs returned to the frontend. All use `#[serde(rename_all = "camelCase")]`, so JSON fields are camelCase on the TS side.
 4. `src/lib/api/{git,github,terminal}.ts` (merged into the `api` object by `api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces.
 
@@ -150,7 +150,15 @@ provider token itself** (`providerToken` transport mode, GL-132): a token stored
 keychain (`src-tauri/src/secrets.rs`, `keyring` crate, GitLane-namespaced service) and fed to
 git by pointing `GIT_ASKPASS` at this binary — the re-entrant credential bridge
 (`src-tauri/src/git/credential_bridge.rs`) reads it from the keychain in a child process and
-answers git's prompt, so the token never crosses IPC. Transport auth resolves to a
+answers git's prompt, so the token never crosses IPC. That token can be captured in-app either
+as a pasted PAT or via **native OAuth** (GL-139, `src-tauri/src/git/oauth/`): GitLab's device
+flow (RFC 8628) or Bitbucket's PKCE loopback (RFC 8252), which store the resulting access token
+in the same keychain — an OAuth account then authenticates git as a sentinel username
+(`oauth2` / `x-token-auth`), and the public client id is a compile-time default overridable
+per host (`oauth-clients.json`). This is the backend's first outbound-HTTP dependency (`ureq`,
+rustls) — confined to `oauth/http.rs` behind an `HttpTransport` trait so the flows unit-test
+against a mock; it runs in the Rust process, so no CSP change. See `docs/provider-oauth-setup.md`.
+Transport auth resolves to a
 `TransportCredential` (`None` / `Gh` / `ProviderToken`) in `git/transport_auth.rs`; the ref
 that crosses IPC carries only a non-secret `providerAccountId` locator. **Two distinct verbs:**
 provider **sign-out** (`delete_provider_token`) deletes GitLane's keychain token; **forget
@@ -161,9 +169,11 @@ Accounts never set the commit identity. Who the repo commits as is an
 **identity card** (GL-130): a plain name/email (+ optional signing) entry applied to the
 repo's *local* git config via `set_repo_identity` (never global; `commit` can also pin
 author/committer per commit), with "this computer" (global config) as the default when
-nothing is pinned. Accounts only contribute a one-click prefill when creating a card ("New
-identity from @login") — no live link, no divergence tracking; the repo Identity panel is
-one freely-editable name/email card with the saved cards as prefill presets. A repo is fully
+nothing is pinned. Accounts and identities are fully decoupled — accounts do **not** prefill
+or otherwise feed identity cards (the old "New identity from @login" account chips were
+removed as needless coupling); the repo Identity panel is one freely-editable name/email card
+with the saved cards as presets, and its only prefill is "adopt the repo's current git-config
+identity as a card" (`CommitAsZone`, git-config-derived, not account-derived). A repo is fully
 usable (commit/fetch/push) with no account at all. Cards live in `src/store/identities.ts`;
 the per-remote account bindings live in `src/store/accounts.ts`. Picking an auth account
 never rewrites `user.name`/`user.email`.

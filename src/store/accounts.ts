@@ -23,6 +23,8 @@ import {
   type GitTransportAuthRef,
   type GithubAccountRef,
   type GithubSignInResult,
+  type OauthClientStatus,
+  type ProviderOauthResult,
   type RemoteInfo,
   type RepoIdentity,
 } from "../lib/api";
@@ -90,13 +92,21 @@ type StoredForgeCredential = {
  * itself lives only in the OS keychain; this record just remembers *that* a
  * token exists for an account so the transport layer can select `providerToken`
  * mode and the UI can show sign-out. Never contains token material. */
-type StoredProviderToken = {
+export type StoredProviderToken = {
   provider: ForgeAuthProvider;
   /** Exact credential authority (`host[:port]`) — the keychain host locator. */
   credentialHost: string;
-  /** Stable keychain account id (the login for a PAT sign-in). */
+  /** Stable keychain account id (the login for a PAT sign-in; the provider's
+   * stable account id for an OAuth sign-in). */
   accountId: string;
+  /** Human display handle. */
   login: string;
+  /** The git HTTPS URL username this token authenticates as, when it differs
+   * from `login` — set for OAuth accounts, whose token authenticates as a
+   * sentinel (`oauth2` / `x-token-auth`) rather than the human handle (GL-139).
+   * Absent for PAT sign-ins, where the URL username *is* the login. This is the
+   * key component (and the value pinned into the remote URL). */
+  transportUsername?: string;
   savedAt: number;
 };
 
@@ -138,6 +148,20 @@ const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
 const readProviderTokens = () => readJsonMap<StoredProviderToken>(LS_PROVIDER_TOKENS);
 const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
   writeJsonMap(LS_PROVIDER_TOKENS, map);
+
+/** The keychain token to use for `credentialHost`, chosen deterministically when
+ * several tokens share a host (an OAuth token + a PAT): prefer the OAuth token
+ * (it carries a sentinel transport username), then the most recently saved.
+ * Shared by transport and the clone flow so both resolve the same one. */
+export function pickProviderTokenForHost(
+  tokens: Record<string, StoredProviderToken>,
+  credentialHost: string,
+): StoredProviderToken | undefined {
+  const norm = (h: string) => h.trim().toLowerCase();
+  return Object.values(tokens)
+    .filter((t) => norm(t.credentialHost) === norm(credentialHost))
+    .sort((a, b) => (b.transportUsername ? 1 : 0) - (a.transportUsername ? 1 : 0) || b.savedAt - a.savedAt)[0];
+}
 
 /** Drop the saved-credential marker for `provider` (used by "forget saved
  * HTTPS credential"), returning the pruned status list for the UI. */
@@ -251,6 +275,40 @@ interface AccountsState {
   signInGithub: (host: string) => Promise<GithubSignInResult>;
   /** Cancel an in-flight [`signInGithub`] (kills the gh child). Idempotent. */
   cancelGithubSignIn: () => Promise<void>;
+  /** Native OAuth sign-in for a non-GitHub provider (GL-139): GitLab's device
+   * flow or Bitbucket's PKCE loopback. Records the resulting keychain-token
+   * account (the token itself is stored in Rust) and, when `remote` is given,
+   * pins the OAuth transport username into that remote's URL so it immediately
+   * authenticates via `providerToken`. Emits `provider-oauth-progress` events. */
+  signInProviderOauth: (
+    provider: ForgeAuthProvider,
+    host: string,
+    remote?: string,
+  ) => Promise<ProviderOauthResult>;
+  /** Cancel an in-flight [`signInProviderOauth`], discarding any codes. */
+  cancelProviderOauthSignIn: () => Promise<void>;
+  /** Fully undo a completed OAuth sign-in after a *late* cancel (GL-139) — one
+   * that finished (token stored, remote pinned) before the cancel registered.
+   * Restores `remote`'s prior URL username (`priorUsername`, snapshotted before
+   * the pin via [`remoteUrlUsername`]) so the pin is reverted rather than left
+   * dangling, then deletes the keychain token + metadata. Mirrors exactly what
+   * [`signInProviderOauth`] changed, so a cancel leaves no trace. */
+  rollbackProviderOauthSignIn: (
+    provider: ForgeAuthProvider,
+    result: ProviderOauthResult,
+    remote: string | undefined,
+    priorUsername: string | null,
+  ) => Promise<void>;
+  /** Whether native OAuth is configured for a provider/host (GL-139) — a client
+   * id resolves. Drives whether the OAuth sign-in path is offered vs the PAT
+   * fallback. Read-through to the backend; never returns the client id. */
+  oauthClientStatus: (provider: ForgeAuthProvider, host: string) => Promise<OauthClientStatus>;
+  /** Set (or clear, when empty) the per-host public OAuth client id (GL-139). */
+  setOauthClientId: (
+    provider: ForgeAuthProvider,
+    host: string,
+    clientId: string,
+  ) => Promise<void>;
   /** Sign `account` out of `gh` (removes its credential-store entry) and
    * refresh the account list. Remotes whose URL still carries the login fall
    * back to the system credential lookup. */
@@ -289,9 +347,22 @@ interface AccountsState {
   /** Provider-neutral git transport auth for `remote`, or null for system git
    * credentials / SSH without inline helper injection. */
   transportAuthForRemote: (remote: string) => GitTransportAuthRef | null;
+  /** The `gitlabGlab` transport ref for a GitLab host, or null when glab can't
+   * serve it (not GitLab, glab not installed/authed, or an HTTPS credential is
+   * saved for GitLab). Shared by `transportAuthForRemote` and the clone flow so
+   * both wire glab identically (GL-139). */
+  gitlabGlabAuth: (
+    host: string,
+    credentialHost: string,
+    provider: GitTransportAuthRef["provider"],
+  ) => GitTransportAuthRef | null;
   /** Write an HTTPS username into a remote URL for non-GitHub/system-helper
    * auth. `null` strips it back to system credentials. */
   setRemoteUsername: (remote: string, username: string | null) => Promise<void>;
+  /** The HTTPS URL username currently pinned on `remote`, or null (SSH, no such
+   * remote, or system credentials). Used to snapshot a remote's account before an
+   * OAuth sign-in pins to it, so a cancel can restore it exactly (GL-139). */
+  remoteUrlUsername: (remote: string) => string | null;
   /** Store an HTTPS token/password in Git's configured credential helper. */
   saveHttpsCredential: (
     credentialHost: string,
@@ -322,8 +393,9 @@ interface AccountsState {
   /** Store a keychain token **for a specific remote** and pin `login` into the
    * remote's HTTPS URL, so `transportAuthForRemote` immediately selects
    * `providerToken` — even for a bare `https://host/owner/repo.git` URL with no
-   * embedded username. This is the remote-scoped wrapper `RemoteKeychainAuth`
-   * uses; the git-native username is the account selector. */
+   * embedded username. The git-native username is the account selector. Kept for
+   * the OAuth flow and Accounts-page keychain management (the per-remote
+   * credential-entry UI was removed — remotes only *select* an account). */
   saveRemoteProviderToken: (remote: string, login: string, token: string) => Promise<void>;
   /** Provider **sign-out**: delete a GitLane-owned keychain token and forget its
    * metadata. Distinct from [`forgetHttpsCredential`] — this removes GitLane's
@@ -342,6 +414,10 @@ interface AccountsState {
     username: string,
     provider?: ForgeAuthProvider,
   ) => Promise<void>;
+  /** Sign out of a saved-credential forge (no CLI, e.g. Bitbucket): look up the
+   * saved HTTPS credential and forget it (git credential reject + drop the local
+   * marker), so the connected-account card offers sign-out for CLI-less providers. */
+  signOutForgeCredential: (provider: ForgeAuthProvider) => Promise<void>;
   /** Prune keychain-token metadata that no longer has a backing secret — e.g. a
    * token deleted outside GitLane (Keychain Access, `secret-tool`). Best-effort,
    * so a transient keychain error never drops a still-valid entry. Keeps the
@@ -514,6 +590,87 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   // here. Account-list refresh + binding on success is the dialog's own flow.
   signInGithub: (host) => api.githubSignIn(host),
   cancelGithubSignIn: () => api.cancelGithubSignIn(),
+
+  signInProviderOauth: async (provider, host, remote) => {
+    // The backend runs the flow and writes the token to the OS keychain; only
+    // non-secret metadata comes back. We record *that* an account exists so the
+    // transport layer can select `providerToken` and the UI can show sign-out.
+    const result = await api.providerOauthSignIn(provider, host);
+    const credentialHost = result.host;
+    // An OAuth token authenticates git as a sentinel username, not the human
+    // handle — key by (and pin) that, but display the real login.
+    const entry: StoredProviderToken = {
+      provider,
+      credentialHost,
+      accountId: result.accountId,
+      login: result.login,
+      transportUsername: result.transportUsername,
+      savedAt: Date.now(),
+    };
+    const key = providerTokenKey(credentialHost, result.transportUsername);
+    // OAuth metadata keys on the sentinel transport username (same for every
+    // account on a host), but the keychain token keys on the account id. Signing
+    // in as a *different* account on the same host would overwrite this metadata
+    // and orphan the previous keychain token — invisible and unreachable by
+    // reconcile. Delete the superseded token first (best-effort).
+    const existing = get().providerTokens[key];
+    if (existing && existing.accountId !== result.accountId) {
+      try {
+        await api.deleteProviderToken(existing.provider, existing.credentialHost, existing.accountId);
+      } catch {
+        // Transactional replacement: if the old token can't be removed, roll the
+        // new sign-in back — delete the token the backend just wrote and keep the
+        // previous account intact — rather than overwrite its metadata and orphan
+        // the old secret (unreachable by reconcile). The old account stays usable.
+        try {
+          await api.deleteProviderToken(provider, credentialHost, result.accountId);
+        } catch {
+          /* both keychain deletes failed — leave the old account signed in */
+        }
+        throw new Error(
+          `Couldn't replace the ${existing.credentialHost} account — its previous token is still in the keychain, so the old account is still signed in. Try again.`,
+        );
+      }
+    }
+    const next = { ...get().providerTokens, [key]: entry };
+    writeProviderTokens(next);
+    set({ providerTokens: next });
+    if (remote) {
+      // Pin the OAuth transport username into the remote's URL — the git-native
+      // account selector — so fetch/push immediately resolve `providerToken`.
+      const path = useRepo.getState().summary?.path ?? "";
+      if (path) {
+        await api.setRemoteUsername(path, remote, result.transportUsername);
+        await useRepo.getState().listRemotes();
+      }
+    }
+    return result;
+  },
+  cancelProviderOauthSignIn: () => api.cancelProviderOauthSignIn(),
+  rollbackProviderOauthSignIn: async (provider, result, remote, priorUsername) => {
+    // Un-pin first: restore the account the remote carried before the sign-in
+    // pinned this token's sentinel — not just strip it, since the remote may have
+    // named a different account. Best-effort; the token removal below runs
+    // regardless so a failed un-pin can't strand the keychain entry.
+    if (remote) {
+      const path = useRepo.getState().summary?.path ?? "";
+      if (path) {
+        try {
+          await api.setRemoteUsername(path, remote, priorUsername);
+          await useRepo.getState().listRemotes();
+        } catch {
+          /* leave the URL as-is; still remove the rolled-back token */
+        }
+      }
+    }
+    // Delete the keychain token + metadata (keyed by the sentinel transport
+    // username, exactly as `signInProviderOauth` wrote it).
+    await get().signOutProviderToken(provider, result.host, result.transportUsername);
+  },
+  oauthClientStatus: (provider, host) => api.oauthClientStatus(provider, host),
+  setOauthClientId: async (provider, host, clientId) => {
+    await api.setOauthClientId(provider, host, clientId);
+  },
 
   signOutGithub: async (account) => {
     try {
@@ -827,6 +984,13 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       .showToast(clean ? `${remote} uses @${clean} via system git credentials` : `${remote} uses system git credentials`);
   },
 
+  remoteUrlUsername: (remote) => {
+    const target = useRepo.getState().remotes.find((r) => r.name === remote);
+    if (!target) return null;
+    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    return info.ssh ? null : (info.user ?? null);
+  },
+
   saveHttpsCredential: async (credentialHost, path, username, password, provider) => {
     const cleanUser = username.trim();
     const cleanHost = credentialHost.trim();
@@ -986,15 +1150,22 @@ export const useAccounts = create<AccountsState>((set, get) => ({
 
   signOutProviderToken: async (provider, credentialHost, login) => {
     const host = credentialHost.trim();
-    const user = login.trim();
-    const accountId = user;
+    // `login` here is the entry's key component — the transport username (a
+    // sentinel for OAuth accounts, the handle for PAT accounts). Resolve the
+    // real keychain locator from the stored entry so an OAuth token (keyed by
+    // its provider account id, not the sentinel) is deleted correctly; fall back
+    // to the username for a legacy entry with no recorded id.
+    const key = providerTokenKey(host, login);
+    const entry = get().providerTokens[key];
+    const accountId = entry?.accountId ?? login.trim();
+    const shown = entry?.login ?? login.trim();
     try {
       await api.deleteProviderToken(provider, host, accountId);
       const next = { ...get().providerTokens };
-      delete next[providerTokenKey(host, user)];
+      delete next[key];
       writeProviderTokens(next);
       set({ providerTokens: next });
-      useUi.getState().showToast(`Signed out of @${user} on ${host} (keychain token removed)`);
+      useUi.getState().showToast(`Signed out of @${shown} on ${host} (keychain token removed)`);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }
@@ -1021,6 +1192,17 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }
+  },
+
+  signOutForgeCredential: async (provider) => {
+    const saved = readForgeCredentials()[provider];
+    if (!saved) {
+      // No local record left — just clear any stale "signed in" marker.
+      forgetForgeCredential(provider);
+      set((s) => ({ forgeAuth: withSavedForgeCredentials(s.forgeAuth) }));
+      return;
+    }
+    await get().forgetHttpsCredential(saved.credentialHost, saved.path, saved.username, provider);
   },
 
   reconcileProviderTokens: async () => {
@@ -1083,7 +1265,11 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const target = useRepo.getState().remotes.find((r) => r.name === remote);
     if (!target) return null;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
-    if (!info.valid || info.ssh || !info.host || !info.credentialHost || !info.user) return null;
+    if (!info.valid || info.ssh || !info.host || !info.credentialHost) return null;
+    // Capture the narrowed authority so the glab closure below keeps the
+    // non-null types (closures don't inherit the guard's narrowing).
+    const host = info.host;
+    const credentialHost = info.credentialHost;
     // Map the remote's classified provider to the transport provider tag. Azure
     // normalizes "azure" → "azure-devops"; github/gitlab/bitbucket/gitea/forgejo
     // pass through (all valid transport providers now they classify); "other"
@@ -1094,6 +1280,27 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         : info.provider === "other"
           ? "other"
           : info.provider;
+
+    const glabAuth = get().gitlabGlabAuth(host, credentialHost, provider);
+
+    // A GitLane-owned keychain token (OAuth or PAT, GL-132/GL-139) is fed to git
+    // by the backend via GIT_ASKPASS and authenticates *by host*, so it activates
+    // for a bare remote URL too — no username binding needed. `transportUsername`
+    // is the sentinel for OAuth (oauth2 / x-token-auth), the handle for a PAT.
+    const tokenRef = (t: StoredProviderToken): GitTransportAuthRef => ({
+      mode: "providerToken",
+      provider: t.provider,
+      host,
+      credentialHost,
+      username: t.transportUsername ?? t.login,
+      providerAccountId: t.accountId,
+    });
+    const tokenForHost = pickProviderTokenForHost(get().providerTokens, credentialHost);
+
+    // The HTTPS account mode selects the identity by the URL username; without
+    // one, a keychain token or glab (both host-scoped) authenticate.
+    if (!info.user) return tokenForHost ? tokenRef(tokenForHost) : glabAuth;
+
     const account = get().accounts.find(
       (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
     );
@@ -1101,33 +1308,42 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       return {
         mode: "githubGh",
         provider: "github",
-        host: info.host,
-        credentialHost: info.credentialHost,
+        host,
+        credentialHost,
         username: info.user,
         accountRef: account.ref,
       };
     }
-    // GitLane-owned keychain token for this account (GL-132): the backend feeds
-    // it to git via GIT_ASKPASS. The stored provider wins over URL classification
-    // (it knows a "other"-classified self-hosted host is really GitLab/Gitea).
-    const token = get().providerTokens[providerTokenKey(info.credentialHost, info.user)];
-    if (token) {
-      return {
-        mode: "providerToken",
-        provider: token.provider,
-        host: info.host,
-        credentialHost: info.credentialHost,
+    // An explicitly stored keychain token beats glab and the system helper —
+    // prefer one keyed by the URL username, else any token for the host (an OAuth
+    // token keyed by its sentinel username, not the human handle in the URL).
+    const token = get().providerTokens[providerTokenKey(credentialHost, info.user)] ?? tokenForHost;
+    if (token) return tokenRef(token);
+
+    return (
+      glabAuth ?? {
+        mode: "credentialHelper",
+        provider,
+        host,
+        credentialHost,
         username: info.user,
-        providerAccountId: token.accountId,
-      };
-    }
-    return {
-      mode: "credentialHelper",
-      provider,
-      host: info.host,
-      credentialHost: info.credentialHost,
-      username: info.user,
-    };
+      }
+    );
+  },
+
+  // GitLab: when glab is signed in, inject `glab auth git-credential` per
+  // invocation — the same zero-config transport gh gives GitHub (GL-139). glab is
+  // single-account and answers by host, so a URL username is optional. Gated on
+  // glab CLI actually installed *and* authenticated (not a saved-credential
+  // override), and skipped when an HTTPS credential is saved for GitLab — that
+  // lives in the user's own helper, and glab's reset would shadow it.
+  gitlabGlabAuth: (host, credentialHost, provider) => {
+    if (provider !== "gitlab" || readForgeCredentials()["gitlab"] !== undefined) return null;
+    const glab = get().forgeAuth.find(
+      (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
+    );
+    if (!glab) return null;
+    return { mode: "gitlabGlab", provider: "gitlab", host, credentialHost, username: null };
   },
 
   migrateRepoBindings: (fromPath, toPath) => {

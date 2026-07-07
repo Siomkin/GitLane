@@ -91,8 +91,7 @@ describe("remoteAccountPickerModel", () => {
       [glabStatus],
     );
     expect(model.note).toMatch(/Signed in as @siomkin via glab/);
-    expect(model.note).toMatch(/URL username/);
-    expect(model.note).toMatch(/keychain \/ credential helper/);
+    expect(model.note).toMatch(/GitLane authenticates git through glab/);
   });
 
   it("falls back to a plain system-credentials note for unknown or unparsable hosts", () => {

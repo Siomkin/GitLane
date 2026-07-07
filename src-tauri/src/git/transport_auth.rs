@@ -25,6 +25,10 @@ pub enum TransportCredential {
     None,
     /// GitHub `gh` credential helper for `host` (account chosen by URL username).
     Gh { host: String },
+    /// GitLab `glab` credential helper for `host`: glab is signed in and answers
+    /// git's credential prompt from its own token store. Mirrors `Gh` for GitLab
+    /// remotes so a glab sign-in provides transport with zero config (GL-139).
+    Glab { host: String },
     /// A GitLane-owned provider token, fed to git from the OS keychain via the
     /// `GIT_ASKPASS` bridge. Fields are all non-secret locators.
     ProviderToken(ProviderTokenBridge),
@@ -118,6 +122,20 @@ fn credential_for_credential_host(
                 ));
             }
             Ok(TransportCredential::Gh {
+                host: actual_credential_host.to_string(),
+            })
+        }
+        "gitlabGlab" => {
+            // glab is single-account per host and answers for whatever it is
+            // signed into, so there is no account_ref to match — but the mode is
+            // GitLab-only, so refuse to inject glab's helper for any other
+            // provider's remote.
+            if non_empty(auth.provider.as_deref()) != Some("gitlab") {
+                return Err(
+                    "The glab credential helper is only available for GitLab remotes.".to_string(),
+                );
+            }
+            Ok(TransportCredential::Glab {
                 host: actual_credential_host.to_string(),
             })
         }
@@ -304,6 +322,60 @@ mod tests {
         let err =
             credential_for_credential_host("gitlab.com", &provider_token_auth("gitlab.other"))
                 .unwrap_err();
+        assert!(err.contains("selected account"), "{err}");
+    }
+
+    fn glab_auth(host: &str) -> GitTransportAuthRef {
+        GitTransportAuthRef {
+            mode: "gitlabGlab".into(),
+            provider: Some("gitlab".into()),
+            host: host.split(':').next().unwrap_or(host).into(),
+            credential_host: host.into(),
+            username: Some("ada".into()),
+            account_ref: None,
+            provider_account_id: None,
+        }
+    }
+
+    #[test]
+    fn gitlab_glab_helper_resolves_for_gitlab_remotes() {
+        let cred =
+            credential_for_credential_host("gitlab.com", &glab_auth("gitlab.com")).expect("valid");
+        assert_eq!(
+            cred,
+            TransportCredential::Glab {
+                host: "gitlab.com".into()
+            }
+        );
+    }
+
+    #[test]
+    fn gitlab_glab_preserves_custom_port() {
+        let cred = credential_for_credential_host(
+            "gitlab.example.test:8443",
+            &glab_auth("gitlab.example.test:8443"),
+        )
+        .expect("valid");
+        assert_eq!(
+            cred,
+            TransportCredential::Glab {
+                host: "gitlab.example.test:8443".into()
+            }
+        );
+    }
+
+    #[test]
+    fn gitlab_glab_refuses_non_gitlab_provider() {
+        // Guards against injecting glab's helper for another provider's remote.
+        let mut auth = glab_auth("gitlab.com");
+        auth.provider = Some("bitbucket".into());
+        assert!(credential_for_credential_host("gitlab.com", &auth).is_err());
+    }
+
+    #[test]
+    fn gitlab_glab_rejects_host_mismatch() {
+        let err = credential_for_credential_host("gitlab.com", &glab_auth("gitlab.other"))
+            .unwrap_err();
         assert!(err.contains("selected account"), "{err}");
     }
 

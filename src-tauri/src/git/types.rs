@@ -709,7 +709,8 @@ pub struct GithubAccountRef {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitTransportAuthRef {
-    /// "system" | "ssh" | "githubGh" | "credentialHelper" | "providerToken".
+    /// "system" | "ssh" | "githubGh" | "gitlabGlab" | "credentialHelper" |
+    /// "providerToken".
     pub mode: String,
     /// "github" | "gitlab" | "bitbucket" | "azure-devops" | "gitea" | "forgejo"
     /// | "other".
@@ -745,6 +746,7 @@ pub struct RemoteAccountRef {
 pub use crate::git::credentials::{
     CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult,
 };
+pub use crate::git::oauth::types::{OauthClientStatus, ProviderOauthResult};
 pub use crate::git::provider_tokens::ProviderTokenStatus;
 
 /// A GitHub account `gh` is logged into. Its account ref drives GitHub PR/API

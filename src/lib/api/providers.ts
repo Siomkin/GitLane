@@ -52,6 +52,41 @@ export interface ProviderTokenStatus {
   hasToken: boolean;
 }
 
+/** Result of a completed native OAuth sign-in (GL-139). No token — the access
+ * token is written straight to the OS keychain in Rust. `transportUsername` is
+ * the git HTTPS username an OAuth token authenticates as (`oauth2` for GitLab,
+ * `x-token-auth` for Bitbucket), which is not the human `login`. */
+export interface ProviderOauthResult {
+  provider: string;
+  host: string;
+  accountId: string;
+  login: string;
+  name?: string;
+  transportUsername: string;
+  hasToken: boolean;
+}
+
+/** Whether native OAuth is configured for a provider/host (GL-139), and where
+ * its public client id comes from. Never carries the client id itself. */
+export interface OauthClientStatus {
+  provider: string;
+  host: string;
+  configured: boolean;
+  /** "builtin" | "override" | "none". */
+  source: string;
+  supported: boolean;
+}
+
+/** One `provider-oauth-progress` event payload (GL-139). Display-safe only — the
+ * device code (secret half) is never emitted; `userCode` is the human code. */
+export interface ProviderOauthProgress {
+  provider: string;
+  step: string;
+  userCode?: string;
+  verificationUri?: string;
+  expiresInSecs?: number;
+}
+
 export const providersApi = {
   /** Auth-only status for non-GitHub forge providers (fast; no identity). */
   forgeAuthStatuses: () => invoke<ForgeAuthStatus[]>("forge_auth_statuses"),
@@ -114,4 +149,18 @@ export const providersApi = {
       accountId,
       login,
     }),
+  /** Run a native OAuth sign-in (GL-139): GitLab's device flow or Bitbucket's
+   * PKCE loopback. Emits `provider-oauth-progress` events; resolves with
+   * non-secret account metadata once the token is in the keychain. Rejects on
+   * failure or when cancelled via {@link cancelProviderOauthSignIn}. */
+  providerOauthSignIn: (provider: ForgeAuthProvider, host: string) =>
+    invoke<ProviderOauthResult>("provider_oauth_sign_in", { provider, host }),
+  /** Cancel an in-flight {@link providerOauthSignIn}, discarding any codes. */
+  cancelProviderOauthSignIn: () => invoke<void>("cancel_provider_oauth_sign_in"),
+  /** Whether native OAuth is configured for a provider/host (GL-139). */
+  oauthClientStatus: (provider: ForgeAuthProvider, host: string) =>
+    invoke<OauthClientStatus>("oauth_client_status", { provider, host }),
+  /** Set (or clear, when empty) the per-host public OAuth client id (GL-139). */
+  setOauthClientId: (provider: ForgeAuthProvider, host: string, clientId: string) =>
+    invoke<void>("set_oauth_client_id", { provider, host, clientId }),
 };

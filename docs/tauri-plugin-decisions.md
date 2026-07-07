@@ -55,6 +55,7 @@ and the reason is documented in this file.
 | Store | Deferred — prefer Rust-owned app-data | Not currently needed: terminal agents already use Rust-owned app-data (`terminal_agents.rs`), the preferred home for durable non-secret app metadata (see the persistence inventory below). Adopt the Store plugin only if a settings migration genuinely needs frontend-written, file-backed storage. Never store tokens, OAuth codes, refresh tokens, keychain handles, or provider credentials. |
 | Stronghold | Not adopted — superseded by the `keyring` crate (GL-132) | We evaluated secure-storage options for GitLane-owned provider tokens and chose the `keyring` crate over the Stronghold plugin: it targets the OS-native keychain directly (macOS Security.framework, Windows Credential Manager, Linux Secret Service), is Rust-only with no JS surface, and needs no encrypted vault file to manage. See "Secret-storage posture" below. Revisit Stronghold only if a portable app-managed vault is ever needed. |
 | `keyring` crate (not a Tauri plugin) | Installed (GL-132) | Backend-only OS-keychain access for GitLane-owned provider transport tokens (`src-tauri/src/secrets.rs`). Platform-native features only (`apple-native` / `windows-native` / `sync-secret-service`) — no JS package, no capability/permission, no CSP change. Secrets are written/read solely in Rust and reach git via the `GIT_ASKPASS` credential bridge (`src-tauri/src/git/credential_bridge.rs`); they never cross IPC. macOS access to the app's own generic-password items needs no entitlement; an unsigned dev build may prompt once on first read. |
+| `ureq` + `sha2` + `getrandom` crates (not Tauri plugins) | Installed (GL-139) | The backend's **first outbound-HTTP dependency**, for native provider OAuth (GitLab device flow / Bitbucket PKCE). Confined to `src-tauri/src/git/oauth/http.rs` behind an `HttpTransport` trait so the flow state machines unit-test against a mock. `ureq` is blocking (fits the existing `blocking()` subprocess pattern) with `default-features = false` + rustls (no system-TLS link); `sha2`/`getrandom` back the PKCE challenge and CSRF state. **No CSP change** — this HTTP runs in the Rust process, not the webview (`connect-src` governs only the webview). No JS package, no capability/permission. The Bitbucket flow also binds a transient `127.0.0.1` loopback `TcpListener` to receive the OAuth redirect (dropped on completion/cancel). Tokens/codes/verifiers never cross IPC. |
 | Deep Link | Deferred to GL-50 | Add only when auth callbacks or app links have a concrete flow. Desktop schemes must be configured deliberately; do not reserve schemes speculatively. |
 | Single Instance | Deferred with Deep Link | Add with deep-link work if duplicate app launches would lose auth/app-link events. Register it before deep-link handling, per Tauri's desktop guidance. |
 | Shell | Avoid | GitLane already shells out from Rust through audited helpers (`run_git`, `run_git_env`, `run_gh`) and PTY code. Do not expose generic frontend process spawning. Use Opener for external URLs. |
@@ -106,6 +107,7 @@ identity), **account refs** (frontend-safe provider bindings, never tokens), and
 | `gitlane.repoAccounts` | `localStorage` | account refs | per-repo `{ provider, host, accountId, login }` | low — metadata only, no token |
 | `gitlane.repoIdentity` | `localStorage` | repo metadata | cached commit identity (name/email), reconciled against repo-local git config | low — git config is the source of truth; this is a cache |
 | `terminal-agents.json` | Tauri app-data dir (Rust-owned) | app metadata | terminal agent command definitions | none |
+| `oauth-clients.json` | Tauri app-data dir (Rust-owned) | app metadata | per-host **public** OAuth client ids (GL-139 override) | none — a client id is a public identifier, not a secret |
 | repo-local `.git/config` | repo, via `set_repo_identity` | repo metadata | `user.name` / `user.email` / signing | low — git is the source of truth, not a GitLane store |
 | window geometry | `tauri-plugin-window-state` | UI preference | main window size/position | none |
 | GitHub token / SSO | `gh`-owned (keyring/config) | secret | tokens, refresh/SSO state | **secret — never persisted by GitLane; resolved server-side per operation** |
@@ -174,6 +176,25 @@ above:
   Git credential helper stored. Neither touches the other's store.
 - **Redaction** — surfaced `git`/`gh` errors are scrubbed of URL-embedded
   credentials (`src-tauri/src/redact.rs`) before crossing IPC.
+
+### GL-139 — native provider OAuth sign-in
+
+Builds directly on GL-132: a native OAuth sign-in (GitLab device flow / Bitbucket
+PKCE loopback, `src-tauri/src/git/oauth/`) ends by writing the access token into
+the *same* keychain via the *same* bridge, so nothing about the storage/use/IPC
+posture changes — the token authenticates git without crossing IPC. New surface:
+
+- **Outbound HTTP** — `ureq` (rustls) confined to `oauth/http.rs` behind an
+  `HttpTransport` trait; the OAuth secrets (access token, device code, PKCE
+  verifier, authorization code) live only inside the module and are never logged,
+  returned, or emitted. Redaction wraps every surfaced error.
+- **Public client id** — resolved from a compile-time `option_env!` built-in
+  overridden by a per-host value in Rust-owned app-data (`oauth-clients.json`).
+  Public, not a secret; stored in cleartext by design and **never** in the keychain
+  (that is reserved for the token).
+- **Loopback** — the Bitbucket PKCE flow binds a transient `127.0.0.1` listener for
+  the redirect; it is dropped on completion/cancel. No deep-link scheme is reserved
+  (Deep Link stays deferred, GL-50).
 
 ## Content Security Policy
 

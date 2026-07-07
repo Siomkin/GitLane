@@ -10,7 +10,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api, type CloneProgress, type GitTransportAuthRef } from "../../../lib/api";
 import { repoLabel } from "../../../lib/paths";
 import { detectRemoteUrl, withUrlUser } from "../../../lib/remotes";
-import { useAccounts } from "../../../store/accounts";
+import { pickProviderTokenForHost, useAccounts } from "../../../store/accounts";
 import {
   canceledCloneCopy,
   classifyCloneError,
@@ -48,12 +48,39 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
   const remoteInfo = useMemo(() => detectRemoteUrl(cloneUrl), [cloneUrl]);
   const accounts = useAccounts((s) => s.accounts);
+  const forgeAuth = useAccounts((s) => s.forgeAuth);
+  const gitlabGlabAuth = useAccounts((s) => s.gitlabGlabAuth);
+  const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
+  // Detect a glab sign-in in the clone context too — otherwise `forgeAuth` is only
+  // ever populated by the Accounts/Remotes panels, and a GitLab clone opened
+  // straight from onboarding would neither wire glab nor show its hint (GL-139).
+  // Non-forced, so it defers to an already-loaded list.
+  useEffect(() => {
+    void loadForgeAuth();
+  }, [loadForgeAuth]);
   const cloneAuthAccounts = useMemo(
     () =>
       remoteInfo.valid && !remoteInfo.ssh && remoteInfo.credentialHost
-        ? accounts.filter((a) => a.host === remoteInfo.credentialHost)
+        ? accounts.filter(
+            (a) =>
+              a.host === remoteInfo.credentialHost ||
+              // Mirror accountMatchesRemoteHost: a `www.` remote still matches the
+              // bare-host account (GL-129), so the picker doesn't drop it.
+              (remoteInfo.credentialHost!.startsWith("www.") && a.host === remoteInfo.host),
+          )
         : [],
-    [accounts, remoteInfo.credentialHost, remoteInfo.ssh, remoteInfo.valid],
+    [accounts, remoteInfo.credentialHost, remoteInfo.host, remoteInfo.ssh, remoteInfo.valid],
+  );
+  // Whether this GitLab clone would authenticate through glab automatically —
+  // so the form can say the token fields are optional (GL-139).
+  const cloneGlabReady = useMemo(
+    () =>
+      remoteInfo.provider === "gitlab" &&
+      !remoteInfo.ssh &&
+      !!remoteInfo.host &&
+      !!remoteInfo.credentialHost &&
+      gitlabGlabAuth(remoteInfo.host, remoteInfo.credentialHost, "gitlab") !== null,
+    [remoteInfo, forgeAuth, gitlabGlabAuth],
   );
   const canClone = url.state === "valid" && cloneParent.trim() !== "";
 
@@ -119,29 +146,62 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
                 remoteInfo.provider === "bitbucket"
               ? remoteInfo.provider
               : "other";
-        const auth: GitTransportAuthRef | null =
-          remoteInfo.valid &&
-          !remoteInfo.ssh &&
-          remoteInfo.host &&
-          remoteInfo.credentialHost &&
-          (username || clonePassword)
-            ? selectedAccount
-              ? {
-                  mode: "githubGh",
-                  provider: "github",
-                  host: remoteInfo.host,
-                  credentialHost: remoteInfo.credentialHost,
-                  username,
-                  accountRef: selectedAccount.ref,
-                }
-              : {
-                  mode: "credentialHelper",
-                  provider,
-                  host: remoteInfo.host,
-                  credentialHost: remoteInfo.credentialHost,
-                  username: username || null,
-                }
+        const cloneHost = remoteInfo.host;
+        const cloneCredHost = remoteInfo.credentialHost;
+        const httpsClone = remoteInfo.valid && !remoteInfo.ssh && !!cloneHost && !!cloneCredHost;
+        // Same glab wiring the Remotes panel uses: a GitLab clone with glab signed
+        // in authenticates with no token entered (GL-139).
+        const glabRef =
+          httpsClone && cloneHost && cloneCredHost
+            ? useAccounts.getState().gitlabGlabAuth(cloneHost, cloneCredHost, provider)
             : null;
+        // A GitLane-owned keychain token (OAuth/PAT) for this host authenticates
+        // the clone with nothing entered (GL-132/GL-139), just like transport.
+        const tokenForHost =
+          httpsClone && cloneCredHost
+            ? pickProviderTokenForHost(useAccounts.getState().providerTokens, cloneCredHost)
+            : undefined;
+        let auth: GitTransportAuthRef | null = null;
+        if (httpsClone && cloneHost && cloneCredHost) {
+          if (selectedAccount) {
+            auth = {
+              mode: "githubGh",
+              provider: "github",
+              host: cloneHost,
+              credentialHost: cloneCredHost,
+              username,
+              accountRef: selectedAccount.ref,
+            };
+          } else if (clonePassword) {
+            // An explicitly entered token wins — save it to the git helper, use it.
+            auth = {
+              mode: "credentialHelper",
+              provider,
+              host: cloneHost,
+              credentialHost: cloneCredHost,
+              username: username || null,
+            };
+          } else if (tokenForHost) {
+            auth = {
+              mode: "providerToken",
+              provider: tokenForHost.provider,
+              host: cloneHost,
+              credentialHost: cloneCredHost,
+              username: tokenForHost.transportUsername ?? tokenForHost.login,
+              providerAccountId: tokenForHost.accountId,
+            };
+          } else if (glabRef) {
+            auth = glabRef;
+          } else if (username) {
+            auth = {
+              mode: "credentialHelper",
+              provider,
+              host: cloneHost,
+              credentialHost: cloneCredHost,
+              username,
+            };
+          }
+        }
         if (auth?.mode === "credentialHelper" && clonePassword) {
           await api.approveHttpsCredential(auth.credentialHost, remoteInfo.path, username, clonePassword);
           setClonePassword("");
@@ -206,6 +266,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     clonePassword,
     setClonePassword,
     cloneAuthAccounts,
+    cloneGlabReady,
     cloneRemoteInfo: remoteInfo,
     browseCloneParent,
     canClone,

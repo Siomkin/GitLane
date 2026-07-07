@@ -5,7 +5,6 @@ import type { RemoteInfo } from "../../../../lib/api";
 import { CloudIcon, GitHubIcon, TrashIcon } from "../../../ui/icons";
 import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
-import { RemoteKeychainAuth } from "./RemoteKeychainAuth";
 import type { PickerAccount } from "./remoteAccountOptions";
 import type { ForgeAuthStatus } from "../../../../lib/api";
 import { RemoteUrlField } from "./RemoteUrlField";
@@ -24,8 +23,6 @@ export const RemoteRow = ({
   forgeAuth,
   selectedAccountId,
   onPickAccount,
-  onSetUsername,
-  onSaveCredential,
   onSave,
   onRemove,
 }: {
@@ -37,8 +34,6 @@ export const RemoteRow = ({
   /** The account bound to this remote, or null for system git credentials. */
   selectedAccountId: string | null;
   onPickAccount: (remote: string, id: string | null) => void;
-  onSetUsername: (remote: string, username: string | null) => void;
-  onSaveCredential: (remote: string, username: string, password: string) => void;
   /** Resolves true when the URL was saved; false keeps the row in edit mode. */
   onSave: (name: string, url: string) => Promise<boolean>;
   onRemove: (remote: RemoteInfo) => void;
@@ -140,10 +135,7 @@ export const RemoteRow = ({
             selectedId={selectedAccountId}
             busy={busy}
             onPick={(id) => onPickAccount(remote.name, id)}
-            onSetUsername={(username) => onSetUsername(remote.name, username)}
-            onSaveCredential={(username, password) => onSaveCredential(remote.name, username, password)}
           />
-          <RemoteKeychainAuth remote={remote} />
         </div>
       ) : (
         <div className="mt-3">

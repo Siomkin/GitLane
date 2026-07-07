@@ -33,6 +33,18 @@ export interface RemoteAccountPickerModel {
   note: string | null;
 }
 
+/** Whether glab authenticates a GitLab remote for us: the same gate `gitlabGlab`
+ * transport uses, minus the saved-credential check (kept in the store). Drives
+ * the "authenticates through glab" note. */
+function glabManages(provider: RemoteProvider, status: ForgeAuthStatus | undefined): boolean {
+  return (
+    provider === "gitlab" &&
+    status?.cli === "glab" &&
+    status?.available === true &&
+    status?.authenticated === true
+  );
+}
+
 function accountMatchesRemoteHost(
   account: Pick<PickerAccount, "host">,
   info: { host: string | null; credentialHost: string | null },
@@ -101,6 +113,12 @@ function noAccountNote(
   const status = forgeAuth.find((f) => f.provider === FORGE_PROVIDER[provider]);
   const login = status?.account?.username;
   if (status?.authenticated === true) {
+    // GitLab: GitLane wires glab's credential helper per invocation, so a glab
+    // sign-in authenticates git directly (GL-139). Other forges still fall back
+    // to the system credential helper.
+    if (glabManages(provider, status)) {
+      return `Signed in${login ? ` as @${login}` : ""} via glab — GitLane authenticates git through glab for you.`;
+    }
     return `Signed in${login ? ` as @${login}` : ""} via ${status.cli ?? "its CLI"}. Git transport still uses this URL username plus ${credentials}.`;
   }
   return `${providerLabel(provider)} transport auth uses an HTTPS username plus ${credentials}.`;

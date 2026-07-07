@@ -77,6 +77,10 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
             config: gh_helper_config(host),
             env: Vec::new(),
         }),
+        TransportCredential::Glab { host } => Ok(GitInvocation {
+            config: glab_helper_config(host),
+            env: Vec::new(),
+        }),
         TransportCredential::ProviderToken(bridge) => {
             Ok(provider_token_invocation(bridge, &current_exe_path()?))
         }
@@ -91,6 +95,21 @@ fn gh_helper_config(host: &str) -> Vec<String> {
         format!("credential.https://{host}.helper="),
         "-c".to_string(),
         format!("credential.https://{host}.helper=!gh auth git-credential"),
+    ]
+}
+
+/// Inline `glab auth git-credential` for `host` — the GitLab analogue of
+/// [`gh_helper_config`] (GL-139). glab implements the same git credential-helper
+/// protocol as gh and answers from its own token store, so a glab sign-in makes
+/// GitLab remotes authenticate with no per-remote setup. Scoped to `host` (the
+/// empty reset overrides only that host's inherited helper); `glab` is resolved
+/// on the augmented PATH the git child runs with, same as `gh`.
+fn glab_helper_config(host: &str) -> Vec<String> {
+    vec![
+        "-c".to_string(),
+        format!("credential.https://{host}.helper="),
+        "-c".to_string(),
+        format!("credential.https://{host}.helper=!glab auth git-credential"),
     ]
 }
 
@@ -340,6 +359,24 @@ mod tests {
                 "credential.https://github.com.helper=".to_string(),
                 "-c".to_string(),
                 "credential.https://github.com.helper=!gh auth git-credential".to_string(),
+            ]
+        );
+        assert!(inv.env.is_empty());
+    }
+
+    #[test]
+    fn git_invocation_glab_clears_then_sets_glab_helper() {
+        let inv = git_invocation(&TransportCredential::Glab {
+            host: "gitlab.com".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            inv.config,
+            vec![
+                "-c".to_string(),
+                "credential.https://gitlab.com.helper=".to_string(),
+                "-c".to_string(),
+                "credential.https://gitlab.com.helper=!glab auth git-credential".to_string(),
             ]
         );
         assert!(inv.env.is_empty());

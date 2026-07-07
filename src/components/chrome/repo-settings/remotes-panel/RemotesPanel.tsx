@@ -28,8 +28,6 @@ export const RemotesPanel = () => {
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   const repoRemoteAccountIds = useAccounts((s) => s.repoRemoteAccountIds);
   const setRemoteAccount = useAccounts((s) => s.setRemoteAccount);
-  const setRemoteUsername = useAccounts((s) => s.setRemoteUsername);
-  const saveRemoteCredential = useAccounts((s) => s.saveRemoteCredential);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -172,10 +170,6 @@ export const RemotesPanel = () => {
                 forgeAuth={forgeAuth}
                 selectedAccountId={repoRemoteAccountIds[r.name] ?? null}
                 onPickAccount={(remote, id) => void setRemoteAccount(remote, id)}
-                onSetUsername={(remote, username) => void setRemoteUsername(remote, username)}
-                onSaveCredential={(remote, username, password) =>
-                  void saveRemoteCredential(remote, username, password)
-                }
                 onSave={handleSave}
                 onRemove={handleRemove}
               />

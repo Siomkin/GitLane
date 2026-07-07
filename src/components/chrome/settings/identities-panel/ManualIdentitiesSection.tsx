@@ -25,7 +25,6 @@ type ProfileEditorPrefill = NonNullable<Parameters<typeof ProfileEditor>[0]["pre
 export function ManualIdentitiesSection() {
   const summary = useRepo((s) => s.summary);
   const repoIdentity = useAccounts((s) => s.repoIdentity);
-  const accounts = useAccounts((s) => s.accounts);
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const saveManualIdentity = useIdentities((s) => s.saveManualIdentity);
@@ -35,7 +34,6 @@ export function ManualIdentitiesSection() {
   const intent = useUi((s) => s.identitiesIntent);
   const clearIdentitiesIntent = useUi((s) => s.clearIdentitiesIntent);
   const [editing, setEditing] = useState<Editing>(null);
-  const accountsWithEmail = accounts.filter((a) => a.email);
 
   // A repo-scoped surface (repo Identity panel, identity chip) handed off a
   // create/edit request. Consume it exactly once.
@@ -113,34 +111,6 @@ export function ManualIdentitiesSection() {
         )}
 
         {manuals.length === 0 && editing?.kind !== "new" && <EmptyState onAdd={() => setEditing({ kind: "new" })} />}
-
-        {/* One-click prefills from connected accounts: copies the provider's
-            name/email into a NEW ordinary card — no live link back (accounts
-            authenticate, identities author). */}
-        {accountsWithEmail.length > 0 && editing?.kind !== "new" && (
-          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="text-[11.5px] text-neutral-400 dark:text-neutral-500">Prefill from account:</span>
-            {accountsWithEmail.map((a) => (
-              <button
-                key={a.id}
-                onClick={() =>
-                  setEditing({
-                    kind: "new",
-                    prefill: { name: a.name || a.login, email: a.email },
-                  })
-                }
-                title={`${a.name || a.login} · ${a.email}`}
-                className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-full border border-black/10 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/[0.04] dark:border-white/[0.12] dark:text-neutral-300 dark:hover:bg-white/[0.06]",
-                  focusRing,
-                )}
-              >
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.color }} />
-                From @{a.login}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -152,7 +122,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">No manual identities</div>
       <p className="mx-auto mt-1 max-w-[380px] text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400 text-pretty">
         Useful for work, personal, or noreply author addresses. Repos can also use this
-        computer's global git config; provider accounts only prefill new cards.
+        computer's global git config.
       </p>
       <button
         onClick={onAdd}
