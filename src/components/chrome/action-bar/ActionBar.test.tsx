@@ -101,10 +101,18 @@ describe("ActionBar layout order", () => {
 
   it("does not prefetch PRs for unsupported remotes", () => {
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
+      forge: { ...FORGE, kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" },
     });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(invokeMock).not.toHaveBeenCalledWith("list_pull_requests", expect.anything());
+  });
+
+  it("prefetches PRs for a Bitbucket remote (GL-141)", () => {
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
+    });
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", { path: SUMMARY.path, account: null });
   });
 
   it("keeps Pull enabled when the current branch has an upstream", () => {

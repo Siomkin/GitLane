@@ -27,8 +27,20 @@ describe("RemoteSummaryCard", () => {
     expect(screen.queryByText("Select account for PRs")).toBeNull();
   });
 
-  it("a non-PR forge → pull requests unavailable", () => {
+  it("Bitbucket with a token account → pull requests enabled (GL-141)", () => {
+    render(<RemoteSummaryCard remote={remote("https://bitbucket.org/team/repo.git")} accountLabel="@ada" />);
+    expect(screen.getByText("Pull requests enabled")).toBeInTheDocument();
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+  });
+
+  it("Bitbucket with no account → 'Sign in for pull requests', not the gh-only 'Select account for PRs' (GL-141)", () => {
     render(<RemoteSummaryCard remote={remote("https://bitbucket.org/team/repo.git")} accountLabel={null} />);
+    expect(screen.getByText("Sign in for pull requests")).toBeInTheDocument();
+    expect(screen.queryByText("Select account for PRs")).toBeNull();
+  });
+
+  it("a non-PR forge → pull requests unavailable", () => {
+    render(<RemoteSummaryCard remote={remote("https://dev.azure.com/org/proj/_git/repo")} accountLabel={null} />);
     expect(screen.getByText("Pull requests unavailable")).toBeInTheDocument();
   });
 });

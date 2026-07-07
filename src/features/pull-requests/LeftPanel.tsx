@@ -37,16 +37,18 @@ function PullRequestsPanel() {
   // An unborn branch resolves a name but has no commits, so there's nothing to
   // open a PR from — keep "New PR" disabled even though `headBranch` is set.
   const unborn = useRepo((state) => state.summary?.unborn ?? false);
-  // Creating a PR is supported on GitHub (via `gh`) and GitLab (via glab / REST
-  // v4, GL-140). Treat an unknown forge (`null` — still loading, or detection
-  // failed) as capable, matching the store's load gate (`loadPullRequests` only
-  // blocks a *known* unsupported forge); otherwise a supported repo whose list
-  // still loads would have "New PR" wrongly disabled.
+  // Creating a PR is supported on GitHub (via `gh`), GitLab (via glab / REST v4,
+  // GL-140), and Bitbucket (via REST 2.0, GL-141). Treat an unknown forge
+  // (`null` — still loading, or detection failed) as capable, matching the
+  // store's load gate (`loadPullRequests` only blocks a *known* unsupported
+  // forge); otherwise a supported repo whose list still loads would have
+  // "New PR" wrongly disabled.
   const prsUnsupported = useRepo(
     (state) =>
       state.forge != null &&
       state.forge.kind !== ForgeKind.GitHub &&
-      state.forge.kind !== ForgeKind.GitLab,
+      state.forge.kind !== ForgeKind.GitLab &&
+      state.forge.kind !== ForgeKind.Bitbucket,
   );
   const [now, setNow] = useState(() => Date.now());
 

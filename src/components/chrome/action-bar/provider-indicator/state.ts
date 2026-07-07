@@ -13,6 +13,9 @@ export interface ProviderAuthCtx {
   /** Whether GitLab merge requests can be fetched for the repo — glab signed in
    * for the host or a stored provider token (GL-145). Ignored for other forges. */
   gitlabReady: boolean;
+  /** Whether Bitbucket pull requests can be fetched for the repo — a stored
+   * Bitbucket token exists for the host (GL-141). Ignored for other forges. */
+  bitbucketReady: boolean;
 }
 
 /** Resolve the provider indicator's state — the *connection* status of the
@@ -24,16 +27,20 @@ export interface ProviderAuthCtx {
  *   - needs-auth   GitHub remote with no usable `gh` account yet
  *   - error        GitHub remote whose account probe failed (e.g. `gh` missing)
  *
- * Auth is tracked for the two PR-capable forges: GitHub (`gh` accounts) and
- * GitLab (glab / stored token, GL-145) — each surfaces "needs-auth" when its
- * sign-in is missing. Other recognised forges (Bitbucket, Azure DevOps, Gitea,
- * Forgejo) are "connected" — their repo link works; they have no PR surface. */
+ * Auth is tracked for the three PR-capable forges: GitHub (`gh` accounts),
+ * GitLab (glab / stored token, GL-145), and Bitbucket (stored token, GL-141) —
+ * each surfaces "needs-auth" when its sign-in is missing. Other recognised forges
+ * (Azure DevOps, Gitea, Forgejo) are "connected" — their repo link works; they
+ * have no PR surface. */
 export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): ProviderState => {
   if (!forge.hasRemote) return "missing";
   if (forge.kind === null) return "unsupported";
   // GitLab merge requests (GL-140): connected when glab / a token can serve
   // them, else needs-auth so the popover prompts a GitLab sign-in.
   if (forge.kind === ForgeKind.GitLab) return ctx.gitlabReady ? "connected" : "needs-auth";
+  // Bitbucket pull requests (GL-141): connected when a stored token can serve
+  // them, else needs-auth so the popover prompts a Bitbucket sign-in.
+  if (forge.kind === ForgeKind.Bitbucket) return ctx.bitbucketReady ? "connected" : "needs-auth";
   if (forge.kind !== ForgeKind.GitHub) return "connected";
   // GitHub — surface sign-in state via the accounts store.
   if (ctx.accountsError) return "error";

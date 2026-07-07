@@ -21,9 +21,10 @@ export const RemoteSummaryCard = ({
   // The forge's own request noun, so a GitLab card doesn't say "pull requests".
   const requests = isGitlab ? "merge requests" : "pull requests";
   const readyLabel = isGitlab ? "Merge requests enabled" : "Pull requests enabled";
-  // Not-ready copy is forge-specific: GitHub binds a gh account, GitLab signs in
-  // with glab or a token — so "Select account for PRs" would be wrong for GitLab.
-  const notReadyLabel = isGitlab ? "Sign in for merge requests" : "Select account for PRs";
+  // Not-ready copy is forge-specific: GitHub binds a gh account ("Select
+  // account"), while GitLab and Bitbucket sign in with glab / a token — so those
+  // say "Sign in for <requests>", not the gh-only "Select account for PRs".
+  const notReadyLabel = isGithub ? "Select account for PRs" : `Sign in for ${requests}`;
 
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-black/[0.07] bg-white p-4 dark:border-white/[0.08] dark:bg-neutral-800/60">

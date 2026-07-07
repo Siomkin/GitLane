@@ -432,4 +432,17 @@ describe("pickProviderTokenForHost", () => {
     } as never;
     expect(pickProviderTokenForHost(tokens, "gitlab.com")?.accountId).toBe("newer");
   });
+
+  it("scopes to the requested provider so a co-hosted token isn't cross-picked (GL-141)", () => {
+    const tokens = {
+      bb: tok({ provider: "bitbucket", credentialHost: "bitbucket.org", accountId: "bb", savedAt: 2 }),
+      other: tok({ provider: "gitea", credentialHost: "bitbucket.org", accountId: "gitea", savedAt: 9 }),
+    } as never;
+    // Without a provider filter the newer gitea token would win; scoped to
+    // "bitbucket" it must pick the Bitbucket one.
+    expect(pickProviderTokenForHost(tokens, "bitbucket.org", "bitbucket")?.accountId).toBe("bb");
+    expect(pickProviderTokenForHost(tokens, "bitbucket.org", "gitea")?.accountId).toBe("gitea");
+    // No filter → host-only match keeps the previous behaviour (newest wins).
+    expect(pickProviderTokenForHost(tokens, "bitbucket.org")?.accountId).toBe("gitea");
+  });
 });

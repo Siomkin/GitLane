@@ -212,8 +212,61 @@ const gitlabModel = (
   };
 };
 
-/** A non-PR forge: recognised (Bitbucket/Azure/Gitea/Forgejo) or an unrecognised
- * host. The repo link still works; pull requests do not. */
+/** The "On <host>" links group for a Bitbucket remote — pull requests + issues,
+ * under Bitbucket's `/pull-requests` and `/issues` paths. No settings sub-group
+ * (Bitbucket's admin paths differ and aren't part of this surface). */
+const bitbucketSections = (webUrl: string | null, host: string, prCount: number) => {
+  if (!webUrl) return { githubEyebrow: null, githubLinks: [], settings: null };
+  return {
+    githubEyebrow: `On ${host}`,
+    githubLinks: [
+      { icon: "pr" as const, label: `Pull requests (${prCount})`, href: `${webUrl}/pull-requests` },
+      { icon: "issue" as const, label: "Issues", href: `${webUrl}/issues` },
+    ],
+    settings: null,
+  };
+};
+
+/** A recognised Bitbucket remote — pull requests ready (`connected`) or awaiting a
+ * token sign-in (`needs-auth`). Mirrors [`githubModel`] with Bitbucket copy, icon,
+ * and links (GL-141). Bitbucket has no CLI, so the only sign-in is a token. */
+const bitbucketModel = (
+  forge: RepoForge,
+  prCount: number,
+  variant: "connected" | "needs-auth",
+): ProviderPopoverModel => {
+  const host = forge.host ?? "bitbucket.org";
+  const base = {
+    headerIcon: "bitbucket" as const,
+    headerTone: STRONG,
+    title: slugOf(forge.webUrl, host),
+    host,
+    headHref: forge.webUrl,
+    ...bitbucketSections(forge.webUrl, host, prCount),
+  };
+  if (variant === "connected") {
+    return {
+      ...base,
+      capability: { label: "PRs on", tone: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/12" },
+      note: "",
+      primary: {
+        icon: "pr",
+        label: prCount > 0 ? `View ${prCount} pull request${prCount === 1 ? "" : "s"}` : "View pull requests",
+        suffix: "→",
+        action: { kind: "view-prs" },
+      },
+    };
+  }
+  return {
+    ...base,
+    capability: { label: "Sign in", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
+    note: "A Bitbucket remote, but no sign-in yet. Sign in with a token to view and open pull requests.",
+    primary: { icon: "key", label: "Sign in to Bitbucket", suffix: "", action: { kind: "sign-in" } },
+  };
+};
+
+/** A non-PR forge: recognised (Azure/Gitea/Forgejo) or an unrecognised host. The
+ * repo link still works; pull requests do not. */
 const forgeModel = (forge: RepoForge): ProviderPopoverModel => {
   const host = forge.host ?? "remote";
   const label = forge.forge ?? forge.host ?? "this remote";
@@ -291,12 +344,13 @@ export const providerPopoverModel = (
     case "error":
       return errorModel(errorDetail);
     case "needs-auth":
-      return forge.kind === ForgeKind.GitLab
-        ? gitlabModel(forge, prCount, "needs-auth")
-        : githubModel(forge, prCount, "needs-auth");
+      if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "needs-auth");
+      if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "needs-auth");
+      return githubModel(forge, prCount, "needs-auth");
     case "connected":
       if (forge.kind === ForgeKind.GitHub) return githubModel(forge, prCount, "connected");
       if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "connected");
+      if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "connected");
       return forgeModel(forge);
     case "unsupported":
       return forgeModel(forge);

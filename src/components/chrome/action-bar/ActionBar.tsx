@@ -71,6 +71,9 @@ export const ActionBar = ({
   // Whether GitLab MRs can be fetched (glab / stored token) — drives the provider
   // popover's connected-vs-needs-auth state for a GitLab repo (GL-145).
   const gitlabReady = useAccounts((state) => state.gitlabPr().ready);
+  // Whether Bitbucket PRs can be fetched (stored token) — same connected-vs-
+  // needs-auth signal for a Bitbucket repo (GL-141).
+  const bitbucketReady = useAccounts((state) => state.bitbucketPr().ready);
 
   // Per-button in-flight state for the network ops. The store's single global
   // `loading` flag can't say which button is busy (and `pull`/`push` don't even
@@ -122,16 +125,26 @@ export const ActionBar = ({
   // "connected" (repo link works, no PRs), and an unrecognised host is
   // "unsupported". See the popover model.
   const providerState: ProviderState | null = forge
-    ? deriveProviderState(forge, { accounts, accountsError, accountsLoading, repoAccountRef, gitlabReady })
+    ? deriveProviderState(forge, {
+        accounts,
+        accountsError,
+        accountsLoading,
+        repoAccountRef,
+        gitlabReady,
+        bitbucketReady,
+      })
     : null;
 
   // The PR badge is always visible in the toolbar, so keep its count warm even
   // before the PR panel opens. Foreground loads still happen in LeftPanel for a
   // visible spinner; these quiet loads just keep the badge current.
   useEffect(() => {
-    // PRs are supported on GitHub and GitLab (GL-140); the store's gate handles
-    // the account/transport resolution per forge.
-    const prForge = forge?.kind === ForgeKind.GitHub || forge?.kind === ForgeKind.GitLab;
+    // PRs are supported on GitHub, GitLab (GL-140), and Bitbucket (GL-141); the
+    // store's gate handles the account/transport resolution per forge.
+    const prForge =
+      forge?.kind === ForgeKind.GitHub ||
+      forge?.kind === ForgeKind.GitLab ||
+      forge?.kind === ForgeKind.Bitbucket;
     if (!summary || !prForge) return;
     void loadPullRequests(false, true);
     const id = window.setInterval(() => {
