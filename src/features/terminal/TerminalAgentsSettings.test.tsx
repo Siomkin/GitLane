@@ -273,4 +273,38 @@ describe("TerminalAgentsSettings", () => {
     });
     expect(card.style.boxShadow).toBe("");
   });
+
+  it("tears down an in-flight drag before starting another (no listener leak)", async () => {
+    stubBackend([agent(), agent({ id: "codex", name: "Codex", command: "codex" })]);
+    render(<TerminalAgentsSettings />);
+    const gripA = await screen.findByRole("button", { name: "Drag Claude to reorder" });
+    const gripB = screen.getByRole("button", { name: "Drag Codex to reorder" });
+
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+
+    // Start dragging A, then start dragging B before A's pointerup arrives.
+    fireEvent.pointerDown(gripA, { pointerId: 1 });
+    fireEvent.pointerDown(gripB, { pointerId: 2 });
+
+    // The second start must have detached A's window listeners.
+    for (const type of ["pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
+      expect(removeSpy).toHaveBeenCalledWith(type, expect.any(Function));
+    }
+    removeSpy.mockRestore();
+  });
+
+  it("does not re-run the FLIP measure on a text edit (only on reorder)", async () => {
+    stubBackend();
+    const measure = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    render(<TerminalAgentsSettings />);
+    await openEditor("Claude");
+
+    // The FLIP layout effect is keyed on row order, so typing (which doesn't
+    // move any row) must not trigger a re-measure of the cards.
+    measure.mockClear();
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Claude Opus" } });
+    expect(measure).not.toHaveBeenCalled();
+
+    measure.mockRestore();
+  });
 });
