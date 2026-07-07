@@ -68,6 +68,9 @@ export const ActionBar = ({
   const accountsError = useAccounts((state) => state.accountsError);
   const accountsLoading = useAccounts((state) => state.accountsLoading);
   const repoAccountRef = useAccounts((state) => state.repoAccountRef);
+  // Whether GitLab MRs can be fetched (glab / stored token) — drives the provider
+  // popover's connected-vs-needs-auth state for a GitLab repo (GL-145).
+  const gitlabReady = useAccounts((state) => state.gitlabPr().ready);
 
   // Per-button in-flight state for the network ops. The store's single global
   // `loading` flag can't say which button is busy (and `pull`/`push` don't even
@@ -113,12 +116,13 @@ export const ActionBar = ({
       ? undefined
       : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
 
-  // Remote-provider status: forge detection (backend) combined with GitHub auth
-  // state (accounts store). Only GitHub supports PRs today; recognised non-GitHub
-  // forges (GitLab, Bitbucket, …) are "connected" (repo link works, no PRs), and
-  // only an unrecognised host is "unsupported". See the popover model.
+  // Remote-provider status: forge detection (backend) combined with auth state
+  // (accounts store). GitHub and GitLab support PRs (each surfaces needs-auth
+  // when its sign-in is missing); other recognised forges (Bitbucket, …) are
+  // "connected" (repo link works, no PRs), and an unrecognised host is
+  // "unsupported". See the popover model.
   const providerState: ProviderState | null = forge
-    ? deriveProviderState(forge, { accounts, accountsError, accountsLoading, repoAccountRef })
+    ? deriveProviderState(forge, { accounts, accountsError, accountsLoading, repoAccountRef, gitlabReady })
     : null;
 
   // The PR badge is always visible in the toolbar, so keep its count warm even

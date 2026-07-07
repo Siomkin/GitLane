@@ -52,18 +52,46 @@ describe("providerPopoverModel", () => {
     expect(m.settings).not.toBeNull();
   });
 
-  it("connected non-GitHub forge (GitLab): no-PRs shape, brand icon, open-on-forge primary, no github sections", () => {
-    const m = providerPopoverModel(
-      "connected",
-      forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/siomkin/gitlane" }),
-      0,
-    );
+  const gitlab = () =>
+    forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com", webUrl: "https://gitlab.com/siomkin/gitlane" });
+
+  it("connected GitLab: MRs-on pill, view-MRs primary, GitLab /-/ links, no settings (GL-145)", () => {
+    const m = providerPopoverModel("connected", gitlab(), 3);
     expect(m.headerIcon).toBe("gitlab");
     expect(m.title).toBe("siomkin/gitlane");
+    expect(m.capability).toEqual({ label: "MRs on", tone: expect.stringContaining("emerald") });
+    expect(m.primary).toMatchObject({ label: "View 3 merge requests", suffix: "→", action: { kind: "view-prs" } });
+    expect(m.githubEyebrow).toBe("On gitlab.com");
+    expect(m.githubLinks.map((l) => l.href)).toEqual([
+      "https://gitlab.com/siomkin/gitlane/-/merge_requests",
+      "https://gitlab.com/siomkin/gitlane/-/issues",
+    ]);
+    expect(m.githubLinks[0].label).toBe("Merge requests (3)");
+    expect(m.settings).toBeNull();
+  });
+
+  it("singularises the view-MRs primary for one open MR", () => {
+    expect(providerPopoverModel("connected", gitlab(), 1).primary?.label).toBe("View 1 merge request");
+  });
+
+  it("needs-auth GitLab: sign-in pill + glab/token guidance, key primary (GL-145)", () => {
+    const m = providerPopoverModel("needs-auth", gitlab(), 0);
+    expect(m.headerIcon).toBe("gitlab");
+    expect(m.capability?.label).toBe("Sign in");
+    expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to GitLab", action: { kind: "sign-in" } });
+    expect(m.note).toMatch(/glab or a token/i);
+  });
+
+  it("connected non-PR forge (Bitbucket): no-PRs shape, open-on-forge primary, no link sections", () => {
+    const m = providerPopoverModel(
+      "connected",
+      forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org", webUrl: "https://bitbucket.org/team/app" }),
+      0,
+    );
+    expect(m.headerIcon).toBe("bitbucket");
     expect(m.capability?.label).toBe("No PRs");
-    expect(m.note).toMatch(/aren't available for GitLab remotes/);
-    expect(m.primary).toMatchObject({ icon: "external", label: "Open on GitLab", suffix: "↗" });
-    expect(m.primary?.action).toEqual({ kind: "open-url", url: "https://gitlab.com/siomkin/gitlane" });
+    expect(m.note).toMatch(/aren't available for Bitbucket remotes/);
+    expect(m.primary).toMatchObject({ icon: "external", label: "Open on Bitbucket", suffix: "↗" });
     expect(m.githubEyebrow).toBeNull();
     expect(m.settings).toBeNull();
   });

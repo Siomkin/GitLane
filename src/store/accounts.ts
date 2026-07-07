@@ -342,6 +342,13 @@ interface AccountsState {
   /** Bind the default (PR) remote — the pre-GL-129 per-repo semantics, kept
    * for the sign-in flow and identity panel. Delegates to [`setRemoteAccount`]. */
   setRepoAccount: (id: string | null) => Promise<void>;
+  /** PR-auth readiness + display label for the open repo's default **GitLab**
+   * remote (GL-145): `ready` is true when glab is signed in for the host or a
+   * GitLane-owned keychain token exists; `label` is the account handle to show
+   * (`@login`, or `glab`), else null. `{ ready: false, label: null }` for a
+   * non-GitLab repo. Shared by the toolbar provider popover (connected vs
+   * needs-auth) and the remotes-settings card. Never carries token material. */
+  gitlabPr: () => { ready: boolean; label: string | null };
   /** The account ref the PR surface passes for the open repo. For a GitHub repo
    * it's the gh-derived `repoAccountRef`. For a GitLab repo (GL-140) it prefers
    * glab's zero-config transport — returning `null` so the backend uses glab —
@@ -1262,6 +1269,31 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }
     void usePulls.getState().loadPullRequests();
+  },
+
+  gitlabPr: () => {
+    const forge = useRepo.getState().forge;
+    if (!forge || forge.kind !== ForgeKind.GitLab) return { ready: false, label: null };
+    const remotes = useRepo.getState().remotes ?? [];
+    const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
+    const info = defaultRemote
+      ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl)
+      : null;
+    const host = info?.host ?? forge.host ?? null;
+    const credentialHost = info?.credentialHost ?? host;
+    if (!host || !credentialHost) return { ready: false, label: null };
+    // glab (zero-config, single account per host) — label from its whoami if known.
+    if (get().gitlabGlabAuth(host, credentialHost, "gitlab")) {
+      const glab = get().forgeAuth.find(
+        (f) => f.provider === "gitlab" && f.cli === "glab" && f.authenticated === true,
+      );
+      const username = glab?.account?.username;
+      return { ready: true, label: username ? `@${username}` : "glab" };
+    }
+    // A stored OAuth/PAT token authenticates the REST client.
+    const token = pickProviderTokenForHost(get().providerTokens, credentialHost);
+    if (token) return { ready: true, label: `@${token.login}` };
+    return { ready: false, label: null };
   },
 
   prAccountRef: () => {

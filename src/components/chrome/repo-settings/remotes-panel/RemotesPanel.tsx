@@ -28,6 +28,9 @@ export const RemotesPanel = () => {
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   const repoRemoteAccountIds = useAccounts((s) => s.repoRemoteAccountIds);
   const setRemoteAccount = useAccounts((s) => s.setRemoteAccount);
+  // GitLab remotes authenticate via glab / a stored token rather than a gh
+  // account, so their PR account label comes from `gitlabPr()` (GL-145).
+  const gitlabAccountLabel = useAccounts((s) => s.gitlabPr().label);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -121,7 +124,9 @@ export const RemotesPanel = () => {
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0];
   const defaultRemoteAccountId = defaultRemote ? repoRemoteAccountIds[defaultRemote.name] : null;
   const defaultRemoteAccount = accounts.find((a) => a.id === defaultRemoteAccountId) ?? null;
-  const accountLabel = defaultRemoteAccount ? `@${defaultRemoteAccount.login}` : null;
+  // GitHub uses the bound gh account; a GitLab default remote falls back to its
+  // glab / stored-token label (null for both leaves the card in its unbound state).
+  const accountLabel = (defaultRemoteAccount ? `@${defaultRemoteAccount.login}` : null) ?? gitlabAccountLabel;
 
   if (!summary) return null;
 

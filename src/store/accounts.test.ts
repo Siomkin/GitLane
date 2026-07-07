@@ -934,4 +934,36 @@ describe("prAccountRef — PR account resolution per forge", () => {
     useRepo.setState({ forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" }) });
     expect(useAccounts.getState().prAccountRef()).toBeNull();
   });
+
+  // gitlabPr() — readiness + display label for the GitLab PR account (GL-145).
+  describe("gitlabPr", () => {
+    it("is not-ready with no label for a GitHub repo", () => {
+      useRepo.setState({ forge: forge({ kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com" }) });
+      expect(useAccounts.getState().gitlabPr()).toEqual({ ready: false, label: null });
+    });
+
+    it("is ready via glab, labelled from its whoami when known", () => {
+      useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+      useAccounts.setState({ forgeAuth: [{ ...glabRow, account: { username: "ada" } }], providerTokens: {} });
+      expect(useAccounts.getState().gitlabPr()).toEqual({ ready: true, label: "@ada" });
+    });
+
+    it("is ready via glab with a bare 'glab' label when no whoami account", () => {
+      useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+      useAccounts.setState({ forgeAuth: [glabRow], providerTokens: {} });
+      expect(useAccounts.getState().gitlabPr()).toEqual({ ready: true, label: "glab" });
+    });
+
+    it("is ready via a stored token, labelled with its login", () => {
+      useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+      useAccounts.setState({ forgeAuth: [], providerTokens: { "gitlab.com ada": token } });
+      expect(useAccounts.getState().gitlabPr()).toEqual({ ready: true, label: "@ada" });
+    });
+
+    it("is not-ready with no label when neither glab nor a token is present", () => {
+      useRepo.setState({ forge: forge({}), remotes: [gitlabRemote] });
+      useAccounts.setState({ forgeAuth: [], providerTokens: {} });
+      expect(useAccounts.getState().gitlabPr()).toEqual({ ready: false, label: null });
+    });
+  });
 });

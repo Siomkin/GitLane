@@ -2,7 +2,7 @@ import { useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import type { RemoteInfo } from "../../../../lib/api";
-import { CloudIcon, GitHubIcon, TrashIcon } from "../../../ui/icons";
+import { CloudIcon, GitHubIcon, GitLabIcon, TrashIcon } from "../../../ui/icons";
 import { detectRemoteUrl, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
@@ -43,6 +43,7 @@ export const RemoteRow = ({
 
   const info = detectRemoteUrl(remote.fetchUrl);
   const isGithub = info.provider === "github";
+  const isGitlab = info.provider === "gitlab";
   const prs = providerSupportsPrs(info.provider);
   const validity = validateRemoteUrl(draft);
 
@@ -66,7 +67,13 @@ export const RemoteRow = ({
             "bg-black/[0.03] text-neutral-600 dark:bg-white/[0.05] dark:text-neutral-300",
           )}
         >
-          {isGithub ? <GitHubIcon className="h-3.5 w-3.5" /> : <CloudIcon className="h-3.5 w-3.5" />}
+          {isGithub ? (
+            <GitHubIcon className="h-3.5 w-3.5" />
+          ) : isGitlab ? (
+            <GitLabIcon className="h-3.5 w-3.5" />
+          ) : (
+            <CloudIcon className="h-3.5 w-3.5" />
+          )}
           {info.host ?? "unknown host"}
         </span>
         <span

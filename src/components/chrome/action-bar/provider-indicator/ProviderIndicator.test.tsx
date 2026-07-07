@@ -91,14 +91,24 @@ describe("ProviderIndicator", () => {
     expect(onSignIn).toHaveBeenCalledTimes(1);
   });
 
-  it("connected GitLab: no-PRs shape — open-on-forge primary, no GitHub shortcuts", () => {
-    const { toggle } = renderIndicator("connected", GITLAB, 0);
+  it("connected GitLab: MRs-on shape — view-MRs primary routes to the PRs view, GitLab links, no gh settings (GL-145)", () => {
+    const { toggle, onViewPrs } = renderIndicator("connected", GITLAB, 2);
     fireEvent.click(toggle);
     expect(screen.getByText("siomkin/gitlane")).toBeInTheDocument();
-    expect(screen.getByText("Open on GitLab")).toBeInTheDocument();
-    // No GitHub PR/Issues/settings link rows for a non-GitHub forge.
-    expect(screen.queryByText("Issues")).toBeNull();
+    expect(screen.getByText("Merge requests (2)")).toBeInTheDocument();
+    // GitLab MR surface, not GitHub's Branches/settings group.
     expect(screen.queryByText("Branches")).toBeNull();
+
+    fireEvent.click(screen.getByText("View 2 merge requests"));
+    expect(onViewPrs).toHaveBeenCalledTimes(1);
+    expect(popoverOpen()).toBe(false);
+  });
+
+  it("needs-auth GitLab: the primary opens Accounts settings to sign in (GL-145)", () => {
+    const { toggle, onSignIn } = renderIndicator("needs-auth", GITLAB, 0);
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByText("Sign in to GitLab"));
+    expect(onSignIn).toHaveBeenCalledTimes(1);
   });
 
   it("missing: no PR links, and the primary is the add-remote shortcut", () => {
