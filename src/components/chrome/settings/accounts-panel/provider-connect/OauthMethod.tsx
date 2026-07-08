@@ -12,7 +12,8 @@ import { openExternalUrl } from "../../../../../lib/openExternal";
 import type { ForgeAuthProvider } from "../../../../../lib/api";
 import { useUi } from "../../../../../store/ui";
 import { useAccounts } from "../../../../../store/accounts";
-import { DEFAULT_CREDENTIAL_HOST, OAUTH_HELP } from "./oauth";
+import { DEFAULT_CREDENTIAL_HOST } from "../../../../../lib/forgeHelp";
+import { OAUTH_HELP } from "./oauth";
 import { ExternalIcon, inputCls, linkCls } from "./ui";
 
 export function OauthMethod({ provider, forge }: { provider: ForgeAuthProvider; forge: string }) {

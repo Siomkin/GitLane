@@ -1,17 +1,28 @@
-import type { OnboardingApi } from "../flows/useOnboarding";
-import { RetryIcon, WarningTriangle, XCircle } from "../icons";
+import { useMemo } from "react";
+import { buildAuthRecovery } from "../../authRecovery";
+import type { OnboardingApi } from "../../flows/useOnboarding";
+import { RetryIcon, WarningTriangle, XCircle } from "../../icons";
+import { AuthRecoveryPanel } from "./AuthRecoveryPanel";
 
 /** The clone-failed screen. Renders the classified copy (exists / auth /
- * unreachable / canceled / generic): a fail uses the red warning triangle, a
- * cancel the neutral crossed circle, and the git `fatal:` line is shown verbatim
- * in a terminal block. */
+ * denied / unreachable / canceled / generic): a fail uses the red warning
+ * triangle, a cancel the neutral crossed circle, and the git `fatal:` line is
+ * shown verbatim in a terminal block. Recoverable kinds (auth/denied) embed
+ * the recovery panel; its inputs bind to the clone flow's state, so the
+ * screen's single bottom Retry reruns the clone with whatever was entered. */
 export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
   const error = ob.error;
+  const recovery = useMemo(
+    () => (error?.recoverable ? buildAuthRecovery(ob.cloneUrl) : null),
+    [error?.recoverable, ob.cloneUrl],
+  );
   if (!error) return null;
 
   return (
-    <div className="flex min-h-full items-center justify-center px-8">
-      <div className="w-full max-w-[520px] text-center">
+    <div className="flex min-h-full items-center justify-center px-8 py-10">
+      {/* The recovery panel needs elbow room for its two-column inputs, so
+          recoverable errors get a wider column than the plain message states. */}
+      <div className={`w-full text-center ${error.recoverable ? "max-w-[620px]" : "max-w-[520px]"}`}>
         <div
           className={`mx-auto mb-6 grid h-14 w-14 place-items-center rounded-2xl ${
             error.fail ? "bg-red-500/15" : "bg-neutral-500/15"
@@ -34,8 +45,14 @@ export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
           {error.message}
         </div>
 
+        {recovery && <AuthRecoveryPanel ob={ob} recovery={recovery} />}
+
         {error.cmd && (
-          <div className="mx-auto mt-5 max-w-[440px] overflow-x-auto rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-left font-mono text-[12px] text-neutral-300 dark:bg-black/40">
+          <div
+            className={`mx-auto mt-5 overflow-x-auto rounded-xl border border-white/10 bg-neutral-900 px-4 py-3 text-left font-mono text-[12px] text-neutral-300 dark:bg-black/40 ${
+              error.recoverable ? "" : "max-w-[440px]"
+            }`}
+          >
             <span className="select-none text-neutral-500">$ </span>
             {error.cmd}
           </div>

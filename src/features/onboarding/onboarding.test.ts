@@ -81,6 +81,40 @@ describe("classifyCloneError", () => {
     expect(classifyCloneError("remote: Permission denied (publickey).").kind).toBe("auth");
   });
 
+  it("maps git's bare SSH access failure to a recoverable auth error", () => {
+    // Sometimes the ONLY stderr line for a missing/rejected key — it must land
+    // on the recovery screen, not the generic "Clone failed" dead end.
+    const bare = classifyCloneError("fatal: Could not read from remote repository.");
+    expect(bare.kind).toBe("auth");
+    expect(bare.recoverable).toBe(true);
+
+    const hostKey = classifyCloneError(
+      "Host key verification failed.\nfatal: Could not read from remote repository.",
+    );
+    expect(hostKey.kind).toBe("auth");
+    expect(hostKey.recoverable).toBe(true);
+  });
+
+  it("does not route a local filesystem permission error to auth recovery", () => {
+    // git uses "Permission denied" for a destination it can't write, too — that
+    // is not an auth problem, so it must not open the token-entry panel.
+    const fs = classifyCloneError(
+      "fatal: could not create work tree dir 'repo': Permission denied",
+    );
+    expect(fs.kind).toBe("failed");
+    expect(fs.recoverable).toBe(false);
+  });
+
+  it("keeps an HTTPS not-found as an unreachable (edit-URL) error, not auth", () => {
+    // A typo'd/private HTTPS repo surfaces as "not found" (no SSH read line), so
+    // the retry returns to the form to fix the URL rather than asking for a token.
+    const c = classifyCloneError(
+      "remote: Repository not found.\nfatal: repository 'https://github.com/octo/nope.git/' not found",
+    );
+    expect(c.kind).toBe("unreachable");
+    expect(c.recoverable).toBe(false);
+  });
+
   it("reuses friendly git auth copy for credential and SSH failures", () => {
     const bitbucket = classifyCloneError(
       "fatal: could not read Password for 'https://SiomkinAlexander@bitbucket.org': terminal prompts disabled",
@@ -112,10 +146,21 @@ describe("classifyCloneError", () => {
     );
     expect(c.kind).toBe("denied");
     expect(c.title).toMatch(/denied/i);
-    // Bitbucket-specific hint since the URL is bitbucket.
-    expect(c.message).toMatch(/x-token-auth/);
-    // Retry returns to the form so the URL/username/token can be fixed.
-    expect(retryRerunsClone(c.kind)).toBe(false);
+    // Bitbucket-specific hint since the URL is bitbucket; the username
+    // convention itself lives in the recovery panel, not the headline.
+    expect(c.message).toMatch(/Atlassian API token/);
+    // The recovery panel fixes the credential in place, so retry reruns the clone.
+    expect(c.recoverable).toBe(true);
+    expect(retryRerunsClone(c.kind)).toBe(true);
+  });
+
+  it("surfaces the server's own remote: explanation on a 403", () => {
+    const c = classifyCloneError(
+      "remote: API Token provided has no Bitbucket scopes.\n" +
+        "fatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403",
+    );
+    expect(c.kind).toBe("denied");
+    expect(c.message).toContain("API Token provided has no Bitbucket scopes.");
   });
 
   it("reuses friendly git copy for unreachable clone failures", () => {
@@ -157,6 +202,7 @@ describe("canceled + retry semantics", () => {
 
   it("retry re-runs for auth/canceled/failed, returns to the form otherwise", () => {
     expect(retryRerunsClone("auth")).toBe(true);
+    expect(retryRerunsClone("denied")).toBe(true);
     expect(retryRerunsClone("canceled")).toBe(true);
     expect(retryRerunsClone("failed")).toBe(true);
     expect(retryRerunsClone("exists")).toBe(false);

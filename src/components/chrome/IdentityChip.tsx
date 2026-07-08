@@ -88,7 +88,9 @@ export function IdentityChip() {
 
   const label =
     activeManual?.label ??
-    (selection.kind === "computer" ? "This computer" : repoIdentity?.name ?? "Custom identity");
+    // Matches the settings picker's wording (CommitAsZone) for the global-config
+    // fallback: the repo pins nothing, so commits use the global git identity.
+    (selection.kind === "computer" ? "Default git identity" : repoIdentity?.name ?? "Custom identity");
 
   // What git config actually resolves to — shown under the commit-as row.
   const identityLine = repoIdentity

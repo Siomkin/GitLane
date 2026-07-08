@@ -4,6 +4,9 @@
 // with the real reason buried a few lines in. This extracts the reason and names
 // the hook. Ordinary (non-hook) git errors pass through unchanged.
 
+import type { ForgeAuthProvider } from "./api/providers";
+import { forgeAuthProviderFor, providerForHost } from "./remotes";
+
 // Signals that the failure came from a git hook rather than git itself.
 const HOOK_HINT =
   /husky|\.husky\/|hook (?:failed|declined|denied)|\b(?:pre-commit|commit-msg|prepare-commit-msg|post-commit|pre-merge-commit|pre-push|pre-rebase)\b/i;
@@ -39,6 +42,46 @@ const HOOK_ACTION: Record<string, string> = {
   "pre-push": "push",
   "pre-rebase": "rebase",
 };
+
+// 403 = reached-but-refused: the credential was accepted but lacks permission.
+// Checked separately from REMOTE_NOT_FOUND_OR_DENIED because git prefixes
+// "unable to access" onto the same line.
+const HTTP_FORBIDDEN = /error:? 403|403 forbidden/i;
+
+/**
+ * Classify a git transport failure as an authentication problem the user can fix
+ * by providing/repairing a credential — or `null` for everything else (conflicts,
+ * hooks, plain network unreachability…). Drives "Fix authentication…" actions.
+ * `REMOTE_NOT_FOUND_OR_DENIED` is deliberately included even though it also
+ * matches a typo'd URL: forges hide private repos behind "not found", so an
+ * unauthenticated clone/fetch of a private repo produces exactly this shape.
+ */
+export function classifyGitAuthFailure(raw: string): { kind: "credentials" | "ssh" | "denied" } | null {
+  const text = (raw ?? "").replace(/\r\n/g, "\n").trim();
+  if (!text) return null;
+  if (SSH_AUTH_FAILURE.test(text)) return { kind: "ssh" };
+  if (HTTP_FORBIDDEN.test(text)) return { kind: "denied" };
+  if (CREDENTIAL_PROMPT_DISABLED.test(text)) return { kind: "credentials" };
+  if (REMOTE_NOT_FOUND_OR_DENIED.test(text)) return { kind: "denied" };
+  return null;
+}
+
+/**
+ * Which provider's Accounts connect view fixes this auth failure, from the host
+ * embedded in the error (the HTTPS remote URL, or the `user@host:` prefix of an
+ * SSH publickey refusal). `null` when no host is recognisable — the caller
+ * falls back to the provider-less Accounts page.
+ */
+export function authFailureProvider(raw: string): "github" | ForgeAuthProvider | null {
+  const text = (raw ?? "").replace(/\r\n/g, "\n");
+  const host =
+    credentialIdentity(text)?.host ??
+    text.match(/(?:^|\n)\s*(?:[\w.-]+@)?([\w.-]+\.[\w-]+): permission denied/i)?.[1]?.toLowerCase() ??
+    null;
+  if (!host) return null;
+  const provider = providerForHost(host);
+  return provider === "github" ? "github" : forgeAuthProviderFor(provider);
+}
 
 /**
  * Rewrite a raw git/hook error into a friendly, readable message. Non-hook errors

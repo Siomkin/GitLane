@@ -34,7 +34,7 @@ export interface RemoteUrlInfo {
   provider: RemoteProvider;
 }
 
-const providerForHost = (host: string): RemoteProvider => {
+export const providerForHost = (host: string): RemoteProvider => {
   // Mirrors the backend `forge::classify_host` (same order, same rules) so the
   // frontend and Rust agree on which forge a remote belongs to. GitHub detection
   // is exact (github.com / *.github.com) — a host that merely contains "github"

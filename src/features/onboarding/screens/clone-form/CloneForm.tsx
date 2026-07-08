@@ -1,13 +1,15 @@
-import { useState } from "react";
-import type { OnboardingApi } from "../flows/useOnboarding";
-import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "../icons";
+// The clone form: a validated remote-URL field, a one-line auth status (with
+// opt-in manual credentials — CloneAuthStatus/CloneAuthOptions), and a
+// destination chooser. Auth is resolved automatically (accounts, keychain,
+// glab, system credentials); the form only asks when the user wants to
+// override, so the first page is just "where from, where to".
 
-/** The clone form: a validated remote-URL field and a destination chooser. */
+import type { OnboardingApi } from "../../flows/useOnboarding";
+import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "../../icons";
+import { CloneAuthStatus } from "./CloneAuthStatus";
+
 export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
   const { state, repo } = ob.url;
-  // When glab covers the clone, the token fields are hidden behind this opt-in so
-  // the form isn't a confusing wall of empty credential inputs.
-  const [tokenOverride, setTokenOverride] = useState(false);
   const borderCls =
     state === "valid"
       ? "border-emerald-400 dark:border-emerald-500/60 focus:ring-emerald-400/40"
@@ -61,7 +63,7 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
             {state === "invalid" && <AlertCircle className="h-4 w-4 text-red-500" />}
           </span>
         </div>
-        <div className="mt-1.5 h-4 text-[12px]">
+        <div className="mt-1.5 min-h-4 text-[12px]">
           {state === "invalid" && (
             <span className="text-red-500">
               Enter a valid Git URL — https://, git@host:path, or ssh://
@@ -75,68 +77,8 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
           )}
         </div>
 
-        {state === "valid" && ob.cloneRemoteInfo.valid && !ob.cloneRemoteInfo.ssh && (
-          <div className="mt-5 rounded-xl border border-black/[0.07] bg-black/[0.015] p-3.5 dark:border-white/[0.08] dark:bg-white/[0.025]">
-            <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
-              HTTPS auth
-            </div>
-            {ob.cloneAuthAccounts.length > 0 && (
-              <select
-                value={ob.cloneAccountId ?? ""}
-                onChange={(e) => ob.setCloneAccountId(e.target.value || null)}
-                className="mt-2 h-9 w-full rounded-lg border border-black/10 bg-white px-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
-              >
-                <option value="">System git credentials / username below</option>
-                {ob.cloneAuthAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    @{a.login} via {a.forge}
-                  </option>
-                ))}
-              </select>
-            )}
-            {!ob.cloneAccountId && ob.cloneGlabReady && !tokenOverride ? (
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[12.5px] font-medium text-emerald-600 dark:text-emerald-400">
-                  Signed in via glab — this clone authenticates automatically. Nothing to enter.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setTokenOverride(true)}
-                  className="text-[12px] font-semibold text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-                >
-                  Use a token instead
-                </button>
-              </div>
-            ) : (
-              <>
-                {!ob.cloneAccountId && (
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <input
-                      value={ob.cloneUsername}
-                      onChange={(e) => ob.setCloneUsername(e.target.value)}
-                      placeholder="HTTPS username"
-                      spellCheck={false}
-                      className="h-9 rounded-lg border border-black/10 bg-white px-2.5 font-mono text-[13px] text-neutral-700 placeholder:font-sans placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
-                    />
-                    <input
-                      value={ob.clonePassword}
-                      onChange={(e) => ob.setClonePassword(e.target.value)}
-                      placeholder="Token / password"
-                      type="password"
-                      spellCheck={false}
-                      className="h-9 rounded-lg border border-black/10 bg-white px-2.5 text-[13px] text-neutral-700 placeholder:text-neutral-400 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
-                    />
-                  </div>
-                )}
-                <p className="mt-2 text-[12px] leading-snug text-neutral-500 dark:text-neutral-400">
-                  GitLane saves the token/password to your Git credential helper before clone. SSH URLs use your SSH key
-                  instead.
-                  {ob.cloneGlabReady ? " Or leave blank to authenticate via glab." : ""}
-                </p>
-              </>
-            )}
-          </div>
-        )}
+        {/* How this clone will authenticate (opt-in manual credentials). */}
+        {state === "valid" && ob.cloneRemoteInfo.valid && <CloneAuthStatus ob={ob} />}
 
         {/* Destination */}
         <label className="mb-1.5 mt-5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
@@ -146,9 +88,17 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-black/10 bg-white px-3.5 font-mono text-[13px] text-neutral-700 shadow-sm dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200">
             <FolderGlyph className="mr-2 h-4 w-4 shrink-0 text-neutral-400" />
             {ob.cloneParent ? (
-              <span className="truncate">
-                {ob.cloneParent}/<span className="font-semibold text-[color:var(--accent)]">{repo}</span>
-              </span>
+              <div className="flex min-w-0 flex-1 items-center">
+                <span className="truncate">{ob.cloneParent}/</span>
+                <input
+                  value={ob.cloneFolder}
+                  onChange={(e) => ob.setCloneFolder(e.target.value)}
+                  spellCheck={false}
+                  aria-label="Destination folder name"
+                  size={Math.min(Math.max(ob.cloneFolder.length, 1), 32)}
+                  className="shrink-0 bg-transparent font-semibold text-[color:var(--accent)] outline-none"
+                />
+              </div>
             ) : (
               <span className="truncate font-sans text-neutral-400">Choose a location…</span>
             )}
@@ -160,8 +110,14 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
             Browse…
           </button>
         </div>
-        <div className="mt-1.5 text-[12px] text-neutral-400 dark:text-neutral-500">
-          The repository will be cloned into a new folder here.
+        <div className="mt-1.5 text-[12px]">
+          {ob.cloneParent && !ob.cloneFolderValid ? (
+            <span className="text-red-500">Enter a folder name — it can’t contain “/” or “\”.</span>
+          ) : (
+            <span className="text-neutral-400 dark:text-neutral-500">
+              The repository will be cloned into a new folder here.
+            </span>
+          )}
         </div>
 
         {/* Footer */}
@@ -173,7 +129,7 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
             Cancel
           </button>
           <button
-            onClick={ob.startClone}
+            onClick={() => ob.startClone()}
             disabled={!ob.canClone}
             className={`flex h-10 items-center gap-2 rounded-xl px-5 text-[13.5px] font-semibold text-white shadow-sm transition ${cloneBtnCls}`}
           >

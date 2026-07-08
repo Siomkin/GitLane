@@ -438,13 +438,17 @@ interface AccountsState {
   /** Store a provider account's transport token in the OS keychain (GL-132) and
    * remember its non-secret metadata. The token is sent once and never returned.
    * After this, `transportAuthForRemote` selects `providerToken` for remotes
-   * whose URL username matches. */
+   * whose URL username matches. Resolves `true` when the token reached the
+   * keychain, `false` on a validation/IPC failure (already toasted) — callers
+   * that then switch auth to `providerToken` mode must check this so a failed
+   * write doesn't leave them pointing at a token that was never stored. */
   saveProviderToken: (
     provider: ForgeAuthProvider,
     credentialHost: string,
     login: string,
     token: string,
-  ) => Promise<void>;
+    options?: { silent?: boolean },
+  ) => Promise<boolean>;
   /** Store a keychain token **for a specific remote** and pin `login` into the
    * remote's HTTPS URL, so `transportAuthForRemote` immediately selects
    * `providerToken` — even for a bare `https://host/owner/repo.git` URL with no
@@ -1124,20 +1128,20 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   hasProviderToken: (credentialHost, login) =>
     get().providerTokens[providerTokenKey(credentialHost, login)] !== undefined,
 
-  saveProviderToken: async (provider, credentialHost, login, token) => {
+  saveProviderToken: async (provider, credentialHost, login, token, options) => {
     const host = credentialHost.trim();
     const user = login.trim();
     if (!host) {
       useUi.getState().showToast("Credential host is missing.", "error");
-      return;
+      return false;
     }
     if (!user) {
       useUi.getState().showToast("Enter the account username for this token.", "error");
-      return;
+      return false;
     }
     if (!token) {
       useUi.getState().showToast("Enter the token to store in your keychain.", "error");
-      return;
+      return false;
     }
     // For a personal-access-token sign-in the login is the stable account id.
     const accountId = user;
@@ -1155,9 +1159,15 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
       writeProviderTokens(next);
       set({ providerTokens: next });
-      useUi.getState().showToast(`Stored a keychain token for @${user} on ${host}`);
+      // A clone drives this mid-flow (`silent`) and speaks for itself on the
+      // progress/opened screen — the standalone Accounts save announces itself.
+      if (!options?.silent) {
+        useUi.getState().showToast(`Stored a keychain token for @${user} on ${host}`);
+      }
+      return true;
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
+      return false;
     }
   },
 

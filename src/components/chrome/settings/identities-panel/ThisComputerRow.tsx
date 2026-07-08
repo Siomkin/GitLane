@@ -15,7 +15,7 @@ export function ThisComputerRow({ identity }: { identity: RepoIdentity | null })
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">This computer</span>
+          <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">Default git identity</span>
           <span className="grid h-[17px] place-items-center rounded bg-black/[0.05] px-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:bg-white/[0.07] dark:text-neutral-400">
             Global config
           </span>

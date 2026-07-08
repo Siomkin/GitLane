@@ -8,7 +8,7 @@ import { persist } from "zustand/middleware";
 
 import { usePulls } from "./pulls";
 import { useNotifications } from "./notifications";
-import { friendlyGitError } from "../lib/gitError";
+import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "../lib/gitError";
 import type { ForgeAuthProvider } from "../lib/api";
 import type { PrFilter } from "../lib/prs";
 import type { AccentColor } from "../lib/accent";
@@ -37,6 +37,11 @@ export interface ProfilePrefill {
 export type IdentitiesIntent =
   | { kind: "new"; prefill?: ProfilePrefill }
   | { kind: "edit"; id: string };
+
+/** A pending connect request for Settings → Accounts: which provider's connect
+ * view to land on. Set by auth-failure surfaces ("Fix authentication…"),
+ * consumed once by the Accounts panel on mount. Never persisted. */
+export type AccountsConnectIntent = "github" | ForgeAuthProvider;
 
 /** Sections of the repo-scoped Repository settings window — split out of the
  * global Settings modal so per-repo config (identity, remotes) is its own
@@ -286,6 +291,7 @@ interface UiState {
   repoSettingsSection: RepoSettingsSection;
   /** Pending Settings → Profiles editor request (transient, consumed on mount). */
   identitiesIntent: IdentitiesIntent | null;
+  accountsConnectIntent: AccountsConnectIntent | null;
   addAccountOpen: boolean;
   /** Repository-onboarding overlay (clone / init / open) raised from the tab
    * strip while a repo is already open. Transient (not persisted). */
@@ -423,6 +429,11 @@ interface UiState {
   openIdentitiesSettings: (intent?: IdentitiesIntent) => void;
   /** Clear the pending Profiles editor request once the panel has consumed it. */
   clearIdentitiesIntent: () => void;
+  /** Open global Settings → Accounts, optionally queueing a provider whose
+   * connect view the panel should land on (auth-failure "Fix authentication…"). */
+  openAccountsSettings: (intent?: AccountsConnectIntent) => void;
+  /** Clear the pending Accounts connect request once the panel has consumed it. */
+  clearAccountsConnectIntent: () => void;
   /** Open the repo-scoped Repository settings window (default: last section). */
   openRepoSettings: (section?: RepoSettingsSection) => void;
   closeRepoSettings: () => void;
@@ -579,6 +590,7 @@ export const useUi = create<UiState>()(
   repoSettingsOpen: false,
   repoSettingsSection: "identity",
   identitiesIntent: null,
+  accountsConnectIntent: null,
   addAccountOpen: false,
   onboardingOpen: false,
 
@@ -668,7 +680,8 @@ export const useUi = create<UiState>()(
     set((s) => ({ collapsed: { ...s.collapsed, [key]: !s.collapsed[key] } })),
 
   openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
-  closeSettings: () => set({ settingsOpen: false, addAccountOpen: false, identitiesIntent: null }),
+  closeSettings: () =>
+    set({ settingsOpen: false, addAccountOpen: false, identitiesIntent: null, accountsConnectIntent: null }),
   openRepoSettings: (section) =>
     set((s) => ({ repoSettingsOpen: true, repoSettingsSection: section ?? s.repoSettingsSection })),
   closeRepoSettings: () => set({ repoSettingsOpen: false }),
@@ -679,6 +692,10 @@ export const useUi = create<UiState>()(
   openIdentitiesSettings: (intent) =>
     set({ settingsOpen: true, settingsTab: "identities", identitiesIntent: intent ?? null }),
   clearIdentitiesIntent: () => set((s) => (s.identitiesIntent === null ? s : { identitiesIntent: null })),
+  openAccountsSettings: (intent) =>
+    set({ settingsOpen: true, settingsTab: "accounts", accountsConnectIntent: intent ?? null }),
+  clearAccountsConnectIntent: () =>
+    set((s) => (s.accountsConnectIntent === null ? s : { accountsConnectIntent: null })),
   setAddAccountOpen: (open) => set({ addAccountOpen: open }),
 
   openNav: () => set({ navOpen: true }),
@@ -833,9 +850,25 @@ export const useUi = create<UiState>()(
     // Errors — especially multi-line hook output — persist until dismissed and
     // render scrollable/selectable; success toasts auto-clear. `friendlyGitError`
     // rewrites raw git/hook failures into readable text (no-op otherwise).
+    // Transport-auth failures (missing/refused credentials, SSH publickey, 403)
+    // additionally carry a one-click path to Settings → Accounts, landed on the
+    // failing host's provider — every push/pull/fetch/clone surface funnels its
+    // errors through here, so this is the single place that attaches it.
     void useNotifications.getState().notify(
       tone === "error"
-        ? { kind: "error", title: friendlyGitError(message), raw: true }
+        ? {
+            kind: "error",
+            title: friendlyGitError(message),
+            raw: true,
+            actions: classifyGitAuthFailure(message)
+              ? [
+                  {
+                    label: "Fix authentication…",
+                    onClick: () => get().openAccountsSettings(authFailureProvider(message) ?? undefined),
+                  },
+                ]
+              : undefined,
+          }
         : { kind: "success", title: message },
     ),
   dismissToast: () => {

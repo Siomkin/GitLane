@@ -8,10 +8,12 @@ import { useEffect, useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { useAccounts } from "../../../../store/accounts";
-import { PROVIDERS, type ProviderKey } from "./providers";
+import { useUi } from "../../../../store/ui";
+import { PROVIDERS, VISIBLE_PROVIDER_KEYS, type ProviderKey } from "./providers";
 import { ConnectedAccountCard } from "./ConnectedAccountCard";
 import { ConnectedForgeCard } from "./ConnectedForgeCard";
 import { KeychainAccountCard } from "./KeychainAccountCard";
+import { ProviderSection, type Capability } from "./ProviderSection";
 import { ProviderPicker } from "./ProviderPicker";
 import { ProviderConnect } from "./provider-connect";
 
@@ -28,12 +30,26 @@ export function AccountsPanel() {
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   const reconcileProviderTokens = useAccounts((s) => s.reconcileProviderTokens);
   const [view, setView] = useState<View>({ k: "list" });
+  const connectIntent = useUi((s) => s.accountsConnectIntent);
 
   useEffect(() => {
     void loadForgeAuth();
     // Drop keychain-token cards whose secret vanished outside GitLane.
     void reconcileProviderTokens();
   }, [loadForgeAuth, reconcileProviderTokens]);
+
+  // A queued "Fix authentication…" request lands straight on that provider's
+  // connect view (the picker when the provider is unknown). Consumed once;
+  // clearing is idempotent, so StrictMode's doubled effect is harmless.
+  useEffect(() => {
+    if (!connectIntent) return;
+    setView(
+      PROVIDERS.some((p) => p.key === connectIntent)
+        ? { k: "connect", provider: connectIntent }
+        : { k: "pick" },
+    );
+    useUi.getState().clearAccountsConnectIntent();
+  }, [connectIntent]);
 
   const refresh = () => {
     void loadAccounts();
@@ -43,7 +59,40 @@ export function AccountsPanel() {
 
   const connectedForges = forgeAuth.filter((f) => f.authenticated === true);
   const keychainAccounts = Object.values(providerTokens);
-  const hasConnections = accounts.length > 0 || connectedForges.length > 0 || keychainAccounts.length > 0;
+
+  // Group every connection under its provider so a row's provider is obvious from
+  // the section header (GL-141), and only surface the three supported providers —
+  // a stray CLI sign-in on another forge is simply not shown here.
+  const providerSections = VISIBLE_PROVIDER_KEYS.map((provider) => {
+    const ghAccounts = provider === "github" ? accounts : [];
+    const forges = provider === "github" ? [] : connectedForges.filter((f) => f.provider === provider);
+    const tokens = keychainAccounts.filter((t) => t.provider === provider);
+    if (ghAccounts.length + forges.length + tokens.length === 0) return null;
+
+    // Section-level capability, derived from the members (no repo scope): gh does
+    // PRs; GitLab does MRs once glab is signed in or a token is stored; Bitbucket
+    // does PRs only with a stored keychain token, else it is transport-only.
+    let capability: Capability = null;
+    if (provider === "github") {
+      capability = ghAccounts.some((a) => a.healthy)
+        ? { label: "Pull requests", tone: "pr" }
+        : { label: "Needs re-auth", tone: "warn" };
+    } else if (provider === "gitlab") {
+      const glab = forges.some((f) => f.cli === "glab" && f.available === true);
+      capability =
+        glab || tokens.length > 0
+          ? { label: "Merge requests", tone: "pr" }
+          : { label: "Sign-in only", tone: "muted" };
+    } else if (provider === "bitbucket") {
+      capability = tokens.length > 0
+        ? { label: "Pull requests", tone: "pr" }
+        : { label: "Transport only", tone: "warn" };
+    }
+
+    return { provider, capability, ghAccounts, forges, tokens };
+  }).filter((s): s is NonNullable<typeof s> => s !== null);
+
+  const hasConnections = providerSections.length > 0;
 
   return (
     <>
@@ -96,27 +145,31 @@ export function AccountsPanel() {
             )}
 
             {hasConnections ? (
-              <div className="flex flex-col gap-2.5">
-                {accounts.map((account) => (
-                  <ConnectedAccountCard key={account.id} account={account} />
-                ))}
-                {connectedForges.map((status) => (
-                  <ConnectedForgeCard
-                    key={status.provider}
-                    status={status}
-                    loading={forgeAccountsLoading.includes(status.provider as ProviderKey)}
-                  />
-                ))}
-                {keychainAccounts.map((t) => (
-                  <KeychainAccountCard
-                    key={`${t.credentialHost}:${t.transportUsername ?? t.login}`}
-                    account={{
-                      provider: t.provider,
-                      credentialHost: t.credentialHost,
-                      login: t.login,
-                      transportUsername: t.transportUsername,
-                    }}
-                  />
+              <div className="flex flex-col gap-5">
+                {providerSections.map((sec) => (
+                  <ProviderSection key={sec.provider} provider={sec.provider} capability={sec.capability}>
+                    {sec.ghAccounts.map((account) => (
+                      <ConnectedAccountCard key={account.id} account={account} />
+                    ))}
+                    {sec.forges.map((status) => (
+                      <ConnectedForgeCard
+                        key={status.provider}
+                        status={status}
+                        loading={forgeAccountsLoading.includes(status.provider as ProviderKey)}
+                      />
+                    ))}
+                    {sec.tokens.map((t) => (
+                      <KeychainAccountCard
+                        key={`${t.credentialHost}:${t.transportUsername ?? t.login}`}
+                        account={{
+                          provider: t.provider,
+                          credentialHost: t.credentialHost,
+                          login: t.login,
+                          transportUsername: t.transportUsername,
+                        }}
+                      />
+                    ))}
+                  </ProviderSection>
                 ))}
               </div>
             ) : (

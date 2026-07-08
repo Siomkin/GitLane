@@ -50,9 +50,7 @@ export function KeychainAccountCard({ account }: { account: KeychainAccount }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">@{account.login}</span>
-          <span className="text-[11px] text-neutral-400 dark:text-neutral-500">
-            {forge} · {account.credentialHost}
-          </span>
+          <span className="text-[11px] text-neutral-400 dark:text-neutral-500">{account.credentialHost}</span>
           <span className="grid h-[17px] place-items-center rounded-full bg-[color:var(--accent)]/12 px-2 text-[10px] font-semibold text-[color:var(--accent)]">
             Keychain token
           </span>

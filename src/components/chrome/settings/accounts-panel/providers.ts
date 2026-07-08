@@ -15,6 +15,12 @@ export interface ProviderMeta {
   prSupported: boolean;
 }
 
+/** Providers surfaced on the Accounts page and its picker today: GitHub, GitLab,
+ * Bitbucket (GL-141). The full `PROVIDERS` catalog keeps the others for label and
+ * `prSupportedFor` lookups, but Azure DevOps / Gitea / Forgejo aren't offered
+ * until they have a real PR/auth story. */
+export const VISIBLE_PROVIDER_KEYS: ProviderKey[] = ["github", "gitlab", "bitbucket"];
+
 /** Every provider the picker offers, GitHub first. */
 export const PROVIDERS: ProviderMeta[] = [
   { key: "github", name: "GitHub", prSupported: true },
@@ -36,6 +42,13 @@ export function connectState(s: ForgeAuthStatus): ConnectState {
   if (s.cli === null) return "manual";
   if (!s.available) return "missing";
   return s.authenticated ? "prunsupported" : "signin";
+}
+
+/** Whether GitLane runs pull/merge-request workflows for this provider (GitHub,
+ * GitLab, Bitbucket today). Drives copy that must not claim PRs are unavailable
+ * for a forge that actually supports them. Unknown keys default to unsupported. */
+export function prSupportedFor(provider: ProviderKey): boolean {
+  return PROVIDERS.find((p) => p.key === provider)?.prSupported ?? false;
 }
 
 /** Two-letter avatar initials for a provider name. */
