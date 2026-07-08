@@ -7,7 +7,14 @@
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { useAccounts } from "../../../../store/accounts";
-import { capabilityHint, cliStatusLine, providerInitials, PROVIDERS, type ProviderKey } from "./providers";
+import {
+  capabilityHint,
+  cliStatusLine,
+  providerInitials,
+  PROVIDERS,
+  VISIBLE_PROVIDER_KEYS,
+  type ProviderKey,
+} from "./providers";
 
 export function ProviderPicker({
   onPick,
@@ -47,7 +54,7 @@ export function ProviderPicker({
       </div>
 
       <div className="mt-3.5 grid gap-2 sm:grid-cols-2">
-        {PROVIDERS.map((p) => {
+        {PROVIDERS.filter((p) => VISIBLE_PROVIDER_KEYS.includes(p.key)).map((p) => {
           const status = line(p.key);
           return (
             <button

@@ -7,11 +7,11 @@
 // form → empty-repo success.
 
 import { useEffect } from "react";
-import { CloneForm } from "./screens/CloneForm";
+import { CloneForm } from "./screens/clone-form";
 import { CloneProgress } from "./screens/CloneProgress";
 import { HomeScreen } from "./screens/HomeScreen";
 import { InitForm } from "./screens/InitForm";
-import { OnboardingError } from "./screens/OnboardingError";
+import { OnboardingError } from "./screens/error";
 import { OnboardingSuccess } from "./screens/OnboardingSuccess";
 import { ChevronLeft } from "./icons";
 import { useOnboarding } from "./flows/useOnboarding";

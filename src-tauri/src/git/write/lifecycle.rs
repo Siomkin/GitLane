@@ -232,15 +232,32 @@ fn record_transcript(transcript: &mut String, line: &str) {
     }
 }
 
+/// Whether a `remote:` line is the server explaining itself (Bitbucket's
+/// "API Token provided has no Bitbucket scopes.", GitHub's deprecation
+/// notices) rather than object-transfer chatter. The explanation is often the
+/// only place the actual cause appears, so it must survive into the error.
+fn is_remote_note(line: &str) -> bool {
+    let Some(payload) = line.strip_prefix("remote:") else {
+        return false;
+    };
+    let payload = payload.trim_start();
+    !(payload.is_empty()
+        || payload.starts_with("Enumerating objects")
+        || payload.starts_with("Counting objects")
+        || payload.starts_with("Compressing objects")
+        || payload.starts_with("Total "))
+}
+
 /// Pull the meaningful failure text out of the captured stderr transcript: the
-/// `fatal:`/`error:` lines git prints on failure. Falls back to the last
-/// non-empty line, then the whole transcript, so an error is never empty.
+/// server's own `remote:` explanation lines plus the `fatal:`/`error:` lines
+/// git prints on failure. Falls back to the last non-empty line, then the
+/// whole transcript, so an error is never empty.
 fn extract_error(transcript: &str) -> String {
     let raw = {
         let fatal: Vec<&str> = transcript
             .lines()
             .map(str::trim)
-            .filter(|l| l.starts_with("fatal:") || l.starts_with("error:"))
+            .filter(|l| is_remote_note(l) || l.starts_with("fatal:") || l.starts_with("error:"))
             .collect();
         if !fatal.is_empty() {
             fatal.join("\n")
@@ -475,6 +492,15 @@ mod tests {
         assert_eq!(
             extract_error(transcript),
             "fatal: Authentication failed for 'https://example.com/x.git'"
+        );
+    }
+
+    #[test]
+    fn extract_error_keeps_the_servers_own_explanation() {
+        let transcript = "Cloning into 'r'...\nremote: Enumerating objects: 10\nremote: API Token provided has no Bitbucket scopes.\nfatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403\n";
+        assert_eq!(
+            extract_error(transcript),
+            "remote: API Token provided has no Bitbucket scopes.\nfatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403"
         );
     }
 

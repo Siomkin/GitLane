@@ -21,7 +21,7 @@ export function ConnectedAccountCard({ account }: { account: Account }) {
       onConfirm: () => void signOutGithub(account),
     });
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-black/[0.07] bg-black/[0.02] p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+    <div className="flex items-center gap-3 px-3.5 py-3">
       <span
         className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] text-[13px] font-bold text-white"
         style={{ background: account.color }}

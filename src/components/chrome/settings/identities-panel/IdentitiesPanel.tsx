@@ -1,6 +1,6 @@
 // Settings → Identities (GL-130, flattened): the saved identity cards — plain
-// name + email (+ optional signing) — with the read-only "This computer" row
-// on top. Accounts are NOT here: they authenticate (see the Accounts tab) and
+// name + email (+ optional signing) — with the read-only "Default git identity"
+// (global git config) row on top. Accounts are NOT here: they authenticate (see the Accounts tab) and
 // only contribute one-click prefills when creating a card. The container owns
 // loading + the page header; the section owns its presentation and store
 // wiring.

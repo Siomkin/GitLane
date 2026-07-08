@@ -77,6 +77,9 @@ export interface CloneErrorCopy {
   /** true → alert-triangle (red); false → x-circle (neutral, used for cancel). */
   fail: boolean;
   retryLabel: string;
+  /** Auth-shaped failure the error screen can fix in place: it renders the
+   * recovery panel (account pick / token entry / SSH guidance) and retries. */
+  recoverable: boolean;
 }
 
 /** Map a git clone failure (raw stderr) to actionable copy + a kind the UI uses
@@ -94,6 +97,7 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
       cmd: "",
       fail: true,
       retryLabel: "Try again",
+      recoverable: false,
     };
   }
   if (lower.includes("already exists")) {
@@ -105,6 +109,7 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
       cmd,
       fail: true,
       retryLabel: "Choose another folder",
+      recoverable: false,
     };
   }
   if (
@@ -112,8 +117,20 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
     lower.includes("could not read username") ||
     lower.includes("could not read password") ||
     lower.includes("invalid username or password") ||
-    lower.includes("permission denied") ||
-    lower.includes("terminal prompts disabled")
+    // Require the SSH publickey context, not a bare "permission denied": git
+    // uses that same phrase for a LOCAL filesystem error ("could not create
+    // work tree dir '…': Permission denied"), which is not an auth problem and
+    // must not land on the token-entry recovery panel. Real SSH auth failures
+    // still recover — they carry "(publickey)" and/or the "could not read from
+    // remote repository" line matched below.
+    lower.includes("permission denied (publickey") ||
+    lower.includes("terminal prompts disabled") ||
+    // Git's generic SSH access failure — often the ONLY line in stderr when the
+    // key is missing/rejected (the "Permission denied (publickey)" line doesn't
+    // always surface). Access problem → the recovery panel applies. Checked
+    // before "not found", which the same blob's advice line can also mention.
+    lower.includes("could not read from remote repository") ||
+    lower.includes("host key verification failed")
   ) {
     const friendly = friendlyGitError(message, { credentialHelp: "generic" });
     return {
@@ -122,10 +139,11 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
       message:
         friendly !== message
           ? friendly
-          : "GitLane couldn't authenticate with the remote. Check your saved credentials or SSH key, then try again.",
+          : "GitLane couldn't authenticate with the remote — the repository needs a credential.",
       cmd,
       fail: true,
-      retryLabel: "Retry",
+      retryLabel: "Retry clone",
+      recoverable: true,
     };
   }
   // A 403 is reached-but-refused, not unreachable: the credential was accepted
@@ -134,17 +152,24 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
   // which git prefixes onto the same line.
   if (lower.includes("error: 403") || lower.includes("403 forbidden")) {
     const bitbucket = lower.includes("bitbucket");
+    // Servers often say exactly what's wrong on a `remote:` line (Bitbucket's
+    // "API Token provided has no Bitbucket scopes.") but git buries it above
+    // the fatal: line — surface it instead of the generic guess.
+    const said = remoteMessageLine(message);
     return {
       kind: "denied",
       title: "Access denied (403)",
       message:
-        "The host accepted the connection but refused access. The token or password is valid but lacks permission for this repository — check its repository scope and that this account can access the repo." +
-        (bitbucket
-          ? " Bitbucket app passwords are deprecated: create a Repository or Workspace Access Token with Repositories: Read, and use x-token-auth as the username."
-          : ""),
+        (said
+          ? `The host refused access: “${said}”`
+          : "The host refused access — the credential lacks permission for this repository, or this account can't access it.") +
+        // The recovery panel below owns the how (token type, username
+        // convention), so the headline only names the fix.
+        (bitbucket ? " Bitbucket app passwords are deprecated — use an Atlassian API token." : ""),
       cmd,
       fail: true,
-      retryLabel: "Edit URL",
+      retryLabel: "Retry clone",
+      recoverable: true,
     };
   }
   if (
@@ -166,6 +191,7 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
       cmd,
       fail: true,
       retryLabel: "Edit URL",
+      recoverable: false,
     };
   }
   return {
@@ -175,6 +201,7 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
     cmd,
     fail: true,
     retryLabel: "Try again",
+    recoverable: false,
   };
 }
 
@@ -188,13 +215,25 @@ export function canceledCloneCopy(): CloneErrorCopy {
     cmd: "",
     fail: false,
     retryLabel: "Try again",
+    recoverable: false,
   };
 }
 
-/** Whether an error of `kind` should re-run the clone on retry (auth/canceled/
- * generic) vs. return to the form so the user can fix the URL/destination. */
+/** Whether an error of `kind` should re-run the clone on retry (auth/denied/
+ * canceled/generic) vs. return to the form so the URL/destination can change.
+ * `denied` reruns because the recovery panel fixes the credential in place. */
 export function retryRerunsClone(kind: CloneErrorKind): boolean {
-  return kind === "auth" || kind === "canceled" || kind === "failed";
+  return kind === "auth" || kind === "denied" || kind === "canceled" || kind === "failed";
+}
+
+/** The first informative `remote:` line of a git failure — the server's own
+ * explanation, when it sent one. */
+function remoteMessageLine(message: string): string | null {
+  for (const line of message.split("\n")) {
+    const m = line.trim().match(/^remote:\s*(.+)$/i);
+    if (m && m[1].trim()) return m[1].trim();
+  }
+  return null;
 }
 
 /** The most relevant single line of a git failure: the first `fatal:`/`error:`

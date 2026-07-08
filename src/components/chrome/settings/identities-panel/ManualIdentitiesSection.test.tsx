@@ -50,11 +50,11 @@ describe("ManualIdentitiesSection", () => {
 
   it("shows the read-only this-computer identity (via ThisComputerRow)", () => {
     render(<ThisComputerRow identity={{ name: "Stepan Global", email: "global@x.dev" }} />);
-    expect(screen.getByText("This computer")).toBeInTheDocument();
+    expect(screen.getByText("Default git identity")).toBeInTheDocument();
     expect(screen.getByText("Stepan Global · global@x.dev")).toBeInTheDocument();
     // It belongs to global git config — no Edit affordance.
     expect(screen.getByText("Managed by git")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Edit This computer" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit Default git identity" })).toBeNull();
   });
 
   it("shows an empty state with a create CTA when no identities exist", () => {

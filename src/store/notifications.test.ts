@@ -194,4 +194,27 @@ describe("legacy useUi.showToast forwarder", () => {
     useUi.getState().dismissToast();
     expect(useNotifications.getState().toasts.map((t) => t.title)).toEqual(["Saved"]);
   });
+
+  it("attaches Fix authentication… to auth-shaped error toasts, deep-linking Accounts", () => {
+    useUi.setState({ settingsOpen: false, accountsConnectIntent: null });
+    useUi
+      .getState()
+      .showToast(
+        "fatal: could not read Password for 'https://x-bitbucket-api-token-auth@bitbucket.org': terminal prompts disabled",
+        "error",
+      );
+    const t = useNotifications.getState().toasts.slice(-1)[0];
+    expect(t.actions?.[0]?.label).toBe("Fix authentication…");
+
+    t.actions![0].onClick();
+    expect(useUi.getState().settingsOpen).toBe(true);
+    expect(useUi.getState().settingsTab).toBe("accounts");
+    expect(useUi.getState().accountsConnectIntent).toBe("bitbucket");
+  });
+
+  it("keeps non-auth error toasts action-free", () => {
+    useUi.getState().showToast("error: failed to push some refs (non-fast-forward)", "error");
+    const t = useNotifications.getState().toasts.slice(-1)[0];
+    expect(t.actions).toBeUndefined();
+  });
 });

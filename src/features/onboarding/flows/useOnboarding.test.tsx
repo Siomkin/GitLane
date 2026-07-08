@@ -143,6 +143,238 @@ describe("openRecent — opening a present recent", () => {
   });
 });
 
+describe("clone auth status line", () => {
+  it("tracks the manual fields: default system copy flips to entered-token", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://gitlab.com/group/repo.git"));
+    expect(result.current.cloneAuthPlan.method).toBe("system");
+    expect(result.current.cloneAuthStatus).toMatch(/system git credentials/);
+
+    act(() => result.current.setClonePassword("token"));
+    expect(result.current.cloneAuthPlan.method).toBe("enteredToken");
+    expect(result.current.cloneAuthStatus).toBe("Will authenticate with the token you entered.");
+  });
+
+  it("says SSH for ssh URLs", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("git@github.com:o/r.git"));
+    expect(result.current.cloneAuthPlan.method).toBe("ssh");
+    expect(result.current.cloneAuthStatus).toMatch(/SSH key/);
+  });
+});
+
+describe("auth-failure recovery", () => {
+  it("lands on a recoverable error, then Retry with the entered token saves it and reruns the clone", async () => {
+    let cloneCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "clone_repo") {
+        cloneCalls += 1;
+        return cloneCalls === 1
+          ? Promise.reject(
+              "fatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403",
+            )
+          : Promise.resolve("/tmp/r");
+      }
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "x", helper: "store" });
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.startClone());
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+    expect(result.current.error?.kind).toBe("denied");
+    expect(result.current.error?.recoverable).toBe(true);
+
+    // The recovery panel binds its inputs to the flow state; the screen's
+    // single bottom Retry then reruns the clone with them.
+    act(() => result.current.setCloneUsername("x-bitbucket-api-token-auth"));
+    act(() => result.current.setClonePassword("tok"));
+    act(() => result.current.retry());
+
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+    // Bitbucket is PR-capable, so the token defaults to the keychain (GL-152) —
+    // powering transport and pull requests — rather than the git helper.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_provider_token",
+      expect.objectContaining({ provider: "bitbucket", host: "bitbucket.org", token: "tok" }),
+    );
+    expect(cloneCalls).toBe(2);
+    // The credential survives in form state for a possible second failure —
+    // the URL didn't change, so the reset effect must not clobber it.
+    expect(result.current.cloneUsername).toBe("x-bitbucket-api-token-auth");
+  });
+
+  it("retryWithUrl switches transport and reruns the clone over the new URL", async () => {
+    const cloneUrls: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "clone_repo") {
+        cloneUrls.push(String(args?.url));
+        return cloneUrls.length === 1
+          ? Promise.reject("git@github.com: Permission denied (publickey).")
+          : Promise.resolve("/tmp/r");
+      }
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("git@github.com:octo/repo.git"));
+    act(() => result.current.startClone());
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+    expect(result.current.error?.recoverable).toBe(true);
+
+    // A stray username from earlier state must NOT be baked into the switched
+    // URL — the switch starts from the new transport's default auth.
+    act(() => result.current.setCloneUsername("x-bitbucket-api-token-auth"));
+    // The SSH panel's "Switch to HTTPS" — explicit URL, no setState round-trip.
+    act(() => result.current.retryWithUrl("https://github.com/octo/repo.git"));
+
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+    expect(cloneUrls).toEqual(["git@github.com:octo/repo.git", "https://github.com/octo/repo.git"]);
+    // The form field followed, so a further failure recovers against this URL —
+    // and the stale credential state was cleared with the switch.
+    expect(result.current.cloneUrl).toBe("https://github.com/octo/repo.git");
+    expect(result.current.cloneUsername).toBe("");
+  });
+
+  it("stores a PR-capable forge's token in the keychain so PRs work too (GL-152)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "save_provider_token") return Promise.resolve({ hasToken: true });
+      if (cmd === "clone_repo") return Promise.resolve("/tmp/r");
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.setCloneUsername("x-token-auth"));
+    act(() => result.current.setClonePassword("tok"));
+    act(() => result.current.startClone());
+
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+    // Keychain path: token stored as a provider token, NOT sent to the git helper.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_provider_token",
+      expect.objectContaining({ provider: "bitbucket", host: "bitbucket.org", token: "tok" }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("approve_https_credential", expect.anything());
+    // The clone runs in providerToken mode, not credentialHelper.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "clone_repo",
+      expect.objectContaining({ auth: expect.objectContaining({ mode: "providerToken" }) }),
+    );
+  });
+
+  it("falls back to the git helper when the keychain write fails (GL-151)", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      // The OS keychain write rejects — GitLane must not then clone in
+      // providerToken mode against a token it never stored.
+      if (cmd === "save_provider_token") return Promise.reject(new Error("keychain locked"));
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "x-token-auth", helper: "store" });
+      if (cmd === "clone_repo") return Promise.resolve("/tmp/r");
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.setCloneUsername("x-token-auth"));
+    act(() => result.current.setClonePassword("tok"));
+    act(() => result.current.startClone());
+
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+    // The keychain attempt was made and failed…
+    expect(invokeMock).toHaveBeenCalledWith("save_provider_token", expect.anything());
+    // …so the token was saved to the git helper and the clone ran through it —
+    // in credentialHelper mode, NOT a dangling providerToken.
+    expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith(
+      "clone_repo",
+      expect.objectContaining({ auth: expect.objectContaining({ mode: "credentialHelper" }) }),
+    );
+  });
+
+  it("clones into a renamed destination folder (GL-151)", async () => {
+    const dests: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: { dest?: string }) => {
+      if (cmd === "clone_repo") {
+        dests.push(args?.dest ?? "");
+        return Promise.resolve("/tmp/r");
+      }
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    // The folder auto-fills from the URL's repo name…
+    act(() => result.current.setCloneUrl("https://github.com/octo/repo.git"));
+    expect(result.current.cloneFolder).toBe("repo");
+    // …and a manual rename is what the clone actually writes to.
+    act(() => result.current.setCloneFolder("my-fork"));
+    act(() => result.current.startClone());
+
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+    expect(dests[0].endsWith("/my-fork")).toBe(true);
+  });
+
+  it("blocks the clone when the destination folder name is invalid (GL-151)", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://github.com/octo/repo.git"));
+    expect(result.current.canClone).toBe(true);
+    // A path separator isn't a safe single folder leaf.
+    act(() => result.current.setCloneFolder("nested/name"));
+    expect(result.current.cloneFolderValid).toBe(false);
+    expect(result.current.canClone).toBe(false);
+  });
+
+  it("keeps the token in the git helper when 'enable pull requests' is off", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "x-token-auth", helper: "store" });
+      if (cmd === "clone_repo") return Promise.resolve("/tmp/r");
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.setCloneUsername("x-token-auth"));
+    act(() => result.current.setClonePassword("tok"));
+    act(() => result.current.setCloneKeychain(false));
+    act(() => result.current.startClone());
+
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+    expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("save_provider_token", expect.anything());
+  });
+
+  it("keeps unreachable failures non-recoverable", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "clone_repo"
+        ? Promise.reject("fatal: unable to access 'https://x.example/': Could not resolve host: x.example")
+        : Promise.resolve([]),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.setCloneUrl("https://x.example/o/r.git"));
+    act(() => result.current.startClone());
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+    expect(result.current.error?.recoverable).toBe(false);
+  });
+});
+
 describe("overlay unmount during clone", () => {
   it("saves clone tokens even when the HTTPS username is blank", async () => {
     invokeMock.mockImplementation((cmd: string) => {

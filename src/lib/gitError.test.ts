@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { friendlyGitError } from "./gitError";
+import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "./gitError";
 
 // The real output GitLane got back from a rejected squash commit (husky pre-commit
 // lint-staged + commit-msg commitlint), newlines intact.
@@ -177,5 +177,72 @@ describe("friendlyGitError", () => {
 
   it("handles empty output", () => {
     expect(friendlyGitError("")).toBe("The git command failed without any output.");
+  });
+});
+
+describe("classifyGitAuthFailure", () => {
+  it("classifies missing/invalid HTTPS credentials", () => {
+    expect(
+      classifyGitAuthFailure(
+        "fatal: could not read Password for 'https://me@github.com': terminal prompts disabled",
+      ),
+    ).toEqual({ kind: "credentials" });
+  });
+
+  it("classifies a 403 as denied (reached but refused)", () => {
+    expect(
+      classifyGitAuthFailure(
+        "fatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403",
+      ),
+    ).toEqual({ kind: "denied" });
+  });
+
+  it("classifies SSH publickey failures", () => {
+    expect(
+      classifyGitAuthFailure("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository."),
+    ).toEqual({ kind: "ssh" });
+  });
+
+  it("treats not-found as denied (forges hide private repos behind not-found)", () => {
+    expect(classifyGitAuthFailure("fatal: repository 'https://github.com/o/r.git/' not found")).toEqual({
+      kind: "denied",
+    });
+  });
+
+  it("returns null for non-auth failures", () => {
+    expect(
+      classifyGitAuthFailure("fatal: unable to access 'https://x/': Could not resolve host: x"),
+    ).toBeNull();
+    expect(classifyGitAuthFailure("error: failed to push some refs (non-fast-forward)")).toBeNull();
+    expect(classifyGitAuthFailure("")).toBeNull();
+  });
+});
+
+describe("authFailureProvider", () => {
+  it("maps the failing HTTPS host to its provider key", () => {
+    expect(
+      authFailureProvider("fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403"),
+    ).toBe("github");
+    expect(
+      authFailureProvider(
+        "fatal: could not read Password for 'https://ada@gitlab.com': terminal prompts disabled",
+      ),
+    ).toBe("gitlab");
+    expect(
+      authFailureProvider("fatal: unable to access 'https://bitbucket.org/w/r.git/': error: 403"),
+    ).toBe("bitbucket");
+  });
+
+  it("reads the host off an SSH publickey refusal", () => {
+    expect(
+      authFailureProvider("git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository."),
+    ).toBe("github");
+  });
+
+  it("returns null for unrecognisable hosts or hostless errors", () => {
+    expect(authFailureProvider("fatal: Authentication failed")).toBeNull();
+    expect(
+      authFailureProvider("fatal: unable to access 'https://git.internal.corp/o/r.git/': error: 403"),
+    ).toBeNull();
   });
 });
