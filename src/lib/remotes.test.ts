@@ -5,6 +5,7 @@ import {
   detectRemoteUrl,
   forgeAuthProviderFor,
   isValidRemoteName,
+  transportProviderForRemoteProvider,
   validateRemoteUrl,
 } from "./remotes";
 
@@ -119,6 +120,18 @@ describe("forgeAuthProviderFor", () => {
   it("returns null for GitHub (gh-owned) and unclassified hosts", () => {
     expect(forgeAuthProviderFor("github")).toBeNull();
     expect(forgeAuthProviderFor("other")).toBeNull();
+  });
+});
+
+describe("transportProviderForRemoteProvider", () => {
+  it("normalizes remote classifications to git transport provider tags", () => {
+    expect(transportProviderForRemoteProvider("github")).toBe("github");
+    expect(transportProviderForRemoteProvider("gitlab")).toBe("gitlab");
+    expect(transportProviderForRemoteProvider("bitbucket")).toBe("bitbucket");
+    expect(transportProviderForRemoteProvider("azure")).toBe("azure-devops");
+    expect(transportProviderForRemoteProvider("gitea")).toBe("gitea");
+    expect(transportProviderForRemoteProvider("forgejo")).toBe("forgejo");
+    expect(transportProviderForRemoteProvider("other")).toBe("other");
   });
 });
 

@@ -12,9 +12,18 @@ import { openExternalUrl } from "../../../../../lib/openExternal";
 import type { ForgeAuthProvider } from "../../../../../lib/api";
 import { useUi } from "../../../../../store/ui";
 import { useAccounts } from "../../../../../store/accounts";
-import { DEFAULT_CREDENTIAL_HOST } from "../../../../../lib/forgeHelp";
+import { DEFAULT_CREDENTIAL_HOST, supportsEditableOauthHost } from "../../../../../lib/forgeHelp";
 import { OAUTH_HELP } from "./oauth";
 import { ExternalIcon, inputCls, linkCls } from "./ui";
+
+interface OauthStatus {
+  configured: boolean;
+  source: string;
+}
+
+interface KeyedOauthStatus extends OauthStatus {
+  key: string;
+}
 
 export function OauthMethod({ provider, forge }: { provider: ForgeAuthProvider; forge: string }) {
   const openProviderOauthSignin = useUi((s) => s.openProviderOauthSignin);
@@ -23,25 +32,46 @@ export function OauthMethod({ provider, forge }: { provider: ForgeAuthProvider; 
   const defaultHost = DEFAULT_CREDENTIAL_HOST[provider] ?? "";
   // Only GitLab supports self-managed hosts; Bitbucket OAuth is Cloud-only, so its
   // host is always bitbucket.org and there is nothing to enter.
-  const allowHostEdit = provider === "gitlab";
+  const allowHostEdit = supportsEditableOauthHost(provider);
   const [host, setHost] = useState(defaultHost);
-  const [status, setStatus] = useState<{ configured: boolean; source: string } | null>(null);
+  const [statusResult, setStatusResult] = useState<KeyedOauthStatus | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [clientId, setClientId] = useState("");
   const [saving, setSaving] = useState(false);
+  const probeHost = host.trim() || defaultHost;
+  const statusKey = `${provider}\u0000${probeHost}`;
+  const status: OauthStatus | null =
+    statusResult?.key === statusKey
+      ? { configured: statusResult.configured, source: statusResult.source }
+      : null;
 
-  const probe = (h: string) => {
+  const probe = (h: string, key = `${provider}\u0000${h}`) => {
     Promise.resolve(oauthClientStatus(provider, h))
       .then((s) =>
-        setStatus(s ? { configured: s.configured, source: s.source } : { configured: false, source: "none" }),
+        setStatusResult({
+          key,
+          ...(s ? { configured: s.configured, source: s.source } : { configured: false, source: "none" }),
+        }),
       )
-      .catch(() => setStatus({ configured: false, source: "none" }));
+      .catch(() => setStatusResult({ key, configured: false, source: "none" }));
   };
   useEffect(() => {
-    setStatus(null);
-    probe(host);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, host]);
+    let alive = true;
+    Promise.resolve(oauthClientStatus(provider, probeHost))
+      .then((s) => {
+        if (!alive) return;
+        setStatusResult({
+          key: statusKey,
+          ...(s ? { configured: s.configured, source: s.source } : { configured: false, source: "none" }),
+        });
+      })
+      .catch(() => {
+        if (alive) setStatusResult({ key: statusKey, configured: false, source: "none" });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [oauthClientStatus, probeHost, provider, statusKey]);
 
   const help = OAUTH_HELP[provider];
   if (!help) return null;

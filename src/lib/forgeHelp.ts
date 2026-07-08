@@ -3,6 +3,81 @@
 // token-username convention. Shared by the Accounts panel's connect methods and
 // the onboarding clone/recovery surfaces — no React, no IPC.
 
+import type { ForgeAuthProvider } from "./api/providers";
+
+export type PullRequestProvider = "github" | "gitlab" | "bitbucket";
+
+/** Non-GitHub forge providers the backend can probe or remember credentials for. */
+export const FORGE_AUTH_PROVIDERS = new Set<ForgeAuthProvider>([
+  "gitlab",
+  "bitbucket",
+  "azure-devops",
+  "gitea",
+  "forgejo",
+]);
+
+/** Providers where GitLane can ask a CLI/API for the signed-in account identity. */
+export const FORGE_WHOAMI_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops"]);
+
+/** Providers where GitLane's backend supports a first-party CLI sign-out command. */
+export const FORGE_CLI_SIGN_OUT_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops"]);
+
+/** Providers whose pull/merge-request workflows GitLane can drive in-app. */
+export const PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>(["github", "gitlab", "bitbucket"]);
+
+/** PR/MR providers whose connected forge auth row is itself enough for the PR
+ * surface. Bitbucket has no CLI-backed API auth, so it still needs a GitLane
+ * keychain token even though git transport credentials can be saved. */
+export const FORGE_AUTH_PULL_REQUEST_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab"]);
+
+/** Non-GitHub providers whose tokens GitLane can store in its own keychain and
+ * feed back to git through the credential bridge. */
+export const PROVIDER_TOKEN_AUTH_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "bitbucket"]);
+
+/** Providers where a pasted HTTPS credential should default to also being saved
+ * as a GitLane-owned PR/MR token. GitLab usually has `glab` as its primary PR
+ * path; Bitbucket has no first-party CLI, so keychain-backed PR auth is the
+ * useful default there. */
+export const DEFAULT_PROVIDER_TOKEN_PR_SAVE_PROVIDERS = new Set<ForgeAuthProvider>(["bitbucket"]);
+
+export function supportsPullRequests(provider: string | null | undefined): provider is PullRequestProvider {
+  return provider ? PULL_REQUEST_PROVIDERS.has(provider as PullRequestProvider) : false;
+}
+
+export function supportsPullRequestsViaForgeAuth(provider: string | null | undefined): provider is ForgeAuthProvider {
+  return provider ? FORGE_AUTH_PULL_REQUEST_PROVIDERS.has(provider as ForgeAuthProvider) : false;
+}
+
+export function pullRequestLabel(provider: string | null | undefined): string {
+  return provider === "gitlab" ? "Merge requests" : "Pull requests";
+}
+
+export function isForgeAuthProvider(provider: string | null | undefined): provider is ForgeAuthProvider {
+  return provider ? FORGE_AUTH_PROVIDERS.has(provider as ForgeAuthProvider) : false;
+}
+
+export function supportsForgeWhoami(provider: string | null | undefined): provider is ForgeAuthProvider {
+  return provider ? FORGE_WHOAMI_PROVIDERS.has(provider as ForgeAuthProvider) : false;
+}
+
+export function supportsForgeCliSignOut(provider: string | null | undefined): provider is ForgeAuthProvider {
+  return provider ? FORGE_CLI_SIGN_OUT_PROVIDERS.has(provider as ForgeAuthProvider) : false;
+}
+
+export function supportsProviderTokenAuth(provider: string | null | undefined): provider is ForgeAuthProvider {
+  return provider ? PROVIDER_TOKEN_AUTH_PROVIDERS.has(provider as ForgeAuthProvider) : false;
+}
+
+export function defaultsToProviderTokenForPullRequests(
+  provider: string | null | undefined,
+): provider is ForgeAuthProvider {
+  return provider ? DEFAULT_PROVIDER_TOKEN_PR_SAVE_PROVIDERS.has(provider as ForgeAuthProvider) : false;
+}
+
+export function supportsEditableOauthHost(provider: string | null | undefined): provider is ForgeAuthProvider {
+  return provider === "gitlab";
+}
+
 export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
   github: "github.com",
   gitlab: "gitlab.com",

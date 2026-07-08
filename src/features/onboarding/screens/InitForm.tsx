@@ -12,6 +12,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
     <div className="flex min-h-full items-center justify-center px-8 py-10">
       <div className="w-full max-w-[640px]">
         <button
+          type="button"
           onClick={ob.goHome}
           className="mb-6 flex items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
         >
@@ -33,9 +34,9 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
           </div>
         </div>
 
-        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+        <div className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
           Location
-        </label>
+        </div>
         <div className="flex gap-2">
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-black/10 bg-white px-3.5 font-mono text-[13px] text-neutral-700 shadow-sm dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200">
             <FolderGlyph className="mr-2 h-4 w-4 shrink-0 text-neutral-400" />
@@ -51,6 +52,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
             )}
           </div>
           <button
+            type="button"
             onClick={ob.browseInitParent}
             className="h-11 rounded-xl border border-black/10 bg-white px-4 text-[13px] font-medium text-neutral-700 shadow-sm hover:bg-black/[0.03] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-white/[0.04]"
           >
@@ -60,10 +62,11 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
 
         <div className="mt-5 grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+            <label htmlFor="init-folder-name" className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
               Folder name
             </label>
             <input
+              id="init-folder-name"
               value={ob.initName}
               onChange={(e) => ob.setInitName(e.target.value)}
               spellCheck={false}
@@ -71,10 +74,11 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+            <label htmlFor="init-branch-name" className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
               Initial branch
             </label>
             <input
+              id="init-branch-name"
               value={ob.initBranch}
               onChange={(e) => ob.setInitBranch(e.target.value)}
               spellCheck={false}
@@ -85,6 +89,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
 
         <div className="mt-5 divide-y divide-black/5 overflow-hidden rounded-xl border border-black/10 dark:divide-white/5 dark:border-white/10">
           <button
+            type="button"
             onClick={ob.toggleReadme}
             className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
           >
@@ -126,6 +131,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
             </span>
             <div className="relative">
               <select
+                aria-label=".gitignore template"
                 value={ob.initIgnore}
                 onChange={(e) => ob.setInitIgnore(e.target.value as GitignoreTemplate)}
                 className="h-8 appearance-none rounded-lg border border-black/10 bg-white pl-3 pr-7 text-[12.5px] font-medium text-neutral-600 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-300"
@@ -149,12 +155,14 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
 
         <div className="mt-8 flex items-center justify-end gap-2.5 border-t border-black/5 pt-5 dark:border-white/5">
           <button
+            type="button"
             onClick={ob.goHome}
             className="h-10 rounded-xl px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={ob.startInit}
             disabled={!ob.canInit || ob.initBusy}
             className={`flex h-10 items-center gap-2 rounded-xl px-5 text-[13.5px] font-semibold text-white shadow-sm transition ${

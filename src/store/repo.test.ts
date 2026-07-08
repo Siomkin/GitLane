@@ -170,6 +170,55 @@ describe("repo store — discardFile", () => {
   });
 });
 
+describe("repo store — patch staging", () => {
+  const refreshInvoke = (cmd: string) => {
+    switch (cmd) {
+      case "apply_line":
+        return Promise.resolve("Staged line in src/a.ts");
+      case "open_repo":
+        return Promise.resolve(summary);
+      case "commit_graph":
+        return Promise.resolve(emptyGraph);
+      case "working_changes":
+        return Promise.resolve(EMPTY_CHANGES);
+      default:
+        return defaultInvoke(cmd);
+    }
+  };
+
+  it("does not toast after line-level staging succeeds", async () => {
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    invokeMock.mockImplementation(refreshInvoke);
+
+    try {
+      await useRepo.getState().applyLine(
+        "src/a.ts",
+        false,
+        0,
+        0,
+        { kind: "add", oldNo: null, newNo: 1, content: "two" },
+      );
+
+      expect(invokeMock).toHaveBeenCalledWith("apply_line", {
+        path: "/repo",
+        file: "src/a.ts",
+        staged: false,
+        hunkIndex: 0,
+        lineIndex: 0,
+        expectedKind: "add",
+        expectedContent: "two",
+        expectedOldNo: null,
+        expectedNewNo: 1,
+      });
+      expect(showToast).not.toHaveBeenCalled();
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
+  });
+});
+
 describe("repo store — advanced write guards", () => {
   it("blocks stageFile for a visible path outside sparse checkout", async () => {
     const showToast = vi.fn();

@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the clone flow/session (architecture-rules-react.md §1)
 import { api, type CloneProgress } from "../../../lib/api";
+import { supportsProviderTokenAuth } from "../../../lib/forgeHelp";
 import { repoLabel } from "../../../lib/paths";
 import { detectRemoteUrl, forgeAuthProviderFor, withUrlUser } from "../../../lib/remotes";
 import { pickProviderTokenForHost, useAccounts } from "../../../store/accounts";
@@ -239,11 +240,16 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
           // ready (GL-152). The default is on; the recovery panel's checkbox can
           // opt back to the git helper (transport only, GitLane stores nothing).
           const forgeProvider = forgeAuthProviderFor(urlInfo.provider);
-          const prCapable = forgeProvider === "bitbucket" || forgeProvider === "gitlab";
           // A keychain token is keyed by its account username, so this path needs
           // one; a blank-username token falls back to the git helper.
           let storedInKeychain = false;
-          if (prCapable && forgeProvider && username && (cloneKeychain ?? true) && cloneCredHost && cloneHost) {
+          if (
+            supportsProviderTokenAuth(forgeProvider) &&
+            username &&
+            (cloneKeychain ?? true) &&
+            cloneCredHost &&
+            cloneHost
+          ) {
             // saveProviderToken toasts and returns false on an IPC/keychain
             // failure — only switch to providerToken mode when it truly landed,
             // else the clone would authenticate against a token that was never

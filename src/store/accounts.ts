@@ -30,7 +30,14 @@ import {
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
-import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor, prNoun } from "../lib/remotes";
+import { supportsForgeWhoami } from "../lib/forgeHelp";
+import {
+  credentialScopePath,
+  detectRemoteUrl,
+  forgeAuthProviderFor,
+  prNoun,
+  transportProviderForRemoteProvider,
+} from "../lib/remotes";
 import { repoIdentityKey } from "../lib/worktrees";
 import {
   accountKey,
@@ -493,7 +500,6 @@ interface AccountsState {
 // `account()` whoami dispatch in `src-tauri/src/auth_providers.rs` — adding a
 // provider there without listing it here means its identity never resolves in
 // the UI. Others (Gitea/Forgejo) would only make a no-op round-trip + skeleton flash.
-const FORGE_WHOAMI = new Set(["gitlab", "azure-devops"]);
 // Monotonic load generation. A background whoami started by an older
 // loadForgeAuth is dropped (not merged) once a newer load supersedes it, so a
 // stale identity can't land on a refreshed / signed-out provider row.
@@ -810,7 +816,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       // now with an identity skeleton instead of blocking on the slow call. Only
       // providers with a whoami implementation are marked pending.
       const pending = next
-        .filter((f) => f.authenticated === true && FORGE_WHOAMI.has(f.provider))
+        .filter((f) => f.authenticated === true && supportsForgeWhoami(f.provider))
         .map((f) => f.provider);
       set({ forgeAuth: next, forgeAuthLoading: false, forgeAccountsLoading: pending });
       // Drop any keychain-token metadata whose secret vanished outside GitLane,
@@ -1422,12 +1428,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // normalizes "azure" → "azure-devops"; github/gitlab/bitbucket/gitea/forgejo
     // pass through (all valid transport providers now they classify); "other"
     // stays "other".
-    const provider: GitTransportAuthRef["provider"] =
-      info.provider === "azure"
-        ? "azure-devops"
-        : info.provider === "other"
-          ? "other"
-          : info.provider;
+    const provider = transportProviderForRemoteProvider(info.provider);
 
     const glabAuth = get().gitlabGlabAuth(host, credentialHost, provider);
 

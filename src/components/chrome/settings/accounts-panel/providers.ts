@@ -4,6 +4,7 @@
 // panel rendering a permanent card per provider. No React/IPC here.
 
 import type { ForgeAccount, ForgeAuthProvider, ForgeAuthStatus } from "../../../../lib/api";
+import { supportsPullRequests } from "../../../../lib/forgeHelp";
 
 export type ProviderKey = "github" | ForgeAuthProvider;
 
@@ -22,12 +23,12 @@ export const VISIBLE_PROVIDER_KEYS: ProviderKey[] = ["github", "gitlab", "bitbuc
 
 /** Every provider the picker offers, GitHub first. */
 export const PROVIDERS: ProviderMeta[] = [
-  { key: "github", name: "GitHub", prSupported: true },
-  { key: "gitlab", name: "GitLab", prSupported: true },
-  { key: "bitbucket", name: "Bitbucket", prSupported: true },
-  { key: "azure-devops", name: "Azure DevOps", prSupported: false },
-  { key: "gitea", name: "Gitea", prSupported: false },
-  { key: "forgejo", name: "Forgejo", prSupported: false },
+  { key: "github", name: "GitHub", prSupported: supportsPullRequests("github") },
+  { key: "gitlab", name: "GitLab", prSupported: supportsPullRequests("gitlab") },
+  { key: "bitbucket", name: "Bitbucket", prSupported: supportsPullRequests("bitbucket") },
+  { key: "azure-devops", name: "Azure DevOps", prSupported: supportsPullRequests("azure-devops") },
+  { key: "gitea", name: "Gitea", prSupported: supportsPullRequests("gitea") },
+  { key: "forgejo", name: "Forgejo", prSupported: supportsPullRequests("forgejo") },
 ];
 
 export function providerLabel(provider: ProviderKey): string {

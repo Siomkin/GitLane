@@ -11,7 +11,9 @@ import { fileWriteGuard, findGuardedFile } from "../../lib/advancedRepoState";
 import { cn } from "../../lib/cn";
 import { fullCommitMessage } from "../../lib/commitMessage";
 import { basename, dirname } from "../../lib/paths";
+import { focusRing } from "../../lib/ui";
 import { useRepo } from "../../store/repo";
+import { useTerminalAgents } from "../../store/terminalAgents";
 import { useUi } from "../../store/ui";
 import { CheckIcon, FileIcon } from "@/components/ui/icons";
 import { Resizer } from "@/components/ui/Resizer";
@@ -19,6 +21,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { DiffPreview } from "./DiffPreview";
 import { buildRows } from "./commitTree";
+import { selectEnabledAgents } from "../terminal/agents";
 import { isCommitReachableFromRemote } from "@/store/selection";
 
 const TREE_MIN_WIDTH = 300;
@@ -34,19 +37,27 @@ export const CommitModal = () => {
   const setMsg = useUi((s) => s.setCommitMsg);
   const excluded = useUi((s) => s.commitExcluded);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
-  const showToast = useUi((s) => s.showToast);
   const changes = useRepo((s) => s.changes);
   const staged = changes.staged;
   const summary = useRepo((s) => s.summary);
   const graph = useRepo((s) => s.graph);
   const commitSelected = useRepo((s) => s.commitSelected);
   const [amend, setAmend] = useState(false);
+  const agentsRaw = useTerminalAgents((s) => s.agents);
+  const loadAgents = useTerminalAgents((s) => s.loadAgents);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const headCommit = graph?.commits.find((commit) => commit.id === graph.head && !commit.stash) ?? null;
   const canAmend =
     !!summary?.headBranch &&
     !!headCommit &&
     !isCommitReachableFromRemote(graph, headCommit.id);
+  const agents = selectEnabledAgents(agentsRaw);
+  const availableAgents = agents.filter((agent) => agent.available);
+  const selectedAgent =
+    agents.find((agent) => agent.id === selectedAgentId && agent.available) ??
+    availableAgents[0] ??
+    null;
 
   // Close on Escape.
   useEffect(() => {
@@ -67,11 +78,23 @@ export const CommitModal = () => {
     if (!canAmend) setAmend(false);
   }, [canAmend]);
 
+  useEffect(() => {
+    if (!open) return;
+    void loadAgents();
+  }, [open, loadAgents]);
+
   if (!open) return null;
 
   const branch = summary?.headBranch ?? "HEAD";
-  const excludedPaths = staged.filter((f) => excluded[f.path]).map((f) => f.path);
-  const included = staged.filter((f) => !excluded[f.path]);
+  const excludedPaths: string[] = [];
+  const included: FileChange[] = [];
+  for (const file of staged) {
+    if (excluded[file.path]) {
+      excludedPaths.push(file.path);
+    } else {
+      included.push(file);
+    }
+  }
   const includedGuarded = findGuardedFile(included, changes);
   const commitBlocked = fileWriteGuard(includedGuarded, changes);
   const includedCount = included.length;
@@ -84,13 +107,13 @@ export const CommitModal = () => {
   };
 
   const commitWithAgent = () => {
+    if (!selectedAgent) return;
     const instruction =
       msg.trim() ||
       (amend
         ? "Review the staged changes, add them to the previous commit, and update the commit message if needed."
         : "Review the staged changes, write a concise conventional-commit message, and commit them.");
-    sendToTerminal(instruction);
-    showToast("Sent to terminal — run your agent there");
+    sendToTerminal(instruction, selectedAgent.command);
     close();
   };
 
@@ -112,15 +135,19 @@ export const CommitModal = () => {
     view === "tree"
       ? "h-[760px] w-[1280px] max-h-[calc(100vh-4rem)] max-w-[calc(100vw-4rem)]"
       : "h-[560px] w-[920px] max-h-[90%] max-w-full";
+  const modelSelectId = "commit-agent-model";
 
   return (
-    <div
-      className="fixed inset-0 z-[58] grid place-items-center bg-black/30 p-8 backdrop-blur-sm"
-      onClick={close}
-    >
+    <div className="fixed inset-0 z-[58] grid place-items-center p-8">
+      <button
+        type="button"
+        aria-label="Close commit dialog"
+        onClick={close}
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+      />
       <div
         className={cn(
-          "flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800",
+          "relative flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800",
           modalSize,
         )}
         onClick={(e) => e.stopPropagation()}
@@ -141,9 +168,11 @@ export const CommitModal = () => {
             </SegBtn>
           </div>
           <button
+            type="button"
             onClick={close}
             className="grid h-7 w-7 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
             title="Close"
+            aria-label="Close commit dialog"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -194,15 +223,54 @@ export const CommitModal = () => {
             </button>
           )}
           <textarea
+            aria-label="Commit message"
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
             placeholder={amend ? "Amended commit message" : "Commit message (optional — leave empty to let the agent write it)"}
             className="h-14 w-full resize-none rounded-lg border border-black/10 bg-transparent p-2.5 text-[13px] text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
           />
           <div className="flex items-center gap-2">
+            {agents.length > 0 ? (
+              <label className="flex min-w-0 items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
+                <span id={`${modelSelectId}-label`}>Model</span>
+                <select
+                  id={modelSelectId}
+                  aria-labelledby={`${modelSelectId}-label`}
+                  value={selectedAgent?.id ?? ""}
+                  onChange={(e) => setSelectedAgentId(e.target.value || null)}
+                  disabled={availableAgents.length === 0}
+                  className={cn(
+                    "h-9 max-w-[220px] rounded-lg border border-black/10 bg-white px-3 text-[13px] font-medium text-neutral-700 outline-none dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
+                    focusRing,
+                  )}
+                >
+                  {availableAgents.length === 0 && (
+                    <option value="" disabled>
+                      No available agents
+                    </option>
+                  )}
+                  {agents.map((agent) => (
+                    <option
+                      key={agent.id}
+                      value={agent.id}
+                      disabled={!agent.available}
+                      title={agent.available ? agent.command : `${agent.command} was not found on PATH`}
+                    >
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="text-[12px] text-amber-600 dark:text-amber-400">
+                No enabled agents. Add one in Settings.
+              </span>
+            )}
             <button
+              type="button"
               onClick={commitWithAgent}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+              disabled={!selectedAgent}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
             >
               <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-[color:var(--accent)]">
                 <path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z" />
@@ -211,12 +279,14 @@ export const CommitModal = () => {
             </button>
             <div className="ml-auto flex gap-2">
               <button
+                type="button"
                 onClick={close}
                 className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={doCommit}
                 disabled={!canCommit}
                 title={commitBlocked ?? undefined}
@@ -248,6 +318,7 @@ const SegBtn = ({
 }) => {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={cn(
         "h-6 rounded-md px-2.5",
@@ -289,9 +360,14 @@ const ListView = ({ staged }: { staged: FileChange[] }) => {
             key={f.path}
             className="flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
           >
-            <span onClick={() => toggle(f.path)}>
+            <button
+              type="button"
+              onClick={() => toggle(f.path)}
+              aria-label={`${on ? "Exclude" : "Include"} ${f.path} from commit`}
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-md"
+            >
               <Checkbox on={on} />
-            </span>
+            </button>
             <StatusBadge status={f.status} />
             <FileIcon path={f.path} size={16} />
             <span className="min-w-0 flex-1">
@@ -342,61 +418,71 @@ const TreeView = ({ staged, repoPath }: { staged: FileChange[]; repoPath: string
           row.kind === "dir" ? (
             <div
               key={row.key}
-              onClick={() => toggleCollapse(row.key)}
               style={{ paddingLeft: 8 + row.depth * 15 }}
-              className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md pr-2 text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
+              className="flex h-7 items-center gap-1.5 rounded-md pr-2 text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                className={cn("h-3 w-3 text-neutral-400 transition-transform", row.collapsed && "-rotate-90")}
+              <button
+                type="button"
+                onClick={() => toggleCollapse(row.key)}
+                aria-label={`${row.collapsed ? "Expand" : "Collapse"} ${row.label}`}
+                className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
               >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDir(row.paths, row.state !== "on");
-                }}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  className={cn("h-3 w-3 shrink-0 text-neutral-400 transition-transform", row.collapsed && "-rotate-90")}
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4 shrink-0 text-neutral-400">
+                  <path d="M3 7v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-8l-2-2H4a1 1 0 0 0-1 1z" />
+                </svg>
+                <span className="truncate text-[12.5px] font-medium text-neutral-600 dark:text-neutral-300">
+                  {row.label}
+                </span>
+                <span className="ml-auto shrink-0 pl-2 text-[11px] text-neutral-400">
+                  {row.count} file{row.count === 1 ? "" : "s"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDir(row.paths, row.state !== "on")}
+                aria-label={`${row.state === "on" ? "Exclude" : "Include"} ${row.label} from commit`}
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-md"
               >
                 <Checkbox on={row.state === "on"} mixed={row.state === "mixed"} />
-              </span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4 shrink-0 text-neutral-400">
-                <path d="M3 7v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-8l-2-2H4a1 1 0 0 0-1 1z" />
-              </svg>
-              <span className="truncate text-[12.5px] font-medium text-neutral-600 dark:text-neutral-300">
-                {row.label}
-              </span>
-              <span className="ml-auto shrink-0 pl-2 text-[11px] text-neutral-400">
-                {row.count} file{row.count === 1 ? "" : "s"}
-              </span>
+              </button>
             </div>
           ) : (
             <div
               key={row.key}
-              onClick={() => selectFile(row.file.path)}
               style={{ paddingLeft: 8 + row.depth * 15 }}
               className={cn(
-                "flex h-7 cursor-pointer items-center gap-1.5 rounded-md pr-2",
+                "flex h-7 items-center gap-1.5 rounded-md pr-2",
                 row.file.path === activePath
                   ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
                   : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5",
               )}
             >
-              <span className="w-3 shrink-0" />
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleFile(row.file.path);
-                }}
+              <button
+                type="button"
+                onClick={() => toggleFile(row.file.path)}
+                aria-label={`${excluded[row.file.path] ? "Include" : "Exclude"} ${row.file.path} from commit`}
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-md"
               >
                 <Checkbox on={!excluded[row.file.path]} />
-              </span>
-              <FileIcon path={row.file.path} size={16} />
-              <span className="flex-1 truncate text-[13px]">{basename(row.file.path)}</span>
-              <ChangeCounts add={row.file.add} del={row.file.del} binary={row.file.binary} className="shrink-0 text-[11px]" />
+              </button>
+              <button
+                type="button"
+                onClick={() => selectFile(row.file.path)}
+                className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+              >
+                <FileIcon path={row.file.path} size={16} />
+                <span className="flex-1 truncate text-[13px]">{basename(row.file.path)}</span>
+                <ChangeCounts add={row.file.add} del={row.file.del} binary={row.file.binary} className="shrink-0 text-[11px]" />
+              </button>
             </div>
           ),
         )}

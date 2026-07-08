@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileChange } from "../../lib/api";
+import type { FileChange, TerminalAgent } from "../../lib/api";
 import { emptyAdvancedState } from "../../lib/advancedRepoState";
 import { useRepo } from "../../store/repo";
+import { useTerminalAgents } from "../../store/terminalAgents";
 import { useUi } from "../../store/ui";
 import { CommitModal } from "./CommitModal";
 
@@ -10,6 +11,15 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const staged = (path: string): FileChange => ({ path, status: "M", add: 12, del: 3, binary: false });
+const agent = (over: Partial<TerminalAgent>): TerminalAgent => ({
+  id: "claude",
+  name: "claude",
+  command: "claude",
+  description: "",
+  enabled: true,
+  available: true,
+  ...over,
+});
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -26,6 +36,15 @@ beforeEach(() => {
     commitCollapsed: {},
     commitExcluded: {},
     commitMsg: "",
+  });
+  useTerminalAgents.setState({
+    agents: [
+      agent({ id: "claude", name: "claude", command: "claude" }),
+      agent({ id: "codex", name: "codex", command: "codex" }),
+    ],
+    loading: false,
+    error: null,
+    loadAgents: vi.fn(async () => {}),
   });
 });
 
@@ -95,5 +114,21 @@ describe("CommitModal", () => {
 
     expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
     expect(screen.getByText("Submodule: modified files inside submodule. Use the terminal for submodule updates.")).toBeInTheDocument();
+  });
+
+  it("opens the selected configured agent when committing with an agent", () => {
+    const sendToTerminal = vi.fn();
+    useUi.setState({ sendToTerminal });
+
+    render(<CommitModal />);
+
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "codex" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit with agent" }));
+
+    expect(sendToTerminal).toHaveBeenCalledWith(
+      "Review the staged changes, write a concise conventional-commit message, and commit them.",
+      "codex",
+    );
+    expect(useUi.getState().commitOpen).toBe(false);
   });
 });

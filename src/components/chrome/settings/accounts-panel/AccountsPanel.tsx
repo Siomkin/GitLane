@@ -7,10 +7,11 @@
 import { useEffect, useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
+import { pullRequestLabel, supportsPullRequests, supportsPullRequestsViaForgeAuth } from "../../../../lib/forgeHelp";
 import { useAccounts } from "../../../../store/accounts";
 import { useRepo } from "../../../../store/repo";
 import { useUi } from "../../../../store/ui";
-import { credentialScopePath, detectRemoteUrl, type RemoteProvider } from "../../../../lib/remotes";
+import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor, type RemoteProvider } from "../../../../lib/remotes";
 import { PROVIDERS, VISIBLE_PROVIDER_KEYS, type ProviderKey } from "./providers";
 import { ConnectedAccountCard } from "./ConnectedAccountCard";
 import { ConnectedForgeCard } from "./ConnectedForgeCard";
@@ -23,18 +24,8 @@ import { TransportCredentialCard, type TransportCredentialAccount } from "./Tran
 type View = { k: "list" } | { k: "pick" } | { k: "connect"; provider: ProviderKey };
 
 function providerKeyForRemote(provider: RemoteProvider): ProviderKey | null {
-  switch (provider) {
-    case "github":
-      return "github";
-    case "gitlab":
-      return "gitlab";
-    case "bitbucket":
-      return "bitbucket";
-    case "azure":
-      return "azure-devops";
-    default:
-      return null;
-  }
+  const key = provider === "github" ? "github" : forgeAuthProviderFor(provider);
+  return key && VISIBLE_PROVIDER_KEYS.includes(key) ? key : null;
 }
 
 function repoTransportCredentials(remotes: ReturnType<typeof useRepo.getState>["remotes"]): TransportCredentialAccount[] {
@@ -100,6 +91,7 @@ export function AccountsPanel() {
   const connectedForges = forgeAuth.filter((f) => f.authenticated === true);
   const keychainAccounts = Object.values(providerTokens);
   const transportCredentials = repoTransportCredentials(remotes);
+  const forgeAccountsLoadingSet = new Set(forgeAccountsLoading);
 
   // Group every connection under its provider so a row's provider is obvious from
   // the section header (GL-141), and only surface the providers in the picker —
@@ -147,19 +139,14 @@ export function AccountsPanel() {
         : helpers.length > 0
           ? { label: "Transport only", tone: "muted" }
         : { label: "Needs re-auth", tone: "warn" };
-    } else if (provider === "gitlab") {
-      const glab = forges.some((f) => f.cli === "glab" && f.available === true);
-      capability =
-        glab || tokens.length > 0
-          ? { label: "Merge requests", tone: "pr" }
-          : helpers.length > 0
-            ? { label: "Transport only", tone: "muted" }
+    } else if (supportsPullRequests(provider)) {
+      const prReady = (supportsPullRequestsViaForgeAuth(provider) && forges.length > 0) || tokens.length > 0;
+      capability = prReady
+        ? { label: pullRequestLabel(provider), tone: "pr" }
+        : helpers.length > 0
+          ? { label: "Transport only", tone: "muted" }
           : { label: "Sign-in only", tone: "muted" };
-    } else if (provider === "bitbucket") {
-      capability = tokens.length > 0
-        ? { label: "Pull requests", tone: "pr" }
-        : { label: "Transport only", tone: "muted" };
-    } else if (provider === "azure-devops") {
+    } else {
       capability = { label: "Transport only", tone: "muted" };
     }
 
@@ -182,6 +169,7 @@ export function AccountsPanel() {
           </p>
         </div>
         <button
+          type="button"
           onClick={refresh}
           className={cn(
             "h-9 shrink-0 rounded-lg border border-black/10 px-3 text-[12.5px] font-semibold text-neutral-600 transition hover:bg-black/[0.04] dark:border-white/[0.12] dark:text-neutral-300 dark:hover:bg-white/[0.06]",
@@ -204,7 +192,7 @@ export function AccountsPanel() {
             status={
               view.provider === "github" ? null : forgeAuth.find((f) => f.provider === view.provider) ?? null
             }
-            accountLoading={forgeAccountsLoading.includes(view.provider)}
+            accountLoading={forgeAccountsLoadingSet.has(view.provider)}
             onBack={() => setView({ k: "pick" })}
             onRefresh={refresh}
           />
@@ -229,7 +217,7 @@ export function AccountsPanel() {
                       <ConnectedForgeCard
                         key={status.provider}
                         status={status}
-                        loading={forgeAccountsLoading.includes(status.provider as ProviderKey)}
+                        loading={forgeAccountsLoadingSet.has(status.provider)}
                       />
                     ))}
                     {sec.tokens.map((t) => (
@@ -245,7 +233,7 @@ export function AccountsPanel() {
                     ))}
                     {sec.helpers.map((credential) => (
                       <TransportCredentialCard
-                        key={`${credential.provider}:${credential.credentialHost}:${credential.login}`}
+                        key={`${credential.provider}:${credential.credentialHost}:${credential.credentialPath ?? ""}:${credential.login}:${credential.remoteName}`}
                         account={credential}
                       />
                     ))}
@@ -259,6 +247,7 @@ export function AccountsPanel() {
             )}
 
             <button
+              type="button"
               onClick={() => setView({ k: "pick" })}
               className={cn(
                 "mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3.5 text-[13px] font-semibold text-neutral-700 transition hover:bg-black/[0.04] dark:border-white/[0.14] dark:text-neutral-200 dark:hover:bg-white/[0.06]",

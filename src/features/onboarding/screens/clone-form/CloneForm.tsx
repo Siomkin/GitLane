@@ -24,6 +24,7 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
     <div className="flex min-h-full items-center justify-center px-8 py-10">
       <div className="w-full max-w-[640px]">
         <button
+          type="button"
           onClick={ob.goHome}
           className="mb-6 flex items-center gap-1.5 text-[13px] font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
         >
@@ -46,11 +47,12 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
         </div>
 
         {/* URL field */}
-        <label className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+        <label htmlFor="clone-remote-url" className="mb-1.5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
           Remote URL
         </label>
         <div className="relative">
           <input
+            id="clone-remote-url"
             value={ob.cloneUrl}
             onChange={(e) => ob.setCloneUrl(e.target.value)}
             placeholder="https://github.com/owner/repo.git"
@@ -81,9 +83,9 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
         {state === "valid" && ob.cloneRemoteInfo.valid && <CloneAuthStatus ob={ob} />}
 
         {/* Destination */}
-        <label className="mb-1.5 mt-5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
+        <div className="mb-1.5 mt-5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
           Local destination
-        </label>
+        </div>
         <div className="flex gap-2">
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-black/10 bg-white px-3.5 font-mono text-[13px] text-neutral-700 shadow-sm dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200">
             <FolderGlyph className="mr-2 h-4 w-4 shrink-0 text-neutral-400" />
@@ -104,6 +106,7 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
             )}
           </div>
           <button
+            type="button"
             onClick={ob.browseCloneParent}
             className="h-11 rounded-xl border border-black/10 bg-white px-4 text-[13px] font-medium text-neutral-700 shadow-sm hover:bg-black/[0.03] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-white/[0.04]"
           >
@@ -123,12 +126,14 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
         {/* Footer */}
         <div className="mt-8 flex items-center justify-end gap-2.5 border-t border-black/5 pt-5 dark:border-white/5">
           <button
+            type="button"
             onClick={ob.goHome}
             className="h-10 rounded-xl px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => ob.startClone()}
             disabled={!ob.canClone}
             className={`flex h-10 items-center gap-2 rounded-xl px-5 text-[13.5px] font-semibold text-white shadow-sm transition ${cloneBtnCls}`}

@@ -98,16 +98,11 @@ export function orderedNotes(notes: ReviewNote[]): ReviewNote[] {
 }
 
 /** Build the default agent hand-off message from the pinned local comments. */
-export function composeAgentMessage(notes: ReviewNote[], branch?: string | null): string {
+export function composeAgentMessage(notes: ReviewNote[], _branch?: string | null): string {
   if (notes.length === 0) return "";
-  const many = notes.length !== 1;
-  const where = branch ? ` on branch \`${branch}\`` : "";
-  const intro = `Please address the following code review ${
-    many ? "comments" : "comment"
-  }${where}.\n\nKeep the fix scoped to the review feedback, avoid unrelated edits, and run the relevant checks.`;
   const blocks = orderedNotes(notes).map((n, i) => {
     const at = n.fromRef === n.toRef ? `line ${n.fromRef}` : `lines ${n.fromRef}–${n.toRef}`;
     return `${i + 1}. ${n.file} — ${at}\n   Feedback: ${n.body.trim()}`;
   });
-  return `${intro}\n\nReview ${many ? "comments" : "comment"}:\n\n${blocks.join("\n\n")}\n`;
+  return `${blocks.join("\n\n")}\n`;
 }
