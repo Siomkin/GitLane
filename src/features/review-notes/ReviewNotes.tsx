@@ -11,7 +11,7 @@ import { focusRing } from "../../lib/ui";
 import { useTerminalAgents } from "../../store/terminalAgents";
 import { useUi } from "../../store/ui";
 import { CloseIcon, DiamondIcon } from "@/components/ui/icons";
-import { composeAgentMessage, orderedNotes } from "../review/comments";
+import { composeAgentMessage, orderedNotes } from "../review/comments/notes";
 import { selectEnabledAgents } from "../terminal/agents";
 
 /** The popup: an editable, pre-composed message with an agent picker + Copy /
@@ -26,13 +26,14 @@ export function AgentMessageDialog() {
   const sendToTerminal = useUi((s) => s.sendToTerminal);
   const showToast = useUi((s) => s.showToast);
   // Only the comments from the surface(s) that opened the dialog are handed off.
+  const surfaceSet = useMemo(() => new Set(surfaces), [surfaces]);
   const notes = useMemo(
-    () => allNotes.filter((n) => surfaces.includes(n.surface)),
-    [allNotes, surfaces],
+    () => allNotes.filter((n) => surfaceSet.has(n.surface)),
+    [allNotes, surfaceSet],
   );
   const agentsRaw = useTerminalAgents((s) => s.agents);
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
-  const [text, setText] = useState("");
+  const [draft, setDraft] = useState("");
   // Tracks whether the user has manually edited the composed message, so note
   // changes (e.g. removing one from the list) don't clobber their edits.
   const [dirty, setDirty] = useState(false);
@@ -44,60 +45,50 @@ export function AgentMessageDialog() {
     agents.find((agent) => agent.id === selectedAgentId && agent.available) ??
     availableAgents[0] ??
     null;
-
-  // Recompose while the dialog is open and untouched — so opening fresh, or
-  // removing a comment from the list, updates the message — but never overwrite
-  // manual edits (the dialog explicitly asks the user to review/edit).
-  useEffect(() => {
-    if (open && !dirty) setText(composeAgentMessage(notes, branch));
-  }, [open, dirty, notes, branch]);
-
-  // Reset the edit flag when the dialog closes, so the next open composes fresh.
-  useEffect(() => {
-    if (!open) setDirty(false);
-  }, [open]);
+  const composedText = useMemo(() => composeAgentMessage(notes, branch), [notes, branch]);
+  const text = dirty ? draft : composedText;
 
   useEffect(() => {
     if (!open) return;
     void loadAgents();
   }, [open, loadAgents]);
 
-  useEffect(() => {
-    if (!open) return;
-    const selectedExists = selectedAgentId && agents.some((agent) => agent.id === selectedAgentId);
-    const selectedAvailable =
-      selectedAgentId && agents.some((agent) => agent.id === selectedAgentId && agent.available);
-    if (selectedAvailable || (selectedExists && availableAgents.length === 0)) return;
-    setSelectedAgentId(availableAgents[0]?.id ?? agents[0]?.id ?? null);
-  }, [open, agents, availableAgents, selectedAgentId]);
-
   if (!open) return null;
 
   const empty = text.trim().length === 0;
   const count = notes.length;
   const word = count === 1 ? "comment" : "comments";
+  const modelSelectId = "agent-message-model";
+
+  const dismiss = () => {
+    setDraft("");
+    setDirty(false);
+    close();
+  };
 
   const copy = () => {
     if (empty) return;
     void navigator.clipboard?.writeText(text);
     showToast("Message copied");
-    close();
+    dismiss();
   };
   const send = () => {
     if (empty || !selectedAgent) return;
     sendToTerminal(text, selectedAgent.command);
-    showToast(`Opened ${selectedAgent.name} — press Enter to send`);
-    close();
+    dismiss();
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-black/30 p-10 backdrop-blur-sm dark:bg-black/55"
-      onClick={close}
-    >
+    <div className="fixed inset-0 z-[60] grid place-items-center p-10">
+      <button
+        type="button"
+        aria-label="Close handoff dialog"
+        onClick={dismiss}
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm dark:bg-black/55"
+      />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-[560px] max-w-full rounded-2xl border border-black/10 bg-white p-5 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        className="relative w-[560px] max-w-full rounded-2xl border border-black/10 bg-white p-5 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
       >
         <div className="flex items-center gap-2">
@@ -134,55 +125,64 @@ export function AgentMessageDialog() {
           ))}
         </div>
         <textarea
+          aria-label="Agent handoff message"
           value={text}
           onChange={(e) => {
-            setText(e.target.value);
+            setDraft(e.target.value);
             setDirty(true);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Escape") close();
+            if (e.key === "Escape") dismiss();
           }}
           spellCheck={false}
           className="mt-3 h-60 w-full resize-none overflow-auto rounded-xl border border-black/10 bg-black/[0.02] p-3.5 font-mono text-[12.5px] leading-relaxed text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-200"
         />
         <div className="mt-3 flex items-center gap-2">
           {agents.length > 0 ? (
-            <div className="mr-auto flex rounded-lg bg-black/[0.06] p-0.5 text-[12.5px] dark:bg-white/[0.06]">
-              {agents.map((agent) => (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => {
-                    if (agent.available) setSelectedAgentId(agent.id);
-                  }}
-                  disabled={!agent.available}
-                  title={agent.available ? agent.command : `${agent.command} was not found on PATH`}
-                  className={cn(
-                    "h-8 rounded-md px-3 font-mono font-medium transition",
-                    agent.available
-                      ? selectedAgent?.id === agent.id
-                        ? "bg-[color:var(--accent)] text-white shadow-sm"
-                        : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
-                      : "cursor-not-allowed text-neutral-300 dark:text-neutral-600",
-                    focusRing,
-                  )}
-                >
-                  {agent.name}
-                </button>
-              ))}
-            </div>
+            <label className="mr-auto flex min-w-0 items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
+              <span id={`${modelSelectId}-label`}>Model</span>
+              <select
+                id={modelSelectId}
+                aria-labelledby={`${modelSelectId}-label`}
+                value={selectedAgent?.id ?? ""}
+                onChange={(e) => setSelectedAgentId(e.target.value || null)}
+                disabled={availableAgents.length === 0}
+                className={cn(
+                  "h-9 max-w-[220px] rounded-lg border border-black/10 bg-white px-3 text-[13px] font-medium text-neutral-700 outline-none dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
+                  focusRing,
+                )}
+              >
+                {availableAgents.length === 0 && (
+                  <option value="" disabled>
+                    No available agents
+                  </option>
+                )}
+                {agents.map((agent) => (
+                  <option
+                    key={agent.id}
+                    value={agent.id}
+                    disabled={!agent.available}
+                    title={agent.available ? agent.command : `${agent.command} was not found on PATH`}
+                  >
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           ) : (
             <span className="mr-auto text-[12px] text-amber-600 dark:text-amber-400">
               No enabled agents. Add one in Settings.
             </span>
           )}
           <button
-            onClick={close}
+            type="button"
+            onClick={dismiss}
             className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={copy}
             disabled={empty}
             className="h-9 rounded-lg border border-black/10 px-4 text-[13px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
@@ -190,11 +190,12 @@ export function AgentMessageDialog() {
             Copy
           </button>
           <button
+            type="button"
             onClick={send}
             disabled={empty || !selectedAgent}
             className="h-9 rounded-lg bg-[color:var(--accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 disabled:opacity-45"
           >
-            Send to {selectedAgent?.name ?? "agent"}
+            Send
           </button>
         </div>
       </div>

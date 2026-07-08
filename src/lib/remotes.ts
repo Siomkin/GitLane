@@ -4,6 +4,8 @@
 // same way — ported from the Repo Settings design's `detect`/`cap`/`validity`.
 
 import type { ForgeAuthProvider } from "./api/providers";
+import type { GitTransportProvider } from "./api/git";
+import { supportsPullRequests } from "./forgeHelp";
 
 export type RemoteProvider =
   | "github"
@@ -68,6 +70,19 @@ export const forgeAuthProviderFor = (p: RemoteProvider): ForgeAuthProvider | nul
       return "forgejo";
     default:
       return null;
+  }
+};
+
+/** Map a classified remote provider to the provider tag used by git transport
+ * auth refs. */
+export const transportProviderForRemoteProvider = (p: RemoteProvider): GitTransportProvider => {
+  switch (p) {
+    case "azure":
+      return "azure-devops";
+    case "other":
+      return "other";
+    default:
+      return p;
   }
 };
 
@@ -170,7 +185,7 @@ export const isValidRemoteName = (raw: string): boolean => /^[A-Za-z0-9][A-Za-z0
 /** Forges with an in-app pull/merge-request surface (mirrors the toolbar provider
  * model): GitHub PRs, GitLab MRs (GL-140), and Bitbucket Cloud PRs (GL-141). */
 export const providerSupportsPrs = (p: RemoteProvider): boolean =>
-  p === "github" || p === "gitlab" || p === "bitbucket";
+  supportsPullRequests(p);
 
 /** The request noun a provider uses in copy — GitLab has "merge requests",
  * everyone else "pull requests" — so GitLab-facing text reads correctly (GL-145). */

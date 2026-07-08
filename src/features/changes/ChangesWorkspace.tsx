@@ -12,7 +12,7 @@ import { FileIcon } from "@/components/ui/icons";
 import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
 import { UnifiedDiffBody } from "../review/DiffBody";
 import { BinaryDiff } from "../review/BinaryDiff";
-import { HandToAgentBar } from "../review/comments";
+import { HandToAgentBar } from "../review/comments/HandToAgentBar";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
@@ -60,6 +60,10 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
     });
   }, [changes]);
   const total = rows.length;
+  const rowPathsKey = rows.reduce(
+    (key, row) => (key === "" ? row.path : `${key}\u0000${row.path}`),
+    "",
+  );
 
   // Expansion is local and per-file, so several files can stay open at once
   // (unlike before, when it was tied to the single store selection and opening
@@ -74,23 +78,25 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   // nothing is open yet (don't fight the user's manual collapses).
   useEffect(() => {
     if (total === 0) return;
+    const rowPaths = rowPathsKey.split("\u0000");
     setOpen((o) => {
-      if (rows.some((r) => o[r.path])) return o;
-      return { ...o, [rows[0].path]: true };
+      if (rowPaths.some((path) => o[path])) return o;
+      return { ...o, [rowPaths[0]]: true };
     });
-  }, [total]);
+  }, [rowPathsKey, total]);
 
   // Lazily fetch the diff for every open file that doesn't have one cached.
   useEffect(() => {
     if (!repoPath) return;
-    ensure(
-      rows
-        .filter((r) => open[r.path])
-        .map((r) => ({
-          key: r.key,
-          fetch: () => api.fileDiff(repoPath, r.path, r.source === "staged"),
-        })),
-    );
+    const pending: Array<{ key: string; fetch: () => Promise<FileDiff> }> = [];
+    for (const row of rows) {
+      if (!open[row.path]) continue;
+      pending.push({
+        key: row.key,
+        fetch: () => api.fileDiff(repoPath, row.path, row.source === "staged"),
+      });
+    }
+    ensure(pending);
   }, [rows, open, repoPath, ensure]);
 
   return (
@@ -103,6 +109,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-neutral-400">Tick a file to stage it</span>
           <button
+            type="button"
             className={`${control} h-8 min-h-0 px-3 text-xs`}
             onClick={stageAllBlocked ? undefined : stageAll}
             disabled={changes.unstaged.length === 0 || !!stageAllBlocked}
@@ -111,6 +118,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
             Stage all
           </button>
           <button
+            type="button"
             className={`${control} h-8 min-h-0 px-3 text-xs`}
             onClick={unstageAllBlocked ? undefined : unstageAll}
             disabled={changes.staged.length === 0 || !!unstageAllBlocked}
@@ -120,6 +128,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
           </button>
         </div>
         <button
+          type="button"
           className="flex flex-none items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
           onClick={onBack}
         >
@@ -199,6 +208,7 @@ function ReviewFileSection({
   return (
     <section className="border-b border-black/5 dark:border-white/5">
       <button
+        type="button"
         className="flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5"
         onClick={onHeader}
       >

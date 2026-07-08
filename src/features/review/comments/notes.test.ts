@@ -97,9 +97,11 @@ describe("composeAgentMessage", () => {
     expect(composeAgentMessage([])).toBe("");
   });
 
-  it("uses singular wording and includes the branch", () => {
+  it("keeps the single-comment message focused on the review item", () => {
     const msg = composeAgentMessage([note({})], "GL-54-line-staging");
-    expect(msg).toContain("review comment on branch `GL-54-line-staging`");
+    expect(msg).not.toContain("Please address");
+    expect(msg).not.toContain("GL-54-line-staging");
+    expect(msg).not.toContain("Review comment");
     expect(msg).toContain("1. a.ts — line R2");
     expect(msg).toContain("Feedback: do the thing");
   });
@@ -109,7 +111,6 @@ describe("composeAgentMessage", () => {
       note({ file: "b.ts", line: 9, fromRef: "R7", toRef: "R9", lineRef: "R7–R9", body: "second" }),
       note({ file: "a.ts", line: 2, body: "first" }),
     ]);
-    expect(msg).toContain("review comments");
     const first = msg.indexOf("a.ts");
     const second = msg.indexOf("b.ts");
     expect(first).toBeGreaterThanOrEqual(0);

@@ -11,11 +11,10 @@
 import type { ForgeAuthStatus } from "../../../../lib/api";
 import { accountHandle, providerInitials } from "./providers";
 import { cn } from "../../../../lib/cn";
+import { supportsForgeCliSignOut } from "../../../../lib/forgeHelp";
 import { focusRing } from "../../../../lib/ui";
 import { useAccounts } from "../../../../store/accounts";
 import { useUi } from "../../../../store/ui";
-
-const SIGNOUT_SUPPORTED = new Set(["gitlab", "azure-devops"]);
 
 export function ConnectedForgeCard({
   status,
@@ -32,7 +31,7 @@ export function ConnectedForgeCard({
   // A CLI-less provider (Bitbucket) is only ever "signed in" via a saved HTTPS
   // credential — sign-out there means forgetting that credential, not a CLI logout.
   const savedCredentialSignIn = status.cli === null && status.authenticated === true;
-  const canSignOut = SIGNOUT_SUPPORTED.has(status.provider) || savedCredentialSignIn;
+  const canSignOut = supportsForgeCliSignOut(status.provider) || savedCredentialSignIn;
   const signOut = () =>
     requestConfirm({
       title: `Sign out of ${status.forge}?`,
@@ -77,6 +76,7 @@ export function ConnectedForgeCard({
       </div>
       {canSignOut && (
         <button
+          type="button"
           onClick={signOut}
           className={cn(
             "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium text-neutral-500 transition hover:bg-rose-500/10 hover:text-rose-600 dark:text-neutral-400 dark:hover:text-rose-400",

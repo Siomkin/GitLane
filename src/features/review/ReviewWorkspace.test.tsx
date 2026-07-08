@@ -173,6 +173,23 @@ describe("ReviewWorkspace — virtualized diff", () => {
     expect(applyLine).toHaveBeenCalledWith("src/huge.ts", false, 0, 0, fileDiff.hunks[0].lines[0]);
   });
 
+  it("unstages a changed line from a staged diff through the repo store action", () => {
+    const applyLine = vi.fn(async () => {});
+    const fileDiff = bigDiff(3);
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "src/huge.ts", source: "staged" },
+      fileDiff,
+      diffLoading: false,
+      applyLine,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Unstage line" })[0]);
+
+    expect(applyLine).toHaveBeenCalledWith("src/huge.ts", true, 0, 0, fileDiff.hunks[0].lines[0]);
+  });
+
   it("hides the Unified/Split toggle and shows the binary card for a binary file", () => {
     useRepo.setState({
       fileDiff: { path: "docs/spec.pdf", status: "A", add: 0, del: 0, binary: true, truncated: false, hunks: [] },
@@ -270,5 +287,23 @@ describe("ReviewWorkspace — virtualized diff", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Stage line" })[0]);
 
     expect(applyLine).toHaveBeenCalledWith("src/huge.ts", false, 0, 0, fileDiff.hunks[0].lines[0]);
+  });
+
+  it("unstages a changed line from split view", () => {
+    const applyLine = vi.fn(async () => {});
+    const fileDiff = bigDiff(3);
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      selectedFile: { path: "src/huge.ts", source: "staged" },
+      fileDiff,
+      diffLoading: false,
+      applyLine,
+    });
+
+    render(<ReviewWorkspace />);
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Unstage line" })[0]);
+
+    expect(applyLine).toHaveBeenCalledWith("src/huge.ts", true, 0, 0, fileDiff.hunks[0].lines[0]);
   });
 });

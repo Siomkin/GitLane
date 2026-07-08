@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_CREDENTIAL_HOST, defaultTransportUsername, sshKeyHelp, tokenCreationUrl } from "./forgeHelp";
+import {
+  DEFAULT_CREDENTIAL_HOST,
+  defaultsToProviderTokenForPullRequests,
+  defaultTransportUsername,
+  isForgeAuthProvider,
+  pullRequestLabel,
+  sshKeyHelp,
+  supportsEditableOauthHost,
+  supportsForgeCliSignOut,
+  supportsForgeWhoami,
+  supportsProviderTokenAuth,
+  supportsPullRequests,
+  supportsPullRequestsViaForgeAuth,
+  tokenCreationUrl,
+} from "./forgeHelp";
 
 describe("tokenCreationUrl", () => {
   it("is host-parameterised for GitLab (self-managed)", () => {
@@ -50,5 +64,61 @@ describe("DEFAULT_CREDENTIAL_HOST", () => {
     expect(DEFAULT_CREDENTIAL_HOST.gitlab).toBe("gitlab.com");
     expect(DEFAULT_CREDENTIAL_HOST.bitbucket).toBe("bitbucket.org");
     expect(DEFAULT_CREDENTIAL_HOST["azure-devops"]).toBe("dev.azure.com");
+  });
+});
+
+describe("provider capabilities", () => {
+  it("centralizes the non-GitHub forge provider set", () => {
+    expect(isForgeAuthProvider("gitlab")).toBe(true);
+    expect(isForgeAuthProvider("bitbucket")).toBe(true);
+    expect(isForgeAuthProvider("azure-devops")).toBe(true);
+    expect(isForgeAuthProvider("gitea")).toBe(true);
+    expect(isForgeAuthProvider("forgejo")).toBe(true);
+    expect(isForgeAuthProvider("github")).toBe(false);
+  });
+
+  it("centralizes which providers support PR workflows", () => {
+    expect(supportsPullRequests("github")).toBe(true);
+    expect(supportsPullRequests("gitlab")).toBe(true);
+    expect(supportsPullRequests("bitbucket")).toBe(true);
+    expect(supportsPullRequests("azure-devops")).toBe(false);
+  });
+
+  it("centralizes provider-specific PR wording and auth readiness", () => {
+    expect(pullRequestLabel("gitlab")).toBe("Merge requests");
+    expect(pullRequestLabel("bitbucket")).toBe("Pull requests");
+
+    expect(supportsPullRequestsViaForgeAuth("gitlab")).toBe(true);
+    expect(supportsPullRequestsViaForgeAuth("bitbucket")).toBe(false);
+    expect(supportsPullRequestsViaForgeAuth("azure-devops")).toBe(false);
+  });
+
+  it("centralizes providers with account whoami and CLI sign-out support", () => {
+    expect(supportsForgeWhoami("gitlab")).toBe(true);
+    expect(supportsForgeWhoami("azure-devops")).toBe(true);
+    expect(supportsForgeWhoami("bitbucket")).toBe(false);
+
+    expect(supportsForgeCliSignOut("gitlab")).toBe(true);
+    expect(supportsForgeCliSignOut("azure-devops")).toBe(true);
+    expect(supportsForgeCliSignOut("bitbucket")).toBe(false);
+  });
+
+  it("centralizes which non-GitHub providers can use GitLane keychain tokens", () => {
+    expect(supportsProviderTokenAuth("gitlab")).toBe(true);
+    expect(supportsProviderTokenAuth("bitbucket")).toBe(true);
+    expect(supportsProviderTokenAuth("github")).toBe(false);
+    expect(supportsProviderTokenAuth("azure-devops")).toBe(false);
+  });
+
+  it("centralizes which provider-token flows default to PR storage", () => {
+    expect(defaultsToProviderTokenForPullRequests("bitbucket")).toBe(true);
+    expect(defaultsToProviderTokenForPullRequests("gitlab")).toBe(false);
+    expect(defaultsToProviderTokenForPullRequests("github")).toBe(false);
+  });
+
+  it("centralizes providers with editable OAuth hosts", () => {
+    expect(supportsEditableOauthHost("gitlab")).toBe(true);
+    expect(supportsEditableOauthHost("bitbucket")).toBe(false);
+    expect(supportsEditableOauthHost("azure-devops")).toBe(false);
   });
 });

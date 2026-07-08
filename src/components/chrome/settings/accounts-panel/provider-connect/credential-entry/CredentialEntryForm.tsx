@@ -7,7 +7,11 @@
 import { useState } from "react";
 import { cn } from "../../../../../../lib/cn";
 import { focusRing } from "../../../../../../lib/ui";
-import { defaultTransportUsername } from "../../../../../../lib/forgeHelp";
+import {
+  defaultTransportUsername,
+  isForgeAuthProvider,
+  supportsProviderTokenAuth,
+} from "../../../../../../lib/forgeHelp";
 import type { ForgeAuthProvider } from "../../../../../../lib/api";
 import { useAccounts } from "../../../../../../store/accounts";
 import { inputCls } from "../ui";
@@ -26,13 +30,13 @@ export function CredentialEntryForm({
 }) {
   const saveHttpsCredential = useAccounts((s) => s.saveHttpsCredential);
   const saveProviderToken = useAccounts((s) => s.saveProviderToken);
-  const keychainAvailable = !helperOnly && (provider === "gitlab" || provider === "bitbucket");
-  const [dest, setDest] = useState<CredentialDestination>(keychainAvailable ? "keychain" : "helper");
-  const [host, setHost] = useState(resolveHost(provider));
-  const [hostEditable, setHostEditable] = useState(hostFieldInitiallyEditable(provider));
+  const keychainAvailable = !helperOnly && supportsProviderTokenAuth(provider);
+  const [dest, setDest] = useState<CredentialDestination>(() => (keychainAvailable ? "keychain" : "helper"));
+  const [host, setHost] = useState(() => resolveHost(provider));
+  const [hostEditable, setHostEditable] = useState(() => hostFieldInitiallyEditable(provider));
   const [advanced, setAdvanced] = useState(false);
   const [path, setPath] = useState("");
-  const [username, setUsername] = useState(usernameHint ?? defaultTransportUsername(provider) ?? "");
+  const [username, setUsername] = useState(() => usernameHint ?? defaultTransportUsername(provider) ?? "");
   const [password, setPassword] = useState("");
   const keychain = dest === "keychain";
   const disabled = !canSubmit({ host, path, username, password });
@@ -42,11 +46,12 @@ export function CredentialEntryForm({
     if (keychain) {
       // Keep the pasted token on a failed save so the user can retry without
       // re-pasting — saveProviderToken resolves false (and toasts) on failure.
-      void saveProviderToken(provider as ForgeAuthProvider, host.trim(), username.trim(), password).then((ok) => {
+      if (!supportsProviderTokenAuth(provider)) return;
+      void saveProviderToken(provider, host.trim(), username.trim(), password).then((ok) => {
         if (ok) clear();
       });
     } else {
-      const trackedProvider = provider === "github" ? undefined : (provider as ForgeAuthProvider);
+      const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(provider) ? provider : undefined;
       void saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, trackedProvider).then((ok) => {
         if (ok) clear();
       });

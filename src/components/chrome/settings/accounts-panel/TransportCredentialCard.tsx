@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useReducer } from "react";
 import type { ForgeAuthProvider } from "../../../../lib/api";
 import { cn } from "../../../../lib/cn";
+import {
+  defaultsToProviderTokenForPullRequests,
+  isForgeAuthProvider,
+  supportsProviderTokenAuth,
+} from "../../../../lib/forgeHelp";
 import { focusRing } from "../../../../lib/ui";
 import { useAccounts } from "../../../../store/accounts";
 import { useUi } from "../../../../store/ui";
@@ -15,54 +20,123 @@ export interface TransportCredentialAccount {
   remoteName: string;
 }
 
+type CredentialMessage = { tone: "ok" | "warn" | "error"; text: string };
+interface CredentialDraftState {
+  editing: boolean;
+  usernameDraft: string;
+  password: string;
+  useForPullRequests: boolean;
+  message: CredentialMessage | null;
+}
+
+type CredentialDraftAction =
+  | { type: "open"; login: string; provider: ProviderKey }
+  | { type: "close" }
+  | { type: "username"; value: string }
+  | { type: "password"; value: string }
+  | { type: "useForPullRequests"; value: boolean }
+  | { type: "message"; value: CredentialMessage | null }
+  | { type: "saved"; value: CredentialMessage };
+
+const initialCredentialDraft = (provider: ProviderKey): CredentialDraftState => ({
+  editing: false,
+  usernameDraft: "",
+  password: "",
+  useForPullRequests: defaultsToProviderTokenForPullRequests(provider),
+  message: null,
+});
+
+function credentialDraftReducer(
+  state: CredentialDraftState,
+  action: CredentialDraftAction,
+): CredentialDraftState {
+  switch (action.type) {
+    case "open":
+      return {
+        editing: true,
+        usernameDraft: action.login,
+        password: "",
+        useForPullRequests: defaultsToProviderTokenForPullRequests(action.provider),
+        message: null,
+      };
+    case "close":
+      return { ...state, editing: false };
+    case "username":
+      return { ...state, usernameDraft: action.value };
+    case "password":
+      return { ...state, password: action.value };
+    case "useForPullRequests":
+      return { ...state, useForPullRequests: action.value };
+    case "message":
+      return { ...state, message: action.value };
+    case "saved":
+      return { ...state, editing: false, password: "", message: action.value };
+  }
+}
+
 export function TransportCredentialCard({ account }: { account: TransportCredentialAccount }) {
-  const [editing, setEditing] = useState(false);
-  const [username, setUsername] = useState(account.login);
-  const [password, setPassword] = useState("");
-  const [useForPullRequests, setUseForPullRequests] = useState(account.provider === "bitbucket");
-  const [message, setMessage] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
+  const [draft, dispatchDraft] = useReducer(
+    credentialDraftReducer,
+    account.provider,
+    initialCredentialDraft,
+  );
   const saveRemoteCredential = useAccounts((s) => s.saveRemoteCredential);
   const saveProviderToken = useAccounts((s) => s.saveProviderToken);
   const forgetHttpsCredential = useAccounts((s) => s.forgetHttpsCredential);
   const setRemoteUsername = useAccounts((s) => s.setRemoteUsername);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const disabled = username.trim() === "" || password === "";
+  const username = draft.editing ? draft.usernameDraft : account.login;
+  const disabled = username.trim() === "" || draft.password === "";
   const forge = providerLabel(account.provider);
-  const trackedProvider: ForgeAuthProvider | undefined =
-    account.provider === "github" ? undefined : account.provider;
-  const canTryPullRequests = account.provider === "bitbucket" || account.provider === "gitlab";
+  const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(account.provider)
+    ? account.provider
+    : undefined;
+  const canTryPullRequests = supportsProviderTokenAuth(account.provider);
+
+  const toggleEditing = () => {
+    if (draft.editing) {
+      dispatchDraft({ type: "close" });
+      return;
+    }
+    dispatchDraft({ type: "open", login: account.login, provider: account.provider });
+  };
 
   const save = () => {
     const cleanUser = username.trim();
-    setMessage(null);
-    void saveRemoteCredential(account.remoteName, cleanUser, password).then(async (transportSaved) => {
+    dispatchDraft({ type: "message", value: null });
+    void saveRemoteCredential(account.remoteName, cleanUser, draft.password).then(async (transportSaved) => {
       if (!transportSaved) {
-        setMessage({ tone: "error", text: "Credential was not saved. Check the error and try again." });
+        dispatchDraft({
+          type: "message",
+          value: { tone: "error", text: "Credential was not saved. Check the error and try again." },
+        });
         return;
       }
-      if (canTryPullRequests && trackedProvider && useForPullRequests) {
+      if (canTryPullRequests && trackedProvider && draft.useForPullRequests) {
         const prSaved = await saveProviderToken(
           trackedProvider,
           account.credentialHost,
           cleanUser,
-          password,
+          draft.password,
           { silent: true },
         );
         if (!prSaved) {
-          setMessage({
-            tone: "warn",
-            text: "Saved for git transport, but the PR token could not be stored. The token is still here so you can retry.",
+          dispatchDraft({
+            type: "message",
+            value: {
+              tone: "warn",
+              text: "Saved for git transport, but the PR token could not be stored. The token is still here so you can retry.",
+            },
           });
           return;
         }
-        setPassword("");
-        setEditing(false);
-        setMessage({ tone: "ok", text: "Saved for git transport and pull requests." });
+        dispatchDraft({
+          type: "saved",
+          value: { tone: "ok", text: "Saved for git transport and pull requests." },
+        });
         return;
       }
-      setPassword("");
-      setEditing(false);
-      setMessage({ tone: "ok", text: "Saved for git transport." });
+      dispatchDraft({ type: "saved", value: { tone: "ok", text: "Saved for git transport." } });
     });
   };
   const forget = () =>
@@ -105,13 +179,13 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
-            onClick={() => setEditing((open) => !open)}
+            onClick={toggleEditing}
             className={cn(
               "rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-neutral-500 transition hover:bg-black/[0.04] hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200",
               focusRing,
             )}
           >
-            {editing ? "Cancel" : "Update"}
+            {draft.editing ? "Cancel" : "Update"}
           </button>
           <button
             type="button"
@@ -135,19 +209,19 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
           </button>
         </div>
       </div>
-      {editing && (
+      {draft.editing && (
         <div className="mt-3 rounded-lg border border-black/[0.06] bg-black/[0.025] p-3 dark:border-white/[0.08] dark:bg-white/[0.04]">
           <div className="grid gap-2 sm:grid-cols-2">
             <input
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => dispatchDraft({ type: "username", value: e.target.value })}
               placeholder="HTTPS username"
               spellCheck={false}
               className={inputCls}
             />
             <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={draft.password}
+              onChange={(e) => dispatchDraft({ type: "password", value: e.target.value })}
               placeholder="Token / password"
               type="password"
               spellCheck={false}
@@ -161,8 +235,10 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
             <label className="mt-2 flex items-center gap-2 text-[12px] font-medium text-neutral-600 dark:text-neutral-300">
               <input
                 type="checkbox"
-                checked={useForPullRequests}
-                onChange={(e) => setUseForPullRequests(e.target.checked)}
+                checked={draft.useForPullRequests}
+                onChange={(e) =>
+                  dispatchDraft({ type: "useForPullRequests", value: e.target.checked })
+                }
                 className="h-4 w-4 accent-[var(--accent)]"
               />
               Try this token for pull requests too
@@ -182,21 +258,21 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
             </button>
             <span className="text-[11.5px] leading-snug text-neutral-400 dark:text-neutral-500">
               Updates <span className="font-mono">{account.remoteName}</span> and stores the token in your configured
-              Git helper{canTryPullRequests && useForPullRequests ? " and GitLane keychain" : ""}.
+              Git helper{canTryPullRequests && draft.useForPullRequests ? " and GitLane keychain" : ""}.
             </span>
           </div>
         </div>
       )}
-      {message && (
+      {draft.message && (
         <div
           className={cn(
             "mt-2 text-[12px] font-medium",
-            message.tone === "ok" && "text-emerald-600 dark:text-emerald-400",
-            message.tone === "warn" && "text-amber-600 dark:text-amber-400",
-            message.tone === "error" && "text-rose-600 dark:text-rose-400",
+            draft.message.tone === "ok" && "text-emerald-600 dark:text-emerald-400",
+            draft.message.tone === "warn" && "text-amber-600 dark:text-amber-400",
+            draft.message.tone === "error" && "text-rose-600 dark:text-rose-400",
           )}
         >
-          {message.text}
+          {draft.message.text}
         </div>
       )}
     </div>

@@ -49,6 +49,7 @@ function renamePaths(bucket: FileChange[], path: string): string[] | null {
 function withRenameCounterparts(bucket: FileChange[], paths: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
+  const byPath = new Map(bucket.map((entry) => [entry.path, entry]));
   const push = (p: string) => {
     if (!seen.has(p)) {
       seen.add(p);
@@ -57,7 +58,7 @@ function withRenameCounterparts(bucket: FileChange[], paths: string[]): string[]
   };
   for (const path of paths) {
     push(path);
-    const old = renameOldPath(bucket.find((f) => f.path === path));
+    const old = renameOldPath(byPath.get(path));
     if (old) push(old);
   }
   return out;
@@ -770,7 +771,7 @@ export function createRepoWriteActions(
       if (!summary) return;
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        const message = await api.applyLine(summary.path, path, staged, hunkIndex, lineIndex, line);
+        await api.applyLine(summary.path, path, staged, hunkIndex, lineIndex, line);
         await get().refresh();
         const { changes } = get();
         const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
@@ -782,7 +783,6 @@ export function createRepoWriteActions(
         } else {
           set({ selectedFile: null, fileDiff: null });
         }
-        useUi.getState().showToast(message);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }

@@ -8,7 +8,7 @@
 // No React, no IPC; unit-tested for parity in cloneAuth.test.ts.
 
 import type { GitTransportAuthRef, GitTransportProvider } from "../../../lib/api";
-import type { RemoteUrlInfo } from "../../../lib/remotes";
+import { transportProviderForRemoteProvider, type RemoteUrlInfo } from "../../../lib/remotes";
 
 /** The slice of a gh account the resolution needs (store/accounts `Account`). */
 export interface CloneAuthAccount {
@@ -55,13 +55,7 @@ export interface CloneAuthPlan {
 
 /** The provider a clone URL maps to on a transport auth ref. */
 export function cloneProviderFor(remoteInfo: RemoteUrlInfo): GitTransportProvider {
-  return remoteInfo.provider === "azure"
-    ? "azure-devops"
-    : remoteInfo.provider === "github" ||
-        remoteInfo.provider === "gitlab" ||
-        remoteInfo.provider === "bitbucket"
-      ? remoteInfo.provider
-      : "other";
+  return transportProviderForRemoteProvider(remoteInfo.provider);
 }
 
 /** Resolve how a clone of `remoteInfo` would authenticate. Priority order is

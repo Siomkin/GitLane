@@ -26,11 +26,11 @@ function CredentialHelperBody({ status }: { status: ForgeAuthStatus }) {
         Credential Manager or your configured helper handles sign-in for clone, fetch, pull, and push.
       </p>
       <div className="mt-2 flex flex-col gap-1.5">
-        <button onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
+        <button type="button" onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
           <ExternalIcon />
           Git Credential Manager
         </button>
-        <button onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
+        <button type="button" onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
           <ExternalIcon />
           {status.forge} authentication docs
         </button>
@@ -72,6 +72,7 @@ function CliBody({ status }: { status: ForgeAuthStatus }) {
           not a broken account. Install it, then press Refresh.
         </p>
         <button
+          type="button"
           onClick={() => openExternalUrl(status.docsUrl)}
           className={cn(
             "mt-2.5 inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[12.5px] font-semibold text-white transition hover:brightness-110",
@@ -107,13 +108,13 @@ function SshBody({ status }: { status: ForgeAuthStatus }) {
       {(addUrl || docsUrl) && (
         <div className="mt-2 flex flex-col gap-1.5">
           {addUrl && (
-            <button onClick={() => openExternalUrl(addUrl)} className={linkCls}>
+            <button type="button" onClick={() => openExternalUrl(addUrl)} className={linkCls}>
               <ExternalIcon />
               Add an SSH key on {status.forge}
             </button>
           )}
           {docsUrl && (
-            <button onClick={() => openExternalUrl(docsUrl)} className={linkCls}>
+            <button type="button" onClick={() => openExternalUrl(docsUrl)} className={linkCls}>
               <ExternalIcon />
               How to set up SSH keys
             </button>
@@ -246,7 +247,7 @@ export function ForgeConnect({
 
       <div className="mt-0.5 flex items-center gap-3">
         {refresh}
-        <button onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
+        <button type="button" onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
           Learn more
         </button>
       </div>
