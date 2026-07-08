@@ -382,7 +382,7 @@ mod tests {
             .expect_err("no token → error");
         let msg = err.to_ipc_string();
         assert!(msg.contains("Bitbucket"), "{msg}");
-        assert!(msg.contains("Settings"), "{msg}");
+        assert!(msg.contains("keychain token"), "{msg}");
         assert!(!msg.contains("gh auth"), "must not use gh wording: {msg}");
     }
 
