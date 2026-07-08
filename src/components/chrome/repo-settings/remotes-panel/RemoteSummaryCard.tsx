@@ -20,6 +20,9 @@ export const RemoteSummaryCard = ({
   const isBitbucket = info.provider === "bitbucket";
   const prs = providerSupportsPrs(info.provider);
   const prsReady = prs && Boolean(accountLabel);
+  const transportConfigured = Boolean(info.ssh || info.user);
+  const transportOnly = prs && !prsReady && transportConfigured;
+  const transportAccountLabel = info.ssh ? "SSH key" : info.user ? `@${info.user}` : null;
   // The forge's own request noun, so a GitLab card doesn't say "pull requests".
   const requests = isGitlab ? "merge requests" : "pull requests";
   const readyLabel = isGitlab ? "Merge requests enabled" : "Pull requests enabled";
@@ -27,6 +30,13 @@ export const RemoteSummaryCard = ({
   // account"), while GitLab and Bitbucket sign in with glab / a token — so those
   // say "Sign in for <requests>", not the gh-only "Select account for PRs".
   const notReadyLabel = isGithub ? "Select account for PRs" : `Sign in for ${requests}`;
+  const statusLabel = prsReady
+    ? readyLabel
+    : transportOnly
+      ? "Git auth configured"
+      : prs
+        ? notReadyLabel
+        : `${requests[0].toUpperCase()}${requests.slice(1)} unavailable`;
 
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-black/[0.07] bg-white p-4 dark:border-white/[0.08] dark:bg-neutral-800/60">
@@ -55,6 +65,8 @@ export const RemoteSummaryCard = ({
             "inline-flex items-center gap-1.5 text-[12px] font-medium",
             prsReady
               ? "text-emerald-600 dark:text-emerald-400"
+              : transportOnly
+                ? "text-blue-600 dark:text-blue-400"
               : prs
                 ? "text-amber-600 dark:text-amber-400"
                 : "text-neutral-500 dark:text-neutral-400",
@@ -63,14 +75,17 @@ export const RemoteSummaryCard = ({
           <span
             className={cn(
               "h-1.5 w-1.5 rounded-full",
-              prsReady ? "bg-emerald-500" : prs ? "bg-amber-500" : "bg-neutral-400",
+              prsReady ? "bg-emerald-500" : transportOnly ? "bg-blue-500" : prs ? "bg-amber-500" : "bg-neutral-400",
             )}
           />
-          {prsReady ? readyLabel : prs ? notReadyLabel : `${requests[0].toUpperCase()}${requests.slice(1)} unavailable`}
+          {statusLabel}
         </span>
-        {accountLabel && (
+        {(accountLabel || transportAccountLabel) && (
           <span className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-            Account <span className="font-medium text-neutral-700 dark:text-neutral-200">{accountLabel}</span>
+            {accountLabel ? "Account" : "Transport"}{" "}
+            <span className="font-medium text-neutral-700 dark:text-neutral-200">
+              {accountLabel ?? transportAccountLabel}
+            </span>
           </span>
         )}
       </div>

@@ -4,6 +4,7 @@
 // the onboarding clone/recovery surfaces — no React, no IPC.
 
 export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
+  github: "github.com",
   gitlab: "gitlab.com",
   bitbucket: "bitbucket.org",
   "azure-devops": "dev.azure.com",

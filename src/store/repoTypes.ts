@@ -292,6 +292,8 @@ export interface RepoState {
   /** Checkout `name`; resolves with a toast message, throws the git error so
    * callers can surface it (the global error bar is reserved for open/refresh). */
   checkoutBranch: (name: string) => Promise<string>;
+  /** Create and checkout local `branch` tracking `remote/branch`. */
+  checkoutRemoteBranch: (remote: string, branch: string) => Promise<string>;
   createBranchAt: (name: string, startPoint?: string) => Promise<string>;
   removeBranch: (name: string, force?: boolean) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;

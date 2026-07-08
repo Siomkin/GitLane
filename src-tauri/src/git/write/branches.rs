@@ -15,6 +15,16 @@ pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
     run_git(repo, &["checkout", target])
 }
 
+/// Create a local branch that tracks an existing remote-tracking ref, then
+/// check it out. The UI calls this for remote-only refs so `origin/foo` becomes
+/// a real local `foo` instead of a detached checkout at the remote tip.
+pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<String, String> {
+    ensure_operand(remote)?;
+    ensure_operand(branch)?;
+    let remote_ref = format!("refs/remotes/{remote}/{branch}");
+    run_git(repo, &["checkout", "--track", "-b", branch, &remote_ref])
+}
+
 /// Disambiguate a bare ref that is *both* a local branch and a tag toward the
 /// branch by returning `refs/heads/<name>`; otherwise return `name` unchanged.
 ///

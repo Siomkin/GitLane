@@ -71,7 +71,7 @@ export function ConnectedForgeCard({
             {status.cli ? `signed in via ${status.cli}` : status.authMethod} ·{" "}
             {status.provider === "gitlab" && status.cli === "glab" && status.available === true
               ? "git transport authenticates through glab"
-              : "git transport uses remote usernames and your credential helper"}
+              : "git transport uses GCM/helper or SSH"}
           </div>
         )}
       </div>

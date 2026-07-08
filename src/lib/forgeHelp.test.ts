@@ -46,6 +46,7 @@ describe("sshKeyHelp", () => {
 
 describe("DEFAULT_CREDENTIAL_HOST", () => {
   it("covers the hosted forges GitLane offers token entry for", () => {
+    expect(DEFAULT_CREDENTIAL_HOST.github).toBe("github.com");
     expect(DEFAULT_CREDENTIAL_HOST.gitlab).toBe("gitlab.com");
     expect(DEFAULT_CREDENTIAL_HOST.bitbucket).toBe("bitbucket.org");
     expect(DEFAULT_CREDENTIAL_HOST["azure-devops"]).toBe("dev.azure.com");

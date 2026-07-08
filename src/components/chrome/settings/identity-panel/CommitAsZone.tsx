@@ -59,7 +59,7 @@ export function CommitAsZone() {
     <div className="mt-6">
       <div className="flex items-baseline justify-between gap-3">
         <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
-          COMMIT AS · GIT PROFILE
+          COMMIT AS · GIT IDENTITY
         </div>
         <button
           onClick={() => {
@@ -71,7 +71,7 @@ export function CommitAsZone() {
             focusRing,
           )}
         >
-          Manage profiles
+          Manage identities
           <ArrowUpRightIcon className="h-3 w-3" />
         </button>
       </div>
@@ -84,7 +84,7 @@ export function CommitAsZone() {
         <div
           className="mt-3 space-y-2 rounded-xl border border-black/[0.07] bg-black/[0.02] p-2 dark:border-white/[0.08] dark:bg-white/[0.03]"
           role="group"
-          aria-label="Git profile choices"
+          aria-label="Git identity choices"
         >
           <ProfileChoiceRow
             title="Default git identity"

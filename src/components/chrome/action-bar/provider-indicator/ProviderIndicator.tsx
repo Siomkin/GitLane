@@ -36,6 +36,7 @@ const FORGE_ICON: Partial<Record<ForgeKind, ComponentType<{ className?: string }
  * healthy remote needs no badge. */
 const PROVIDER_DOT: Record<ProviderState, string | null> = {
   connected: null,
+  "transport-auth": "#2f81f7",
   "needs-auth": "#d4a72c",
   unsupported: "#9a9a9a",
   missing: "#9a9a9a",
@@ -66,10 +67,14 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
       return forge.kind === ForgeKind.GitHub || forge.kind === ForgeKind.Bitbucket
         ? `${slug} · pull requests enabled`
         : `${slug} · pull requests unavailable`;
-    case "needs-auth":
+    case "transport-auth":
       return forge.kind === ForgeKind.GitLab
-        ? `${slug} · sign in to view merge requests`
-        : `${slug} · sign in to view pull requests`;
+        ? `${slug} · git auth configured, merge requests unavailable`
+        : `${slug} · git auth configured, pull requests unavailable`;
+    case "needs-auth":
+      if (forge.kind === ForgeKind.GitLab) return `${slug} · sign in to view merge requests`;
+      if (forge.kind === ForgeKind.Bitbucket) return `${slug} · set up auth for pull requests`;
+      return `${slug} · sign in to view pull requests`;
     case "unsupported":
       return `${slug} · pull requests unavailable`;
   }

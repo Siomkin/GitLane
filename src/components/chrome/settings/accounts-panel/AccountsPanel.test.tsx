@@ -7,7 +7,9 @@ const openUrl = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 import type { ForgeAuthStatus } from "@/lib/api";
+import type { RemoteInfo } from "@/lib/api";
 import { useAccounts, type Account } from "@/store/accounts";
+import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { AccountsPanel } from "./AccountsPanel";
 
@@ -52,13 +54,32 @@ const bitbucketManual: ForgeAuthStatus = {
   provider: "bitbucket",
   forge: "Bitbucket",
   cli: null,
-  authMethod: "API token or git credential helper",
+  authMethod: "Git credential helper / GCM or SSH",
   available: false,
   authenticated: null,
-  loginCommand: "Create a Bitbucket API token",
-  docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
-  notes: "Bitbucket has no bundled CLI probe in GitLane yet.",
+  loginCommand: "Use an HTTPS remote with Git Credential Manager, or use an SSH remote with a Bitbucket SSH key.",
+  docsUrl: "https://support.atlassian.com/bitbucket-cloud/docs/configure-ssh-and-two-step-verification/",
+  notes: "Bitbucket has no bundled CLI. Git transport works through Git's credential helper/GCM for HTTPS, or through SSH keys for SSH remotes.",
 };
+
+const azureMissing: ForgeAuthStatus = {
+  provider: "azure-devops",
+  forge: "Azure DevOps",
+  cli: "az",
+  authMethod: "Azure CLI",
+  available: false,
+  authenticated: null,
+  loginCommand: "az login",
+  docsUrl: "https://learn.microsoft.com/cli/azure/install-azure-cli?view=azure-cli-latest",
+  notes: "Uses Azure CLI sign-in as the account signal. Git transport works through GCM/helper for HTTPS, or through SSH keys for SSH remotes.",
+};
+
+const remote = (url: string, name = "origin"): RemoteInfo => ({
+  name,
+  fetchUrl: url,
+  pushUrl: url,
+  isDefault: name === "origin",
+});
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -73,7 +94,8 @@ beforeEach(() => {
     forgeAccountsLoading: [],
     providerTokens: {},
   });
-  useUi.setState({ githubSignin: null, confirm: null });
+  useUi.setState({ githubSignin: null, confirm: null, repoSettingsOpen: false, repoSettingsSection: "identity" });
+  useRepo.setState({ remotes: [] });
 });
 
 // No rail: connected accounts + a single "Add a provider" button → picker → connect page.
@@ -116,15 +138,15 @@ describe("AccountsPanel", () => {
     expect(screen.getByText("Keychain token")).toBeInTheDocument();
   });
 
-  it("offers only GitHub, GitLab, and Bitbucket in the picker", () => {
-    useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
+  it("offers GitHub, GitLab, Bitbucket, and Azure DevOps in the picker", () => {
+    useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual, azureMissing] });
     render(<AccountsPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
 
     expect(screen.getByRole("button", { name: /GitHub/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitLab/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Bitbucket/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Azure/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Azure DevOps/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Gitea/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Forgejo/ })).toBeNull();
   });
@@ -133,6 +155,9 @@ describe("AccountsPanel", () => {
     render(<AccountsPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /GitHub/ }));
+    expect(screen.getAllByText("Git Credential Manager").length).toBeGreaterThan(0);
+    expect(screen.getByText("SSH key")).toBeInTheDocument();
+    expect(screen.getByText("GitHub CLI")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(useUi.getState().githubSignin).toEqual({ host: "github.com" });
   });
@@ -142,6 +167,23 @@ describe("AccountsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /GitLab/ }));
     expect(screen.getByText("Connect GitLab")).toBeInTheDocument();
+  });
+
+  it("shows signed-in CLI state for GitLab while keeping GCM and SSH available", () => {
+    useAccounts.setState({ accounts: [], forgeAuth: [gitlabSignedIn] });
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
+    fireEvent.click(screen.getByRole("button", { name: /GitLab/ }));
+
+    expect(
+      screen.getByText(
+        (_, node) =>
+          node?.tagName.toLowerCase() === "p" &&
+          (node.textContent?.includes("Signed in via glab as @ada") ?? false),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Git Credential Manager").length).toBeGreaterThan(0);
+    expect(screen.getByText("SSH key")).toBeInTheDocument();
   });
 
   it("shows a keychain-token (OAuth/PAT) account with sign out", () => {
@@ -171,6 +213,118 @@ describe("AccountsPanel", () => {
     expect(useUi.getState().confirm?.title).toBe("Sign out of GitLab?");
   });
 
+  it("shows repo HTTPS usernames as GCM/helper transport accounts", () => {
+    useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
+    useRepo.setState({ remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")] });
+    render(<AccountsPanel />);
+
+    expect(screen.getByText("Bitbucket")).toBeInTheDocument();
+    expect(screen.getByText("Transport only")).toBeInTheDocument();
+    expect(screen.getByText("@SiomkinAlexander")).toBeInTheDocument();
+    expect(screen.getByText("GCM/helper")).toBeInTheDocument();
+    expect(screen.getByText(/origin · bitbucket.org · git transport only/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Forget" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
+
+  it("updates a repo transport credential from the GCM/helper row", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "SiomkinAlexander", helper: "manager-core" });
+      if (cmd === "save_provider_token") return Promise.resolve({ hasToken: true });
+      return Promise.resolve([]);
+    });
+    useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+      remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")],
+    });
+    render(<AccountsPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    expect(screen.getByPlaceholderText("HTTPS username")).toHaveValue("SiomkinAlexander");
+    fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "new-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
+        credentialHost: "bitbucket.org",
+        path: "darang/gitlanebucket",
+        username: "SiomkinAlexander",
+        password: "new-secret",
+      }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path: "/repo",
+      name: "origin",
+      username: "SiomkinAlexander",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("save_provider_token", {
+      provider: "bitbucket",
+      host: "bitbucket.org",
+      accountId: "SiomkinAlexander",
+      login: "SiomkinAlexander",
+      token: "new-secret",
+    });
+    await waitFor(() => expect(screen.getByText("Keychain token")).toBeInTheDocument());
+  });
+
+  it("keeps the pasted token visible when updating a transport credential fails", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "approve_https_credential" ? Promise.reject(new Error("keychain locked")) : Promise.resolve([]),
+    );
+    useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+      remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")],
+    });
+    render(<AccountsPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "new-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    await waitFor(() => expect(screen.getByText("Credential was not saved. Check the error and try again.")).toBeInTheDocument());
+    expect(screen.getByPlaceholderText("Token / password")).toHaveValue("new-secret");
+    expect(invokeMock).not.toHaveBeenCalledWith("save_provider_token", expect.anything());
+  });
+
+  it("forgets or removes a repo transport credential from the GCM/helper row", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "reject_https_credential" ? { helper: "manager-core" } : []),
+    );
+    useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+      remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")],
+    });
+    render(<AccountsPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Forget" }));
+    expect(useUi.getState().confirm?.title).toBe("Forget Bitbucket credential?");
+    useUi.getState().confirm?.onConfirm();
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("reject_https_credential", {
+        credentialHost: "bitbucket.org",
+        path: "darang/gitlanebucket",
+        username: "SiomkinAlexander",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(useUi.getState().confirm?.title).toBe("Remove @SiomkinAlexander from origin?");
+    useUi.getState().confirm?.onConfirm();
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+        path: "/repo",
+        name: "origin",
+        username: null,
+      }),
+    );
+  });
+
   it("shows a connected forge card with sign out for an authenticated GitLab", () => {
     // Isolate the forge card: no GitHub account (whose card also has a Sign out).
     useAccounts.setState({ accounts: [], forgeAuth: [gitlabSignedIn] });
@@ -191,78 +345,65 @@ describe("AccountsPanel", () => {
     expect(useUi.getState().accountsConnectIntent).toBeNull();
   });
 
-  it("keeps the credential form to two fields: host is static with Edit, path scope behind Advanced", () => {
+  it("shows GCM credential entry and SSH for Bitbucket, with OAuth/keychain setup hidden", () => {
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
     render(<AccountsPanel />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /Bitbucket/ }));
 
-    // Two inputs by default; the host is a fact, not a field, and the Bitbucket
-    // API-token username convention is prefilled.
+    expect(screen.getAllByText("Git Credential Manager").length).toBeGreaterThan(0);
+    expect(screen.getByText("SSH key")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("HTTPS username")).toHaveValue("x-bitbucket-api-token-auth");
     expect(screen.getByPlaceholderText("Token / password")).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("Host")).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("Path scope (optional)")).not.toBeInTheDocument();
-    // The host shows as a static fact (also mentioned in the token help copy).
-    expect(screen.getAllByText("bitbucket.org").length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByPlaceholderText("Host")).toHaveValue("bitbucket.org");
-
-    // Path scope is a Git-helper concept; it lives behind Advanced on that
-    // destination (Bitbucket defaults to the keychain, so switch first).
-    fireEvent.click(screen.getByRole("button", { name: "Git helper" }));
-    fireEvent.click(screen.getByRole("button", { name: "Advanced…" }));
-    expect(screen.getByPlaceholderText("Path scope (optional)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "GitLane keychain" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in with OAuth" })).toBeNull();
   });
 
-  it("defaults a PR-capable forge to the keychain and stores the token there", async () => {
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === "save_provider_token") return { stored: true };
-      return [];
-    });
-    useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
-    render(<AccountsPanel />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
-    fireEvent.click(screen.getByRole("button", { name: /Bitbucket/ }));
-
-    // Keychain is the default destination for Bitbucket (it's what powers PRs),
-    // so the primary action stores in the keychain rather than the Git helper.
-    fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "ada" } });
-    fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "secret-token" } });
-    fireEvent.click(screen.getByRole("button", { name: "Store in keychain" }));
-
-    // The keychain state surfaces as the "Pull requests ready" confirmation, and
-    // the token is recorded (non-secret) in the provider-token map.
-    await waitFor(() => expect(screen.getByText(/Pull requests ready/)).toBeInTheDocument());
-    expect(invokeMock).toHaveBeenCalledWith(
-      "save_provider_token",
-      expect.objectContaining({ provider: "bitbucket", host: "bitbucket.org", login: "ada" }),
+  it("saves a Bitbucket credential through the configured Git helper/GCM", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "approve_https_credential" ? { username: "ada", helper: "manager-core" } : []),
     );
-    expect(localStorage.getItem("gitlane.providerTokens")).toContain('"provider":"bitbucket"');
-    expect(localStorage.getItem("gitlane.providerTokens")).not.toContain("secret-token");
-  });
-
-  it("saves a manual Bitbucket credential via git credential approve", async () => {
-    invokeMock.mockImplementation(async (cmd: string) => {
-      if (cmd === "approve_https_credential") return { username: "ada", helper: "osxkeychain" };
-      return [];
-    });
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
     render(<AccountsPanel />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /Bitbucket/ }));
-    // The Git helper (transport-only) path is the non-default destination now.
-    fireEvent.click(screen.getByRole("button", { name: "Git helper" }));
     fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "ada" } });
     fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "secret-token" } });
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
 
-    await waitFor(() => expect(screen.getByText("Signed in as @ada")).toBeInTheDocument());
-    expect(localStorage.getItem("gitlane.forgeCredentials")).toContain('"username":"ada"');
-    expect(localStorage.getItem("gitlane.forgeCredentials")).not.toContain("secret-token");
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
+        credentialHost: "bitbucket.org",
+        path: null,
+        username: "ada",
+        password: "secret-token",
+      }),
+    );
+  });
+
+  it("saves an Azure DevOps credential through the configured Git helper/GCM", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "approve_https_credential" ? { username: "alex", helper: "manager-core" } : []),
+    );
+    useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual, azureMissing] });
+    render(<AccountsPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
+    fireEvent.click(screen.getByRole("button", { name: /Azure DevOps/ }));
+    expect(screen.getByText("Azure CLI")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "alex" } });
+    fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "azure-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
+        credentialHost: "dev.azure.com",
+        path: null,
+        username: "alex",
+        password: "azure-secret",
+      }),
+    );
   });
 });

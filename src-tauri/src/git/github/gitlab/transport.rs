@@ -84,7 +84,7 @@ pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, String> {
 }
 
 const GLAB_NOT_FOUND: &str =
-    "GitLab CLI (glab) not found on PATH. Install glab and run `glab auth login`, or sign in with a token in Settings, to use merge requests.";
+    "GitLab CLI (glab) not found on PATH. Install glab and run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport.";
 
 /// Whether `glab` is installed (`glab --version` succeeds). Cached on success.
 /// This is presence only — glab surfaces its own clear error if it is installed

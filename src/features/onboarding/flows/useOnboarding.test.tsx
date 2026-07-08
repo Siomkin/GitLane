@@ -148,7 +148,7 @@ describe("clone auth status line", () => {
     const { result } = renderHook(() => useOnboarding());
     act(() => result.current.setCloneUrl("https://gitlab.com/group/repo.git"));
     expect(result.current.cloneAuthPlan.method).toBe("system");
-    expect(result.current.cloneAuthStatus).toMatch(/system git credentials/);
+    expect(result.current.cloneAuthStatus).toMatch(/Git credential helper \/ GCM/);
 
     act(() => result.current.setClonePassword("token"));
     expect(result.current.cloneAuthPlan.method).toBe("enteredToken");

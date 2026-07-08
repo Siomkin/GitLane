@@ -4,7 +4,7 @@ use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
 use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_push_remote, cherry_pick,
-    cherry_pick_many, clear_repo_identity, continue_operation, create_tag,
+    cherry_pick_many, checkout_remote_branch, clear_repo_identity, continue_operation, create_tag,
     delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
     fast_forward_branch, fetch, head_push_remote, mark_conflict_resolved, merge,
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
@@ -111,6 +111,40 @@ fn repo_with_merged_feature(tag: &str) -> (TempRepo, String) {
     repo.git_ok(&["merge", "-q", "--no-ff", "--no-edit", "feature"]);
     let sha = rev_parse(&repo, "HEAD");
     (repo, sha)
+}
+
+#[test]
+fn checkout_remote_branch_creates_tracking_local_branch() {
+    let repo = TempRepo::new("checkout-remote-branch");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["remote", "add", "origin", "https://example.test/repo.git"]);
+    repo.git_ok(&["update-ref", "refs/remotes/origin/feature", "HEAD"]);
+
+    checkout_remote_branch(repo.path(), "origin", "feature").expect("checkout remote branch");
+
+    let head = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    assert!(
+        head.status.success(),
+        "HEAD branch should resolve\nstderr:\n{}",
+        String::from_utf8_lossy(&head.stderr),
+    );
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feature");
+    let upstream = repo.git(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+    assert!(
+        upstream.status.success(),
+        "upstream should resolve\nstderr:\n{}",
+        String::from_utf8_lossy(&upstream.stderr),
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&upstream.stdout).trim(),
+        "origin/feature"
+    );
 }
 
 #[test]

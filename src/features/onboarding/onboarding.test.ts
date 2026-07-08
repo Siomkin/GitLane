@@ -120,7 +120,7 @@ describe("classifyCloneError", () => {
       "fatal: could not read Password for 'https://SiomkinAlexander@bitbucket.org': terminal prompts disabled",
     );
     expect(bitbucket.message).toBe(
-      "Bitbucket credentials are missing or invalid for @SiomkinAlexander. Save a Bitbucket API token or app password, then try again.",
+      "Bitbucket credentials are missing or invalid for @SiomkinAlexander. Set up Git Credential Manager or SSH, then try again.",
     );
 
     const ssh = classifyCloneError(
@@ -146,9 +146,9 @@ describe("classifyCloneError", () => {
     );
     expect(c.kind).toBe("denied");
     expect(c.title).toMatch(/denied/i);
-    // Bitbucket-specific hint since the URL is bitbucket; the username
-    // convention itself lives in the recovery panel, not the headline.
-    expect(c.message).toMatch(/Atlassian API token/);
+    // Bitbucket-specific hint since the URL is bitbucket; GCM/SSH details live
+    // in the recovery panel, not the headline.
+    expect(c.message).toMatch(/Git Credential Manager or SSH/);
     // The recovery panel fixes the credential in place, so retry reruns the clone.
     expect(c.recoverable).toBe(true);
     expect(retryRerunsClone(c.kind)).toBe(true);

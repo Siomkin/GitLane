@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import { CommitRow } from "./CommitRow";
@@ -33,10 +33,16 @@ const baseProps = {
   onSelect: () => {},
 };
 
+const realCheckoutBranch = useRepo.getState().checkoutBranch;
+const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
+
 beforeEach(() => {
   useRepo.setState({
     summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
     worktrees: [],
+    branches: [],
+    checkoutBranch: realCheckoutBranch,
+    checkoutRemoteBranch: realCheckoutRemoteBranch,
   });
 });
 
@@ -52,5 +58,30 @@ describe("CommitRow ref pills", () => {
   it("shows no worktree marker for an ordinary branch", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     expect(screen.queryByTitle(/Checked out in worktree/)).not.toBeInTheDocument();
+  });
+
+  it("double-clicks a remote-only ref into a local tracking checkout", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const checkoutBranch = vi.fn().mockResolvedValue("detached");
+    useRepo.setState({
+      branches: [
+        {
+          name: "origin/feature",
+          kind: "remote",
+          target: "c1",
+          isHead: false,
+          upstream: null,
+          remote: "origin",
+        },
+      ],
+      checkoutBranch,
+      checkoutRemoteBranch,
+    });
+
+    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "origin/feature", kind: "remote" }] })} />);
+    fireEvent.doubleClick(screen.getByText("origin/feature"));
+
+    await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 });

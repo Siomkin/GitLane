@@ -39,6 +39,13 @@ describe("RemoteSummaryCard", () => {
     expect(screen.queryByText("Select account for PRs")).toBeNull();
   });
 
+  it("Bitbucket with an HTTPS username → git auth configured, not PR sign-in", () => {
+    render(<RemoteSummaryCard remote={remote("https://ada@bitbucket.org/team/repo.git")} accountLabel={null} />);
+    expect(screen.getByText("Git auth configured")).toBeInTheDocument();
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+    expect(screen.queryByText("Sign in for pull requests")).toBeNull();
+  });
+
   it("a non-PR forge → pull requests unavailable", () => {
     render(<RemoteSummaryCard remote={remote("https://dev.azure.com/org/proj/_git/repo")} accountLabel={null} />);
     expect(screen.getByText("Pull requests unavailable")).toBeInTheDocument();

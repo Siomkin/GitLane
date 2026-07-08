@@ -1894,6 +1894,26 @@ describe("repo store — loadRepo progressive open", () => {
     }
   });
 
+  it("creates a tracking local branch when checking out a remote branch", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, graph: emptyGraph, loading: false, worktrees: [] });
+
+    await useRepo.getState().checkoutRemoteBranch("origin", "feature");
+
+    expect(invokeMock).toHaveBeenCalledWith("list_worktrees", { path: "/repo" });
+    expect(invokeMock).toHaveBeenCalledWith("checkout_remote_branch", {
+      path: "/repo",
+      remote: "origin",
+      branch: "feature",
+    });
+    expect(useRepo.getState().loading).toBe(false);
+  });
+
   it("does not drop a deferred watcher sync when a manual refresh is superseded", async () => {
     const slowGraph = deferred<RepoGraph>();
     let graphCallsB = 0;

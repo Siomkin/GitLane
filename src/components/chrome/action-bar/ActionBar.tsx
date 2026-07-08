@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "../../../lib/cn";
 import { currentBranchSyncView, defaultPublishTarget } from "../../../lib/branchSync";
 import { ForgeKind } from "../../../lib/api";
+import { detectRemoteUrl } from "../../../lib/remotes";
 import { changeTotal, summarizeChanges } from "../../../lib/changeSummary";
 import { useDismiss } from "../../../hooks/useDismiss";
 import { focusRing } from "../../../lib/ui";
@@ -42,6 +43,7 @@ export const ActionBar = ({
 }) => {
   const summary = useRepo((state) => state.summary);
   const forge = useRepo((state) => state.forge);
+  const remotes = useRepo((state) => state.remotes);
   const branches = useRepo((state) => state.branches);
   const loading = useRepo((state) => state.loading);
   const fetch = useRepo((state) => state.fetch);
@@ -119,11 +121,16 @@ export const ActionBar = ({
       ? undefined
       : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
 
-  // Remote-provider status: forge detection (backend) combined with auth state
-  // (accounts store). GitHub, GitLab, and Bitbucket support PRs (each surfaces
-  // needs-auth when its sign-in is missing); other recognised forges (Azure
-  // DevOps, …) are "connected" (repo link works, no PRs), and an unrecognised
-  // host is "unsupported". See the popover model.
+  const defaultRemote = remotes.find((remote) => remote.isDefault) ?? remotes[0] ?? null;
+  const defaultRemoteAuth = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
+  // Match the Remotes settings card: only explicit SSH remotes or HTTPS
+  // usernames count as visible transport auth. A bare HTTPS URL may still work
+  // through a helper, but GitLane cannot prove that from the URL alone.
+  const transportConfigured = Boolean(defaultRemoteAuth?.ssh || defaultRemoteAuth?.user);
+
+  // Remote-provider status: forge detection (backend) combined with PR/API auth
+  // state and the remote URL's transport-auth signal. A GCM-backed HTTPS username
+  // or SSH key means fetch/push can work even when provider PR auth is absent.
   const providerState: ProviderState | null = forge
     ? deriveProviderState(forge, {
         accounts,
@@ -132,6 +139,7 @@ export const ActionBar = ({
         repoAccountRef,
         gitlabReady,
         bitbucketReady,
+        transportConfigured,
       })
     : null;
 

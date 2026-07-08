@@ -20,6 +20,7 @@ const ctx = (over: Partial<ProviderAuthCtx> = {}): ProviderAuthCtx => ({
   repoAccountRef: null,
   gitlabReady: false,
   bitbucketReady: false,
+  transportConfigured: false,
   ...over,
 });
 
@@ -34,15 +35,17 @@ describe("deriveProviderState", () => {
     ).toBe("connected");
   });
 
-  it("reports GitLab connected when MRs can be fetched, else needs-auth (GL-145)", () => {
+  it("reports GitLab connected when MRs can be fetched, transport-auth when only git auth is configured, else needs-auth (GL-145)", () => {
     const gitlab = forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" });
     expect(deriveProviderState(gitlab, ctx({ gitlabReady: true }))).toBe("connected");
+    expect(deriveProviderState(gitlab, ctx({ gitlabReady: false, transportConfigured: true }))).toBe("transport-auth");
     expect(deriveProviderState(gitlab, ctx({ gitlabReady: false }))).toBe("needs-auth");
   });
 
-  it("reports Bitbucket connected when PRs can be fetched, else needs-auth (GL-141)", () => {
+  it("reports Bitbucket connected when PRs can be fetched, transport-auth when only git auth is configured, else needs-auth (GL-141)", () => {
     const bitbucket = forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" });
     expect(deriveProviderState(bitbucket, ctx({ bitbucketReady: true }))).toBe("connected");
+    expect(deriveProviderState(bitbucket, ctx({ bitbucketReady: false, transportConfigured: true }))).toBe("transport-auth");
     expect(deriveProviderState(bitbucket, ctx({ bitbucketReady: false }))).toBe("needs-auth");
   });
 
@@ -56,8 +59,18 @@ describe("deriveProviderState", () => {
     expect(deriveProviderState(forge({}), ctx({ accountsError: "gh: not found" }))).toBe("error");
   });
 
+  it("keeps GitHub account probe errors visible even when transport auth is configured", () => {
+    expect(
+      deriveProviderState(forge({}), ctx({ accountsError: "gh: not found", transportConfigured: true })),
+    ).toBe("error");
+  });
+
   it("reports needs-auth for a GitHub remote with no matching account", () => {
     expect(deriveProviderState(forge({}), ctx())).toBe("needs-auth");
+  });
+
+  it("reports transport-auth for a GitHub remote with GCM/SSH but no gh account", () => {
+    expect(deriveProviderState(forge({}), ctx({ transportConfigured: true }))).toBe("transport-auth");
   });
 
   it("reports connected when an account matches the host", () => {

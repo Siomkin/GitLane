@@ -14,6 +14,7 @@ import {
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
+import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { validateBranchName } from "@/lib/refName";
 import { handoffDestinationOptions, startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
@@ -483,6 +484,7 @@ export function BranchContextMenu() {
   const branches = useRepo((s) => s.branches);
   const worktrees = useRepo((s) => s.worktrees);
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
+  const checkoutRemoteBranch = useRepo((s) => s.checkoutRemoteBranch);
   const removeBranch = useRepo((s) => s.removeBranch);
   const renameBranchTo = useRepo((s) => s.renameBranchTo);
   const setUpstreamFor = useRepo((s) => s.setUpstreamFor);
@@ -570,6 +572,7 @@ export function BranchContextMenu() {
   // store) fails closed — local-only mutations hide rather than show on a remote.
   const isLocal = info?.kind === "local";
   const isRemote = info?.kind === "remote";
+  const remoteCheckout = remoteTrackingCheckoutCandidate(b, branches);
   const sync = info?.sync ?? null;
   const aheadBehind = sync && sync.upstream ? `↑${sync.ahead} ↓${sync.behind}` : null;
   // `git worktree add <path> <branch>` errors if <branch> is already checked out
@@ -616,9 +619,11 @@ export function BranchContextMenu() {
   }
   if (!isCurrent && !existingWt) {
     top.push({
-      label: isRemote ? `Checkout ${b} (detached)` : `Checkout ${b}`,
+      label: remoteCheckout ? `Checkout ${remoteCheckout.branch}` : isRemote ? `Checkout ${b} (detached)` : `Checkout ${b}`,
       icon: <CheckIcon className="h-4 w-4" />,
-      onClick: () => act(() => checkoutBranch(b)),
+      onClick: remoteCheckout
+        ? () => act(() => checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch))
+        : () => act(() => checkoutBranch(b)),
     });
   }
 
@@ -744,8 +749,8 @@ export function BranchContextMenu() {
     // the known remote list), so use that rather than splitting on the first `/`
     // — a slash-containing remote name would otherwise target the wrong remote.
     const remote = info?.remote ?? null;
-    if (remote && b.startsWith(`${remote}/`)) {
-      const remoteBranch = b.slice(remote.length + 1);
+    const remoteBranch = remote && b.startsWith(`${remote}/`) ? b.slice(remote.length + 1) : null;
+    if (remote && remoteBranch) {
       danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)) }) });
     }
   }

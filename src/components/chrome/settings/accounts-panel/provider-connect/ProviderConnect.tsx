@@ -1,9 +1,8 @@
 // The connect path for one provider the user picked. Each state is visually and
 // verbally distinct so "not installed", "not signed in", "manual", and "signed
 // in but no PR support" never read alike — and none looks like a broken account.
-// GitHub is the only full-support path; everything else is honest about
-// auth-only / no-PRs. The forge body (ForgeConnect) leads with one recommended
-// path and collapses the rest.
+// Provider CLI paths are preferred when they enable PR/MR features; GCM/helper
+// and SSH remain visible as transport-only fallbacks.
 
 import { cn } from "../../../../../lib/cn";
 import { focusRing } from "../../../../../lib/ui";

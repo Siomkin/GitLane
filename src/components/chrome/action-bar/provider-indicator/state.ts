@@ -2,7 +2,7 @@ import { ForgeKind } from "../../../../lib/api";
 import type { RepoForge } from "../../../../lib/api";
 
 /** Remote-provider indicator states (mirrors the design's `provider` tweak). */
-export type ProviderState = "connected" | "needs-auth" | "unsupported" | "missing" | "error";
+export type ProviderState = "connected" | "transport-auth" | "needs-auth" | "unsupported" | "missing" | "error";
 
 /** Auth signals the derivation reads from the accounts store. */
 export interface ProviderAuthCtx {
@@ -16,6 +16,10 @@ export interface ProviderAuthCtx {
   /** Whether Bitbucket pull requests can be fetched for the repo — a stored
    * Bitbucket token exists for the host (GL-141). Ignored for other forges. */
   bitbucketReady: boolean;
+  /** Whether the remote has a visible git transport auth signal: SSH or HTTPS
+   * userinfo. Bare HTTPS helper/GCM credentials may exist, but the URL alone
+   * cannot prove that they are configured. */
+  transportConfigured: boolean;
 }
 
 /** Resolve the provider indicator's state — the *connection* status of the
@@ -23,27 +27,34 @@ export interface ProviderAuthCtx {
  * support:
  *   - missing      no remote configured
  *   - unsupported  remote host GitLane doesn't recognise as a forge
- *   - connected    recognised forge, repo link ready (and, for GitHub, signed in)
- *   - needs-auth   GitHub remote with no usable `gh` account yet
+ *   - connected       recognised forge whose PR/MR API auth is ready
+ *   - transport-auth  git fetch/push auth is configured, but PR/MR API auth is not
+ *   - needs-auth      recognised forge with no known transport/API auth signal yet
  *   - error        GitHub remote whose account probe failed (e.g. `gh` missing)
  *
  * Auth is tracked for the three PR-capable forges: GitHub (`gh` accounts),
- * GitLab (glab / stored token, GL-145), and Bitbucket (stored token, GL-141) —
- * each surfaces "needs-auth" when its sign-in is missing. Other recognised forges
- * (Azure DevOps, Gitea, Forgejo) are "connected" — their repo link works; they
- * have no PR surface. */
+ * GitLab (glab / stored token, GL-145), and Bitbucket (stored token, GL-141).
+ * GCM/helper and SSH are transport auth only, so they surface as
+ * "transport-auth" when PR API auth is missing. Other recognised forges (Azure
+ * DevOps, Gitea, Forgejo) are "connected" — their repo link works; they have no
+ * PR surface. */
 export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): ProviderState => {
   if (!forge.hasRemote) return "missing";
   if (forge.kind === null) return "unsupported";
   // GitLab merge requests (GL-140): connected when glab / a token can serve
-  // them, else needs-auth so the popover prompts a GitLab sign-in.
-  if (forge.kind === ForgeKind.GitLab) return ctx.gitlabReady ? "connected" : "needs-auth";
+  // them, else distinguish transport-only GCM/SSH from no auth signal.
+  if (forge.kind === ForgeKind.GitLab) {
+    if (ctx.gitlabReady) return "connected";
+    return ctx.transportConfigured ? "transport-auth" : "needs-auth";
+  }
   // Bitbucket pull requests (GL-141): connected when a stored token can serve
-  // them, else needs-auth so the popover prompts a Bitbucket sign-in.
-  if (forge.kind === ForgeKind.Bitbucket) return ctx.bitbucketReady ? "connected" : "needs-auth";
+  // them, else distinguish transport-only GCM/SSH from no auth signal.
+  if (forge.kind === ForgeKind.Bitbucket) {
+    if (ctx.bitbucketReady) return "connected";
+    return ctx.transportConfigured ? "transport-auth" : "needs-auth";
+  }
   if (forge.kind !== ForgeKind.GitHub) return "connected";
   // GitHub — surface sign-in state via the accounts store.
-  if (ctx.accountsError) return "error";
   // Stay optimistic while the account list is still loading, so the indicator
   // doesn't flash an amber "needs-auth" dot before the accounts arrive.
   if (ctx.accountsLoading && ctx.accounts.length === 0) return "connected";
@@ -52,5 +63,8 @@ export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): Pro
   const host = (forge.host ?? "github.com").toLowerCase();
   const bound = ctx.repoAccountRef?.host.toLowerCase() === host;
   const hasAccount = ctx.accounts.some((a) => a.host.toLowerCase() === host);
-  return bound || hasAccount ? "connected" : "needs-auth";
+  if (ctx.accountsError) return "error";
+  if (bound || hasAccount) return "connected";
+  if (ctx.transportConfigured) return "transport-auth";
+  return "needs-auth";
 };

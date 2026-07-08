@@ -163,9 +163,9 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
         (said
           ? `The host refused access: “${said}”`
           : "The host refused access — the credential lacks permission for this repository, or this account can't access it.") +
-        // The recovery panel below owns the how (token type, username
-        // convention), so the headline only names the fix.
-        (bitbucket ? " Bitbucket app passwords are deprecated — use an Atlassian API token." : ""),
+        // The recovery panel below owns the how (GCM/CLI/SSH), so the headline
+        // only names the fix.
+        (bitbucket ? " Use Git Credential Manager or SSH for Bitbucket access." : ""),
       cmd,
       fail: true,
       retryLabel: "Retry clone",

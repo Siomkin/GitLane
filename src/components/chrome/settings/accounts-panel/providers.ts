@@ -15,11 +15,10 @@ export interface ProviderMeta {
   prSupported: boolean;
 }
 
-/** Providers surfaced on the Accounts page and its picker today: GitHub, GitLab,
- * Bitbucket (GL-141). The full `PROVIDERS` catalog keeps the others for label and
- * `prSupportedFor` lookups, but Azure DevOps / Gitea / Forgejo aren't offered
- * until they have a real PR/auth story. */
-export const VISIBLE_PROVIDER_KEYS: ProviderKey[] = ["github", "gitlab", "bitbucket"];
+/** Providers surfaced on the Accounts page and its picker today. Gitea/Forgejo
+ * stay in the full catalog for labels and `prSupportedFor` lookups, but are not
+ * shown until their auth story is more concrete. */
+export const VISIBLE_PROVIDER_KEYS: ProviderKey[] = ["github", "gitlab", "bitbucket", "azure-devops"];
 
 /** Every provider the picker offers, GitHub first. */
 export const PROVIDERS: ProviderMeta[] = [
@@ -31,8 +30,12 @@ export const PROVIDERS: ProviderMeta[] = [
   { key: "forgejo", name: "Forgejo", prSupported: false },
 ];
 
+export function providerLabel(provider: ProviderKey): string {
+  return PROVIDERS.find((p) => p.key === provider)?.name ?? provider;
+}
+
 /** The connect path for a non-GitHub provider, derived from its auth probe:
- * - `manual` — no CLI to probe (Bitbucket app password + credential helper).
+ * - `manual` — no CLI to probe (GCM/helper or SSH setup).
  * - `missing` — a CLI exists but isn't installed (an install step, not "broken").
  * - `signin` — CLI present but not authenticated (run the login command).
  * - `prunsupported` — authenticated, but GitLane has no PR support for it yet. */
@@ -68,7 +71,7 @@ export function cliStatusLine(status: ForgeAuthStatus | undefined): string | nul
   if (status.cli === null) {
     return status.authenticated
       ? `Credential saved${status.account ? ` for ${accountHandle(status.account)}` : ""}`
-      : "No CLI — manual setup";
+      : "No CLI — use GCM or SSH";
   }
   if (!status.available) return `${status.cli} CLI not installed`;
   return status.authenticated ? `Signed in via ${status.cli}` : `${status.cli} installed — not signed in`;

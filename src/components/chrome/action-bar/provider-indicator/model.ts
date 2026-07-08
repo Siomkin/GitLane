@@ -82,6 +82,7 @@ export interface ProviderPopoverModel {
 const MUTED = "text-neutral-500 dark:text-neutral-400";
 const STRONG = "text-neutral-700 dark:text-neutral-200";
 const ROSE = "text-rose-600 dark:text-rose-400";
+const TRANSPORT_TONE = "text-blue-600 dark:text-blue-400 bg-blue-500/12";
 
 const FORGE_ICON_KEY: Partial<Record<ForgeKind, PopoverIconKey>> = {
   [ForgeKind.GitHub]: "github",
@@ -127,7 +128,7 @@ const githubSections = (gh: string | null, host: string, prCount: number) => {
 const githubModel = (
   forge: RepoForge,
   prCount: number,
-  variant: "connected" | "needs-auth",
+  variant: "connected" | "transport-auth" | "needs-auth",
 ): ProviderPopoverModel => {
   const host = forge.host ?? "github.com";
   const base = {
@@ -151,10 +152,21 @@ const githubModel = (
       },
     };
   }
+  if (variant === "transport-auth") {
+    return {
+      ...base,
+      capability: { label: "Git auth", tone: TRANSPORT_TONE },
+      note: "Git fetch and push use this remote's HTTPS URL with GCM/helper, or SSH. Sign in with gh to enable GitHub pull requests in GitLane.",
+      primary: { icon: "key", label: "Sign in for pull requests", suffix: "", action: { kind: "sign-in" } },
+      githubEyebrow: null,
+      githubLinks: [],
+      settings: null,
+    };
+  }
   return {
     ...base,
     capability: { label: "Sign in", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
-    note: "A GitHub remote, but no account is bound. Sign in to view and open pull requests.",
+    note: "A GitHub remote, but no gh account is bound. Sign in with gh for pull requests; GCM/helper or SSH can still handle git transport.",
     primary: { icon: "key", label: "Sign in to GitHub", suffix: "", action: { kind: "sign-in" } },
   };
 };
@@ -175,12 +187,12 @@ const gitlabSections = (webUrl: string | null, host: string, prCount: number) =>
 };
 
 /** A recognised GitLab remote — merge requests ready (`connected`) or awaiting a
- * glab / token sign-in (`needs-auth`). Mirrors [`githubModel`] with GitLab copy,
+ * glab / GCM / SSH setup (`needs-auth`). Mirrors [`githubModel`] with GitLab copy,
  * icon, and `/-/` links (GL-145). */
 const gitlabModel = (
   forge: RepoForge,
   prCount: number,
-  variant: "connected" | "needs-auth",
+  variant: "connected" | "transport-auth" | "needs-auth",
 ): ProviderPopoverModel => {
   const host = forge.host ?? "gitlab.com";
   const base = {
@@ -204,10 +216,23 @@ const gitlabModel = (
       },
     };
   }
+  if (variant === "transport-auth") {
+    return {
+      ...base,
+      capability: { label: "Git auth", tone: TRANSPORT_TONE },
+      note: "Git fetch and push use this remote's HTTPS URL with GCM/helper, or SSH. Sign in with glab to enable merge requests in GitLane.",
+      primary: forge.webUrl
+        ? { icon: "external", label: "Open on GitLab", suffix: "↗", action: { kind: "open-url", url: forge.webUrl } }
+        : null,
+      githubEyebrow: null,
+      githubLinks: [],
+      settings: null,
+    };
+  }
   return {
     ...base,
     capability: { label: "Sign in", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
-    note: "A GitLab remote, but no sign-in yet. Sign in with glab or a token to view and open merge requests.",
+    note: "A GitLab remote, but no git auth is configured yet. Add an HTTPS username for GCM/helper, use SSH, or sign in with glab.",
     primary: { icon: "key", label: "Sign in to GitLab", suffix: "", action: { kind: "sign-in" } },
   };
 };
@@ -227,13 +252,13 @@ const bitbucketSections = (webUrl: string | null, host: string, prCount: number)
   };
 };
 
-/** A recognised Bitbucket remote — pull requests ready (`connected`) or awaiting a
- * token sign-in (`needs-auth`). Mirrors [`githubModel`] with Bitbucket copy, icon,
- * and links (GL-141). Bitbucket has no CLI, so the only sign-in is a token. */
+/** A recognised Bitbucket remote — pull requests ready (`connected`) or awaiting
+ * GCM/SSH setup (`needs-auth`). Mirrors [`githubModel`] with Bitbucket copy,
+ * icon, and links (GL-141). */
 const bitbucketModel = (
   forge: RepoForge,
   prCount: number,
-  variant: "connected" | "needs-auth",
+  variant: "connected" | "transport-auth" | "needs-auth",
 ): ProviderPopoverModel => {
   const host = forge.host ?? "bitbucket.org";
   const base = {
@@ -257,11 +282,24 @@ const bitbucketModel = (
       },
     };
   }
+  if (variant === "transport-auth") {
+    return {
+      ...base,
+      capability: { label: "Git auth", tone: TRANSPORT_TONE },
+      note: "Git fetch and push use this remote's HTTPS URL with GCM/helper, or SSH. Bitbucket pull requests are not enabled by GCM credentials alone.",
+      primary: forge.webUrl
+        ? { icon: "external", label: "Open on Bitbucket", suffix: "↗", action: { kind: "open-url", url: forge.webUrl } }
+        : null,
+      githubEyebrow: null,
+      githubLinks: [],
+      settings: null,
+    };
+  }
   return {
     ...base,
-    capability: { label: "Sign in", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
-    note: "A Bitbucket remote, but no sign-in yet. Sign in with a token to view and open pull requests.",
-    primary: { icon: "key", label: "Sign in to Bitbucket", suffix: "", action: { kind: "sign-in" } },
+    capability: { label: "Set up auth", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
+    note: "A Bitbucket remote, but no git auth is configured yet. Add an HTTPS username for GCM/helper or use SSH.",
+    primary: { icon: "key", label: "Set up Bitbucket auth", suffix: "", action: { kind: "sign-in" } },
   };
 };
 
@@ -347,6 +385,10 @@ export const providerPopoverModel = (
       if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "needs-auth");
       if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "needs-auth");
       return githubModel(forge, prCount, "needs-auth");
+    case "transport-auth":
+      if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "transport-auth");
+      if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "transport-auth");
+      return githubModel(forge, prCount, "transport-auth");
     case "connected":
       if (forge.kind === ForgeKind.GitHub) return githubModel(forge, prCount, "connected");
       if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "connected");

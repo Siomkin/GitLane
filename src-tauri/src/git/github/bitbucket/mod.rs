@@ -239,10 +239,11 @@ impl GithubProvider for BitbucketProvider {
 
 /// Bitbucket-specific "no authentication available" guidance — used instead of
 /// the gh-worded `NotAuthenticated` so Bitbucket users get the right recovery
-/// steps. Bitbucket has no CLI, so the fix is signing in or adding a token.
+/// steps. Bitbucket has no CLI; GCM/helper and SSH cover git transport, while PR
+/// calls still require a GitLane-owned token from the hidden compatibility path.
 pub(super) fn no_bitbucket_auth(host: &str) -> GithubError {
     GithubError::CommandFailed(format!(
-        "No Bitbucket sign-in found for {host}. Sign in to Bitbucket, or add a Bitbucket API token, in Settings to use pull requests."
+        "No Bitbucket PR sign-in found for {host}. Bitbucket has no CLI; GCM/helper or SSH can still handle git transport, but pull requests need an existing GitLane keychain token."
     ))
 }
 
@@ -251,9 +252,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_bitbucket_auth_names_settings_not_gh() {
+    fn no_bitbucket_auth_names_git_transport_fallbacks_not_gh() {
         let msg = no_bitbucket_auth("bitbucket.org").to_ipc_string();
-        assert!(msg.contains("Settings"), "{msg}");
+        assert!(msg.contains("no CLI"), "{msg}");
+        assert!(msg.contains("GCM/helper or SSH"), "{msg}");
+        assert!(msg.contains("keychain token"), "{msg}");
+        assert!(!msg.contains("API token"), "hidden token setup should not be advertised: {msg}");
         assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
         assert!(msg.contains("bitbucket.org"), "{msg}");
     }

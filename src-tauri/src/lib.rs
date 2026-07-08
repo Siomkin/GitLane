@@ -176,6 +176,15 @@ async fn checkout(path: String, target: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn checkout_remote_branch(
+    path: String,
+    remote: String,
+    branch: String,
+) -> Result<String, String> {
+    blocking(move || git::write::checkout_remote_branch(&path, &remote, &branch)).await
+}
+
+#[tauri::command]
 async fn create_branch(
     path: String,
     name: String,
@@ -1546,6 +1555,7 @@ pub fn run() {
             move_branch_to_worktree,
             delete_branch_with_worktree,
             checkout,
+            checkout_remote_branch,
             create_branch,
             delete_branch,
             list_reflog,

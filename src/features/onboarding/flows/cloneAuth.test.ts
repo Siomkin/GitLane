@@ -133,10 +133,10 @@ describe("cloneAuthStatusLine", () => {
       "Will authenticate with the token you entered.",
     );
     expect(cloneAuthStatusLine(planCloneAuth(inputs({ username: "ada" })))).toBe(
-      "Will authenticate as ada via your system git credentials.",
+      "Will authenticate as ada via Git credential helper / GCM.",
     );
     expect(cloneAuthStatusLine(planCloneAuth(inputs({})))).toBe(
-      "Will use your system git credentials if the repository is private.",
+      "Will use Git credential helper / GCM if the repository is private.",
     );
     expect(
       cloneAuthStatusLine(planCloneAuth(inputs({ remoteInfo: detectRemoteUrl("git@github.com:o/r.git") }))),
