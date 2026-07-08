@@ -18,7 +18,7 @@ import { UpdateSection } from "./UpdateSection";
 const REPO = "https://github.com/Siomkin/GitLane";
 const LINKS: { label: string; url: string }[] = [
   { label: "Release notes", url: `${REPO}/releases` },
-  { label: "License", url: `${REPO}/blob/develop/LICENSE` },
+  { label: "License", url: `${REPO}/blob/latest/LICENSE` },
   { label: "Acknowledgements", url: `${REPO}#readme` },
 ];
 

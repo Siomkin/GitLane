@@ -26,9 +26,10 @@ endpoint differs.
 Tags drive [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 The tag must equal the app version in all three files
 (`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json`) — the
-preflight fails the release otherwise. What the release ships per platform,
-and which install channels exist or are planned, is recorded in
-[`distribution.md`](distribution.md).
+preflight fails the release otherwise. Release tags must be created from commits
+that are already reachable from `latest`; `develop` and `staging` are not
+release sources. What the release ships per platform, and which install channels
+exist or are planned, is recorded in [`distribution.md`](distribution.md).
 
 - **Stable:** bump the three files to `X.Y.Z`, tag `vX.Y.Z`. Published as a
   normal release; becomes the `/latest/` target.
