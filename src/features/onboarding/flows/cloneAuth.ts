@@ -1,7 +1,9 @@
 // Pure clone-auth resolution: the single priority chain that decides how a
 // clone authenticates — a selected gh account > an explicitly entered token >
 // a GitLane keychain token > glab > a bare URL username > system credentials /
-// SSH. Extracted from useCloneFlow's startClone so the clone form's "Will
+// SSH. Token/keychain inputs are currently hidden in the UI, but the resolver
+// keeps the existing paths intact so old flows and stored metadata still work.
+// Extracted from useCloneFlow's startClone so the clone form's "Will
 // authenticate via …" status line and the actual clone can never disagree.
 // No React, no IPC; unit-tested for parity in cloneAuth.test.ts.
 
@@ -139,7 +141,7 @@ export function cloneAuthStatusLine(plan: CloneAuthPlan): string {
       return "Signed in via glab — authenticates automatically.";
     case "system":
       return plan.login
-        ? `Will authenticate as ${plan.login} via your system git credentials.`
-        : "Will use your system git credentials if the repository is private.";
+        ? `Will authenticate as ${plan.login} via Git credential helper / GCM.`
+        : "Will use Git credential helper / GCM if the repository is private.";
   }
 }

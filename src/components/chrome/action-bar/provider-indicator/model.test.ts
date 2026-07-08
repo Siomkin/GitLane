@@ -47,7 +47,8 @@ describe("providerPopoverModel", () => {
     const m = providerPopoverModel("needs-auth", forge(), 0);
     expect(m.capability?.label).toBe("Sign in");
     expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to GitHub", action: { kind: "sign-in" } });
-    expect(m.note).toMatch(/no account is bound/i);
+    expect(m.note).toMatch(/gh account/i);
+    expect(m.note).toMatch(/GCM\/helper or SSH/i);
     expect(m.githubEyebrow).toBe("On github.com");
     expect(m.settings).not.toBeNull();
   });
@@ -74,12 +75,23 @@ describe("providerPopoverModel", () => {
     expect(providerPopoverModel("connected", gitlab(), 1).primary?.label).toBe("View 1 merge request");
   });
 
-  it("needs-auth GitLab: sign-in pill + glab/token guidance, key primary (GL-145)", () => {
+  it("needs-auth GitLab: sign-in pill + CLI/GCM/SSH guidance, key primary (GL-145)", () => {
     const m = providerPopoverModel("needs-auth", gitlab(), 0);
     expect(m.headerIcon).toBe("gitlab");
     expect(m.capability?.label).toBe("Sign in");
     expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to GitLab", action: { kind: "sign-in" } });
-    expect(m.note).toMatch(/glab or a token/i);
+    expect(m.note).toMatch(/HTTPS username for GCM\/helper/i);
+  });
+
+  it("transport-auth GitLab: shows git auth without claiming merge requests are enabled", () => {
+    const m = providerPopoverModel("transport-auth", gitlab(), 0);
+    expect(m.capability?.label).toBe("Git auth");
+    expect(m.primary).toMatchObject({ icon: "external", label: "Open on GitLab", suffix: "↗" });
+    expect(m.note).toMatch(/Git fetch and push/i);
+    expect(m.note).toMatch(/glab to enable merge requests/i);
+    expect(m.note).not.toMatch(/GitLane token/i);
+    expect(m.githubEyebrow).toBeNull();
+    expect(m.githubLinks).toEqual([]);
   });
 
   const bitbucket = () =>
@@ -100,12 +112,22 @@ describe("providerPopoverModel", () => {
     expect(m.settings).toBeNull();
   });
 
-  it("needs-auth Bitbucket: sign-in pill + token guidance, key primary (GL-141)", () => {
+  it("needs-auth Bitbucket: sign-in pill + GCM/SSH guidance, key primary (GL-141)", () => {
     const m = providerPopoverModel("needs-auth", bitbucket(), 0);
     expect(m.headerIcon).toBe("bitbucket");
-    expect(m.capability?.label).toBe("Sign in");
-    expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to Bitbucket", action: { kind: "sign-in" } });
-    expect(m.note).toMatch(/token/i);
+    expect(m.capability?.label).toBe("Set up auth");
+    expect(m.primary).toMatchObject({ icon: "key", label: "Set up Bitbucket auth", action: { kind: "sign-in" } });
+    expect(m.note).toMatch(/HTTPS username for GCM\/helper/i);
+  });
+
+  it("transport-auth Bitbucket: shows git auth without asking for PR sign-in", () => {
+    const m = providerPopoverModel("transport-auth", bitbucket(), 0);
+    expect(m.headerIcon).toBe("bitbucket");
+    expect(m.capability?.label).toBe("Git auth");
+    expect(m.primary).toMatchObject({ icon: "external", label: "Open on Bitbucket", suffix: "↗" });
+    expect(m.note).toMatch(/Bitbucket pull requests are not enabled by GCM credentials alone/i);
+    expect(m.githubEyebrow).toBeNull();
+    expect(m.githubLinks).toEqual([]);
   });
 
   it("connected non-PR forge (Azure): no-PRs shape, open-on-forge primary, no link sections", () => {

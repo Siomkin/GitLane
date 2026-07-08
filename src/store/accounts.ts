@@ -425,9 +425,9 @@ interface AccountsState {
     username: string,
     password: string,
     provider?: ForgeAuthProvider,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   /** Store a remote's HTTPS token/password and write its username into the URL. */
-  saveRemoteCredential: (remote: string, username: string, password: string) => Promise<void>;
+  saveRemoteCredential: (remote: string, username: string, password: string) => Promise<boolean>;
   /** GitLane-owned provider tokens by `credentialHost login` key (GL-132). Backs
    * `providerToken` transport selection and the keychain sign-out UI. Non-secret
    * metadata only — the token itself lives in the OS keychain. */
@@ -1058,15 +1058,15 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const cleanHost = credentialHost.trim();
     if (!cleanHost) {
       useUi.getState().showToast("Credential host is missing.", "error");
-      return;
+      return false;
     }
     if (!cleanUser) {
       useUi.getState().showToast("Enter the HTTPS username for this provider.", "error");
-      return;
+      return false;
     }
     if (!password) {
       useUi.getState().showToast("Enter the token or password.", "error");
-      return;
+      return false;
     }
     try {
       const result = await api.approveHttpsCredential(cleanHost, path, cleanUser, password);
@@ -1085,30 +1085,32 @@ export const useAccounts = create<AccountsState>((set, get) => ({
               }`
             : `Saved @${result.username} in Git credential helper${result.helper ? ` (${result.helper})` : ""}`,
         );
+      return true;
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
+      return false;
     }
   },
 
   saveRemoteCredential: async (remote, username, password) => {
     const remotes = useRepo.getState().remotes;
     const target = remotes.find((r) => r.name === remote);
-    if (!target) return;
+    if (!target) return false;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     if (!info.valid || info.ssh || !info.credentialHost) {
       useUi
         .getState()
         .showToast(`${remote} must be an HTTPS remote to save credentials.`, "error");
-      return;
+      return false;
     }
     const clean = username.trim();
     if (!clean) {
       useUi.getState().showToast("Enter the HTTPS username for this remote.", "error");
-      return;
+      return false;
     }
     if (!password) {
       useUi.getState().showToast("Enter the token or password.", "error");
-      return;
+      return false;
     }
     try {
       // Azure Repos scopes credentials by org (dev.azure.com/{org}); other
@@ -1120,8 +1122,10 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi
         .getState()
         .showToast(`${remote} now authenticates as @${clean} via Git credential helper`);
+      return true;
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
+      return false;
     }
   },
 

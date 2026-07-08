@@ -7,8 +7,12 @@ area; the rest is a manual pass to run before shipping auth changes.
 
 ## Support level per provider
 
-PR/API is GitHub-only for now. **Git transport (clone/fetch/pull/push/…) must
-work for every provider** through one of three auth paths:
+**Git transport (clone/fetch/pull/push/…) must work for every provider** through
+Git-native auth. The currently visible setup paths are intentionally limited to:
+provider CLI where GitLane can use one, Git Credential Manager / the configured
+Git credential helper for HTTPS, and SSH keys. Older token/OAuth/keychain code
+still exists under the hood for compatibility, but those setup methods are not
+the primary UI.
 
 - **gh** — GitHub's CLI owns the token; injected inline as `gh auth
   git-credential` per invocation (`Gh` transport credential).
@@ -16,26 +20,28 @@ work for every provider** through one of three auth paths:
   via the `GIT_ASKPASS` bridge (`providerToken` transport credential, GL-132).
 - **helper** — the user's own Git credential helper / GCM (`credentialHelper` /
   system), optionally seeded once via `git credential approve`.
+- **SSH** — the remote URL uses SSH and Git/ssh-agent select the key; GitLane
+  does not manage that credential.
 
 | Provider | Classified by | Transport auth | PR/API | In-app sign-in | Sign-out |
 | --- | --- | --- | --- | --- | --- |
-| GitHub | `github.com` / `*.github.com` (exact) | gh | ✅ | `gh auth login --web` | `gh auth logout` |
-| GitLab | host contains `gitlab` | keychain **or** helper (glab optional) | ❌ (MR API pending) | **OAuth device flow** (GL-139); keychain PAT; or `glab auth login` | keychain token; or `glab auth logout` |
-| Bitbucket | `bitbucket.org` / contains `bitbucket` | keychain **or** helper | ❌ | **OAuth PKCE loopback** (GL-139); keychain PAT; or saved credential | keychain token; or forget credential |
-| Azure Repos | `dev.azure.com` / `ssh.dev.azure.com` / `*.visualstudio.com` | keychain **or** helper/GCM | ❌ | keychain PAT; or GCM; org-scoped | keychain token; or `az logout` |
-| Gitea | host contains `gitea` | keychain **or** helper | ❌ | keychain PAT; or saved credential | keychain token; or forget credential |
-| Forgejo | `codeberg.org` / contains `forgejo` | keychain **or** helper | ❌ | keychain PAT; or saved credential | keychain token; or forget credential |
-| Unknown HTTPS | none (`other`) | helper only | ❌ | saved credential (username + token) | forget credential |
+| GitHub | `github.com` / `*.github.com` (exact) | gh **or** helper/GCM **or** SSH | ✅ via gh; transport-only through GCM/SSH | `gh auth login --web`; HTTPS via GCM/helper; SSH key | `gh auth logout`; helper/key cleanup outside GitLane |
+| GitLab | host contains `gitlab` | glab **or** helper/GCM **or** SSH | ✅ basic MR actions via glab; REST fallback needs keychain token | `glab auth login`; HTTPS via GCM/helper; SSH key | `glab auth logout`; helper/key cleanup outside GitLane |
+| Bitbucket | `bitbucket.org` / contains `bitbucket` | helper/GCM **or** SSH | ⚠️ implemented only with a GitLane-owned keychain token, currently hidden from setup UI | GCM/helper for HTTPS; SSH key | helper/key cleanup outside GitLane |
+| Azure Repos | `dev.azure.com` / `ssh.dev.azure.com` / `*.visualstudio.com` | az account signal **or** helper/GCM **or** SSH | ❌ | `az login`; HTTPS via GCM/helper; SSH key | `az logout`; helper/key cleanup outside GitLane |
+| Gitea | host contains `gitea` | helper/GCM **or** SSH | ❌ | GCM/helper; SSH key | helper/key cleanup outside GitLane |
+| Forgejo | `codeberg.org` / contains `forgejo` | helper/GCM **or** SSH | ❌ | GCM/helper; SSH key | helper/key cleanup outside GitLane |
+| Unknown HTTPS | none (`other`) | helper only | ❌ | configured Git credential helper/GCM | helper cleanup outside GitLane |
 | SSH (any) | scheme | SSH key (no HTTPS binding) | n/a | SSH key | remove key |
 
 Native OAuth sign-in for GitLab (device flow) and Bitbucket (PKCE loopback) is
-implemented (**GL-139**): sign-in stores an access token in the same keychain and
-authenticates git the same way. It needs a **registered OAuth app (public client
-id) per provider/host** — see `docs/provider-oauth-setup.md` for registration,
-scopes, and how the client id is configured (compile-time default + per-host
-override). When no client id is configured for a host the OAuth button is hidden
-and the **PAT-into-keychain** path is the first-class fallback. Azure's "OAuth" is
-still delegated to GCM where present. See also
+implemented (**GL-139**) but currently hidden from the primary setup UI while
+GitLane narrows visible auth to CLI/GCM/SSH. The flow stores an access token in
+the same keychain and authenticates git the same way. It needs a **registered
+OAuth app (public client id) per provider/host** — see
+`docs/provider-oauth-setup.md` for registration, scopes, and how the client id is
+configured (compile-time default + per-host override). Azure's "OAuth" is still
+delegated to GCM where present. See also
 `docs/github-provider-auth-roadmap.md`.
 
 ## Operation matrix (per HTTPS remote)

@@ -45,7 +45,7 @@ const precedes = (a: Element, b: Element) =>
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
-  useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()], worktrees: [] });
+  useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()], worktrees: [], remotes: [] });
   useUi.setState({ prompt: null, navOpen: false });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({ accounts: [], accountsError: null, accountsLoading: false, repoAccountRef: null });
@@ -113,6 +113,62 @@ describe("ActionBar layout order", () => {
     });
     render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", { path: SUMMARY.path, account: null });
+  });
+
+  it("does not treat a bare HTTPS Bitbucket remote as configured transport auth", () => {
+    useRepo.setState({
+      forge: {
+        ...FORGE,
+        kind: ForgeKind.Bitbucket,
+        forge: "Bitbucket",
+        host: "bitbucket.org",
+        webUrl: "https://bitbucket.org/darang/gitlanebucket",
+      },
+      remotes: [
+        {
+          name: "origin",
+          fetchUrl: "https://bitbucket.org/darang/gitlanebucket.git",
+          pushUrl: "https://bitbucket.org/darang/gitlanebucket.git",
+          isDefault: true,
+        },
+      ],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(
+      screen.getByRole("button", {
+        name: /bitbucket\.org\/darang\/gitlanebucket · set up auth for pull requests/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("treats an HTTPS Bitbucket username as configured transport auth", () => {
+    useRepo.setState({
+      forge: {
+        ...FORGE,
+        kind: ForgeKind.Bitbucket,
+        forge: "Bitbucket",
+        host: "bitbucket.org",
+        webUrl: "https://bitbucket.org/darang/gitlanebucket",
+      },
+      remotes: [
+        {
+          name: "origin",
+          fetchUrl: "https://alice@bitbucket.org/darang/gitlanebucket.git",
+          pushUrl: "https://alice@bitbucket.org/darang/gitlanebucket.git",
+          isDefault: true,
+        },
+      ],
+    });
+
+    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+
+    expect(
+      screen.getByRole("button", {
+        name: /bitbucket\.org\/darang\/gitlanebucket · git auth configured, pull requests unavailable/i,
+      }),
+    ).toBeInTheDocument();
   });
 
   it("keeps Pull enabled when the current branch has an upstream", () => {

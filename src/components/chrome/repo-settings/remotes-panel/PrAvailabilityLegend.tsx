@@ -5,7 +5,7 @@ const ROWS: { dot: string; label: string; note: string }[] = [
   {
     dot: "bg-emerald-500",
     label: "GitLab",
-    note: "merge requests (list, view, create, merge, approve) via glab or a token.",
+    note: "merge requests (list, view, create, merge, approve) via glab.",
   },
   {
     dot: "bg-neutral-400",

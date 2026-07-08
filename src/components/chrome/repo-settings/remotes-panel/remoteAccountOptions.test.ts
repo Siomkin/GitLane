@@ -61,8 +61,8 @@ describe("remoteAccountPickerModel", () => {
     );
     expect(model.matching).toEqual([]);
     expect(model.username).toBe("alice");
-    expect(model.note).toMatch(/Bitbucket transport auth uses an HTTPS username/);
-    expect(model.note).toMatch(/keychain \/ credential helper/);
+    expect(model.note).toMatch(/Git transport uses @alice/);
+    expect(model.note).toMatch(/Git Credential Manager/);
 
     // An SSH remote is its own world: the key IS the account — no forge copy.
     const lab = remoteAccountPickerModel(remote("git@gitlab.com:group/repo.git"), [github]);
@@ -96,10 +96,10 @@ describe("remoteAccountPickerModel", () => {
 
   it("falls back to a plain system-credentials note for unknown or unparsable hosts", () => {
     expect(remoteAccountPickerModel(remote("https://git.corp.dev/o/r.git"), [github]).note).toMatch(
-      /system git credentials/,
+      /Git Credential Manager|credential helper/,
     );
     expect(remoteAccountPickerModel(remote("/local/path.git"), [github]).note).toMatch(
-      /SSH key|system git credentials/,
+      /SSH key|Git Credential Manager|credential helper/,
     );
   });
 });

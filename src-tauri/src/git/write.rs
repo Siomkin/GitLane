@@ -23,9 +23,9 @@ mod tests;
 mod worktrees;
 
 pub use branches::{
-    checkout, cherry_pick, cherry_pick_many, create_annotated_tag, create_branch, create_patch,
-    create_tag, delete_branch, delete_tag, fast_forward, fast_forward_branch, merge, rebase,
-    rename_branch, reset, revert, revert_many, set_upstream,
+    checkout, checkout_remote_branch, cherry_pick, cherry_pick_many, create_annotated_tag,
+    create_branch, create_patch, create_tag, delete_branch, delete_tag, fast_forward,
+    fast_forward_branch, merge, rebase, rename_branch, reset, revert, revert_many, set_upstream,
 };
 pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,

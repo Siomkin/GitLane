@@ -66,7 +66,7 @@ describe("friendlyGitError", () => {
     );
 
     expect(out).toBe(
-      "bucket: Bitbucket credentials are missing or invalid for @SiomkinAlexander. Save a Bitbucket API token or app password in Repository settings > Remote access, then try again.",
+      "bucket: Bitbucket credentials are missing or invalid for @SiomkinAlexander. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -76,7 +76,7 @@ describe("friendlyGitError", () => {
         "fatal: could not read Username for 'https://gitlab.com': terminal prompts disabled",
       ),
     ).toBe(
-      "GitLab credentials are missing or invalid. Save a GitLab access token in Repository settings > Remote access, then try again.",
+      "GitLab credentials are missing or invalid. Sign in with glab, set up Git Credential Manager, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -86,7 +86,7 @@ describe("friendlyGitError", () => {
         "origin:\nfatal: could not read Password for 'https://octocat@github.com': terminal prompts disabled",
       ),
     ).toBe(
-      "origin: GitHub credentials are missing or invalid for @octocat. Sign in or pick a GitHub account in Repository settings > Remote access, then try again.",
+      "origin: GitHub credentials are missing or invalid for @octocat. Sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -96,7 +96,7 @@ describe("friendlyGitError", () => {
         "origin:\nfatal: could not read Password for 'https://octocat:secret@github.com': terminal prompts disabled",
       ),
     ).toBe(
-      "origin: GitHub credentials are missing or invalid for @octocat. Sign in or pick a GitHub account in Repository settings > Remote access, then try again.",
+      "origin: GitHub credentials are missing or invalid for @octocat. Sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -116,7 +116,7 @@ describe("friendlyGitError", () => {
         "remote:\nfatal: could not read Password for 'https://alice@bitbucket.org': terminal prompts disabled",
       ),
     ).toBe(
-      "remote: Bitbucket credentials are missing or invalid for @alice. Save a Bitbucket API token or app password in Repository settings > Remote access, then try again.",
+      "remote: Bitbucket credentials are missing or invalid for @alice. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -148,7 +148,7 @@ describe("friendlyGitError", () => {
       [
         "Some remotes need attention:",
         "",
-        "bucket: Bitbucket credentials are missing or invalid for @SiomkinAlexander. Save a Bitbucket API token or app password in Repository settings > Remote access, then try again.",
+        "bucket: Bitbucket credentials are missing or invalid for @SiomkinAlexander. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
         "lab: Remote repository not found or access denied. Check the remote URL and your account permissions.",
       ].join("\n"),
     );

@@ -1,7 +1,7 @@
 // One connection method, framed as a distinct card so the methods read as
 // separate options rather than a blur. The recommended method gets an accent
 // border + badge; the rest are plain hairline cards under "Or connect another
-// way". Every method — token, CLI, OAuth, install — uses this same frame.
+// way". Every method — CLI, GCM/helper, SSH, install — uses this same frame.
 
 import { cn } from "../../../../../lib/cn";
 

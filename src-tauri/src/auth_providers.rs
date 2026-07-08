@@ -52,7 +52,7 @@ const PROVIDERS: &[ProviderSpec] = &[
         logout_args: Some(&["auth", "logout"]),
         logout_needs_hostname: true,
         docs_url: "https://gitlab.com/gitlab-org/cli",
-        notes: "Signed in with glab. Merge requests (list, view, create, merge, approve) work when glab is signed in or a GitLab token is stored.",
+        notes: "Signed in with glab. Merge requests (list, view, create, merge, approve) work when glab is signed in.",
         require_output: false,
     },
     ProviderSpec {
@@ -60,14 +60,12 @@ const PROVIDERS: &[ProviderSpec] = &[
         forge: "Bitbucket",
         cli: None,
         status_args: &[],
-        auth_method: "API token or git credential helper",
-        login_command: "Create a Bitbucket API token and let git store it through your credential helper.",
+        auth_method: "Git credential helper / GCM or SSH",
+        login_command: "Use an HTTPS remote with Git Credential Manager, or use an SSH remote with a Bitbucket SSH key.",
         logout_args: None,
         logout_needs_hostname: false,
-        // Atlassian deprecated Bitbucket app passwords; the app-passwords doc now
-        // redirects here, and API tokens are the supported replacement.
-        docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/api-tokens/",
-        notes: "Bitbucket has no bundled CLI. Pull requests (list, view, create, merge, approve) work when a Bitbucket token (OAuth sign-in or an API token) is stored.",
+        docs_url: "https://support.atlassian.com/bitbucket-cloud/docs/configure-ssh-and-two-step-verification/",
+        notes: "Bitbucket has no bundled CLI. Git transport works through Git's credential helper/GCM for HTTPS, or through SSH keys for SSH remotes.",
         require_output: false,
     },
     ProviderSpec {
@@ -76,14 +74,14 @@ const PROVIDERS: &[ProviderSpec] = &[
         cli: Some("az"),
         status_args: &["account", "show", "--output", "none"],
         auth_method: "Azure CLI",
-        login_command: "az login && az devops login",
+        login_command: "az login",
         logout_args: Some(&["logout"]),
         logout_needs_hostname: false,
         // The connect path's first step is installing `az`, so point at the
         // Azure CLI install guide rather than the Azure DevOps CLI extension docs.
         // Locale-less URL — Learn redirects to the visitor's locale.
         docs_url: "https://learn.microsoft.com/cli/azure/install-azure-cli?view=azure-cli-latest",
-        notes: "Uses Azure CLI sign-in as the auth signal. Azure DevOps PR features are not implemented.",
+        notes: "Uses Azure CLI sign-in as the account signal. Git transport works through GCM/helper for HTTPS, or through SSH keys for SSH remotes.",
         require_output: false,
     },
     ProviderSpec {

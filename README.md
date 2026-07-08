@@ -10,61 +10,25 @@ a swimlane-style commit tree with drag-and-drop branch operations, built on
 <!-- Screenshots live in docs/screenshots/ — see the capture checklist there. -->
 ![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
 
-## Why GitLane
+## Get GitLane
 
-- **A commit graph you can actually read.** Every branch gets its own lane and
-  color. The layout is computed in Rust and painted on canvas, so it stays
-  smooth on histories with thousands of commits.
-- **Your real git, not a reimplementation.** Every write — commit, merge,
-  rebase, push, stash — runs through your actual `git` binary, so hooks,
-  credential helpers, commit signing, and your `.gitconfig` all just work.
-  Reads use libgit2 for speed.
-- **Always live.** A filesystem watcher keeps the app in sync when you commit,
-  checkout, or stage from the terminal. No refresh button.
-- **Native and lean.** Tauri, not Electron: a small download that starts
-  instantly and stays light on memory.
+Most users should start with the latest build from the
+[**Releases page**](https://github.com/Siomkin/GitLane/releases). If your
+platform blocks unsigned apps, or you prefer to inspect the source first, build
+GitLane locally instead.
 
-## Features
+| I want to… | Use this |
+| --- | --- |
+| Try GitLane quickly | Download the release package for your OS |
+| Avoid unsigned macOS / Windows first-launch warnings | Build from source locally |
+| Contribute or test changes | Run the development build |
 
-### Drag-and-drop branch operations
+> **Current signing status:** macOS builds are ad-hoc signed but not Apple
+> notarized yet, and Windows builds are not Authenticode-signed yet. The apps
+> work, but macOS Gatekeeper and Windows SmartScreen can block the first launch.
+> See the platform notes below before assuming the download is broken.
 
-Drag one branch onto another and GitLane offers exactly the operations that
-make sense — fast-forward, merge, rebase, or reset — based on how the branches
-actually relate. No memorizing flags.
-
-![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
-
-### Stage, review, commit
-
-A dedicated changes workspace for multi-file staging, with unified/split diffs
-and syntax highlighting. Review a whole commit as one scrollable stack, or dig
-into a single file.
-
-![Staging and diff review](docs/screenshots/changes-staging.png)
-
-### Pull requests, multiple accounts
-
-Browse GitHub pull requests, files, and CI checks without leaving the app —
-powered by the GitHub CLI (`gh`). Each repository binds to one of your `gh`
-accounts (GitHub.com or Enterprise), and tokens never leave the Rust core.
-
-![Pull request list and detail](docs/screenshots/pull-requests.png)
-
-### Commit identity you can trust
-
-Reusable **git profiles** (name, email, optional signing key) apply per
-repository, separately from provider accounts — so you never accidentally
-commit to a client repo with the wrong email or an unverified signature.
-
-### And the everyday tools
-
-Branch/tag/remote navigator, stash management, git worktrees, an integrated
-terminal, dark/light themes with accent colors.
-
-## Install
-
-Grab the latest build from the
-[**Releases page**](https://github.com/Siomkin/GitLane/releases):
+### Download a release
 
 | Platform | Package |
 | --- | --- |
@@ -79,6 +43,27 @@ download them.
 GitLane updates itself through the built-in Tauri updater. Builds ship on two
 channels — **stable** and **beta** (pre-releases, updated more often); see
 [docs/release-channels.md](docs/release-channels.md).
+
+### Build from source
+
+Use this when you want a local build from source instead of a downloaded,
+unsigned release package.
+
+Prerequisites: `bun`, the Rust toolchain, and `git`.
+
+```bash
+bun install
+bun run tauri build
+```
+
+For development with hot reload:
+
+```bash
+bun run tauri dev
+```
+
+Optional, for GitHub/PR features: [GitHub CLI](https://cli.github.com) `gh`
+**2.95.0 or newer**, logged in (`gh auth login`).
 
 ### macOS: first launch
 
@@ -146,22 +131,71 @@ icon). If you want that, run it through
 Package-manager channels (Flathub, AUR) are tracked in
 [docs/distribution.md](docs/distribution.md).
 
-### Requirements
+### Runtime requirements
 
 - `git` on your `PATH` (writes go through your real git).
 - Optional, for GitHub/PR features: [GitHub CLI](https://cli.github.com) `gh`
   **2.95.0 or newer**, logged in (`gh auth login`).
 - Other forges (GitLab, Bitbucket, Azure DevOps, Gitea, Forgejo): core git
-  features work; PR browsing is GitHub-only for now, with clear guidance
-  instead of silent failures. GitLab and Bitbucket also support in-app **OAuth
-  sign-in** (GitLab device flow / Bitbucket PKCE) once a public OAuth client id
-  is configured — see [`docs/provider-oauth-setup.md`](docs/provider-oauth-setup.md);
-  a personal access token works with no setup either way.
+  features work through your normal git transport credentials. GitLab and
+  Bitbucket PR/MR support can use provider credentials configured in GitLane.
+
+## Why GitLane
+
+- **A commit graph you can actually read.** Every branch gets its own lane and
+  color. The layout is computed in Rust and painted on canvas, so it stays
+  smooth on histories with thousands of commits.
+- **Your real git, not a reimplementation.** Every write — commit, merge,
+  rebase, push, stash — runs through your actual `git` binary, so hooks,
+  credential helpers, commit signing, and your `.gitconfig` all just work.
+  Reads use libgit2 for speed.
+- **Always live.** A filesystem watcher keeps the app in sync when you commit,
+  checkout, or stage from the terminal. No refresh button.
+- **Native and lean.** Tauri, not Electron: a small download that starts
+  instantly and stays light on memory.
+
+## Features
+
+### Drag-and-drop branch operations
+
+Drag one branch onto another and GitLane offers exactly the operations that
+make sense — fast-forward, merge, rebase, or reset — based on how the branches
+actually relate. No memorizing flags.
+
+![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
+
+### Stage, review, commit
+
+A dedicated changes workspace for multi-file staging, with unified/split diffs
+and syntax highlighting. Review a whole commit as one scrollable stack, or dig
+into a single file.
+
+![Staging and diff review](docs/screenshots/changes-staging.png)
+
+### Pull requests and merge requests
+
+Browse GitHub pull requests, GitLab merge requests, and Bitbucket pull
+requests without leaving the app. GitHub uses the GitHub CLI (`gh`), while
+GitLab and Bitbucket use provider credentials configured in GitLane. Tokens
+stay in the Rust core.
+
+![Pull request list and detail](docs/screenshots/pull-requests.png)
+
+### Commit identity you can trust
+
+Reusable **identities** (name, email, optional signing key) apply per
+repository, separately from provider accounts — so you never accidentally
+commit to a client repo with the wrong email or an unverified signature.
+
+### And the everyday tools
+
+Branch/tag/remote navigator, stash management, git worktrees, an integrated
+terminal, dark/light themes with accent colors.
 
 ## Develop
 
-Prerequisites: `bun`, the Rust toolchain, `git`, and `gh` 2.95.0+ for
-GitHub/PR features.
+Prerequisites: `bun`, the Rust toolchain, `git`, and optionally `gh` 2.95.0+
+for GitHub/PR features.
 
 ```bash
 bun install
@@ -192,8 +226,8 @@ GitLane currently validates `gh` 2.95.0 as the minimum supported GitHub CLI base
 - **Frontend:** React 19 + TypeScript + Vite, Canvas-rendered commit graph, Zustand state
 - **Git reads:** [`git2`](https://docs.rs/git2) (libgit2) — log, refs, branches (network features disabled)
 - **Git writes:** shell out to the real `git` binary — honours hooks, credentials, config, conflicts
-- **GitHub:** provider boundary backed by the GitHub CLI (`gh`) by default; tokens stay in Rust and never cross IPC
-- **Other forges:** auth-status guidance only for GitLab, Bitbucket, Azure DevOps, Gitea, and Forgejo
+- **Provider APIs:** GitHub via the GitHub CLI (`gh`) by default; GitLab and Bitbucket via provider-specific clients; tokens stay in Rust and never cross IPC
+- **Other forges:** Azure DevOps, Gitea, and Forgejo get explicit unsupported-PR guidance while core git operations still work
 
 ```
 src/                     # React frontend

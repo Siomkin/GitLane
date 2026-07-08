@@ -8,7 +8,9 @@ import { useEffect, useState } from "react";
 import { cn } from "../../../../lib/cn";
 import { focusRing } from "../../../../lib/ui";
 import { useAccounts } from "../../../../store/accounts";
+import { useRepo } from "../../../../store/repo";
 import { useUi } from "../../../../store/ui";
+import { credentialScopePath, detectRemoteUrl, type RemoteProvider } from "../../../../lib/remotes";
 import { PROVIDERS, VISIBLE_PROVIDER_KEYS, type ProviderKey } from "./providers";
 import { ConnectedAccountCard } from "./ConnectedAccountCard";
 import { ConnectedForgeCard } from "./ConnectedForgeCard";
@@ -16,8 +18,45 @@ import { KeychainAccountCard } from "./KeychainAccountCard";
 import { ProviderSection, type Capability } from "./ProviderSection";
 import { ProviderPicker } from "./ProviderPicker";
 import { ProviderConnect } from "./provider-connect";
+import { TransportCredentialCard, type TransportCredentialAccount } from "./TransportCredentialCard";
 
 type View = { k: "list" } | { k: "pick" } | { k: "connect"; provider: ProviderKey };
+
+function providerKeyForRemote(provider: RemoteProvider): ProviderKey | null {
+  switch (provider) {
+    case "github":
+      return "github";
+    case "gitlab":
+      return "gitlab";
+    case "bitbucket":
+      return "bitbucket";
+    case "azure":
+      return "azure-devops";
+    default:
+      return null;
+  }
+}
+
+function repoTransportCredentials(remotes: ReturnType<typeof useRepo.getState>["remotes"]): TransportCredentialAccount[] {
+  const seen = new Set<string>();
+  const credentials: TransportCredentialAccount[] = [];
+  for (const remote of remotes) {
+    const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
+    const provider = providerKeyForRemote(info.provider);
+    if (!provider || !info.user || !info.credentialHost) continue;
+    const key = `${provider}\u0000${info.credentialHost}\u0000${info.user}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    credentials.push({
+      provider,
+      credentialHost: info.credentialHost,
+      credentialPath: credentialScopePath(info) ?? info.path,
+      login: info.user,
+      remoteName: remote.name,
+    });
+  }
+  return credentials;
+}
 
 export function AccountsPanel() {
   const accounts = useAccounts((s) => s.accounts);
@@ -26,6 +65,7 @@ export function AccountsPanel() {
   const forgeAuth = useAccounts((s) => s.forgeAuth);
   const forgeAccountsLoading = useAccounts((s) => s.forgeAccountsLoading);
   const providerTokens = useAccounts((s) => s.providerTokens);
+  const remotes = useRepo((s) => s.remotes);
   const loadAccounts = useAccounts((s) => s.loadAccounts);
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   const reconcileProviderTokens = useAccounts((s) => s.reconcileProviderTokens);
@@ -59,15 +99,43 @@ export function AccountsPanel() {
 
   const connectedForges = forgeAuth.filter((f) => f.authenticated === true);
   const keychainAccounts = Object.values(providerTokens);
+  const transportCredentials = repoTransportCredentials(remotes);
 
   // Group every connection under its provider so a row's provider is obvious from
-  // the section header (GL-141), and only surface the three supported providers —
+  // the section header (GL-141), and only surface the providers in the picker —
   // a stray CLI sign-in on another forge is simply not shown here.
   const providerSections = VISIBLE_PROVIDER_KEYS.map((provider) => {
     const ghAccounts = provider === "github" ? accounts : [];
     const forges = provider === "github" ? [] : connectedForges.filter((f) => f.provider === provider);
     const tokens = keychainAccounts.filter((t) => t.provider === provider);
-    if (ghAccounts.length + forges.length + tokens.length === 0) return null;
+    const helpers = transportCredentials.filter((credential) => {
+      if (credential.provider !== provider) return false;
+      const login = credential.login.toLowerCase();
+      if (
+        provider === "github" &&
+        ghAccounts.some(
+          (account) =>
+            account.login.toLowerCase() === login &&
+            (credential.credentialHost === account.host.toLowerCase() ||
+              credential.credentialHost.endsWith(`.${account.host.toLowerCase()}`)),
+        )
+      ) {
+        return false;
+      }
+      if (
+        forges.some(
+          (status) => status.account?.username.toLowerCase() === login && status.authenticated === true,
+        )
+      ) {
+        return false;
+      }
+      return !tokens.some(
+        (token) =>
+          token.credentialHost.toLowerCase() === credential.credentialHost &&
+          (token.transportUsername ?? token.login).toLowerCase() === login,
+      );
+    });
+    if (ghAccounts.length + forges.length + tokens.length + helpers.length === 0) return null;
 
     // Section-level capability, derived from the members (no repo scope): gh does
     // PRs; GitLab does MRs once glab is signed in or a token is stored; Bitbucket
@@ -76,20 +144,26 @@ export function AccountsPanel() {
     if (provider === "github") {
       capability = ghAccounts.some((a) => a.healthy)
         ? { label: "Pull requests", tone: "pr" }
+        : helpers.length > 0
+          ? { label: "Transport only", tone: "muted" }
         : { label: "Needs re-auth", tone: "warn" };
     } else if (provider === "gitlab") {
       const glab = forges.some((f) => f.cli === "glab" && f.available === true);
       capability =
         glab || tokens.length > 0
           ? { label: "Merge requests", tone: "pr" }
+          : helpers.length > 0
+            ? { label: "Transport only", tone: "muted" }
           : { label: "Sign-in only", tone: "muted" };
     } else if (provider === "bitbucket") {
       capability = tokens.length > 0
         ? { label: "Pull requests", tone: "pr" }
-        : { label: "Transport only", tone: "warn" };
+        : { label: "Transport only", tone: "muted" };
+    } else if (provider === "azure-devops") {
+      capability = { label: "Transport only", tone: "muted" };
     }
 
-    return { provider, capability, ghAccounts, forges, tokens };
+    return { provider, capability, ghAccounts, forges, tokens, helpers };
   }).filter((s): s is NonNullable<typeof s> => s !== null);
 
   const hasConnections = providerSections.length > 0;
@@ -167,6 +241,12 @@ export function AccountsPanel() {
                           login: t.login,
                           transportUsername: t.transportUsername,
                         }}
+                      />
+                    ))}
+                    {sec.helpers.map((credential) => (
+                      <TransportCredentialCard
+                        key={`${credential.provider}:${credential.credentialHost}:${credential.login}`}
+                        account={credential}
                       />
                     ))}
                   </ProviderSection>

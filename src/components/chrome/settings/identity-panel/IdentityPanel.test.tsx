@@ -111,7 +111,7 @@ describe("IdentityPanel — one editable identity card (GL-130)", () => {
     expect(screen.queryByRole("button", { name: /New identity/ })).toBeNull();
     // The pick surface is the git-profile list, not a second inline editor.
     fireEvent.click(screen.getByRole("button", { name: "Change" }));
-    expect(screen.getByRole("group", { name: "Git profile choices" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Git identity choices" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Identity presets" })).toBeNull();
   });
 
@@ -181,9 +181,9 @@ describe("IdentityPanel — one editable identity card (GL-130)", () => {
     expect(screen.getByText("Default git identity")).toBeInTheDocument();
   });
 
-  it("'Manage profiles' hands off to the global Identities tab", () => {
+  it("'Manage identities' hands off to the global Identities tab", () => {
     render(<IdentityPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "Manage profiles" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage identities" }));
     expect(useUi.getState().repoSettingsOpen).toBe(false);
     expect(useUi.getState().settingsOpen).toBe(true);
     expect(useUi.getState().settingsTab).toBe("identities");

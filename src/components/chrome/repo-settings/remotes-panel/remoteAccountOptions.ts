@@ -88,19 +88,23 @@ export function remoteAccountPickerModel(
     ssh: false,
     username: info.user,
     matching,
-    note: noAccountNote(info.provider, info.host, false, forgeAuth),
+    note: noAccountNote(info.provider, info.host, info.user, false, forgeAuth),
   };
 }
 
 function noAccountNote(
   provider: RemoteProvider,
   host: string | null,
+  username: string | null,
   ssh: boolean,
   forgeAuth: ForgeAuthStatus[],
 ): string {
   const credentials = ssh
     ? "your SSH key"
-    : "your system git credentials (keychain / credential helper)";
+    : "Git Credential Manager or your configured Git credential helper";
+  if (!ssh && username) {
+    return `Git transport uses @${username} with ${credentials}.`;
+  }
   if (!host) return `Uses ${credentials}.`;
   if (provider === "github") {
     return `Use a connected GitHub account or enter a username for ${credentials}.`;

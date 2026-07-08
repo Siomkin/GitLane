@@ -167,6 +167,7 @@ export function createRepoWriteActions(
 ): Pick<
   RepoState,
   | "checkoutBranch"
+  | "checkoutRemoteBranch"
   | "createBranchAt"
   | "removeBranch"
   | "renameBranchTo"
@@ -247,6 +248,27 @@ export function createRepoWriteActions(
         // Reset the spinner but let the caller present the failure (toast), so a
         // failed checkout never leaves a stale success message behind. Replay any
         // re-sync deferred while this op held `loading` (GL-20 review).
+        set({ loading: false });
+        flushPendingRefresh(get);
+        throw e;
+      }
+    },
+
+    checkoutRemoteBranch: async (remote, branch) => {
+      const { summary } = get();
+      if (!summary) throw new Error("No repository");
+      const existingWorktree = await findCheckoutWorktree(set, get, summary, branch);
+      if (existingWorktree) {
+        await get().openWorktree(existingWorktree.path);
+        return `Opened ${branch} worktree`;
+      }
+      set({ loading: true, error: null });
+      try {
+        await api.checkoutRemoteBranch(summary.path, remote, branch);
+        set({ loading: false });
+        await get().refresh();
+        return `Checked out ${branch}`;
+      } catch (e) {
         set({ loading: false });
         flushPendingRefresh(get);
         throw e;

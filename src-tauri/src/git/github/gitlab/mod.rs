@@ -247,7 +247,7 @@ impl GithubProvider for GitLabProvider {
 /// gh-worded `NotAuthenticated` so GitLab users get the right recovery steps.
 pub(super) fn no_gitlab_auth(host: &str) -> GithubError {
     GithubError::CommandFailed(format!(
-        "No GitLab sign-in found for {host}. Run `glab auth login`, or add a GitLab token (OAuth or a personal access token) in Settings."
+        "No GitLab sign-in found for {host}. Run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport."
     ))
 }
 
@@ -256,10 +256,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_gitlab_auth_names_glab_and_settings_not_gh() {
+    fn no_gitlab_auth_names_glab_and_git_transport_fallbacks_not_gh() {
         let msg = no_gitlab_auth("gitlab.example.com").to_ipc_string();
         assert!(msg.contains("glab auth login"), "{msg}");
-        assert!(msg.contains("Settings"), "{msg}");
+        assert!(msg.contains("GCM/helper or SSH"), "{msg}");
+        assert!(!msg.contains("token"), "hidden token path should not be advertised: {msg}");
         assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
         assert!(msg.contains("gitlab.example.com"), "{msg}");
     }

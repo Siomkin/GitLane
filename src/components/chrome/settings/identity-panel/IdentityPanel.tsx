@@ -34,7 +34,7 @@ export function IdentityPanel() {
       <h2 className="text-[19px] font-bold tracking-tight text-neutral-900 dark:text-white">Identity</h2>
       <p className="mt-1.5 text-[13px] leading-snug text-neutral-600 dark:text-neutral-300 text-pretty max-w-[480px]">
         Who this repo <span className="font-semibold text-neutral-800 dark:text-neutral-100">commits as</span> — pick
-        the computer default or one of your saved git profiles.
+        the computer default or one of your saved identities.
       </p>
 
       <CommitAsZone />

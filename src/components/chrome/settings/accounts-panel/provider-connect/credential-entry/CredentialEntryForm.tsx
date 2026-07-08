@@ -1,11 +1,8 @@
-// Save an HTTPS token/password for a forge — the canonical credential-entry
-// surface (the Accounts page owns credential entry). Two fields by default
-// (username + token): the host renders as a static fact with an Edit escape
-// for self-hosted instances, and the optional path scope hides behind an
-// Advanced disclosure. Two destinations — the user's own Git credential helper
-// (`git credential approve`, GitLane stores nothing) or the OS keychain
-// GitLane owns and feeds to git via GIT_ASKPASS (GL-132). Either way the
-// secret crosses IPC once and is never persisted by GitLane in the clear.
+// Save an HTTPS token/password for a forge. The GCM/helper setup card embeds
+// this in helper-only mode: GitLane sends the credential once to
+// `git credential approve`, then Git Credential Manager / the configured helper
+// owns storage. The older keychain destination remains for compatibility where
+// this form is reused, but it is not shown by the simplified setup cards.
 
 import { useState } from "react";
 import { cn } from "../../../../../../lib/cn";
@@ -13,7 +10,6 @@ import { focusRing } from "../../../../../../lib/ui";
 import { defaultTransportUsername } from "../../../../../../lib/forgeHelp";
 import type { ForgeAuthProvider } from "../../../../../../lib/api";
 import { useAccounts } from "../../../../../../store/accounts";
-import { prSupportedFor } from "../../providers";
 import { inputCls } from "../ui";
 import { canSubmit, hostFieldInitiallyEditable, resolveHost } from "./credentialEntry";
 
@@ -22,17 +18,16 @@ export type CredentialDestination = "helper" | "keychain";
 export function CredentialEntryForm({
   provider,
   usernameHint,
+  helperOnly = false,
 }: {
-  provider: ForgeAuthProvider;
+  provider: string;
   usernameHint?: string | null;
+  helperOnly?: boolean;
 }) {
   const saveHttpsCredential = useAccounts((s) => s.saveHttpsCredential);
   const saveProviderToken = useAccounts((s) => s.saveProviderToken);
-  // Default to the keychain for PR-capable forges (GitLab, Bitbucket): it's the
-  // only destination that powers pull/merge requests, so it's the path most
-  // users entering a token here want. Non-PR forges default to the transport-only
-  // Git helper, which stores nothing in GitLane.
-  const [dest, setDest] = useState<CredentialDestination>(prSupportedFor(provider) ? "keychain" : "helper");
+  const keychainAvailable = !helperOnly && (provider === "gitlab" || provider === "bitbucket");
+  const [dest, setDest] = useState<CredentialDestination>(keychainAvailable ? "keychain" : "helper");
   const [host, setHost] = useState(resolveHost(provider));
   const [hostEditable, setHostEditable] = useState(hostFieldInitiallyEditable(provider));
   const [advanced, setAdvanced] = useState(false);
@@ -47,11 +42,14 @@ export function CredentialEntryForm({
     if (keychain) {
       // Keep the pasted token on a failed save so the user can retry without
       // re-pasting — saveProviderToken resolves false (and toasts) on failure.
-      void saveProviderToken(provider, host.trim(), username.trim(), password).then((ok) => {
+      void saveProviderToken(provider as ForgeAuthProvider, host.trim(), username.trim(), password).then((ok) => {
         if (ok) clear();
       });
     } else {
-      void saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, provider).then(clear);
+      const trackedProvider = provider === "github" ? undefined : (provider as ForgeAuthProvider);
+      void saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, trackedProvider).then((ok) => {
+        if (ok) clear();
+      });
     }
   };
 
@@ -73,9 +71,22 @@ export function CredentialEntryForm({
   return (
     <div>
       <div className="mb-2 inline-flex items-center gap-1 rounded-lg border border-black/10 p-0.5 dark:border-white/[0.12]">
-        {seg("helper", "Git helper")}
-        {seg("keychain", "GitLane keychain")}
+        {helperOnly ? (
+          <span className="px-2.5 py-1 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">
+            Git Credential Manager / helper
+          </span>
+        ) : (
+          <>
+            {seg("helper", "Git helper")}
+            {seg("keychain", "GitLane keychain")}
+          </>
+        )}
       </div>
+      {helperOnly && (
+        <p className="mb-2 text-[11.5px] leading-relaxed text-neutral-400 dark:text-neutral-500">
+          Save or update the HTTPS credential Git will request from GCM or your configured helper for this host.
+        </p>
+      )}
       <div className="grid gap-2 sm:grid-cols-2">
         <input
           value={username}

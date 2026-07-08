@@ -4,6 +4,7 @@ import { buildClusterItems } from "./refCluster";
 import { cn } from "../../lib/cn";
 import { focusRing } from "@/lib/ui";
 import { findOtherBranchWorktree } from "../../lib/graphActions";
+import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { TreeIcon } from "../../components/ui/icons";
 import { useRepo } from "../../store/repo";
 import { selectionForContextMenu } from "../../store/selection";
@@ -186,6 +187,7 @@ function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current
   const openContextMenu = useUi((state) => state.openContextMenu);
   const openTagMenu = useUi((state) => state.openTagMenu);
   const checkoutBranch = useRepo((state) => state.checkoutBranch);
+  const checkoutRemoteBranch = useRepo((state) => state.checkoutRemoteBranch);
   const worktreeName = useBranchWorktreeName(refLabel.name, refLabel.kind === "branch" && !current);
   const draggable = refLabel.kind === "branch" || refLabel.kind === "remote";
   const name = refLabel.name;
@@ -251,6 +253,15 @@ function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current
       onDoubleClick={(e) => {
         if (!draggable) return;
         e.stopPropagation();
+        if (refLabel.kind === "remote") {
+          const remoteCheckout = remoteTrackingCheckoutCandidate(name, useRepo.getState().branches);
+          if (remoteCheckout) {
+            void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch((err) =>
+              useUi.getState().showToast(String(err), "error"),
+            );
+            return;
+          }
+        }
         void checkoutBranch(name).catch((err) =>
           useUi.getState().showToast(String(err), "error"),
         );

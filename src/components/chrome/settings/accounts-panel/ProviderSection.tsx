@@ -5,7 +5,7 @@
 
 import type { ReactNode } from "react";
 import type { ProviderKey } from "./providers";
-import { BitbucketIcon, GitHubIcon, GitLabIcon } from "../../../ui/icons";
+import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "../../../ui/icons";
 
 type IconProps = { className?: string };
 
@@ -13,6 +13,7 @@ const META: Record<string, { name: string; Icon: (p: IconProps) => ReactNode }> 
   github: { name: "GitHub", Icon: GitHubIcon },
   gitlab: { name: "GitLab", Icon: GitLabIcon },
   bitbucket: { name: "Bitbucket", Icon: BitbucketIcon },
+  "azure-devops": { name: "Azure DevOps", Icon: AzureDevOpsIcon },
 };
 
 /** The provider's pull/merge-request capability, shown once per section instead

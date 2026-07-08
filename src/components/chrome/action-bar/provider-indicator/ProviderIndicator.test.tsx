@@ -133,9 +133,9 @@ describe("ProviderIndicator", () => {
 
   it("needs-auth Bitbucket: the primary opens Accounts settings to sign in (GL-141)", () => {
     const { toggle, onSignIn } = renderIndicator("needs-auth", BITBUCKET, 0);
-    expect(toggle).toHaveAccessibleName(/sign in to view pull requests/);
+    expect(toggle).toHaveAccessibleName(/set up auth for pull requests/);
     fireEvent.click(toggle);
-    fireEvent.click(screen.getByText("Sign in to Bitbucket"));
+    fireEvent.click(screen.getByText("Set up Bitbucket auth"));
     expect(onSignIn).toHaveBeenCalledTimes(1);
   });
 

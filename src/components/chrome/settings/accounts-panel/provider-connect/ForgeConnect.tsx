@@ -1,9 +1,7 @@
-// The connect body for a non-GitHub provider. Every way to connect — personal
-// access token, the provider CLI, native OAuth — is a distinct MethodCard, so
-// the methods read as separate options instead of a blur. One method leads as
-// "Recommended"; the rest sit under "Or connect another way". Which leads is
-// setup-aware: once an OAuth client id is registered, OAuth leads (one click,
-// keychain-backed); before that the simpler paste-a-token path leads (GL-139).
+// The connect body for a non-GitHub provider. The visible path is intentionally
+// small: provider CLI where one exists, Git's configured credential helper/GCM
+// for HTTPS, and SSH keys. Token/OAuth/keychain flows still exist underneath
+// but are not offered while this auth model is being simplified.
 
 import { cn } from "../../../../../lib/cn";
 import { focusRing } from "../../../../../lib/ui";
@@ -12,42 +10,60 @@ import type { ForgeAuthStatus } from "../../../../../lib/api";
 import { useAccounts } from "../../../../../store/accounts";
 import { accountHandle, prSupportedFor } from "../providers";
 import { CopyCommand } from "../CopyCommand";
-import { CredentialEntryForm } from "./credential-entry";
-import { OauthMethod } from "./OauthMethod";
 import { MethodCard } from "./MethodCard";
-import { DEFAULT_CREDENTIAL_HOST, sshKeyHelp, tokenCreationUrl } from "../../../../../lib/forgeHelp";
-import { isOauthProvider, useOauthConfigured } from "./oauth";
-import { DownloadIcon, ExternalIcon, KeyIcon, LockIcon, ShieldIcon, TerminalIcon, linkCls } from "./ui";
+import { CredentialEntryForm } from "./credential-entry";
+import { DEFAULT_CREDENTIAL_HOST, sshKeyHelp } from "../../../../../lib/forgeHelp";
+import { DownloadIcon, ExternalIcon, KeyIcon, LockIcon, TerminalIcon, linkCls } from "./ui";
 
-function TokenBody({ status }: { status: ForgeAuthStatus }) {
+const GCM_URL = "https://github.com/git-ecosystem/git-credential-manager#git-credential-manager";
+
+function CredentialHelperBody({ status }: { status: ForgeAuthStatus }) {
   const host = DEFAULT_CREDENTIAL_HOST[status.provider] ?? "your host";
-  const createUrl = tokenCreationUrl(status.provider, host) ?? status.docsUrl;
   return (
     <>
       <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
-        Create an access token on <span className="font-mono">{host}</span> and paste it below — save it to your git
-        credential helper or GitLane's OS keychain (your choice) so push and fetch work.
+        Use an HTTPS remote on <span className="font-mono">{host}</span>. GitLane leaves credentials to Git, so Git
+        Credential Manager or your configured helper handles sign-in for clone, fetch, pull, and push.
       </p>
-      <button onClick={() => openExternalUrl(createUrl)} className={cn(linkCls, "mt-2")}>
-        <ExternalIcon />
-        Create a token on {status.forge}
-      </button>
-      <div className="mt-2.5">
-        <CredentialEntryForm provider={status.provider} usernameHint={status.account?.username} />
+      <div className="mt-2 flex flex-col gap-1.5">
+        <button onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
+          <ExternalIcon />
+          Git Credential Manager
+        </button>
+        <button onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
+          <ExternalIcon />
+          {status.forge} authentication docs
+        </button>
       </div>
       {status.provider === "bitbucket" && (
         <p className="mt-2 text-[11.5px] leading-relaxed text-neutral-400 dark:text-neutral-500">
-          An API token works with your Bitbucket username or the static{" "}
-          <code className="font-mono">x-bitbucket-api-token-auth</code> (prefilled); repository and workspace access
-          tokens use <code className="font-mono">x-token-auth</code> instead.
+          Bitbucket documents GCM as an HTTPS alternative to SSH. Use an HTTPS URL such as{" "}
+          <code className="font-mono">https://username@bitbucket.org/workspace/repo.git</code>.
         </p>
       )}
+      <div className="mt-3">
+        <CredentialEntryForm provider={status.provider} usernameHint={status.account?.username} helperOnly />
+      </div>
     </>
   );
 }
 
 function CliBody({ status }: { status: ForgeAuthStatus }) {
   const cli = status.cli ?? "";
+  if (status.authenticated) {
+    return (
+      <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+        Signed in via <code className="font-mono text-[12px]">{cli}</code>
+        {status.account?.username ? (
+          <>
+            {" "}
+            as <span className="font-semibold">@{status.account.username}</span>
+          </>
+        ) : null}
+        . This is the preferred path for provider features in GitLane.
+      </p>
+    );
+  }
   if (!status.available) {
     return (
       <>
@@ -125,11 +141,6 @@ export function ForgeConnect({
   refresh: React.ReactNode;
 }) {
   const cli = status.cli ?? "";
-  const oauth = isOauthProvider(status.provider);
-  const defaultHost = DEFAULT_CREDENTIAL_HOST[status.provider] ?? "";
-  // `null` (probing) is treated as "not configured" so the token path leads until
-  // an OAuth client id is proven registered — then OAuth is promoted.
-  const oauthReady = useOauthConfigured(oauth ? status.provider : null, defaultHost) === true;
   const authed = status.authenticated === true;
   const prSupported = prSupportedFor(status.provider);
   const resolving = accountLoading && !status.account;
@@ -143,26 +154,18 @@ export function ForgeConnect({
       .filter((t) => t.provider === status.provider)
       .sort((a, b) => b.savedAt - a.savedAt)[0] ?? null;
 
-  const token: Method = {
-    key: "token",
+  const helper: Method = {
+    key: "helper",
     icon: <KeyIcon />,
-    title: "Personal access token",
-    body: <TokenBody status={status} />,
+    title: "Git Credential Manager",
+    body: <CredentialHelperBody status={status} />,
   };
   const cliMethod: Method | null = status.cli
     ? {
         key: "cli",
         icon: status.available ? <TerminalIcon /> : <DownloadIcon />,
-        title: `${status.forge} CLI`,
+        title: status.authMethod,
         body: <CliBody status={status} />,
-      }
-    : null;
-  const oauthMethod: Method | null = oauth
-    ? {
-        key: "oauth",
-        icon: <ShieldIcon />,
-        title: "Sign in with OAuth",
-        body: <OauthMethod provider={status.provider} forge={status.forge} />,
       }
     : null;
   // SSH is available for every forge and never GitLane-managed, so it always
@@ -174,11 +177,7 @@ export function ForgeConnect({
     body: <SshBody status={status} />,
   };
 
-  // Recommended first: OAuth once a client id is registered, otherwise the token.
-  const ordered: (Method | null)[] =
-    oauthReady && oauthMethod
-      ? [oauthMethod, token, cliMethod, sshMethod]
-      : [token, cliMethod, oauthMethod, sshMethod];
+  const ordered: (Method | null)[] = status.cli ? [cliMethod, helper, sshMethod] : [helper, sshMethod];
   const methods = ordered.filter((m): m is Method => m !== null);
   const [primary, ...rest] = methods;
 
@@ -215,13 +214,11 @@ export function ForgeConnect({
             ) : status.cli ? (
               <>
                 Authenticated for git transport. Pull requests for {status.forge} work through the{" "}
-                <code className="font-mono">{cli}</code> CLI, or a token stored in GitLane’s keychain.
+                <code className="font-mono">{cli}</code> CLI when that provider supports it.
               </>
             ) : (
               <>
-                Authenticated for git transport. To view pull requests, save your token to GitLane’s keychain (the{" "}
-                <span className="font-semibold">GitLane keychain</span> option) — a Git-helper credential covers push and
-                fetch only.
+                Authenticated for git transport. Pull requests still need a provider API credential path in GitLane.
               </>
             )}
           </p>

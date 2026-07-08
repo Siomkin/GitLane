@@ -234,11 +234,11 @@ function providerName(host: string | null | undefined): string {
 function credentialHint(provider: string, help: "remoteAccess" | "generic"): string {
   const suffix =
     help === "remoteAccess" ? " in Repository settings > Remote access, then try again." : ", then try again.";
-  if (provider === "Bitbucket") return `Save a Bitbucket API token or app password${suffix}`;
-  if (provider === "GitHub") return `Sign in or pick a GitHub account${suffix}`;
-  if (provider === "GitLab") return `Save a GitLab access token${suffix}`;
-  if (provider === "Azure Repos") return `Save Azure Repos credentials${suffix}`;
-  return `Save credentials${suffix}`;
+  if (provider === "Bitbucket") return `Set up Git Credential Manager or SSH${suffix}`;
+  if (provider === "GitHub") return `Sign in with gh, pick a GitHub account, or use SSH${suffix}`;
+  if (provider === "GitLab") return `Sign in with glab, set up Git Credential Manager, or use SSH${suffix}`;
+  if (provider === "Azure Repos") return `Set up Git Credential Manager or SSH${suffix}`;
+  return `Set up Git Credential Manager, a Git credential helper, or SSH${suffix}`;
 }
 
 function dedupe(lines: string[]): string[] {

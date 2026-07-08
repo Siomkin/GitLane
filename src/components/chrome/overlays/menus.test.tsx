@@ -26,6 +26,7 @@ const realRemoveWorktree = useRepo.getState().removeWorktree;
 const realOpenWorktree = useRepo.getState().openWorktree;
 const realOpenCompare = useRepo.getState().openCompare;
 const realCheckoutBranch = useRepo.getState().checkoutBranch;
+const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
 const realRebaseOnto = useRepo.getState().rebaseOnto;
 const realResetCurrentTo = useRepo.getState().resetCurrentTo;
 
@@ -52,6 +53,7 @@ beforeEach(() => {
     openWorktree: realOpenWorktree,
     openCompare: realOpenCompare,
     checkoutBranch: realCheckoutBranch,
+    checkoutRemoteBranch: realCheckoutRemoteBranch,
     rebaseOnto: realRebaseOnto,
     resetCurrentTo: realResetCurrentTo,
   });
@@ -572,6 +574,40 @@ describe("BranchContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Delete origin/feature" })).not.toBeInTheDocument();
     // The remote-delete item is a different action and must remain available.
     expect(screen.getByRole("menuitem", { name: "Delete origin/feature on remote" })).toBeInTheDocument();
+  });
+
+  it("checks out a remote-only branch as a local tracking branch", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const checkoutBranch = vi.fn().mockResolvedValue("detached");
+    useRepo.setState({
+      branches: [remoteBranch("origin/feature")],
+      checkoutRemoteBranch,
+      checkoutBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Checkout feature" }));
+
+    await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to detached remote checkout when the local branch already exists", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const checkoutBranch = vi.fn().mockResolvedValue("detached");
+    useRepo.setState({
+      branches: [localBranch("feature"), remoteBranch("origin/feature")],
+      checkoutRemoteBranch,
+      checkoutBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Checkout origin/feature (detached)" }));
+
+    await waitFor(() => expect(checkoutBranch).toHaveBeenCalledWith("origin/feature"));
+    expect(checkoutRemoteBranch).not.toHaveBeenCalled();
   });
 
   // The bug this fixed (GL-33): the confirm must force-delete (`-D`) so unmerged
