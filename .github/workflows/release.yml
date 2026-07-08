@@ -38,6 +38,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
+          fetch-depth: 0
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -101,6 +102,21 @@ jobs:
           fi
           if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
             echo "package.json version ($PKG_VERSION) != tag version ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Validate release tag is on latest
+        run: |
+          git fetch --no-tags origin latest:refs/remotes/origin/latest
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null; then
+            RELEASE_COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
+          else
+            RELEASE_COMMIT="$GITHUB_SHA"
+            echo "Tag $RELEASE_TAG does not exist locally; validating checked-out commit $RELEASE_COMMIT."
+          fi
+          if ! git merge-base --is-ancestor "$RELEASE_COMMIT" origin/latest; then
+            echo "Release tag $RELEASE_TAG must publish a commit reachable from origin/latest."
+            echo "Merge the release commit to latest before tagging or re-running this workflow."
             exit 1
           fi
 
