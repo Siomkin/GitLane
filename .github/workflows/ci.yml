@@ -78,10 +78,11 @@ jobs:
       - name: Frontend tests
         run: bun run test -- --run
 
-  # latest only: ONE Linux job that compiles once (debug), runs the full
-  # Rust/Tauri test suite, then bundles the desktop app from the SAME target dir —
-  # so the bundle reuses the test compile instead of recompiling from scratch
-  # (cargo test and `tauri build --debug` share target/debug deps).
+  # latest only: ONE Linux job that runs the full Rust/Tauri test suite on every
+  # PR and push, then — push only — bundles the desktop app from the SAME target
+  # dir so the bundle reuses the test compile instead of recompiling from scratch
+  # (cargo test and `tauri build --debug` share target/debug deps). PRs skip the
+  # bundle/upload steps: they just need cargo test as a merge gate, not an artifact.
   #
   # The bundle is UNSIGNED here: tauri.ci.conf.json disables createUpdaterArtifacts,
   # so no TAURI_SIGNING_* secrets are needed. That's deliberate — updater signing is
@@ -126,16 +127,19 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
-      # Debug bundle, reusing the test compile (same target/debug). The CI config
-      # override disables updater-artifact signing, so no signing key is needed —
-      # real signed bundles + latest.json come from release.yml.
+      # Push to latest only — PRs stop after cargo test above. Reuses the test
+      # compile (same target/debug). The CI config override disables
+      # updater-artifact signing, so no signing key is needed — real signed
+      # bundles + latest.json come from release.yml.
       - name: Build app bundle (debug, unsigned)
+        if: github.event_name != 'pull_request'
         uses: tauri-apps/tauri-action@v1
         with:
           tauriScript: bun tauri
           args: --debug --config src-tauri/tauri.ci.conf.json
 
       - name: Upload Linux bundle
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: GitLane-linux-debug-bundle
