@@ -289,9 +289,14 @@ jobs:
           # served separately by the publish-beta-manifest job below.
           prerelease: ${{ contains(needs.preflight.outputs.release_tag, '-') }}
           generateReleaseNotes: true
-          # tauri-action's input is `assetNamePattern` (not `releaseAssetNamePattern`,
-          # which it silently ignored — so assets shipped under default names). (GL-78)
-          assetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
+          # tauri-action@v1 (currently resolved) expects `releaseAssetNamePattern`.
+          # `assetNamePattern` is rejected as an unknown input (##[warning] Unexpected
+          # input(s) 'assetNamePattern') and ignored, so assets ship under default
+          # tauri names (GitLane_<version>_<arch>.<ext>) instead of this pattern. The
+          # earlier GL-78 note had the two names swapped for this action version —
+          # verified from the release job logs (valid inputs include
+          # releaseAssetNamePattern, not assetNamePattern).
+          releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
 
   # Roll the beta channel's manifest after every release. GitHub's `/latest/`
   # alias can't serve a pre-release, so the beta channel is a fixed `beta` release
