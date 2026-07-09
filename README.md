@@ -1,8 +1,10 @@
 # GitLane
 
-**See your branches. Move them.** GitLane is a fast, lightweight visual git client —
-a swimlane-style commit tree with drag-and-drop branch operations, built on
-**Tauri 2** (Rust core) + **React/TypeScript**.
+**See your branches. Move them.** GitLane is a fast, lightweight visual git client
+for **macOS, Windows, and Linux** — a free, open-source alternative to GitKraken,
+Sourcetree, and Fork, with a swimlane-style commit tree and drag-and-drop branch
+operations. Built on **Tauri 2** (Rust core) + **React/TypeScript**, it browses
+GitHub, GitLab, and Bitbucket pull requests too.
 
 [![Latest release](https://img.shields.io/github/v/release/Siomkin/GitLane?include_prereleases&label=release)](https://github.com/Siomkin/GitLane/releases)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
@@ -10,44 +12,25 @@ a swimlane-style commit tree with drag-and-drop branch operations, built on
 <!-- Screenshots live in docs/screenshots/ — see the capture checklist there. -->
 ![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
 
+## ⚠️ Not code-signed yet
+
+macOS builds are ad-hoc signed but not Apple notarized, and Windows builds are
+not Authenticode-signed. **The apps are safe and work fine** — but macOS
+Gatekeeper and Windows SmartScreen will block the first launch of a downloaded
+release with a scary-looking warning. This is expected, not a broken download.
+You have two ways around it:
+
+| Option | What you get |
+| --- | --- |
+| **[Build from source](#build-from-source)** | No signing warnings at all — you compiled it yourself |
+| **[Download a release](#download-a-release)** | Fastest install; one-time unblock step — see [macOS: first launch](#macos-first-launch) / [Windows: first launch](#windows-first-launch) |
+
+Developer ID signing + notarization (which removes this step entirely) is
+planned — see [docs/distribution.md](docs/distribution.md).
+
 ## Get GitLane
 
-Most users should start with the latest build from the
-[**Releases page**](https://github.com/Siomkin/GitLane/releases). If your
-platform blocks unsigned apps, or you prefer to inspect the source first, build
-GitLane locally instead.
-
-| I want to… | Use this |
-| --- | --- |
-| Try GitLane quickly | Download the release package for your OS |
-| Avoid unsigned macOS / Windows first-launch warnings | Build from source locally |
-| Contribute or test changes | Run the development build |
-
-> **Current signing status:** macOS builds are ad-hoc signed but not Apple
-> notarized yet, and Windows builds are not Authenticode-signed yet. The apps
-> work, but macOS Gatekeeper and Windows SmartScreen can block the first launch.
-> See the platform notes below before assuming the download is broken.
-
-### Download a release
-
-| Platform | Package |
-| --- | --- |
-| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
-| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
-| Windows | `GitLane-<version>-windows-nsis.exe` — see [Windows: first launch](#windows-first-launch) |
-| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` — see [Linux: pick a package](#linux-pick-a-package) |
-
-The `.sig` assets are signatures for the built-in updater — you never need to
-download them.
-
-GitLane updates itself through the built-in Tauri updater. Builds ship on two
-channels — **stable** and **beta** (pre-releases, updated more often); see
-[docs/release-channels.md](docs/release-channels.md).
-
 ### Build from source
-
-Use this when you want a local build from source instead of a downloaded,
-unsigned release package.
 
 Prerequisites: `bun`, the Rust toolchain, and `git`.
 
@@ -64,6 +47,25 @@ bun run tauri dev
 
 Optional, for GitHub/PR features: [GitHub CLI](https://cli.github.com) `gh`
 **2.95.0 or newer**, logged in (`gh auth login`).
+
+### Download a release
+
+Grab the latest build from the
+[**Releases page**](https://github.com/Siomkin/GitLane/releases).
+
+| Platform | Package |
+| --- | --- |
+| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
+| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
+| Windows | `GitLane-<version>-windows-nsis.exe` — see [Windows: first launch](#windows-first-launch) |
+| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` — see [Linux: pick a package](#linux-pick-a-package) |
+
+The `.sig` assets are signatures for the built-in updater — you never need to
+download them.
+
+GitLane updates itself through the built-in Tauri updater. Builds ship on two
+channels — **stable** and **beta** (pre-releases, updated more often); see
+[docs/release-channels.md](docs/release-channels.md).
 
 ### macOS: first launch
 
