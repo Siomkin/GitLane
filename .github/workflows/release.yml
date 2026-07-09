@@ -142,15 +142,15 @@ jobs:
             exit 1
           fi
 
-      - name: Build frontend
-        run: bun run build
-
-      - name: Frontend tests
-        run: bun run test -- --run
-
-      - name: Rust tests
-        working-directory: src-tauri
-        run: cargo test
+      # No test/build steps here on purpose. The "Validate release tag is on
+      # latest" step above proves this commit is already reachable from `latest`,
+      # and `latest` only advances through CI-passed PRs (ci.yml runs the
+      # frontend typecheck+build+tests and the Rust/desktop build on every push
+      # to latest). Re-running `bun run build` / `bun run test` / `cargo test`
+      # here would test a tree CI already validated — and block the whole build
+      # matrix behind a redundant full re-test on the Mac runner. Preflight is
+      # now pure release-specific validation (tag shape, version match,
+      # on-latest, signing secrets); the matrix legs do the real artifact build.
 
   release-app:
     name: Release app (${{ matrix.name }})
