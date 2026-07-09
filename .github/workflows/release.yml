@@ -242,6 +242,16 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # linuxdeploy + appimagetool are themselves AppImages, which need the
+          # FUSE 2 runtime to mount-and-run. Ubuntu 24.04+/26.04 no longer ship
+          # libfuse2 by default, so on an upgraded self-hosted runner the AppImage
+          # bundle step fails instantly with "failed to run linuxdeploy" while the
+          # build, .deb, and .rpm all succeed. Extract-and-run makes those tools
+          # self-extract to a temp dir instead of FUSE-mounting, so the AppImage
+          # builds with no libfuse2 on the box and survives OS reprovisioning.
+          # Only the linux leg runs these tools (empty on the mac/windows legs,
+          # which don't touch AppImages).
+          APPIMAGE_EXTRACT_AND_RUN: ${{ matrix.name == 'linux' && '1' || '' }}
           # Updater signing (minisign — separate from Apple code signing). With
           # bundle.createUpdaterArtifacts=true the bundler signs the update package
           # with this key and tauri-action publishes the matching latest.json.
