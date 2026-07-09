@@ -162,8 +162,11 @@ export function createRepoLifecycleActions(
       error: null,
     });
     // Same repo-bound cleanup as a switch: PR state and any open repo-bound
-    // overlay were computed for a repo that is no longer on screen.
+    // overlay were computed for a repo that is no longer on screen. The view
+    // reset covers the dead-tab-to-dead-tab switch too (GL-108): no summary
+    // changes, but it's still a repo switch for the history/notes cleanup.
     usePulls.getState().reset();
+    useUi.getState().onRepoSwitched();
     useUi.getState().closeConfirm();
     useUi.getState().closeRecovery();
     useUi.getState().closePrompt();
@@ -328,6 +331,7 @@ export function createRepoLifecycleActions(
       error: null,
     });
     usePulls.getState().reset();
+    useUi.getState().onRepoSwitched();
     useUi.getState().closeConfirm();
     useUi.getState().closeRecovery();
     useUi.getState().closePrompt();
@@ -529,13 +533,16 @@ export function createRepoLifecycleActions(
         void unwatchRepo(opts.replaceTab);
       }
 
-      // A repo switch invalidates any open repo-bound overlay: a destructive
-      // confirm / reflog-recovery dialog (impact + entries computed for the old
-      // repo) and any in-flight prompt (e.g. a recovery-branch name carrying an
-      // OID from the old repo). Confirming/submitting after the switch would act
-      // on the newly-active repo, so close them here. The FS watcher re-syncs via
-      // `refresh` (not `loadRepo`), so this never fires on a same-repo change —
-      // only a genuine switch. GL-42 review.
+      // A repo switch resets the view (history tab, review notes, history
+      // search/filter, transient chrome — see `onRepoSwitched`) and invalidates
+      // any open repo-bound overlay: a destructive confirm / reflog-recovery
+      // dialog (impact + entries computed for the old repo) and any in-flight
+      // prompt (e.g. a recovery-branch name carrying an OID from the old repo).
+      // Confirming/submitting after the switch would act on the newly-active
+      // repo, so close them here. The FS watcher re-syncs via `refresh` (not
+      // `loadRepo`), so this never fires on a same-repo change — only a genuine
+      // switch. GL-42 review.
+      useUi.getState().onRepoSwitched();
       useUi.getState().closeConfirm();
       useUi.getState().closeRecovery();
       useUi.getState().closePrompt();
@@ -753,7 +760,10 @@ export function createRepoLifecycleActions(
         set({ openPaths: remaining, missingRepo: null, tabInfoByPath: prunedInfo });
         persistSession(remaining, next);
         persistTabInfo(prunedInfo);
+        // A neighbour switch resets the view via loadRepo; dropping to the
+        // welcome screen is a repo switch too, so reset here.
         if (next) await get().loadRepo(next);
+        else useUi.getState().onRepoSwitched();
         return;
       }
       const wasActive = summary?.path === path;
@@ -805,11 +815,12 @@ export function createRepoLifecycleActions(
           compare: null,
         });
         usePulls.getState().reset();
-        // Closing the last tab drops to the welcome screen; any open repo-bound
-        // overlay (destructive confirm, reflog-recovery dialog, prompt, hand-off,
-        // or delete-branch-and-worktree dialog) was bound to the now-closed repo,
-        // so clear them too. The switch-to-neighbour branch below routes through
-        // `loadRepo`, which already does this. GL-42 / GL-107.
+        // Closing the last tab drops to the welcome screen; reset the view and
+        // clear any open repo-bound overlay (destructive confirm, reflog-recovery
+        // dialog, prompt, hand-off, or delete-branch-and-worktree dialog) — all
+        // bound to the now-closed repo. The switch-to-neighbour branch below
+        // routes through `loadRepo`, which already does this. GL-42 / GL-107.
+        useUi.getState().onRepoSwitched();
         useUi.getState().closeConfirm();
         useUi.getState().closeRecovery();
         useUi.getState().closePrompt();
@@ -1138,6 +1149,9 @@ export function createRepoLifecycleActions(
             ...(selectedFileGone ? { selectedFile: null, fileDiff: null } : {}),
             ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
           });
+          // The changes view has nothing to show over a clean tree — the ui
+          // store falls back to the graph when it was the active view.
+          if (noWip) useUi.getState().onWorkingTreeClean();
           // A working-tree comparison (head: null) reflects the live tree, so a
           // worktree-scope event (edit/stage/terminal commit) must refresh it.
           // Ref-to-ref comparisons are pinned to commits and don't change here.
@@ -1277,6 +1291,8 @@ export function createRepoLifecycleActions(
           ...(gone ? { selectedFile: null, fileDiff: null } : {}),
           ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
         });
+        // See the worktree-scope path above: a clean tree leaves the changes view.
+        if (noWip) useUi.getState().onWorkingTreeClean();
         persistTabInfo(get().tabInfoByPath);
         // The remote list may have changed (terminal `git remote add/remove`),
         // which changes what the per-remote bindings resolve to — re-sync before

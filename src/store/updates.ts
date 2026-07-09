@@ -35,12 +35,22 @@ interface UpdatesState {
   update: Update | null;
 
   loadVersion: () => Promise<void>;
+  /** Quiet launch-time policy: populate the version for display, then check the
+   * endpoint at most once a day, honoring the About panel's auto-check toggle.
+   * Silent on "up to date"/errors (e.g. offline) — only a found update surfaces
+   * (the titlebar indicator); the manual flow in Settings → About surfaces the
+   * rest. The caller gates on the Tauri runtime (`bun run dev` in a plain
+   * browser must not show a bogus state). */
+  checkOnLaunch: () => Promise<void>;
   /** Check the endpoint. `quiet` suppresses the up-to-date / error toasts so a
    * startup check stays silent — only a found update surfaces (the indicator). */
   check: (opts?: { quiet?: boolean }) => Promise<void>;
   downloadAndInstall: () => Promise<void>;
   restart: () => Promise<void>;
 }
+
+/** Throttle window for the launch-time auto check (see `checkOnLaunch`). */
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** True while an update is offered, downloading, or installed-pending-restart —
  * the condition that lights up the titlebar indicator. */
@@ -64,6 +74,17 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
       if (v && v !== get().version) set({ version: v });
     } catch {
       // Version is display-only; ignore failures (e.g. outside Tauri).
+    }
+  },
+
+  checkOnLaunch: async () => {
+    await get().loadVersion();
+    // Channel prefs are read one-shot (never subscribed): `lastUpdateCheckAt`
+    // is stamped by `check` itself only when there is nothing to install, so a
+    // pending update found before quitting re-surfaces on the next launch.
+    const { autoCheckUpdates, lastUpdateCheckAt } = useUi.getState();
+    if (autoCheckUpdates && Date.now() - lastUpdateCheckAt >= DAY_MS) {
+      await get().check({ quiet: true });
     }
   },
 

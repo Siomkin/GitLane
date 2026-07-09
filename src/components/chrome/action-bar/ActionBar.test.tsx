@@ -46,14 +46,14 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
   useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()], worktrees: [], remotes: [] });
-  useUi.setState({ prompt: null, navOpen: false });
+  useUi.setState({ prompt: null, navOpen: false, leftTab: "history" });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({ accounts: [], accountsError: null, accountsLoading: false, repoAccountRef: null });
 });
 
 describe("ActionBar layout order", () => {
   it("places the provider indicator in the right cluster, just before Fetch (after the branch trigger)", () => {
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     const commitsTab = screen.getByRole("button", { name: /Commits/ });
     const branchTrigger = screen.getByTitle(/Branches, worktrees & stashes/);
@@ -66,20 +66,28 @@ describe("ActionBar layout order", () => {
     expect(precedes(provider, fetchBtn)).toBe(true);
   });
 
+  it("drives the ui store's view tab from the segmented control", () => {
+    render(<ActionBar />);
+    fireEvent.click(screen.getByRole("button", { name: /PRs/ }));
+    expect(useUi.getState().leftTab).toBe("pulls");
+    fireEvent.click(screen.getByRole("button", { name: /Commits/ }));
+    expect(useUi.getState().leftTab).toBe("history");
+  });
+
   it("renders no provider indicator when the repo's forge is unknown", () => {
     useRepo.setState({ forge: null });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(screen.queryByRole("button", { name: /remote provider/i })).toBeNull();
   });
 
   it("still shows the provider indicator for a remote-less repo (the 'missing' state)", () => {
     useRepo.setState({ forge: { hasRemote: false, kind: null, forge: null, host: null, webUrl: null } });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(screen.getByRole("button", { name: /remote provider/i })).toBeInTheDocument();
   });
 
   it("quietly loads GitHub PRs for the toolbar badge before PRs mode opens", () => {
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
       path: SUMMARY.path,
       account: null,
@@ -92,7 +100,7 @@ describe("ActionBar layout order", () => {
     useRepo.setState({
       forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
     });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
       path: SUMMARY.path,
       account: null,
@@ -103,7 +111,7 @@ describe("ActionBar layout order", () => {
     useRepo.setState({
       forge: { ...FORGE, kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" },
     });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(invokeMock).not.toHaveBeenCalledWith("list_pull_requests", expect.anything());
   });
 
@@ -111,7 +119,7 @@ describe("ActionBar layout order", () => {
     useRepo.setState({
       forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
     });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", { path: SUMMARY.path, account: null });
   });
 
@@ -134,7 +142,7 @@ describe("ActionBar layout order", () => {
       ],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(
       screen.getByRole("button", {
@@ -162,7 +170,7 @@ describe("ActionBar layout order", () => {
       ],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(
       screen.getByRole("button", {
@@ -176,7 +184,7 @@ describe("ActionBar layout order", () => {
       branches: [branch({ sync: { status: "behind", upstream: "origin/main", ahead: 0, behind: 2 } })],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(screen.getByTitle("2 commits behind origin/main.")).toBeEnabled();
     expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
@@ -188,7 +196,7 @@ describe("ActionBar layout order", () => {
       branches: [branch({ sync: { status: "ahead", upstream: "origin/main", ahead: 1, behind: 0 } })],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(
       screen.getAllByTitle("1 commit ahead of origin/main.").every((button) => !button.hasAttribute("disabled")),
@@ -201,7 +209,7 @@ describe("ActionBar layout order", () => {
       branches: [branch({ sync: { status: "diverged", upstream: "origin/main", ahead: 2, behind: 3 } })],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(screen.getByTitle(/Pull unavailable/)).toBeDisabled();
     expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
@@ -209,13 +217,13 @@ describe("ActionBar layout order", () => {
   });
 
   it("keeps Pull available for an up-to-date remote-tracking ref because git pull fetches first", () => {
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(screen.getByTitle("Up to date with origin/main.")).toBeEnabled();
     expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
   });
 
   it("shows no synced badge for an up-to-date branch", () => {
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(screen.queryByText("synced")).not.toBeInTheDocument();
   });
 
@@ -231,7 +239,7 @@ describe("ActionBar layout order", () => {
       ],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     fireEvent.click(screen.getByTitle("This branch has no upstream configured."));
 
     const prompt = useUi.getState().prompt;
@@ -254,7 +262,7 @@ describe("ActionBar layout order", () => {
       ],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     fireEvent.click(screen.getByText("Push"));
 
     const prompt = useUi.getState().prompt;
@@ -267,7 +275,7 @@ describe("ActionBar layout order", () => {
   it("does not permanently disable Pull and Push when branch sync state is unavailable", () => {
     useRepo.setState({ branches: [] });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     const fallbackTitle = "Sync state is unavailable. Pull or push will let git validate the operation.";
     expect(screen.getAllByTitle(fallbackTitle).every((button) => !button.hasAttribute("disabled"))).toBe(true);
@@ -281,7 +289,7 @@ describe("ActionBar layout order", () => {
       branches: [],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(screen.getByText(/detached @/)).toBeInTheDocument();
     expect(screen.getByTitle(/Pull unavailable. Detached HEAD/)).toBeDisabled();
@@ -298,7 +306,7 @@ describe("ActionBar layout order", () => {
       branches: [],
     });
 
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     expect(screen.getByText("No commits yet")).toBeInTheDocument();
     expect(screen.queryByText("master")).not.toBeInTheDocument();
@@ -315,14 +323,14 @@ describe("ActionBar worktree indicator", () => {
 
   it("renders no worktree chip when the repo has only the main worktree", () => {
     useRepo.setState({ worktrees: [MAIN_WT] });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(screen.queryByRole("button", { name: /worktree/i })).toBeNull();
   });
 
   it("renders no worktree chip when the main worktree is open, even though linked ones exist", () => {
     // Linked worktrees are discoverable in the navigator; no permanent toolbar badge.
     useRepo.setState({ worktrees: [MAIN_WT, LINKED_WT] });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
     expect(screen.queryByRole("button", { name: /worktree/i })).toBeNull();
   });
 
@@ -331,7 +339,7 @@ describe("ActionBar worktree indicator", () => {
       summary: { ...SUMMARY, path: "/work/repo-wt", workdir: "/work/repo-wt" },
       worktrees: [MAIN_WT, LINKED_WT],
     });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     // Icon-only chip: the worktree name is carried by the accessible label and
     // tooltip (the branch trigger to its left already shows the ref), not inline.
@@ -349,7 +357,7 @@ describe("ActionBar worktree indicator", () => {
       worktrees: [MAIN_WT, LINKED_WT],
       openWorktree,
     });
-    render(<ActionBar activeTab="history" onTabChange={vi.fn()} />);
+    render(<ActionBar />);
 
     fireEvent.click(screen.getByRole("button", { name: "Back to main checkout" }));
     expect(openWorktree).toHaveBeenCalledWith("/repo");
