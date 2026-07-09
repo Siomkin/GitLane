@@ -1109,6 +1109,12 @@ export const gitApi = {
     gitignore: string,
   ) => invoke<string>("init_repo", { parent, name, branch, readme, gitignore }),
 
+  /** Initialize an already-existing, possibly non-empty directory as a repo
+   * in place (the missing-repo screen's "Initialize as git repo" recovery
+   * action, GL-153) — no README/.gitignore scaffolding. Resolves with the
+   * canonical repo path from the post-init open probe. */
+  initRepoInPlace: (path: string) => invoke<string>("init_repo_in_place", { path }),
+
   /** Presence + current branch for each recent repo path (missing-path + branch
    * info for the onboarding "Recent" list). */
   recentsStatus: (paths: string[]) => invoke<RecentStatus[]>("recents_status", { paths }),

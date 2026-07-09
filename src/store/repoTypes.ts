@@ -239,6 +239,16 @@ export interface RepoState {
    * (toast). Defaults to the missing-repo tab state; the onboarding "Recent"
    * list passes its stale path explicitly. */
   locateMissingRepo: (fromPath?: string) => Promise<void>;
+  /** True while [`initMissingRepo`] is in flight — disables the button so a
+   * double-click can't fire two inits. */
+  initMissingRepoRunning: boolean;
+  /** Initialize as git repo… (GL-153): for the missing-repo tab's
+   * `notARepository` case (the folder exists but lost its `.git`), run a
+   * plain `git init` in place — no README/.gitignore scaffolding, the
+   * existing files are left untouched — then open it. Other failures surface
+   * as a toast; if the folder became a repo again concurrently, Retry is
+   * attempted automatically. */
+  initMissingRepo: () => Promise<void>;
   /** Clear the entire recent list. */
   clearRecents: () => void;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working
@@ -497,6 +507,7 @@ export type RepoDataState = Pick<
   | "stashes"
   | "openPaths"
   | "missingRepo"
+  | "initMissingRepoRunning"
   | "tabInfoByPath"
   | "recents"
   | "changes"
@@ -546,6 +557,7 @@ export function createInitialRepoData(
     stashes: [],
     openPaths,
     missingRepo: null,
+    initMissingRepoRunning: false,
     tabInfoByPath,
     recents,
     changes: emptyChanges,
