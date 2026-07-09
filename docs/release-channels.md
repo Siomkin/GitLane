@@ -90,8 +90,25 @@ After tagging `vX.Y.Z-beta.N`:
    `/latest/`.
 4. After a later stable `vX.Y.Z`, a tester on `X.Y.Z-beta.N` is offered `X.Y.Z`.
 
-## Not yet implemented
+## In-app channel toggle (GL-154)
 
-An in-app "receive beta updates" toggle (switch channels without reinstalling)
-would need a runtime `UpdaterBuilder::endpoints()` override driven by a stored
-preference. Today the channel is fixed by which build you install.
+Settings → About has a **"Receive beta updates"** toggle that switches the
+update channel *without reinstalling*. The JS `@tauri-apps/plugin-updater`
+`check()` can't override endpoints at runtime, so the toggle drives a small Rust
+command (`updater::check_update_on_channel`) that rebuilds the updater via
+`webview.updater_builder()` and overrides `.endpoints()` **explicitly for the
+selected channel** — stable `/latest/` when off, the beta manifest when on. It
+does *not* fall back to the build's baked-in default: that default differs per
+build (a beta build bakes the beta manifest via `tauri.beta.conf.json`), so
+relying on it would leave a beta install stuck on beta after the user turned the
+toggle off. Because only `.endpoints()` is overridden, `updater_builder()`
+retains the config's signing **pubkey**, so signature verification stays on for
+both channels; the checked `Update` is parked in the webview resource table so
+the plugin's own download/install path drives it unchanged.
+
+The preference (`betaUpdates` in `src/store/ui.ts`, persisted) **defaults on**
+while no stable release exists — the stable `/latest/` endpoint can't resolve
+against pre-releases, and it's self-correcting: `publish-beta-manifest` rolls
+the beta manifest forward to a stable build once one ships (`0.2.0 >
+0.2.0-beta.x`), so a beta-channel user is offered stable automatically. Flip the
+default to off once stable is the primary channel.

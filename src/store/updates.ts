@@ -74,7 +74,11 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     if (status === "checking" || status === "downloading" || status === "ready") return;
     set({ status: "checking", error: null });
     try {
-      const update = await checkForUpdate();
+      // Channel is a persisted UI pref (read one-shot, not subscribed): beta
+      // opts into the rolling beta manifest, stable uses the config endpoint
+      // (GL-154). Signature verification stays on either way (backend keeps the
+      // config pubkey).
+      const update = await checkForUpdate(useUi.getState().betaUpdates);
       if (!update) {
         // Stamp the once-a-day throttle (read in App.tsx) ONLY when there is
         // nothing to install. We deliberately do NOT stamp when an update IS

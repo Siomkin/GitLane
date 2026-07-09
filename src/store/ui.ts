@@ -275,6 +275,12 @@ interface UiState {
    * attempt, used to throttle that daily check. Both persist. */
   autoCheckUpdates: boolean;
   lastUpdateCheckAt: number;
+  /** When true, update checks target the beta channel's rolling manifest
+   * instead of the stable `/latest/` endpoint (GL-154, the About panel's
+   * "Receive beta updates" toggle). Defaults on for now: no stable release
+   * exists yet, so stable can't resolve — and it's self-correcting, the beta
+   * manifest rolls forward to a stable build once one ships. Persists. */
+  betaUpdates: boolean;
 
   leftWidth: number;
   rightWidth: number;
@@ -416,6 +422,8 @@ interface UiState {
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
   setAutoCheckUpdates: (on: boolean) => void;
+  /** Opt into (or out of) beta-channel update checks (GL-154). */
+  setBetaUpdates: (on: boolean) => void;
   /** Stamp the last update-check time (called by the updates store on any check). */
   markUpdateChecked: () => void;
   setFilter: (filter: string) => void;
@@ -578,6 +586,7 @@ export const useUi = create<UiState>()(
 
   autoCheckUpdates: true,
   lastUpdateCheckAt: 0,
+  betaUpdates: true,
 
   leftWidth: 300,
   rightWidth: 374,
@@ -674,6 +683,7 @@ export const useUi = create<UiState>()(
   setAccent: (accent) => set({ accent }),
   setDensity: (density) => set({ density }),
   setAutoCheckUpdates: (on) => set({ autoCheckUpdates: on }),
+  setBetaUpdates: (on) => set({ betaUpdates: on }),
   markUpdateChecked: () => set({ lastUpdateCheckAt: Date.now() }),
   setFilter: (filter) => set({ filter }),
   toggleCollapse: (key) =>
@@ -888,6 +898,7 @@ export const useUi = create<UiState>()(
         accent: s.accent,
         density: s.density,
         autoCheckUpdates: s.autoCheckUpdates,
+        betaUpdates: s.betaUpdates,
         lastUpdateCheckAt: s.lastUpdateCheckAt,
         leftWidth: s.leftWidth,
         rightWidth: s.rightWidth,
