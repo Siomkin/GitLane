@@ -8,10 +8,12 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { MissingRepoScreen } from "./MissingRepoScreen";
 import { useRepo } from "../../store/repo";
+import { useUi } from "../../store/ui";
 
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
+  useUi.setState({ confirm: null, requestConfirm: useUi.getState().requestConfirm });
 });
 
 describe("MissingRepoScreen", () => {
@@ -37,6 +39,19 @@ describe("MissingRepoScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("only offers Initialize as git repo for the notARepository kind, not the moved/deleted kind", () => {
+    useRepo.setState({ missingRepo: { path: "/still/here", kind: "notARepository" } });
+    const { unmount } = render(<MissingRepoScreen />);
+    expect(screen.getByRole("button", { name: /Initialize as git repo/ })).toBeInTheDocument();
+    unmount();
+
+    useRepo.setState({ missingRepo: { path: "/vol/gone", kind: "missing" } });
+    render(<MissingRepoScreen />);
+    expect(
+      screen.queryByRole("button", { name: /Initialize as git repo/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("wires Remove / Retry / Locate… to the store actions", () => {
     const loadRepo = vi.fn();
     const closeRepo = vi.fn();
@@ -55,5 +70,36 @@ describe("MissingRepoScreen", () => {
     expect(loadRepo).toHaveBeenCalledWith("/vol/gone");
     fireEvent.click(screen.getByRole("button", { name: /Locate/ }));
     expect(locateMissingRepo).toHaveBeenCalled();
+  });
+
+  it("wires Initialize as git repo to a confirmation before the store action", () => {
+    const requestConfirm = vi.fn();
+    const initMissingRepo = vi.fn();
+    useUi.setState({ requestConfirm });
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      initMissingRepo,
+    });
+    render(<MissingRepoScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Initialize as git repo/ }));
+    expect(requestConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Initialize as git repo?",
+        confirmLabel: "Initialize",
+      }),
+    );
+    requestConfirm.mock.calls[0][0].onConfirm();
+    expect(initMissingRepo).toHaveBeenCalled();
+  });
+
+  it("disables Initialize as git repo while init is in flight", () => {
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      initMissingRepoRunning: true,
+    });
+    render(<MissingRepoScreen />);
+
+    expect(screen.getByRole("button", { name: /Initializing/ })).toBeDisabled();
   });
 });

@@ -1,12 +1,14 @@
 // The dedicated state for a tab whose repository path no longer resolves
 // (GL-108), shown in place of the workspace — never the raw libgit2 error on
-// the global bar. The three recovery actions map to the real cases: Remove
-// (the repo is gone for good), Locate… (it moved), Retry (it lives on an
-// external volume that wasn't mounted).
+// the global bar. The recovery actions map to the real cases: Remove (the
+// repo is gone for good), Retry (it lives on an external volume that wasn't
+// mounted), Initialize as git repo (the folder is fine, it just lost its
+// `.git` — GL-153, `notARepository` only), Locate… (it moved).
 
-import { FolderIcon, RefreshIcon, WarningIcon } from "../../components/ui/icons";
+import { FolderIcon, PlusIcon, RefreshIcon, WarningIcon } from "../../components/ui/icons";
 import { repoLabel } from "../../lib/paths";
 import { useRepo } from "../../store/repo";
+import { useUi } from "../../store/ui";
 
 const secondaryButton =
   "h-10 rounded-xl border border-black/10 px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5";
@@ -16,6 +18,9 @@ export const MissingRepoScreen = () => {
   const loadRepo = useRepo((state) => state.loadRepo);
   const closeRepo = useRepo((state) => state.closeRepo);
   const locateMissingRepo = useRepo((state) => state.locateMissingRepo);
+  const initMissingRepo = useRepo((state) => state.initMissingRepo);
+  const initMissingRepoRunning = useRepo((state) => state.initMissingRepoRunning);
+  const requestConfirm = useUi((state) => state.requestConfirm);
   if (!missing) return null;
 
   const name = repoLabel(missing.path);
@@ -55,6 +60,25 @@ export const MissingRepoScreen = () => {
               <RefreshIcon className="h-4 w-4" />
               Retry
             </button>
+            {missing.kind === "notARepository" && (
+              <button
+                disabled={initMissingRepoRunning}
+                onClick={() =>
+                  requestConfirm({
+                    title: "Initialize as git repo?",
+                    message:
+                      "A new git repository will be created in this folder. Your files stay as they are, but any commit history lost with the old .git directory cannot be recovered.",
+                    warnings: ["This cannot restore branches, remotes, or past commits."],
+                    confirmLabel: "Initialize",
+                    onConfirm: () => void initMissingRepo(),
+                  })
+                }
+                className={`flex items-center gap-2 ${secondaryButton} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <PlusIcon className="h-4 w-4" />
+                {initMissingRepoRunning ? "Initializing…" : "Initialize as git repo"}
+              </button>
+            )}
             <button
               onClick={() => void locateMissingRepo()}
               className="flex h-10 items-center gap-2 rounded-xl bg-[color:var(--accent)] px-5 text-[13.5px] font-semibold text-white shadow-sm hover:brightness-110"

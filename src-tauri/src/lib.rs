@@ -1332,6 +1332,14 @@ async fn init_repo(
     blocking(move || git::write::init(&parent, &name, &branch, readme, &gitignore)).await
 }
 
+/// Initialize an already-existing, possibly non-empty directory as a git
+/// repository in place — the missing-repo screen's "Initialize as git repo"
+/// recovery action for a folder that lost its `.git` (GL-153).
+#[tauri::command]
+async fn init_repo_in_place(path: String) -> Result<String, String> {
+    blocking(move || git::write::init_in_place(&path)).await
+}
+
 /// Presence + current branch for each recent repo path, so the onboarding list
 /// can flag missing paths and show branches. Touches the filesystem per path, so
 /// it runs off the main thread.
@@ -1674,6 +1682,7 @@ pub fn run() {
             clone_repo,
             cancel_clone,
             init_repo,
+            init_repo_in_place,
             recents_status,
             reveal_path,
             terminal_agents_get,

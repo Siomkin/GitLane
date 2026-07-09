@@ -59,6 +59,7 @@ export function createRepoLifecycleActions(
   | "refreshRecents"
   | "removeRecent"
   | "locateMissingRepo"
+  | "initMissingRepo"
   | "clearRecents"
   | "refresh"
   | "loadMoreHistory"
@@ -1035,6 +1036,40 @@ export function createRepoLifecycleActions(
         set({ openPaths, recents });
       }
       await get().loadRepo(probe.path);
+    },
+
+    // Initialize as git repo… (GL-153): the `notARepository` case's folder
+    // still has the user's files, so this runs `git init` right where it
+    // stands (no picker, no README/.gitignore scaffolding) and opens it — a
+    // lighter recovery than Locate… for the common "the .git got deleted"
+    // case.
+    initMissingRepo: async () => {
+      const missing = get().missingRepo;
+      if (!missing || missing.kind !== "notARepository") return;
+      if (get().initMissingRepoRunning) return;
+      const { path } = missing;
+      set({ initMissingRepoRunning: true });
+      try {
+        try {
+          await api.initRepoInPlace(path);
+        } catch (e) {
+          const message = errorText(e);
+          // The repo may have become openable while the confirm dialog was up
+          // (another tool re-created `.git`, or a concurrent Retry succeeded).
+          if (message.includes("already a Git repository") && get().missingRepo?.path === path) {
+            await get().loadRepo(path);
+            return;
+          }
+          useUi.getState().showToast(message, "error");
+          return;
+        }
+        // The tab may have moved on while the (fast, local) init was in flight
+        // — e.g. Remove/Retry/Locate… resolved it first. Don't stomp on that.
+        if (get().missingRepo?.path !== path) return;
+        await get().loadRepo(path);
+      } finally {
+        set({ initMissingRepoRunning: false });
+      }
     },
 
     clearRecents: () => {

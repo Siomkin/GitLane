@@ -32,7 +32,7 @@ pub use conflict_resolution::{
     reconflict_file, resolve_conflict_file, skip_operation,
 };
 pub use identity::{clear_repo_identity, set_repo_identity};
-pub use lifecycle::{cancel_clone, clone, init, CloneSlot};
+pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_force_push,
     preview_reset, reflog_entries,

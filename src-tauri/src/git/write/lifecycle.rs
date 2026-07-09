@@ -409,6 +409,50 @@ pub fn init(
     Ok(target)
 }
 
+/// Initialize an already-existing, possibly non-empty directory as a git
+/// repository **in place** — the "Initialize as git repo" recovery action for
+/// a folder that lost its `.git` (GL-108's `notARepository` case, GL-153).
+/// Unlike [`init`], this never scaffolds a README/`.gitignore` and never
+/// rejects a non-empty directory (the whole point is adopting the user's
+/// existing files); it only refuses a path that isn't a real directory or is
+/// already a *valid* repo. Returns the canonical repo path from the post-init
+/// open probe (same normalization as [`crate::git::read::summary_classified`]).
+pub fn init_in_place(path: &str) -> Result<String, String> {
+    if path.trim().is_empty() {
+        return Err("Choose a folder to initialize.".to_string());
+    }
+    ensure_operand(path)?;
+    let target_path = std::path::Path::new(path);
+    if !target_path.is_dir() {
+        return Err(format!("{path} is not a folder."));
+    }
+    // Block only when libgit2 can open the repo — the same probe `open_repo`
+    // uses — so this action never disagrees with the missing-repo screen's
+    // `notARepository` classification (GL-153 review). A broken or
+    // partially-initialized `.git` still fails that probe and is repaired by
+    // `git init` below; only a genuinely openable repo is rejected.
+    if crate::git::read::summary_classified(path).is_ok() {
+        return Err(format!(
+            "{path} is already a Git repository — try Retry to open it."
+        ));
+    }
+    // A `.git` *file* (a linked worktree's gitdir pointer) that failed the
+    // open probe above is dangling — unlike a `.git` *directory*, which `init`
+    // repairs in place (tested above), git refuses to `init` over a `.git`
+    // file at all, even a broken one, so remove it first (GL-153 review).
+    // Never touch a `.git` directory here; only a plain file, which we've
+    // just proven libgit2 cannot open, is safe to replace.
+    let dot_git = target_path.join(".git");
+    if dot_git.is_file() {
+        std::fs::remove_file(&dot_git)
+            .map_err(|e| format!("Couldn't remove the stale .git file at {path}: {e}"))?;
+    }
+    super::cli::run_git_bare(&["init", path])?;
+    crate::git::read::summary_classified(path)
+        .map(|summary| summary.path)
+        .map_err(|e| e.message)
+}
+
 /// Starter `.gitignore` contents for a named template, or `None` for "None" /
 /// any unknown name (in which case no `.gitignore` is written). Deliberately
 /// small, common-case templates rather than a full template library.

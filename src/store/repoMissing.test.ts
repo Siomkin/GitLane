@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: dialogMock }));
 
 import { useRepo } from "./repo";
+import { useNotifications } from "./notifications";
 import { createInitialRepoData } from "./repoTypes";
 import type { RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "../lib/api";
 import { emptyAdvancedState } from "../lib/advancedRepoState";
@@ -66,6 +67,7 @@ beforeEach(() => {
   dialogMock.mockReset();
   localStorage.clear();
   useRepo.setState(createInitialRepoData([], []));
+  useNotifications.getState().dismissAll();
 });
 
 describe("repo store — missing-repo state (GL-108)", () => {
@@ -337,6 +339,133 @@ describe("repo store — missing-repo state (GL-108)", () => {
     expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")).toEqual({
       "/new": { version: 2, unbound: true },
     });
+  });
+
+  it("Initialize as git repo (GL-153) runs init in place and opens the repo", async () => {
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      openPaths: ["/still/here"],
+      recents: [{ path: "/still/here", name: "here", branch: "main", lastOpenedAt: 1, missing: true }],
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "init_repo_in_place") return Promise.resolve("/still/here");
+      return healthyInvoke({ ...summary, path: "/still/here", workdir: "/still/here" })(cmd);
+    });
+
+    await useRepo.getState().initMissingRepo();
+
+    expect(invokeMock).toHaveBeenCalledWith("init_repo_in_place", { path: "/still/here" });
+    const s = useRepo.getState();
+    expect(s.missingRepo).toBeNull();
+    expect(s.summary?.path).toBe("/still/here");
+    // The recents entry flagged `missing` when the state was entered must
+    // clear once the repo is genuinely open again.
+    expect(s.recents.find((r) => r.path === "/still/here")?.missing).toBeFalsy();
+  });
+
+  it("Initialize as git repo doesn't reopen if the tab moved on while init was in flight", async () => {
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      openPaths: ["/still/here"],
+    });
+    let resolveInit!: (path: string) => void;
+    const initPromise = new Promise<string>((resolve) => {
+      resolveInit = resolve;
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "init_repo_in_place" ? initPromise : defaultInvoke(cmd),
+    );
+
+    const call = useRepo.getState().initMissingRepo();
+    // Remove resolved the tab (e.g. the user clicked it) while the init
+    // subprocess was still running.
+    useRepo.setState({ missingRepo: null, openPaths: [] });
+    resolveInit("/still/here");
+    await call;
+
+    // The stale init's success must not reopen a repo nobody is looking at.
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", { path: "/still/here" });
+    expect(useRepo.getState().missingRepo).toBeNull();
+    expect(useRepo.getState().summary).toBeNull();
+  });
+
+  it("Initialize as git repo toasts and keeps the missing state when init fails", async () => {
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      openPaths: ["/still/here"],
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "init_repo_in_place"
+        ? Promise.reject(new Error("Couldn't create repository: permission denied"))
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().initMissingRepo();
+
+    const s = useRepo.getState();
+    expect(s.missingRepo).toEqual({ path: "/still/here", kind: "notARepository" });
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("permission denied");
+  });
+
+  it("Initialize as git repo opens the repo when init reports it is already a repository", async () => {
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      openPaths: ["/still/here"],
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "init_repo_in_place") {
+        return Promise.reject(
+          new Error("/still/here is already a Git repository — try Retry to open it."),
+        );
+      }
+      return healthyInvoke({ ...summary, path: "/still/here", workdir: "/still/here" })(cmd);
+    });
+
+    await useRepo.getState().initMissingRepo();
+
+    expect(invokeMock).toHaveBeenCalledWith("open_repo", { path: "/still/here" });
+    const s = useRepo.getState();
+    expect(s.missingRepo).toBeNull();
+    expect(s.summary?.path).toBe("/still/here");
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("Initialize as git repo ignores a second call while the first is in flight", async () => {
+    useRepo.setState({
+      missingRepo: { path: "/still/here", kind: "notARepository" },
+      openPaths: ["/still/here"],
+    });
+    let resolveInit!: (path: string) => void;
+    const initPromise = new Promise<string>((resolve) => {
+      resolveInit = resolve;
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "init_repo_in_place" ? initPromise : defaultInvoke(cmd),
+    );
+
+    const first = useRepo.getState().initMissingRepo();
+    expect(useRepo.getState().initMissingRepoRunning).toBe(true);
+    await useRepo.getState().initMissingRepo();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    // Drop the missing state before the first init settles so this test only
+    // covers the in-flight guard, not the post-init open path.
+    useRepo.setState({ missingRepo: null });
+    resolveInit("/still/here");
+    await first;
+    expect(useRepo.getState().initMissingRepoRunning).toBe(false);
+  });
+
+  it("Initialize as git repo is a no-op for the moved/deleted (missing) kind", async () => {
+    useRepo.setState({
+      missingRepo: { path: "/vol/gone", kind: "missing" },
+      openPaths: ["/vol/gone"],
+    });
+
+    await useRepo.getState().initMissingRepo();
+
+    expect(invokeMock).not.toHaveBeenCalledWith("init_repo_in_place", expect.anything());
+    expect(useRepo.getState().missingRepo).toEqual({ path: "/vol/gone", kind: "missing" });
   });
 
   it("restores a session whose last repo is missing into the state, not the error bar", async () => {
