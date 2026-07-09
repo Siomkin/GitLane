@@ -29,12 +29,17 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       desktop: ${{ steps.filter.outputs.desktop }}
+      rust: ${{ steps.filter.outputs.rust }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: dorny/paths-filter@v4
         id: filter
         with:
+          # `desktop` (Rust + frontend inputs) gates the push-to-latest bundle,
+          # which embeds the built frontend. `rust` gates the PR-time cargo test,
+          # which doesn't consume src/** at all — a frontend-only PR must not pay
+          # for a Rust compile (see desktop-linux-check's `if`).
           filters: |
             frontend:
               - 'src/**'
@@ -52,6 +57,9 @@ jobs:
               - 'tsconfig*.json'
               - 'package.json'
               - 'bun.lock'
+              - '.github/workflows/ci.yml'
+            rust:
+              - 'src-tauri/**'
               - '.github/workflows/ci.yml'
 
   # PRs + latest: fast frontend gate when frontend/package/CI inputs changed.
@@ -90,10 +98,15 @@ jobs:
   # fork PRs, where GitHub withholds repo secrets.
   desktop-linux-check:
     name: Desktop build + tests (linux)
+    # PRs stop after `cargo test` (see below), so they only need this job when
+    # Rust-side inputs changed — a frontend-only PR skips the Rust compile
+    # entirely. Pushes to latest also build/upload the bundle, which embeds the
+    # frontend, so they keep the broader `desktop` trigger.
     if: >
       always() &&
       (github.ref == 'refs/heads/latest' || github.base_ref == 'latest') &&
-      needs.changes.outputs.desktop == 'true' &&
+      (needs.changes.outputs.rust == 'true' ||
+        (github.event_name != 'pull_request' && needs.changes.outputs.desktop == 'true')) &&
       needs.frontend.result != 'failure' &&
       needs.frontend.result != 'cancelled'
     needs: [changes, frontend]
