@@ -178,7 +178,7 @@ pub fn exchange_code(
 
 fn random_bytes<const N: usize>() -> Result<[u8; N], String> {
     let mut bytes = [0u8; N];
-    getrandom::getrandom(&mut bytes)
+    getrandom::fill(&mut bytes)
         .map_err(|_| "Could not gather secure randomness for sign-in.".to_string())?;
     Ok(bytes)
 }

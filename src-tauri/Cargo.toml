@@ -55,8 +55,8 @@ shell-words = "1"
 # `getrandom` back the PKCE code-verifier/challenge and the CSRF `state`; base64
 # (above) provides the base64url encoding.
 ureq = { version = "2", default-features = false, features = ["tls"] }
-sha2 = "0.10"
-getrandom = "0.2"
+sha2 = "0.11"
+getrandom = "0.4"
 
 # OS-native secret storage for GitLane-owned provider transport tokens (GL-132).
 # Secrets live only in the platform keychain — never in IPC, localStorage, repo
