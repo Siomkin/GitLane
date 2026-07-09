@@ -11,6 +11,7 @@ mod shell;
 mod signing_keys;
 mod terminal;
 mod terminal_agents;
+mod updater;
 mod watcher;
 
 use terminal::TerminalState;
@@ -1683,6 +1684,7 @@ pub fn run() {
             cancel_clone,
             init_repo,
             init_repo_in_place,
+            updater::check_update_on_channel,
             recents_status,
             reveal_path,
             terminal_agents_get,

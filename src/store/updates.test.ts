@@ -65,6 +65,19 @@ describe("useUpdates", () => {
     expect(s.error).toBe("offline");
   });
 
+  it("passes the beta-channel pref (GL-154) through to the updater check", async () => {
+    mocks.checkForUpdate.mockResolvedValue(null);
+
+    useUi.setState({ betaUpdates: true });
+    await INITIAL.check({ quiet: true });
+    expect(mocks.checkForUpdate).toHaveBeenLastCalledWith(true);
+
+    useUpdates.setState({ status: "idle" });
+    useUi.setState({ betaUpdates: false });
+    await INITIAL.check({ quiet: true });
+    expect(mocks.checkForUpdate).toHaveBeenLastCalledWith(false);
+  });
+
   it("stamps the daily throttle only on an up-to-date result, never on failure", async () => {
     // An up-to-date result stamps lastUpdateCheckAt so App.tsx throttles the next check…
     mocks.checkForUpdate.mockResolvedValue(null);

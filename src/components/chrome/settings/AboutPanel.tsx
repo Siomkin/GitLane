@@ -38,9 +38,21 @@ function AppMark() {
 
 export const AboutPanel = () => {
   const version = useUpdates((s) => s.version);
+  const status = useUpdates((s) => s.status);
+  const check = useUpdates((s) => s.check);
   const autoCheck = useUi((s) => s.autoCheckUpdates);
   const setAutoCheck = useUi((s) => s.setAutoCheckUpdates);
+  const betaUpdates = useUi((s) => s.betaUpdates);
+  const setBetaUpdates = useUi((s) => s.setBetaUpdates);
   const [meta, setMeta] = useState<{ tauri?: string; id?: string }>({});
+
+  // Lock the channel toggle while a check/download/pending-restart is in flight.
+  // `check()` no-ops in those states, so a mid-check flip would change the pref
+  // without re-querying — the running check would settle on the *old* channel
+  // (GL-154 review). Gating the toggle here (like the "Check for updates" button)
+  // means the channel can't change under an in-flight check, so there's no stale
+  // result to reconcile.
+  const updateBusy = status === "checking" || status === "downloading" || status === "ready";
 
   useEffect(() => {
     if (!isTauri) return;
@@ -92,6 +104,38 @@ export const AboutPanel = () => {
           className={cn(
             "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
             autoCheck ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
+            focusRing,
+          )}
+        >
+          <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
+        </button>
+      </div>
+
+      <div className="mt-3 flex items-center gap-4 rounded-xl border border-black/[0.07] p-4 dark:border-white/[0.08]">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">Receive beta updates</div>
+          <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
+            Update to pre-release beta builds as soon as they ship. Recommended until a stable release is out.
+          </div>
+        </div>
+        <button
+          role="switch"
+          aria-checked={betaUpdates}
+          aria-label="Receive beta updates"
+          disabled={updateBusy}
+          onClick={() => {
+            setBetaUpdates(!betaUpdates);
+            // Re-check immediately so switching channel reflects right away (the
+            // store reads the fresh pref one-shot; set() is synchronous). Quiet:
+            // a found update still lights the indicator + this card, but flipping
+            // to stable (which has no release yet) must not re-pop the "check
+            // failed" error toast — the whole reason this toggle exists.
+            void check({ quiet: true });
+          }}
+          className={cn(
+            "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
+            betaUpdates ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
+            updateBusy && "cursor-not-allowed opacity-50",
             focusRing,
           )}
         >

@@ -3,19 +3,21 @@
 // across components. Everything no-ops outside the Tauri webview (dev server,
 // jsdom), where the plugin IPC is unavailable.
 
-import { check, type Update, type DownloadEvent } from "@tauri-apps/plugin-updater";
+import { type Update, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
+import { checkUpdateOnChannel } from "./api/updater";
 import { isTauri } from "./platform";
 
 export type { Update, DownloadEvent };
 
-/** Ask the configured endpoint whether a newer signed build exists. Returns the
- * live `Update` handle (call `.downloadAndInstall()` on it) or null when current.
- * Outside Tauri there is no updater, so this resolves to null. */
-export async function checkForUpdate(): Promise<Update | null> {
+/** Ask the selected channel's endpoint whether a newer signed build exists.
+ * `beta` opts into the beta manifest; stable uses the config endpoint (GL-154).
+ * Returns the live `Update` handle (call `.downloadAndInstall()` on it) or null
+ * when current. Outside Tauri there is no updater, so this resolves to null. */
+export async function checkForUpdate(beta: boolean): Promise<Update | null> {
   if (!isTauri) return null;
-  return check();
+  return checkUpdateOnChannel(beta);
 }
 
 /** The running app's version (from tauri.conf.json), for display. */
