@@ -42,6 +42,18 @@ that owns its concern:
   data, it calls a store action; it does not import `api` to invent a second data path.
 - **Cross-store reads are one-shot `getState()` calls inside actions**, never reactive
   `useX()` subscriptions across stores. That single rule is what keeps re-renders contained.
+- **Store actions own state transitions — no `useEffect` whose body is only store/state
+  writes.** An effect shaped `useEffect(() => { if (x) setY(…) }, [x])` is a transition hiding
+  in a component: it fires a render late, is untestable without mounting, and usually means the
+  state it writes lives in the wrong place (React's "you might not need an effect"). Put the
+  transition in the action that *causes* it. Precedents (GL-155): `revealCommit`/`revealStash`
+  surface the history tab themselves; `refresh` calls `ui.onWorkingTreeClean()` where it
+  publishes an empty change set; the repo lifecycle calls `ui.onRepoSwitched()` at every point
+  the displayed repo identity changes — `App.tsx` no longer effect-syncs any of this. A
+  corollary: cross-cutting resets get **one named transition action** (`onRepoSwitched`,
+  `returnToGraph`) rather than callers composing individual setters — new transient state then
+  has exactly one place to join the reset. Effects remain for genuinely external work:
+  subscriptions, event listeners, timers, measurement (`useRepoWatcher`, `useDismiss`).
 - **Pure logic (no IPC, no Zustand) goes in `selection.ts`-style modules or `lib/`** so it's
   reusable and trivial to test.
 - **Don't widen a store with another concern's state.** If graph churn would flicker your new
@@ -277,6 +289,8 @@ Before approving a React change, ask these in order:
   inline — split into a folder module (container + per-component files + hook + pure `.ts` +
   co-located test + `index.ts`), like `chrome/action-bar/`.
 - ❌ `invoke()` / repo fetch / git logic inside a component (go through `lib/api` + a store action).
+- ❌ A `useEffect` whose body is only store/state writes (a state-syncing effect) — put the
+  transition in the action that causes it (§1).
 - ❌ Cross-store reactive subscriptions; dumping unrelated state into a store.
 - ❌ Domain-aware components under `components/ui/`; hardcoded colors instead of tokens/`cn()`.
 - ❌ Splitting a file to hit a line count, or extracting a one-off into a "reusable" abstraction.
