@@ -24,7 +24,7 @@ beforeEach(() => {
   mocks.checkForUpdate.mockReset();
   mocks.currentVersion.mockReset();
   mocks.relaunchApp.mockReset();
-  useUi.setState({ lastUpdateCheckAt: 0 });
+  useUi.setState({ lastUpdateCheckAt: 0, autoCheckUpdates: true });
   useNotifications.setState({ toasts: [] });
   useUpdates.setState(
     { status: "idle", version: "", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
@@ -79,7 +79,7 @@ describe("useUpdates", () => {
   });
 
   it("stamps the daily throttle only on an up-to-date result, never on failure", async () => {
-    // An up-to-date result stamps lastUpdateCheckAt so App.tsx throttles the next check…
+    // An up-to-date result stamps lastUpdateCheckAt so checkOnLaunch throttles the next check…
     mocks.checkForUpdate.mockResolvedValue(null);
     await INITIAL.check({ quiet: true });
     expect(useUi.getState().lastUpdateCheckAt).toBeGreaterThan(0);
@@ -101,6 +101,48 @@ describe("useUpdates", () => {
     await INITIAL.check({ quiet: true });
     expect(useUpdates.getState().status).toBe("available");
     expect(useUi.getState().lastUpdateCheckAt).toBe(0);
+  });
+
+  it("checkOnLaunch loads the version and runs a quiet check when the throttle allows", async () => {
+    mocks.currentVersion.mockResolvedValue("0.1.0");
+    mocks.checkForUpdate.mockResolvedValue(null);
+    useUi.setState({ autoCheckUpdates: true, lastUpdateCheckAt: 0 });
+
+    await INITIAL.checkOnLaunch();
+
+    expect(useUpdates.getState().version).toBe("0.1.0");
+    expect(mocks.checkForUpdate).toHaveBeenCalledTimes(1);
+    // Quiet: an up-to-date launch check never toasts.
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("checkOnLaunch skips the check within the daily throttle window but still loads the version", async () => {
+    mocks.currentVersion.mockResolvedValue("0.1.0");
+    useUi.setState({ autoCheckUpdates: true, lastUpdateCheckAt: Date.now() });
+
+    await INITIAL.checkOnLaunch();
+
+    expect(useUpdates.getState().version).toBe("0.1.0");
+    expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it("checkOnLaunch honors the About panel's auto-check toggle", async () => {
+    mocks.currentVersion.mockResolvedValue("0.1.0");
+    useUi.setState({ autoCheckUpdates: false, lastUpdateCheckAt: 0 });
+
+    await INITIAL.checkOnLaunch();
+
+    expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it("checkOnLaunch re-checks once the last stamp is over a day old", async () => {
+    mocks.currentVersion.mockResolvedValue("0.1.0");
+    mocks.checkForUpdate.mockResolvedValue(null);
+    useUi.setState({ autoCheckUpdates: true, lastUpdateCheckAt: Date.now() - 25 * 60 * 60 * 1000 });
+
+    await INITIAL.checkOnLaunch();
+
+    expect(mocks.checkForUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("clears a previously-offered handle when a later check fails (no stale retry)", async () => {

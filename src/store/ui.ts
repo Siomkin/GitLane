@@ -10,6 +10,7 @@ import { usePulls } from "./pulls";
 import { useNotifications } from "./notifications";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "../lib/gitError";
 import type { ForgeAuthProvider } from "../lib/api";
+import type { LeftTab } from "../lib/ui";
 import type { PrFilter } from "../lib/prs";
 import type { AccentColor } from "../lib/accent";
 import type { BranchDragRef, GraphDropTarget } from "../lib/graphActions";
@@ -343,6 +344,11 @@ interface UiState {
     selection?: string[];
   } | null;
 
+  /** Which center view the toolbar tabs select: the history graph, the changes
+   * (staging/review) view, or the PR list + detail. Transient — every repo
+   * starts on history (see `onRepoSwitched`), so it never persists. */
+  leftTab: LeftTab;
+
   prFilter: PrFilter;
   prSelected: number | null;
   prTab: "info" | "diff" | "checks" | "commits";
@@ -486,12 +492,30 @@ interface UiState {
   openSelectionReview: (commits: string[], title: string) => void;
   closeStackedReview: () => void;
 
+  setLeftTab: (tab: LeftTab) => void;
+  /** Open the changes view from the working-tree inspector: `all` picks the
+   * stacked multi-file review; otherwise the single-file diff (used when
+   * focusing one file from the right-panel list). */
+  openChangesView: (all?: boolean) => void;
+  /** The working tree went clean (commit landed, last change discarded) — the
+   * changes view has nothing left to stage or diff, so fall back to the graph
+   * instead of stranding an empty "Select a file to view its diff" pane. Called
+   * by the repo store wherever it publishes an empty working-changes set. */
+  onWorkingTreeClean: () => void;
+  /** One-shot view reset for a repo switch (incl. dropping to the no-repo start
+   * state and the missing-repo screen, GL-108): start on the history view, drop
+   * review notes pinned against the previous repo's diffs, reset the history
+   * search/filter so one repo's query never lands on another's commits, and
+   * dismiss transient repo-bound chrome (navigator dropdown, onboarding
+   * overlay). Called by the repo store at every point the displayed repo
+   * identity changes — components never orchestrate this cleanup. */
+  onRepoSwitched: () => void;
+
   setPrFilter: (filter: PrFilter) => void;
   selectPr: (num: number) => void;
   setPrTab: (tab: "info" | "diff" | "checks" | "commits") => void;
   openCreatePr: () => void;
   closeCreatePr: () => void;
-  setChangesAll: (all: boolean) => void;
 
   /** Toggle the commit search bar; closing it clears the query. */
   toggleHistSearch: () => void;
@@ -503,9 +527,6 @@ interface UiState {
   setHistFilter: (filter: HistFilter) => void;
   /** Reset both search query and kind filter to their inert state. */
   clearHistFilters: () => void;
-  /** Full reset of the history view (search + filter + open panels) — used on
-   * repo switch so one repo's query/filter never carries into another. */
-  resetHistView: () => void;
 
   /** Open the commit modal (resets exclusions + message; defaults to List). */
   openCommit: () => void;
@@ -621,6 +642,8 @@ export const useUi = create<UiState>()(
   createBranchOpen: false,
   createBranchStart: null,
   stackedReview: null,
+
+  leftTab: "history",
 
   prFilter: "open",
   prSelected: null,
@@ -759,6 +782,26 @@ export const useUi = create<UiState>()(
     set({ ...noMenus, stackedReview: { oid: commits[0] ?? "", title, selection: commits } }),
   closeStackedReview: () => set({ stackedReview: null }),
 
+  setLeftTab: (tab) => set((s) => (s.leftTab === tab ? s : { leftTab: tab })),
+  openChangesView: (all = false) => set({ leftTab: "changes", changesAll: all }),
+  onWorkingTreeClean: () => set((s) => (s.leftTab === "changes" ? { leftTab: "history" } : s)),
+  onRepoSwitched: () =>
+    set({
+      leftTab: "history",
+      changesAll: false,
+      // A stacked review outranks the history tab in deriveCenterView, so a
+      // leftover one would render the previous repo's oid against the new repo.
+      stackedReview: null,
+      navOpen: false,
+      reviewNotes: [],
+      agentMessageOpen: false,
+      histSearchOpen: false,
+      histQuery: "",
+      histFilter: "all",
+      histFilterOpen: false,
+      onboardingOpen: false,
+    }),
+
   setPrFilter: (filter) => {
     if (get().prFilter === filter) return;
     set({ prFilter: filter });
@@ -770,7 +813,6 @@ export const useUi = create<UiState>()(
   setPrTab: (tab) => set({ prTab: tab }),
   openCreatePr: () => set({ createPrOpen: true }),
   closeCreatePr: () => set({ createPrOpen: false }),
-  setChangesAll: (all) => set({ changesAll: all }),
 
   toggleHistSearch: () =>
     set((s) => ({ histSearchOpen: !s.histSearchOpen, histQuery: s.histSearchOpen ? "" : s.histQuery })),
@@ -779,12 +821,6 @@ export const useUi = create<UiState>()(
   toggleHistFilter: () => set((s) => ({ histFilterOpen: !s.histFilterOpen })),
   setHistFilter: (filter) => set({ histFilter: filter }),
   clearHistFilters: () => set((s) => (s.histQuery === "" && s.histFilter === "all" ? s : { histQuery: "", histFilter: "all" })),
-  resetHistView: () =>
-    set((s) =>
-      !s.histSearchOpen && s.histQuery === "" && s.histFilter === "all" && !s.histFilterOpen
-        ? s
-        : { histSearchOpen: false, histQuery: "", histFilter: "all", histFilterOpen: false },
-    ),
 
   openCommit: () =>
     set({ commitOpen: true, commitView: "list", commitExcluded: {}, commitMsg: "", commitSelFile: null }),

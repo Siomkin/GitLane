@@ -268,6 +268,13 @@ export interface RepoState {
   /** Select the history tab and scroll to a synthetic stash row without
    * selecting the stash's file list in the inspector. */
   revealStash: (oid: string) => void;
+  /** The complete route transition back to the history graph: closes every
+   * view that outranks it in `deriveCenterView` (comparison, file history,
+   * stacked review, a committed file's review) and selects the history tab.
+   * `setLeftTab("history")` alone can't leave those routes — they take
+   * priority over the tab — so navigator reveals and the center error
+   * fallback's "Back to graph" go through here. */
+  returnToGraph: () => void;
   /** Clear the pending graph-reveal once HistoryWorkspace has scrolled to it. */
   consumeReveal: () => void;
   /**

@@ -21,6 +21,7 @@ export function createRepoSelectionActions(
   | "selectCommit"
   | "revealCommit"
   | "revealStash"
+  | "returnToGraph"
   | "consumeReveal"
   | "selectCommitMulti"
   | "clearSelection"
@@ -46,16 +47,35 @@ export function createRepoSelectionActions(
     selectCommit: async (id) => get().selectCommitMulti(id ?? "", {}),
 
     revealCommit: async (id) => {
-      // Picking a branch should land you on the graph at its tip: drop any open
-      // stacked review, flag the scroll target, then select it (loads its files).
-      useUi.getState().closeStackedReview();
+      // Picking a branch should land you on the graph at its tip: leave every
+      // higher-priority route (we may be on the PRs page or inside a
+      // comparison/file-history/stacked/commit-file review — HistoryWorkspace
+      // must mount to scroll to the target and clear the request via
+      // consumeReveal), flag the scroll target, then select it (loads its files).
+      get().returnToGraph();
       set({ revealTarget: id });
       await get().selectCommit(id);
     },
 
     revealStash: (oid) => {
-      useUi.getState().closeStackedReview();
+      get().returnToGraph();
       set({ revealTarget: oid });
+    },
+
+    returnToGraph: () => {
+      // Order-free: each close is an independent slice; deriveCenterView falls
+      // through to "history" once none of them outranks the tab. A *working*
+      // file selection is kept — it doesn't outrank the graph (the inspector
+      // shows it); only a committed file's review takes over the center pane.
+      set((s) => ({
+        compare: null,
+        fileHistory: null,
+        ...(s.selectedFile?.source === "commit"
+          ? { selectedFile: null, fileDiff: null, diffLoading: false }
+          : {}),
+      }));
+      useUi.getState().closeStackedReview();
+      useUi.getState().setLeftTab("history");
     },
 
     consumeReveal: () => set((s) => (s.revealTarget === null ? s : { revealTarget: null })),

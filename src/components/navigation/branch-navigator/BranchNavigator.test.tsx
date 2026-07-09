@@ -210,4 +210,42 @@ describe("BranchNavigator", () => {
     expect(useUi.getState().stackedReview).toBeNull();
     expect(useUi.getState().navOpen).toBe(false);
   });
+
+  it("revealing a stash escapes higher-priority routes so history can consume it", () => {
+    // A reveal from the navigator while an inspection view (compare / file
+    // history) or another tab is up must route all the way back to the graph
+    // — those views outrank the history tab in deriveCenterView, and while one
+    // is mounted HistoryWorkspace can't scroll to (and consume) the target.
+    useRepo.setState({
+      stashes: [stash],
+      compare: {
+        base: "a",
+        head: "b",
+        baseLabel: "a",
+        headLabel: "b",
+        scope: "commit",
+        title: "a..b",
+        files: [],
+        loading: false,
+        error: null,
+        add: 0,
+        del: 0,
+        ahead: 0,
+        behind: 0,
+        pathFilter: "",
+        selectedPath: null,
+        selectedDiff: null,
+        diffLoading: false,
+        diffError: null,
+      },
+    });
+    useUi.setState({ leftTab: "pulls" });
+    render(<BranchNavigator />);
+
+    fireEvent.click(rowFor("On feature: WIP stash{0}"));
+
+    expect(useRepo.getState().revealTarget).toBe("stash-oid");
+    expect(useRepo.getState().compare).toBeNull();
+    expect(useUi.getState().leftTab).toBe("history");
+  });
 });

@@ -5,6 +5,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
+import { useUi } from "./ui";
 import type { RepoSummary } from "../lib/api";
 
 const summary: RepoSummary = {
@@ -301,5 +302,63 @@ describe("repo store — compare", () => {
     expect(cmp.diffError).toContain("bad object");
     expect(cmp.error).toBeNull();
     expect(cmp.files).toHaveLength(2);
+  });
+});
+
+describe("repo store — returnToGraph", () => {
+  const compareResult = {
+    files: [{ path: "src/a.ts", status: "M", add: 2, del: 1, binary: false }],
+    add: 2,
+    del: 1,
+    ahead: 1,
+    behind: 0,
+  };
+
+  it("clears every route that outranks the history tab and selects it", async () => {
+    // Populate all four higher-priority routes at once (a superset of any real
+    // state) — the transition must clear each one, or deriveCenterView would
+    // still resolve away from "history".
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "file_history") return Promise.resolve(historyPage);
+      if (cmd === "commit_file_diff") return Promise.resolve(fileDiff);
+      if (cmd === "compare_refs") return Promise.resolve(compareResult);
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().openCompare({
+      base: "main",
+      head: "feature",
+      baseLabel: "main",
+      headLabel: "feature",
+      scope: "branch",
+      title: "t",
+    });
+    await useRepo.getState().openFileHistory("src/a.ts");
+    useRepo.setState({
+      selectedFile: { path: "src/a.ts", source: "commit" },
+    });
+    useUi.setState({
+      leftTab: "pulls",
+      stackedReview: { oid: "abc123", title: "stacked" },
+    });
+
+    useRepo.getState().returnToGraph();
+
+    const repo = useRepo.getState();
+    expect(repo.compare).toBeNull();
+    expect(repo.fileHistory).toBeNull();
+    expect(repo.selectedFile).toBeNull();
+    expect(useUi.getState().stackedReview).toBeNull();
+    expect(useUi.getState().leftTab).toBe("history");
+  });
+
+  it("keeps a working-tree file selection — it doesn't outrank the graph", () => {
+    useRepo.setState({ selectedFile: { path: "src/a.ts", source: "staged" } });
+    useUi.setState({ leftTab: "changes" });
+
+    useRepo.getState().returnToGraph();
+
+    expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
+    expect(useUi.getState().leftTab).toBe("history");
   });
 });

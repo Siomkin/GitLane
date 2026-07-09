@@ -34,14 +34,10 @@ type NetOp = "fetch" | "pull" | "push";
 
 const PR_BADGE_REFRESH_MS = 60_000;
 
-export const ActionBar = ({
-  activeTab,
-  onTabChange,
-}: {
-  activeTab: LeftTab;
-  onTabChange: (tab: LeftTab) => void;
-}) => {
+export const ActionBar = () => {
   const summary = useRepo((state) => state.summary);
+  const activeTab = useUi((state) => state.leftTab);
+  const setLeftTab = useUi((state) => state.setLeftTab);
   const forge = useRepo((state) => state.forge);
   const remotes = useRepo((state) => state.remotes);
   const branches = useRepo((state) => state.branches);
@@ -182,7 +178,7 @@ export const ActionBar = ({
 
   const selectTab = (tab: LeftTab) => {
     closeNav();
-    onTabChange(tab);
+    setLeftTab(tab);
   };
   const runPush = () => {
     const branch = summary?.headBranch;
