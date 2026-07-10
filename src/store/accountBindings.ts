@@ -103,7 +103,16 @@ export function accountMatchesRemoteHost(
 }
 
 export function isV3Binding(entry: StoredRepoAccountEntry | undefined): entry is RemoteBindingV3 {
-  return typeof entry === "object" && entry !== null && "remotes" in entry;
+  // Check the version tag too, not just the `remotes` key: corrupt/foreign
+  // localStorage shaped like `{ remotes: … }` must not enter the v3 migration
+  // path (it falls through to the v2/legacy rules, which fail closed).
+  return (
+    typeof entry === "object" &&
+    entry !== null &&
+    "remotes" in entry &&
+    "version" in entry &&
+    entry.version === 3
+  );
 }
 
 export function resolveRemoteBinding<A extends BindableAccount>(

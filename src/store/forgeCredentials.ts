@@ -8,7 +8,8 @@ import type { ForgeAuthProvider, ForgeAuthStatus } from "../lib/api";
 import { readForgeCredentials, writeForgeCredentials } from "./accountsStorage";
 
 /** Drop the saved-credential marker for `provider` (used by "forget saved
- * HTTPS credential"), returning the pruned status list for the UI. */
+ * HTTPS credential"). Callers refresh the UI's status list separately via
+ * [`withSavedForgeCredentials`]. */
 export function forgetForgeCredential(provider: ForgeAuthProvider) {
   const credentials = readForgeCredentials();
   if (credentials[provider]) {
