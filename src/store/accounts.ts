@@ -26,7 +26,6 @@ import {
   type GithubSignInResult,
   type OauthClientStatus,
   type ProviderOauthResult,
-  type RemoteInfo,
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
@@ -41,10 +40,29 @@ import {
 import { repoIdentityKey } from "../lib/worktrees";
 import {
   accountKey,
-  accountMatchesLegacy,
-  resolvePrAccount,
-  type StoredRepoAccountEntry,
+  accountMatchesRemoteHost,
+  accountRefFromApi,
+  legacyDefaultSelection,
 } from "./accountBindings";
+import { migrateStoredRemoteUsernames } from "./accountsMigrations";
+import {
+  migratePathKey,
+  pickProviderTokenForHost,
+  providerTokenKey,
+  readBindings,
+  readForgeCredentials,
+  readIdentities,
+  readProviderTokens,
+  writeBindings,
+  writeIdentities,
+  writeProviderTokens,
+  type StoredProviderToken,
+} from "./accountsStorage";
+import {
+  forgetForgeCredential,
+  rememberForgeCredential,
+  withSavedForgeCredentials,
+} from "./forgeCredentials";
 import { useRepo } from "./repo";
 import { useUi } from "./ui";
 import { usePulls } from "./pulls";
@@ -77,72 +95,7 @@ export interface Account {
 // `repo_identity` returns); re-export it so account/identity consumers keep a
 // single import site.
 export type { RepoIdentity };
-
-// Per-repo PR-account bindings. Per-remote auth moved to git config (URL
-// usernames); older v2 (repo-wide) and interim v3 (per-remote) values are
-// migrated once the remote list is known. The commit identity (name + email)
-// is stored separately so it can be edited independently of the auth account.
-const LS_REPO_ACCOUNTS = "gitlane.repoAccounts";
-const LS_REPO_IDENTITY = "gitlane.repoIdentity";
-const LS_FORGE_CREDENTIALS = "gitlane.forgeCredentials";
-const LS_PROVIDER_TOKENS = "gitlane.providerTokens";
-
-type StoredForgeCredential = {
-  provider: ForgeAuthProvider;
-  credentialHost: string;
-  path: string | null;
-  username: string;
-  helper: string;
-  savedAt: number;
-};
-
-/** Non-secret metadata for a GitLane-owned provider token (GL-132). The token
- * itself lives only in the OS keychain; this record just remembers *that* a
- * token exists for an account so the transport layer can select `providerToken`
- * mode and the UI can show sign-out. Never contains token material. */
-export type StoredProviderToken = {
-  provider: ForgeAuthProvider;
-  /** Exact credential authority (`host[:port]`) — the keychain host locator. */
-  credentialHost: string;
-  /** Stable keychain account id (the login for a PAT sign-in; the provider's
-   * stable account id for an OAuth sign-in). */
-  accountId: string;
-  /** Human display handle. */
-  login: string;
-  /** The git HTTPS URL username this token authenticates as, when it differs
-   * from `login` — set for OAuth accounts, whose token authenticates as a
-   * sentinel (`oauth2` / `x-token-auth`) rather than the human handle (GL-139).
-   * Absent for PAT sign-ins, where the URL username *is* the login. This is the
-   * key component (and the value pinned into the remote URL). */
-  transportUsername?: string;
-  savedAt: number;
-};
-
-/** Metadata map key: a stored token is looked up by the remote's credential host
- * + URL username, both lowercased so matching is case-insensitive. Joined with a
- * NUL — which appears in neither a host nor a login — so the two fields can never
- * collide (the `\0`-separated key idiom used elsewhere in this store). */
-const providerTokenKey = (credentialHost: string, login: string) =>
-  `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
-
-function readJsonMap<T>(key: string): Record<string, T> {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, T>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeJsonMap<T>(key: string, map: Record<string, T>) {
-  try {
-    localStorage.setItem(key, JSON.stringify(map));
-  } catch {
-    /* ignore quota / unavailable */
-  }
-}
+export { pickProviderTokenForHost, type StoredProviderToken } from "./accountsStorage";
 
 /** Host + credential authority for the open repo's default **GitLab** remote, or
  * null when the repo isn't GitLab or no host can be resolved. Shared by
@@ -172,111 +125,6 @@ function bitbucketRemoteHosts(): { host: string; credentialHost: string } | null
   const host = info?.host ?? forge.host ?? null;
   const credentialHost = info?.credentialHost ?? host;
   return host && credentialHost ? { host, credentialHost } : null;
-}
-
-const readBindings = () => readJsonMap<StoredRepoAccountEntry>(LS_REPO_ACCOUNTS);
-const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
-  writeJsonMap(LS_REPO_ACCOUNTS, map);
-const readIdentities = () => readJsonMap<RepoIdentity>(LS_REPO_IDENTITY);
-const writeIdentities = (map: Record<string, RepoIdentity>) =>
-  writeJsonMap(LS_REPO_IDENTITY, map);
-const readForgeCredentials = () => readJsonMap<StoredForgeCredential>(LS_FORGE_CREDENTIALS);
-const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
-  writeJsonMap(LS_FORGE_CREDENTIALS, map);
-const readProviderTokens = () => readJsonMap<StoredProviderToken>(LS_PROVIDER_TOKENS);
-const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
-  writeJsonMap(LS_PROVIDER_TOKENS, map);
-
-/** The keychain token to use for `credentialHost`, chosen deterministically when
- * several tokens share a host (an OAuth token + a PAT): prefer the OAuth token
- * (it carries a sentinel transport username), then the most recently saved.
- * Shared by transport and the clone flow so both resolve the same one. When
- * `provider` is given, only tokens for that provider family match — the PR-account
- * resolution scopes to the repo's forge so a co-hosted token for another provider
- * can't be picked (GL-141). */
-export function pickProviderTokenForHost(
-  tokens: Record<string, StoredProviderToken>,
-  credentialHost: string,
-  provider?: ForgeAuthProvider,
-): StoredProviderToken | undefined {
-  const norm = (h: string) => h.trim().toLowerCase();
-  return Object.values(tokens)
-    .filter((t) => norm(t.credentialHost) === norm(credentialHost))
-    .filter((t) => provider === undefined || t.provider === provider)
-    .sort((a, b) => (b.transportUsername ? 1 : 0) - (a.transportUsername ? 1 : 0) || b.savedAt - a.savedAt)[0];
-}
-
-/** Drop the saved-credential marker for `provider` (used by "forget saved
- * HTTPS credential"), returning the pruned status list for the UI. */
-function forgetForgeCredential(provider: ForgeAuthProvider) {
-  const credentials = readForgeCredentials();
-  if (credentials[provider]) {
-    delete credentials[provider];
-    writeForgeCredentials(credentials);
-  }
-}
-
-function rememberForgeCredential(
-  provider: ForgeAuthProvider,
-  credentialHost: string,
-  path: string | null,
-  username: string,
-  helper: string,
-) {
-  const credentials = readForgeCredentials();
-  credentials[provider] = {
-    provider,
-    credentialHost,
-    path,
-    username,
-    helper,
-    savedAt: Date.now(),
-  };
-  writeForgeCredentials(credentials);
-}
-
-function withSavedForgeCredentials(statuses: ForgeAuthStatus[]): ForgeAuthStatus[] {
-  const credentials = readForgeCredentials();
-  return statuses.map((status) => {
-    const saved = credentials[status.provider];
-    if (!saved) return status;
-    return {
-      ...status,
-      available: true,
-      authenticated: true,
-      account: { username: saved.username },
-      notes: `${status.notes} Credential saved for ${saved.credentialHost}${
-        saved.path ? `/${saved.path}` : ""
-      } in ${saved.helper || "Git credential helper"}.`,
-    };
-  });
-}
-
-/** One-shot migration of a per-repo map entry from a worktree-path key to the
- * repository-identity key (GL-109): pre-identity builds stored bindings under
- * whatever worktree path was open, so a value under `path` moves to `key` (the
- * identity wins if both exist — the stale worktree shadow is dropped). Returns
- * true when the map changed and needs persisting. */
-function migratePathKey<T>(map: Record<string, T>, key: string, path: string): boolean {
-  if (key === path || map[path] === undefined) return false;
-  if (map[key] === undefined) map[key] = map[path];
-  delete map[path];
-  return true;
-}
-
-function accountRefFromApi(a: {
-  provider?: GithubAccountRef["provider"];
-  host?: string;
-  accountId?: string;
-  login?: string;
-  username: string;
-}): GithubAccountRef {
-  return {
-    provider: a.provider ?? "gh",
-    host: a.host ?? "github.com",
-    accountId: a.accountId || a.login || a.username,
-    login: a.login || a.username,
-  };
 }
 
 interface AccountsState {
@@ -508,131 +356,6 @@ let forgeAuthGen = 0;
 // in-flight `hydrateRepoIdentity` that predates a newer write is dropped — a
 // slow reconcile read can't republish a superseded identity.
 let repoIdentityGen = 0;
-const remoteAccountMigrations = new Set<string>();
-
-type RemoteBindingV3 = Extract<StoredRepoAccountEntry, { version: 3; remotes: unknown }>;
-type RemoteBindingValue = RemoteBindingV3["remotes"][string];
-type ResolvedStoredAccount = Account | "unbound" | "unset" | "unresolved";
-
-function accountMatchesRemoteHost(
-  account: Pick<Account, "host">,
-  info: { host: string | null; credentialHost: string | null },
-) {
-  if (!info.host || !info.credentialHost) return false;
-  return account.host === info.credentialHost || (info.credentialHost.startsWith("www.") && account.host === info.host);
-}
-
-function isV3Binding(entry: StoredRepoAccountEntry | undefined): entry is RemoteBindingV3 {
-  return typeof entry === "object" && entry !== null && "remotes" in entry;
-}
-
-function resolveRemoteBinding(
-  binding: RemoteBindingValue | undefined,
-  accounts: Account[],
-): ResolvedStoredAccount {
-  if (binding === undefined) return "unset";
-  if (typeof binding === "string") {
-    return accounts.find((a) => accountMatchesLegacy(a, binding)) ?? "unresolved";
-  }
-  if ("unbound" in binding) return "unbound";
-  const resolved = resolvePrAccount({ version: 2, ...binding }, accounts);
-  if (resolved === "unbound") return "unbound";
-  if (resolved === "unset") return "unresolved";
-  return resolved as Account;
-}
-
-function prEntryFromRemoteBinding(
-  binding: RemoteBindingValue | undefined,
-  accounts: Account[],
-): StoredRepoAccountEntry | undefined {
-  const resolved = resolveRemoteBinding(binding, accounts);
-  if (resolved === "unbound") return { version: 2, unbound: true };
-  if (resolved === "unset" || resolved === "unresolved") return undefined;
-  return { version: 2, ...resolved.ref };
-}
-
-function legacyDefaultSelection(
-  entry: StoredRepoAccountEntry | undefined,
-  defaultRemoteName: string | null,
-  accounts: Account[],
-): ResolvedStoredAccount {
-  if (isV3Binding(entry)) {
-    return defaultRemoteName ? resolveRemoteBinding(entry.remotes[defaultRemoteName], accounts) : "unset";
-  }
-  const resolved = resolvePrAccount(entry, accounts);
-  if (resolved === "unset" && entry !== undefined) return "unresolved";
-  return resolved as ResolvedStoredAccount;
-}
-
-async function migrateStoredRemoteUsernames(
-  repoPath: string,
-  key: string,
-  entry: StoredRepoAccountEntry | undefined,
-  remotes: RemoteInfo[],
-  accounts: Account[],
-  defaultRemoteName: string | null,
-) {
-  if (!entry || remotes.length === 0) return;
-  if (isV3Binding(entry) && accounts.length === 0) return;
-
-  const writes: Array<{ remote: string; username: string | null }> = [];
-  const addWrite = (remote: RemoteInfo, username: string | null) => {
-    const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
-    if (!info.valid || info.ssh) return;
-    const current = info.user?.toLowerCase() ?? null;
-    const next = username?.toLowerCase() ?? null;
-    if (current === next) return;
-    if (current !== null) return; // git config already has the new source of truth; do not overwrite it.
-    writes.push({ remote: remote.name, username });
-  };
-
-  let nextEntry: StoredRepoAccountEntry | undefined = entry;
-  if (isV3Binding(entry)) {
-    for (const remote of remotes) {
-      const resolved = resolveRemoteBinding(entry.remotes[remote.name], accounts);
-      if (resolved === "unresolved") return;
-      if (resolved === "unset") continue;
-      addWrite(remote, resolved === "unbound" ? null : resolved.login);
-    }
-    nextEntry = defaultRemoteName
-      ? prEntryFromRemoteBinding(entry.remotes[defaultRemoteName], accounts)
-      : undefined;
-  } else {
-    const defaultRemote = remotes.find((r) => r.name === defaultRemoteName);
-    const resolved = resolvePrAccount(entry, accounts);
-    if (defaultRemote && resolved !== "unset") {
-      addWrite(defaultRemote, resolved === "unbound" ? null : (resolved as Account).login);
-    }
-  }
-
-  if (writes.length === 0) {
-    if (isV3Binding(entry)) {
-      const bindings = readBindings();
-      if (nextEntry) bindings[key] = nextEntry;
-      else delete bindings[key];
-      writeBindings(bindings);
-    }
-    return;
-  }
-
-  const migrationKey = `${key}\0${writes.map((w) => `${w.remote}:${w.username ?? ""}`).join("\0")}`;
-  if (remoteAccountMigrations.has(migrationKey)) return;
-  remoteAccountMigrations.add(migrationKey);
-  try {
-    await Promise.all(writes.map((w) => api.setRemoteUsername(repoPath, w.remote, w.username)));
-    if (isV3Binding(entry)) {
-      const bindings = readBindings();
-      if (nextEntry) bindings[key] = nextEntry;
-      else delete bindings[key];
-      writeBindings(bindings);
-    }
-    await useRepo.getState().listRemotes();
-  } catch (e) {
-    useUi.getState().showToast(String(e), "error");
-  } finally {
-    remoteAccountMigrations.delete(migrationKey);
-  }
-}
 
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
