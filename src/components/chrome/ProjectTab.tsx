@@ -46,7 +46,7 @@ export const ProjectTab = ({
       className={cn(
         "group flex h-7 max-w-56 shrink-0 items-center gap-2 rounded-lg pl-2.5 pr-1.5 text-[13px] transition-opacity data-[dragging=true]:opacity-60",
         active
-          ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+          ? "bg-white font-medium text-neutral-800 ring-1 ring-inset ring-black/[0.05] dark:bg-neutral-800 dark:text-neutral-100 dark:ring-white/[0.06]"
           : "text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5",
       )}
     >
@@ -125,7 +125,7 @@ export const ProjectTab = ({
         title="Close repository"
         aria-label={`Close ${label}`}
       >
-        <CloseIcon className="h-2.5 w-2.5" />
+        <CloseIcon className="block h-2.5 w-2.5" />
       </button>
     </div>
   );
