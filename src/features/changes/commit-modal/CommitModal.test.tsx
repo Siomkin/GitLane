@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileChange, TerminalAgent } from "../../lib/api";
-import { emptyAdvancedState } from "../../lib/advancedRepoState";
-import { useRepo } from "../../store/repo";
-import { useTerminalAgents } from "../../store/terminalAgents";
-import { useUi } from "../../store/ui";
+import type { FileChange, TerminalAgent } from "../../../lib/api";
+import { emptyAdvancedState } from "../../../lib/advancedRepoState";
+import { useRepo } from "../../../store/repo";
+import { useTerminalAgents } from "../../../store/terminalAgents";
+import { useUi } from "../../../store/ui";
 import { CommitModal } from "./CommitModal";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -27,7 +27,7 @@ beforeEach(() => {
   useRepo.setState({
     summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
     graph: null,
-    changes: { staged: [staged("src/features/changes/CommitModal.tsx")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
+    changes: { staged: [staged("src/features/changes/commit-modal/CommitModal.tsx")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
   });
   useUi.setState({
     commitOpen: true,
