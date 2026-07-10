@@ -23,9 +23,10 @@ import { ChangeTypeCounts } from "./ChangeTypeCounts";
 const workSurface = (source: ChangeSource) => `work:${source}`;
 const WORK_SURFACES = ["work:unstaged", "work:staged"];
 
-// Cache key for a file's diff: the path plus its source and counts, so the
-// cached diff is reused while the file is unchanged but refetched when it moves
-// between staged/unstaged or its line counts change.
+// Cache key for a file's diff WITHIN one working-tree snapshot: path + source
+// (plus status/counts so a same-snapshot staged/unstaged flip refetches). NOT a
+// content identity — content can change without any of these fields changing,
+// so the cache is reset whenever a new snapshot arrives (GL-173).
 function diffKey(source: ChangeSource, file: FileChange) {
   return `${source}\u0000${file.path}\u0000${file.status}\u0000${file.add}\u0000${file.del}`;
 }
@@ -70,9 +71,20 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   // one file collapsed any other). Diffs are loaded and cached per file here,
   // independent of the store's single-file `fileDiff`.
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  // Per-file diff cache (keyed by content hash, so a file keeps its cached diff
-  // until it actually changes). Never cancels — see useLazyDiffs.
-  const { diffs, ensure } = useLazyDiffs();
+  // Per-file diff cache, valid for exactly one working-tree snapshot. Never
+  // cancels — see useLazyDiffs.
+  const { diffs, ensure, reset } = useLazyDiffs();
+
+  // Only a store refresh can carry a content change, and every refresh
+  // publishes a NEW `changes` object (watcher, focus re-sync, staging write,
+  // repo switch) — so snapshot identity is the cache generation; the key's
+  // status/counts can't stand in for content (GL-173). Declared before the
+  // fetch effect below so an invalidated snapshot's open files refetch in the
+  // same pass; expanding/collapsing files doesn't touch the snapshot, so the
+  // cache is reused within one generation.
+  useEffect(() => {
+    reset();
+  }, [changes, repoPath, reset]);
 
   // Open the first file by default so the view isn't empty on entry; only when
   // nothing is open yet (don't fight the user's manual collapses).

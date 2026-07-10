@@ -22,9 +22,10 @@ export const MAX_CONCURRENT_DIFFS = 6;
  * At most {@link MAX_CONCURRENT_DIFFS} fetches run at once; the rest queue in
  * request order and start as slots free up. Fetches are **never cancelled on
  * re-render** — a late result is still the right answer for its key, so keys
- * must be **content-stable**; a caller whose keys are not (the stacked review
- * re-keys by path across commits; the changes view keys by status/counts,
- * GL-173) must call `reset()` when the underlying set changes meaning. `reset()`
+ * must be **content-stable**; a caller whose keys are not must call `reset()`
+ * on its real resource generation (the stacked review resets per reviewed
+ * commit; the changes view resets per working-tree snapshot, GL-173 — its
+ * keys only distinguish files within one snapshot). `reset()`
  * clears the cache + pending queue and bumps an internal generation so results
  * still in flight from the previous set are dropped instead of polluting the
  * new one — but the physical window stays bounded: IPC promises cannot be
@@ -119,6 +120,11 @@ export function useLazyDiffs() {
     inflight.current.clear();
     queue.current = [];
     queued.current.clear();
+    // Clear the ref view synchronously, not just the state: a caller that
+    // resets and re-ensures in the same commit (the changes view's snapshot
+    // effect, GL-173) must not see the ghost of the just-dropped cache and
+    // skip its refetch.
+    cacheRef.current = {};
     setDiffs({});
   }, []);
 
