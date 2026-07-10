@@ -81,7 +81,9 @@ describe("ReviewWorkspace — virtualized diff", () => {
     expect(mounted).toBeLessThan(200);
   });
 
-  it("offers 'show full diff' on a truncated diff and re-fetches uncapped", async () => {
+  // Generous timeout: blew the 5s default under CI load (see the sibling note
+  // in PrCommentsMarkdown.test.tsx) — correct, just slow on a starved runner.
+  it("offers 'show full diff' on a truncated diff and re-fetches uncapped", { timeout: 15000 }, async () => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue({ ...bigDiff(30), truncated: false });
     useRepo.setState({

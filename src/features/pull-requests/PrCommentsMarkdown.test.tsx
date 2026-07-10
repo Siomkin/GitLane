@@ -177,7 +177,10 @@ describe("PR comment markdown", () => {
     expect(screen.getByText("Outdated")).toBeInTheDocument();
   });
 
-  it("submits review-thread replies through the pulls store", async () => {
+  // Generous timeout: this userEvent-driven case blew the 5s default when the
+  // CI box was starved (it overlapped a desktop build being killed) — the test
+  // is correct, just slow under load.
+  it("submits review-thread replies through the pulls store", { timeout: 15000 }, async () => {
     const user = userEvent.setup();
     const pr = makePr({ state: "open" });
     const replyThread = vi.fn().mockResolvedValue("ok");
