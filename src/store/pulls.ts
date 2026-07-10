@@ -36,6 +36,13 @@ import {
 
 let nextPrListRequestId = 1;
 let nextPrChecksRequestId = 1;
+let nextPrCommitsRequestId = 1;
+/** The in-flight commits load that owns each PR number. The resource version
+ * only detects prunes; an unchanged refresh reruns the Commits tab's
+ * prsFetchedAt-keyed effect without bumping it, so two loads can overlap in the
+ * same generation — only the newest may publish its result OR its error
+ * (GL-164 review). Module state, not render state: nothing displays it. */
+const prCommitsRequests = new Map<number, number>();
 
 /** Which PR write op is in flight, so each control shows only its own busy state. */
 export type PrPendingAction = "merge" | "comment" | "review" | "state" | "create";
@@ -178,6 +185,10 @@ export const usePulls = create<PullsState>((set, get) => ({
 
   reset: () => {
     cancelQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
+    // Orphan any in-flight commits loads: reset clears prResourceVersion, so a
+    // previous repo's still-pending request would otherwise pass the version
+    // check (0 === 0) and publish into the fresh state (GL-164 review).
+    prCommitsRequests.clear();
     set({
       pullRequests: [],
       prDetails: {},
@@ -454,13 +465,20 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!detail) return;
     const account = useAccounts.getState().prAccountRef();
     const version = get().prResourceVersion[num] ?? 0;
+    // Claim this PR's commits slot: a newer overlapping load takes it over, and
+    // only the owner may publish either outcome — the version alone can't tell
+    // two same-generation requests apart (GL-164 review).
+    const requestId = nextPrCommitsRequestId++;
+    prCommitsRequests.set(num, requestId);
+    const ownsRequest = () => prCommitsRequests.get(num) === requestId;
     set((s) => ({ prCommitsError: omit(s.prCommitsError, num) }));
     try {
       const commits = await api.pullRequestCommits(summary.path, num, account);
       set((s) => {
         const d = s.prDetails[num];
-        // Skip if pruned mid-flight or the detail was evicted under us.
-        if (!d || (s.prResourceVersion[num] ?? 0) !== version) return {};
+        // Skip if superseded by a newer load, pruned mid-flight, or the detail
+        // was evicted under us.
+        if (!ownsRequest() || !d || (s.prResourceVersion[num] ?? 0) !== version) return {};
         return {
           prDetails: {
             ...s.prDetails,
@@ -471,12 +489,16 @@ export const usePulls = create<PullsState>((set, get) => ({
       });
     } catch (e) {
       set((s) => {
-        // A refresh pruned this PR mid-flight → the error belongs to the evicted
-        // generation; discard it like the success path does (GL-164, mirroring
-        // loadPrDiff's guarded error write).
-        if ((s.prResourceVersion[num] ?? 0) !== version) return {};
+        // Superseded, or a refresh pruned this PR mid-flight → the error belongs
+        // to a request that no longer owns the slot; discard it like the success
+        // path does (GL-164, mirroring loadPrDiff's guarded error write).
+        if (!ownsRequest() || (s.prResourceVersion[num] ?? 0) !== version) return {};
         return { prCommitsError: { ...s.prCommitsError, [num]: String(e) } };
       });
+    } finally {
+      // Release the slot only if this request still owns it — a newer load's
+      // claim must survive an older request settling late.
+      if (ownsRequest()) prCommitsRequests.delete(num);
     }
   },
 

@@ -890,6 +890,48 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     expect(usePulls.getState().prCommitsError[7]).toBeUndefined();
   });
 
+  it("discards an older request's late failure after a newer same-generation load succeeded (GL-164)", async () => {
+    seedDetail();
+    const older = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(older.promise);
+    const loadA = usePulls.getState().loadPrCommits(7);
+
+    // An unchanged refresh reruns the Commits tab effect: same resource
+    // version, second load. It succeeds while A is still pending.
+    invokeMock.mockResolvedValueOnce([
+      { oid: "c1", headline: "fresh", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: true },
+    ]);
+    await usePulls.getState().loadPrCommits(7, true);
+    expect(usePulls.getState().prCommitsLoaded[7]).toBe(true);
+
+    older.reject(new Error("slow failure from the superseded request"));
+    await loadA;
+
+    const s = usePulls.getState();
+    expect(s.prCommitsError[7]).toBeUndefined(); // the stale error never lands
+    expect(s.prDetails[7].commits.map((c) => c.oid)).toEqual(["c1"]);
+  });
+
+  it("keeps the newer request's commits when an older same-generation success lands late (GL-164)", async () => {
+    seedDetail();
+    const older = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(older.promise);
+    const loadA = usePulls.getState().loadPrCommits(7);
+
+    invokeMock.mockResolvedValueOnce([
+      { oid: "c2", headline: "newer", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: true },
+    ]);
+    await usePulls.getState().loadPrCommits(7, true);
+
+    older.resolve([
+      { oid: "c9", headline: "stale", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: false },
+    ]);
+    await loadA;
+
+    // The newer request's list stays authoritative.
+    expect(usePulls.getState().prDetails[7].commits.map((c) => c.oid)).toEqual(["c2"]);
+  });
+
   it("clears a prior commits error when a retry succeeds (GL-164)", async () => {
     seedDetail();
     usePulls.setState((s) => ({ prCommitsError: { ...s.prCommitsError, 7: "earlier failure" } }));
