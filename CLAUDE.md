@@ -230,7 +230,7 @@ The center pane swaps by active tab/state between feature workspaces under
 
 - `features/graph/HistoryWorkspace` — the commit DAG with resizable columns; branch refs
   here are the primary drag sources.
-- `features/changes/ChangesWorkspace` — multi-file staging/unstaging.
+- `features/changes/changes-workspace/` — multi-file staging/unstaging.
 - `features/review/ReviewWorkspace` — single-file diff (unified/split).
 - `features/review/StackedReview` — all files of one commit in a scrollable review.
 - `features/pull-requests/PullRequestDetail` — PR body, files, and lazily-loaded CI checks.
