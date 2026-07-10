@@ -8,6 +8,7 @@ import {
   effectiveDecision,
   endsWithNewline,
   hasMalformedHunk,
+  hunkFingerprint,
   isResolved,
   parseConflict,
   tokenize,
@@ -266,5 +267,30 @@ describe("tokenize", () => {
 
   it("never returns an empty token list", () => {
     expect(tokenize("")).toHaveLength(1);
+  });
+});
+
+describe("hunkFingerprint (GL-180)", () => {
+  const hunk = (ours: string[], theirs: string[], base: string[] | null = null): ConflictRegion => ({
+    kind: "cf",
+    ours,
+    theirs,
+    base,
+    malformed: false,
+  });
+
+  it("is stable for identical sides and changes when either side changes", () => {
+    const a = hunkFingerprint(hunk(["x"], ["y"]));
+    expect(hunkFingerprint(hunk(["x"], ["y"]))).toBe(a);
+    expect(hunkFingerprint(hunk(["x2"], ["y"]))).not.toBe(a);
+    expect(hunkFingerprint(hunk(["x"], ["y2"]))).not.toBe(a);
+  });
+
+  it("distinguishes lines moving across the ours/theirs boundary", () => {
+    expect(hunkFingerprint(hunk(["x", "y"], []))).not.toBe(hunkFingerprint(hunk(["x"], ["y"])));
+  });
+
+  it("ignores diff3 base lines (display-only, never part of the resolution)", () => {
+    expect(hunkFingerprint(hunk(["x"], ["y"], ["old"]))).toBe(hunkFingerprint(hunk(["x"], ["y"])));
   });
 });
