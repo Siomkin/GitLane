@@ -69,7 +69,13 @@ function seed(pr: PullRequest) {
 }
 
 beforeEach(() => {
-  usePulls.setState({ pullRequests: [], prDetails: {}, prDetailError: {} });
+  usePulls.setState({
+    pullRequests: [],
+    prDetails: {},
+    prDetailError: {},
+    prCommitsError: {},
+    prCommitsLoaded: {},
+  });
   useUi.setState({ prSelected: null, prTab: "info" });
 });
 
@@ -131,10 +137,18 @@ describe("Commits tab", () => {
     expect(writeText).toHaveBeenCalledWith("9f2c1ab4e7d05c1182a6f0b3d4e8a91c77b25e30");
   });
 
-  it("shows an intentional empty state when there are no commits", () => {
+  it("shows an intentional empty state once the full load confirmed there are no commits", () => {
     seed(makePr({ commits: [] }));
+    usePulls.setState({ prCommitsLoaded: { 42: true } });
     render(<PullRequestDetail />);
     expect(screen.getByText("No commits on this pull request.")).toBeInTheDocument();
+  });
+
+  it("shows a spinner (not the empty state) while an empty fast-path list is still loading", () => {
+    seed(makePr({ commits: [] }));
+    render(<PullRequestDetail />);
+    expect(screen.getByText("Loading commits…")).toBeInTheDocument();
+    expect(screen.queryByText("No commits on this pull request.")).not.toBeInTheDocument();
   });
 
   it("opens the commit on GitHub from the row's link", async () => {
@@ -150,5 +164,51 @@ describe("Commits tab", () => {
     seed(makePr({ commits: [commit({ url: "" })] }));
     render(<PullRequestDetail />);
     expect(screen.queryByLabelText("Open commit on GitHub")).not.toBeInTheDocument();
+  });
+});
+
+// The full-list load is supplementary: the capped fast-path list still renders,
+// so a failure gets a quiet notice + retry — not a blocking error — unless
+// there's no list at all to fall back on (GL-165).
+describe("Commits tab load failures (GL-165)", () => {
+  const realLoadPrCommits = usePulls.getState().loadPrCommits;
+
+  beforeEach(() => {
+    usePulls.setState({ prCommitsError: {}, loadPrCommits: realLoadPrCommits });
+  });
+
+  it("shows a quiet notice above the capped list and retries with force", async () => {
+    const loadPrCommits = vi.fn().mockResolvedValue(undefined);
+    seed(makePr({ commits: [commit({ headline: "capped row" })] }));
+    usePulls.setState({ prCommitsError: { 42: "GraphQL blew up" }, loadPrCommits });
+    render(<PullRequestDetail />);
+
+    // The list still renders under the notice.
+    expect(screen.getByText(/Couldn't load the full commit list/)).toBeInTheDocument();
+    expect(screen.getByText("capped row")).toBeInTheDocument();
+
+    loadPrCommits.mockClear(); // drop the mount effect's call
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(loadPrCommits).toHaveBeenCalledWith(42, true);
+  });
+
+  it("falls back to the blocking error state when there is no list to show", async () => {
+    const loadPrCommits = vi.fn().mockResolvedValue(undefined);
+    seed(makePr({ commits: [] }));
+    usePulls.setState({ prCommitsError: { 42: "GraphQL blew up" }, loadPrCommits });
+    render(<PullRequestDetail />);
+
+    expect(screen.getByText("GraphQL blew up")).toBeInTheDocument();
+    expect(screen.queryByText("No commits on this pull request.")).not.toBeInTheDocument();
+
+    loadPrCommits.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(loadPrCommits).toHaveBeenCalledWith(42, true);
+  });
+
+  it("shows no notice when the full list loaded cleanly", () => {
+    seed(makePr());
+    render(<PullRequestDetail />);
+    expect(screen.queryByText(/Couldn't load the full commit list/)).not.toBeInTheDocument();
   });
 });
