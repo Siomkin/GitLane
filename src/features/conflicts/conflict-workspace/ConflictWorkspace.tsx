@@ -63,7 +63,7 @@ export const ConflictWorkspace = () => {
   // diverge), or skip because the file changed under the decisions.
   const stagePlanned = async (
     target: string,
-  ): Promise<"staged" | "failed" | "skipped" | "changed"> => {
+  ): Promise<"staged" | "failed" | "skipped" | "reclassified" | "changed"> => {
     const before = useRepo.getState().operation?.files.find((f) => f.path === target);
     if (!before || before.resolved) return "skipped";
     const fresh = await resolver.revalidate(target);
@@ -76,6 +76,10 @@ export const ConflictWorkspace = () => {
     // pre-await read only short-circuits the fetch for already-settled files.
     const current = useRepo.getState().operation?.files.find((f) => f.path === target);
     if (!current || current.resolved) return "skipped";
+    // A reclassification (text → binary/deleted, or text-classified content
+    // that reads back binary) isn't hunk staleness — report it as what it is
+    // so the caller's toast doesn't mislead (GL-180 review).
+    if (current.kind !== "text" || fresh.binary) return "reclassified";
     const plan = stagePlanFor(current, fresh, resolver.decisions, resolver.lineSel, resolver.hunkPrints);
     if (plan.action === "skip") return "changed";
     const ok =
@@ -88,8 +92,14 @@ export const ConflictWorkspace = () => {
     return ok ? "staged" : "failed";
   };
 
-  const changedOnDisk = (target: string) =>
-    showToast(`${target} changed on disk — review the updated conflicts`, "error");
+  // Toasts matched to the two non-write outcomes: stale hunks vs. a file that
+  // is no longer a text conflict at all.
+  const notStaged = (target: string, outcome: Awaited<ReturnType<typeof stagePlanned>>) => {
+    if (outcome === "changed")
+      showToast(`${target} changed on disk — review the updated conflicts`, "error");
+    else if (outcome === "reclassified")
+      showToast(`${target} is no longer a text conflict — resolve it as a whole file`, "error");
+  };
 
   const markResolved = () => {
     if (!selectedFile) return;
@@ -103,9 +113,7 @@ export const ConflictWorkspace = () => {
       });
       return;
     }
-    void stagePlanned(target).then((outcome) => {
-      if (outcome === "changed") changedOnDisk(target);
-    });
+    void stagePlanned(target).then((outcome) => notStaged(target, outcome));
   };
 
   const stageAll = async () => {
@@ -115,8 +123,7 @@ export const ConflictWorkspace = () => {
     // render snapshot only pre-filters; each write re-checks the live state.
     for (const f of model.files) {
       if (f.resolved || model.resolvedTextFor(f) == null) continue;
-      const outcome = await stagePlanned(f.path);
-      if (outcome === "changed") changedOnDisk(f.path);
+      notStaged(f.path, await stagePlanned(f.path));
     }
   };
 

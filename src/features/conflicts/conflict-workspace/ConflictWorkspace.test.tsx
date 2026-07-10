@@ -279,6 +279,8 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
   });
 
   it("skips a file reclassified while its own pre-stage re-read is in flight", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
     render(<ConflictWorkspace />);
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
@@ -310,6 +312,16 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
     const markConflictResolved = useRepo.getState().markConflictResolved as Mock;
     expect(resolveConflictFile).not.toHaveBeenCalled();
     expect(markConflictResolved).not.toHaveBeenCalled();
+    // The toast must name the actual reason — a reclassification, not a
+    // hunk-staleness "changed on disk" message (GL-180 review).
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining("no longer a text conflict"),
+      "error",
+    );
+    expect(showToast).not.toHaveBeenCalledWith(
+      expect.stringContaining("changed on disk"),
+      expect.anything(),
+    );
   });
 
   it("reports a failed write as a failure, not as 'changed on disk'", async () => {

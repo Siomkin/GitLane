@@ -239,6 +239,29 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     expect(result.current.lineSel["a.txt::1"]).toBeUndefined();
   });
 
+  it("conservatively drops decisions when a structural edit shifts hunk indices", async () => {
+    // Documents the intended trade-off: decisions are bound to (region index,
+    // fingerprint), so inserting a hunk above a decided one shifts indices and
+    // invalidates the shifted decisions even though their hunk text moved
+    // unchanged. Safe (never stages the wrong hunk) at the cost of re-deciding.
+    serveConflictFile(TWO_HUNKS);
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    act(() => {
+      result.current.decide("a.txt", 1, "ours");
+      result.current.decide("a.txt", 3, "theirs");
+    });
+
+    serveConflictFile(
+      `<<<<<<< HEAD\nzero ours\n=======\nzero theirs\n>>>>>>> feat\n${TWO_HUNKS}`,
+    );
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
+    expect(result.current.decisions["a.txt::3"]).toBeUndefined();
+  });
+
   it("prunes stale decisions when an evicted file re-fetches changed content", async () => {
     serveConflictFile(TWO_HUNKS);
     const { result, rerender } = renderResolver(op([{ path: "a.txt" }, { path: "b.txt" }]));
