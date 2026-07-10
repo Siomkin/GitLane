@@ -21,7 +21,9 @@ env:
   CARGO_TERM_COLOR: always
   # Self-hosted runners may export a host-level CARGO_TARGET_DIR. Tauri's CLI
   # honors it, but tauri-action discovers release artifacts under
-  # src-tauri/target, so keep the build output inside the checkout.
+  # src-tauri/target, so keep the build output at that path. On self-hosted legs
+  # that path is a symlink into a persistent dir (see "Use persistent build dir"
+  # in release-app), which keeps the compile warm across releases.
   CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
 
 jobs:
@@ -43,13 +45,8 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "./src-tauri -> target"
-          # Release preflight only needs cache restore. Saving src-tauri/target on
-          # the self-hosted Mac has timed out after validation already passed.
-          save-if: "false"
+      # No Rust cache here: preflight compiles nothing (see the note at the end of
+      # this job), so restoring a target-dir archive was pure wasted minutes.
 
       - uses: oven-sh/setup-bun@v2
 
@@ -198,14 +195,32 @@ jobs:
         with:
           targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Cache Rust build
+      # Self-hosted legs (linux + both macOS triples): compile into a persistent
+      # dir on the box, reused release-to-release — a version bump recompiles only
+      # the app crate, not every dependency. tauri-action discovers artifacts under
+      # src-tauri/target (see the CARGO_TARGET_DIR note above), so the redirect is
+      # a symlink: the path tauri-action reads is unchanged, the contents live in
+      # $HOME. checkout's git clean removes the symlink each run (never the
+      # contents), so it's recreated here. The two macOS triples coexist inside
+      # target/<triple>/release. If a box's disk fills, delete the dir — cargo
+      # rebuilds it.
+      - name: Use persistent build dir (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          PERSIST="$HOME/.cache/gitlane-release/target"
+          mkdir -p "$PERSIST"
+          rm -rf src-tauri/target
+          ln -sfn "$PERSIST" src-tauri/target
+
+      # GitHub-hosted (windows) still round-trips the GitHub cache API — its disk
+      # is ephemeral. Saving is safe here; the old save-if:false existed because
+      # saving the packaged target hung on the self-hosted Mac, which no longer
+      # uses this step at all.
+      - name: Cache Rust build (github-hosted)
+        if: runner.environment == 'github-hosted'
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
-          # Release matrix jobs only need cache restore. Saving the full packaged
-          # target directory after macOS bundling can hang in post-job cleanup and
-          # block the release after artifacts were already uploaded.
-          save-if: "false"
 
       - uses: oven-sh/setup-bun@v2
 
