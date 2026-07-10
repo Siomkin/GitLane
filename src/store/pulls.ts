@@ -33,6 +33,7 @@ import {
   settleQueuedPrListLoad,
   type QueuedPrListLoad,
 } from "./pullsQueue";
+import { claimPrRequestId, ownsPrRequest } from "./pullsRequests";
 
 let nextPrListRequestId = 1;
 let nextPrChecksRequestId = 1;
@@ -70,6 +71,9 @@ interface PullsState {
   /** Detail cache by PR number (body, files) — re-opening a PR is instant. */
   prDetails: Record<number, PullRequest>;
   prDetailLoading: boolean;
+  /** Details currently loading by PR number (request-owned, GL-166); the global
+   * flag is derived — any in-flight PR. */
+  prDetailLoadingByNum: Record<number, number>;
   /** Per-PR detail-load error (so the detail body can retry, not blank the list). */
   prDetailError: Record<number, string>;
   /** Lazily-loaded checks cache by PR number (the slow statusCheckRollup). */
@@ -82,11 +86,15 @@ interface PullsState {
   /** Lazily-loaded full-diff cache by PR number (the parsed `gh pr diff`). */
   prDiffs: Record<number, FileDiff[]>;
   prDiffLoading: boolean;
+  /** Diffs currently loading by PR number (request-owned, GL-166). */
+  prDiffLoadingByNum: Record<number, number>;
   /** Per-PR diff-load error (drives an inline retry in the Diff tab). */
   prDiffError: Record<number, string>;
   /** Lazily-loaded inline review-thread cache by PR number (GraphQL). */
   prThreads: Record<number, ReviewThread[]>;
   prThreadsLoading: boolean;
+  /** Threads currently loading by PR number (request-owned, GL-166). */
+  prThreadsLoadingByNum: Record<number, number>;
   /** Per-PR threads-load error (drives an inline retry in the threads section). */
   prThreadsError: Record<number, string>;
   /** PRs whose full commit list (paginated GraphQL, with verification) has
@@ -167,6 +175,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prsRefreshQueued: null,
   prDetails: {},
   prDetailLoading: false,
+  prDetailLoadingByNum: {},
   prDetailError: {},
   prChecks: {},
   prChecksLoading: false,
@@ -174,9 +183,11 @@ export const usePulls = create<PullsState>((set, get) => ({
   prChecksError: {},
   prDiffs: {},
   prDiffLoading: false,
+  prDiffLoadingByNum: {},
   prDiffError: {},
   prThreads: {},
   prThreadsLoading: false,
+  prThreadsLoadingByNum: {},
   prThreadsError: {},
   prCommitsLoaded: {},
   prCommitsError: {},
@@ -189,6 +200,9 @@ export const usePulls = create<PullsState>((set, get) => ({
     // previous repo's still-pending request would otherwise pass the version
     // check (0 === 0) and publish into the fresh state (GL-164 review).
     prCommitsRequests.clear();
+    // Clearing the …LoadingByNum maps orphans the in-flight detail/diff/threads/
+    // checks requests the same way: a stale settle no longer owns its slot, so
+    // it publishes nothing and can't clear a fresh request's flag (GL-166).
     set({
       pullRequests: [],
       prDetails: {},
@@ -211,6 +225,12 @@ export const usePulls = create<PullsState>((set, get) => ({
       prsLoading: false,
       prChecksLoadingByNum: {},
       prChecksLoading: false,
+      prDetailLoadingByNum: {},
+      prDetailLoading: false,
+      prDiffLoadingByNum: {},
+      prDiffLoading: false,
+      prThreadsLoadingByNum: {},
+      prThreadsLoading: false,
     });
   },
 
@@ -286,6 +306,15 @@ export const usePulls = create<PullsState>((set, get) => ({
             prCommitsError: {},
             prChecksLoadingByNum: {},
             prChecksLoading: false,
+            // Evict the in-flight detail/diff/threads slots too (same as the
+            // quiet-refresh prune), so the derived flags clear now instead of
+            // holding a spinner until the orphaned request settles (GL-166).
+            prDetailLoadingByNum: {},
+            prDetailLoading: false,
+            prDiffLoadingByNum: {},
+            prDiffLoading: false,
+            prThreadsLoadingByNum: {},
+            prThreadsLoading: false,
             // Bump every known PR's version so an in-flight detail/diff/threads
             // load (which captured the old value) discards its pre-refresh write
             // instead of repopulating the just-cleared cache and making the
@@ -386,16 +415,33 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prDetails[num]) return;
     const account = useAccounts.getState().prAccountRef();
+    // Pin the response to the repo+account it was fetched under and to the PR's
+    // cache generation (a refresh prune bumps it mid-flight).
+    const key = prListRequestKey(summary.path, account);
     const version = get().prResourceVersion[num] ?? 0;
-    set((s) => ({ prDetailLoading: true, prDetailError: omit(s.prDetailError, num) }));
+    // Claim this PR's detail slot: only the current owner may publish or clear
+    // loading, so a repo switch (reset clears the map) or a newer load orphans
+    // this request instead of letting it write into the fresh state (GL-166).
+    const requestId = claimPrRequestId();
+    set((s) => ({
+      prDetailLoading: true,
+      prDetailLoadingByNum: { ...s.prDetailLoadingByNum, [num]: requestId },
+      prDetailError: omit(s.prDetailError, num),
+    }));
     try {
       const detail = await api.pullRequestDetail(summary.path, num, account);
       set((s) => {
-        // A refresh pruned this PR mid-flight → discard the pre-refresh response.
-        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDetailLoading: false };
+        // Superseded by a newer request or orphaned by reset → drop everything.
+        if (!ownsPrRequest(s.prDetailLoadingByNum, num, requestId)) return {};
+        const loadingByNum = omit(s.prDetailLoadingByNum, num);
+        const loading = { prDetailLoadingByNum: loadingByNum, prDetailLoading: hasNumericKeys(loadingByNum) };
+        // Publish only while the repo+account is still the one fetched under and
+        // no refresh pruned this PR mid-flight; either way clear our own token.
+        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
+          return loading;
         return {
+          ...loading,
           prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
-          prDetailLoading: false,
           // Fresh commits (verified: false) — drop the applied marker so the lazy
           // signature fetch re-runs for this PR.
           prCommitsLoaded: omit(s.prCommitsLoaded, num),
@@ -403,11 +449,12 @@ export const usePulls = create<PullsState>((set, get) => ({
       });
     } catch (e) {
       set((s) => {
-        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDetailLoading: false };
-        return {
-          prDetailLoading: false,
-          prDetailError: { ...s.prDetailError, [num]: String(e) },
-        };
+        if (!ownsPrRequest(s.prDetailLoadingByNum, num, requestId)) return {};
+        const loadingByNum = omit(s.prDetailLoadingByNum, num);
+        const loading = { prDetailLoadingByNum: loadingByNum, prDetailLoading: hasNumericKeys(loadingByNum) };
+        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
+          return loading;
+        return { ...loading, prDetailError: { ...s.prDetailError, [num]: String(e) } };
       });
     }
   },
@@ -464,6 +511,9 @@ export const usePulls = create<PullsState>((set, get) => ({
     const detail = get().prDetails[num];
     if (!detail) return;
     const account = useAccounts.getState().prAccountRef();
+    // Pin the response to the repo+account it was fetched under, like the other
+    // per-PR resources (GL-166).
+    const key = prListRequestKey(summary.path, account);
     const version = get().prResourceVersion[num] ?? 0;
     // Claim this PR's commits slot: a newer overlapping load takes it over, and
     // only the owner may publish either outcome — the version alone can't tell
@@ -476,9 +526,15 @@ export const usePulls = create<PullsState>((set, get) => ({
       const commits = await api.pullRequestCommits(summary.path, num, account);
       set((s) => {
         const d = s.prDetails[num];
-        // Skip if superseded by a newer load, pruned mid-flight, or the detail
-        // was evicted under us.
-        if (!ownsRequest() || !d || (s.prResourceVersion[num] ?? 0) !== version) return {};
+        // Skip if superseded by a newer load, fetched under a stale repo/account,
+        // pruned mid-flight, or the detail was evicted under us.
+        if (
+          !ownsRequest() ||
+          !d ||
+          currentPrListRequestKey() !== key ||
+          (s.prResourceVersion[num] ?? 0) !== version
+        )
+          return {};
         return {
           prDetails: {
             ...s.prDetails,
@@ -489,10 +545,15 @@ export const usePulls = create<PullsState>((set, get) => ({
       });
     } catch (e) {
       set((s) => {
-        // Superseded, or a refresh pruned this PR mid-flight → the error belongs
-        // to a request that no longer owns the slot; discard it like the success
-        // path does (GL-164, mirroring loadPrDiff's guarded error write).
-        if (!ownsRequest() || (s.prResourceVersion[num] ?? 0) !== version) return {};
+        // Superseded, stale repo/account, or a refresh pruned this PR mid-flight
+        // → the error belongs to a request that no longer owns the slot; discard
+        // it like the success path does (GL-164, mirroring loadPrDiff).
+        if (
+          !ownsRequest() ||
+          currentPrListRequestKey() !== key ||
+          (s.prResourceVersion[num] ?? 0) !== version
+        )
+          return {};
         return { prCommitsError: { ...s.prCommitsError, [num]: String(e) } };
       });
     } finally {
@@ -508,22 +569,34 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prDiffs[num]) return;
     const account = useAccounts.getState().prAccountRef();
+    // Same ownership scheme as loadPrDetail (GL-166): slot id + repo/account key
+    // + cache generation.
+    const key = prListRequestKey(summary.path, account);
     const version = get().prResourceVersion[num] ?? 0;
-    set((s) => ({ prDiffLoading: true, prDiffError: omit(s.prDiffError, num) }));
+    const requestId = claimPrRequestId();
+    set((s) => ({
+      prDiffLoading: true,
+      prDiffLoadingByNum: { ...s.prDiffLoadingByNum, [num]: requestId },
+      prDiffError: omit(s.prDiffError, num),
+    }));
     try {
       const diffs = await api.pullRequestDiff(summary.path, num, account);
       set((s) => {
-        // A refresh pruned this PR mid-flight → discard the pre-refresh diff.
-        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDiffLoading: false };
-        return { prDiffs: { ...s.prDiffs, [num]: diffs }, prDiffLoading: false };
+        if (!ownsPrRequest(s.prDiffLoadingByNum, num, requestId)) return {};
+        const loadingByNum = omit(s.prDiffLoadingByNum, num);
+        const loading = { prDiffLoadingByNum: loadingByNum, prDiffLoading: hasNumericKeys(loadingByNum) };
+        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
+          return loading;
+        return { ...loading, prDiffs: { ...s.prDiffs, [num]: diffs } };
       });
     } catch (e) {
       set((s) => {
-        if ((s.prResourceVersion[num] ?? 0) !== version) return { prDiffLoading: false };
-        return {
-          prDiffLoading: false,
-          prDiffError: { ...s.prDiffError, [num]: String(e) },
-        };
+        if (!ownsPrRequest(s.prDiffLoadingByNum, num, requestId)) return {};
+        const loadingByNum = omit(s.prDiffLoadingByNum, num);
+        const loading = { prDiffLoadingByNum: loadingByNum, prDiffLoading: hasNumericKeys(loadingByNum) };
+        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
+          return loading;
+        return { ...loading, prDiffError: { ...s.prDiffError, [num]: String(e) } };
       });
     }
   },
@@ -534,22 +607,34 @@ export const usePulls = create<PullsState>((set, get) => ({
     if (!summary) return;
     if (!force && get().prThreads[num]) return;
     const account = useAccounts.getState().prAccountRef();
+    // Same ownership scheme as loadPrDetail (GL-166): slot id + repo/account key
+    // + cache generation.
+    const key = prListRequestKey(summary.path, account);
     const version = get().prResourceVersion[num] ?? 0;
-    set((s) => ({ prThreadsLoading: true, prThreadsError: omit(s.prThreadsError, num) }));
+    const requestId = claimPrRequestId();
+    set((s) => ({
+      prThreadsLoading: true,
+      prThreadsLoadingByNum: { ...s.prThreadsLoadingByNum, [num]: requestId },
+      prThreadsError: omit(s.prThreadsError, num),
+    }));
     try {
       const threads = await api.pullRequestReviewThreads(summary.path, num, account);
       set((s) => {
-        // A refresh pruned this PR mid-flight → discard the pre-refresh threads.
-        if ((s.prResourceVersion[num] ?? 0) !== version) return { prThreadsLoading: false };
-        return { prThreads: { ...s.prThreads, [num]: threads }, prThreadsLoading: false };
+        if (!ownsPrRequest(s.prThreadsLoadingByNum, num, requestId)) return {};
+        const loadingByNum = omit(s.prThreadsLoadingByNum, num);
+        const loading = { prThreadsLoadingByNum: loadingByNum, prThreadsLoading: hasNumericKeys(loadingByNum) };
+        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
+          return loading;
+        return { ...loading, prThreads: { ...s.prThreads, [num]: threads } };
       });
     } catch (e) {
       set((s) => {
-        if ((s.prResourceVersion[num] ?? 0) !== version) return { prThreadsLoading: false };
-        return {
-          prThreadsLoading: false,
-          prThreadsError: { ...s.prThreadsError, [num]: String(e) },
-        };
+        if (!ownsPrRequest(s.prThreadsLoadingByNum, num, requestId)) return {};
+        const loadingByNum = omit(s.prThreadsLoadingByNum, num);
+        const loading = { prThreadsLoadingByNum: loadingByNum, prThreadsLoading: hasNumericKeys(loadingByNum) };
+        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
+          return loading;
+        return { ...loading, prThreadsError: { ...s.prThreadsError, [num]: String(e) } };
       });
     }
   },
