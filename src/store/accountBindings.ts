@@ -82,3 +82,84 @@ export function resolvePrAccount(
     "unset"
   );
 }
+
+// ---- v3 per-remote bindings (interim GL-129 shape, read for migration only) ----
+
+export type RemoteBindingV3 = Extract<StoredRepoAccountEntry, { version: 3; remotes: unknown }>;
+export type RemoteBindingValue = RemoteBindingV3["remotes"][string];
+/** A per-remote resolution outcome: a matched account, an explicit unbound,
+ * no stored value, or a stored value no loaded account matches. */
+export type ResolvedStoredAccount<A extends BindableAccount> = A | "unbound" | "unset" | "unresolved";
+
+/** Whether `account` can serve the remote described by `info` — the account's
+ * host is the remote's credential authority (or the bare host when the remote
+ * URL carries a `www.` prefix the account list normalizes away). */
+export function accountMatchesRemoteHost(
+  account: Pick<BindableAccount, "host">,
+  info: { host: string | null; credentialHost: string | null },
+) {
+  if (!info.host || !info.credentialHost) return false;
+  return account.host === info.credentialHost || (info.credentialHost.startsWith("www.") && account.host === info.host);
+}
+
+export function isV3Binding(entry: StoredRepoAccountEntry | undefined): entry is RemoteBindingV3 {
+  return typeof entry === "object" && entry !== null && "remotes" in entry;
+}
+
+export function resolveRemoteBinding<A extends BindableAccount>(
+  binding: RemoteBindingValue | undefined,
+  accounts: A[],
+): ResolvedStoredAccount<A> {
+  if (binding === undefined) return "unset";
+  if (typeof binding === "string") {
+    return accounts.find((a) => accountMatchesLegacy(a, binding)) ?? "unresolved";
+  }
+  if ("unbound" in binding) return "unbound";
+  const resolved = resolvePrAccount({ version: 2, ...binding }, accounts);
+  if (resolved === "unbound") return "unbound";
+  if (resolved === "unset") return "unresolved";
+  return resolved as A;
+}
+
+export function prEntryFromRemoteBinding(
+  binding: RemoteBindingValue | undefined,
+  accounts: BindableAccount[],
+): StoredRepoAccountEntry | undefined {
+  const resolved = resolveRemoteBinding(binding, accounts);
+  if (resolved === "unbound") return { version: 2, unbound: true };
+  if (resolved === "unset" || resolved === "unresolved") return undefined;
+  return { version: 2, ...resolved.ref };
+}
+
+/** The default-remote selection a legacy (pre-gitcredentials) binding encodes:
+ * v3 maps resolve their default-remote entry; v2/legacy entries resolve
+ * repo-wide. `"unresolved"` (unlike `resolvePrAccount`'s bare `"unset"`)
+ * distinguishes "a binding exists but no loaded account matches it" so the
+ * caller can wait instead of silently switching identity. */
+export function legacyDefaultSelection<A extends BindableAccount>(
+  entry: StoredRepoAccountEntry | undefined,
+  defaultRemoteName: string | null,
+  accounts: A[],
+): ResolvedStoredAccount<A> {
+  if (isV3Binding(entry)) {
+    return defaultRemoteName ? resolveRemoteBinding(entry.remotes[defaultRemoteName], accounts) : "unset";
+  }
+  const resolved = resolvePrAccount(entry, accounts);
+  if (resolved === "unset" && entry !== undefined) return "unresolved";
+  return resolved as ResolvedStoredAccount<A>;
+}
+
+export function accountRefFromApi(a: {
+  provider?: GithubAccountRef["provider"];
+  host?: string;
+  accountId?: string;
+  login?: string;
+  username: string;
+}): GithubAccountRef {
+  return {
+    provider: a.provider ?? "gh",
+    host: a.host ?? "github.com",
+    accountId: a.accountId || a.login || a.username,
+    login: a.login || a.username,
+  };
+}
