@@ -82,10 +82,17 @@ export default [
     rules: restrict({ paths: [RAW_INVOKE] }),
   },
   // Documented boundary sites that legitimately import the `api` object: the PTY
-  // panes manager (imperative xterm/PTY lifecycle) and the action-menu probe
+  // panes manager (imperative xterm/PTY lifecycle) and the context-menu probe /
+  // destructive-preview reads in the menus folder module (GL-156)
   // (architecture-rules-react.md §1).
   {
-    files: ["src/features/terminal/useTerminalPanes.ts", "src/components/chrome/overlays/menus.tsx"],
+    files: [
+      "src/features/terminal/useTerminalPanes.ts",
+      "src/components/chrome/overlays/menus/ActionMenu.tsx",
+      "src/components/chrome/overlays/menus/BranchContextMenu.tsx",
+      "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
+      "src/components/chrome/overlays/menus/WipContextMenu.tsx",
+    ],
     rules: restrict({ paths: [RAW_INVOKE] }),
   },
   // components/ui primitives stay domain-free.
