@@ -4,8 +4,10 @@
 import { create } from "zustand";
 import { createRepoConflictActions } from "./repoConflictActions";
 import { createRepoLifecycleActions } from "./repoLifecycleActions";
+import { createRepoRefreshActions } from "./repoRefreshActions";
 import { createRepoRemoteActions } from "./repoRemoteActions";
 import { createRepoSelectionActions } from "./repoSelectionActions";
+import { createRepoTabActions } from "./repoTabActions";
 import { createInitialRepoData, type RepoState } from "./repoTypes";
 import { readOpenPaths, readRecents, readTabInfo } from "./repoSession";
 import { pruneTabInfo } from "../lib/tabs";
@@ -30,6 +32,8 @@ export const useRepo = create<RepoState>((set, get) => ({
     pruneTabInfo(readTabInfo(), readOpenPaths()),
   ),
   ...createRepoLifecycleActions(set, get),
+  ...createRepoTabActions(set, get),
+  ...createRepoRefreshActions(set, get),
   ...createRepoSelectionActions(set, get),
   ...createRepoWriteActions(set, get),
   ...createRepoRemoteActions(set, get),
