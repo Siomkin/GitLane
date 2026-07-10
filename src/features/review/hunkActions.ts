@@ -1,5 +1,13 @@
-import type { DiffHunk, FileDiff } from "../../lib/api";
+import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
 import type { ChangeSource } from "../../store/repo";
+
+/** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
+ * which can't be staged. Built by the review container; both diff views consume it. */
+export type HunkActionApi = {
+  source: "unstaged" | "staged";
+  onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) => void;
+  onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+};
 
 export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
   if (source === "commit") return "Committed diffs cannot be staged by hunk";
@@ -24,6 +32,25 @@ export const lineStagePatchUnavailableReason = (file: FileDiff, source: ChangeSo
   }
   return null;
 };
+
+/** The per-view staging derivation both diff views share (GL-162 review):
+ * hunk/line availability for the open file plus whether the buttons stage or
+ * unstage. Null `hunkAction` (committed diff) yields all-null/stage — the
+ * views already gate every button on `hunkAction` itself. */
+export function hunkStaging(
+  file: FileDiff,
+  hunkAction: HunkActionApi | null,
+): {
+  unavailableReason: string | null;
+  lineUnavailable: string | null;
+  mode: "stage" | "unstage";
+} {
+  return {
+    unavailableReason: hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null,
+    lineUnavailable: hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null,
+    mode: hunkAction?.source === "staged" ? "unstage" : "stage",
+  };
+}
 
 /** Canonical body of a hunk, one `{sign}{content}` line per row joined by
  * newlines — the form the staging backend reconstructs from its patch source.
