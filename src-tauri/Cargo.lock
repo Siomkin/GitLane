@@ -1473,7 +1473,7 @@ dependencies = [
 
 [[package]]
 name = "gitlane"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.4.3",
