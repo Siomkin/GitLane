@@ -110,6 +110,26 @@ export function parseConflict(content: string): Region[] {
   return regions;
 }
 
+/**
+ * Content identity of one conflict hunk (GL-180): a stable hash of its two
+ * sides. Decisions and line picks are bound to the print of the hunk they were
+ * made against, so when a file changes on disk only the hunks that actually
+ * changed lose their decisions — a watcher refresh with identical content
+ * preserves everything. Base (diff3) lines are excluded: they are display-only
+ * and never contribute to the reconstructed resolution.
+ */
+export function hunkFingerprint(region: ConflictRegion): string {
+  const s = JSON.stringify([region.ours, region.theirs]);
+  // FNV-1a — tiny, deterministic, collision-safe enough for per-file hunk
+  // identity (the length suffix guards the truncation cases).
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${h.toString(36)}:${s.length}`;
+}
+
 /** Number of conflict hunks in a parsed file. */
 export function conflictRegionCount(regions: Region[]): number {
   return regions.filter((r) => r.kind === "cf").length;

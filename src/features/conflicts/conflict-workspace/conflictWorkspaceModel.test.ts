@@ -10,17 +10,25 @@ import {
   resolvedTextFor,
   sideLabels,
   stageAllEligible,
+  stagePlanFor,
   takenBlock,
   toggledLine,
   withBlock,
 } from "./conflictWorkspaceModel";
-import { parseConflict, type ConflictRegion, type LineSelection } from "../conflictModel";
+import {
+  hunkFingerprint,
+  parseConflict,
+  type ConflictRegion,
+  type LineSelection,
+} from "../conflictModel";
 import type { OperationFile } from "../../../store/repo";
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
 const regions = parseConflict(MARKERS);
 const cfIdx = regions.findIndex((r) => r.kind === "cf");
 const cf = regions[cfIdx] as ConflictRegion;
+// The print a decision on MARKERS' hunk carries (recorded by the resolver).
+const cfPrint = { [`a.txt::${cfIdx}`]: hunkFingerprint(cf) };
 
 const textFile = (path: string, resolved = false): OperationFile => ({
   path,
@@ -107,29 +115,51 @@ describe("resolvedTextFor / stageAllEligible", () => {
   const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary });
 
   it("returns null while a hunk is undecided, the merged text once decided", () => {
-    expect(resolvedTextFor(content(MARKERS), "a.txt", {}, {})).toBeNull();
-    expect(resolvedTextFor(content(MARKERS), "a.txt", { [`a.txt::${cfIdx}`]: "ours" }, {})).toBe(
-      "start\nour line\nend\n",
-    );
+    expect(resolvedTextFor(content(MARKERS), "a.txt", {}, {}, cfPrint)).toBeNull();
+    expect(
+      resolvedTextFor(content(MARKERS), "a.txt", { [`a.txt::${cfIdx}`]: "ours" }, {}, cfPrint),
+    ).toBe("start\nour line\nend\n");
   });
 
   it("treats marker-free content as ready to stage as-is", () => {
-    expect(resolvedTextFor(content("plain\n"), "a.txt", {}, {})).toBe("plain\n");
+    expect(resolvedTextFor(content("plain\n"), "a.txt", {}, {}, {})).toBe("plain\n");
   });
 
   it("never fabricates text for unloaded or binary content", () => {
-    expect(resolvedTextFor(undefined, "a.txt", {}, {})).toBeNull();
-    expect(resolvedTextFor(content(MARKERS, true), "a.txt", {}, {})).toBeNull();
+    expect(resolvedTextFor(undefined, "a.txt", {}, {}, {})).toBeNull();
+    expect(resolvedTextFor(content(MARKERS, true), "a.txt", {}, {}, {})).toBeNull();
+  });
+
+  it("treats a decision whose hunk print no longer matches as undecided (GL-180)", () => {
+    const decided = { [`a.txt::${cfIdx}`]: "ours" as const };
+    const changed = content(MARKERS.replace("our line", "our line edited"));
+    // The decision was made against the original hunk — against the changed
+    // one it must not assemble a merge…
+    expect(resolvedTextFor(changed, "a.txt", decided, {}, cfPrint)).toBeNull();
+    // …and a decision with no recorded print never counts.
+    expect(resolvedTextFor(content(MARKERS), "a.txt", decided, {}, {})).toBeNull();
+    // Line picks are bound the same way.
+    expect(
+      resolvedTextFor(changed, "a.txt", {}, { [`a.txt::${cfIdx}`]: new Set(["a:0"]) }, cfPrint),
+    ).toBeNull();
   });
 
   it("stageAllEligible needs one unstaged file that is fully decided", () => {
     const files = [textFile("a.txt"), textFile("b.txt")];
     const contentFor = (path: string) => (path === "a.txt" ? content(MARKERS) : undefined);
-    expect(stageAllEligible(files, contentFor, {}, {})).toBe(false);
-    expect(stageAllEligible(files, contentFor, { [`a.txt::${cfIdx}`]: "ours" }, {})).toBe(true);
+    expect(stageAllEligible(files, contentFor, {}, {}, {})).toBe(false);
+    expect(
+      stageAllEligible(files, contentFor, { [`a.txt::${cfIdx}`]: "ours" }, {}, cfPrint),
+    ).toBe(true);
     // A staged file no longer counts, even though its decisions would resolve it.
     expect(
-      stageAllEligible([textFile("a.txt", true)], contentFor, { [`a.txt::${cfIdx}`]: "ours" }, {}),
+      stageAllEligible(
+        [textFile("a.txt", true)],
+        contentFor,
+        { [`a.txt::${cfIdx}`]: "ours" },
+        {},
+        cfPrint,
+      ),
     ).toBe(false);
   });
 
@@ -141,8 +171,42 @@ describe("resolvedTextFor / stageAllEligible", () => {
     const contentFor = () => content("plain resolved\n");
     const binaryKind: OperationFile = { path: "a.txt", kind: "binary", deletedSide: "", resolved: false };
     const deletedKind: OperationFile = { path: "a.txt", kind: "deleted", deletedSide: "ours", resolved: false };
-    expect(stageAllEligible([binaryKind], contentFor, decided, {})).toBe(false);
-    expect(stageAllEligible([deletedKind], contentFor, decided, {})).toBe(false);
+    expect(stageAllEligible([binaryKind], contentFor, decided, {}, cfPrint)).toBe(false);
+    expect(stageAllEligible([deletedKind], contentFor, decided, {}, cfPrint)).toBe(false);
+  });
+});
+
+describe("stagePlanFor (GL-180)", () => {
+  const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary });
+  const decided = { [`a.txt::${cfIdx}`]: "ours" as const };
+
+  it("writes the validated merge for a decided text file", () => {
+    expect(stagePlanFor(textFile("a.txt"), content(MARKERS), decided, {}, cfPrint)).toEqual({
+      action: "write",
+      text: "start\nour line\nend\n",
+    });
+  });
+
+  it("stages a marker-free disk copy as-is (per-file Mark resolved parity)", () => {
+    expect(stagePlanFor(textFile("a.txt"), content("resolved outside\n"), decided, {}, cfPrint)).toEqual(
+      { action: "stageAsIs" },
+    );
+  });
+
+  it("skips when the hunks changed on disk since the decision", () => {
+    const changed = content(MARKERS.replace("our line", "our line edited"));
+    expect(stagePlanFor(textFile("a.txt"), changed, decided, {}, cfPrint)).toEqual({
+      action: "skip",
+    });
+  });
+
+  it("skips reclassified, already-resolved, missing, and unreadable files", () => {
+    const binaryKind: OperationFile = { path: "a.txt", kind: "binary", deletedSide: "", resolved: false };
+    expect(stagePlanFor(binaryKind, content(MARKERS), decided, {}, cfPrint).action).toBe("skip");
+    expect(stagePlanFor(textFile("a.txt", true), content(MARKERS), decided, {}, cfPrint).action).toBe("skip");
+    expect(stagePlanFor(undefined, content(MARKERS), decided, {}, cfPrint).action).toBe("skip");
+    expect(stagePlanFor(textFile("a.txt"), null, decided, {}, cfPrint).action).toBe("skip");
+    expect(stagePlanFor(textFile("a.txt"), content("", true), decided, {}, cfPrint).action).toBe("skip");
   });
 });
 

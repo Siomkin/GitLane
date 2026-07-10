@@ -191,6 +191,137 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
     expect(resolveConflictFile).toHaveBeenNthCalledWith(2, "a.txt", RESOLVED_OURS);
   });
 
+  it("re-checks the disk copy before writing and skips a file that changed since it was decided", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+    expect(stageAllButton()).toBeEnabled();
+
+    // a.txt changed on disk after the decision, and no watcher refresh has
+    // landed yet — the cached markers (and the decision made against them) are
+    // stale. Staging must re-fetch and refuse to write the stale resolution.
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "conflict_file"
+        ? Promise.resolve({
+            path: args?.file,
+            content: MARKERS.replace("our line", "our line edited"),
+            binary: false,
+          })
+        : Promise.resolve(null),
+    );
+    fireEvent.click(stageAllButton());
+    await flush();
+
+    expect(resolveConflictFile).not.toHaveBeenCalled();
+  });
+
+  it("routes a marker-free ready file through mark_conflict_resolved (stage as-is)", async () => {
+    // a.txt was fully resolved in an external editor: no markers left. Staging
+    // it must stage the worktree copy as-is (like per-file "Mark resolved")
+    // rather than rewriting the file from the cache — the two paths must not
+    // diverge when cache and disk differ.
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "conflict_file"
+        ? Promise.resolve({ path: args?.file, content: "plain resolved\n", binary: false })
+        : Promise.resolve(null),
+    );
+    render(<ConflictWorkspace />);
+    await flush();
+    expect(stageAllButton()).toBeEnabled();
+
+    fireEvent.click(stageAllButton());
+    await flush();
+
+    const markConflictResolved = useRepo.getState().markConflictResolved as Mock;
+    expect(markConflictResolved).toHaveBeenCalledWith("a.txt");
+    expect(resolveConflictFile).not.toHaveBeenCalled();
+  });
+
+  it("skips a file reclassified binary while an earlier stage write is still in flight", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+    fireEvent.click(screen.getByText("b.txt"));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+
+    const first = deferred<boolean>();
+    resolveConflictFile.mockImplementationOnce(() => first.promise);
+    fireEvent.click(stageAllButton());
+    await flush();
+    expect(resolveConflictFile).toHaveBeenCalledTimes(1);
+
+    // While a.txt's write is in flight, the watcher reclassifies b.txt binary.
+    // The loop's render snapshot still says "text" — it must re-read the live
+    // entry and never write the stale text.
+    await act(async () => {
+      useRepo.setState({
+        operation: {
+          kind: "merge",
+          canSkip: false,
+          files: [
+            { path: "a.txt", kind: "text", deletedSide: "", resolved: false },
+            { path: "b.txt", kind: "binary", deletedSide: "", resolved: false },
+          ],
+        },
+      });
+    });
+    await act(async () => {
+      first.resolve(true);
+    });
+
+    expect(resolveConflictFile).toHaveBeenCalledTimes(1);
+    expect(resolveConflictFile).not.toHaveBeenCalledWith("b.txt", expect.anything());
+  });
+
+  it("Mark resolved re-checks the disk copy: stages as-is when markers were resolved externally", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+
+    // Between the decision and the click, the user resolved the file in an
+    // external editor — the disk copy has no markers left. Mark resolved must
+    // stage that worktree copy as-is, not overwrite it with the cached merge.
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "conflict_file"
+        ? Promise.resolve({ path: args?.file, content: "externally resolved\n", binary: false })
+        : Promise.resolve(null),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Mark resolved & stage/ }));
+    await flush();
+
+    const markConflictResolved = useRepo.getState().markConflictResolved as Mock;
+    expect(markConflictResolved).toHaveBeenCalledWith("a.txt");
+    expect(resolveConflictFile).not.toHaveBeenCalled();
+  });
+
+  it("Mark resolved refuses to write when the hunks changed on disk", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "conflict_file"
+        ? Promise.resolve({
+            path: args?.file,
+            content: MARKERS.replace("our line", "our line edited"),
+            binary: false,
+          })
+        : Promise.resolve(null),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Mark resolved & stage/ }));
+    await flush();
+
+    const markConflictResolved = useRepo.getState().markConflictResolved as Mock;
+    expect(resolveConflictFile).not.toHaveBeenCalled();
+    expect(markConflictResolved).not.toHaveBeenCalled();
+  });
+
   it("stages serially — the second write starts only after the first settles", async () => {
     render(<ConflictWorkspace />);
     await flush();

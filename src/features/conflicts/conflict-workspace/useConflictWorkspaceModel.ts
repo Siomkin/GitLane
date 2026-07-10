@@ -7,9 +7,7 @@ import { useCallback, useMemo } from "react";
 import type { OperationFile, OperationState } from "../../../store/repo";
 import {
   buildLineEditor,
-  buildResolved,
   effectiveDecision,
-  endsWithNewline,
   parseConflict,
   type LineEditor,
   type LineSelection,
@@ -57,10 +55,10 @@ export interface ConflictWorkspaceModel {
   onSetBlock: (idx: number, side: EditorSide, on: boolean) => void;
   onTakeBlock: (idx: number, which: "a" | "b" | "both") => void;
   onSelectAllSide: (side: EditorSide, on: boolean) => void;
-  /** Merged text for one file when fully decided, else null (stage-all). */
+  /** Merged text for one file when fully decided, else null (stage-all's
+   * render-snapshot pre-filter; the write itself re-plans against fresh
+   * content via `stagePlanFor`). */
   resolvedTextFor: (file: OperationFile) => string | null;
-  /** Merged text for the selected file from its in-app hunk choices. */
-  selectedResolvedText: () => string;
 }
 
 export function useConflictWorkspaceModel(
@@ -89,7 +87,7 @@ export function useConflictWorkspaceModel(
 
   // Per-file decision lookups for the selected path, off the stable facade's
   // slices so every memo lists exactly what it reads (GL-178/GL-179).
-  const { contentFor, decisions, lineSel, setLineSelection } = resolver;
+  const { contentFor, decisions, lineSel, hunkPrints, setLineSelection } = resolver;
   const fileDecisions = useMemo(
     () => fileCells(regions, decisions, path),
     [regions, decisions, path],
@@ -123,8 +121,8 @@ export function useConflictWorkspaceModel(
   // cached file on each render — only when the file set, decisions, picks, or
   // cached content actually change. (`contentFor` changes per content cache.)
   const canStageAll = useMemo(
-    () => stageAllEligible(files, contentFor, decisions, lineSel),
-    [files, contentFor, decisions, lineSel],
+    () => stageAllEligible(files, contentFor, decisions, lineSel, hunkPrints),
+    [files, contentFor, decisions, lineSel, hunkPrints],
   );
 
   // Line-editor mutations: compute the next selection from the current
@@ -173,9 +171,7 @@ export function useConflictWorkspaceModel(
     // over a file a refresh reclassified as binary/deleted (GL-179 review).
     resolvedTextFor: (file) =>
       file.kind === "text"
-        ? resolvedTextFor(contentFor(file.path), file.path, decisions, lineSel)
+        ? resolvedTextFor(contentFor(file.path), file.path, decisions, lineSel, hunkPrints)
         : null,
-    selectedResolvedText: () =>
-      buildResolved(regions, fileDecisions, fileLineSel, endsWithNewline(content?.content ?? "")),
   };
 }

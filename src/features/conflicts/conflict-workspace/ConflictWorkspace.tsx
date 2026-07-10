@@ -6,6 +6,7 @@ import { ConflictBanner } from "../ConflictBanner";
 import { ConflictEditor } from "../ConflictEditor";
 import { ConflictFileList } from "../ConflictFileList";
 import { useConflictResolver } from "../useConflictResolver";
+import { stagePlanFor } from "./conflictWorkspaceModel";
 import { useConflictWorkspaceModel } from "./useConflictWorkspaceModel";
 
 // The conflict workspace defines the accent tints the design uses (the app only
@@ -55,29 +56,58 @@ export const ConflictWorkspace = () => {
     });
   };
 
+  // Stage one text file against its freshly-read disk copy (GL-180): re-fetch
+  // right before writing, re-read the live operation entry, and let the plan
+  // decide — write the validated merge, stage a marker-free worktree copy
+  // as-is (the same path per-file "Mark resolved" takes, so the two flows never
+  // diverge), or skip because the file changed under the decisions.
+  const stagePlanned = async (target: string): Promise<"staged" | "skipped" | "changed"> => {
+    const current = useRepo.getState().operation?.files.find((f) => f.path === target);
+    if (!current || current.resolved) return "skipped";
+    const fresh = await resolver.revalidate(target);
+    if (!fresh) {
+      showToast(`Couldn't re-read ${target} before staging`, "error");
+      return "skipped";
+    }
+    const plan = stagePlanFor(current, fresh, resolver.decisions, resolver.lineSel, resolver.hunkPrints);
+    if (plan.action === "skip") return "changed";
+    const ok =
+      plan.action === "stageAsIs"
+        ? await markConflictResolved(target)
+        : await resolveConflictFile(target, plan.text);
+    if (ok) resolver.resetFile(target);
+    return "staged";
+  };
+
+  const changedOnDisk = (target: string) =>
+    showToast(`${target} changed on disk — review the updated conflicts`, "error");
+
   const markResolved = () => {
     if (!selectedFile) return;
     const target = selectedFile.path;
-    const done = (ok: boolean) => {
-      if (ok) resolver.resetFile(target);
-    };
-    // No markers left (edited away / emptied) or a whole-file conflict (binary /
-    // modify-delete) resolved externally: stage the worktree copy as-is.
-    // Otherwise write the merged text rebuilt from the user's in-app hunk choices.
-    if (state.noMarkers || state.wholeFile) void markConflictResolved(target).then(done);
-    else void resolveConflictFile(target, model.selectedResolvedText()).then(done);
+    // A whole-file conflict (binary, text-as-binary, or modify/delete) resolved
+    // externally stages the worktree copy as-is — no cached text is involved,
+    // so there is nothing to go stale.
+    if (state.wholeFile) {
+      void markConflictResolved(target).then((ok) => {
+        if (ok) resolver.resetFile(target);
+      });
+      return;
+    }
+    void stagePlanned(target).then((outcome) => {
+      if (outcome === "changed") changedOnDisk(target);
+    });
   };
 
   const stageAll = async () => {
-    // Serialize: each resolveConflictFile shells out to `git add`, and concurrent
+    // Serialize: each staging write shells out to `git add`, and concurrent
     // invocations contend for `.git/index.lock` (one fails, and the failure is
-    // swallowed → that file silently isn't staged). Await each in turn.
+    // swallowed → that file silently isn't staged). Await each in turn. The
+    // render snapshot only pre-filters; each write re-checks the live state.
     for (const f of model.files) {
-      if (f.resolved) continue;
-      const text = model.resolvedTextFor(f);
-      if (text == null) continue;
-      const ok = await resolveConflictFile(f.path, text);
-      if (ok) resolver.resetFile(f.path);
+      if (f.resolved || model.resolvedTextFor(f) == null) continue;
+      const outcome = await stagePlanned(f.path);
+      if (outcome === "changed") changedOnDisk(f.path);
     }
   };
 

@@ -171,6 +171,116 @@ describe("useConflictResolver — path-key robustness (GL-178 review)", () => {
   });
 });
 
+// Two hunks so one can change on disk while the other stays intact: regions are
+// [ctx, cf@1, ctx, cf@3, ctx].
+const TWO_HUNKS =
+  "a\n<<<<<<< HEAD\none ours\n=======\none theirs\n>>>>>>> feat\nmid\n<<<<<<< HEAD\ntwo ours\n=======\ntwo theirs\n>>>>>>> feat\nz\n";
+const TWO_HUNKS_FIRST_EDITED = TWO_HUNKS.replace("one ours", "one ours edited");
+
+const serveConflictFile = (content: string) => {
+  invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+    cmd === "conflict_file"
+      ? Promise.resolve({ path: args?.file, content, binary: false })
+      : Promise.resolve(null),
+  );
+};
+
+describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
+  it("invalidates only the changed hunk's decision when revalidation returns new content", async () => {
+    serveConflictFile(TWO_HUNKS);
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    act(() => {
+      result.current.decide("a.txt", 1, "ours");
+      result.current.decide("a.txt", 3, "theirs");
+    });
+
+    // The first hunk changed on disk (external editor); the watcher re-read the
+    // worktree and the open file background-revalidates.
+    serveConflictFile(TWO_HUNKS_FIRST_EDITED);
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    // The changed hunk's decision would now apply to different lines — gone.
+    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
+    // The untouched hunk's decision must survive — never discard user choices
+    // for content that didn't change.
+    expect(result.current.decisions["a.txt::3"]).toBe("theirs");
+  });
+
+  it("keeps every decision when revalidation returns identical content", async () => {
+    serveConflictFile(TWO_HUNKS);
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    act(() => {
+      result.current.decide("a.txt", 1, "ours");
+      result.current.setLineSelection("a.txt", 3, new Set(["b:0"]));
+    });
+
+    // A plain watcher refresh: fresh operation object, unchanged file content.
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    expect(result.current.decisions["a.txt::1"]).toBe("ours");
+    expect(result.current.lineSel["a.txt::3"]).toEqual(new Set(["b:0"]));
+  });
+
+  it("drops line picks bound to a changed hunk", async () => {
+    serveConflictFile(TWO_HUNKS);
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    act(() => result.current.setLineSelection("a.txt", 1, new Set(["a:0", "b:0"])));
+
+    serveConflictFile(TWO_HUNKS_FIRST_EDITED);
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    // Stale picks reference lines that may no longer exist in the new hunk.
+    expect(result.current.lineSel["a.txt::1"]).toBeUndefined();
+  });
+
+  it("prunes stale decisions when an evicted file re-fetches changed content", async () => {
+    serveConflictFile(TWO_HUNKS);
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }, { path: "b.txt" }]));
+    await flush();
+    act(() => result.current.decide("a.txt", 1, "ours"));
+
+    // Open b.txt, then a refresh evicts a.txt's cache (it isn't the open file).
+    act(() => result.current.select("b.txt"));
+    await flush();
+    serveConflictFile(TWO_HUNKS_FIRST_EDITED);
+    rerender({ operation: op([{ path: "a.txt" }, { path: "b.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    // Re-selecting a.txt re-fetches the (changed) disk copy — the decision made
+    // against the old hunk must not map onto the new one.
+    act(() => result.current.select("a.txt"));
+    await flush();
+    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
+  });
+
+  it("revalidate() returns the fresh content, refreshes the cache, and prunes", async () => {
+    serveConflictFile(TWO_HUNKS);
+    const { result } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    act(() => {
+      result.current.decide("a.txt", 1, "ours");
+      result.current.decide("a.txt", 3, "theirs");
+    });
+
+    serveConflictFile(TWO_HUNKS_FIRST_EDITED);
+    const fresh: Array<Awaited<ReturnType<typeof result.current.revalidate>>> = [];
+    await act(async () => {
+      fresh.push(await result.current.revalidate("a.txt"));
+    });
+
+    expect(fresh[0]?.content).toBe(TWO_HUNKS_FIRST_EDITED);
+    expect(result.current.contentFor("a.txt")?.content).toBe(TWO_HUNKS_FIRST_EDITED);
+    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
+    expect(result.current.decisions["a.txt::3"]).toBe("theirs");
+  });
+});
+
 describe("useConflictResolver — facade identity (GL-178)", () => {
   it("produces a new facade when the selected file's content loads", async () => {
     const { result } = renderResolver(op([{ path: "a.txt" }]));

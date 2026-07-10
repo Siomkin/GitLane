@@ -14,6 +14,7 @@ import {
   deriveSelection,
   endsWithNewline,
   hasMalformedHunk,
+  hunkFingerprint,
   isResolved,
   parseConflict,
   type ConflictRegion,
@@ -131,17 +132,32 @@ export function takenBlock(region: ConflictRegion, which: "a" | "b" | "both"): L
  * it, else null: unloaded/binary content or an undecided hunk means the file is
  * not ready to stage. Zero conflict regions (markers edited away externally)
  * counts as ready — the content stages as-is.
+ *
+ * Every decision must carry a fingerprint matching the hunk it applies to
+ * (GL-180): a decision recorded against different hunk content — the file
+ * changed on disk since the user chose — counts as undecided, so a stale
+ * choice can never assemble the wrong merge.
  */
 export function resolvedTextFor(
   content: ConflictFileContent | undefined,
   path: string,
   decisions: Record<string, RegionDecision>,
   lineSel: Record<string, LineSelection>,
+  hunkPrints: Record<string, string>,
 ): string | null {
   if (!content || content.binary) return null;
   const regions = parseConflict(content.content);
   const decs = fileCells(regions, decisions, path);
   const sels = fileCells(regions, lineSel, path);
+  for (const idxStr of new Set([...Object.keys(decs), ...Object.keys(sels)])) {
+    const idx = Number(idxStr);
+    const region = regions[idx];
+    const valid = region?.kind === "cf" && hunkPrints[`${path}::${idx}`] === hunkFingerprint(region);
+    if (!valid) {
+      delete decs[idx];
+      delete sels[idx];
+    }
+  }
   const ready = conflictRegionCount(regions) === 0 || isResolved(regions, decs, sels);
   if (!ready) return null;
   return buildResolved(regions, decs, sels, endsWithNewline(content.content));
@@ -156,13 +172,46 @@ export function stageAllEligible(
   contentFor: (path: string) => ConflictFileContent | undefined,
   decisions: Record<string, RegionDecision>,
   lineSel: Record<string, LineSelection>,
+  hunkPrints: Record<string, string>,
 ): boolean {
   return files.some(
     (f) =>
       !f.resolved &&
       f.kind === "text" &&
-      resolvedTextFor(contentFor(f.path), f.path, decisions, lineSel) !== null,
+      resolvedTextFor(contentFor(f.path), f.path, decisions, lineSel, hunkPrints) !== null,
   );
+}
+
+/** How one file should be staged, decided against its freshly-read disk copy. */
+export type StagePlan =
+  /** Write the merged text rebuilt from the (validated) in-app decisions. */
+  | { action: "write"; text: string }
+  /** No markers left on disk — stage the worktree copy as-is (the same path as
+   * per-file "Mark resolved", so the two flows never diverge; GL-180). */
+  | { action: "stageAsIs" }
+  /** Not ready: reclassified/gone/binary content, or the hunks changed on disk
+   * since the user decided. Nothing must be written. */
+  | { action: "skip" };
+
+/**
+ * Decide the staging action for one file from its live operation entry and the
+ * content just re-read from disk (GL-180). Staging paths call this *after*
+ * revalidating, so the plan is always built against the disk copy — never the
+ * render-time cache: a mid-run external edit, reclassification, or already-
+ * completed stage yields "skip" instead of a stale write.
+ */
+export function stagePlanFor(
+  file: OperationFile | null | undefined,
+  fresh: ConflictFileContent | null,
+  decisions: Record<string, RegionDecision>,
+  lineSel: Record<string, LineSelection>,
+  hunkPrints: Record<string, string>,
+): StagePlan {
+  if (!file || file.resolved || file.kind !== "text") return { action: "skip" };
+  if (!fresh || fresh.binary) return { action: "skip" };
+  if (conflictRegionCount(parseConflict(fresh.content)) === 0) return { action: "stageAsIs" };
+  const text = resolvedTextFor(fresh, file.path, decisions, lineSel, hunkPrints);
+  return text == null ? { action: "skip" } : { action: "write", text };
 }
 
 /** The selected file's resolution flags driving the editor chrome. */

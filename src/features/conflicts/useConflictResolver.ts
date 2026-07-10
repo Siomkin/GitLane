@@ -3,12 +3,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type ConflictFileContent } from "../../lib/api";
 import type { OperationState } from "../../store/repo";
 import { useUi } from "../../store/ui";
-import type { RegionDecision } from "./conflictModel";
+import { hunkFingerprint, parseConflict, type RegionDecision } from "./conflictModel";
 
 export type EditorMode = "inline" | "split";
 
 /** Composite key for per-hunk state — one file's hunk index. */
 const cell = (path: string, idx: number) => `${path}::${idx}`;
+
+/** Key-matcher for one file's cells. A key belongs to `path` only when
+ * everything after the prefix is a hunk index — a bare prefix match would also
+ * hit a file literally named "<path>::something" (GL-178 review). */
+const cellMatcher = (path: string) => {
+  const prefix = `${path}::`;
+  return (k: string) => k.startsWith(prefix) && /^\d+$/.test(k.slice(prefix.length));
+};
+
+/** Per-cell fingerprints of a file's conflict hunks (none for binary content). */
+function printsOf(path: string, content: ConflictFileContent): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (content.binary) return out;
+  parseConflict(content.content).forEach((region, idx) => {
+    if (region.kind === "cf") out[cell(path, idx)] = hunkFingerprint(region);
+  });
+  return out;
+}
+
+/** Fingerprint of the hunk at one region index, when it is a conflict hunk. */
+function printAt(content: ConflictFileContent | undefined, idx: number): string | undefined {
+  if (!content || content.binary) return undefined;
+  const region = parseConflict(content.content)[idx];
+  return region?.kind === "cf" ? hunkFingerprint(region) : undefined;
+}
 
 /** Stable stand-in while no operation is active, so derived values and effect
  * inputs don't churn identity on every no-operation render. */
@@ -29,6 +54,16 @@ export interface ConflictResolver {
   decisions: Record<string, RegionDecision>;
   /** Per-hunk line picks for the line editor, keyed by `path::idx`. */
   lineSel: Record<string, Set<string>>;
+  /** Fingerprint of the hunk each decision/pick was made against, keyed like
+   * `decisions` (GL-180). Fresh content invalidates only mismatching cells
+   * here; stage-time validation re-checks them against the disk copy so a
+   * decision can never apply to a hunk that changed under it. */
+  hunkPrints: Record<string, string>;
+  /** Re-fetch one file's conflicted content from disk, refresh the cache, and
+   * invalidate decisions whose hunk changed (GL-180). Returns the fresh
+   * content, or null when there is no repo / the read fails (prior content and
+   * decisions are kept). Staging paths call this immediately before writing. */
+  revalidate: (path: string) => Promise<ConflictFileContent | null>;
   decide: (path: string, idx: number, decision: RegionDecision) => void;
   /** Replace a hunk's line selection (the line editor's single mutation). An
    * empty set clears the hunk back to undecided; a non-empty set supersedes any
@@ -60,6 +95,7 @@ export function useConflictResolver(
   const [selected, setSelected] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<Record<string, RegionDecision>>({});
   const [lineSel, setLineSel] = useState<Record<string, Set<string>>>({});
+  const [hunkPrints, setHunkPrints] = useState<Record<string, string>>({});
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [cache, setCache] = useState<Record<string, ConflictFileContent>>({});
   const [contentLoading, setContentLoading] = useState(false);
@@ -86,6 +122,50 @@ export function useConflictResolver(
   const cached = selected ? cache[selected] : undefined;
   const fetchTokenRef = useRef(0);
 
+  // Latest-value ref: async work (fetch handlers, the revalidation transition,
+  // click handlers) reads the values current at that moment without turning
+  // them into effect triggers or callback dependencies.
+  const latestInputs = useRef({ files, selected, cache, decisions, lineSel, hunkPrints });
+  useEffect(() => {
+    latestInputs.current = { files, selected, cache, decisions, lineSel, hunkPrints };
+  });
+
+  // Store freshly-fetched content and invalidate the decisions/picks whose hunk
+  // no longer matches the fingerprint it was decided against (GL-180) — an
+  // external edit to one hunk must not leave a decision silently applying to
+  // different lines, while untouched hunks keep their decisions (a watcher
+  // refresh with unchanged content discards nothing). Every content arrival
+  // funnels through here: first load, background revalidation, and the
+  // stage-time revalidate().
+  const applyFresh = useCallback((path: string, content: ConflictFileContent) => {
+    setCache((c) => ({ ...c, [path]: content }));
+    const { decisions, lineSel, hunkPrints } = latestInputs.current;
+    const fresh = printsOf(path, content);
+    const isCell = cellMatcher(path);
+    const stale = new Set(
+      [...Object.keys(decisions), ...Object.keys(lineSel), ...Object.keys(hunkPrints)].filter(
+        // No recorded print (decided against content we no longer have) is
+        // stale too — a decision only survives when its hunk provably matches.
+        (k) => isCell(k) && (hunkPrints[k] === undefined || hunkPrints[k] !== fresh[k]),
+      ),
+    );
+    if (stale.size === 0) return;
+    const dropStale = <T,>(m: Record<string, T>): Record<string, T> => {
+      let changed = false;
+      const next = { ...m };
+      for (const k of stale) {
+        if (k in next) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : m;
+    };
+    setDecisions(dropStale);
+    setLineSel(dropStale);
+    setHunkPrints(dropStale);
+  }, []);
+
   useEffect(() => {
     if (!repoPath || !selected || !needsContent || cached) {
       setContentLoading(false);
@@ -97,7 +177,7 @@ export function useConflictResolver(
       .conflictFile(repoPath, selected)
       .then((content) => {
         if (fetchTokenRef.current !== token) return;
-        setCache((c) => ({ ...c, [selected]: content }));
+        applyFresh(selected, content);
         setContentLoading(false);
       })
       .catch(() => {
@@ -107,7 +187,7 @@ export function useConflictResolver(
         // otherwise the file looks stuck between loading and an empty editor.
         useUi.getState().showToast(`Couldn't load conflicts in ${selected}`, "error");
       });
-  }, [repoPath, selected, needsContent, cached]);
+  }, [repoPath, selected, needsContent, cached, applyFresh]);
 
   // Drop cached content when a file leaves the conflict set, so re-conflicting it
   // (Unstage) re-fetches fresh marker content rather than reusing a stale copy.
@@ -136,15 +216,11 @@ export function useConflictResolver(
   // background-revalidate the open file (no spinner — its content stays visible)
   // so a later in-app stage can't overwrite an external resolution with stale text.
   // The transition is keyed by the operation object alone, but must read the
-  // selection/files/cache current at that moment — a latest-value ref carries
+  // selection/files/cache current at that moment — the latest-value ref carries
   // them in without turning them into effect triggers.
-  const revalidationInputs = useRef({ files, selected, cache });
-  useEffect(() => {
-    revalidationInputs.current = { files, selected, cache };
-  });
   useEffect(() => {
     if (!repoPath) return;
-    const { files, selected, cache } = revalidationInputs.current;
+    const { files, selected, cache } = latestInputs.current;
     const unresolvedText = new Set(
       files.filter((f) => !f.resolved && f.kind === "text").map((f) => f.path),
     );
@@ -165,69 +241,88 @@ export function useConflictResolver(
         .conflictFile(repoPath, selected)
         .then((content) => {
           if (fetchTokenRef.current !== token) return;
-          setCache((c) => ({ ...c, [selected]: content }));
+          applyFresh(selected, content);
         })
         .catch(() => {
           /* keep the prior content; a hard load failure surfaces via the primary fetch */
         });
     }
-  }, [operation, repoPath]);
+  }, [operation, repoPath, applyFresh]);
 
   const select = useCallback((path: string) => setSelected(path), []);
 
-  const decide = useCallback((path: string, idx: number, decision: RegionDecision) => {
-    const key = cell(path, idx);
-    setDecisions((d) => ({ ...d, [key]: decision }));
-    // A whole-hunk choice supersedes any prior line-level picks.
-    setLineSel((s) => {
-      if (!s[key]) return s;
-      const next = { ...s };
+  // Record (or clear) the fingerprint of the hunk a cell's choice was made
+  // against, from the content cached at that moment — the print is what later
+  // invalidates the choice if the hunk changes on disk (GL-180).
+  const setPrint = useCallback((key: string, print: string | undefined) => {
+    setHunkPrints((p) => {
+      if (print) return p[key] === print ? p : { ...p, [key]: print };
+      if (!(key in p)) return p;
+      const next = { ...p };
       delete next[key];
       return next;
     });
   }, []);
 
-  const setLineSelection = useCallback((path: string, idx: number, selection: Set<string>) => {
-    const key = cell(path, idx);
-    setLineSel((s) => {
-      const next = { ...s };
-      if (selection.size === 0) delete next[key];
-      else next[key] = selection;
-      return next;
-    });
-    // A line selection is its own decision mode; drop any whole-hunk choice so
-    // the effective decision derives from the picks (or clears when empty).
-    setDecisions((d) => {
-      if (!d[key]) return d;
-      const next = { ...d };
-      delete next[key];
-      return next;
-    });
-  }, []);
+  const decide = useCallback(
+    (path: string, idx: number, decision: RegionDecision) => {
+      const key = cell(path, idx);
+      setDecisions((d) => ({ ...d, [key]: decision }));
+      setPrint(key, printAt(latestInputs.current.cache[path], idx));
+      // A whole-hunk choice supersedes any prior line-level picks.
+      setLineSel((s) => {
+        if (!s[key]) return s;
+        const next = { ...s };
+        delete next[key];
+        return next;
+      });
+    },
+    [setPrint],
+  );
+
+  const setLineSelection = useCallback(
+    (path: string, idx: number, selection: Set<string>) => {
+      const key = cell(path, idx);
+      setLineSel((s) => {
+        const next = { ...s };
+        if (selection.size === 0) delete next[key];
+        else next[key] = selection;
+        return next;
+      });
+      // An emptied selection clears the hunk back to undecided — no print left.
+      setPrint(
+        key,
+        selection.size > 0 ? printAt(latestInputs.current.cache[path], idx) : undefined,
+      );
+      // A line selection is its own decision mode; drop any whole-hunk choice so
+      // the effective decision derives from the picks (or clears when empty).
+      setDecisions((d) => {
+        if (!d[key]) return d;
+        const next = { ...d };
+        delete next[key];
+        return next;
+      });
+    },
+    [setPrint],
+  );
 
   const undo = useCallback((path: string, idx: number) => {
     const key = cell(path, idx);
-    setDecisions((d) => {
-      const next = { ...d };
+    const drop = <T,>(m: Record<string, T>): Record<string, T> => {
+      if (!(key in m)) return m;
+      const next = { ...m };
       delete next[key];
       return next;
-    });
-    setLineSel((s) => {
-      if (!s[key]) return s;
-      const next = { ...s };
-      delete next[key];
-      return next;
-    });
+    };
+    setDecisions(drop);
+    setLineSel(drop);
+    setHunkPrints(drop);
   }, []);
 
   const resetFile = useCallback((path: string) => {
-    const prefix = `${path}::`;
-    // A key belongs to `path` only when everything after the prefix is a hunk
-    // index — a bare prefix match would also wipe a file literally named
-    // "<path>::something" (GL-178 review).
-    const isCell = (k: string) => k.startsWith(prefix) && /^\d+$/.test(k.slice(prefix.length));
-    const drop = (obj: Record<string, unknown>) => {
-      const next = { ...obj };
+    const isCell = cellMatcher(path);
+    const drop = <T,>(m: Record<string, T>): Record<string, T> => {
+      const next = { ...m };
       let changed = false;
       for (const k of Object.keys(next)) {
         if (isCell(k)) {
@@ -235,17 +330,28 @@ export function useConflictResolver(
           changed = true;
         }
       }
-      return { next, changed };
+      return changed ? next : m;
     };
-    setDecisions((d) => {
-      const { next, changed } = drop(d);
-      return changed ? (next as Record<string, RegionDecision>) : d;
-    });
-    setLineSel((s) => {
-      const { next, changed } = drop(s);
-      return changed ? (next as Record<string, Set<string>>) : s;
-    });
+    setDecisions(drop);
+    setLineSel(drop);
+    setHunkPrints(drop);
   }, []);
+
+  const revalidate = useCallback(
+    async (path: string): Promise<ConflictFileContent | null> => {
+      if (!repoPath) return null;
+      try {
+        const content = await api.conflictFile(repoPath, path);
+        applyFresh(path, content);
+        return content;
+      } catch {
+        // Keep the prior content and decisions; the caller decides how (and
+        // whether) to surface the failed re-read.
+        return null;
+      }
+    },
+    [repoPath, applyFresh],
+  );
 
   const contentFor = useCallback((path: string) => cache[path], [cache]);
   const content = selected ? cache[selected] ?? null : null;
@@ -264,10 +370,12 @@ export function useConflictResolver(
       contentFor,
       decisions,
       lineSel,
+      hunkPrints,
       decide,
       setLineSelection,
       undo,
       resetFile,
+      revalidate,
       confirmAbort,
       setConfirmAbort,
     }),
@@ -280,10 +388,12 @@ export function useConflictResolver(
       contentFor,
       decisions,
       lineSel,
+      hunkPrints,
       decide,
       setLineSelection,
       undo,
       resetFile,
+      revalidate,
       confirmAbort,
     ],
   );
