@@ -111,6 +111,12 @@ export function useActionBarModel(): ActionBarModel {
     setBusy(key);
     try {
       await action();
+    } catch (e) {
+      // Store network actions surface their own failures (error toast) and
+      // resolve; a rejection here is a contract violation. Log it rather than
+      // leaving an unhandled rejection — the finally below already guarantees
+      // the toolbar can never stay locked (GL-182 review).
+      console.warn(`${key}: network action rejected`, e);
     } finally {
       busyRef.current = false;
       setBusy(null);

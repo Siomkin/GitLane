@@ -374,6 +374,37 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     });
   });
 
+  it("re-arms and refetches immediately when the bound PR account changes", async () => {
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1);
+
+    await act(async () => {
+      useAccounts.setState({
+        repoAccountRef: { provider: "gh", host: "github.com", accountId: "gh:alice", login: "alice" },
+      });
+    });
+
+    expect(prLoads()).toBe(2);
+  });
+
+  it("stops polling when the forge switches to an unsupported kind mid-session", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<ActionBar />);
+      expect(prLoads()).toBe(1);
+
+      await act(async () => {
+        useRepo.setState({
+          forge: { ...FORGE, kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" },
+        });
+      });
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(prLoads()).toBe(1); // old interval cleaned up, no new one armed
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops polling when the repo closes", async () => {
     vi.useFakeTimers();
     try {
@@ -416,6 +447,36 @@ describe("ActionBar network ops — one at a time (GL-182)", () => {
     });
     fireEvent.click(screen.getByTitle("Up to date with origin/main."));
     expect(pull).toHaveBeenCalledTimes(1);
+  });
+
+  it("unlocks the guard when an op rejects, so the toolbar can never stay stuck", async () => {
+    // Store actions surface their own failures and resolve; a rejection is a
+    // contract violation — but even then the busy guard must release.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const fetch = vi.fn().mockRejectedValue(new Error("network down"));
+      const pull = vi.fn().mockResolvedValue(undefined);
+      useRepo.setState({ fetch, pull });
+
+      render(<ActionBar />);
+      fireEvent.click(screen.getByTitle("Fetch"));
+      await act(async () => {});
+
+      fireEvent.click(screen.getByTitle("Up to date with origin/main."));
+      expect(pull).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("ActionBar navigator shortcut (GL-182)", () => {
+  it("opens the navigator on ⌘⌥F (KeyF code — Option+F types ƒ on macOS)", () => {
+    render(<ActionBar />);
+    expect(useUi.getState().navOpen).toBe(false);
+
+    fireEvent.keyDown(document, { metaKey: true, altKey: true, code: "KeyF" });
+    expect(useUi.getState().navOpen).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 // Pure derivations for the toolbar (GL-182): branch trigger label, the
 // current-branch PR badge match, transport-auth visibility, and the PR-forge
-// gate for badge polling. Framework-free — `useActionBarModel` memo-composes
-// these; tests drive them directly.
+// gate for badge polling. Framework-free — `useActionBarModel` calls these
+// per render (they are cheap); tests drive them directly.
 
 import { ForgeKind, type RemoteInfo, type RepoSummary } from "../../../lib/api";
 import { detectRemoteUrl } from "../../../lib/remotes";
