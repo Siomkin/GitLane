@@ -25,7 +25,7 @@ export function PullRequestDetail() {
   const prsLoading = usePulls((s) => s.prsLoading);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
   const prDetails = usePulls((s) => s.prDetails);
-  const prDetailLoading = usePulls((s) => s.prDetailLoading);
+  const prDetailLoadingByNum = usePulls((s) => s.prDetailLoadingByNum);
   const prDetailError = usePulls((s) => s.prDetailError);
   const loadPrDetail = usePulls((s) => s.loadPrDetail);
   const loadPrChecks = usePulls((s) => s.loadPrChecks);
@@ -83,8 +83,10 @@ export function PullRequestDetail() {
   const detail = prDetails[summary.num];
   const detailReady = detail != null;
   const pr = detail ?? summary;
-  // Scoped to this PR so another PR's stale failure never bleeds in.
-  const detailError = prDetailLoading ? null : (prDetailError[summary.num] ?? null);
+  // Scoped to this PR so another PR's stale failure never bleeds in — and gated
+  // on THIS PR's in-flight load (not the global flag), so another PR's pending
+  // request can't mask the selected PR's error (GL-166).
+  const detailError = prDetailLoadingByNum[summary.num] ? null : (prDetailError[summary.num] ?? null);
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col bg-neutral-50 dark:bg-neutral-900">

@@ -13,14 +13,20 @@ import type { PullRequest } from "../lib/prs";
 export interface PrCacheSlice {
   pullRequests: PullRequest[];
   prDetails: Record<number, PullRequest>;
+  prDetailLoading: boolean;
+  prDetailLoadingByNum: Record<number, number>;
   prDetailError: Record<number, string>;
   prChecks: Record<number, PrCheck[]>;
   prChecksLoading: boolean;
   prChecksLoadingByNum: Record<number, number>;
   prChecksError: Record<number, string>;
   prDiffs: Record<number, FileDiff[]>;
+  prDiffLoading: boolean;
+  prDiffLoadingByNum: Record<number, number>;
   prDiffError: Record<number, string>;
   prThreads: Record<number, ReviewThread[]>;
+  prThreadsLoading: boolean;
+  prThreadsLoadingByNum: Record<number, number>;
   prThreadsError: Record<number, string>;
   prCommitsLoaded: Record<number, boolean>;
   prCommitsError: Record<number, string>;
@@ -63,9 +69,9 @@ export function bumpResourceVersions(
   return next;
 }
 
-// Every PR number the store currently knows about — cached, in-flight, or in the
-// (previous) list. Used to invalidate in-flight loads on a forced refresh, since
-// detail/diff/threads loads aren't tracked per-PR but their PR is always known here.
+// Every PR number the store currently knows about — cached, in-flight (the
+// per-PR request slots, GL-166), or in the (previous) list. Used to invalidate
+// in-flight loads on a forced refresh.
 export function knownPrNums(s: PrCacheSlice): number[] {
   return [
     ...new Set<number>(
@@ -74,6 +80,9 @@ export function knownPrNums(s: PrCacheSlice): number[] {
         ...Object.keys(s.prDiffs),
         ...Object.keys(s.prChecks),
         ...Object.keys(s.prThreads),
+        ...Object.keys(s.prDetailLoadingByNum),
+        ...Object.keys(s.prDiffLoadingByNum),
+        ...Object.keys(s.prThreadsLoadingByNum),
         ...Object.keys(s.prChecksLoadingByNum),
         ...Object.keys(s.prResourceVersion),
         ...s.pullRequests.map((p) => String(p.num)),
@@ -117,15 +126,19 @@ export function detailMatchesSummary(detail: PullRequest, summary: PullRequest):
 export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): Partial<PrCacheSlice> {
   const byNum = new Map(summaries.map((p) => [p.num, p]));
   const prevByNum = new Map(s.pullRequests.map((p) => [p.num, p]));
-  // Candidates: anything cached, an in-flight checks load, OR in the previous
-  // list — the last covers a PR whose first detail/checks load is still in flight
-  // (no cache entry yet) so a changed summary still bumps its version.
+  // Candidates: anything cached, any in-flight per-PR load (the request slots,
+  // GL-166), OR in the previous list — the last covers a PR whose first load is
+  // still in flight (no cache entry yet) so a changed summary still bumps its
+  // version.
   const candidateNums = new Set<number>(
     [
       ...Object.keys(s.prDetails),
       ...Object.keys(s.prDiffs),
       ...Object.keys(s.prChecks),
       ...Object.keys(s.prThreads),
+      ...Object.keys(s.prDetailLoadingByNum),
+      ...Object.keys(s.prDiffLoadingByNum),
+      ...Object.keys(s.prThreadsLoadingByNum),
       ...Object.keys(s.prChecksLoadingByNum),
       ...s.pullRequests.map((p) => String(p.num)),
     ].map(Number),
@@ -144,6 +157,14 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
   }
   if (stale.length === 0) return {};
   const bumpedVersion = bumpResourceVersions(s.prResourceVersion, stale);
+  // Evict the stale PRs' in-flight request slots so those requests drop on
+  // settle (slot mismatch, GL-166) and — unlike waiting for the version guard —
+  // the derived loading flags clear NOW instead of holding a spinner (or
+  // masking another PR's error) until the stale network call returns.
+  const detailLoadingByNum = omitMany(s.prDetailLoadingByNum, stale);
+  const diffLoadingByNum = omitMany(s.prDiffLoadingByNum, stale);
+  const threadsLoadingByNum = omitMany(s.prThreadsLoadingByNum, stale);
+  const checksLoadingByNum = omitMany(s.prChecksLoadingByNum, stale);
   return {
     prDetails: omitMany(s.prDetails, stale),
     prDiffs: omitMany(s.prDiffs, stale),
@@ -155,11 +176,17 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
     prDiffError: omitMany(s.prDiffError, stale),
     prChecksError: omitMany(s.prChecksError, stale),
     prThreadsError: omitMany(s.prThreadsError, stale),
-    // Bump the cache generation so any in-flight detail/diff/threads/signature
-    // load discards its write; clear in-flight checks tokens so those requests
-    // drop (token mismatch) and the checks reload can start fresh.
+    // Bump the cache generation so any in-flight signature load discards its
+    // write (commits loads keep their slot in the module map — the version
+    // covers them).
     prResourceVersion: bumpedVersion,
-    prChecksLoadingByNum: omitMany(s.prChecksLoadingByNum, stale),
-    prChecksLoading: hasNumericKeys(omitMany(s.prChecksLoadingByNum, stale)),
+    prDetailLoadingByNum: detailLoadingByNum,
+    prDetailLoading: hasNumericKeys(detailLoadingByNum),
+    prDiffLoadingByNum: diffLoadingByNum,
+    prDiffLoading: hasNumericKeys(diffLoadingByNum),
+    prThreadsLoadingByNum: threadsLoadingByNum,
+    prThreadsLoading: hasNumericKeys(threadsLoadingByNum),
+    prChecksLoadingByNum: checksLoadingByNum,
+    prChecksLoading: hasNumericKeys(checksLoadingByNum),
   };
 }

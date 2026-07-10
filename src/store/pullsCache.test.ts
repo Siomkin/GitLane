@@ -33,14 +33,20 @@ const pr = (num: number, over: Partial<PullRequest> = {}): PullRequest =>
 const slice = (over: Partial<PrCacheSlice> = {}): PrCacheSlice => ({
   pullRequests: [],
   prDetails: {},
+  prDetailLoading: false,
+  prDetailLoadingByNum: {},
   prDetailError: {},
   prChecks: {},
   prChecksLoading: false,
   prChecksLoadingByNum: {},
   prChecksError: {},
   prDiffs: {},
+  prDiffLoading: false,
+  prDiffLoadingByNum: {},
   prDiffError: {},
   prThreads: {},
+  prThreadsLoading: false,
+  prThreadsLoadingByNum: {},
   prThreadsError: {},
   prCommitsLoaded: {},
   prCommitsError: {},
@@ -86,9 +92,12 @@ describe("knownPrNums", () => {
         prThreads: { 5: [] },
         prChecksLoadingByNum: { 6: 9 },
         prResourceVersion: { 7: 1 },
+        prDetailLoadingByNum: { 8: 10 },
+        prDiffLoadingByNum: { 9: 11 },
+        prThreadsLoadingByNum: { 10: 12 },
       }),
     );
-    expect([...nums].sort()).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect([...nums].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 });
 
@@ -181,5 +190,40 @@ describe("pruneStalePrCaches", () => {
     const allStale = pruneStalePrCaches(s, []);
     expect(allStale.prChecksLoadingByNum).toEqual({});
     expect(allStale.prChecksLoading).toBe(false);
+  });
+
+  it("clears in-flight detail/diff/threads slots for stale PRs and recomputes the global flags (GL-166)", () => {
+    const s = slice({
+      pullRequests: [pr(1), pr(2)],
+      prDetailLoadingByNum: { 1: 11, 2: 22 },
+      prDetailLoading: true,
+      prDiffLoadingByNum: { 1: 33 },
+      prDiffLoading: true,
+      prThreadsLoadingByNum: { 1: 44 },
+      prThreadsLoading: true,
+    });
+    // PR 1 leaves the list: its slots evict so the stale requests drop on settle
+    // and the derived flags clear now — not when the stale network call returns.
+    const stalePatch = pruneStalePrCaches(s, [pr(2)]);
+    expect(stalePatch.prDetailLoadingByNum).toEqual({ 2: 22 });
+    expect(stalePatch.prDetailLoading).toBe(true);
+    expect(stalePatch.prDiffLoadingByNum).toEqual({});
+    expect(stalePatch.prDiffLoading).toBe(false);
+    expect(stalePatch.prThreadsLoadingByNum).toEqual({});
+    expect(stalePatch.prThreadsLoading).toBe(false);
+  });
+
+  it("treats a PR with only an in-flight detail slot as a prune candidate", () => {
+    // First detail load in flight, nothing cached yet, PR not in the previous
+    // list — the slot alone must make it a candidate so leaving the refreshed
+    // list still bumps its version and evicts the slot.
+    const s = slice({
+      prDetailLoadingByNum: { 5: 55 },
+      prDetailLoading: true,
+    });
+    const patch = pruneStalePrCaches(s, []);
+    expect(patch.prDetailLoadingByNum).toEqual({});
+    expect(patch.prDetailLoading).toBe(false);
+    expect(patch.prResourceVersion).toEqual({ 5: 1 });
   });
 });
