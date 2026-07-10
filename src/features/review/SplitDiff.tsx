@@ -17,12 +17,7 @@ import {
 } from "./comments";
 import { flattenSplit, type SplitRow } from "./diffRows";
 import { splitTones } from "./diffTones";
-import {
-  hunkBody,
-  hunkPatchUnavailableReason,
-  lineStagePatchUnavailableReason,
-  type HunkActionApi,
-} from "./hunkActions";
+import { hunkBody, hunkStaging, type HunkActionApi } from "./hunkActions";
 import { ChangeMinimap } from "./ChangeMinimap";
 import { FullDiffNotice } from "./FullDiffNotice";
 import { VirtualDiffList } from "./VirtualDiffList";
@@ -43,9 +38,7 @@ export function SplitDiff({
   // line's seq; `confineDragToSide` keeps a drag within the column it started on.
   const lines = useMemo(() => buildLineMeta(file.hunks), [file.hunks]);
   const comments = useLineComments(surface, file.path, lines, { confineDragToSide: true });
-  const unavailableReason = hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null;
-  const lineUnavailable = hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null;
-  const mode: "stage" | "unstage" = hunkAction?.source === "staged" ? "unstage" : "stage";
+  const { unavailableReason, lineUnavailable, mode } = hunkStaging(file, hunkAction);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">

@@ -33,6 +33,25 @@ export const lineStagePatchUnavailableReason = (file: FileDiff, source: ChangeSo
   return null;
 };
 
+/** The per-view staging derivation both diff views share (GL-162 review):
+ * hunk/line availability for the open file plus whether the buttons stage or
+ * unstage. Null `hunkAction` (committed diff) yields all-null/stage — the
+ * views already gate every button on `hunkAction` itself. */
+export function hunkStaging(
+  file: FileDiff,
+  hunkAction: HunkActionApi | null,
+): {
+  unavailableReason: string | null;
+  lineUnavailable: string | null;
+  mode: "stage" | "unstage";
+} {
+  return {
+    unavailableReason: hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null,
+    lineUnavailable: hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null,
+    mode: hunkAction?.source === "staged" ? "unstage" : "stage",
+  };
+}
+
 /** Canonical body of a hunk, one `{sign}{content}` line per row joined by
  * newlines — the form the staging backend reconstructs from its patch source.
  * Passed to `applyHunk` so the backend can reject staging a hunk whose content
