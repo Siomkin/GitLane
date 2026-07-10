@@ -26,6 +26,7 @@ import {
   type GithubSignInResult,
   type OauthClientStatus,
   type ProviderOauthResult,
+  type RemoteInfo,
   type RepoIdentity,
 } from "../lib/api";
 import { ACCOUNT_COLORS } from "../lib/palette";
@@ -357,6 +358,48 @@ let forgeAuthGen = 0;
 // slow reconcile read can't republish a superseded identity.
 let repoIdentityGen = 0;
 
+/** The repo a remote-auth mutation targets, captured once before the first
+ * await (GL-167). All IPC uses `path` so a mid-operation repo switch can't
+ * retarget the write; the app-side binding persists under `bindingKey` (the
+ * modified repo's key, never the then-current repo's); refreshes and success
+ * toasts check `isCurrent()` so a newly-opened repo never receives another
+ * repo's side effects. Error toasts stay unconditional — a failed write must
+ * surface even after a switch. */
+interface RepoMutationTarget {
+  path: string;
+  bindingKey: string | null;
+  remote: RemoteInfo | null;
+  isCurrent: () => boolean;
+}
+
+function captureRepoMutationTarget(remoteName?: string): RepoMutationTarget {
+  const path = useRepo.getState().summary?.path ?? "";
+  const bindingKey = useAccounts.getState().repoBindingKey ?? (path || null);
+  const remote = remoteName
+    ? (useRepo.getState().remotes.find((r) => r.name === remoteName) ?? null)
+    : null;
+  return {
+    path,
+    bindingKey,
+    remote,
+    isCurrent: () => (useRepo.getState().summary?.path ?? "") === path,
+  };
+}
+
+/** The remote pin the last OAuth sign-in wrote, so a late-cancel rollback
+ * un-pins the SAME repo's remote even when the user switched repos during the
+ * user-length browser flow (GL-167). Keyed by the signed-in account's identity
+ * (provider + accountId), not just the remote name, so only a rollback of the
+ * exact sign-in that wrote the pin may consume it — any other caller skips the
+ * un-pin instead of stripping a repo it never touched. Module state: the OAuth
+ * dialog is single-flight and rollback follows its own sign-in. */
+let lastOauthRemotePin: {
+  path: string;
+  remote: string;
+  provider: string;
+  accountId: string;
+} | null = null;
+
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
   accountsLoading: false,
@@ -380,6 +423,14 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   cancelGithubSignIn: () => api.cancelGithubSignIn(),
 
   signInProviderOauth: async (provider, host, remote) => {
+    // Capture the repo the pin will target BEFORE the user-length browser flow
+    // (GL-167): the user may switch repos while authorizing, and the pin must
+    // land on the repo whose picker started this sign-in — never on whichever
+    // repo happens to be open when the flow returns.
+    const target = remote ? captureRepoMutationTarget(remote) : null;
+    // A new sign-in invalidates any previous flow's pin record — only a pin
+    // THIS flow writes may be rolled back by its own late cancel.
+    lastOauthRemotePin = null;
     // The backend runs the flow and writes the token to the OS keychain; only
     // non-secret metadata comes back. We record *that* an account exists so the
     // transport layer can select `providerToken` and the UI can show sign-out.
@@ -423,14 +474,14 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const next = { ...get().providerTokens, [key]: entry };
     writeProviderTokens(next);
     set({ providerTokens: next });
-    if (remote) {
+    if (remote && target && target.path) {
       // Pin the OAuth transport username into the remote's URL — the git-native
       // account selector — so fetch/push immediately resolve `providerToken`.
-      const path = useRepo.getState().summary?.path ?? "";
-      if (path) {
-        await api.setRemoteUsername(path, remote, result.transportUsername);
-        await useRepo.getState().listRemotes();
-      }
+      // Written to the CAPTURED repo, and remembered so a late-cancel rollback
+      // un-pins the same repo (GL-167).
+      await api.setRemoteUsername(target.path, remote, result.transportUsername);
+      lastOauthRemotePin = { path: target.path, remote, provider, accountId: result.accountId };
+      if (target.isCurrent()) await useRepo.getState().listRemotes();
     }
     return result;
   },
@@ -441,11 +492,22 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // named a different account. Best-effort; the token removal below runs
     // regardless so a failed un-pin can't strand the keychain entry.
     if (remote) {
-      const path = useRepo.getState().summary?.path ?? "";
+      // Target the repo the sign-in actually pinned (GL-167) — the user may be
+      // in another repo by now. The pin must match this rollback's exact
+      // sign-in (remote + provider + account); no match means that sign-in
+      // never pinned (no repo was open), so there is nothing to un-pin.
+      const pin = lastOauthRemotePin;
+      const path =
+        pin && pin.remote === remote && pin.provider === provider && pin.accountId === result.accountId
+          ? pin.path
+          : null;
       if (path) {
         try {
           await api.setRemoteUsername(path, remote, priorUsername);
-          await useRepo.getState().listRemotes();
+          lastOauthRemotePin = null;
+          if ((useRepo.getState().summary?.path ?? "") === path) {
+            await useRepo.getState().listRemotes();
+          }
         } catch {
           /* leave the URL as-is; still remove the rolled-back token */
         }
@@ -692,8 +754,11 @@ export const useAccounts = create<AccountsState>((set, get) => ({
 
   setRemoteAccount: async (remote, id) => {
     const account = get().accounts.find((a) => a.id === id) ?? null;
-    const remotes = useRepo.getState().remotes;
-    const target = remotes.find((r) => r.name === remote);
+    // Capture the target repo once, before any await (GL-167): the write, the
+    // binding persist, and the refresh all track the repo whose picker started
+    // this — never the repo that happens to be open afterwards.
+    const ctx = captureRepoMutationTarget(remote);
+    const target = ctx.remote;
     if (!target) return;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     if (info.ssh) {
@@ -709,19 +774,25 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // `git remote -v` and works in a terminal too. `null` strips the username
     // (back to the default credential lookup) — durable in git config itself.
     try {
-      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, account?.login ?? null);
+      await api.setRemoteUsername(ctx.path, remote, account?.login ?? null);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
       return;
     }
     if (target.isDefault) {
-      const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
-      if (key) {
+      // Persist under the MODIFIED repo's key (captured) — it reflects what the
+      // user chose for that repo even if they've since opened another (GL-167).
+      if (ctx.bindingKey) {
         const bindings = readBindings();
-        bindings[key] = account ? { version: 2, ...account.ref } : { version: 2, unbound: true };
+        bindings[ctx.bindingKey] = account
+          ? { version: 2, ...account.ref }
+          : { version: 2, unbound: true };
         writeBindings(bindings);
       }
     }
+    // Refresh/toast/PR-reload describe the open repo — skip them when the user
+    // moved to another repo mid-write (GL-167).
+    if (!ctx.isCurrent()) return;
     // Re-read remotes → the derivation in syncRepoAccount updates every
     // consumer (picker, PR mirror) from git config, the source of truth.
     await useRepo.getState().listRemotes();
@@ -752,8 +823,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   setRemoteUsername: async (remote, username) => {
-    const remotes = useRepo.getState().remotes;
-    const target = remotes.find((r) => r.name === remote);
+    // Pinned to the repo that started the edit (GL-167) — see setRemoteAccount.
+    const ctx = captureRepoMutationTarget(remote);
+    const target = ctx.remote;
     if (!target) return;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     if (info.ssh) {
@@ -764,11 +836,12 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
     const clean = username?.trim() || null;
     try {
-      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, clean);
+      await api.setRemoteUsername(ctx.path, remote, clean);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
       return;
     }
+    if (!ctx.isCurrent()) return;
     await useRepo.getState().listRemotes();
     useUi
       .getState()
@@ -822,8 +895,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   saveRemoteCredential: async (remote, username, password) => {
-    const remotes = useRepo.getState().remotes;
-    const target = remotes.find((r) => r.name === remote);
+    // Pinned to the repo that started the save (GL-167) — see setRemoteAccount.
+    const ctx = captureRepoMutationTarget(remote);
+    const target = ctx.remote;
     if (!target) return false;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     if (!info.valid || info.ssh || !info.credentialHost) {
@@ -846,7 +920,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       // providers keep the remote's own path scope.
       const scopePath = credentialScopePath(info) ?? info.path;
       await api.approveHttpsCredential(info.credentialHost, scopePath, clean, password);
-      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, clean);
+      // The captured repo's remote, not the then-current one (GL-167).
+      await api.setRemoteUsername(ctx.path, remote, clean);
+      if (!ctx.isCurrent()) return true;
       await useRepo.getState().listRemotes();
       useUi
         .getState()
@@ -905,7 +981,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   saveRemoteProviderToken: async (remote, login, token) => {
-    const target = useRepo.getState().remotes.find((r) => r.name === remote);
+    // Pinned to the repo that started the save (GL-167) — see setRemoteAccount.
+    const ctx = captureRepoMutationTarget(remote);
+    const target = ctx.remote;
     if (!target) return;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     const provider = forgeAuthProviderFor(info.provider);
@@ -941,7 +1019,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       // Pin the account into the remote URL — the git-native account selector —
       // so fetch/push actually resolve `providerToken` mode. Without this a
       // bare `https://host/owner/repo.git` would keep using system credentials.
-      await api.setRemoteUsername(useRepo.getState().summary?.path ?? "", remote, user);
+      // The captured repo's remote, not the then-current one (GL-167).
+      await api.setRemoteUsername(ctx.path, remote, user);
+      if (!ctx.isCurrent()) return;
       await useRepo.getState().listRemotes();
       useUi.getState().showToast(`${remote} now authenticates as @${user} with a keychain token`);
     } catch (e) {

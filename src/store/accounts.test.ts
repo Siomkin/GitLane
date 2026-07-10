@@ -967,3 +967,145 @@ describe("prAccountRef — PR account resolution per forge", () => {
     });
   });
 });
+
+// A remote-auth mutation writes to the repo whose picker started it. When the
+// user switches repos while the IPC write is in flight, the write and the
+// durable binding must still land on the initiating repo, and the refresh /
+// success toast / PR reload must NOT run against the newly-opened repo (GL-167).
+describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", () => {
+  const otherSummary: RepoSummary = {
+    path: "other-repo",
+    workdir: "other-repo",
+    headBranch: "main",
+    headOid: "def",
+    detached: false,
+  };
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  it("setRemoteAccount persists under the initiating repo and skips the other repo's refresh", async () => {
+    useRepo.setState({ summary, remotes: [origin] });
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
+    const gate = deferred<null>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "set_remote_username" ? gate.promise : Promise.resolve(null),
+    );
+
+    const run = useAccounts.getState().setRemoteAccount("origin", account.id);
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    gate.resolve(null);
+    await run;
+
+    // The write targeted the initiating repo…
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "origin",
+      username: "octocat",
+    });
+    // …and the durable binding landed under ITS key, not the new repo's.
+    const bindings = JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}");
+    expect(bindings[path]).toEqual({ version: 2, ...account.ref });
+    expect(bindings["other-repo"]).toBeUndefined();
+    // No refresh, PR reload, or success toast against the newly-opened repo.
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    expect(loadPrs).not.toHaveBeenCalled();
+    expect(useNotifications.getState().toasts).toEqual([]);
+  });
+
+  it("setRemoteUsername skips the refresh and toast after a mid-write repo switch", async () => {
+    useRepo.setState({ summary, remotes: [origin] });
+    const gate = deferred<null>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "set_remote_username" ? gate.promise : Promise.resolve(null),
+    );
+
+    const run = useAccounts.getState().setRemoteUsername("origin", "alice");
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    gate.resolve(null);
+    await run;
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "origin",
+      username: "alice",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    expect(useNotifications.getState().toasts).toEqual([]);
+  });
+
+  it("still surfaces a write failure's error toast after a mid-write repo switch", async () => {
+    // Gating covers refreshes and SUCCESS toasts only — a failed write must
+    // never be silent, whichever repo is open when it settles.
+    useRepo.setState({ summary, remotes: [origin] });
+    let reject!: (reason?: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "set_remote_username"
+        ? new Promise((_res, rej) => {
+            reject = rej;
+          })
+        : Promise.resolve(null),
+    );
+
+    const run = useAccounts.getState().setRemoteUsername("origin", "alice");
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    reject(new Error("remote write blew up"));
+    await run;
+
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("remote write blew up");
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+  });
+
+  it("saveRemoteCredential pins the username write to the initiating repo", async () => {
+    useRepo.setState({ summary, remotes: [bucket] });
+    const gate = deferred<null>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "approve_https_credential" ? gate.promise : Promise.resolve(null),
+    );
+
+    const run = useAccounts.getState().saveRemoteCredential("bucket", "alice", "tok");
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    gate.resolve(null);
+    await expect(run).resolves.toBe(true);
+
+    // The credential save succeeded and the username pin hit the repo that
+    // started the save — not whatever repo is open now.
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "bucket",
+      username: "alice",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    expect(useNotifications.getState().toasts).toEqual([]);
+  });
+
+  it("saveRemoteProviderToken keeps the token but pins the remote write to the initiating repo", async () => {
+    useRepo.setState({ summary, remotes: [bucket] });
+    const gate = deferred<null>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "save_provider_token" ? gate.promise : Promise.resolve(null),
+    );
+
+    const run = useAccounts.getState().saveRemoteProviderToken("bucket", "alice", "tok");
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    gate.resolve(null);
+    await run;
+
+    // The keychain token metadata is app-global — it must survive the switch…
+    expect(useAccounts.getState().hasProviderToken("bitbucket.org", "alice")).toBe(true);
+    // …while the remote write stays pinned and the refresh/toast are skipped.
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path,
+      name: "bucket",
+      username: "alice",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    expect(useNotifications.getState().toasts).toEqual([]);
+  });
+});
