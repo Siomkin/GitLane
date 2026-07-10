@@ -33,6 +33,10 @@ import {
 // carries a readable message (GL-108); everything else stringifies as before.
 export const errorText = (e: unknown) => (isRepoOpenError(e) ? e.message : String(e));
 
+// NOTE: instantiated once per slice (the lifecycle AND refresh factories each
+// call this), which is safe only while the handlers stay stateless closures
+// over set/get. Do not add module- or factory-level mutable state here — put
+// coordination state in repoRequests.ts (module-level, shared) instead.
 export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
   // Did this failure mean the repo's path is gone? The `open_repo` rejection is
   // authoritative; for the other reads (graph/branches/changes reject with

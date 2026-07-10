@@ -8,7 +8,7 @@ import { branchWebUrl } from "../lib/forgeUrls";
 import { openExternalUrl } from "../lib/openExternal";
 import { useAccounts } from "./accounts";
 import { useNotifications } from "./notifications";
-import { takePendingRefresh } from "./repoRequests";
+import { flushPendingRefresh } from "./repoGuards";
 import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
@@ -117,15 +117,10 @@ async function runMaybeConflict(
   }
 }
 
-// Replay a watcher/focus re-sync that `refresh` deferred while a `loading`-holding
-// write op (checkout/fetch) was in flight. `refresh` already flushes on its own
-// success/failure, but a write op's failure path clears `loading` without going
-// through `refresh`, so the queued re-sync would otherwise be stranded until the
-// next external event (GL-20 review). Mirrors the lifecycle slice's flush.
-function flushPendingRefresh(get: RepoGet) {
-  const scope = takePendingRefresh();
-  if (scope) void get().refresh({ prs: false, quiet: true, scope });
-}
+// Write ops flush the deferred re-sync via the shared repoGuards helper:
+// `refresh` already flushes on its own success/failure, but a write op's
+// failure path clears `loading` without going through `refresh`, so the queued
+// re-sync would otherwise be stranded until the next external event (GL-20).
 
 function toastAdvancedGuard(message: string | null): boolean {
   if (!message) return false;
