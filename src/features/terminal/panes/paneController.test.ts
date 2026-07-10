@@ -22,6 +22,7 @@ function fakeView() {
   let dataCb: ((data: string) => void) | null = null;
   let disposed = false;
   let removed = false;
+  let fits = 0;
   const view: PaneView = {
     term: {
       write: (data) => written.push(data as Uint8Array),
@@ -47,7 +48,9 @@ function fakeView() {
       },
       style: { display: "" },
     },
-    fit: () => {},
+    fit: () => {
+      fits++;
+    },
     applyTheme: () => {},
     paste: () => {},
     bracketedPaste: () => false,
@@ -64,12 +67,16 @@ function fakeView() {
     get removed() {
       return removed;
     },
+    get fits() {
+      return fits;
+    },
   };
 }
 
 function setup(io: Partial<PtyIo> = {}) {
   const views: ReturnType<typeof fakeView>[] = [];
   const killed: number[] = [];
+  const resized: Array<[number, number, number]> = [];
   const fullIo: PtyIo = {
     spawn: io.spawn ?? (async () => ({ sessionId: 1 })),
     write: io.write ?? (async () => {}),
@@ -78,8 +85,16 @@ function setup(io: Partial<PtyIo> = {}) {
       (async (sessionId) => {
         killed.push(sessionId);
       }),
+    resize:
+      io.resize ??
+      (async (sessionId, cols, rows) => {
+        resized.push([sessionId, cols, rows]);
+      }),
   };
   const onAliveChange = vi.fn();
+  // Capture refit's deferred work instead of relying on requestAnimationFrame,
+  // so tests interleave disposal between schedule and run.
+  const scheduled: Array<() => void> = [];
   const controller = new PaneController(
     fullIo,
     () => {
@@ -88,8 +103,13 @@ function setup(io: Partial<PtyIo> = {}) {
       return v.view;
     },
     onAliveChange,
+    (cb) => scheduled.push(cb),
   );
-  return { controller, views, killed, onAliveChange };
+  const runScheduled = () => {
+    const batch = scheduled.splice(0);
+    for (const cb of batch) cb();
+  };
+  return { controller, views, killed, resized, onAliveChange, scheduled, runScheduled };
 }
 
 describe("PaneController — spawn/dispose identity", () => {
@@ -242,6 +262,89 @@ describe("PaneController — disposal", () => {
     controller.disposeAll();
     expect(controller.panes.size).toBe(0);
     expect(killed.sort()).toEqual([1, 2]);
+  });
+});
+
+describe("PaneController — multi-pane event routing (GL-177)", () => {
+  it("routes data and exit to the owning pane, leaving siblings untouched", async () => {
+    const { controller, views } = setup({
+      spawn: (() => {
+        let n = 0;
+        return async () => ({ sessionId: ++n });
+      })(),
+    });
+    controller.create("tab1", "/a");
+    controller.create("tab2", "/b");
+    await Promise.resolve();
+
+    controller.routeData(2, [104, 105]);
+    expect(views[0].written).toHaveLength(0);
+    expect(views[1].written).toHaveLength(1);
+
+    controller.routeExit(1);
+    expect(controller.get("tab1")?.alive).toBe(false);
+    expect(controller.get("tab2")?.alive).toBe(true);
+    expect(views[0].lines.some((l) => l.includes("[shell exited]"))).toBe(true);
+    expect(views[1].lines.some((l) => l.includes("[shell exited]"))).toBe(false);
+  });
+
+  it("drops events for a session no pane owns (after dispose)", async () => {
+    const { controller, views } = setup();
+    controller.create("tab1", "/repo");
+    await Promise.resolve();
+    controller.dispose("tab1");
+
+    controller.routeData(1, [104]);
+    controller.routeExit(1);
+    expect(views[0].written).toHaveLength(0);
+  });
+});
+
+describe("PaneController — refit (GL-177)", () => {
+  it("fits the pane and resizes the PTY once the scheduled frame runs", async () => {
+    const { controller, views, resized, runScheduled } = setup();
+    controller.create("tab1", "/repo");
+    await Promise.resolve();
+
+    controller.refit("tab1");
+    expect(views[0].fits).toBe(0); // deferred until layout settles
+
+    runScheduled();
+    expect(views[0].fits).toBe(1);
+    expect(resized).toEqual([[1, 80, 24]]);
+  });
+
+  it("does nothing when the pane was disposed before the frame ran", async () => {
+    const { controller, views, resized, runScheduled } = setup();
+    controller.create("tab1", "/repo");
+    await Promise.resolve();
+
+    controller.refit("tab1");
+    controller.dispose("tab1");
+    runScheduled();
+
+    // Never fit or resize a disposed pane's terminal.
+    expect(views[0].fits).toBe(0);
+    expect(resized).toHaveLength(0);
+  });
+
+  it("fits but skips the PTY resize when the shell is not running", async () => {
+    const { controller, views, resized, runScheduled } = setup();
+    controller.create("tab1", "/repo");
+    await Promise.resolve();
+    controller.routeExit(1);
+
+    controller.refit("tab1");
+    runScheduled();
+
+    expect(views[0].fits).toBe(1);
+    expect(resized).toHaveLength(0);
+  });
+
+  it("is a no-op for an unknown tab", () => {
+    const { controller, scheduled } = setup();
+    controller.refit("nope");
+    expect(scheduled).toHaveLength(0);
   });
 });
 
