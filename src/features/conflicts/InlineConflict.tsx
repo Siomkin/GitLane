@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import {
   resolvedRows,
@@ -102,12 +102,17 @@ export const InlineConflict = ({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // On open, land on the first still-undecided conflict instead of the file top.
+  // The target is captured once per mounted file (the workspace remounts this
+  // editor per file via key=path) — an external content refresh while the same
+  // file stays mounted must NOT re-target (see InlineConflict.test.tsx).
   // jsdom has no layout engine and throws on scrollIntoView, so it's guarded.
+  const [initialTarget] = useState(() =>
+    regions.findIndex((r, i) => r.kind === "cf" && !decisionFor(i)),
+  );
   useEffect(() => {
-    const target = regions.findIndex((r, i) => r.kind === "cf" && !decisionFor(i));
-    if (target < 0) return;
+    if (initialTarget < 0) return;
     const raf = requestAnimationFrame(() => {
-      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-region="${target}"]`);
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-region="${initialTarget}"]`);
       if (!el || typeof el.scrollIntoView !== "function") return;
       try {
         el.scrollIntoView({ block: "center" });
@@ -116,9 +121,7 @@ export const InlineConflict = ({
       }
     });
     return () => cancelAnimationFrame(raf);
-    // Run once per mounted file.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialTarget]);
 
   let lineNo = 0;
   return (
