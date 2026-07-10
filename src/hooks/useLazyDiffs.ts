@@ -21,13 +21,16 @@ export const MAX_CONCURRENT_DIFFS = 6;
  *
  * At most {@link MAX_CONCURRENT_DIFFS} fetches run at once; the rest queue in
  * request order and start as slots free up. Fetches are **never cancelled on
- * re-render** — a late result is still the right answer for its key (the changes
- * view relies on this; its keys encode the file content so a stale result can
- * never mismatch). Callers whose keys are *not* content-stable (e.g. the stacked
- * review re-keys by path across commits) call `reset()` when the underlying set
- * changes: it clears the cache + pending queue and bumps an internal generation
- * so any results still in flight from the previous set are dropped instead of
- * polluting the new one.
+ * re-render** — a late result is still the right answer for its key, so keys
+ * must be **content-stable**; a caller whose keys are not (the stacked review
+ * re-keys by path across commits; the changes view keys by status/counts,
+ * GL-173) must call `reset()` when the underlying set changes meaning. `reset()`
+ * clears the cache + pending queue and bumps an internal generation so results
+ * still in flight from the previous set are dropped instead of polluting the
+ * new one — but the physical window stays bounded: IPC promises cannot be
+ * cancelled, so invalidated fetches keep occupying their slots until they
+ * settle, and the new generation's work starts only as those slots drain
+ * (GL-172).
  */
 export function useLazyDiffs() {
   // key -> FileDiff | null(failed). Missing key (undefined) = not fetched.
@@ -38,7 +41,13 @@ export function useLazyDiffs() {
   cacheRef.current = diffs;
   // key -> generation that started the fetch. The generation guard prevents an
   // old request's finalizer from clearing a newer request for the same key.
+  // De-dup/publication marker only — NOT the capacity counter (see `active`).
   const inflight = useRef<Map<string, number>>(new Map());
+  // Physical fetches currently running, counted until each promise settles.
+  // Deliberately separate from `inflight`: reset() clears the markers to orphan
+  // stale publications, but it must not forget that the un-cancellable IPC
+  // calls are still consuming backend workers (GL-172).
+  const active = useRef(0);
   const queue = useRef<LazyDiff[]>([]);
   const queued = useRef<Set<string>>(new Set());
   const gen = useRef(0);
@@ -46,14 +55,27 @@ export function useLazyDiffs() {
   // Start queued fetches until the concurrency window is full. Re-entrant: each
   // fetch calls `pump` again from its `finally`, so a freed slot pulls the next.
   const pump = useCallback(() => {
-    while (inflight.current.size < MAX_CONCURRENT_DIFFS && queue.current.length > 0) {
+    while (active.current < MAX_CONCURRENT_DIFFS && queue.current.length > 0) {
       const { key, fetch } = queue.current.shift()!;
       queued.current.delete(key);
       // It may have resolved (or been invalidated) while waiting in the queue.
       const at = gen.current;
       if (cacheRef.current[key] !== undefined || inflight.current.has(key)) continue;
       inflight.current.set(key, at);
-      fetch()
+      active.current += 1;
+      let fetched: Promise<FileDiff>;
+      try {
+        fetched = fetch();
+      } catch {
+        // A synchronous throw never enters the promise chain below — undo the
+        // slot bookkeeping so the window can't shrink permanently, and record
+        // the failure like a rejected fetch would.
+        active.current -= 1;
+        inflight.current.delete(key);
+        if (gen.current === at) setDiffs((m) => ({ ...m, [key]: null }));
+        continue;
+      }
+      fetched
         .then((diff) => {
           if (gen.current === at) setDiffs((m) => ({ ...m, [key]: diff }));
         })
@@ -61,6 +83,7 @@ export function useLazyDiffs() {
           if (gen.current === at) setDiffs((m) => ({ ...m, [key]: null }));
         })
         .finally(() => {
+          active.current -= 1;
           if (inflight.current.get(key) === at) inflight.current.delete(key);
           pump();
         });
@@ -87,7 +110,10 @@ export function useLazyDiffs() {
   );
 
   /** Drop the cache and invalidate any in-flight/queued fetches (used when the
-   * keyed set changes meaning, e.g. switching the reviewed commit). */
+   * keyed set changes meaning, e.g. switching the reviewed commit). Queued
+   * items are removed outright; already-started fetches can't be cancelled, so
+   * they keep their `active` slots until they settle — only their publication
+   * and de-dup markers are dropped (GL-172). */
   const reset = useCallback(() => {
     gen.current += 1;
     inflight.current.clear();
