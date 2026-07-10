@@ -1095,16 +1095,28 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       entries.map(async ([key, t]) => {
         try {
           const status = await api.providerTokenStatus(t.provider, t.credentialHost, t.accountId, t.login);
-          return status.hasToken ? null : key;
+          return status.hasToken ? null : ([key, t] as const);
         } catch {
           return null;
         }
       }),
     );
-    const stale = results.filter((k): k is string => k !== null);
+    const stale = results.filter((r): r is readonly [string, StoredProviderToken] => r !== null);
     if (stale.length === 0) return;
+    // Compare-and-delete (GL-168): drop a key only while its entry is still the
+    // exact object that was probed. Every writer builds a fresh entry object, so
+    // identity pins the probe to one generation of metadata — a sign-in that
+    // replaced the key mid-probe (its keychain token DOES exist) survives, and
+    // the overlapping reconciles the Accounts panel triggers stay idempotent
+    // (the second run's delete no-ops on the already-removed entry).
     const next = { ...get().providerTokens };
-    for (const key of stale) delete next[key];
+    let changed = false;
+    for (const [key, probed] of stale) {
+      if (next[key] !== probed) continue;
+      delete next[key];
+      changed = true;
+    }
+    if (!changed) return;
     writeProviderTokens(next);
     set({ providerTokens: next });
   },
