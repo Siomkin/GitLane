@@ -506,3 +506,133 @@ describe("prAccountRef for Bitbucket (GL-141)", () => {
     });
   });
 });
+
+// The OAuth browser flow is user-length: the user can switch repos while
+// authorizing. The remote pin (and a late-cancel rollback's un-pin) must target
+// the repo whose picker started the sign-in, never the repo open when the flow
+// happens to return (GL-167).
+describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
+  const oauthResult = {
+    provider: "gitlab",
+    host: "gitlab.com",
+    accountId: "42",
+    login: "ada",
+    transportUsername: "oauth2",
+    hasToken: true,
+  };
+  const repoSummary = { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false };
+  const otherSummary = { path: "/elsewhere", workdir: "/elsewhere", headBranch: "main", headOid: null, detached: false };
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  it("pins the sentinel into the repo that started the sign-in after a mid-flow switch", async () => {
+    useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
+    const flow = deferred<typeof oauthResult>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_oauth_sign_in" ? flow.promise : Promise.resolve(undefined),
+    );
+
+    const run = useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    flow.resolve(oauthResult);
+    await run;
+
+    // Pinned into the initiating repo's remote, and no refresh of the new repo.
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path: "/repo",
+      name: "origin",
+      username: "oauth2",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    // The account metadata itself is app-global and survives the switch.
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+  });
+
+  it("rolls back the pin against the repo the sign-in pinned, not the current one", async () => {
+    useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
+    const flow = deferred<typeof oauthResult>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_oauth_sign_in" ? flow.promise : Promise.resolve(undefined),
+    );
+    const run = useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
+    useRepo.setState({ summary: otherSummary, remotes: [] });
+    flow.resolve(oauthResult);
+    await run;
+
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValue(undefined);
+    await useAccounts.getState().rollbackProviderOauthSignIn("gitlab", oauthResult, "origin", "alice");
+
+    // The un-pin restores the prior account on the repo the sign-in modified…
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path: "/repo",
+      name: "origin",
+      username: "alice",
+    });
+    // …the keychain entry is removed, and the current repo is not refreshed.
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "42",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(false);
+  });
+
+  it("skips the un-pin when the rollback is not for the sign-in that pinned", async () => {
+    // The recorded pin is keyed by the signed-in account, not just the remote
+    // name — a rollback for a DIFFERENT account (a caller outside the dialog's
+    // own late-cancel path) must not strip the pinned repo's remote.
+    useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "provider_oauth_sign_in" ? oauthResult : cmd === "list_remotes" ? [gitlabRemote] : undefined,
+      ),
+    );
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
+
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValue(undefined);
+    await useAccounts
+      .getState()
+      .rollbackProviderOauthSignIn("gitlab", { ...oauthResult, accountId: "99" }, "origin", "alice");
+
+    // No un-pin — the pin belongs to account 42's sign-in — while the token
+    // removal (keyed by the stored entry) still proceeds.
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "42",
+    });
+  });
+
+  it("skips the un-pin when the sign-in never pinned a remote", async () => {
+    // No repo open at sign-in time → nothing was pinned; a rollback must not
+    // strip the username from an unrelated repo's same-named remote.
+    useRepo.setState({ summary: null, remotes: [] });
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "provider_oauth_sign_in" ? oauthResult : undefined),
+    );
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+
+    useRepo.setState({ summary: otherSummary, remotes: [gitlabRemote] });
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValue(undefined);
+    await useAccounts.getState().rollbackProviderOauthSignIn("gitlab", oauthResult, "origin", "alice");
+
+    expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "42",
+    });
+  });
+});
