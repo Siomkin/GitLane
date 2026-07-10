@@ -374,17 +374,35 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     });
   });
 
-  it("re-arms and refetches immediately when the bound PR account changes", async () => {
+  it("re-arms and refetches immediately, as the new account, when the bound PR account changes", async () => {
     render(<ActionBar />);
     expect(prLoads()).toBe(1);
 
+    const ref = { provider: "gh", host: "github.com", accountId: "gh:alice", login: "alice" } as const;
     await act(async () => {
-      useAccounts.setState({
-        repoAccountRef: { provider: "gh", host: "github.com", accountId: "gh:alice", login: "alice" },
-      });
+      useAccounts.setState({ repoAccountRef: ref });
     });
 
     expect(prLoads()).toBe(2);
+    // The refetch must carry the NEW account, not just fire again.
+    expect(invokeMock).toHaveBeenLastCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: ref,
+    });
+  });
+
+  it("re-arms when the forge switches between PR-capable kinds", async () => {
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1);
+    await act(async () => {}); // settle the initial load so the next isn't queue-merged
+
+    await act(async () => {
+      useRepo.setState({
+        forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+      });
+    });
+
+    expect(prLoads()).toBe(2); // immediate warm reload for the new forge
   });
 
   it("stops polling when the forge switches to an unsupported kind mid-session", async () => {
@@ -462,6 +480,9 @@ describe("ActionBar network ops — one at a time (GL-182)", () => {
       fireEvent.click(screen.getByTitle("Fetch"));
       await act(async () => {});
 
+      // The contract violation is logged, not swallowed silently.
+      expect(warn).toHaveBeenCalledWith("fetch: network action rejected", expect.any(Error));
+
       fireEvent.click(screen.getByTitle("Up to date with origin/main."));
       expect(pull).toHaveBeenCalledTimes(1);
     } finally {
@@ -476,6 +497,14 @@ describe("ActionBar navigator shortcut (GL-182)", () => {
     expect(useUi.getState().navOpen).toBe(false);
 
     fireEvent.keyDown(document, { metaKey: true, altKey: true, code: "KeyF" });
+    expect(useUi.getState().navOpen).toBe(true);
+  });
+
+  it("opens the navigator on Ctrl+Alt+F (Windows/Linux parity)", () => {
+    render(<ActionBar />);
+    expect(useUi.getState().navOpen).toBe(false);
+
+    fireEvent.keyDown(document, { ctrlKey: true, altKey: true, code: "KeyF" });
     expect(useUi.getState().navOpen).toBe(true);
   });
 });
