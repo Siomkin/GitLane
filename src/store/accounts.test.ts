@@ -1109,3 +1109,116 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
     expect(useNotifications.getState().toasts).toEqual([]);
   });
 });
+
+// App bootstrap and the Accounts panel refresh can run loadAccounts
+// concurrently. Only the newest load may publish the list, its error, or the
+// loading flag — an older response landing late must not overwrite a newer
+// refresh/sign-out result, and its late failure must not clobber a success
+// (GL-169; mirrors loadForgeAuth's generation).
+describe("loadAccounts coalesces overlapping loads (GL-169)", () => {
+  const ghAccount = (login: string) => ({
+    provider: "gh",
+    host: "github.com",
+    accountId: login,
+    login,
+    username: login,
+    name: login,
+    email: `${login}@example.com`,
+    id: 1,
+    active: true,
+    healthy: true,
+    healthError: "",
+  });
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it("an older load resolving late does not overwrite the newer load's list", async () => {
+    // Remotes present + a stubbed PR loader, so the winner's PR-reload side
+    // effect is observable and a stale load provably never re-triggers it.
+    useRepo.setState({ summary, remotes: [origin] });
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
+    const older = deferred<unknown>();
+    const newer = deferred<unknown>();
+    let call = 0;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "github_accounts" ? [older, newer][call++].promise : Promise.resolve(null),
+    );
+
+    const loadA = useAccounts.getState().loadAccounts(); // bootstrap
+    const loadB = useAccounts.getState().loadAccounts(); // settings refresh
+
+    newer.resolve([ghAccount("fresh")]);
+    await loadB;
+    expect(useAccounts.getState().accounts.map((a) => a.login)).toEqual(["fresh"]);
+    expect(useAccounts.getState().accountsLoading).toBe(false);
+    expect(loadPrs).toHaveBeenCalledTimes(1);
+
+    // The stale bootstrap snapshot lands afterwards → dropped, not published,
+    // and none of the winner's side effects (repo sync / PR reload) re-run.
+    older.resolve([ghAccount("stale")]);
+    await loadA;
+    expect(useAccounts.getState().accounts.map((a) => a.login)).toEqual(["fresh"]);
+    expect(useAccounts.getState().accountsLoading).toBe(false);
+    expect(useAccounts.getState().accountsError).toBeNull();
+    expect(loadPrs).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stale success does not resurrect the list after a newer load failed", async () => {
+    // The sign-out shape: the post-sign-out refresh fails (gh unreachable), and
+    // the pre-sign-out snapshot then resolves late with the old signed-in list.
+    const older = deferred<unknown>();
+    const newer = deferred<unknown>();
+    let call = 0;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "github_accounts" ? [older, newer][call++].promise : Promise.resolve(null),
+    );
+
+    const loadA = useAccounts.getState().loadAccounts();
+    const loadB = useAccounts.getState().loadAccounts();
+
+    newer.reject(new Error("gh unreachable after sign-out"));
+    await loadB;
+    expect(useAccounts.getState().accountsError).toContain("gh unreachable");
+
+    older.resolve([ghAccount("signed-out-user")]);
+    await loadA;
+
+    // The stale signed-in snapshot must not restore itself over the newer
+    // load's outcome; the error (and the seeded list) stand.
+    expect(useAccounts.getState().accounts.map((a) => a.login)).toEqual(["octocat"]);
+    expect(useAccounts.getState().accountsError).toContain("gh unreachable");
+    expect(useAccounts.getState().accountsLoading).toBe(false);
+  });
+
+  it("a superseded load's late failure does not clobber the newer result", async () => {
+    const older = deferred<unknown>();
+    const newer = deferred<unknown>();
+    let call = 0;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "github_accounts" ? [older, newer][call++].promise : Promise.resolve(null),
+    );
+
+    const loadA = useAccounts.getState().loadAccounts();
+    const loadB = useAccounts.getState().loadAccounts();
+
+    newer.resolve([ghAccount("fresh")]);
+    await loadB;
+
+    older.reject(new Error("gh exploded on the stale request"));
+    await loadA;
+
+    // The successful newer list stays; no stale error, no stuck spinner.
+    expect(useAccounts.getState().accounts.map((a) => a.login)).toEqual(["fresh"]);
+    expect(useAccounts.getState().accountsError).toBeNull();
+    expect(useAccounts.getState().accountsLoading).toBe(false);
+  });
+});
