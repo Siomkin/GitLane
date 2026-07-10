@@ -8,15 +8,16 @@
 // only when the user closes that tab (via `store/terminals` → this hook) or the
 // shell itself exits.
 //
-// This hook is the imperative half: it reconciles the live panes against the
-// declarative tab state, routes the shared `pty-data`/`pty-exit` events to the
-// right pane by session id, and exposes handles bound to the *active* pane.
+// This hook is the React half: it reconciles the live panes against the
+// declarative tab state and exposes handles bound to the *active* pane. The
+// pane bookkeeping itself — creation/disposal, event routing, and the single
+// failure-surfacing write path — lives in `paneController.ts` (GL-176), which
+// this hook feeds with real xterm/DOM/api adapters.
 
 import { useEffect, useReducer, useRef, type RefObject } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { listen } from "@tauri-apps/api/event";
-import type { IDisposable } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { api, type PtyDataEvent, type PtyExitEvent, type TerminalAgent } from "@/lib/api";
 import { useRepo } from "@/store/repo";
@@ -27,20 +28,7 @@ import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { xtermTheme } from "@/features/terminal/xtermTheme";
 import { selectEnabledAgents } from "@/features/terminal/agents";
 import { MONO_FONT } from "@/lib/ui";
-
-/** One live terminal pane: an xterm instance bound to a Rust PTY session. */
-interface Pane {
-  term: Terminal;
-  fit: FitAddon;
-  /** The Rust PTY session id, or null before spawn resolves / after exit. */
-  sessionId: number | null;
-  /** The pane's own mount element, an absolute child of the shared host. */
-  el: HTMLDivElement;
-  /** The shell's working directory (the repo's `workdir`). */
-  cwd: string;
-  alive: boolean;
-  onData: IDisposable | null;
-}
+import { PaneController, type Pane, type PaneView } from "./paneController";
 
 export interface TerminalPanes {
   /** Attach to the shared host element that holds every pane's mount div. */
@@ -60,11 +48,61 @@ export interface TerminalPanes {
 
 export function useTerminalPanes(): TerminalPanes {
   const hostRef = useRef<HTMLDivElement>(null);
-  const panesRef = useRef<Map<string, Pane>>(new Map());
-  const bySessionRef = useRef<Map<number, string>>(new Map());
   // Bump to re-render when a pane's `alive` flips (spawn resolved / shell exited)
-  // — the panes live in refs, so React needs a nudge to re-read them.
+  // — the panes live in the controller, so React needs a nudge to re-read them.
   const [, forceRender] = useReducer((n: number) => n + 1, 0);
+
+  // One controller for the app session. Its view factory builds the real
+  // xterm + mount element under the shared host; its io adapter is the PTY IPC.
+  const controllerRef = useRef<PaneController | null>(null);
+  if (!controllerRef.current) {
+    const createView = (_cwd: string): PaneView => {
+      const host = hostRef.current;
+      if (!host) throw new Error("terminal host not mounted");
+      const el = document.createElement("div");
+      el.style.position = "absolute";
+      el.style.inset = "0";
+      host.appendChild(el);
+
+      const term = new Terminal({
+        fontFamily: MONO_FONT,
+        fontSize: 12,
+        lineHeight: 1.25,
+        cursorBlink: true,
+        scrollback: 5000,
+        theme: xtermTheme(el),
+      });
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(el);
+      try {
+        fit.fit();
+      } catch {
+        /* container hidden — the resize observer re-fits once it has layout */
+      }
+      return {
+        term,
+        el,
+        fit: () => fit.fit(),
+        applyTheme: () => {
+          term.options.theme = xtermTheme(el);
+        },
+        paste: (text) => term.paste(text),
+        bracketedPaste: () => term.modes.bracketedPasteMode,
+        clear: () => term.clear(),
+      };
+    };
+    controllerRef.current = new PaneController(
+      {
+        spawn: (spawnCwd, cols, rows) => api.ptySpawn(spawnCwd, cols, rows),
+        write: (sessionId, data) => api.ptyWrite(sessionId, data),
+        kill: (sessionId) => api.ptyKill(sessionId),
+      },
+      createView,
+      forceRender,
+    );
+  }
+  const controller = controllerRef.current;
 
   const terminalView = useUi((s) => s.terminalView);
   const terminalExpanded = useUi((s) => s.terminalExpanded);
@@ -83,7 +121,7 @@ export function useTerminalPanes(): TerminalPanes {
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
 
   const activeTabId = repoKey ? (byRepo[repoKey]?.activeId ?? null) : null;
-  const activePane = activeTabId ? (panesRef.current.get(activeTabId) ?? null) : null;
+  const activePane = activeTabId ? (controller.get(activeTabId) ?? null) : null;
   const alive = activePane?.alive ?? false;
 
   // A stable signature of every tab that should have a live pane, across all
@@ -94,29 +132,17 @@ export function useTerminalPanes(): TerminalPanes {
 
   // ── Shared PTY event routing (mounted once) ──────────────────────────────
   useEffect(() => {
-    const panes = panesRef.current;
-    const bySession = bySessionRef.current;
     const unlistenData = listen<PtyDataEvent>("pty-data", (event) => {
-      const tabId = bySession.get(event.payload.sessionId);
-      if (!tabId) return;
-      panes.get(tabId)?.term.write(new Uint8Array(event.payload.data));
+      controller.routeData(event.payload.sessionId, event.payload.data);
     });
     const unlistenExit = listen<PtyExitEvent>("pty-exit", (event) => {
-      const tabId = bySession.get(event.payload.sessionId);
-      if (!tabId) return;
-      bySession.delete(event.payload.sessionId);
-      const pane = panes.get(tabId);
-      if (!pane) return;
-      pane.sessionId = null;
-      pane.alive = false;
-      pane.term.writeln("\r\n\x1b[2m[shell exited]\x1b[0m");
-      forceRender();
+      controller.routeExit(event.payload.sessionId);
     });
     return () => {
       void unlistenData.then((f) => f());
       void unlistenExit.then((f) => f());
     };
-  }, []);
+  }, [controller]);
 
   // ── Dispose every pane's xterm + PTY when the layer unmounts ──────────────
   // App hoists TerminalLayer out of the repo-summary gate, so it stays mounted
@@ -125,12 +151,8 @@ export function useTerminalPanes(): TerminalPanes {
   // per-repo disposal on a repo close goes through `closeRepoTerminals` +
   // reconcile instead. Runs once.
   useEffect(() => {
-    const panes = panesRef.current;
-    const bySession = bySessionRef.current;
-    return () => {
-      for (const tabId of [...panes.keys()]) disposePane(tabId, panes, bySession);
-    };
-  }, []);
+    return () => controller.disposeAll();
+  }, [controller]);
 
   // ── Ensure the active repo always has a tab while the drawer is open ──────
   useEffect(() => {
@@ -141,8 +163,6 @@ export function useTerminalPanes(): TerminalPanes {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const panes = panesRef.current;
-    const bySession = bySessionRef.current;
 
     // Which tabs should have a pane (tabId -> owning repo identity key).
     const wanted = new Map<string, string>();
@@ -157,18 +177,18 @@ export function useTerminalPanes(): TerminalPanes {
     // kept (disposed below only when their tab actually leaves the store). The
     // shell spawns in the active repo's working dir (`cwd`).
     for (const [tabId, key] of wanted) {
-      if (panes.has(tabId) || key !== repoKey) continue;
-      createPane(tabId, cwd ?? key, host, panes, bySession, forceRender);
+      if (controller.get(tabId) || key !== repoKey) continue;
+      controller.create(tabId, cwd ?? key);
     }
     // Dispose panes whose tab left the store (tab closed, or its repo closed).
-    for (const tabId of [...panes.keys()]) {
-      if (!wanted.has(tabId)) disposePane(tabId, panes, bySession);
+    for (const tabId of [...controller.panes.keys()]) {
+      if (!wanted.has(tabId)) controller.dispose(tabId);
     }
     // Show the active pane, hide the rest; re-fit the one now visible.
-    for (const [tabId, pane] of panes) {
-      pane.el.style.display = tabId === activeTabId ? "block" : "none";
+    for (const [tabId, pane] of controller.panes) {
+      pane.view.el.style.display = tabId === activeTabId ? "block" : "none";
     }
-    if (activeTabId) refit(panes.get(activeTabId));
+    if (activeTabId) refit(controller.get(activeTabId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabSignature, activeTabId, repoKey, cwd, terminalView, terminalExpanded]);
 
@@ -181,7 +201,7 @@ export function useTerminalPanes(): TerminalPanes {
       if (terminalView !== "open") return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        if (activeTabId) refit(panesRef.current.get(activeTabId));
+        if (activeTabId) refit(controller.get(activeTabId));
       }, 60);
     });
     ro.observe(host);
@@ -189,14 +209,14 @@ export function useTerminalPanes(): TerminalPanes {
       if (timer) clearTimeout(timer);
       ro.disconnect();
     };
-  }, [terminalView, terminalExpanded, activeTabId]);
+  }, [terminalView, terminalExpanded, activeTabId, controller]);
 
   // ── Follow the app's light/dark theme across every pane ──────────────────
   useEffect(() => {
-    for (const pane of panesRef.current.values()) {
-      pane.term.options.theme = xtermTheme(pane.el);
+    for (const pane of controller.panes.values()) {
+      pane.view.applyTheme();
     }
-  }, [theme]);
+  }, [theme, controller]);
 
   // ── Agents (shared with Settings) ────────────────────────────────────────
   useEffect(() => {
@@ -205,14 +225,15 @@ export function useTerminalPanes(): TerminalPanes {
   const agents = selectEnabledAgents(agentsRaw);
 
   const runAgent = (command: string) => {
-    const pane = activeTabId ? panesRef.current.get(activeTabId) : null;
-    if (!pane || pane.sessionId == null) return;
-    void api.ptyWrite(pane.sessionId, new TextEncoder().encode(`${command}\n`)).catch(() => {});
-    pane.term.focus();
+    if (!activeTabId) return;
+    // The controller surfaces a dead pane or a failed write in the terminal
+    // itself (GL-176) — the command must never look accepted when it wasn't.
+    void controller.write(activeTabId, new TextEncoder().encode(`${command}\n`));
+    controller.get(activeTabId)?.view.term.focus();
   };
 
   const clearTerminal = () => {
-    if (activeTabId) panesRef.current.get(activeTabId)?.term.clear();
+    if (activeTabId) controller.get(activeTabId)?.view.clear();
   };
 
   // ── "Open in terminal" paste queue → the active pane ─────────────────────
@@ -222,31 +243,45 @@ export function useTerminalPanes(): TerminalPanes {
   const terminalInject = useUi((s) => s.terminalInject);
   const clearTerminalInject = useUi((s) => s.clearTerminalInject);
   useEffect(() => {
-    if (!terminalInject || !alive) return;
-    const pane = activeTabId ? panesRef.current.get(activeTabId) : null;
+    if (!terminalInject) return;
+    // An injection belongs to the repo whose flow queued it: if another repo is
+    // active by the time it could deliver (queued while dead, repo switched
+    // after a failed launch, …), discard it rather than pasting into a
+    // different repo's shell (GL-176 review). Runs before the alive gate so a
+    // stale injection dies immediately, not on the next repo's spawn.
+    if (terminalInject.repoKey !== repoKey) {
+      clearTerminalInject();
+      return;
+    }
+    if (!alive || !activeTabId) return;
+    const pane = controller.get(activeTabId);
     if (!pane || pane.sessionId == null) return;
-    const { term, sessionId } = pane;
-    const encoder = new TextEncoder();
+    const { view } = pane;
     let cancelled = false;
     let timer: number | undefined;
     const paste = () => {
       if (cancelled) return;
-      term.paste(terminalInject.text);
-      term.focus();
+      view.paste(terminalInject.text);
+      view.term.focus();
       clearTerminalInject();
     };
     if (terminalInject.command) {
-      void api.ptyWrite(sessionId, encoder.encode(`${terminalInject.command}\n`)).catch(() => {});
-      const startedAt = Date.now();
-      const waitForPrompt = () => {
+      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\n`)).then((ok) => {
         if (cancelled) return;
-        if (term.modes.bracketedPasteMode || Date.now() - startedAt > 4000) {
-          paste();
-          return;
-        }
-        timer = window.setTimeout(waitForPrompt, 100);
-      };
-      timer = window.setTimeout(waitForPrompt, 500);
+        // The launch write failed (surfaced in the terminal) — keep the
+        // injection queued instead of dropping the text on the floor (GL-176).
+        if (!ok) return;
+        const startedAt = Date.now();
+        const waitForPrompt = () => {
+          if (cancelled) return;
+          if (view.bracketedPaste() || Date.now() - startedAt > 4000) {
+            paste();
+            return;
+          }
+          timer = window.setTimeout(waitForPrompt, 100);
+        };
+        timer = window.setTimeout(waitForPrompt, 500);
+      });
     } else {
       paste();
     }
@@ -254,105 +289,24 @@ export function useTerminalPanes(): TerminalPanes {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [terminalInject, alive, activeTabId, clearTerminalInject]);
+  }, [terminalInject, alive, activeTabId, clearTerminalInject, controller, repoKey]);
 
   return { hostRef, alive, agents, terminalPath: repoKey, runAgent, clearTerminal };
-}
 
-// ── Pure-ish pane helpers (module scope: no React state, only the ref maps) ──
-
-function createPane(
-  tabId: string,
-  cwd: string,
-  host: HTMLDivElement,
-  panes: Map<string, Pane>,
-  bySession: Map<number, string>,
-  forceRender: () => void,
-) {
-  const el = document.createElement("div");
-  el.style.position = "absolute";
-  el.style.inset = "0";
-  host.appendChild(el);
-
-  const term = new Terminal({
-    fontFamily: MONO_FONT,
-    fontSize: 12,
-    lineHeight: 1.25,
-    cursorBlink: true,
-    scrollback: 5000,
-    theme: xtermTheme(el),
-  });
-  const fit = new FitAddon();
-  term.loadAddon(fit);
-  term.open(el);
-  try {
-    fit.fit();
-  } catch {
-    /* container hidden — the resize observer re-fits once it has layout */
-  }
-
-  const pane: Pane = { term, fit, sessionId: null, el, cwd, alive: false, onData: null };
-  panes.set(tabId, pane);
-
-  pane.onData = term.onData((data) => {
-    if (pane.sessionId == null) return;
-    void api.ptyWrite(pane.sessionId, new TextEncoder().encode(data)).catch(() => {});
-  });
-
-  term.writeln("\x1b[2mStarting shell in " + cwd + "…\x1b[0m");
-  api
-    .ptySpawn(cwd, term.cols || 80, term.rows || 24)
-    .then(({ sessionId }) => {
-      // Guard by pane IDENTITY, not tabId presence: a fast unmount→remount (or
-      // StrictMode's double-mount) can dispose this pane and create a new one
-      // under the same tabId before this spawn resolves. Adopting the session
-      // into the wrong (or a gone) pane would orphan a PTY and cross-wire its
-      // output — so kill it instead.
-      if (panes.get(tabId) !== pane) {
-        void api.ptyKill(sessionId).catch(() => {});
-        return;
+  // ── Fit + PTY resize for one pane (called with layout settled) ────────────
+  function refit(pane: Pane | undefined) {
+    if (!pane) return;
+    requestAnimationFrame(() => {
+      try {
+        pane.view.fit();
+        if (pane.sessionId != null) {
+          // Resize failures are non-input noise (they race normal shell exits);
+          // they don't go through the surfaced write path deliberately.
+          void api.ptyResize(pane.sessionId, pane.view.term.cols, pane.view.term.rows).catch(() => {});
+        }
+      } catch {
+        /* container hidden — ignore */
       }
-      pane.sessionId = sessionId;
-      pane.alive = true;
-      bySession.set(sessionId, tabId);
-      forceRender();
-    })
-    .catch((e) => {
-      term.writeln(
-        "\x1b[31mFailed to start terminal: " +
-          String(e instanceof Error ? e.message : e) +
-          "\x1b[0m",
-      );
     });
-}
-
-function disposePane(
-  tabId: string,
-  panes: Map<string, Pane>,
-  bySession: Map<number, string>,
-) {
-  const pane = panes.get(tabId);
-  if (!pane) return;
-  pane.onData?.dispose();
-  if (pane.sessionId != null) {
-    bySession.delete(pane.sessionId);
-    void api.ptyKill(pane.sessionId).catch(() => {});
   }
-  pane.term.dispose();
-  pane.el.remove();
-  panes.delete(tabId);
-}
-
-function refit(pane: Pane | undefined) {
-  if (!pane) return;
-  requestAnimationFrame(() => {
-    try {
-      pane.fit.fit();
-      if (pane.sessionId != null) {
-        void api.ptyResize(pane.sessionId, pane.term.cols, pane.term.rows).catch(() => {});
-      }
-    } catch {
-      /* container hidden — ignore */
-    }
-  });
 }

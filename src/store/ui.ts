@@ -7,6 +7,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { usePulls } from "./pulls";
+import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "../lib/gitError";
 import type { ForgeAuthProvider } from "../lib/api";
@@ -325,8 +326,11 @@ interface UiState {
   /** Pending text queued to be pasted into the terminal PTY (bracketed paste).
    * Consumed by the TerminalLayer once the PTY is alive, then cleared. When
    * `command` is set, the terminal launches that agent first, then pastes
-   * `text` into the agent prompt. */
-  terminalInject: { text: string; command?: string } | null;
+   * `text` into the agent prompt. `repoKey` is the repo whose flow queued it —
+   * the consumer discards the injection if another repo is active by the time
+   * it could deliver, so queued text never pastes into a different repo's
+   * shell (GL-176 review). */
+  terminalInject: { text: string; command?: string; repoKey: string | null } | null;
   createBranchOpen: boolean;
   createBranchStart: string | null;
   /** When set, the center pane shows a stacked all-files review for this oid
@@ -479,7 +483,8 @@ interface UiState {
   toggleTerminalExpanded: () => void;
   adjustTerminalHeight: (dy: number) => void;
   /** Open the terminal and queue `text` to be pasted into it. When `command`
-   * is provided, launch that terminal agent before pasting the text. */
+   * is provided, launch that terminal agent before pasting the text. The
+   * injection is stamped with the active repo and delivers only there. */
   sendToTerminal: (text: string, command?: string) => void;
   clearTerminalInject: () => void;
   closeOverlays: () => void;
@@ -768,9 +773,16 @@ export const useUi = create<UiState>()(
   adjustTerminalHeight: (dy) =>
     set((s) => ({ terminalHeight: Math.max(160, Math.min(860, s.terminalHeight + dy)) })),
   // Open the terminal and stash the message; the TerminalLayer pastes it once the
-  // PTY is alive (it watches `terminalInject` + the live flag).
-  sendToTerminal: (text, command) =>
-    set({ terminalView: "open", terminalInject: command ? { text, command } : { text } }),
+  // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
+  // repo whose flow queued it (one-shot cross-store read) so it can never
+  // deliver into another repo's shell (GL-176 review).
+  sendToTerminal: (text, command) => {
+    const repoKey = useRepo.getState().summary?.path ?? null;
+    set({
+      terminalView: "open",
+      terminalInject: command ? { text, command, repoKey } : { text, repoKey },
+    });
+  },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
   closeOverlays: () => set({ ...noMenus, draggingFrom: null }),
   setCreateBranchOpen: (open) => set({ createBranchOpen: open, createBranchStart: open ? get().createBranchStart : null }),
