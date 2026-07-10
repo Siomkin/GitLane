@@ -69,7 +69,13 @@ function seed(pr: PullRequest) {
 }
 
 beforeEach(() => {
-  usePulls.setState({ pullRequests: [], prDetails: {}, prDetailError: {} });
+  usePulls.setState({
+    pullRequests: [],
+    prDetails: {},
+    prDetailError: {},
+    prCommitsError: {},
+    prCommitsLoaded: {},
+  });
   useUi.setState({ prSelected: null, prTab: "info" });
 });
 
@@ -131,10 +137,18 @@ describe("Commits tab", () => {
     expect(writeText).toHaveBeenCalledWith("9f2c1ab4e7d05c1182a6f0b3d4e8a91c77b25e30");
   });
 
-  it("shows an intentional empty state when there are no commits", () => {
+  it("shows an intentional empty state once the full load confirmed there are no commits", () => {
     seed(makePr({ commits: [] }));
+    usePulls.setState({ prCommitsLoaded: { 42: true } });
     render(<PullRequestDetail />);
     expect(screen.getByText("No commits on this pull request.")).toBeInTheDocument();
+  });
+
+  it("shows a spinner (not the empty state) while an empty fast-path list is still loading", () => {
+    seed(makePr({ commits: [] }));
+    render(<PullRequestDetail />);
+    expect(screen.getByText("Loading commits…")).toBeInTheDocument();
+    expect(screen.queryByText("No commits on this pull request.")).not.toBeInTheDocument();
   });
 
   it("opens the commit on GitHub from the row's link", async () => {

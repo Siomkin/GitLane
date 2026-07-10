@@ -10,11 +10,12 @@ import type { PrCommitView, PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { GitHubIcon } from "@/components/ui/icons";
-import { LoadError } from "@/components/ui/Loading";
+import { Loading, LoadError } from "@/components/ui/Loading";
 
 export function PrCommitsTab({ pr }: { pr: PullRequest }) {
   const loadPrCommits = usePulls((s) => s.loadPrCommits);
   const commitsError = usePulls((s) => s.prCommitsError[pr.num]);
+  const commitsLoaded = usePulls((s) => s.prCommitsLoaded[pr.num]);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
 
   useEffect(() => {
@@ -22,11 +23,16 @@ export function PrCommitsTab({ pr }: { pr: PullRequest }) {
   }, [pr.num, prsFetchedAt, loadPrCommits]);
 
   if (pr.commits.length === 0) {
-    // With no fast-path list to fall back on, a failed full-list load is the
-    // whole story — surface it like the Diff/Checks tabs do.
-    return commitsError ? (
-      <LoadError message={commitsError} onRetry={() => void loadPrCommits(pr.num, true)} />
-    ) : (
+    // With no fast-path list to fall back on, the full load is the whole
+    // story — tri-state like the Diff/Checks tabs: error → blocking retry,
+    // still in flight → spinner, confirmed-loaded → the real empty state.
+    if (commitsError) {
+      return <LoadError message={commitsError} onRetry={() => void loadPrCommits(pr.num, true)} />;
+    }
+    if (!commitsLoaded) {
+      return <Loading label="Loading commits…" />;
+    }
+    return (
       <div className="py-10 text-center text-[13px] text-neutral-400">
         No commits on this pull request.
       </div>
@@ -38,7 +44,10 @@ export function PrCommitsTab({ pr }: { pr: PullRequest }) {
           below still renders — so a failure gets a quiet notice, not a
           blocking error state (GL-165). */}
       {commitsError && (
-        <div className="mb-2.5 flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
+        <div
+          role="status"
+          className="mb-2.5 flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300"
+        >
           <span className="min-w-0 flex-1">
             Couldn't load the full commit list — showing a capped one; signature
             badges may be missing.
