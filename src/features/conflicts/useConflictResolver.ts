@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the conflict-resolution flow (architecture-rules-react.md §1)
 import { api, type ConflictFileContent } from "../../lib/api";
 import type { OperationState } from "../../store/repo";
@@ -9,6 +9,10 @@ export type EditorMode = "inline" | "split";
 
 /** Composite key for per-hunk state — one file's hunk index. */
 const cell = (path: string, idx: number) => `${path}::${idx}`;
+
+/** Stable stand-in while no operation is active, so derived values and effect
+ * inputs don't churn identity on every no-operation render. */
+const EMPTY_FILES: OperationState["files"] = [];
 
 export interface ConflictResolver {
   mode: EditorMode;
@@ -60,16 +64,20 @@ export function useConflictResolver(
   const [cache, setCache] = useState<Record<string, ConflictFileContent>>({});
   const [contentLoading, setContentLoading] = useState(false);
 
-  const files = operation?.files ?? [];
+  const files = operation?.files ?? EMPTY_FILES;
   const firstUnresolved = files.find((f) => !f.resolved)?.path ?? files[0]?.path ?? null;
 
   // Default-select the first outstanding conflict, and keep a valid selection as
   // files resolve/leave the set. A still-valid manual selection is preserved.
+  // Keyed by the file-path set and the first outstanding conflict — explicit
+  // identities, not array identity — so a worktree refresh that changes neither
+  // never re-runs the transition. JSON-encoded so no legal filename (newlines
+  // included) can collide with a delimiter.
+  const filePaths = JSON.stringify(files.map((f) => f.path));
   useEffect(() => {
-    setSelected((prev) =>
-      prev && files.some((f) => f.path === prev) ? prev : firstUnresolved,
-    );
-  }, [firstUnresolved, files]);
+    const valid = new Set<string>(JSON.parse(filePaths) as string[]);
+    setSelected((prev) => (prev && valid.has(prev) ? prev : firstUnresolved));
+  }, [filePaths, firstUnresolved]);
 
   // Fetch the selected text file's conflicted content (cached). Deleted/binary
   // files carry their own card and need no marker content.
@@ -103,13 +111,11 @@ export function useConflictResolver(
 
   // Drop cached content when a file leaves the conflict set, so re-conflicting it
   // (Unstage) re-fetches fresh marker content rather than reusing a stale copy.
-  const resolvedPaths = files
-    .filter((f) => f.resolved)
-    .map((f) => f.path)
-    .join("\n");
+  // JSON-encoded like `filePaths`, so a newline in a filename can't split it.
+  const resolvedPaths = JSON.stringify(files.filter((f) => f.resolved).map((f) => f.path));
   useEffect(() => {
-    if (!resolvedPaths) return;
-    const gone = new Set(resolvedPaths.split("\n"));
+    const gone = new Set<string>(JSON.parse(resolvedPaths) as string[]);
+    if (gone.size === 0) return;
     setCache((c) => {
       const next = { ...c };
       let changed = false;
@@ -211,11 +217,15 @@ export function useConflictResolver(
 
   const resetFile = useCallback((path: string) => {
     const prefix = `${path}::`;
+    // A key belongs to `path` only when everything after the prefix is a hunk
+    // index — a bare prefix match would also wipe a file literally named
+    // "<path>::something" (GL-178 review).
+    const isCell = (k: string) => k.startsWith(prefix) && /^\d+$/.test(k.slice(prefix.length));
     const drop = (obj: Record<string, unknown>) => {
       const next = { ...obj };
       let changed = false;
       for (const k of Object.keys(next)) {
-        if (k.startsWith(prefix)) {
+        if (isCell(k)) {
           delete next[k];
           changed = true;
         }
@@ -233,22 +243,43 @@ export function useConflictResolver(
   }, []);
 
   const contentFor = useCallback((path: string) => cache[path], [cache]);
+  const content = selected ? cache[selected] ?? null : null;
 
-  return {
-    mode,
-    setMode,
-    selected,
-    select,
-    content: selected ? cache[selected] ?? null : null,
-    contentLoading,
-    contentFor,
-    decisions,
-    lineSel,
-    decide,
-    setLineSelection,
-    undo,
-    resetFile,
-    confirmAbort,
-    setConfirmAbort,
-  };
+  // The facade is memoized so its identity only changes when one of its parts
+  // does — consumers can list `resolver` (or destructured members) honestly in
+  // their hook dependencies instead of hand-maintaining member lists (GL-178).
+  return useMemo(
+    () => ({
+      mode,
+      setMode,
+      selected,
+      select,
+      content,
+      contentLoading,
+      contentFor,
+      decisions,
+      lineSel,
+      decide,
+      setLineSelection,
+      undo,
+      resetFile,
+      confirmAbort,
+      setConfirmAbort,
+    }),
+    [
+      mode,
+      selected,
+      select,
+      content,
+      contentLoading,
+      contentFor,
+      decisions,
+      lineSel,
+      decide,
+      setLineSelection,
+      undo,
+      resetFile,
+      confirmAbort,
+    ],
+  );
 }

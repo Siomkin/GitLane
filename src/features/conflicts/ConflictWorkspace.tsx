@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { CSSProperties } from "react";
-import { useRepo } from "../../store/repo";
+import { useRepo, type OperationState } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import {
   buildLineEditor,
@@ -31,6 +31,10 @@ const ACCENT_TINTS = {
   "--accent-body": "color-mix(in srgb, var(--accent) 10%, transparent)",
 } as CSSProperties;
 
+/** Stable stand-in while no operation is active — `files` feeds memo inputs, so
+ * its no-operation fallback must not change identity per render (GL-178). */
+const NO_FILES: OperationState["files"] = [];
+
 /** The first-class merge/rebase/cherry-pick/revert conflict-resolution view
  * (GL-36). Rendered by `App` whenever the repo store reports an active
  * `operation`; takes over the center pane so normal commit/stage flows are
@@ -50,7 +54,7 @@ export const ConflictWorkspace = () => {
 
   const resolver = useConflictResolver(operation, repoPath);
 
-  const files = operation?.files ?? [];
+  const files = operation?.files ?? NO_FILES;
   const total = files.length;
   const resolvedCount = files.filter((f) => f.resolved).length;
   const unresolved = total - resolvedCount;
@@ -193,26 +197,29 @@ export const ConflictWorkspace = () => {
   // Stageable when any unstaged text file is fully decided locally. Memoized so
   // editor interactions (line toggles, mode switches) don't re-parse every
   // cached file on each render — only when the file set, decisions, picks, or
-  // cached content actually change. (`contentFor` is stable per content cache.)
+  // cached content actually change. Destructured from the (stable, GL-178)
+  // facade so the memo depends on exactly the slices it reads and
+  // exhaustive-deps can validate them. (`contentFor` changes per content cache.)
   // Declared before the early return below so it's never a conditional hook.
+  const { contentFor, decisions, lineSel } = resolver;
   const canStageAll = useMemo(
     () =>
       files.some((f) => {
         if (f.resolved) return false;
-        const content = resolver.contentFor(f.path);
+        const content = contentFor(f.path);
         if (!content || content.binary) return false;
         const rgs = parseConflict(content.content);
         const decs: Record<number, RegionDecision> = {};
         const sels: Record<number, LineSelection> = {};
         rgs.forEach((_, idx) => {
-          const d = resolver.decisions[`${f.path}::${idx}`];
+          const d = decisions[`${f.path}::${idx}`];
           if (d) decs[idx] = d;
-          const s = resolver.lineSel[`${f.path}::${idx}`];
+          const s = lineSel[`${f.path}::${idx}`];
           if (s) sels[idx] = s;
         });
         return conflictRegionCount(rgs) === 0 || isResolvedOf(rgs, decs, sels);
       }),
-    [files, resolver.contentFor, resolver.decisions, resolver.lineSel],
+    [files, contentFor, decisions, lineSel],
   );
 
   if (!operation) return null;
