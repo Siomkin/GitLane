@@ -135,8 +135,16 @@ export function useConflictResolver(
   // files other than the open one (they re-fetch on next select), and
   // background-revalidate the open file (no spinner — its content stays visible)
   // so a later in-app stage can't overwrite an external resolution with stale text.
+  // The transition is keyed by the operation object alone, but must read the
+  // selection/files/cache current at that moment — a latest-value ref carries
+  // them in without turning them into effect triggers.
+  const revalidationInputs = useRef({ files, selected, cache });
+  useEffect(() => {
+    revalidationInputs.current = { files, selected, cache };
+  });
   useEffect(() => {
     if (!repoPath) return;
+    const { files, selected, cache } = revalidationInputs.current;
     const unresolvedText = new Set(
       files.filter((f) => !f.resolved && f.kind === "text").map((f) => f.path),
     );
@@ -163,9 +171,6 @@ export function useConflictResolver(
           /* keep the prior content; a hard load failure surfaces via the primary fetch */
         });
     }
-    // Re-run only when a new operation status arrives (a worktree refresh),
-    // reading the latest selected/files/cache at that point.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operation, repoPath]);
 
   const select = useCallback((path: string) => setSelected(path), []);

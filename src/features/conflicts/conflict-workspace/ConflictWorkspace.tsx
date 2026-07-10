@@ -1,0 +1,171 @@
+import type { CSSProperties } from "react";
+import { useRepo } from "../../../store/repo";
+import { useUi } from "../../../store/ui";
+import { AbortConfirm } from "../AbortConfirm";
+import { ConflictBanner } from "../ConflictBanner";
+import { ConflictEditor } from "../ConflictEditor";
+import { ConflictFileList } from "../ConflictFileList";
+import { useConflictResolver } from "../useConflictResolver";
+import { useConflictWorkspaceModel } from "./useConflictWorkspaceModel";
+
+// The conflict workspace defines the accent tints the design uses (the app only
+// ships `--accent`); derived once here so every child can reference them.
+const ACCENT_TINTS = {
+  "--accent-soft": "color-mix(in srgb, var(--accent) 14%, transparent)",
+  "--accent-body": "color-mix(in srgb, var(--accent) 10%, transparent)",
+} as CSSProperties;
+
+/** The first-class merge/rebase/cherry-pick/revert conflict-resolution view
+ * (GL-36). Rendered by `App` whenever the repo store reports an active
+ * `operation`; takes over the center pane so normal commit/stage flows are
+ * gated while conflicts remain. The container owns store/API wiring and the
+ * durable-write commands; every rendering input comes from the view model
+ * (`useConflictWorkspaceModel` over the pure `conflictWorkspaceModel`), and
+ * the transient editing state lives in `useConflictResolver` (GL-179). */
+export const ConflictWorkspace = () => {
+  const operation = useRepo((s) => s.operation);
+  const repoPath = useRepo((s) => s.summary?.path ?? null);
+  const headBranch = useRepo((s) => s.summary?.headBranch ?? null);
+  const acceptConflictSide = useRepo((s) => s.acceptConflictSide);
+  const resolveConflictFile = useRepo((s) => s.resolveConflictFile);
+  const markConflictResolved = useRepo((s) => s.markConflictResolved);
+  const reconflictFile = useRepo((s) => s.reconflictFile);
+  const continueOperation = useRepo((s) => s.continueOperation);
+  const abortOperation = useRepo((s) => s.abortOperation);
+  const skipOperation = useRepo((s) => s.skipOperation);
+  const showToast = useUi((s) => s.showToast);
+
+  const resolver = useConflictResolver(operation, repoPath);
+  const model = useConflictWorkspaceModel(operation, headBranch, resolver);
+  const { selectedFile, state } = model;
+
+  if (!operation) return null;
+
+  const op = (fn: () => Promise<string>) => {
+    void fn()
+      .then((msg) => showToast(msg))
+      .catch((e) => showToast(String(e instanceof Error ? e.message : e), "error"));
+  };
+
+  // Only drop local decisions once the git write actually succeeded — a failed
+  // resolve/stage leaves the file conflicted, so the user's choices must survive.
+  const acceptSide = (target: string, side: "ours" | "theirs") => {
+    void acceptConflictSide(target, side).then((ok) => {
+      if (ok) resolver.resetFile(target);
+    });
+  };
+
+  const markResolved = () => {
+    if (!selectedFile) return;
+    const target = selectedFile.path;
+    const done = (ok: boolean) => {
+      if (ok) resolver.resetFile(target);
+    };
+    // No markers left (edited away / emptied) or a whole-file conflict (binary /
+    // modify-delete) resolved externally: stage the worktree copy as-is.
+    // Otherwise write the merged text rebuilt from the user's in-app hunk choices.
+    if (state.noMarkers || state.wholeFile) void markConflictResolved(target).then(done);
+    else void resolveConflictFile(target, model.selectedResolvedText()).then(done);
+  };
+
+  const stageAll = async () => {
+    // Serialize: each resolveConflictFile shells out to `git add`, and concurrent
+    // invocations contend for `.git/index.lock` (one fails, and the failure is
+    // swallowed → that file silently isn't staged). Await each in turn.
+    for (const f of model.files) {
+      if (f.resolved) continue;
+      const text = model.resolvedTextFor(f);
+      if (text == null) continue;
+      const ok = await resolveConflictFile(f.path, text);
+      if (ok) resolver.resetFile(f.path);
+    }
+  };
+
+  return (
+    <div className="relative flex min-h-0 min-w-0 flex-col gap-2.5 overflow-hidden" style={ACCENT_TINTS}>
+      <ConflictBanner
+        kind={operation.kind}
+        canSkip={operation.canSkip}
+        total={model.total}
+        unresolved={model.unresolved}
+        allResolved={model.allResolved}
+        onContinue={() => op(continueOperation)}
+        onAbort={() => resolver.setConfirmAbort(true)}
+        onSkip={() => op(skipOperation)}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-row-reverse gap-2.5">
+        <ConflictFileList
+          files={model.files}
+          selected={resolver.selected}
+          total={model.total}
+          resolved={model.resolvedCount}
+          unresolved={model.unresolved}
+          canStageAll={model.canStageAll}
+          oursSub={model.oursSub}
+          theirsSub={model.theirsSub}
+          onSelect={resolver.select}
+          onAcceptOurs={(p) => acceptSide(p, "ours")}
+          onAcceptTheirs={(p) => acceptSide(p, "theirs")}
+          onStageAll={() => void stageAll()}
+        />
+
+        {selectedFile ? (
+          <ConflictEditor
+            // Remount per file so the editor's scroll-to-first-conflict effect
+            // re-runs when a different conflicted file is opened.
+            key={selectedFile.path}
+            file={selectedFile}
+            regions={model.regions}
+            // A file libgit2 classified "text" can still return binary content
+            // (non-UTF-8, or a NUL in the worktree copy) — fall back to the
+            // whole-file picker so the user isn't stranded in an empty editor.
+            binaryContent={!!resolver.content?.binary}
+            loading={resolver.contentLoading}
+            mode={resolver.mode}
+            onMode={resolver.setMode}
+            decidedCount={state.decided}
+            totalHunks={state.totalHunks}
+            resolved={state.resolved}
+            malformed={state.malformed}
+            staged={state.staged}
+            decisionFor={model.decisionFor}
+            lineSelFor={model.lineSelFor}
+            oursSub={model.oursSub}
+            theirsSub={model.theirsSub}
+            lineEditor={model.lineEditor}
+            onDecide={(idx, dec) => resolver.decide(model.path, idx, dec)}
+            onUndo={(idx) => resolver.undo(model.path, idx)}
+            onToggleLine={model.onToggleLine}
+            onSetBlock={model.onSetBlock}
+            onTakeBlock={model.onTakeBlock}
+            onSelectAllSide={model.onSelectAllSide}
+            onMarkResolved={markResolved}
+            onUnstage={() => {
+              const target = selectedFile.path;
+              void reconflictFile(target).then((ok) => {
+                if (ok) resolver.resetFile(target);
+              });
+            }}
+            onAcceptSide={(side) => acceptSide(selectedFile.path, side)}
+          />
+        ) : (
+          <section className="grid flex-1 place-content-center rounded-xl border border-black/5 bg-white text-[13px] text-neutral-400 dark:border-white/5 dark:bg-neutral-800">
+            No conflicts left to resolve — continue the {operation.kind}.
+          </section>
+        )}
+      </div>
+
+      {resolver.confirmAbort && (
+        <AbortConfirm
+          kind={operation.kind}
+          onCancel={() => resolver.setConfirmAbort(false)}
+          onConfirm={() => {
+            resolver.setConfirmAbort(false);
+            op(abortOperation);
+          }}
+        />
+      )}
+    </div>
+  );
+};

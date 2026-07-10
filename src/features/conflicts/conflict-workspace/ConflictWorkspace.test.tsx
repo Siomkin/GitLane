@@ -8,9 +8,19 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+// Make the editors' landing scroll observable: jsdom lacks scrollIntoView, and
+// the landing defers through requestAnimationFrame.
+const scrollSpy = vi.fn();
+Object.defineProperty(Element.prototype, "scrollIntoView", { value: scrollSpy, writable: true });
+vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+  cb(0);
+  return 0;
+});
+vi.stubGlobal("cancelAnimationFrame", () => {});
+
 import { ConflictWorkspace } from "./ConflictWorkspace";
-import { useRepo } from "../../store/repo";
-import type { OperationState } from "../../store/repo";
+import { useRepo } from "../../../store/repo";
+import type { OperationState } from "../../../store/repo";
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
 const RESOLVED_OURS = "start\nour line\nend\n";
@@ -70,6 +80,22 @@ beforeEach(() => {
 const stageAllButton = () =>
   screen.getByRole("button", { name: /Stage all resolved/i }) as HTMLButtonElement;
 
+describe("ConflictWorkspace — editor landing through the loading gate (GL-179)", () => {
+  it("lands on the first undecided conflict once async content mounts the editor", async () => {
+    scrollSpy.mockClear();
+    render(<ConflictWorkspace />);
+    // While conflict_file is in flight, the editor isn't mounted — no landing.
+    expect(scrollSpy).not.toHaveBeenCalled();
+
+    await flush(); // content loaded → editor mounts → landing scroll fires
+
+    expect(scrollSpy).toHaveBeenCalled();
+    const contexts = scrollSpy.mock.contexts;
+    const target = contexts[contexts.length - 1] as Element;
+    expect(target.getAttribute("data-region")).toBe("1"); // the first (only) hunk
+  });
+});
+
 describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
   it("enables Stage all once the open file's hunks are fully decided", async () => {
     render(<ConflictWorkspace />);
@@ -117,6 +143,33 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
     expect(resolveConflictFile).toHaveBeenCalledTimes(2);
     expect(resolveConflictFile).toHaveBeenNthCalledWith(1, "a.txt", RESOLVED_OURS);
     expect(resolveConflictFile).toHaveBeenNthCalledWith(2, "b.txt", RESOLVED_OURS);
+  });
+
+  it("disables Stage all when a refresh reclassifies the decided file as binary", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+    expect(stageAllButton()).toBeEnabled();
+
+    // The watcher re-read the worktree and a.txt is now a binary conflict.
+    // Its decided text content still sits in the resolver cache — stale text
+    // must never keep it eligible (it would git-add over the binary state).
+    await act(async () => {
+      useRepo.setState({
+        operation: {
+          kind: "merge",
+          canSkip: false,
+          files: [
+            { path: "a.txt", kind: "binary", deletedSide: "", resolved: false },
+            { path: "b.txt", kind: "text", deletedSide: "", resolved: false },
+          ],
+        },
+      });
+    });
+
+    expect(stageAllButton()).toBeDisabled();
+    expect(resolveConflictFile).not.toHaveBeenCalled();
   });
 
   it("keeps decisions when a stage write fails, so Stage all can retry", async () => {

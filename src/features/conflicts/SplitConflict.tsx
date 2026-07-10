@@ -233,16 +233,24 @@ export const SplitConflict = ({
 
   // On open (a fresh file mounts this editor) jump to the first still-unresolved
   // conflict so the user lands on work to do rather than the top of the file.
-  useEffect(() => {
-    if (total === 0) return;
+  // The landing is captured once per mounted file (the workspace remounts this
+  // editor per file via key=path) — a refresh that re-derives the rows while the
+  // same file stays mounted must NOT move the user (see SplitConflict.test.tsx).
+  const [landing] = useState(() => {
+    if (total === 0) return null;
     const firstOpen = order.findIndex((idx) => unresolved.has(idx));
     const start = firstOpen >= 0 ? firstOpen : 0;
-    setActive(start);
-    const raf = requestAnimationFrame(() => reveal(start, false));
+    const regionIdx = order[start];
+    return regionIdx == null ? null : { start, regionIdx };
+  });
+  useEffect(() => {
+    if (!landing) return;
+    setActive(landing.start);
+    const raf = requestAnimationFrame(() =>
+      revealRegion([aRef, bRef, outRef], landing.regionIdx, false),
+    );
     return () => cancelAnimationFrame(raf);
-    // Run once per mounted file; reveal/order are stable for that mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [landing]);
 
   const go = (delta: number) => {
     const next = Math.min(Math.max(active + delta, 0), Math.max(total - 1, 0));

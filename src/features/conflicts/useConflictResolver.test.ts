@@ -89,6 +89,59 @@ describe("useConflictResolver — selection transition (GL-178)", () => {
   });
 });
 
+describe("useConflictResolver — worktree revalidation (GL-179)", () => {
+  it("background-revalidates the open file's cached content on an operation refresh", async () => {
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    expect(result.current.content?.content).toBe(MARKERS);
+
+    // The file changed on disk (external editor); the watcher re-read the
+    // worktree, producing a fresh operation object with identical metadata.
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "conflict_file"
+        ? Promise.resolve({ path: args?.file, content: "fresh from disk", binary: false })
+        : Promise.resolve(null),
+    );
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    expect(result.current.content?.content).toBe("fresh from disk");
+  });
+
+  it("drops other unresolved files' cached content on a refresh so re-select re-fetches", async () => {
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }, { path: "b.txt" }]));
+    await flush();
+    act(() => result.current.select("b.txt"));
+    await flush();
+    act(() => result.current.select("a.txt"));
+    await flush();
+    expect(result.current.contentFor("b.txt")).toBeDefined();
+
+    rerender({ operation: op([{ path: "a.txt" }, { path: "b.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    // The non-open unresolved file's cache is evicted (it re-fetches on next
+    // select); the open file keeps content visible while revalidating.
+    expect(result.current.contentFor("b.txt")).toBeUndefined();
+    expect(result.current.contentFor("a.txt")).toBeDefined();
+  });
+
+  it("does not refetch cached content when only the selection changes", async () => {
+    const { result } = renderResolver(op([{ path: "a.txt" }, { path: "b.txt" }]));
+    await flush();
+    act(() => result.current.select("b.txt"));
+    await flush();
+    const fetches = () => invokeMock.mock.calls.filter((c) => c[0] === "conflict_file").length;
+    const before = fetches();
+
+    // Selecting back a cached file must not re-run the revalidation effect —
+    // it is keyed by the operation object, not by selection.
+    act(() => result.current.select("a.txt"));
+    await flush();
+    expect(fetches()).toBe(before);
+  });
+});
+
 describe("useConflictResolver — path-key robustness (GL-178 review)", () => {
   it("keeps a selection whose filename contains a newline across a refresh", async () => {
     const weird = "we\nird.txt";
@@ -140,6 +193,21 @@ describe("useConflictResolver — facade identity (GL-178)", () => {
     rerender({ operation, repoPath: "/repo" });
     await flush();
     expect(result.current).toBe(before);
+  });
+
+  it("a line selection supersedes a prior whole-hunk decision (and vice versa)", async () => {
+    const { result } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+
+    act(() => result.current.decide("a.txt", 0, "ours"));
+    act(() => result.current.setLineSelection("a.txt", 0, new Set(["b:0"])));
+    // The picks own the hunk now — the stale whole-hunk decision is cleared.
+    expect(result.current.decisions["a.txt::0"]).toBeUndefined();
+    expect(result.current.lineSel["a.txt::0"]).toEqual(new Set(["b:0"]));
+
+    act(() => result.current.decide("a.txt", 0, "theirs"));
+    expect(result.current.lineSel["a.txt::0"]).toBeUndefined();
+    expect(result.current.decisions["a.txt::0"]).toBe("theirs");
   });
 
   it("produces a new facade when a decision lands (not over-memoized)", async () => {
