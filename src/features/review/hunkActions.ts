@@ -1,5 +1,13 @@
-import type { DiffHunk, FileDiff } from "../../lib/api";
+import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
 import type { ChangeSource } from "../../store/repo";
+
+/** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
+ * which can't be staged. Built by the review container; both diff views consume it. */
+export type HunkActionApi = {
+  source: "unstaged" | "staged";
+  onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) => void;
+  onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
+};
 
 export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
   if (source === "commit") return "Committed diffs cannot be staged by hunk";
