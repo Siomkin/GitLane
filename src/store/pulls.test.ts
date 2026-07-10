@@ -874,4 +874,33 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     // The pre-refresh response is dropped rather than repopulating the evicted cache.
     expect(usePulls.getState().prDetails[7].commits).toEqual([cappedRow]);
   });
+
+  it("discards a stale error when the PR's resource version changed mid-flight (GL-164)", async () => {
+    seedDetail();
+    const pending = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(pending.promise);
+
+    const load = usePulls.getState().loadPrCommits(7);
+    // A refresh prunes the PR while the read is in flight — the slow failure
+    // that lands afterwards belongs to the evicted generation.
+    usePulls.setState((s) => ({ prResourceVersion: { ...s.prResourceVersion, 7: 1 } }));
+    pending.reject(new Error("slow failure after prune"));
+    await load;
+
+    expect(usePulls.getState().prCommitsError[7]).toBeUndefined();
+  });
+
+  it("clears a prior commits error when a retry succeeds (GL-164)", async () => {
+    seedDetail();
+    usePulls.setState((s) => ({ prCommitsError: { ...s.prCommitsError, 7: "earlier failure" } }));
+    invokeMock.mockResolvedValueOnce([
+      { oid: "c0", headline: "retry", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
+    ]);
+
+    await usePulls.getState().loadPrCommits(7, true);
+
+    const s = usePulls.getState();
+    expect(s.prCommitsError[7]).toBeUndefined();
+    expect(s.prCommitsLoaded[7]).toBe(true);
+  });
 });

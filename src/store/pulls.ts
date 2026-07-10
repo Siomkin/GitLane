@@ -470,7 +470,13 @@ export const usePulls = create<PullsState>((set, get) => ({
         };
       });
     } catch (e) {
-      set((s) => ({ prCommitsError: { ...s.prCommitsError, [num]: String(e) } }));
+      set((s) => {
+        // A refresh pruned this PR mid-flight → the error belongs to the evicted
+        // generation; discard it like the success path does (GL-164, mirroring
+        // loadPrDiff's guarded error write).
+        if ((s.prResourceVersion[num] ?? 0) !== version) return {};
+        return { prCommitsError: { ...s.prCommitsError, [num]: String(e) } };
+      });
     }
   },
 

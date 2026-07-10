@@ -43,6 +43,7 @@ const slice = (over: Partial<PrCacheSlice> = {}): PrCacheSlice => ({
   prThreads: {},
   prThreadsError: {},
   prCommitsLoaded: {},
+  prCommitsError: {},
   prResourceVersion: {},
   ...over,
 });
@@ -134,6 +135,7 @@ describe("pruneStalePrCaches", () => {
       prChecks: { 1: [] },
       prThreads: { 1: [] },
       prCommitsLoaded: { 1: true },
+      prCommitsError: { 1: "commits failed" },
       prDetailError: { 1: "e" },
       prResourceVersion: { 1: 1 },
     });
@@ -143,6 +145,9 @@ describe("pruneStalePrCaches", () => {
     expect(patch.prChecks).toEqual({});
     expect(patch.prThreads).toEqual({});
     expect(patch.prCommitsLoaded).toEqual({});
+    // The commits error is evicted with the rest (GL-164) — a stale failure
+    // must not linger after the PR left the list or changed.
+    expect(patch.prCommitsError).toEqual({});
     expect(patch.prDetailError).toEqual({});
     expect(patch.prResourceVersion).toEqual({ 1: 2 });
   });
