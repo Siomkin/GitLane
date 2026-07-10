@@ -357,6 +357,12 @@ let forgeAuthGen = 0;
 // in-flight `hydrateRepoIdentity` that predates a newer write is dropped — a
 // slow reconcile read can't republish a superseded identity.
 let repoIdentityGen = 0;
+// Monotonic gh-account load generation (GL-169, mirroring forgeAuthGen). App
+// bootstrap and the Accounts panel refresh can overlap; only the newest
+// loadAccounts may publish the list, its error, or clear the loading flag, so
+// an older snapshot landing late can't restore signed-out metadata and its
+// late failure can't replace a newer success.
+let accountsLoadGen = 0;
 
 /** The repo a remote-auth mutation targets, captured once before the first
  * await (GL-167). All IPC uses `path` so a mid-operation repo switch can't
@@ -546,9 +552,11 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   loadAccounts: async () => {
+    const gen = ++accountsLoadGen;
     set({ accountsLoading: true, accountsError: null });
     try {
       const list = await api.githubAccounts();
+      if (gen !== accountsLoadGen) return; // superseded by a newer load
       const accounts: Account[] = list.map((a, i) => {
         const ref = accountRefFromApi(a);
         return {
@@ -580,6 +588,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         if (useRepo.getState().remotes.length > 0) void usePulls.getState().loadPullRequests();
       }
     } catch (e) {
+      if (gen !== accountsLoadGen) return; // a stale failure never clobbers a newer result
       set({ accountsLoading: false, accountsError: String(e) });
     }
   },
