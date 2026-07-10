@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
 import { pickProviderTokenForHost, useAccounts, type StoredProviderToken } from "./accounts";
+import { providerTokenKey } from "./accountsStorage";
 import { ForgeKind, type RemoteInfo, type RepoForge } from "../lib/api";
 
 const gitlabRemote: RemoteInfo = {
@@ -634,5 +635,111 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
       host: "gitlab.com",
       accountId: "42",
     });
+  });
+});
+
+// Reconciliation snapshots the entries it probes, then must delete only what
+// it actually probed: a sign-in that replaces the same key while a probe is in
+// flight writes fresh metadata whose keychain token DOES exist, and a stale
+// "no token" result must not make it unreachable (GL-168).
+describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  }
+
+  const noToken = {
+    provider: "gitlab",
+    host: "gitlab.com",
+    accountId: "alice",
+    login: "alice",
+    hasToken: false,
+  };
+
+  it("does not delete metadata a new sign-in replaced while the probe was in flight", async () => {
+    await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-old");
+    // The old token vanished from the keychain — the probe will say "no token".
+    const probe = deferred<unknown>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_token_status" ? probe.promise : Promise.resolve(undefined),
+    );
+
+    const reconcile = useAccounts.getState().reconcileProviderTokens();
+    // While the probe is pending the user signs in again under the same key;
+    // the fresh token IS in the keychain.
+    await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-new");
+    probe.resolve(noToken);
+    await reconcile;
+
+    // The fresh sign-in's metadata survives the stale probe result.
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+    expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("providerToken");
+  });
+
+  it("does not delete metadata an OAuth sign-in replaced while the probe was in flight", async () => {
+    // Same race via the other writer — and the likeliest real-world trigger:
+    // the Accounts panel refresh kicks a reconcile while an OAuth flow lands.
+    const oauthResult = {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "42",
+      login: "ada",
+      transportUsername: "oauth2",
+      hasToken: true,
+    };
+    const sentinelKey = providerTokenKey("gitlab.com", "oauth2");
+    useAccounts.setState({
+      providerTokens: {
+        [sentinelKey]: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          accountId: "41",
+          login: "ada-old",
+          transportUsername: "oauth2",
+          savedAt: 0,
+        },
+      },
+    });
+    const probe = deferred<unknown>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_token_status"
+        ? probe.promise
+        : Promise.resolve(cmd === "provider_oauth_sign_in" ? oauthResult : undefined),
+    );
+
+    const reconcile = useAccounts.getState().reconcileProviderTokens();
+    // The OAuth flow replaces the same sentinel key with fresh metadata (the
+    // old account's token is deleted, the new one written) mid-probe.
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
+    probe.resolve({ provider: "gitlab", host: "gitlab.com", accountId: "41", login: "ada-old", hasToken: false });
+    await reconcile;
+
+    // The fresh OAuth account survives the stale probe result.
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    expect(useAccounts.getState().providerTokens[sentinelKey]?.accountId).toBe("42");
+  });
+
+  it("overlapping reconciles prune a genuinely stale entry exactly once", async () => {
+    await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-old");
+    const probeA = deferred<unknown>();
+    const probeB = deferred<unknown>();
+    let call = 0;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_token_status" ? [probeA, probeB][call++].promise : Promise.resolve(undefined),
+    );
+
+    // The Accounts panel refresh runs two reconciles concurrently (its own +
+    // the one loadForgeAuth triggers) — both must settle cleanly.
+    const a = useAccounts.getState().reconcileProviderTokens();
+    const b = useAccounts.getState().reconcileProviderTokens();
+    probeA.resolve(noToken);
+    probeB.resolve(noToken);
+    await Promise.all([a, b]);
+
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(false);
+    expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
   });
 });

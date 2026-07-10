@@ -27,7 +27,11 @@ export type StoredForgeCredential = {
 /** Non-secret metadata for a GitLane-owned provider token (GL-132). The token
  * itself lives only in the OS keychain; this record just remembers *that* a
  * token exists for an account so the transport layer can select `providerToken`
- * mode and the UI can show sign-out. Never contains token material. */
+ * mode and the UI can show sign-out. Never contains token material.
+ *
+ * Always replace an entry wholesale; never mutate one in place — reconciliation
+ * pins its compare-and-delete on object identity, so an in-place edit would let
+ * a stale keychain probe wipe metadata it never probed (GL-168). */
 export type StoredProviderToken = {
   provider: ForgeAuthProvider;
   /** Exact credential authority (`host[:port]`) — the keychain host locator. */
