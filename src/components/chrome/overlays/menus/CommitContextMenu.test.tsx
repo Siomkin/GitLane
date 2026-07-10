@@ -101,6 +101,37 @@ describe("CommitContextMenu (single commit)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("never opens the reset confirm when HEAD moves while the preview is pending (GL-42)", async () => {
+    const resetCurrentTo = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({ resetCurrentTo });
+    let resolvePreview!: (v: { summary: string; details: string[]; warnings: string[] }) => void;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "preview_reset") {
+        return new Promise((res) => {
+          resolvePreview = res;
+        });
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    openGroup("Danger zone");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mixed — keep changes unstaged" }));
+    // The originating menu closes before the preview settles (no resurrection).
+    await waitFor(() => expect(useUi.getState().commitMenu).toBeNull());
+
+    // HEAD moves while the preview IPC is still in flight.
+    useRepo.setState({ summary: { ...summary, headOid: "moved000" } });
+    resolvePreview({ summary: "Impact summary", details: [], warnings: [] });
+
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("HEAD changed"),
+    );
+    expect(useUi.getState().confirm).toBeNull();
+    expect(resetCurrentTo).not.toHaveBeenCalled();
+  });
+
   it("aborts a reset confirmed after HEAD moved (headPrecondition, GL-42)", async () => {
     const resetCurrentTo = vi.fn().mockResolvedValue("ok");
     useRepo.setState({ resetCurrentTo });
@@ -241,10 +272,14 @@ describe("CommitContextMenu (batch selection)", () => {
     });
   });
 
-  it("copies all selected SHAs newest-first", () => {
-    openBatch(["c1abcdef", "c3abcdef"]);
+  it("copies all selected SHAs newest-first, newline-joined", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    openBatch(["c3abcdef", "c1abcdef"]); // selection order ≠ graph order
     render(<CommitContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy 2 commit SHAs" }));
+    // Graph (newest-first) order wins regardless of click order.
+    expect(writeText).toHaveBeenCalledWith("c1abcdef\nc3abcdef");
     expect(useNotifications.getState().toasts.some((t) => t.title === "Copied 2 SHAs")).toBe(true);
     expect(useUi.getState().commitMenu).toBeNull();
   });

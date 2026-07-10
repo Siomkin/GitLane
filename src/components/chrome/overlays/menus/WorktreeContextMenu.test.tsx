@@ -75,10 +75,13 @@ describe("WorktreeContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Hand off branch to…" })).not.toBeInTheDocument();
   });
 
-  it("the active worktree only offers Copy path — nothing to open or remove", () => {
+  it("the active worktree keeps copy + hand-off but hides open and remove", () => {
     openMenuFor({ path: "/work/repo", name: "repo", isMain: false });
     render(<WorktreeContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeInTheDocument();
+    // Handing the *active* worktree's branch off to another workspace is a
+    // legitimate flow (GL-74) — it stays even though open/remove make no sense.
+    expect(screen.getByRole("menuitem", { name: "Hand off branch to…" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Open worktree" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Open in new tab" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
@@ -118,7 +121,11 @@ describe("WorktreeContextMenu", () => {
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
-    useUi.getState().confirm!.onConfirm();
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.danger).toBe(true);
+    expect(confirm?.message).toContain("/work/repo-feat");
+    expect(confirm?.message).not.toContain("locked");
+    confirm!.onConfirm();
     expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", false);
   });
 });
