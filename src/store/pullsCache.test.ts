@@ -54,7 +54,11 @@ describe("record helpers", () => {
     expect(omit(map, 1)).toEqual({ 2: "b" });
     expect(map).toEqual({ 1: "a", 2: "b" });
     expect(omitMany(map, [])).toBe(map);
+    // Keys absent from the map also preserve the reference (GL-161 review) —
+    // a stale PR with no entry in a given cache must not re-render its readers.
+    expect(omitMany(map, [3, 4])).toBe(map);
     expect(omitMany(map, [1, 2])).toEqual({});
+    expect(omitMany(map, [2, 3])).toEqual({ 1: "a" });
   });
 
   it("hasNumericKeys reports emptiness", () => {
@@ -150,6 +154,11 @@ describe("pruneStalePrCaches", () => {
     const s = slice({ pullRequests: [pr(1)] });
     const patch = pruneStalePrCaches(s, [pr(1, { title: "force-pushed" })]);
     expect(patch.prResourceVersion).toEqual({ 1: 1 });
+    // Caches the stale PR has no entries in keep their references (GL-161
+    // review), so unrelated subscribers don't re-render on the quiet refresh.
+    expect(patch.prDetails).toBe(s.prDetails);
+    expect(patch.prDiffs).toBe(s.prDiffs);
+    expect(patch.prChecks).toBe(s.prChecks);
   });
 
   it("clears in-flight checks tokens for stale PRs and recomputes the global flag", () => {

@@ -42,7 +42,7 @@ export function prListRequestKey(path: string, account: GithubAccountRef | null)
 export function mergeQueuedPrListLoad(
   current: QueuedPrListLoad | null,
   next: QueuedPrListLoad,
-): QueuedPrListLoad | null {
+): QueuedPrListLoad {
   if (!current) return next;
   return {
     force: current.force || next.force,

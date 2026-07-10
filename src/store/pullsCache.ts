@@ -40,9 +40,11 @@ export function hasNumericKeys(map: Record<number, unknown>): boolean {
 }
 
 // Drop several numeric keys from a record without mutating it (returns the same
-// reference when nothing is dropped, so unrelated refreshes don't re-render).
+// reference when nothing is dropped, so unrelated refreshes don't re-render —
+// including when the keys simply aren't in the map, e.g. a stale PR that only
+// ever appeared in the previous list; GL-161 review).
 export function omitMany<V>(map: Record<number, V>, keys: number[]): Record<number, V> {
-  if (keys.length === 0) return map;
+  if (!keys.some((k) => k in map)) return map;
   const next = { ...map };
   for (const k of keys) delete next[k];
   return next;
