@@ -23,6 +23,7 @@ export interface PrCacheSlice {
   prThreads: Record<number, ReviewThread[]>;
   prThreadsError: Record<number, string>;
   prCommitsLoaded: Record<number, boolean>;
+  prCommitsError: Record<number, string>;
   prResourceVersion: Record<number, number>;
 }
 
@@ -149,6 +150,7 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
     prChecks: omitMany(s.prChecks, stale),
     prThreads: omitMany(s.prThreads, stale),
     prCommitsLoaded: omitMany(s.prCommitsLoaded, stale),
+    prCommitsError: omitMany(s.prCommitsError, stale),
     prDetailError: omitMany(s.prDetailError, stale),
     prDiffError: omitMany(s.prDiffError, stale),
     prChecksError: omitMany(s.prChecksError, stale),
