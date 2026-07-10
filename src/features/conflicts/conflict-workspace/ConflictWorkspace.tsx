@@ -61,14 +61,21 @@ export const ConflictWorkspace = () => {
   // decide — write the validated merge, stage a marker-free worktree copy
   // as-is (the same path per-file "Mark resolved" takes, so the two flows never
   // diverge), or skip because the file changed under the decisions.
-  const stagePlanned = async (target: string): Promise<"staged" | "skipped" | "changed"> => {
-    const current = useRepo.getState().operation?.files.find((f) => f.path === target);
-    if (!current || current.resolved) return "skipped";
+  const stagePlanned = async (
+    target: string,
+  ): Promise<"staged" | "failed" | "skipped" | "changed"> => {
+    const before = useRepo.getState().operation?.files.find((f) => f.path === target);
+    if (!before || before.resolved) return "skipped";
     const fresh = await resolver.revalidate(target);
     if (!fresh) {
       showToast(`Couldn't re-read ${target} before staging`, "error");
       return "skipped";
     }
+    // Re-read the live entry AFTER the await — the watcher can reclassify or
+    // resolve the file while the disk read was in flight (GL-180 review); the
+    // pre-await read only short-circuits the fetch for already-settled files.
+    const current = useRepo.getState().operation?.files.find((f) => f.path === target);
+    if (!current || current.resolved) return "skipped";
     const plan = stagePlanFor(current, fresh, resolver.decisions, resolver.lineSel, resolver.hunkPrints);
     if (plan.action === "skip") return "changed";
     const ok =
@@ -76,7 +83,9 @@ export const ConflictWorkspace = () => {
         ? await markConflictResolved(target)
         : await resolveConflictFile(target, plan.text);
     if (ok) resolver.resetFile(target);
-    return "staged";
+    // A failed write already toasts through the store action — report it
+    // distinctly so callers don't mislabel it "changed on disk".
+    return ok ? "staged" : "failed";
   };
 
   const changedOnDisk = (target: string) =>

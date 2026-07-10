@@ -20,6 +20,7 @@ vi.stubGlobal("cancelAnimationFrame", () => {});
 
 import { ConflictWorkspace } from "./ConflictWorkspace";
 import { useRepo } from "../../../store/repo";
+import { useUi } from "../../../store/ui";
 import type { OperationState } from "../../../store/repo";
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
@@ -275,6 +276,61 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
 
     expect(resolveConflictFile).toHaveBeenCalledTimes(1);
     expect(resolveConflictFile).not.toHaveBeenCalledWith("b.txt", expect.anything());
+  });
+
+  it("skips a file reclassified while its own pre-stage re-read is in flight", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+
+    // The pre-stage disk re-read hangs; while it is in flight the watcher
+    // reclassifies a.txt binary. The plan must be built from the post-await
+    // store entry, not the one captured before the read started.
+    const slowRead = deferred<{ path: unknown; content: string; binary: boolean }>();
+    invokeMock.mockImplementationOnce(() => slowRead.promise);
+    fireEvent.click(stageAllButton());
+    await flush();
+    await act(async () => {
+      useRepo.setState({
+        operation: {
+          kind: "merge",
+          canSkip: false,
+          files: [
+            { path: "a.txt", kind: "binary", deletedSide: "", resolved: false },
+            { path: "b.txt", kind: "text", deletedSide: "", resolved: false },
+          ],
+        },
+      });
+    });
+    await act(async () => {
+      slowRead.resolve({ path: "a.txt", content: MARKERS, binary: false });
+    });
+
+    const markConflictResolved = useRepo.getState().markConflictResolved as Mock;
+    expect(resolveConflictFile).not.toHaveBeenCalled();
+    expect(markConflictResolved).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed write as a failure, not as 'changed on disk'", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+
+    resolveConflictFile.mockResolvedValueOnce(false);
+    fireEvent.click(stageAllButton());
+    await flush();
+
+    // The store action owns the failure toast; the workspace must not add a
+    // misleading "changed on disk" one (the file didn't change — the write failed).
+    expect(resolveConflictFile).toHaveBeenCalledTimes(1);
+    expect(showToast).not.toHaveBeenCalledWith(
+      expect.stringContaining("changed on disk"),
+      expect.anything(),
+    );
   });
 
   it("Mark resolved re-checks the disk copy: stages as-is when markers were resolved externally", async () => {

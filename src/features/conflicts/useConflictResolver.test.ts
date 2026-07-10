@@ -259,6 +259,37 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     expect(result.current.decisions["a.txt::1"]).toBeUndefined();
   });
 
+  it("an older in-flight fetch cannot clobber content a newer revalidate() applied", async () => {
+    serveConflictFile(TWO_HUNKS);
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    act(() => result.current.decide("a.txt", 3, "theirs"));
+
+    // The watcher-refresh background revalidation hangs (slow disk read that
+    // still sees the OLD content)…
+    let releaseOld!: (content: unknown) => void;
+    invokeMock.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseOld = resolve)),
+    );
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+
+    // …while a stage-time revalidate() reads the newer disk state and applies it.
+    serveConflictFile(TWO_HUNKS_FIRST_EDITED);
+    await act(async () => {
+      await result.current.revalidate("a.txt");
+    });
+    expect(result.current.contentFor("a.txt")?.content).toBe(TWO_HUNKS_FIRST_EDITED);
+
+    // The slow old response lands last — it must be discarded, not applied: it
+    // would revert the cache and prune decisions against an obsolete snapshot.
+    await act(async () => {
+      releaseOld({ path: "a.txt", content: TWO_HUNKS, binary: false });
+    });
+    expect(result.current.contentFor("a.txt")?.content).toBe(TWO_HUNKS_FIRST_EDITED);
+    expect(result.current.decisions["a.txt::3"]).toBe("theirs");
+  });
+
   it("revalidate() returns the fresh content, refreshes the cache, and prunes", async () => {
     serveConflictFile(TWO_HUNKS);
     const { result } = renderResolver(op([{ path: "a.txt" }]));

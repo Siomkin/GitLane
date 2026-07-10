@@ -122,6 +122,19 @@ export function useConflictResolver(
   const cached = selected ? cache[selected] : undefined;
   const fetchTokenRef = useRef(0);
 
+  // Per-path fetch sequence: only the newest in-flight read of a path may apply
+  // its result, so an older primary/background response landing late can never
+  // clobber the content — or prune decisions against an obsolete snapshot —
+  // that a newer read (e.g. a stage-time revalidate) just applied (GL-180
+  // review). `beginFetch` claims the newest slot and returns an "am I still
+  // newest?" probe for the response handler.
+  const fetchSeqRef = useRef<Record<string, number>>({});
+  const beginFetch = useCallback((path: string) => {
+    const seq = (fetchSeqRef.current[path] ?? 0) + 1;
+    fetchSeqRef.current[path] = seq;
+    return () => fetchSeqRef.current[path] === seq;
+  }, []);
+
   // Latest-value ref: async work (fetch handlers, the revalidation transition,
   // click handlers) reads the values current at that moment without turning
   // them into effect triggers or callback dependencies.
@@ -172,12 +185,15 @@ export function useConflictResolver(
       return;
     }
     const token = ++fetchTokenRef.current;
+    const isCurrent = beginFetch(selected);
     setContentLoading(true);
     api
       .conflictFile(repoPath, selected)
       .then((content) => {
+        if (isCurrent()) applyFresh(selected, content);
+        // The loading lifecycle stays on the global token: it tracks "the fetch
+        // for the currently relevant selection", not per-path recency.
         if (fetchTokenRef.current !== token) return;
-        applyFresh(selected, content);
         setContentLoading(false);
       })
       .catch(() => {
@@ -187,7 +203,7 @@ export function useConflictResolver(
         // otherwise the file looks stuck between loading and an empty editor.
         useUi.getState().showToast(`Couldn't load conflicts in ${selected}`, "error");
       });
-  }, [repoPath, selected, needsContent, cached, applyFresh]);
+  }, [repoPath, selected, needsContent, cached, applyFresh, beginFetch]);
 
   // Drop cached content when a file leaves the conflict set, so re-conflicting it
   // (Unstage) re-fetches fresh marker content rather than reusing a stale copy.
@@ -236,18 +252,17 @@ export function useConflictResolver(
       return changed ? next : c;
     });
     if (selected && unresolvedText.has(selected) && cache[selected]) {
-      const token = ++fetchTokenRef.current;
+      const isCurrent = beginFetch(selected);
       api
         .conflictFile(repoPath, selected)
         .then((content) => {
-          if (fetchTokenRef.current !== token) return;
-          applyFresh(selected, content);
+          if (isCurrent()) applyFresh(selected, content);
         })
         .catch(() => {
           /* keep the prior content; a hard load failure surfaces via the primary fetch */
         });
     }
-  }, [operation, repoPath, applyFresh]);
+  }, [operation, repoPath, applyFresh, beginFetch]);
 
   const select = useCallback((path: string) => setSelected(path), []);
 
@@ -340,9 +355,12 @@ export function useConflictResolver(
   const revalidate = useCallback(
     async (path: string): Promise<ConflictFileContent | null> => {
       if (!repoPath) return null;
+      const isCurrent = beginFetch(path);
       try {
         const content = await api.conflictFile(repoPath, path);
-        applyFresh(path, content);
+        if (isCurrent()) applyFresh(path, content);
+        // Superseded or not, this IS the content this caller read from disk —
+        // return it so the caller plans against its own read.
         return content;
       } catch {
         // Keep the prior content and decisions; the caller decides how (and
@@ -350,7 +368,7 @@ export function useConflictResolver(
         return null;
       }
     },
-    [repoPath, applyFresh],
+    [repoPath, applyFresh, beginFetch],
   );
 
   const contentFor = useCallback((path: string) => cache[path], [cache]);
