@@ -17,5 +17,10 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     css: false,
+    // The self-hosted CI box runs several jobs concurrently; under contention a
+    // render+waitFor test can blow the 5s default even though everything is
+    // mocked (seen with ReviewWorkspace's "show full diff" test). A hung test
+    // still fails — just after 15s instead of 5.
+    testTimeout: 15_000,
   },
 });
