@@ -156,9 +156,12 @@ describe("pruneStalePrCaches", () => {
     // PR 1's first detail load is still in flight (no cache entry), but its
     // summary changed vs the previous list — the version must still bump so the
     // in-flight response is discarded.
-    const s = slice({ pullRequests: [pr(1)] });
+    const s = slice({ pullRequests: [pr(1)], prCommitsError: { 1: "old failure" } });
     const patch = pruneStalePrCaches(s, [pr(1, { title: "force-pushed" })]);
     expect(patch.prResourceVersion).toEqual({ 1: 1 });
+    // The summary-change path evicts the commits error too (GL-164) — not just
+    // the left-the-list path the matrix test covers.
+    expect(patch.prCommitsError).toEqual({});
     // Caches the stale PR has no entries in keep their references (GL-161
     // review), so unrelated subscribers don't re-render on the quiet refresh.
     expect(patch.prDetails).toBe(s.prDetails);
