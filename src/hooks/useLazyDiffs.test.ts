@@ -172,6 +172,31 @@ describe("useLazyDiffs", () => {
     expect(Object.values(result.current.diffs).every((v) => v !== null)).toBe(true);
   });
 
+  it("lets a same-commit ensure() after reset() refetch a cached key", async () => {
+    // reset() must clear the cacheRef view synchronously, not just the state:
+    // a caller that resets and re-ensures in the same commit (the changes
+    // view's snapshot effect, GL-173) must not see the ghost of the dropped
+    // cache and skip its refetch.
+    let calls = 0;
+    const item = () => ({
+      key: "same",
+      fetch: () => {
+        calls += 1;
+        return Promise.resolve({} as FileDiff);
+      },
+    });
+
+    const { result } = renderHook(() => useLazyDiffs());
+    await act(async () => result.current.ensure([item()]));
+    expect(calls).toBe(1);
+
+    act(() => {
+      result.current.reset();
+      result.current.ensure([item()]);
+    });
+    expect(calls).toBe(2);
+  });
+
   it("recovers the slot when a fetcher throws synchronously", async () => {
     const defs = Array.from({ length: MAX_CONCURRENT_DIFFS }, () => deferred());
     const started: string[] = [];

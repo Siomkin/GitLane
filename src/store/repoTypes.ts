@@ -165,6 +165,11 @@ export interface RepoState {
   /** Recently-opened repositories for the onboarding "Recent" list (most-recent
    * first). Updated on each successful open; persisted to localStorage. */
   recents: RecentRepo[];
+  /** The working-tree snapshot. Contract: every publish is a NEW object, even
+   * when the content is identical — consumers use snapshot identity as their
+   * cache generation (the changes view's diff cache, GL-173), so a future
+   * deep-equal "optimization" that reused the reference would silently break
+   * their invalidation. */
   changes: WorkingChanges;
   /** The active merge/rebase/cherry-pick/revert operation + its conflicts, or
    * null when none is in progress. Refreshed with working-tree status; when
