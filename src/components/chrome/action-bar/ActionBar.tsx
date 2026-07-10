@@ -1,16 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { cn } from "../../../lib/cn";
-import { currentBranchSyncView, defaultPublishTarget } from "../../../lib/branchSync";
-import { ForgeKind } from "../../../lib/api";
-import { detectRemoteUrl } from "../../../lib/remotes";
-import { changeTotal, summarizeChanges } from "../../../lib/changeSummary";
 import { useDismiss } from "../../../hooks/useDismiss";
 import { focusRing } from "../../../lib/ui";
-import type { LeftTab } from "../../../lib/ui";
-import { useRepo } from "../../../store/repo";
-import { usePulls } from "../../../store/pulls";
-import { useUi } from "../../../store/ui";
-import { useAccounts } from "../../../store/accounts";
 import { BranchNavigator } from "../../navigation/branch-navigator";
 import {
   BranchIcon,
@@ -26,181 +17,35 @@ import { SegTab } from "./SegTab";
 import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";
 import { WorktreeIndicator } from "./WorktreeIndicator";
-import { ProviderIndicator, deriveProviderState } from "./provider-indicator";
-import type { ProviderState } from "./provider-indicator";
+import { ProviderIndicator } from "./provider-indicator";
+import { useActionBarModel } from "./useActionBarModel";
 
-/** Network ops that surface a per-button spinner driven by their command promise. */
-type NetOp = "fetch" | "pull" | "push";
-
-const PR_BADGE_REFRESH_MS = 60_000;
-
+/** The toolbar: History/PRs tab toggle, the "Checked out" branch trigger (and
+ * its anchored navigator dropdown), the current-branch PR badge, the provider
+ * indicator, and the network/worktree actions. All state and commands come from
+ * `useActionBarModel` (GL-182) — this component owns only render structure and
+ * the DOM-anchored dropdown dismissal. */
 export const ActionBar = () => {
-  const summary = useRepo((state) => state.summary);
-  const activeTab = useUi((state) => state.leftTab);
-  const setLeftTab = useUi((state) => state.setLeftTab);
-  const forge = useRepo((state) => state.forge);
-  const remotes = useRepo((state) => state.remotes);
-  const branches = useRepo((state) => state.branches);
-  const loading = useRepo((state) => state.loading);
-  const fetch = useRepo((state) => state.fetch);
-  const pull = useRepo((state) => state.pull);
-  const push = useRepo((state) => state.push);
-  const publishBranch = useRepo((state) => state.publishBranch);
-  const stash = useRepo((state) => state.stash);
-  const changes = useRepo((state) => state.changes);
-  const pullRequests = usePulls((state) => state.pullRequests);
-  const loadPullRequests = usePulls((state) => state.loadPullRequests);
-  const openCreateBranch = useUi((state) => state.setCreateBranchOpen);
-  const openSettings = useUi((state) => state.openSettings);
-  const openRepoSettings = useUi((state) => state.openRepoSettings);
-  const toggleTerminal = useUi((state) => state.toggleTerminal);
-  const openRecovery = useUi((state) => state.openRecovery);
-  const terminalVisible = useUi((state) => state.terminalView !== "hidden");
-  const navOpen = useUi((state) => state.navOpen);
-  const toggleNav = useUi((state) => state.toggleNav);
-  const openNav = useUi((state) => state.openNav);
-  const closeNav = useUi((state) => state.closeNav);
-  const requestPrompt = useUi((state) => state.requestPrompt);
-  const selectPr = useUi((state) => state.selectPr);
-  const accounts = useAccounts((state) => state.accounts);
-  const accountsError = useAccounts((state) => state.accountsError);
-  const accountsLoading = useAccounts((state) => state.accountsLoading);
-  const repoAccountRef = useAccounts((state) => state.repoAccountRef);
-  // Whether GitLab MRs can be fetched (glab / stored token) — drives the provider
-  // popover's connected-vs-needs-auth state for a GitLab repo (GL-145).
-  const gitlabReady = useAccounts((state) => state.gitlabPr().ready);
-  // Whether Bitbucket PRs can be fetched (stored token) — same connected-vs-
-  // needs-auth signal for a Bitbucket repo (GL-141).
-  const bitbucketReady = useAccounts((state) => state.bitbucketPr().ready);
-
-  // Per-button in-flight state for the network ops. The store's single global
-  // `loading` flag can't say which button is busy (and `pull`/`push` don't even
-  // toggle it), so we track each spinner against its own awaited command promise.
-  // `busyRef` is the synchronous re-entry guard — `busy` state lags a render, so
-  // a fast double-click (or starting a second op before the first resolves)
-  // would otherwise run twice and clear `busy` while the first is still in
-  // flight. Only one network op runs at a time.
-  const [busy, setBusy] = useState<NetOp | null>(null);
-  const busyRef = useRef(false);
-  const run = (key: NetOp, action: () => Promise<unknown>) => async () => {
-    if (busyRef.current) return;
-    busyRef.current = true;
-    setBusy(key);
-    try {
-      await action();
-    } finally {
-      busyRef.current = false;
-      setBusy(null);
-    }
-  };
-
-  // Distinct changed files (conflicts included), so the toolbar badge agrees
-  // with the WIP row's per-type breakdown — a path staged *and* edited in the
-  // worktree counts once, not twice.
-  const workCount = changeTotal(summarizeChanges(changes));
-  // Badge counts only open PRs — the list is fetched `--state all`, but a tab
-  // badge should reflect what needs attention, not merged/closed history.
-  const prCount = pullRequests.filter((pr) => pr.state === "open").length;
-  const showPulls = activeTab === "pulls";
-
-  const currentBranch = summary?.detached
-    ? `detached @ ${summary.headOid?.slice(0, 7) ?? "?"}`
-    : summary?.unborn
-      ? "No commits yet"
-      : summary?.headBranch ?? "No branch";
-  const currentSync = currentBranchSyncView(summary, branches);
-  // Open PR whose head is the checked-out branch — surfaced as a clickable badge.
-  // An unborn branch has no pushed commits, so it can't own a PR even if one
-  // happens to share its name (e.g. the default `main`); skip the match.
-  const openPr =
-    summary?.detached || summary?.unborn
-      ? undefined
-      : pullRequests.find((pr) => pr.state === "open" && pr.branch === summary?.headBranch);
-
-  const defaultRemote = remotes.find((remote) => remote.isDefault) ?? remotes[0] ?? null;
-  const defaultRemoteAuth = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
-  // Match the Remotes settings card: only explicit SSH remotes or HTTPS
-  // usernames count as visible transport auth. A bare HTTPS URL may still work
-  // through a helper, but GitLane cannot prove that from the URL alone.
-  const transportConfigured = Boolean(defaultRemoteAuth?.ssh || defaultRemoteAuth?.user);
-
-  // Remote-provider status: forge detection (backend) combined with PR/API auth
-  // state and the remote URL's transport-auth signal. A GCM-backed HTTPS username
-  // or SSH key means fetch/push can work even when provider PR auth is absent.
-  const providerState: ProviderState | null = forge
-    ? deriveProviderState(forge, {
-        accounts,
-        accountsError,
-        accountsLoading,
-        repoAccountRef,
-        gitlabReady,
-        bitbucketReady,
-        transportConfigured,
-      })
-    : null;
-
-  // The PR badge is always visible in the toolbar, so keep its count warm even
-  // before the PR panel opens. Foreground loads still happen in LeftPanel for a
-  // visible spinner; these quiet loads just keep the badge current.
-  useEffect(() => {
-    // PRs are supported on GitHub, GitLab (GL-140), and Bitbucket (GL-141); the
-    // store's gate handles the account/transport resolution per forge.
-    const prForge =
-      forge?.kind === ForgeKind.GitHub ||
-      forge?.kind === ForgeKind.GitLab ||
-      forge?.kind === ForgeKind.Bitbucket;
-    if (!summary || !prForge) return;
-    void loadPullRequests(false, true);
-    const id = window.setInterval(() => {
-      if (document.hidden) return;
-      void loadPullRequests(false, true);
-    }, PR_BADGE_REFRESH_MS);
-    return () => window.clearInterval(id);
-  }, [forge?.kind, loadPullRequests, summary?.path, repoAccountRef?.accountId]);
-
-  // ⌘ + Option + F opens the navigator and focuses its filter (the input
-  // autofocuses on mount). `code === "KeyF"` since Option+F yields "ƒ" on macOS.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.altKey && e.code === "KeyF") {
-        e.preventDefault();
-        openNav();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [openNav]);
+  const m = useActionBarModel();
+  const {
+    summary,
+    forge,
+    loading,
+    busy,
+    showPulls,
+    workCount,
+    prCount,
+    currentBranch,
+    currentSync,
+    openPr,
+    providerState,
+    navOpen,
+  } = m;
 
   // The 280px dropdown is anchored under the branch button; dismiss it on
   // outside click / Escape.
   const wrapRef = useRef<HTMLDivElement>(null);
-  useDismiss(navOpen, closeNav, wrapRef);
-
-  const selectTab = (tab: LeftTab) => {
-    closeNav();
-    setLeftTab(tab);
-  };
-  const runPush = () => {
-    const branch = summary?.headBranch;
-    if (branch && currentSync.needsPublishPrompt) {
-      const info = branches.find((b) => b.kind === "local" && b.name === branch);
-      requestPrompt({
-        title: `Publish ${branch}`,
-        message: `Remote branch for ${branch} to push to and pull from.`,
-        placeholder: "origin/branch",
-        defaultValue: defaultPublishTarget(
-          branches,
-          branch,
-          info?.upstream,
-          info?.sync?.status !== "staleUpstream",
-        ),
-        confirmLabel: "Publish",
-        onSubmit: (upstream) => void run("push", () => publishBranch(branch, upstream))(),
-      });
-      return;
-    }
-    void run("push", push)();
-  };
+  useDismiss(navOpen, m.closeNav, wrapRef);
 
   return (
     <div ref={wrapRef} className="relative flex-none">
@@ -208,7 +53,7 @@ export const ActionBar = () => {
         <div className="flex h-8 flex-none items-center rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
           <SegTab
             active={!showPulls}
-            onClick={() => selectTab("history")}
+            onClick={() => m.selectTab("history")}
             icon={<ClockIcon className="h-3.5 w-3.5" />}
             label="Commits"
             badge={workCount > 0 ? workCount : undefined}
@@ -216,7 +61,7 @@ export const ActionBar = () => {
           />
           <SegTab
             active={showPulls}
-            onClick={() => selectTab("pulls")}
+            onClick={() => m.selectTab("pulls")}
             icon={<PullRequestIcon className="h-3.5 w-3.5" />}
             label="PRs"
             badge={prCount > 0 ? prCount : undefined}
@@ -226,7 +71,7 @@ export const ActionBar = () => {
 
         <div className="relative">
           <button
-            onClick={toggleNav}
+            onClick={m.toggleNav}
             title={`Branches, worktrees & stashes. ${currentSync.title}`}
             className="flex h-8 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
           >
@@ -276,8 +121,8 @@ export const ActionBar = () => {
             onClick={() => {
               // Select the PR first so the detail pane shows this one, not a
               // stale selection, when the PRs view opens.
-              selectPr(openPr.num);
-              selectTab("pulls");
+              m.selectPr(openPr.num);
+              m.selectTab("pulls");
             }}
             title={`PR #${openPr.num} — ${openPr.title}`}
             className={cn(
@@ -297,11 +142,11 @@ export const ActionBar = () => {
             state={providerState}
             forge={forge}
             prCount={prCount}
-            errorDetail={accountsError}
-            onViewPrs={() => selectTab("pulls")}
-            onSignIn={() => openSettings("accounts")}
-            onOpenRepoSettings={openRepoSettings}
-            onOpen={closeNav}
+            errorDetail={m.accountsError}
+            onViewPrs={() => m.selectTab("pulls")}
+            onSignIn={() => m.openSettings("accounts")}
+            onOpenRepoSettings={m.openRepoSettings}
+            onOpen={m.closeNav}
           />
         )}
         {/* Bare divider — the row's gap-2 already spaces it; the shared Separator's
@@ -314,14 +159,14 @@ export const ActionBar = () => {
           <ToolbarAction
             label="Fetch"
             icon={<FetchIcon />}
-            onClick={run("fetch", fetch)}
+            onClick={m.runFetch}
             pending={busy === "fetch"}
             disabled={(loading && busy !== "fetch") || !summary}
           />
           <ToolbarAction
             label="Pull"
             icon={<PullIcon />}
-            onClick={run("pull", pull)}
+            onClick={m.runPull}
             pending={busy === "pull"}
             disabled={(loading && busy !== "pull") || !summary || !currentSync.canPull}
             title={currentSync.canPull ? currentSync.title : `Pull unavailable. ${currentSync.title}`}
@@ -329,22 +174,22 @@ export const ActionBar = () => {
           <ToolbarAction
             label="Push"
             icon={<PushIcon />}
-            onClick={runPush}
+            onClick={m.runPush}
             pending={busy === "push"}
             disabled={(loading && busy !== "push") || !summary || !currentSync.canPush}
             title={currentSync.canPush ? currentSync.title : `Push unavailable. ${currentSync.title}`}
           />
-          <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={() => openCreateBranch(true)} disabled={!summary} />
+          <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={m.openCreateBranch} disabled={!summary} />
           <ToolbarAction
             label="Recover"
             icon={<ClockIcon />}
-            onClick={openRecovery}
+            onClick={m.openRecovery}
             disabled={!summary}
           />
           <ToolbarAction
             label="Stash"
             icon={<StashIcon />}
-            onClick={stash}
+            onClick={m.stash}
             disabled={loading || workCount === 0}
           />
           <Separator />
@@ -352,8 +197,8 @@ export const ActionBar = () => {
             label="Terminal"
             icon={<TerminalIcon />}
             disabled={!summary}
-            active={terminalVisible}
-            onClick={toggleTerminal}
+            active={m.terminalVisible}
+            onClick={m.toggleTerminal}
             wide
           />
         </div>

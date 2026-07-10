@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -314,6 +314,108 @@ describe("ActionBar layout order", () => {
     // Pull/Push stay disabled — there is nothing to sync yet.
     expect(screen.getByTitle(/Pull unavailable.*no commits yet/i)).toBeDisabled();
     expect(screen.getByTitle(/Push unavailable.*no commits yet/i)).toBeDisabled();
+  });
+});
+
+describe("ActionBar PR badge polling (GL-182)", () => {
+  const prLoads = () =>
+    invokeMock.mock.calls.filter((c) => c[0] === "list_pull_requests").length;
+
+  it("refreshes the badge on the interval and stops on unmount", async () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<ActionBar />);
+      expect(prLoads()).toBe(1); // warm the badge immediately
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(prLoads()).toBe(2);
+
+      unmount();
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(prLoads()).toBe(2); // interval cleaned up — no orphan polling
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("skips the quiet refresh while the window is hidden", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<ActionBar />);
+      expect(prLoads()).toBe(1);
+
+      Object.defineProperty(document, "hidden", { value: true, configurable: true });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(prLoads()).toBe(1); // background window — no wasted gh calls
+
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(prLoads()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+      Object.defineProperty(document, "hidden", { value: false, configurable: true });
+    }
+  });
+
+  it("re-arms and refetches immediately when the repo path changes", async () => {
+    render(<ActionBar />);
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: null,
+    });
+
+    await act(async () => {
+      useRepo.setState({ summary: { ...SUMMARY, path: "/repo2", workdir: "/repo2" } });
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
+      path: "/repo2",
+      account: null,
+    });
+  });
+
+  it("stops polling when the repo closes", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<ActionBar />);
+      expect(prLoads()).toBe(1);
+
+      await act(async () => {
+        useRepo.setState({ summary: null });
+      });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(prLoads()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("ActionBar network ops — one at a time (GL-182)", () => {
+  it("ignores a second network op while the first is still in flight", async () => {
+    let resolveFetch!: () => void;
+    const fetch = vi.fn(
+      () => new Promise<void>((res) => (resolveFetch = () => res())),
+    );
+    const pull = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ fetch, pull });
+
+    render(<ActionBar />);
+    fireEvent.click(screen.getByTitle("Fetch"));
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // A fast second click (same or another op) must not start while the first
+    // promise is unresolved — busyRef guards synchronously, before state lands.
+    fireEvent.click(screen.getByTitle("Fetch"));
+    fireEvent.click(screen.getByTitle("Up to date with origin/main."));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(pull).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveFetch();
+    });
+    fireEvent.click(screen.getByTitle("Up to date with origin/main."));
+    expect(pull).toHaveBeenCalledTimes(1);
   });
 });
 
