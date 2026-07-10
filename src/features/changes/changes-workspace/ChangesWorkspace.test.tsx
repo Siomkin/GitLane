@@ -9,9 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import type { FileChange, FileDiff, WorkingChanges } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import { emptyChanges } from "../../store/repoTypes";
+import type { FileChange, FileDiff, WorkingChanges } from "../../../lib/api";
+import { useRepo } from "../../../store/repo";
+import { emptyChanges } from "../../../store/repoTypes";
 import { ChangesWorkspace } from "./ChangesWorkspace";
 
 const file = (path: string, add = 1, del = 0): FileChange => ({
@@ -128,5 +128,106 @@ describe("ChangesWorkspace — diff cache identity (GL-173)", () => {
     await waitFor(() => expect(container.textContent).toContain("diff of b.ts"));
     expect(fileDiffCalls("a.ts")).toHaveLength(1);
     expect(fileDiffCalls("b.ts")).toHaveLength(1);
+  });
+});
+
+// Behavior pinned before the GL-174 folder-module split: default expansion,
+// manual-collapse persistence across refreshes, and per-file stage/unstage
+// dispatch at the row checkbox.
+describe("ChangesWorkspace — expansion and staging dispatch (GL-174)", () => {
+  it("expands only the first file by default", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      cmd === "file_diff"
+        ? Promise.resolve(diffOf((args as { file: string }).file, `diff of ${(args as { file: string }).file}`))
+        : Promise.resolve(null),
+    );
+    useRepo.setState({ changes: snapshot([file("a.ts"), file("b.ts")]) });
+
+    const { container } = render(<ChangesWorkspace onBack={() => {}} />);
+
+    await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
+    expect(container.textContent).not.toContain("diff of b.ts");
+    expect(fileDiffCalls("b.ts")).toHaveLength(0); // collapsed → never fetched
+  });
+
+  it("does not fight a manual collapse when a same-paths snapshot arrives", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diffOf("a.ts", "diff of a.ts")) : Promise.resolve(null),
+    );
+
+    const { container, getByText } = render(<ChangesWorkspace onBack={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
+
+    fireEvent.click(getByText("a.ts"));
+    expect(container.textContent).not.toContain("diff of a.ts");
+
+    // A watcher refresh with the same file set must not re-open the file.
+    act(() => {
+      useRepo.setState({ changes: snapshot([file("a.ts")]) });
+    });
+    await waitFor(() => expect(container.textContent).toContain("a.ts"));
+    expect(container.textContent).not.toContain("diff of a.ts");
+  });
+
+  it("dispatches stage for an unstaged row and unstage for a staged row", async () => {
+    const stageFile = vi.fn();
+    const unstageFile = vi.fn();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diffOf("a.ts", "diff of a.ts")) : Promise.resolve(null),
+    );
+    useRepo.setState({
+      changes: { ...emptyChanges, unstaged: [file("a.ts")], staged: [file("b.ts")] },
+      stageFile,
+      unstageFile,
+    });
+
+    const { getAllByTitle } = render(<ChangesWorkspace onBack={() => {}} />);
+
+    fireEvent.click(getAllByTitle("Stage file")[0]);
+    expect(stageFile).toHaveBeenCalledWith("a.ts");
+    fireEvent.click(getAllByTitle("Unstage file")[0]);
+    expect(unstageFile).toHaveBeenCalledWith("b.ts");
+  });
+});
+
+describe("ChangesWorkspace — expansion resets per repo (GL-174 review)", () => {
+  it("clears the previous repo's expansion choices on a repo switch", async () => {
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      cmd === "file_diff"
+        ? Promise.resolve(diffOf((args as { file: string }).file, `diff of ${(args as { file: string }).file}`))
+        : Promise.resolve(null),
+    );
+    useRepo.setState({ changes: snapshot([file("a.ts"), file("b.ts")]) });
+
+    const { container, getByText } = render(<ChangesWorkspace onBack={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
+    fireEvent.click(getByText("b.ts"));
+    await waitFor(() => expect(container.textContent).toContain("diff of b.ts"));
+
+    // Same path names in the next repo: only the default first file opens —
+    // b.ts must not inherit the previous repo's expansion.
+    act(() => {
+      useRepo.setState({
+        summary: summaryFor("/other"),
+        changes: snapshot([file("a.ts"), file("b.ts")]),
+      });
+    });
+
+    await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
+    expect(container.textContent).not.toContain("diff of b.ts");
+  });
+
+  it("collapses a row in place when its file is staged", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diffOf("a.ts", "diff of a.ts")) : Promise.resolve(null),
+    );
+    useRepo.setState({ stageFile: vi.fn() });
+
+    const { container, getByTitle } = render(<ChangesWorkspace onBack={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
+
+    // Approving the file keeps its slot but collapses the section.
+    fireEvent.click(getByTitle("Stage file"));
+    expect(container.textContent).not.toContain("diff of a.ts");
   });
 });

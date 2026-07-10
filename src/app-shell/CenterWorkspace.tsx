@@ -1,6 +1,6 @@
 import { ErrorBoundary } from "../components/ui/ErrorBoundary";
 import { ErrorFallback } from "../components/ui/ErrorFallback";
-import { ChangesWorkspace } from "../features/changes/ChangesWorkspace";
+import { ChangesWorkspace } from "../features/changes/changes-workspace";
 import { ConflictWorkspace } from "../features/conflicts";
 import { HistoryInspectWorkspace } from "../features/history-inspect";
 import { HistoryWorkspace } from "../features/graph/HistoryWorkspace";
