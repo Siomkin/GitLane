@@ -40,6 +40,7 @@ export interface PtyIo {
   spawn(cwd: string, cols: number, rows: number): Promise<{ sessionId: number }>;
   write(sessionId: number, data: Uint8Array): Promise<void>;
   kill(sessionId: number): Promise<void>;
+  resize(sessionId: number, cols: number, rows: number): Promise<void>;
 }
 
 /** One live terminal pane: a view bound to a Rust PTY session. */
@@ -70,6 +71,10 @@ export class PaneController {
     private readonly createView: (cwd: string) => PaneView,
     /** Nudge React when a pane's `alive` flips (panes live outside state). */
     private readonly onAliveChange: () => void,
+    /** Defer refit work until layout has settled (a frame in production;
+     * tests capture the callback to interleave disposal before it runs). */
+    private readonly schedule: (cb: () => void) => void = (cb) =>
+      requestAnimationFrame(() => cb()),
   ) {}
 
   get(tabId: string): Pane | undefined {
@@ -138,6 +143,28 @@ export class PaneController {
 
   disposeAll(): void {
     for (const tabId of [...this.panes.keys()]) this.dispose(tabId);
+  }
+
+  /** Fit one pane to its container and resize its PTY to match, deferred so
+   * layout has settled. Guarded by pane identity: the pane may be disposed
+   * (or replaced under the same tabId) before the scheduled frame fires —
+   * never touch a disposed terminal. */
+  refit(tabId: string): void {
+    const pane = this.panes.get(tabId);
+    if (!pane) return;
+    this.schedule(() => {
+      if (this.panes.get(tabId) !== pane) return;
+      try {
+        pane.view.fit();
+        if (pane.sessionId != null) {
+          // Resize failures are non-input noise (they race normal shell
+          // exits); they don't go through the surfaced write path deliberately.
+          void this.io.resize(pane.sessionId, pane.view.term.cols, pane.view.term.rows).catch(() => {});
+        }
+      } catch {
+        /* container hidden — ignore */
+      }
+    });
   }
 
   routeData(sessionId: number, data: ArrayLike<number>): void {

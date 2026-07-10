@@ -8,17 +8,17 @@
 // they're not separate processes, so the user keeps full interactive control and
 // the agent inherits the repo's environment.
 //
-// Rendered as a floating popup at the bottom of the window. It stays mounted
-// across repo/tab switches and hide/collapse (just visually gone) so every
-// pane's PTY + scrollback survive. App mounts it only while a repo is open, so
-// it unmounts when the last repo closes (or during closeRepo's transient null
-// summary) — at which point `useTerminalPanes` disposes every pane's PTY.
-// Otherwise a PTY dies only when the user closes its tab (or its repo). The tab
-// strip lives in `TerminalTabs`, the xterm/PTY lifecycle in `useTerminalPanes`.
+// Rendered as a floating popup at the bottom of the window. App keeps the layer
+// mounted for the whole app session — across repo open/close/switch and
+// hide/collapse (just visually gone) — so every pane's PTY + scrollback survive;
+// `useTerminalPanes` disposes every pane only on true app teardown. A PTY dies
+// when the user closes its tab, its repo's tabs are dropped (`closeRepoTerminals`
+// + reconcile), or the shell exits. The tab strip lives in `TerminalTabs`, the
+// xterm/PTY lifecycle in `useTerminalPanes`.
 
 import { cn } from "@/lib/cn";
 import { useUi } from "@/store/ui";
-import { useTerminalPanes } from "@/features/terminal/useTerminalPanes";
+import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
 import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./terminalIcons";
 
