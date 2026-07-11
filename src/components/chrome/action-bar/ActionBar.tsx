@@ -48,7 +48,7 @@ export const ActionBar = () => {
   useDismiss(navOpen, m.closeNav, wrapRef);
 
   return (
-    <div ref={wrapRef} className="relative flex-none">
+    <div ref={wrapRef} className="relative z-40 flex-none">
       <div className="flex h-12 -translate-y-px items-center gap-2 px-3.5">
         <div className="flex h-8 flex-none items-center rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
           <SegTab

@@ -74,6 +74,35 @@ describe("PrConversation composer loaders", () => {
     expect(screen.getByRole("button", { name: "Request changes" })).toHaveAttribute("aria-busy", "false");
   });
 
+  it("restores request-changes feedback without marking Approve pending", () => {
+    usePulls.setState({
+      prPendingActions: [
+        {
+          id: 1,
+          action: PR_PENDING_ACTION.Review,
+          prNum: 42,
+          reviewAction: "request-changes",
+        },
+      ],
+    });
+
+    render(<PrConversation key="remounted-42" pr={openPr()} />);
+
+    expect(screen.getByRole("button", { name: "Requesting…" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "Approve" })).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("does not restore comment feedback from another PR", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Comment, prNum: 41 }],
+    });
+
+    render(<PrConversation key="remounted-42" pr={openPr()} />);
+
+    expect(screen.getByRole("button", { name: "Comment" })).toHaveAttribute("aria-busy", "false");
+    expect(screen.queryByRole("button", { name: "Posting…" })).not.toBeInTheDocument();
+  });
+
   it("resets the draft when the keyed PR boundary changes", async () => {
     const first = openPr();
     const second = openPr({ num: 43, branch: "feat/next" });
