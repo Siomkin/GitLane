@@ -32,11 +32,11 @@ export const ErrorFallback = ({
     >
       <span className="max-w-md whitespace-pre-wrap break-words">{message}</span>
       <div className="flex items-center gap-2">
-        <button onClick={onRetry} className={cn(button, focusRing)}>
+        <button type="button" onClick={onRetry} className={cn(button, focusRing)}>
           {retryLabel}
         </button>
         {secondary && (
-          <button onClick={secondary.onClick} className={cn(button, focusRing)}>
+          <button type="button" onClick={secondary.onClick} className={cn(button, focusRing)}>
             {secondary.label}
           </button>
         )}

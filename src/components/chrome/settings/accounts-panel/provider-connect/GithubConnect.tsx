@@ -23,7 +23,7 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
           <code className="font-mono text-[12px]">gh</code>, so pull requests and git transport both work.
         </p>
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <button
+          <button type="button"
             onClick={() => openGithubSignin("github.com")}
             className={cn(
               "inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[12.5px] font-semibold text-white transition hover:brightness-110",
@@ -33,7 +33,7 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
             Sign in
           </button>
           {refresh}
-          <button onClick={() => openExternalUrl("https://cli.github.com")} className={cn(linkCls, "px-1")}>
+          <button type="button" onClick={() => openExternalUrl("https://cli.github.com")} className={cn(linkCls, "px-1")}>
             Install gh
           </button>
         </div>
@@ -57,11 +57,11 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
           push. Pull requests stay unavailable until you sign in with <code className="font-mono text-[12px]">gh</code>.
         </p>
         <div className="mt-2 flex flex-col gap-1.5">
-          <button onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
+          <button type="button" onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
             <ExternalIcon />
             Git Credential Manager
           </button>
-          <button onClick={() => openExternalUrl("https://docs.github.com/get-started/git-basics/caching-your-github-credentials-in-git")} className={linkCls}>
+          <button type="button" onClick={() => openExternalUrl("https://docs.github.com/get-started/git-basics/caching-your-github-credentials-in-git")} className={linkCls}>
             <ExternalIcon />
             GitHub credential docs
           </button>
@@ -77,11 +77,11 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
           stores nothing. Pull requests still require <code className="font-mono text-[12px]">gh</code>.
         </p>
         <div className="mt-2 flex flex-col gap-1.5">
-          <button onClick={() => openExternalUrl("https://github.com/settings/ssh/new")} className={linkCls}>
+          <button type="button" onClick={() => openExternalUrl("https://github.com/settings/ssh/new")} className={linkCls}>
             <ExternalIcon />
             Add an SSH key on GitHub
           </button>
-          <button onClick={() => openExternalUrl("https://docs.github.com/authentication/connecting-to-github-with-ssh")} className={linkCls}>
+          <button type="button" onClick={() => openExternalUrl("https://docs.github.com/authentication/connecting-to-github-with-ssh")} className={linkCls}>
             <ExternalIcon />
             How to set up SSH keys
           </button>

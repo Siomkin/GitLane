@@ -55,7 +55,7 @@ export function BlameView() {
               </svg>
               <p className="text-[13px] font-medium text-neutral-600 dark:text-neutral-300">Couldn't compute blame</p>
               <p className="max-w-full truncate text-[12px]">{history.blameError}</p>
-              <button
+              <button type="button"
                 onClick={() => void loadFileBlame(history.blameRevision ?? history.selectedOid, history.selectedPath)}
                 className="mt-1 h-8 rounded-lg bg-[color:var(--accent)] px-3.5 text-[12px] font-semibold text-white hover:brightness-110"
               >
@@ -123,7 +123,7 @@ export function BlameView() {
           <div className="space-y-3.5 p-4">
             <div className="flex items-center gap-2">
               <span className="font-mono text-[12px] text-neutral-400">{selectedLine.shortOid}</span>
-              <button
+              <button type="button"
                 onClick={() => void navigator.clipboard?.writeText(selectedLine.oid)}
                 className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
               >
@@ -142,7 +142,7 @@ export function BlameView() {
             </div>
             <div className="h-px bg-black/5 dark:bg-white/5" />
             <div className="space-y-1.5">
-              <button
+              <button type="button"
                 onClick={() => void revealCommit(selectedLine.oid)}
                 className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
               >
@@ -152,7 +152,7 @@ export function BlameView() {
                 </svg>
                 Open this commit
               </button>
-              <button
+              <button type="button"
                 onClick={() => void loadFileBlame(`${selectedLine.oid}^`, selectedLine.originalPath)}
                 className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
               >

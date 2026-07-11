@@ -69,7 +69,7 @@ export function ManualIdentitiesSection() {
           </p>
         </div>
         {editing?.kind !== "new" && manuals.length > 0 && (
-          <button
+          <button type="button"
             onClick={() => setEditing({ kind: "new" })}
             className={cn(
               "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-black/10 px-2.5 text-[12.5px] font-semibold text-neutral-600 transition hover:bg-black/[0.04] dark:border-white/[0.12] dark:text-neutral-300 dark:hover:bg-white/[0.06]",
@@ -124,7 +124,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         Useful for work, personal, or noreply author addresses. Repos can also use this
         computer's global git config.
       </p>
-      <button
+      <button type="button"
         onClick={onAdd}
         className={cn(
           "mt-3 inline-flex h-8 items-center gap-1.5 rounded-lg border border-black/10 px-3 text-[12.5px] font-semibold text-neutral-600 transition hover:bg-black/[0.04] dark:border-white/[0.12] dark:text-neutral-300 dark:hover:bg-white/[0.06]",

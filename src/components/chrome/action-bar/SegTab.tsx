@@ -20,7 +20,7 @@ export const SegTab = ({
   badgeTone: "accent" | "purple";
 }) => {
   return (
-    <button
+    <button type="button"
       className={cn(
         "flex h-full items-center gap-1.5 rounded-md px-3 font-medium transition",
         focusRing,

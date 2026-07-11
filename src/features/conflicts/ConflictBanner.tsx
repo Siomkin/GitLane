@@ -85,21 +85,21 @@ export const ConflictBanner = ({
         <span className="truncate text-[12px] text-neutral-500 dark:text-neutral-400">{sub}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <button
+        <button type="button"
           onClick={onAbort}
           className="h-8 rounded-lg border border-rose-300/60 px-3 text-[12.5px] font-medium text-rose-600 hover:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400"
         >
           Abort {label.toLowerCase()}
         </button>
         {canSkip && (
-          <button
+          <button type="button"
             onClick={onSkip}
             className="h-8 rounded-lg border border-black/10 px-3 text-[12.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
           >
             Skip commit
           </button>
         )}
-        <button
+        <button type="button"
           onClick={onContinue}
           disabled={!allResolved}
           className={cn(

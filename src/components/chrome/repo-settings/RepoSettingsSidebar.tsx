@@ -45,7 +45,7 @@ export const RepoSettingsSidebar = ({
       {NAV.map(({ key, label, Icon }) => {
         const active = section === key;
         return (
-          <button
+          <button type="button"
             key={key}
             onClick={() => onSelect(key)}
             aria-current={active ? "page" : undefined}
@@ -66,7 +66,7 @@ export const RepoSettingsSidebar = ({
       <div className="px-3 pb-1.5 pt-5 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
         GLOBAL
       </div>
-      <button
+      <button type="button"
         onClick={onOpenGlobalSettings}
         className={cn(
           "group mb-1 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium text-neutral-500 hover:bg-black/[0.03] hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.04] dark:hover:text-neutral-200",

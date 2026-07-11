@@ -70,7 +70,7 @@ export const ActionBar = () => {
         </div>
 
         <div className="relative">
-          <button
+          <button type="button"
             onClick={m.toggleNav}
             title={`Branches, worktrees & stashes. ${currentSync.title}`}
             className="flex h-8 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
@@ -117,7 +117,7 @@ export const ActionBar = () => {
         <WorktreeIndicator />
 
         {openPr && (
-          <button
+          <button type="button"
             onClick={() => {
               // Select the PR first so the detail pane shows this one, not a
               // stale selection, when the PRs view opens.

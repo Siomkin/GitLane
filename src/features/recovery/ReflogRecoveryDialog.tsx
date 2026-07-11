@@ -108,7 +108,7 @@ export const ReflogRecoveryDialog = () => {
           )}
         </div>
         <div className="flex justify-end border-t border-black/10 px-5 py-3 dark:border-white/10">
-          <button
+          <button type="button"
             onClick={close}
             className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
           >

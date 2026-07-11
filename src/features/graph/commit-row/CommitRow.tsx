@@ -49,7 +49,7 @@ export const CommitRow = memo(function CommitRow({
   // useful sources for local-branch operations, but are never writable.
   const isDropTarget = draggingFrom?.kind === "local";
 
-  // Not a <button>: the expanded ref cluster nests its own buttons (split/combine
+  // Not a <button type="button">: the expanded ref cluster nests its own buttons (split/combine
   // chevron), and a button-in-button is invalid HTML that breaks keyboard/click
   // dispatch. A role="button" div keeps the row selectable by mouse and keyboard
   // while letting interactive children render legally.

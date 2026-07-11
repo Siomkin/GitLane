@@ -48,7 +48,7 @@ export function ProfileRow({ profile, onEdit }: { profile: GitProfile; onEdit: (
           {profile.name} · {profile.email}
         </div>
       </div>
-      <button
+      <button type="button"
         onClick={onEdit}
         aria-label={`Edit ${profile.label}`}
         className={cn(

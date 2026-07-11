@@ -26,7 +26,7 @@ export const ToolbarAction = ({
   title?: string;
 }) => {
   return (
-    <button
+    <button type="button"
       className={cn(
         "group relative inline-flex h-8 items-center justify-center rounded-lg",
         wide ? "w-16" : "w-12",

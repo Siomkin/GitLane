@@ -84,7 +84,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
             <span className="text-[color:var(--accent)]">{summary?.headBranch ?? "HEAD"}</span>
           </h1>
           {total > 0 && (
-            <button
+            <button type="button"
               className="shrink-0 text-xs font-medium text-[color:var(--accent)] hover:underline"
               onClick={() => onOpenChanges(true)}
             >
@@ -162,7 +162,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
       </div>
 
       <div className="shrink-0 border-t border-black/5 p-4 dark:border-white/5">
-        <button
+        <button type="button"
           className={cn(
             "h-10 w-full rounded-lg text-[13px] font-medium",
             changes.staged.length > 0 && !commitBlocked
@@ -231,7 +231,7 @@ function FileSection({
           {title} ({files.length})
         </span>
         {files.length > 0 && (
-          <button
+          <button type="button"
             className="h-7 rounded-lg border border-black/10 px-3 text-[12px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
             onClick={allDisabledReason ? undefined : onAll}
             disabled={!!allDisabledReason}

@@ -70,7 +70,7 @@ export function LoadError({
       )}
     >
       <span className="max-w-md whitespace-pre-wrap break-words">{message}</span>
-      <button
+      <button type="button"
         onClick={onRetry}
         className="rounded-md border border-black/10 px-2.5 py-1 text-[12px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
       >

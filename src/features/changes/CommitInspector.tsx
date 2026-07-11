@@ -141,7 +141,7 @@ export function CommitInspector() {
           )}
         </button>
         {selected ? (
-          <button
+          <button type="button"
             className="ml-auto h-8 rounded-lg border border-black/10 px-3 text-[13px] text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
             onClick={() => void checkoutDetached(selected.id).catch((e) => showToast(String(e), "error"))}
           >
@@ -170,7 +170,7 @@ export function CommitInspector() {
           Changed files{commitFiles.length > 0 ? ` (${commitFiles.length})` : ""}
         </span>
         {commitFiles.length > 0 && (
-          <button
+          <button type="button"
             className="text-xs font-medium text-[color:var(--accent)] hover:underline"
             onClick={() => openStackedReview(selectedOid, reviewTitle)}
           >

@@ -103,7 +103,7 @@ export function TerminalLayer() {
           </div>
           <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
           {agents.map((agent) => (
-            <button
+            <button type="button"
               key={agent.id}
               onClick={() => runAgent(agent.command)}
               disabled={!agent.available || !alive}
@@ -114,28 +114,28 @@ export function TerminalLayer() {
             </button>
           ))}
           <div className="ml-auto flex items-center gap-0.5 text-neutral-400">
-            <button
+            <button type="button"
               onClick={clearTerminal}
               title="Clear terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               <ClearIcon />
             </button>
-            <button
+            <button type="button"
               onClick={toggleTerminalExpanded}
               title={terminalExpanded ? "Restore terminal size" : "Maximize terminal"}
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               {terminalExpanded ? <RestoreIcon /> : <ExpandIcon />}
             </button>
-            <button
+            <button type="button"
               onClick={collapseTerminal}
               title="Collapse"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               <CollapseIcon />
             </button>
-            <button
+            <button type="button"
               onClick={hideTerminal}
               title="Hide terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
@@ -157,7 +157,7 @@ export function TerminalLayer() {
       </div>
 
       {visible && terminalView === "collapsed" && (
-        <button
+        <button type="button"
           onClick={expandTerminal}
           title="Expand terminal"
           className="absolute bottom-2.5 left-2.5 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"

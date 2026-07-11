@@ -50,7 +50,7 @@ export function ReviewHeader({
       <div className="ml-auto flex items-center gap-2.5">
         {markdown && (
           <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
-            <button
+            <button type="button"
               className={cn(modeButton(mdView === "code"), "flex items-center gap-1.5")}
               title="Show the raw diff"
               onClick={() => onMdViewChange("code")}
@@ -58,7 +58,7 @@ export function ReviewHeader({
               <CodeIcon width={13} height={13} />
               Code
             </button>
-            <button
+            <button type="button"
               className={cn(modeButton(mdView === "preview"), "flex items-center gap-1.5")}
               title="Render the file as formatted Markdown"
               onClick={() => onMdViewChange("preview")}
@@ -73,15 +73,15 @@ export function ReviewHeader({
             render an image/size card, not line hunks). */}
         {!file?.binary && !previewing && (
           <div className="flex p-0.5 rounded-lg bg-black/[0.06] dark:bg-white/[0.06] text-[12px]">
-            <button className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
+            <button type="button" className={modeButton(mode === "unified")} onClick={() => onModeChange("unified")}>
               Unified
             </button>
-            <button className={modeButton(mode === "split")} onClick={() => onModeChange("split")}>
+            <button type="button" className={modeButton(mode === "split")} onClick={() => onModeChange("split")}>
               Split
             </button>
           </div>
         )}
-        <button
+        <button type="button"
           className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
           onClick={onBack}
         >

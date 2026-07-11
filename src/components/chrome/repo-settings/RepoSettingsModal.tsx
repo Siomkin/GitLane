@@ -89,7 +89,7 @@ export function RepoSettingsModal() {
           onOpenGlobalSettings={goGlobal}
         />
         <div className="relative flex min-w-0 flex-1 flex-col">
-          <button
+          <button type="button"
             onClick={close}
             aria-label="Close repository settings"
             className={cn(

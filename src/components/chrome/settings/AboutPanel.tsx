@@ -96,7 +96,7 @@ export const AboutPanel = () => {
             Check once a day and light the titlebar when a new version is available.
           </div>
         </div>
-        <button
+        <button type="button"
           role="switch"
           aria-checked={autoCheck}
           aria-label="Automatically check for updates"
@@ -118,7 +118,7 @@ export const AboutPanel = () => {
             Update to pre-release beta builds as soon as they ship. Recommended until a stable release is out.
           </div>
         </div>
-        <button
+        <button type="button"
           role="switch"
           aria-checked={betaUpdates}
           aria-label="Receive beta updates"
@@ -160,7 +160,7 @@ export const AboutPanel = () => {
 
       <div className="mt-6 flex items-center gap-5 text-[12.5px] font-medium text-neutral-500 dark:text-neutral-400">
         {LINKS.map((l) => (
-          <button key={l.label} onClick={() => openExternalUrl(l.url)} className={cn("transition-colors hover:text-[color:var(--accent)]", focusRing)}>
+          <button type="button" key={l.label} onClick={() => openExternalUrl(l.url)} className={cn("transition-colors hover:text-[color:var(--accent)]", focusRing)}>
             {l.label}
           </button>
         ))}

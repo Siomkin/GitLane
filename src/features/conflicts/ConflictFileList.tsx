@@ -66,7 +66,7 @@ export const ConflictFileList = ({
             className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300"
           />
         </div>
-        <button
+        <button type="button"
           onClick={onStageAll}
           disabled={!canStageAll}
           className={cn(

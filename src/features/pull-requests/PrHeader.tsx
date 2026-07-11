@@ -100,7 +100,7 @@ const Tab = ({
   onClick: () => void;
 }) => {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       className={cn(
         "mr-5 flex items-center gap-1.5 border-b-2 py-2 text-[13px] font-medium",

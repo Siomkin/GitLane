@@ -62,7 +62,7 @@ export function MergedSelectionInspector() {
           Changed files{files.length > 0 ? ` (${files.length})` : ""}
         </span>
         {files.length > 0 && (
-          <button
+          <button type="button"
             className="text-xs font-medium text-[color:var(--accent)] hover:underline"
             onClick={reviewAll}
           >

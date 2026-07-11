@@ -161,7 +161,7 @@ export function StackedReview() {
       <div className="flex h-12 flex-none items-center gap-3 border-b border-black/5 dark:border-white/5 px-4">
         <span className="truncate text-[14px] font-semibold text-neutral-800 dark:text-neutral-100">{review.title}</span>
         <ChangeTypeCounts summary={summarizeFiles(files)} className="flex-none" />
-        <button
+        <button type="button"
           className="ml-auto flex flex-none items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
           onClick={backToGraph}
         >
@@ -190,7 +190,7 @@ export function StackedReview() {
                 }}
                 className="border-b border-black/5 dark:border-white/5"
               >
-                <button
+                <button type="button"
                   className={`flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 text-left backdrop-blur border-b border-black/5 dark:border-white/5 ${
                     active
                       ? "bg-[var(--accent-soft)]"

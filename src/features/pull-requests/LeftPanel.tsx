@@ -72,7 +72,7 @@ function PullRequestsPanel() {
       <div className="flex flex-col gap-2.5 border-b border-black/5 p-2.5 dark:border-white/5">
         <div className="flex rounded-lg bg-black/[0.06] p-0.5 dark:bg-white/[0.06]">
           {(["open", "closed", "all"] as const).map((key) => (
-            <button
+            <button type="button"
               key={key}
               onClick={() => setPrFilter(key)}
               className={cn(
@@ -95,7 +95,7 @@ function PullRequestsPanel() {
                 : "Not loaded"}
           </span>
           <div className="flex items-center gap-2">
-            <button
+            <button type="button"
               onClick={openCreatePr}
               disabled={!headBranch || unborn || prsUnsupported}
               title={
@@ -113,7 +113,7 @@ function PullRequestsPanel() {
               New PR
             </button>
             <span className="h-3 w-px bg-black/10 dark:bg-white/10" />
-            <button
+            <button type="button"
               onClick={() => void refreshPullRequests()}
               disabled={prsLoading}
               title="Refresh pull requests"

@@ -34,7 +34,7 @@ describe("ErrorBoundary", () => {
       return (
         <ErrorBoundary
           fallback={({ error, reset }) => (
-            <button
+            <button type="button"
               onClick={() => {
                 setExplode(false);
                 reset();

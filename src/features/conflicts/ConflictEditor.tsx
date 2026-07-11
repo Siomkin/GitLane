@@ -52,7 +52,7 @@ const WholeFileCard = ({
       </div>
     </div>
     <div className={cn("mt-4 grid gap-3", secondaryLabel ? "grid-cols-2" : "grid-cols-1")}>
-      <button
+      <button type="button"
         onClick={onPrimary}
         className={cn(
           "rounded-xl border p-3.5 text-left transition-colors",
@@ -71,7 +71,7 @@ const WholeFileCard = ({
         </span>
       </button>
       {secondaryLabel && (
-        <button
+        <button type="button"
           onClick={onSecondary}
           className={cn(
             "rounded-xl border p-3.5 text-left transition-colors",
@@ -199,10 +199,10 @@ export const ConflictEditor = ({
         </span>
         {editableText && !staged && (
           <div className="ml-auto flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]">
-            <button onClick={() => onMode("split")} className={seg(mode === "split")}>
+            <button type="button" onClick={() => onMode("split")} className={seg(mode === "split")}>
               Side by side
             </button>
-            <button onClick={() => onMode("inline")} className={seg(mode === "inline")}>
+            <button type="button" onClick={() => onMode("inline")} className={seg(mode === "inline")}>
               Inline
             </button>
           </div>
@@ -286,7 +286,7 @@ export const ConflictEditor = ({
             <span className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
               {staged ? "Resolved and staged" : "Resolved this file in another tool?"}
             </span>
-            <button
+            <button type="button"
               onClick={staged ? onUnstage : onMarkResolved}
               className="ml-auto h-9 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
             >
@@ -310,14 +310,14 @@ export const ConflictEditor = ({
             <span className="text-[12.5px] text-neutral-600 dark:text-neutral-300">{footLabel}</span>
             <div className="ml-auto flex items-center gap-2">
               {staged && (
-                <button
+                <button type="button"
                   onClick={onUnstage}
                   className="h-9 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
                 >
                   Unstage
                 </button>
               )}
-              <button
+              <button type="button"
                 onClick={onMarkResolved}
                 disabled={!resolved || staged}
                 className={cn(

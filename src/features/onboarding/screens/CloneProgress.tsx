@@ -34,7 +34,7 @@ export const CloneProgress = ({ ob }: { ob: OnboardingApi }) => {
           <span className="font-mono text-neutral-400 dark:text-neutral-500">{pct}%</span>
         </div>
 
-        <button
+        <button type="button"
           onClick={ob.cloneRun.cancel}
           className="mt-8 h-9 rounded-xl border border-black/10 px-4 text-[13px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
         >

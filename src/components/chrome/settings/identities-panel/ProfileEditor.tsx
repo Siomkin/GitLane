@@ -75,7 +75,7 @@ export function ProfileEditor({
         <div className="text-[14px] font-semibold text-neutral-900 dark:text-white">
           {profile ? "Edit identity" : "New identity"}
         </div>
-        <button
+        <button type="button"
           onClick={onCancel}
           aria-label="Cancel"
           className={cn(
@@ -169,7 +169,7 @@ export function ProfileEditor({
       </div>
 
       <div className="mt-4 flex items-center gap-2">
-        <button
+        <button type="button"
           disabled={!valid}
           onClick={submit}
           className={cn(
@@ -180,7 +180,7 @@ export function ProfileEditor({
         >
           Save identity
         </button>
-        <button
+        <button type="button"
           onClick={onCancel}
           className={cn(
             "h-9 px-3.5 rounded-lg text-[13px] font-semibold text-neutral-600 dark:text-neutral-300 border border-black/10 dark:border-white/[0.12] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition",
@@ -191,7 +191,7 @@ export function ProfileEditor({
         </button>
         <div className="ml-auto flex items-center gap-1">
           {onSetDefault && (
-            <button
+            <button type="button"
               onClick={onSetDefault}
               className={cn(
                 "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-semibold text-neutral-500 dark:text-neutral-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition",
@@ -205,7 +205,7 @@ export function ProfileEditor({
             </button>
           )}
           {onDelete && (
-            <button
+            <button type="button"
               onClick={onDelete}
               className={cn(
                 "inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition",

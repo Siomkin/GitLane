@@ -90,7 +90,7 @@ export const ConflictFileRow = ({
           </span>
         ) : (
           <div className="hidden items-center gap-1 group-hover:flex">
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onAcceptOurs();
@@ -100,7 +100,7 @@ export const ConflictFileRow = ({
             >
               Ours
             </button>
-            <button
+            <button type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onAcceptTheirs();

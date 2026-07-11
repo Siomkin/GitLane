@@ -38,7 +38,7 @@ export function ProviderPicker({
   return (
     <div className="rounded-xl border border-black/[0.08] bg-black/[0.015] p-4 dark:border-white/[0.1] dark:bg-white/[0.02]">
       <div className="flex items-center gap-2">
-        <button
+        <button type="button"
           onClick={onBack}
           aria-label="Back"
           className={cn(
@@ -57,7 +57,7 @@ export function ProviderPicker({
         {PROVIDERS.filter((p) => VISIBLE_PROVIDER_KEYS.includes(p.key)).map((p) => {
           const status = line(p.key);
           return (
-            <button
+            <button type="button"
               key={p.key}
               onClick={() => onPick(p.key)}
               className={cn(

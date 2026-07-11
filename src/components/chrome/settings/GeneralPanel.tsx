@@ -26,7 +26,7 @@ function Segmented<T extends string>({
       className="flex max-w-[320px] gap-1 rounded-lg bg-black/[0.06] p-1 dark:bg-white/[0.06]"
     >
       {options.map((option) => (
-        <button
+        <button type="button"
           key={option}
           onClick={() => onChange(option)}
           aria-pressed={value === option}
