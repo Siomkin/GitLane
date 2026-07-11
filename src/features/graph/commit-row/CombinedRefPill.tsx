@@ -1,10 +1,11 @@
 import type { RefLabel } from "../../../lib/api";
 import { cn } from "../../../lib/cn";
-import { TreeIcon } from "../../../components/ui/icons";
 import { useUi } from "../../../store/ui";
 import { useBranchRefDrag } from "../../../hooks/useBranchRefDrag";
 import { RefPill } from "./RefPill";
 import { useBranchWorktreeName } from "./useBranchWorktreeName";
+import { combinedRefPillModel } from "./refPillModel";
+import { PillGlyph } from "./PillGlyph";
 
 /** A local branch + its in-sync remote ref(s) shown as one pill. Collapsed it
  * acts as the local branch (drag source, right-click menu); a single click
@@ -63,19 +64,14 @@ export function CombinedRefPill({
     );
   }
 
-  const cls =
-    "flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[240px] cursor-grab active:cursor-grabbing";
-  const style = current
-    ? "pl-1 pr-1 bg-[var(--accent)] text-white shadow-sm"
-    : "pl-1.5 pr-1 bg-white dark:bg-neutral-700 border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 shadow-sm";
-  const remoteLabel = `${remotes.length} remote${remotes.length > 1 ? "s" : ""}`;
+  const model = combinedRefPillModel(local.name, remotes.length, current, worktreeName);
 
   return (
     <span
       {...dndProps}
-      className={cn(cls, style)}
+      className={model.className}
       style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
-      title={`${local.name} — local + ${remoteLabel} in sync (click to split)`}
+      title={model.title}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -86,22 +82,10 @@ export function CombinedRefPill({
         openContextMenu({ x: e.clientX, y: e.clientY, branch: local.name, isCurrent: current });
       }}
     >
-      {current ? (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-3 w-3 shrink-0">
-          <path d="M20 6 9 17l-5-5" />
-        </svg>
-      ) : worktreeName ? (
-        <TreeIcon className="h-3 w-3 shrink-0 text-neutral-400" />
-      ) : (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3 w-3 shrink-0 text-neutral-400">
-          <path d="M6 3v15M18 9a9 9 0 0 1-9 9" />
-          <circle cx="18" cy="6" r="3" />
-          <circle cx="6" cy="18" r="3" />
-        </svg>
-      )}
+      <PillGlyph icon={model.icon} />
       <span className="truncate">{base}</span>
       <span
-        aria-label={remoteLabel}
+        aria-label={model.remoteLabel}
         className={cn(
           "ml-0.5 flex items-center gap-0.5 rounded px-1 py-0.5",
           current ? "bg-white/20 text-white" : "bg-black/[0.05] text-neutral-400 dark:bg-white/10",
