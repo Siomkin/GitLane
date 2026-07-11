@@ -127,6 +127,12 @@ describe("CreateBranchDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(useUi.getState().createBranchOpen).toBe(false);
   });
+
+  it("stacks at z-[60], below confirm/prompt", () => {
+    openDialog();
+    const { container } = render(<CreateBranchDialog />);
+    expect(backdrop(container).className).toContain("z-[60]");
+  });
 });
 
 describe("ConfirmDialog", () => {
@@ -169,14 +175,17 @@ describe("ConfirmDialog", () => {
 
     fireEvent.click(backdrop(container));
     expect(useUi.getState().confirm).toBeNull();
+    expect(onConfirm).not.toHaveBeenCalled();
 
-    // Reopening after render is a store update — flush it through act.
+    // Reopening after render is a store update — flush it through act. The
+    // reopened request carries its own spy; assert that one, not the first.
+    let reopened!: ReturnType<typeof vi.fn>;
     act(() => {
-      openConfirm();
+      reopened = openConfirm();
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(useUi.getState().confirm).toBeNull();
-    expect(onConfirm).not.toHaveBeenCalled();
+    expect(reopened).not.toHaveBeenCalled();
   });
 
   it("renders message, details, and warnings blocks", () => {
@@ -190,6 +199,12 @@ describe("ConfirmDialog", () => {
     expect(screen.getByText("Deletes feature/x")).toBeInTheDocument();
     expect(screen.getByText("Removes its worktree")).toBeInTheDocument();
     expect(screen.getByText("Unpushed commits will be lost")).toBeInTheDocument();
+  });
+
+  it("stacks at z-[80], above the create-branch dialog", () => {
+    openConfirm();
+    const { container } = render(<ConfirmDialog />);
+    expect(backdrop(container).className).toContain("z-[80]");
   });
 
   it("styles the confirm button as destructive only when danger is set", () => {
@@ -274,22 +289,33 @@ describe("PromptDialog (text variant)", () => {
   });
 
   it("closes without submitting on Escape, backdrop click, and Cancel", () => {
-    const onSubmit = openPrompt();
+    // Each reopened prompt carries its own onSubmit spy — assert the one that
+    // was live for each dismissal path, so no path can submit unnoticed.
+    const escaped = openPrompt();
     render(<PromptDialog />);
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(useUi.getState().prompt).toBeNull();
+    expect(escaped).not.toHaveBeenCalled();
 
-    openPrompt();
+    const backdropped = openPrompt();
     const { container } = render(<PromptDialog />);
     fireEvent.click(backdrop(container));
     expect(useUi.getState().prompt).toBeNull();
+    expect(backdropped).not.toHaveBeenCalled();
 
+    let cancelled!: ReturnType<typeof vi.fn>;
     act(() => {
-      openPrompt();
+      cancelled = openPrompt();
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
     expect(useUi.getState().prompt).toBeNull();
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(cancelled).not.toHaveBeenCalled();
+  });
+
+  it("stacks at z-[80], above the create-branch dialog", () => {
+    openPrompt();
+    const { container } = render(<PromptDialog />);
+    expect(backdrop(container).className).toContain("z-[80]");
   });
 
   it("closes before running onSubmit so a follow-up prompt survives", () => {
@@ -457,7 +483,7 @@ describe("PromptDialog (picker variant)", () => {
     expect(onSubmit).toHaveBeenCalledWith("origin/main");
   });
 
-  it("keeps the highlight on a valid row when typing shrinks the list", () => {
+  it("resets the highlight when the query changes so Enter submits a visible row", () => {
     const onSubmit = vi.fn();
     openPicker(onSubmit);
     render(<PromptDialog />);
