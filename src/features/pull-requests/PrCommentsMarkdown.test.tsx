@@ -64,7 +64,14 @@ beforeEach(() => {
 describe("PR comment markdown", () => {
   it("renders discussion comment HTML through the shared Markdown renderer", () => {
     const pr = makePr({
-      commentList: [{ author, age: "now", body: `${badgeComment}\n\n${htmlComment}` }],
+      commentList: [
+        {
+          author,
+          age: "now",
+          createdAt: "2026-07-11T00:00:00Z",
+          body: `${badgeComment}\n\n${htmlComment}`,
+        },
+      ],
     });
 
     const { container } = render(<PrConversation pr={pr} />);

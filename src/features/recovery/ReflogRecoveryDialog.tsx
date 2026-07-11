@@ -97,9 +97,9 @@ export const ReflogRecoveryDialog = () => {
           ) : entries.length === 0 ? (
             <div className="px-5 py-8 text-center text-[13px] text-neutral-400">No reflog entries found.</div>
           ) : (
-            entries.map((entry, index) => (
+            entries.map((entry) => (
               <ReflogEntryRow
-                key={`${entry.selector || entry.shortSelector}-${entry.oid}-${index}`}
+                key={`${entry.selector || entry.shortSelector}:${entry.oid}:${entry.timestamp}`}
                 entry={entry}
                 onBranch={createBranch}
                 onCheckout={checkout}

@@ -177,10 +177,12 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
             <div className="mt-5 flex flex-col gap-3.5 pb-1">
               {Array.from({ length: oauthStepCount(mode) }, (_, i) => {
                 const status = oauthStepStatus(i, run.reached, false);
+                const label = oauthStepLabel(mode, i, req.host, status === "done");
                 return (
                   <StepRow
+                    // This fixed checklist never inserts, removes, or reorders steps.
                     key={i}
-                    label={oauthStepLabel(mode, i, req.host, status === "done")}
+                    label={label}
                     status={status}
                   />
                 );

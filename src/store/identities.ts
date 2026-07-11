@@ -8,7 +8,8 @@
 // git config remains the source of truth.
 //
 // Persistence:
-// - `gitlane.profiles` (legacy-named, kept) — the identity cards.
+// - `gitlane.profiles:v1` — the identity cards, migrated once from the
+//   legacy-named unversioned key.
 // - `gitlane.repoCommitSource` `{ [repoKey]: {kind:"manual", id} }` — the
 //   applied card, migrated from `gitlane.repoProfile` on first load.
 //
@@ -25,6 +26,7 @@ import {
 } from "../lib/identities";
 import { ACCOUNT_COLORS } from "../lib/palette";
 import { type GitProfile, type ProfileDraft } from "../lib/profiles";
+import { readMigratedStorage } from "../lib/storage";
 import { migratePathKey, repoIdentityKey } from "../lib/worktrees";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
@@ -35,7 +37,8 @@ export type { CommitSourceRef } from "../lib/identities";
 
 // All non-secret app metadata (signing fields are key ids/paths, never private
 // material), so localStorage is the right tier per GL-48.
-const LS_PROFILES = "gitlane.profiles";
+const LS_PROFILES = "gitlane.profiles:v1";
+const LS_PROFILES_LEGACY = "gitlane.profiles";
 const LS_COMMIT_SOURCE = "gitlane.repoCommitSource";
 // Pre-GL-130 keys, consumed (and deleted) by the one-shot migration below.
 const LS_OLD_REPO_PROFILE = "gitlane.repoProfile";
@@ -62,7 +65,7 @@ function writeJsonMap<T>(key: string, map: Record<string, T>) {
 
 function readManuals(): GitProfile[] {
   try {
-    const raw = localStorage.getItem(LS_PROFILES);
+    const raw = readMigratedStorage(LS_PROFILES, LS_PROFILES_LEGACY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as GitProfile[]) : [];

@@ -124,8 +124,12 @@ function ThreadCard({ pr, thread }: { pr: PullRequest; thread: ReviewThread }) {
       </div>
 
       <div className="space-y-3.5 px-3.5 pb-1">
-        {thread.comments.map((c, i) => (
-          <ThreadComment key={i} comment={c} prAuthorName={pr.author.name} />
+        {thread.comments.map((c, index) => (
+          <ThreadComment
+            key={`${c.author.login}:${c.createdAt}:${index}`}
+            comment={c}
+            prAuthorName={pr.author.name}
+          />
         ))}
         {thread.commentsTruncated && (
           <div className="text-[11.5px] italic text-neutral-400">

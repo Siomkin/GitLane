@@ -41,6 +41,7 @@ export function ConfirmDialog() {
       )}
       {confirm.details && confirm.details.length > 0 && (
         <div className="mt-3 rounded-xl border border-black/10 bg-black/[0.025] p-3 text-[12px] leading-relaxed text-neutral-600 dark:border-white/10 dark:bg-white/[0.035] dark:text-neutral-300">
+          {/* Snapshot text has no identity and never reorders while this modal is mounted. */}
           {confirm.details.map((line, i) => (
             <div key={i}>{line}</div>
           ))}
@@ -48,6 +49,7 @@ export function ConfirmDialog() {
       )}
       {confirm.warnings && confirm.warnings.length > 0 && (
         <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-[12px] leading-relaxed text-amber-700 dark:text-amber-300">
+          {/* Snapshot text has no identity and never reorders while this modal is mounted. */}
           {confirm.warnings.map((line, i) => (
             <div key={i}>{line}</div>
           ))}

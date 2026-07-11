@@ -78,6 +78,15 @@ beforeEach(() => {
 });
 
 describe("useIdentities — storage migration and keying", () => {
+  it("moves legacy identity cards to the versioned key", () => {
+    localStorage.setItem("gitlane.profiles", JSON.stringify([personal]));
+
+    useIdentities.getState().loadIdentities();
+
+    expect(localStorage.getItem("gitlane.profiles")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("gitlane.profiles:v1")!)).toEqual([personal]);
+  });
+
   it("migrates the applied profile key once and deletes removed custom-email keys", () => {
     localStorage.setItem("gitlane.repoProfile", JSON.stringify({ [path]: "p2" }));
     localStorage.setItem(

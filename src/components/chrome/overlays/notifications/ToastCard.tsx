@@ -84,7 +84,7 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
           <div className="mt-2.5 flex gap-2">
             {actions.map((a, i) => (
               <button
-                key={i}
+                key={`${a.label}-${i}`}
                 type="button"
                 onClick={() => {
                   a.onClick();

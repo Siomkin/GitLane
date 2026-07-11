@@ -4,12 +4,16 @@
 // Zustand, no IPC (selection.ts-style module).
 
 import { repoLabel } from "../lib/paths";
+import { readMigratedStorage } from "../lib/storage";
 import type { TabInfo } from "../lib/tabs";
 
-const LS_OPEN = "gitlane.openPaths";
+const LS_OPEN = "gitlane.openPaths:v1";
+const LS_OPEN_LEGACY = "gitlane.openPaths";
 const LS_LAST = "gitlane.lastPath";
-const LS_RECENTS = "gitlane.recentRepos";
-const LS_TAB_INFO = "gitlane.tabInfo";
+const LS_RECENTS = "gitlane.recentRepos:v1";
+const LS_RECENTS_LEGACY = "gitlane.recentRepos";
+const LS_TAB_INFO = "gitlane.tabInfo:v1";
+const LS_TAB_INFO_LEGACY = "gitlane.tabInfo";
 
 /** Max recent repositories kept (the onboarding "Recent" list is short). */
 const RECENTS_LIMIT = 12;
@@ -30,7 +34,7 @@ export interface RecentRepo {
 /** Open-repo paths persisted from a previous session (the tab strip). */
 export function readOpenPaths(): string[] {
   try {
-    const raw = localStorage.getItem(LS_OPEN);
+    const raw = readMigratedStorage(LS_OPEN, LS_OPEN_LEGACY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((p) => typeof p === "string") : [];
@@ -65,7 +69,7 @@ export function persistSession(openPaths: string[], lastPath: string | null): vo
  * for the GL-108 recovery screen) even though the dead path no longer answers. */
 export function readTabInfo(): Record<string, TabInfo> {
   try {
-    const raw = localStorage.getItem(LS_TAB_INFO);
+    const raw = readMigratedStorage(LS_TAB_INFO, LS_TAB_INFO_LEGACY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -97,7 +101,7 @@ export function persistTabInfo(tabInfoByPath: Record<string, TabInfo>): void {
 /** Recently-opened repositories from a previous session (most-recent first). */
 export function readRecents(): RecentRepo[] {
   try {
-    const raw = localStorage.getItem(LS_RECENTS);
+    const raw = readMigratedStorage(LS_RECENTS, LS_RECENTS_LEGACY);
     // Absent key → first run on a version with recents: migrate from the old
     // open-tabs list so existing users don't see an empty Recent panel after
     // upgrading. A present (even empty "[]") value is authoritative — no remigrate.
@@ -123,7 +127,7 @@ export function readRecents(): RecentRepo[] {
  * open will refine + persist the list. */
 function migrateRecentsFromOpenPaths(): RecentRepo[] {
   try {
-    const raw = localStorage.getItem(LS_OPEN);
+    const raw = readMigratedStorage(LS_OPEN, LS_OPEN_LEGACY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
