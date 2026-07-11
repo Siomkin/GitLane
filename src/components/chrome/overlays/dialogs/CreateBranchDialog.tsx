@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { validateBranchName } from "@/lib/refName";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -14,6 +14,11 @@ import {
 
 export function CreateBranchDialog() {
   const open = useUi((s) => s.createBranchOpen);
+  if (!open) return null;
+  return <CreateBranchDialogBody />;
+}
+
+function CreateBranchDialogBody() {
   const start = useUi((s) => s.createBranchStart);
   const setOpen = useUi((s) => s.setCreateBranchOpen);
   const summary = useRepo((s) => s.summary);
@@ -21,11 +26,6 @@ export function CreateBranchDialog() {
   const run = useBranchOp();
   const [name, setName] = useState("");
 
-  useEffect(() => {
-    if (open) setName("");
-  }, [open]);
-
-  if (!open) return null;
   const base = start ?? summary?.headBranch ?? "HEAD";
 
   const trimmedName = name.trim();

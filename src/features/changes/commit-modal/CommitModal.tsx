@@ -21,9 +21,16 @@ import { TreeView } from "./TreeView";
 
 export const CommitModal = () => {
   const open = useUi((s) => s.commitOpen);
+  if (!open) return null;
+  return <CommitModalBody />;
+};
+
+const CommitModalBody = () => {
   const close = useUi((s) => s.closeCommit);
   const view = useUi((s) => s.commitView);
   const setView = useUi((s) => s.setCommitView);
+  // Store-owned draft state intentionally survives close/reopen; only the
+  // modal's ephemeral choices (`amend`, selected agent) reset on remount.
   const msg = useUi((s) => s.commitMsg);
   const setMsg = useUi((s) => s.setCommitMsg);
   const excluded = useUi((s) => s.commitExcluded);
@@ -52,29 +59,22 @@ export const CommitModal = () => {
 
   // Close on Escape.
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
+  }, [close]);
 
-  useEffect(() => {
-    if (!open) return;
-    setAmend(false);
-  }, [open]);
-
+  // The repository can refresh while this modal is open. If HEAD becomes
+  // reachable from a remote, an in-progress amend must be disabled at once.
   useEffect(() => {
     if (!canAmend) setAmend(false);
   }, [canAmend]);
 
   useEffect(() => {
-    if (!open) return;
     void loadAgents();
-  }, [open, loadAgents]);
-
-  if (!open) return null;
+  }, [loadAgents]);
 
   const branch = summary?.headBranch ?? "HEAD";
   const excludedPaths: string[] = [];

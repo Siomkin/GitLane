@@ -2,10 +2,10 @@
 // title/body/draft and opens the PR via `gh pr create` (pulls store). Head
 // defaults to the checked-out branch; base to the repo's likely default branch.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { BranchInfo } from "../../lib/api";
 import { useRepo } from "../../store/repo";
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
@@ -22,11 +22,19 @@ function guessBase(branches: BranchInfo[], head: string | null): string {
 
 export function CreatePrDialog() {
   const open = useUi((s) => s.createPrOpen);
+  if (!open) return null;
+  return <CreatePrDialogBody />;
+}
+
+function CreatePrDialogBody() {
   const close = useUi((s) => s.closeCreatePr);
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
   const createPr = usePulls((s) => s.createPr);
   const pending = usePulls((s) => s.prPendingActions.length > 0);
+  const creating = usePulls((s) =>
+    s.prPendingActions.some((entry) => entry.action === PR_PENDING_ACTION.Create),
+  );
   const run = useRunPrAction();
 
   const head = summary?.headBranch ?? "";
@@ -36,41 +44,18 @@ export function CreatePrDialog() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState(false);
-  const [creating, setCreating] = useState(false);
-
-  // Reset the form each time the dialog opens.
-  useEffect(() => {
-    if (open) {
-      setBase(defaultBase);
-      setTitle("");
-      setBody("");
-      setDraft(false);
-      // Clear a stale pending flag if the dialog was cancelled mid-create and
-      // reopened (the in-flight `finally` also clears it; the global `pending`
-      // guard still blocks a real concurrent submit).
-      setCreating(false);
-    }
-  }, [open, defaultBase]);
-
-  if (!open) return null;
-
   const locals = branches.filter((b) => b.kind === "local").map((b) => b.name);
   const canSubmit = !!title.trim() && !!base && !!head && base !== head;
 
   const submit = async () => {
-    if (!canSubmit || creating) return;
-    setCreating(true);
-    try {
-      const ok = await run(
-        () => createPr(base, head, title.trim(), body, draft),
-        `Opened PR from ${head} → ${base}`,
-      );
-      if (ok) {
-        // gh prints the new PR URL; offer to open it, then close.
-        close();
-      }
-    } finally {
-      setCreating(false);
+    if (!canSubmit || pending) return;
+    const ok = await run(
+      () => createPr(base, head, title.trim(), body, draft),
+      `Opened PR from ${head} → ${base}`,
+    );
+    if (ok) {
+      // gh prints the new PR URL; offer to open it, then close.
+      close();
     }
   };
 
@@ -141,7 +126,7 @@ export function CreatePrDialog() {
             </button>
             <button type="button"
               onClick={() => void submit()}
-              disabled={!canSubmit || pending || creating}
+              disabled={!canSubmit || pending}
               aria-busy={creating}
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
             >
