@@ -56,21 +56,21 @@ export const AuthRecoveryPanel = ({ ob, recovery }: { ob: OnboardingApi; recover
               </span>
             )}
           </div>
-          {ob.cloneAuthAccounts.length > 0 && (
+          {ob.cloneForm.accounts.length > 0 && (
             <select
-              value={ob.cloneAccountId ?? ""}
-              onChange={(e) => ob.setCloneAccountId(e.target.value || null)}
+              value={ob.cloneForm.accountId ?? ""}
+              onChange={(e) => ob.cloneForm.setAccountId(e.target.value || null)}
               className="mt-3 h-9 w-full rounded-lg border border-black/10 bg-white px-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
             >
               <option value="">Use Git credential helper or GCM…</option>
-              {ob.cloneAuthAccounts.map((a) => (
+              {ob.cloneForm.accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   Retry as @{a.login} via {a.forge}
                 </option>
               ))}
             </select>
           )}
-          {!ob.cloneAccountId && (
+          {!ob.cloneForm.accountId && (
             <>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
                 For HTTPS, GitLane uses your configured Git credential helper or Git Credential Manager. If this
@@ -103,7 +103,7 @@ export const AuthRecoveryPanel = ({ ob, recovery }: { ob: OnboardingApi; recover
             <button
               type="button"
               title={recovery.sshUrl}
-              onClick={() => ob.retryWithUrl(recovery.sshUrl!)}
+              onClick={() => ob.cloneRecovery.retryWithUrl(recovery.sshUrl!)}
               className={linkCls}
             >
               Retry over SSH
@@ -120,7 +120,7 @@ export const AuthRecoveryPanel = ({ ob, recovery }: { ob: OnboardingApi; recover
             <button
               type="button"
               title={recovery.httpsUrl}
-              onClick={() => ob.retryWithUrl(recovery.httpsUrl!)}
+              onClick={() => ob.cloneRecovery.retryWithUrl(recovery.httpsUrl!)}
               className={linkCls}
             >
               Switch to HTTPS

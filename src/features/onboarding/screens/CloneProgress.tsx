@@ -5,8 +5,8 @@ import { SpinnerRing } from "../icons";
 /** The clone-in-progress screen: a determinate bar driven by the backend's live
  * `clone-progress` events, plus a cancel control. */
 export const CloneProgress = ({ ob }: { ob: OnboardingApi }) => {
-  const repo = parseRepoName(ob.cloneUrl);
-  const pct = Math.round(ob.progress.pct);
+  const repo = parseRepoName(ob.cloneForm.url);
+  const pct = Math.round(ob.cloneRun.progress.pct);
 
   return (
     <div className="flex min-h-full items-center justify-center px-8">
@@ -18,7 +18,7 @@ export const CloneProgress = ({ ob }: { ob: OnboardingApi }) => {
           Cloning {repo}
         </div>
         <div className="mt-1 truncate font-mono text-[13.5px] text-neutral-500 dark:text-neutral-400">
-          {ob.cloneUrl}
+          {ob.cloneForm.url}
         </div>
 
         <div className="mt-7 h-2 overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
@@ -29,13 +29,13 @@ export const CloneProgress = ({ ob }: { ob: OnboardingApi }) => {
         </div>
         <div className="mt-2.5 flex items-center justify-between text-[12.5px]">
           <span className="font-medium text-neutral-600 dark:text-neutral-300">
-            {ob.progress.stage}
+            {ob.cloneRun.progress.stage}
           </span>
           <span className="font-mono text-neutral-400 dark:text-neutral-500">{pct}%</span>
         </div>
 
         <button
-          onClick={ob.cancelClone}
+          onClick={ob.cloneRun.cancel}
           className="mt-8 h-9 rounded-xl border border-black/10 px-4 text-[13px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
         >
           Cancel

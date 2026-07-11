@@ -44,13 +44,10 @@ export interface CloneStartOverrides {
 export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const [cloneUrl, setCloneUrl] = useState("");
   const [cloneParent, setCloneParent] = useState(defaultParent);
-  // The destination folder leaf. Auto-fills from the URL's detected repo name
-  // and re-adopts whenever that name changes, but a manual rename sticks until
-  // then (the old name no longer fits a different repo). `lastDerivedName`
-  // tracks the URL-derived value so a rename — which changes cloneFolder but not
-  // the URL — isn't clobbered by this same sync.
+  // The destination folder leaf. `changeCloneUrl` adopts the URL's detected
+  // repo name whenever that name changes, but a manual rename sticks until
+  // then (the old name no longer fits a different repo).
   const [cloneFolder, setCloneFolder] = useState("");
-  const lastDerivedName = useRef<string | null>(null);
   const [cloneAccountId, setCloneAccountId] = useState<string | null>(null);
   const [cloneUsername, setCloneUsername] = useState("");
   const [clonePassword, setClonePassword] = useState("");
@@ -70,7 +67,14 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
   const remoteInfo = useMemo(() => detectRemoteUrl(cloneUrl), [cloneUrl]);
   const accounts = useAccounts((s) => s.accounts);
-  const forgeAuth = useAccounts((s) => s.forgeAuth);
+  // The one forgeAuth fact glab resolution depends on, selected as a primitive
+  // so the auth-plan memo has an explicit reactive input (no array-identity
+  // churn, no exhaustive-deps suppression): is glab installed AND signed in?
+  const glabAuthed = useAccounts((s) =>
+    s.forgeAuth.some(
+      (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
+    ),
+  );
   const gitlabGlabAuth = useAccounts((s) => s.gitlabGlabAuth);
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   // Detect a glab sign-in in the clone context too — otherwise `forgeAuth` is only
@@ -110,13 +114,15 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
       tokenForHost: httpsClone
         ? pickProviderTokenForHost(providerTokens, remoteInfo.credentialHost!)
         : undefined,
-      glabRef: httpsClone
-        ? gitlabGlabAuth(remoteInfo.host!, remoteInfo.credentialHost!, cloneProviderFor(remoteInfo))
-        : null,
+      // `glabAuthed` is the reactive mirror of the forgeAuth fact
+      // gitlabGlabAuth reads internally — gating on it keeps this memo's
+      // dependency list exhaustive without suppression, and gitlabGlabAuth
+      // still applies its saved-credential override on top.
+      glabRef:
+        httpsClone && glabAuthed
+          ? gitlabGlabAuth(remoteInfo.host!, remoteInfo.credentialHost!, cloneProviderFor(remoteInfo))
+          : null,
     });
-    // `forgeAuth` feeds gitlabGlabAuth's answer (same pattern as the removed
-    // cloneGlabReady memo), so it must invalidate this plan too.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     remoteInfo,
     cloneAuthAccounts,
@@ -124,29 +130,38 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     cloneUsername,
     clonePassword,
     providerTokens,
-    forgeAuth,
+    glabAuthed,
     gitlabGlabAuth,
   ]);
   const cloneAuthStatus = cloneAuthStatusLine(cloneAuthPlan);
   const cloneFolderValid = isSafeLeafName(cloneFolder);
   const canClone = url.state === "valid" && cloneParent.trim() !== "" && cloneFolderValid;
 
-  useEffect(() => {
-    setCloneAccountId(null);
-    setCloneUsername(remoteInfo.user ?? "");
-    setClonePassword("");
-    setCloneKeychain(null);
-  }, [remoteInfo.credentialHost, remoteInfo.user]);
-
-  // Adopt the URL's detected repo name as the destination folder whenever that
-  // name changes. A manual rename updates cloneFolder only (not url.repo), so
-  // it never re-triggers this — the edit sticks until the URL yields a new name.
-  useEffect(() => {
-    if (url.repo !== lastDerivedName.current) {
-      lastDerivedName.current = url.repo;
-      setCloneFolder(url.repo);
-    }
-  }, [url.repo]);
+  /** The URL field's single entry point: commits the URL and every state it
+   * derives in one event (the house rule — no state-sync effects). Auth belongs
+   * to the credential authority + URL-embedded user, so when either changes,
+   * nothing entered for the old one survives (the password NEVER carries
+   * across authorities). The destination folder adopts the newly derived repo
+   * name; a manual rename changed only `cloneFolder`, so it sticks until the
+   * URL yields a different name. */
+  const changeCloneUrl = useCallback(
+    (nextUrl: string) => {
+      const nextInfo = detectRemoteUrl(nextUrl);
+      setCloneUrl(nextUrl);
+      if (
+        nextInfo.credentialHost !== remoteInfo.credentialHost ||
+        nextInfo.user !== remoteInfo.user
+      ) {
+        setCloneAccountId(null);
+        setCloneUsername(nextInfo.user ?? "");
+        setClonePassword("");
+        setCloneKeychain(null);
+      }
+      const nextRepo = validateCloneUrl(nextUrl).repo;
+      if (nextRepo !== url.repo) setCloneFolder(nextRepo);
+    },
+    [remoteInfo, url.repo],
+  );
 
   // Live clone progress streamed from the backend.
   useEffect(() => {
@@ -321,18 +336,19 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
 
   /** Recovery-panel transport switch: retry the clone over the alternative URL
    * (HTTPS↔SSH), starting from that transport's default auth — credentials
-   * entered for the old URL are cleared, not carried over. The form field
-   * follows so a further failure reclassifies — and recovers — against the
-   * URL actually attempted. */
+   * entered for the old URL are cleared unconditionally, not carried over
+   * (recovery alternates never embed a URL user, so this can only clear). The
+   * form field follows so a further failure reclassifies — and recovers —
+   * against the URL actually attempted. */
   const retryWithUrl = useCallback(
     (nextUrl: string) => {
-      setCloneUrl(nextUrl);
+      changeCloneUrl(nextUrl);
       setCloneAccountId(null);
       setCloneUsername("");
       setClonePassword("");
       startClone({ url: nextUrl });
     },
-    [startClone],
+    [changeCloneUrl, startClone],
   );
 
   /** Open the clone form fresh, clearing any prior error. */
@@ -341,34 +357,47 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     setScreen("clone");
   }, [setScreen]);
 
+  // Grouped contract (GL-194): screens consume the focused slice they need —
+  // the form model, the run surface, or the failure recovery — instead of a
+  // ~30-field flat facade. Plain per-render objects; the single top-level hook
+  // re-renders every screen anyway, so memoizing them would buy nothing.
   return {
-    cloneUrl,
-    setCloneUrl,
-    url,
-    cloneParent,
-    cloneFolder,
-    setCloneFolder,
-    cloneFolderValid,
-    cloneAccountId,
-    setCloneAccountId,
-    cloneUsername,
-    setCloneUsername,
-    clonePassword,
-    setClonePassword,
-    cloneKeychain,
-    setCloneKeychain,
-    cloneAuthAccounts,
-    cloneAuthPlan,
-    cloneAuthStatus,
-    cloneRemoteInfo: remoteInfo,
-    browseCloneParent,
-    canClone,
-    startClone,
-    progress,
-    cancelClone,
-    error,
-    retry,
-    retryWithUrl,
+    /** Everything the clone form (and the recovery panel's inputs) binds to. */
+    cloneForm: {
+      url: cloneUrl,
+      changeUrl: changeCloneUrl,
+      validated: url,
+      remoteInfo,
+      parent: cloneParent,
+      browseParent: browseCloneParent,
+      folder: cloneFolder,
+      setFolder: setCloneFolder,
+      folderValid: cloneFolderValid,
+      accountId: cloneAccountId,
+      setAccountId: setCloneAccountId,
+      username: cloneUsername,
+      setUsername: setCloneUsername,
+      password: clonePassword,
+      setPassword: setClonePassword,
+      keychain: cloneKeychain,
+      setKeychain: setCloneKeychain,
+      accounts: cloneAuthAccounts,
+      authPlan: cloneAuthPlan,
+      authStatus: cloneAuthStatus,
+      canClone,
+    },
+    /** The clone run: start, live progress, cancel. */
+    cloneRun: {
+      start: startClone,
+      progress,
+      cancel: cancelClone,
+    },
+    /** The failed-clone surface: the classified error and its retries. */
+    cloneRecovery: {
+      error,
+      retry,
+      retryWithUrl,
+    },
     goCloneForm,
   };
 };

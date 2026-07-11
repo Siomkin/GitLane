@@ -9,14 +9,14 @@ import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "..
 import { CloneAuthStatus } from "./CloneAuthStatus";
 
 export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
-  const { state, repo } = ob.url;
+  const { state, repo } = ob.cloneForm.validated;
   const borderCls =
     state === "valid"
       ? "border-emerald-400 dark:border-emerald-500/60 focus:ring-emerald-400/40"
       : state === "invalid"
         ? "border-red-400 dark:border-red-500/60 focus:ring-red-400/40"
         : "border-black/10 dark:border-white/10 focus:border-[color:var(--accent)] focus:ring-[color:var(--accent)]/40";
-  const cloneBtnCls = ob.canClone
+  const cloneBtnCls = ob.cloneForm.canClone
     ? "bg-[color:var(--accent)] hover:brightness-110"
     : "cursor-not-allowed bg-neutral-300 opacity-60 dark:bg-neutral-700";
 
@@ -53,8 +53,8 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
         <div className="relative">
           <input
             id="clone-remote-url"
-            value={ob.cloneUrl}
-            onChange={(e) => ob.setCloneUrl(e.target.value)}
+            value={ob.cloneForm.url}
+            onChange={(e) => ob.cloneForm.changeUrl(e.target.value)}
             placeholder="https://github.com/owner/repo.git"
             spellCheck={false}
             autoFocus
@@ -80,7 +80,7 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
         </div>
 
         {/* How this clone will authenticate (opt-in manual credentials). */}
-        {state === "valid" && ob.cloneRemoteInfo.valid && <CloneAuthStatus ob={ob} />}
+        {state === "valid" && ob.cloneForm.remoteInfo.valid && <CloneAuthStatus ob={ob} />}
 
         {/* Destination */}
         <div className="mb-1.5 mt-5 block text-[13px] font-medium text-neutral-700 dark:text-neutral-300">
@@ -89,15 +89,15 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
         <div className="flex gap-2">
           <div className="flex h-11 min-w-0 flex-1 items-center rounded-xl border border-black/10 bg-white px-3.5 font-mono text-[13px] text-neutral-700 shadow-sm dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200">
             <FolderGlyph className="mr-2 h-4 w-4 shrink-0 text-neutral-400" />
-            {ob.cloneParent ? (
+            {ob.cloneForm.parent ? (
               <div className="flex min-w-0 flex-1 items-center">
-                <span className="truncate">{ob.cloneParent}/</span>
+                <span className="truncate">{ob.cloneForm.parent}/</span>
                 <input
-                  value={ob.cloneFolder}
-                  onChange={(e) => ob.setCloneFolder(e.target.value)}
+                  value={ob.cloneForm.folder}
+                  onChange={(e) => ob.cloneForm.setFolder(e.target.value)}
                   spellCheck={false}
                   aria-label="Destination folder name"
-                  size={Math.min(Math.max(ob.cloneFolder.length, 1), 32)}
+                  size={Math.min(Math.max(ob.cloneForm.folder.length, 1), 32)}
                   className="shrink-0 bg-transparent font-semibold text-[color:var(--accent)] outline-none"
                 />
               </div>
@@ -107,14 +107,14 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
           </div>
           <button
             type="button"
-            onClick={ob.browseCloneParent}
+            onClick={ob.cloneForm.browseParent}
             className="h-11 rounded-xl border border-black/10 bg-white px-4 text-[13px] font-medium text-neutral-700 shadow-sm hover:bg-black/[0.03] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-white/[0.04]"
           >
             Browse…
           </button>
         </div>
         <div className="mt-1.5 text-[12px]">
-          {ob.cloneParent && !ob.cloneFolderValid ? (
+          {ob.cloneForm.parent && !ob.cloneForm.folderValid ? (
             <span className="text-red-500">Enter a folder name — it can’t contain “/” or “\”.</span>
           ) : (
             <span className="text-neutral-400 dark:text-neutral-500">
@@ -134,8 +134,8 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
           </button>
           <button
             type="button"
-            onClick={() => ob.startClone()}
-            disabled={!ob.canClone}
+            onClick={() => ob.cloneRun.start()}
+            disabled={!ob.cloneForm.canClone}
             className={`flex h-10 items-center gap-2 rounded-xl px-5 text-[13.5px] font-semibold text-white shadow-sm transition ${cloneBtnCls}`}
           >
             <CloneIcon className="h-4 w-4" strokeWidth={1.9} />

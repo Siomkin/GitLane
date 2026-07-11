@@ -15,13 +15,13 @@ const linkCls =
 
 export const CloneAuthStatus = ({ ob }: { ob: OnboardingApi }) => {
   const [open, setOpen] = useState(false);
-  const plan = ob.cloneAuthPlan;
+  const plan = ob.cloneForm.authPlan;
 
   if (plan.method === "ssh") {
-    const help = sshKeyHelp(cloneProviderFor(ob.cloneRemoteInfo), ob.cloneRemoteInfo.host ?? "");
+    const help = sshKeyHelp(cloneProviderFor(ob.cloneForm.remoteInfo), ob.cloneForm.remoteInfo.host ?? "");
     return (
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-neutral-500 dark:text-neutral-400">
-        <span>{ob.cloneAuthStatus}</span>
+        <span>{ob.cloneForm.authStatus}</span>
         {help.addUrl && (
           <button type="button" onClick={() => openExternalUrl(help.addUrl!)} className={linkCls}>
             Add an SSH key
@@ -42,7 +42,7 @@ export const CloneAuthStatus = ({ ob }: { ob: OnboardingApi }) => {
   return (
     <div>
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-neutral-500 dark:text-neutral-400">
-        <span>{ob.cloneAuthStatus}</span>
+        <span>{ob.cloneForm.authStatus}</span>
         <button type="button" onClick={() => setOpen((v) => !v)} className={linkCls}>
           {open ? "Hide credentials" : nothingResolved ? "Add credentials…" : "Change…"}
         </button>

@@ -21,7 +21,7 @@ export const useOnboarding = (onDone?: () => void) => {
   const [screen, setScreen] = useState<OnboardingScreen>("home");
   const [result, setResult] = useState<OnboardingResult | null>(null);
 
-  const { goCloneForm, ...clone } = useCloneFlow({ setScreen, setResult });
+  const { goCloneForm, cloneForm, cloneRun, cloneRecovery } = useCloneFlow({ setScreen, setResult });
   const { goInitForm, ...init } = useInitFlow({ setScreen, setResult });
 
   // Refresh recents' presence + branch from disk when the start screen mounts.
@@ -100,8 +100,10 @@ export const useOnboarding = (onDone?: () => void) => {
     openLocal,
     openRecent,
     clearRecents,
-    // clone flow (form / progress / error)
-    ...clone,
+    // clone flow, grouped by the slice a screen consumes (GL-194)
+    cloneForm,
+    cloneRun,
+    cloneRecovery,
     // init flow (form)
     ...init,
     // result

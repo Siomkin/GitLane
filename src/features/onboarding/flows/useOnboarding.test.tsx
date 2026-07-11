@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 
@@ -146,20 +147,20 @@ describe("openRecent — opening a present recent", () => {
 describe("clone auth status line", () => {
   it("tracks the manual fields: default system copy flips to entered-token", () => {
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://gitlab.com/group/repo.git"));
-    expect(result.current.cloneAuthPlan.method).toBe("system");
-    expect(result.current.cloneAuthStatus).toMatch(/Git credential helper \/ GCM/);
+    act(() => result.current.cloneForm.changeUrl("https://gitlab.com/group/repo.git"));
+    expect(result.current.cloneForm.authPlan.method).toBe("system");
+    expect(result.current.cloneForm.authStatus).toMatch(/Git credential helper \/ GCM/);
 
-    act(() => result.current.setClonePassword("token"));
-    expect(result.current.cloneAuthPlan.method).toBe("enteredToken");
-    expect(result.current.cloneAuthStatus).toBe("Will authenticate with the token you entered.");
+    act(() => result.current.cloneForm.setPassword("token"));
+    expect(result.current.cloneForm.authPlan.method).toBe("enteredToken");
+    expect(result.current.cloneForm.authStatus).toBe("Will authenticate with the token you entered.");
   });
 
   it("says SSH for ssh URLs", () => {
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("git@github.com:o/r.git"));
-    expect(result.current.cloneAuthPlan.method).toBe("ssh");
-    expect(result.current.cloneAuthStatus).toMatch(/SSH key/);
+    act(() => result.current.cloneForm.changeUrl("git@github.com:o/r.git"));
+    expect(result.current.cloneForm.authPlan.method).toBe("ssh");
+    expect(result.current.cloneForm.authStatus).toMatch(/SSH key/);
   });
 });
 
@@ -183,17 +184,17 @@ describe("auth-failure recovery", () => {
     });
 
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.cloneRun.start());
     await waitFor(() => expect(result.current.screen).toBe("error"));
-    expect(result.current.error?.kind).toBe("denied");
-    expect(result.current.error?.recoverable).toBe(true);
+    expect(result.current.cloneRecovery.error?.kind).toBe("denied");
+    expect(result.current.cloneRecovery.error?.recoverable).toBe(true);
 
     // The recovery panel binds its inputs to the flow state; the screen's
     // single bottom Retry then reruns the clone with them.
-    act(() => result.current.setCloneUsername("x-bitbucket-api-token-auth"));
-    act(() => result.current.setClonePassword("tok"));
-    act(() => result.current.retry());
+    act(() => result.current.cloneForm.setUsername("x-bitbucket-api-token-auth"));
+    act(() => result.current.cloneForm.setPassword("tok"));
+    act(() => result.current.cloneRecovery.retry());
 
     await waitFor(() => expect(result.current.screen).toBe("opened"));
     // Bitbucket is PR-capable, so the token defaults to the keychain (GL-152) —
@@ -205,7 +206,7 @@ describe("auth-failure recovery", () => {
     expect(cloneCalls).toBe(2);
     // The credential survives in form state for a possible second failure —
     // the URL didn't change, so the reset effect must not clobber it.
-    expect(result.current.cloneUsername).toBe("x-bitbucket-api-token-auth");
+    expect(result.current.cloneForm.username).toBe("x-bitbucket-api-token-auth");
   });
 
   it("retryWithUrl switches transport and reruns the clone over the new URL", async () => {
@@ -224,23 +225,23 @@ describe("auth-failure recovery", () => {
     });
 
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("git@github.com:octo/repo.git"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("git@github.com:octo/repo.git"));
+    act(() => result.current.cloneRun.start());
     await waitFor(() => expect(result.current.screen).toBe("error"));
-    expect(result.current.error?.recoverable).toBe(true);
+    expect(result.current.cloneRecovery.error?.recoverable).toBe(true);
 
     // A stray username from earlier state must NOT be baked into the switched
     // URL — the switch starts from the new transport's default auth.
-    act(() => result.current.setCloneUsername("x-bitbucket-api-token-auth"));
+    act(() => result.current.cloneForm.setUsername("x-bitbucket-api-token-auth"));
     // The SSH panel's "Switch to HTTPS" — explicit URL, no setState round-trip.
-    act(() => result.current.retryWithUrl("https://github.com/octo/repo.git"));
+    act(() => result.current.cloneRecovery.retryWithUrl("https://github.com/octo/repo.git"));
 
     await waitFor(() => expect(result.current.screen).toBe("opened"));
     expect(cloneUrls).toEqual(["git@github.com:octo/repo.git", "https://github.com/octo/repo.git"]);
     // The form field followed, so a further failure recovers against this URL —
     // and the stale credential state was cleared with the switch.
-    expect(result.current.cloneUrl).toBe("https://github.com/octo/repo.git");
-    expect(result.current.cloneUsername).toBe("");
+    expect(result.current.cloneForm.url).toBe("https://github.com/octo/repo.git");
+    expect(result.current.cloneForm.username).toBe("");
   });
 
   it("stores a PR-capable forge's token in the keychain so PRs work too (GL-152)", async () => {
@@ -254,10 +255,10 @@ describe("auth-failure recovery", () => {
     });
 
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
-    act(() => result.current.setCloneUsername("x-token-auth"));
-    act(() => result.current.setClonePassword("tok"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.cloneForm.setUsername("x-token-auth"));
+    act(() => result.current.cloneForm.setPassword("tok"));
+    act(() => result.current.cloneRun.start());
 
     await waitFor(() => expect(result.current.screen).toBe("opened"));
     // Keychain path: token stored as a provider token, NOT sent to the git helper.
@@ -287,10 +288,10 @@ describe("auth-failure recovery", () => {
     });
 
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
-    act(() => result.current.setCloneUsername("x-token-auth"));
-    act(() => result.current.setClonePassword("tok"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.cloneForm.setUsername("x-token-auth"));
+    act(() => result.current.cloneForm.setPassword("tok"));
+    act(() => result.current.cloneRun.start());
 
     await waitFor(() => expect(result.current.screen).toBe("opened"));
     // The keychain attempt was made and failed…
@@ -319,11 +320,11 @@ describe("auth-failure recovery", () => {
 
     const { result } = renderHook(() => useOnboarding());
     // The folder auto-fills from the URL's repo name…
-    act(() => result.current.setCloneUrl("https://github.com/octo/repo.git"));
-    expect(result.current.cloneFolder).toBe("repo");
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    expect(result.current.cloneForm.folder).toBe("repo");
     // …and a manual rename is what the clone actually writes to.
-    act(() => result.current.setCloneFolder("my-fork"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.setFolder("my-fork"));
+    act(() => result.current.cloneRun.start());
 
     await waitFor(() => expect(result.current.screen).toBe("opened"));
     expect(dests[0].endsWith("/my-fork")).toBe(true);
@@ -331,12 +332,12 @@ describe("auth-failure recovery", () => {
 
   it("blocks the clone when the destination folder name is invalid (GL-151)", () => {
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://github.com/octo/repo.git"));
-    expect(result.current.canClone).toBe(true);
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    expect(result.current.cloneForm.canClone).toBe(true);
     // A path separator isn't a safe single folder leaf.
-    act(() => result.current.setCloneFolder("nested/name"));
-    expect(result.current.cloneFolderValid).toBe(false);
-    expect(result.current.canClone).toBe(false);
+    act(() => result.current.cloneForm.setFolder("nested/name"));
+    expect(result.current.cloneForm.folderValid).toBe(false);
+    expect(result.current.cloneForm.canClone).toBe(false);
   });
 
   it("keeps the token in the git helper when 'enable pull requests' is off", async () => {
@@ -350,11 +351,11 @@ describe("auth-failure recovery", () => {
     });
 
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://bitbucket.org/w/r.git"));
-    act(() => result.current.setCloneUsername("x-token-auth"));
-    act(() => result.current.setClonePassword("tok"));
-    act(() => result.current.setCloneKeychain(false));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://bitbucket.org/w/r.git"));
+    act(() => result.current.cloneForm.setUsername("x-token-auth"));
+    act(() => result.current.cloneForm.setPassword("tok"));
+    act(() => result.current.cloneForm.setKeychain(false));
+    act(() => result.current.cloneRun.start());
 
     await waitFor(() => expect(result.current.screen).toBe("opened"));
     expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", expect.anything());
@@ -368,10 +369,78 @@ describe("auth-failure recovery", () => {
         : Promise.resolve([]),
     );
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://x.example/o/r.git"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://x.example/o/r.git"));
+    act(() => result.current.cloneRun.start());
     await waitFor(() => expect(result.current.screen).toBe("error"));
-    expect(result.current.error?.recoverable).toBe(false);
+    expect(result.current.cloneRecovery.error?.recoverable).toBe(false);
+  });
+});
+
+describe("URL-driven transitions", () => {
+  it("adopts the URL's user and clears the password when the authority changes", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://alice@github.com/octo/repo.git"));
+    expect(result.current.cloneForm.username).toBe("alice");
+
+    act(() => result.current.cloneForm.setPassword("secret"));
+    act(() => result.current.cloneForm.setKeychain(false));
+
+    // A different credential authority: NOTHING entered for the old one may
+    // survive — password cleared, account unpicked, keychain back to default.
+    act(() => result.current.cloneForm.changeUrl("https://gitlab.com/group/other.git"));
+    expect(result.current.cloneForm.username).toBe("");
+    expect(result.current.cloneForm.password).toBe("");
+    expect(result.current.cloneForm.accountId).toBeNull();
+    expect(result.current.cloneForm.keychain).toBeNull();
+    // The destination folder re-derived from the new repo name.
+    expect(result.current.cloneForm.folder).toBe("other");
+  });
+
+  it("keeps entered credentials across a same-authority path edit", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    act(() => result.current.cloneForm.setUsername("me"));
+    act(() => result.current.cloneForm.setPassword("secret"));
+
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/renamed.git"));
+
+    expect(result.current.cloneForm.username).toBe("me");
+    expect(result.current.cloneForm.password).toBe("secret");
+    expect(result.current.cloneForm.folder).toBe("renamed");
+  });
+
+  it("keeps a manual folder rename until the URL yields a NEW repo name", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    expect(result.current.cloneForm.folder).toBe("repo");
+
+    act(() => result.current.cloneForm.setFolder("my-fork"));
+    // Same derived name (owner changed, leaf didn't): the rename sticks.
+    act(() => result.current.cloneForm.changeUrl("https://github.com/fork-org/repo.git"));
+    expect(result.current.cloneForm.folder).toBe("my-fork");
+
+    // A new derived name replaces the stale manual value.
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo2.git"));
+    expect(result.current.cloneForm.folder).toBe("repo2");
+  });
+
+  it("behaves identically under StrictMode double-invocation", () => {
+    const { result } = renderHook(() => useOnboarding(), {
+      wrapper: ({ children }) => <StrictMode>{children}</StrictMode>,
+    });
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    expect(result.current.cloneForm.folder).toBe("repo");
+
+    act(() => result.current.cloneForm.setFolder("mine"));
+    act(() => result.current.cloneForm.setUsername("me"));
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git".replace("repo", "repo")));
+    // No-op URL write: nothing may reset.
+    expect(result.current.cloneForm.folder).toBe("mine");
+    expect(result.current.cloneForm.username).toBe("me");
+
+    act(() => result.current.cloneForm.changeUrl("https://gitlab.com/g/x.git"));
+    expect(result.current.cloneForm.folder).toBe("x");
+    expect(result.current.cloneForm.username).toBe("");
   });
 });
 
@@ -393,10 +462,10 @@ describe("overlay unmount during clone", () => {
     });
 
     const { result } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://gitlab.com/group/repo.git"));
-    act(() => result.current.setCloneUsername(""));
-    act(() => result.current.setClonePassword("token"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://gitlab.com/group/repo.git"));
+    act(() => result.current.cloneForm.setUsername(""));
+    act(() => result.current.cloneForm.setPassword("token"));
+    act(() => result.current.cloneRun.start());
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
@@ -432,8 +501,8 @@ describe("overlay unmount during clone", () => {
     );
 
     const { result, unmount } = renderHook(() => useOnboarding());
-    act(() => result.current.setCloneUrl("https://github.com/o/r.git"));
-    act(() => result.current.startClone());
+    act(() => result.current.cloneForm.changeUrl("https://github.com/o/r.git"));
+    act(() => result.current.cloneRun.start());
     await waitFor(() => expect(result.current.screen).toBe("progress"));
 
     unmount();

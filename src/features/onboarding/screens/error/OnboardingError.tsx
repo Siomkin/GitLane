@@ -11,10 +11,10 @@ import { AuthRecoveryPanel } from "./AuthRecoveryPanel";
  * the recovery panel; its inputs bind to the clone flow's state, so the
  * screen's single bottom Retry reruns the clone with whatever was entered. */
 export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
-  const error = ob.error;
+  const error = ob.cloneRecovery.error;
   const recovery = useMemo(
-    () => (error?.recoverable ? buildAuthRecovery(ob.cloneUrl) : null),
-    [error?.recoverable, ob.cloneUrl],
+    () => (error?.recoverable ? buildAuthRecovery(ob.cloneForm.url) : null),
+    [error?.recoverable, ob.cloneForm.url],
   );
   if (!error) return null;
 
@@ -66,7 +66,7 @@ export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
             Back to start
           </button>
           <button
-            onClick={ob.retry}
+            onClick={ob.cloneRecovery.retry}
             className="flex h-10 items-center gap-2 rounded-xl bg-[color:var(--accent)] px-5 text-[13.5px] font-semibold text-white shadow-sm hover:brightness-110"
           >
             <RetryIcon className="h-4 w-4" />
