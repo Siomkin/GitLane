@@ -192,6 +192,9 @@ export const SplitConflict = ({
   const aRef = useRef<HTMLDivElement>(null);
   const bRef = useRef<HTMLDivElement>(null);
   const outRef = useRef<HTMLDivElement>(null);
+  // The raw focused-hunk ordinal. It can fall out of range when the conflict
+  // count shrinks (see `activeInRange` below) — display and navigation must read
+  // `activeInRange`, never this, or the counter reads "conflict 2 of 1".
   const [active, setActive] = useState(0);
 
   // The ordered conflict hunks (by region index) and which remain unresolved.
@@ -216,11 +219,17 @@ export const SplitConflict = ({
   const total = order.length;
 
   // The conflict count can shrink while this file stays mounted (an external
-  // edit or watcher refresh re-derives outRows), so keep the active index in
-  // range — otherwise the counter and reveal target a hunk that no longer exists.
-  useEffect(() => {
-    setActive((prev) => Math.min(prev, Math.max(total - 1, 0)));
-  }, [total]);
+  // edit or watcher refresh re-derives outRows), so the raw `active` index can
+  // fall out of range. Clamp during render rather than correcting it in an
+  // effect: the counter and nav never point at a hunk that no longer exists,
+  // and because the raw index is preserved, a count that grows back (e.g. a hunk
+  // re-conflicts) restores the user's position instead of pinning it low.
+  //
+  // The restore is counter/nav only — a refresh never auto-scrolls the panes
+  // (the GL-179 landing contract; the viewport re-syncs on the next prev/next).
+  // And `active` is an ordinal, not a hunk identity: if a refresh reorders hunks,
+  // the restored index tracks position, not the same conflict.
+  const activeInRange = Math.min(active, Math.max(total - 1, 0));
 
   const reveal = useCallback(
     (i: number, smooth: boolean) => {
@@ -253,7 +262,7 @@ export const SplitConflict = ({
   }, [landing]);
 
   const go = (delta: number) => {
-    const next = Math.min(Math.max(active + delta, 0), Math.max(total - 1, 0));
+    const next = Math.min(Math.max(activeInRange + delta, 0), Math.max(total - 1, 0));
     setActive(next);
     reveal(next, true);
   };
@@ -308,21 +317,21 @@ export const SplitConflict = ({
                 aria-live="polite"
                 className="text-[10.5px] font-medium tabular-nums text-neutral-400"
               >
-                conflict {active + 1} of {total}
+                conflict {activeInRange + 1} of {total}
               </span>
               <button type="button"
                 onClick={() => go(-1)}
-                disabled={active === 0}
+                disabled={activeInRange === 0}
                 aria-label="Previous conflict"
-                className={navBtn(active > 0)}
+                className={navBtn(activeInRange > 0)}
               >
                 <ChevronIcon dir="up" />
               </button>
               <button type="button"
                 onClick={() => go(1)}
-                disabled={active >= total - 1}
+                disabled={activeInRange >= total - 1}
                 aria-label="Next conflict"
-                className={navBtn(active < total - 1)}
+                className={navBtn(activeInRange < total - 1)}
               >
                 <ChevronIcon dir="down" />
               </button>
