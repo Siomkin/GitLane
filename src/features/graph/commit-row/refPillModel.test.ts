@@ -34,6 +34,29 @@ describe("refPillModel", () => {
     expect(refPillModel(ref("branch"), false, null).title).toBeUndefined();
   });
 
+  it("never leaks the worktree tooltip to current branches, tags, or remotes", () => {
+    // In the app the hook's enabled-gate keeps worktreeName null for these;
+    // the pure model must be safe for arbitrary callers too.
+    expect(refPillModel(ref("branch", "main"), true, "wt").title).toBeUndefined();
+    expect(refPillModel(ref("tag", "v1"), false, "wt").title).toBeUndefined();
+    expect(refPillModel(ref("remote", "origin/x"), false, "wt").title).toBeUndefined();
+  });
+
+  it("reproduces the exact class strings the leaves used to build with cn()", () => {
+    expect(refPillModel(ref("branch", "main"), true, null).className).toMatchInlineSnapshot(
+      `"flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[220px] pl-1 pr-2 bg-[var(--accent)] text-white shadow-sm cursor-grab active:cursor-grabbing"`,
+    );
+    expect(refPillModel(ref("tag", "v1"), false, null).className).toMatchInlineSnapshot(
+      `"flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[220px] pl-1.5 pr-2 bg-amber-50 dark:bg-amber-400/10 border border-amber-300/70 dark:border-amber-400/25 text-amber-700 dark:text-amber-300"`,
+    );
+    expect(refPillModel(ref("remote", "origin/x"), false, null).className).toMatchInlineSnapshot(
+      `"flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[220px] pl-1.5 pr-2 bg-black/[0.04] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.06] text-neutral-500 dark:text-neutral-400 cursor-grab active:cursor-grabbing"`,
+    );
+    expect(refPillModel(ref("branch"), false, null).className).toMatchInlineSnapshot(
+      `"flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[220px] pl-1.5 pr-2 bg-white dark:bg-neutral-700 border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 shadow-sm cursor-grab active:cursor-grabbing"`,
+    );
+  });
+
   it("applies the tone variants: accent for current, amber for tags, muted for remotes", () => {
     expect(refPillModel(ref("branch", "main"), true, null).className).toContain("bg-[var(--accent)]");
     expect(refPillModel(ref("tag", "v1"), false, null).className).toContain("bg-amber-50");
@@ -68,9 +91,11 @@ describe("combinedRefPillModel", () => {
   });
 
   it("styles current with the accent and everything else as a plain card", () => {
-    expect(combinedRefPillModel("main", 1, true, null).className).toContain("bg-[var(--accent)]");
-    expect(combinedRefPillModel("feature", 1, false, null).className).toContain("bg-white");
-    // Collapsed pills always drag (they act as the local branch).
-    expect(combinedRefPillModel("feature", 1, false, null).className).toContain("cursor-grab");
+    expect(combinedRefPillModel("main", 1, true, null).className).toMatchInlineSnapshot(
+      `"flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[240px] cursor-grab active:cursor-grabbing pl-1 pr-1 bg-[var(--accent)] text-white shadow-sm"`,
+    );
+    expect(combinedRefPillModel("feature", 1, false, null).className).toMatchInlineSnapshot(
+      `"flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[240px] cursor-grab active:cursor-grabbing pl-1.5 pr-1 bg-white dark:bg-neutral-700 border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 shadow-sm"`,
+    );
   });
 });

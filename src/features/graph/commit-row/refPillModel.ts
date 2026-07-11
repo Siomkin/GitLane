@@ -54,7 +54,13 @@ export function refPillModel(refLabel: RefLabel, current: boolean, worktreeName:
     dragKind: draggable ? (refLabel.kind === "branch" ? "local" : "remote") : null,
     icon,
     className: `${PILL_BASE} ${style}`,
-    title: worktreeName ? `Checked out in worktree: ${worktreeName}` : undefined,
+    // The worktree tooltip belongs to non-current local branches only. The
+    // hook's enabled-gate already guarantees that in the app; gating here too
+    // keeps the pure model safe for arbitrary callers.
+    title:
+      refLabel.kind === "branch" && !current && worktreeName
+        ? `Checked out in worktree: ${worktreeName}`
+        : undefined,
   };
 }
 
