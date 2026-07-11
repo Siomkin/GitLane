@@ -165,6 +165,9 @@ export function useActionBarModel(): ActionBarModel {
   // deleting a provider token, glab auth flipping). Fold the resolved ref into
   // the same request key the pulls store computes, so any auth change re-arms
   // polling immediately instead of staying stale until the next tick (GL-184).
+  // `gitlabReady` must ALSO key the effect: the glab zero-config path resolves
+  // to a null account both before and after glab authenticates — only the
+  // backend transport changes — so the request key alone can't see that flip.
   const prPollKey = useAccounts((state) => prListRequestKey(repoPath ?? "", state.prAccountRef()));
   useEffect(() => {
     if (!repoPath || !isPrForge(forgeKind)) return;
@@ -174,7 +177,7 @@ export function useActionBarModel(): ActionBarModel {
       void loadPullRequests(false, true);
     }, PR_BADGE_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [repoPath, forgeKind, prPollKey, loadPullRequests]);
+  }, [repoPath, forgeKind, prPollKey, gitlabReady, loadPullRequests]);
 
   // ⌘ + Option + F opens the navigator and focuses its filter (the input
   // autofocuses on mount). `code === "KeyF"` since Option+F yields "ƒ" on macOS.

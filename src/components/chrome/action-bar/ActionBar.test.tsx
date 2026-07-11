@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { ForgeKind, type BranchInfo, type RepoForge, type RepoSummary } from "@/lib/api";
+import { ForgeKind, type BranchInfo, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
+import { providerTokenKey } from "@/store/accountsStorage";
 import { useUi } from "@/store/ui";
 import { ActionBar } from "./ActionBar";
 
@@ -445,7 +446,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     await act(async () => {
       useAccounts.setState({
         providerTokens: {
-          "gitlab.com/alice": {
+          [providerTokenKey("gitlab.com", "alice")]: {
             provider: "gitlab",
             credentialHost: "gitlab.com",
             accountId: "gitlab:alice",
@@ -470,7 +471,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     });
     useAccounts.setState({
       providerTokens: {
-        "gitlab.com/alice": {
+        [providerTokenKey("gitlab.com", "alice")]: {
           provider: "gitlab",
           credentialHost: "gitlab.com",
           accountId: "gitlab:alice",
@@ -494,6 +495,45 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     });
   });
 
+  it("re-arms when glab readiness flips for a GitLab repo (GL-184)", async () => {
+    // The glab zero-config path resolves to a null account both before AND
+    // after glab authenticates — the request key alone can't see the flip, so
+    // the polling identity must also carry gitlabReady.
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+    });
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1);
+    await act(async () => {});
+
+    const glab: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "cli",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "",
+      notes: "",
+    };
+    await act(async () => {
+      useAccounts.setState({ forgeAuth: [glab] });
+    });
+    // glab became ready — refetch immediately (the account stays null; the
+    // backend's transport changes underneath).
+    expect(prLoads()).toBe(2);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: null,
+    });
+
+    await act(async () => {
+      useAccounts.setState({ forgeAuth: [] });
+    });
+    expect(prLoads()).toBe(3); // glab signed out — re-arm again
+  });
+
   it("re-arms with the OAuth transport identity when a Bitbucket token is saved (GL-184)", async () => {
     useRepo.setState({
       forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
@@ -505,7 +545,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     await act(async () => {
       useAccounts.setState({
         providerTokens: {
-          "bitbucket.org/alice": {
+          [providerTokenKey("bitbucket.org", "alice")]: {
             provider: "bitbucket",
             credentialHost: "bitbucket.org",
             accountId: "bb:alice",
