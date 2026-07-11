@@ -4,7 +4,6 @@
 // appears once per commit). Refetches after a manual refresh (prsFetchedAt
 // bumps, caches cleared).
 import { useEffect } from "react";
-import type { FileDiff } from "../../lib/api/git";
 import type { PullRequest } from "../../lib/prs";
 import { usePulls } from "../../store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
@@ -13,29 +12,7 @@ import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { UnifiedDiffBody } from "../review/DiffBody";
 import { BinaryDiff } from "../review/BinaryDiff";
 import { HandToAgentBar } from "../review/comments";
-
-/** One commit's worth of consecutive file cards. `index` is the file's global
- * position, kept for stable card keys (same-path files repeat across commits).
- * Diffs without attribution (older backend payloads) collapse into one group,
- * which renders headerless — identical to the pre-grouping layout. */
-interface CommitGroup {
-  oid?: string;
-  subject?: string;
-  files: { file: FileDiff; index: number }[];
-}
-
-function groupByCommit(diffs: FileDiff[]): CommitGroup[] {
-  const groups: CommitGroup[] = [];
-  diffs.forEach((file, index) => {
-    const last = groups[groups.length - 1];
-    if (last && last.oid === file.commitOid) {
-      last.files.push({ file, index });
-    } else {
-      groups.push({ oid: file.commitOid, subject: file.commitSubject, files: [{ file, index }] });
-    }
-  });
-  return groups;
-}
+import { groupByCommit, showCommitHeaders } from "./prDiffGroups";
 
 export function PrDiffTab({ pr }: { pr: PullRequest }) {
   const diffs = usePulls((s) => s.prDiffs[pr.num]);
@@ -67,9 +44,7 @@ export function PrDiffTab({ pr }: { pr: PullRequest }) {
   }
 
   const groups = groupByCommit(diffs);
-  // Headers only when the diff actually spans commits: single-commit PRs and
-  // attribution-less payloads keep the flat, header-free layout.
-  const showHeaders = groups.length > 1;
+  const showHeaders = showCommitHeaders(groups);
 
   return (
     <div className="flex flex-col gap-4">
