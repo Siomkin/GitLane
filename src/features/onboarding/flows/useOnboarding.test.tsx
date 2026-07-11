@@ -10,8 +10,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openDialogMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
 import { useOnboarding } from "./useOnboarding";
+import { useAccounts } from "../../../store/accounts";
+import { writeForgeCredentials } from "../../../store/accountsStorage";
 import { useRepo } from "../../../store/repo";
 import type { RecentRepo } from "../../../store/repoSession";
+import type { ForgeAuthStatus } from "../../../lib/api";
 
 const missing: RecentRepo = {
   path: "/old/gone",
@@ -28,7 +31,20 @@ beforeEach(() => {
   openDialogMock.mockReset();
   localStorage.clear();
   useRepo.setState({ recents: [missing], summary: null });
+  useAccounts.setState({ accounts: [], forgeAuth: [], providerTokens: {} });
 });
+
+const glabRow: ForgeAuthStatus = {
+  provider: "gitlab",
+  forge: "GitLab",
+  cli: "glab",
+  authMethod: "cli",
+  available: true,
+  authenticated: true,
+  loginCommand: "glab auth login",
+  docsUrl: "",
+  notes: "",
+};
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -376,7 +392,54 @@ describe("auth-failure recovery", () => {
   });
 });
 
+describe("clone auth plan reactivity (GL-194)", () => {
+  it("flips to glab when it signs in, and back to system when a saved credential overrides it", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://gitlab.com/group/repo.git"));
+    expect(result.current.cloneForm.authPlan.method).toBe("system");
+
+    // glab signs in (Accounts panel refreshed forgeAuth) — no suppression
+    // needed for the plan to react.
+    act(() => {
+      useAccounts.setState({ forgeAuth: [glabRow] });
+    });
+    expect(result.current.cloneForm.authPlan.method).toBe("glab");
+
+    // Saving a GitLab HTTPS credential overrides glab. The store mirrors the
+    // save into forgeAuth (withSavedForgeCredentials), which re-runs the
+    // selector — reproduce both halves here.
+    act(() => {
+      writeForgeCredentials({
+        gitlab: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          path: null,
+          username: "me",
+          helper: "store",
+          savedAt: 1,
+        },
+      });
+      useAccounts.setState({ forgeAuth: [{ ...glabRow }] });
+    });
+    expect(result.current.cloneForm.authPlan.method).toBe("system");
+  });
+});
+
 describe("URL-driven transitions", () => {
+  it("seeds the destination folder with the generic placeholder before any URL", () => {
+    const { result } = renderHook(() => useOnboarding());
+    expect(result.current.cloneForm.folder).toBe("repository");
+  });
+
+  it("treats a www host as a different credential authority", () => {
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://www.github.com/octo/repo.git"));
+    act(() => result.current.cloneForm.setPassword("secret"));
+
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    expect(result.current.cloneForm.password).toBe("");
+  });
+
   it("adopts the URL's user and clears the password when the authority changes", () => {
     const { result } = renderHook(() => useOnboarding());
     act(() => result.current.cloneForm.changeUrl("https://alice@github.com/octo/repo.git"));
@@ -422,6 +485,30 @@ describe("URL-driven transitions", () => {
     // A new derived name replaces the stale manual value.
     act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo2.git"));
     expect(result.current.cloneForm.folder).toBe("repo2");
+  });
+
+  it("retryWithUrl adopts a URL-embedded user while never carrying the password", async () => {
+    // Today's recovery alternates never embed a user; this pins the contract
+    // for any caller: the clears land first, then changeCloneUrl's conditional
+    // reset re-derives the username — matching the old effect's resting state.
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "clone_repo"
+        ? Promise.reject(
+            "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403",
+          )
+        : Promise.resolve([]),
+    );
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://github.com/o/r.git"));
+    act(() => result.current.cloneRun.start());
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+
+    act(() => result.current.cloneForm.setPassword("tok"));
+    act(() => result.current.cloneRecovery.retryWithUrl("https://alice@github.com/o/r.git"));
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+
+    expect(result.current.cloneForm.username).toBe("alice");
+    expect(result.current.cloneForm.password).toBe("");
   });
 
   it("behaves identically under StrictMode double-invocation", () => {

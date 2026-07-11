@@ -12,6 +12,7 @@ import { supportsProviderTokenAuth } from "../../../lib/forgeHelp";
 import { repoLabel } from "../../../lib/paths";
 import { detectRemoteUrl, forgeAuthProviderFor, withUrlUser } from "../../../lib/remotes";
 import { pickProviderTokenForHost, useAccounts } from "../../../store/accounts";
+import { readForgeCredentials } from "../../../store/accountsStorage";
 import {
   canceledCloneCopy,
   classifyCloneError,
@@ -47,7 +48,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   // The destination folder leaf. `changeCloneUrl` adopts the URL's detected
   // repo name whenever that name changes, but a manual rename sticks until
   // then (the old name no longer fits a different repo).
-  const [cloneFolder, setCloneFolder] = useState("");
+  const [cloneFolder, setCloneFolder] = useState(() => validateCloneUrl("").repo);
   const [cloneAccountId, setCloneAccountId] = useState<string | null>(null);
   const [cloneUsername, setCloneUsername] = useState("");
   const [clonePassword, setClonePassword] = useState("");
@@ -67,13 +68,18 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
   const remoteInfo = useMemo(() => detectRemoteUrl(cloneUrl), [cloneUrl]);
   const accounts = useAccounts((s) => s.accounts);
-  // The one forgeAuth fact glab resolution depends on, selected as a primitive
-  // so the auth-plan memo has an explicit reactive input (no array-identity
-  // churn, no exhaustive-deps suppression): is glab installed AND signed in?
-  const glabAuthed = useAccounts((s) =>
-    s.forgeAuth.some(
-      (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
-    ),
+  // The facts glab resolution depends on, selected as one primitive so the
+  // auth-plan memo has an explicit reactive input (no array-identity churn, no
+  // exhaustive-deps suppression): glab installed AND signed in, AND no saved
+  // GitLab HTTPS credential overriding it. The override lives in localStorage,
+  // but saving/forgetting one through the store re-sets forgeAuth (the
+  // withSavedForgeCredentials mirror), so this selector re-runs then — the
+  // same reactivity the old forgeAuth-array dependency provided.
+  const glabUsable = useAccounts(
+    (s) =>
+      s.forgeAuth.some(
+        (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
+      ) && readForgeCredentials()["gitlab"] === undefined,
   );
   const gitlabGlabAuth = useAccounts((s) => s.gitlabGlabAuth);
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
@@ -114,12 +120,12 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
       tokenForHost: httpsClone
         ? pickProviderTokenForHost(providerTokens, remoteInfo.credentialHost!)
         : undefined,
-      // `glabAuthed` is the reactive mirror of the forgeAuth fact
+      // `glabUsable` is the reactive mirror of the forgeAuth fact
       // gitlabGlabAuth reads internally — gating on it keeps this memo's
       // dependency list exhaustive without suppression, and gitlabGlabAuth
       // still applies its saved-credential override on top.
       glabRef:
-        httpsClone && glabAuthed
+        httpsClone && glabUsable
           ? gitlabGlabAuth(remoteInfo.host!, remoteInfo.credentialHost!, cloneProviderFor(remoteInfo))
           : null,
     });
@@ -130,7 +136,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     cloneUsername,
     clonePassword,
     providerTokens,
-    glabAuthed,
+    glabUsable,
     gitlabGlabAuth,
   ]);
   const cloneAuthStatus = cloneAuthStatusLine(cloneAuthPlan);
@@ -336,16 +342,18 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
 
   /** Recovery-panel transport switch: retry the clone over the alternative URL
    * (HTTPS↔SSH), starting from that transport's default auth — credentials
-   * entered for the old URL are cleared unconditionally, not carried over
-   * (recovery alternates never embed a URL user, so this can only clear). The
-   * form field follows so a further failure reclassifies — and recovers —
-   * against the URL actually attempted. */
+   * entered for the old URL are cleared, not carried over. The clears run
+   * BEFORE changeCloneUrl so its conditional reset can still adopt a
+   * URL-embedded user (recovery alternates never carry one today, but the
+   * ordering keeps the old effect's resting state for any input). The form
+   * field follows so a further failure reclassifies — and recovers — against
+   * the URL actually attempted. */
   const retryWithUrl = useCallback(
     (nextUrl: string) => {
-      changeCloneUrl(nextUrl);
       setCloneAccountId(null);
       setCloneUsername("");
       setClonePassword("");
+      changeCloneUrl(nextUrl);
       startClone({ url: nextUrl });
     },
     [changeCloneUrl, startClone],
