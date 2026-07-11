@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -70,10 +70,37 @@ describe("BranchRow", () => {
     fireEvent.dragStart(screen.getByText("feature"), { dataTransfer: dataTransfer() });
     expect(useUi.getState().draggingFrom).toEqual({ name: "feature", kind: "local" });
 
+    // Unmount the first tree before rendering the second — colliding labels
+    // between two mounted rows would make the queries ambiguous.
+    cleanup();
     useUi.setState({ draggingFrom: null });
     render(<BranchRow name="v1.0" kind="tag" oid="tag123" />);
     fireEvent.dragStart(screen.getByText("v1.0"), { dataTransfer: dataTransfer() });
     expect(useUi.getState().draggingFrom).toBeNull();
+  });
+
+  it("reports isCurrent in the context-menu payload for the checked-out branch", () => {
+    render(<BranchRow name="main" kind="local" oid="abc123" isCurrent />);
+    fireEvent.contextMenu(screen.getByText("main"));
+    expect(useUi.getState().contextMenu).toMatchObject({ branch: "main", isCurrent: true });
+  });
+
+  it("closes the navigator without navigating when the row has no oid", () => {
+    const revealCommit = vi.fn();
+    useRepo.setState({ revealCommit });
+
+    render(<BranchRow name="feature" kind="local" />);
+    fireEvent.click(screen.getByText("feature"));
+
+    expect(revealCommit).not.toHaveBeenCalled();
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("keeps the current-branch glyph even when a worktree name is passed", () => {
+    // Glyph precedence: the checked-out branch's check always wins — the
+    // worktree marker is only for branches parked in ANOTHER worktree.
+    render(<BranchRow name="main" kind="local" oid="abc123" isCurrent worktree="repo-main" />);
+    expect(screen.queryByLabelText(/Checked out in worktree/)).not.toBeInTheDocument();
   });
 
   it("shows the sync badge for a local branch and the worktree glyph when parked elsewhere", () => {
@@ -121,16 +148,18 @@ describe("WorktreeRow", () => {
     expect(openWorktree).toHaveBeenLastCalledWith("/work/repo-feature", { newTab: true });
   });
 
-  it("activates from the keyboard with Enter and Space", () => {
+  it("activates from the keyboard with Enter and Space, preventing the default", () => {
     const openWorktree = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({ openWorktree });
 
     render(<WorktreeRow {...props} />);
     const row = screen.getByRole("button", { name: "Open worktree feature" });
 
-    fireEvent.keyDown(row, { key: "Enter" });
+    // fireEvent returns false when preventDefault was called — Space must not
+    // scroll and Enter must not double-fire through native activation.
+    expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
     expect(openWorktree).toHaveBeenCalledTimes(1);
-    fireEvent.keyDown(row, { key: " " });
+    expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
     expect(openWorktree).toHaveBeenCalledTimes(2);
   });
 
@@ -144,6 +173,8 @@ describe("WorktreeRow", () => {
 
     expect(openWorktree).not.toHaveBeenCalled();
     expect(revealCommit).toHaveBeenCalledWith("abc123");
+    // Revealing is still an activation — the navigator closes.
+    expect(useUi.getState().navOpen).toBe(false);
   });
 
   it("opens the worktree menu from the kebab WITHOUT activating the row", () => {

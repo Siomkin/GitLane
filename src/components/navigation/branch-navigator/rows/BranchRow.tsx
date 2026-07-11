@@ -76,7 +76,7 @@ export function BranchRow({
       }}
     >
       {worktree && !isCurrent ? (
-        // A branch parked in a worktree gets the worktree glyph (in accent) in
+        // A branch parked in a worktree gets the neutral worktree glyph in
         // place of the branch fork — the same icon as the Worktrees section, so
         // the two read as the same thing. The tooltip names which worktree.
         <span
