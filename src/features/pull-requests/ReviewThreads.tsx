@@ -5,13 +5,14 @@
 // Unresolve toggle). Threads + the resolve mutation come from the pulls store.
 // The inline diff snippet (anchored hunk) is a planned follow-up.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/cn";
 import { initials, relativeAge, type PullRequest } from "../../lib/prs";
 import type { PrComment, ReviewThread } from "../../lib/api";
 import { usePulls } from "../../store/pulls";
 import { Markdown } from "@/components/ui/Markdown";
 import { ReviewThreadControls } from "./ReviewThreadControls";
+import { reviewThreadsModel } from "./reviewThreadsModel";
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
@@ -25,6 +26,11 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
   useEffect(() => {
     void loadPrThreads(pr.num);
   }, [pr.num, prsFetchedAt, loadPrThreads]);
+
+  // Memoized by the inputs that actually change it, so reply/pending rerenders
+  // don't redo the filtering/grouping. Computed before the early returns —
+  // hooks must run unconditionally.
+  const model = useMemo(() => reviewThreadsModel(threads ?? [], hideResolved), [threads, hideResolved]);
 
   // Threads load automatically, so a failure here is the most visible: show an
   // inline retry rather than silently rendering nothing (and never touch the
@@ -45,20 +51,7 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
 
   if (!threads || threads.length === 0) return null;
 
-  const resolvedCount = threads.filter((t) => t.isResolved).length;
-  const visible = hideResolved ? threads.filter((t) => !t.isResolved) : threads;
-  const allHidden = visible.length === 0;
-
-  // Group visible threads by file, preserving first-seen order.
-  const byFile: { path: string; threads: ReviewThread[] }[] = [];
-  for (const t of visible) {
-    let group = byFile.find((g) => g.path === t.path);
-    if (!group) {
-      group = { path: t.path, threads: [] };
-      byFile.push(group);
-    }
-    group.threads.push(t);
-  }
+  const { total, resolvedCount, allHidden, byFile } = model;
 
   return (
     <div>
@@ -67,7 +60,7 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
           Review threads
         </span>
         <span className="ml-2 grid h-[18px] place-items-center rounded bg-black/[0.06] px-1.5 text-[10px] font-semibold text-neutral-500 dark:bg-white/10">
-          {threads.length}
+          {total}
         </span>
         {resolvedCount > 0 && (
           <button
