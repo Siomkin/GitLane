@@ -3,6 +3,10 @@ name: CI
 on:
   push:
     branches: [latest]
+  # Manual runs by writers (dispatch needs write access): post-merge smoke
+  # tests, and producing the required status checks on workflow-bootstrap PRs
+  # that swap their own triggers (neither trigger side fires on such PRs).
+  workflow_dispatch:
   # Base-branch workflow controls runner selection; see the checkout refs below.
   pull_request_target:
     branches: [latest]
