@@ -43,6 +43,7 @@ export function CombinedRefPill({
     return (
       <>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onToggle();
