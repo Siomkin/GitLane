@@ -11,7 +11,10 @@ permissions:
 jobs:
   label:
     name: Auto-label PR
-    runs-on: [self-hosted, Linux, X64]
+    # Configure TRUSTED_CI_USER under Settings -> Secrets and variables -> Actions
+    # -> Variables. Both the PR opener and event actor must match it to use the
+    # persistent runner; everyone else stays GitHub-hosted.
+    runs-on: ${{ fromJSON((github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]') }}
     steps:
       - uses: actions/labeler@v6
         with:

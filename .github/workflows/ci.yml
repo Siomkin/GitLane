@@ -3,13 +3,22 @@ name: CI
 on:
   push:
     branches: [latest]
-  pull_request:
+  # Manual runs by writers (dispatch needs write access): post-merge smoke
+  # tests, and producing the required status checks on workflow-bootstrap PRs
+  # that swap their own triggers (neither trigger side fires on such PRs).
+  workflow_dispatch:
+  # Base-branch workflow controls runner selection; see the checkout refs below.
+  pull_request_target:
     branches: [latest]
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Untrusted fork-PR code executes in this workflow (the PR merge ref is checked
+# out and built/tested) under pull_request_target, with no approval gate — that
+# is only safe while the token stays read-only and this file references no
+# secrets. Never add `secrets.*` or write permissions here.
 permissions:
   contents: read
   pull-requests: read
@@ -20,17 +29,28 @@ env:
 jobs:
   changes:
     name: Detect changed areas
-    # All Linux CI runs on the self-hosted, network-isolated `linux-gitlane` host to
-    # save GitHub-hosted minutes. When the repo goes public, gate fork PRs behind
-    # "Require approval for all external contributors" (Settings → Actions → General)
-    # so untrusted code can't auto-run on the box.
-    runs-on: [self-hosted, Linux, X64]
+    # Configure TRUSTED_CI_USER under Settings -> Secrets and variables -> Actions
+    # -> Variables. Its value is the one GitHub login allowed to run PR CI here.
+    # If it is unset or mismatched, all PRs safely fall back to GitHub-hosted.
+    # Both the PR opener and the event actor (for example, the commit pusher on
+    # synchronize) must be `vars.TRUSTED_CI_USER` to use the persistent runner.
+    # Every other PR is contributor-controlled code and must stay GitHub-hosted.
+    # Pushes to `latest` use the trusted, base-branch workflow and remain self-hosted.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]') }}
     timeout-minutes: 5
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
+      # The policy above, exported once so the downstream jobs cannot drift.
+      runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]' }}
     steps:
+      # On PR events paths-filter reads the changed-file list from the GitHub
+      # API, so the mutable merge ref is never checked out in this job — only
+      # push events need the repo on disk to diff against the base.
       - uses: actions/checkout@v7
+        if: github.event_name != 'pull_request_target'
+        with:
+          persist-credentials: false
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -56,10 +76,29 @@ jobs:
     name: Frontend (typecheck + build + tests)
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: [self-hosted, Linux, X64]
+    # Runner policy is decided once in `changes` — see the comment there.
+    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+          # Depth 2 keeps the merge ref's parents available for the check below.
+          fetch-depth: 2
+          persist-credentials: false
+
+      # refs/pull/N/merge is mutable: it re-resolves at checkout time, while the
+      # runner decision was made from the event payload. Fail if the PR head
+      # moved in between so a late push can't ride an already-trusted run.
+      - name: Verify merge ref still matches the scheduled head
+        if: github.event_name == 'pull_request_target'
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
+            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
+            exit 1
+          }
 
       - uses: oven-sh/setup-bun@v2
 
@@ -88,10 +127,27 @@ jobs:
       needs.frontend.result != 'failure' &&
       needs.frontend.result != 'cancelled'
     needs: [changes, frontend]
-    runs-on: [self-hosted, Linux, X64]
+    # Runner policy is decided once in `changes` — see the comment there.
+    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+          # Depth 2 keeps the merge ref's parents available for the check below.
+          fetch-depth: 2
+          persist-credentials: false
+
+      # Same TOCTOU guard as the frontend job — see the comment there.
+      - name: Verify merge ref still matches the scheduled head
+        if: github.event_name == 'pull_request_target'
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
+            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
+            exit 1
+          }
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -113,6 +169,12 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          # pull_request_target runs write caches into the *base branch* scope,
+          # where they would outlive the untrusted run and could poison trusted
+          # consumers. The only github-hosted runs are PRs that failed the trust
+          # gate above (opener or actor != TRUSTED_CI_USER, or the var is unset),
+          # so keep them restore-only.
+          save-if: ${{ github.event_name != 'pull_request_target' }}
 
       - name: Install Linux Tauri dependencies
         # Skipped on the self-hosted runner (sudo-less user; deps preinstalled on the
