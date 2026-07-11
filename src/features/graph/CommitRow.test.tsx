@@ -131,10 +131,27 @@ describe("CommitRow ref pills", () => {
     expect(useUi.getState().commitMenu).toBeNull();
   });
 
-  it("starts a local-branch drag from a branch pill", () => {
+  it("starts a local-branch drag from a branch pill with the move payload", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
-    fireEvent.dragStart(screen.getByText("feature"), { dataTransfer: dataTransfer() });
+    const dt = dataTransfer();
+    fireEvent.dragStart(screen.getByText("feature"), { dataTransfer: dt });
+
     expect(useUi.getState().draggingFrom).toEqual({ name: "feature", kind: "local" });
+    // The drag payload is part of the contract: plain-text ref name, move cursor.
+    expect(dt.setData).toHaveBeenCalledWith("text/plain", "feature");
+    expect(dt.effectAllowed).toBe("move");
+  });
+
+  it("double-clicks a local branch pill straight into checkout", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const checkoutRemoteBranch = vi.fn();
+    useRepo.setState({ checkoutBranch, checkoutRemoteBranch });
+
+    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
+    fireEvent.doubleClick(screen.getByText("feature"));
+
+    await waitFor(() => expect(checkoutBranch).toHaveBeenCalledWith("feature"));
+    expect(checkoutRemoteBranch).not.toHaveBeenCalled();
   });
 });
 
@@ -183,6 +200,30 @@ describe("CommitRow grouped refs", () => {
     expect(useUi.getState().commitMenu).toBeNull();
   });
 
+  it("shows the worktree glyph on the collapsed pill when its local branch lives elsewhere", () => {
+    // A non-current grouped branch checked out in another worktree: the
+    // collapsed pill swaps the branch-fork glyph (r=3 circles) for the
+    // worktree TreeIcon (r=2.5 circles).
+    useRepo.setState({
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+    });
+    render(
+      <CommitRow
+        {...baseProps}
+        commit={commit({
+          refs: [
+            { name: "feature", kind: "branch" },
+            { name: "origin/feature", kind: "remote" },
+          ],
+        })}
+      />,
+    );
+
+    const collapsed = screen.getByTitle("feature — local + 1 remote in sync (click to split)");
+    expect(collapsed.querySelector('circle[r="2.5"]')).not.toBeNull();
+    expect(collapsed.querySelector('circle[r="3"]')).toBeNull();
+  });
+
   it("drags the collapsed pill as the local branch", () => {
     render(<CommitRow {...baseProps} commit={groupedCommit()} />);
     fireEvent.dragStart(screen.getByTitle("main — local + 1 remote in sync (click to split)"), {
@@ -202,6 +243,27 @@ describe("CommitRow row behavior", () => {
 
     fireEvent.click(screen.getByText("a commit"), { metaKey: true });
     expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: false, additive: true });
+
+    // ctrl is the Windows/Linux additive modifier — same flag as meta.
+    fireEvent.click(screen.getByText("a commit"), { ctrlKey: true });
+    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: false, additive: true });
+  });
+
+  it("selects from the keyboard with Enter and Space, carrying modifiers", () => {
+    const onSelect = vi.fn();
+    const { container } = render(<CommitRow {...baseProps} onSelect={onSelect} commit={commit()} />);
+    const row = container.firstElementChild as HTMLElement;
+
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: false, additive: false });
+
+    fireEvent.keyDown(row, { key: " ", shiftKey: true });
+    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: true, additive: false });
+
+    // Other keys are ignored — arrow navigation belongs to the workspace.
+    onSelect.mockClear();
+    fireEvent.keyDown(row, { key: "ArrowDown" });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("opens the commit context menu for this row and selects it if unselected", () => {
