@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { ForgeKind, type BranchInfo, type RepoForge, type RepoSummary } from "@/lib/api";
+import { ForgeKind, type BranchInfo, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
+import { providerTokenKey } from "@/store/accountsStorage";
 import { useUi } from "@/store/ui";
 import { ActionBar } from "./ActionBar";
 
@@ -48,7 +49,14 @@ beforeEach(() => {
   useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()], worktrees: [], remotes: [] });
   useUi.setState({ prompt: null, navOpen: false, leftTab: "history" });
   usePulls.setState({ pullRequests: [] });
-  useAccounts.setState({ accounts: [], accountsError: null, accountsLoading: false, repoAccountRef: null });
+  useAccounts.setState({
+    accounts: [],
+    accountsError: null,
+    accountsLoading: false,
+    repoAccountRef: null,
+    providerTokens: {},
+    forgeAuth: [],
+  });
 });
 
 describe("ActionBar layout order", () => {
@@ -421,6 +429,140 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // GL-184: for GitLab/Bitbucket the identity behind the quiet badge loads is
+  // `prAccountRef()` (glab readiness / native keychain tokens), which changes
+  // WITHOUT `repoAccountRef` changing. Saving or deleting a provider token must
+  // re-arm polling immediately — not wait out the current 60s interval tick.
+  it("re-arms and refetches immediately when a GitLab provider token is saved (GL-184)", async () => {
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+    });
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1); // warm load, zero-config (no glab, no token → null account)
+    await act(async () => {}); // settle the initial load so the next isn't queue-merged
+
+    await act(async () => {
+      useAccounts.setState({
+        providerTokens: {
+          [providerTokenKey("gitlab.com", "alice")]: {
+            provider: "gitlab",
+            credentialHost: "gitlab.com",
+            accountId: "gitlab:alice",
+            login: "alice",
+            savedAt: 1,
+          },
+        },
+      });
+    });
+
+    expect(prLoads()).toBe(2);
+    // The refetch must authenticate as the freshly saved token, not just fire.
+    expect(invokeMock).toHaveBeenLastCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: { provider: "native", host: "gitlab.com", accountId: "gitlab:alice", login: "alice" },
+    });
+  });
+
+  it("re-arms back to the zero-config account when the GitLab token is deleted (GL-184)", async () => {
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+    });
+    useAccounts.setState({
+      providerTokens: {
+        [providerTokenKey("gitlab.com", "alice")]: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          accountId: "gitlab:alice",
+          login: "alice",
+          savedAt: 1,
+        },
+      },
+    });
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1);
+    await act(async () => {});
+
+    await act(async () => {
+      useAccounts.setState({ providerTokens: {} });
+    });
+
+    expect(prLoads()).toBe(2);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: null,
+    });
+  });
+
+  it("re-arms when glab readiness flips for a GitLab repo (GL-184)", async () => {
+    // The glab zero-config path resolves to a null account both before AND
+    // after glab authenticates — the request key alone can't see the flip, so
+    // the polling identity must also carry gitlabReady.
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+    });
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1);
+    await act(async () => {});
+
+    const glab: ForgeAuthStatus = {
+      provider: "gitlab",
+      forge: "GitLab",
+      cli: "glab",
+      authMethod: "cli",
+      available: true,
+      authenticated: true,
+      loginCommand: "glab auth login",
+      docsUrl: "",
+      notes: "",
+    };
+    await act(async () => {
+      useAccounts.setState({ forgeAuth: [glab] });
+    });
+    // glab became ready — refetch immediately (the account stays null; the
+    // backend's transport changes underneath).
+    expect(prLoads()).toBe(2);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: null,
+    });
+
+    await act(async () => {
+      useAccounts.setState({ forgeAuth: [] });
+    });
+    expect(prLoads()).toBe(3); // glab signed out — re-arm again
+  });
+
+  it("re-arms with the OAuth transport identity when a Bitbucket token is saved (GL-184)", async () => {
+    useRepo.setState({
+      forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
+    });
+    render(<ActionBar />);
+    expect(prLoads()).toBe(1);
+    await act(async () => {});
+
+    await act(async () => {
+      useAccounts.setState({
+        providerTokens: {
+          [providerTokenKey("bitbucket.org", "alice")]: {
+            provider: "bitbucket",
+            credentialHost: "bitbucket.org",
+            accountId: "bb:alice",
+            login: "alice",
+            // OAuth tokens authenticate as the sentinel, not the handle (GL-139).
+            transportUsername: "x-token-auth",
+            savedAt: 1,
+          },
+        },
+      });
+    });
+
+    expect(prLoads()).toBe(2);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_pull_requests", {
+      path: "/repo",
+      account: { provider: "native", host: "bitbucket.org", accountId: "bb:alice", login: "x-token-auth" },
+    });
   });
 
   it("stops polling when the repo closes", async () => {
