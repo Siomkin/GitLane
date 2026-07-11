@@ -5,7 +5,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ForgeKind } from "../../lib/api";
 import type { PrAuthor, PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { PrHeaderActions } from "./PrActions";
@@ -77,7 +77,9 @@ describe("PrHeaderActions merge", () => {
   });
 
   it("shows a busy merge label while a merge is pending", () => {
-    usePulls.setState({ prPendingActions: ["merge"] });
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Merge, prNum: 42 }],
+    });
 
     render(<PrHeaderActions pr={openPr()} />);
 
@@ -86,10 +88,23 @@ describe("PrHeaderActions merge", () => {
     expect(merge).toHaveAttribute("aria-busy", "true");
   });
 
+  it("does not show another PR's merge as pending", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Merge, prNum: 41 }],
+    });
+
+    render(<PrHeaderActions pr={openPr({ num: 42 })} />);
+
+    expect(screen.queryByRole("button", { name: /Merging/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Merge/ })).toBeDisabled();
+  });
+
   it("disables merge without the 'Merging…' label during a non-merge PR action", () => {
     // A close/comment/etc. is in flight, not a merge: don't mislabel it as
     // "Merging…", but keep merge disabled so no concurrent write can start.
-    usePulls.setState({ prPendingActions: ["state"] });
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.State, prNum: 42, stateAction: "close" }],
+    });
 
     render(<PrHeaderActions pr={openPr()} />);
 
@@ -113,7 +128,9 @@ describe("PrHeaderActions merge", () => {
   });
 
   it("disables the overflow Close action while another PR write is pending", async () => {
-    usePulls.setState({ prPendingActions: ["comment"] });
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Comment, prNum: 42 }],
+    });
 
     render(<PrHeaderActions pr={openPr()} />);
 
@@ -140,6 +157,27 @@ describe("PrHeaderActions merge", () => {
     // Resolving closes the menu and clears the pending label.
     resolveCheckout("ok");
     await waitFor(() => expect(screen.queryByText("Checking out…")).not.toBeInTheDocument());
+  });
+
+  it("keeps checkout progress on the trigger when the menu is dismissed", async () => {
+    let resolveCheckout!: (v: string) => void;
+    const checkoutBranch = vi.fn(() => new Promise<string>((r) => (resolveCheckout = r)));
+    useRepo.setState({ checkoutBranch });
+
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByTitle("More actions"));
+    await userEvent.click(screen.getByText("Checkout branch"));
+    await userEvent.click(document.body);
+
+    expect(screen.queryByText("Checking out…")).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Checking out branch…" });
+    expect(trigger).toHaveAttribute("aria-busy", "true");
+    expect(trigger).toBeDisabled();
+
+    resolveCheckout("ok");
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Checking out branch…" })).not.toBeInTheDocument(),
+    );
   });
 
   it("shows a spinner on Reopen once the confirm dialog runs the state change", async () => {
@@ -210,6 +248,18 @@ describe("PrHeaderActions merge", () => {
       expect(screen.queryByRole("button", { name: "Closing pull request…" })).not.toBeInTheDocument(),
     );
   });
+
+  it("restores close feedback from the per-PR store after a header remount", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.State, prNum: 42, stateAction: "close" }],
+    });
+
+    render(<PrHeaderActions key="remounted-42" pr={openPr()} />);
+
+    const trigger = screen.getByRole("button", { name: "Closing pull request…" });
+    expect(trigger).toHaveAttribute("aria-busy", "true");
+    expect(trigger).toBeDisabled();
+  });
 });
 
 describe("PrHeaderActions merge options", () => {
@@ -259,6 +309,22 @@ describe("PrHeaderActions merge options", () => {
     await userEvent.click(screen.getByText("Merge"));
     expect(screen.queryByText("Squash and merge")).not.toBeInTheDocument();
   });
+
+  it("resets the open menu and delete-branch choice when the PR changes", async () => {
+    const first = openPr();
+    const second = openPr({ num: 43, branch: "feat/next" });
+    const view = render(<PrHeaderActions key={first.num} pr={first} />);
+
+    await userEvent.click(screen.getByText("Merge"));
+    await userEvent.click(screen.getByText("Delete branch after merge"));
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+
+    view.rerender(<PrHeaderActions key={second.num} pr={second} />);
+    expect(screen.queryByText("Squash and merge")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByRole("checkbox")).toBeChecked();
+  });
 });
 
 describe("PrHeaderActions overflow menu", () => {
@@ -299,6 +365,42 @@ describe("PrHeaderActions overflow menu", () => {
 });
 
 describe("PrHeaderActions state gating", () => {
+  it("does not label reopen pending as close", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.State, prNum: 42, stateAction: "reopen" }],
+    });
+
+    render(<PrHeaderActions pr={openPr({ state: "closed" })} />);
+
+    expect(screen.getByText("Reopening…")).toBeInTheDocument();
+    expect(screen.getByTitle("More actions")).toBeInTheDocument();
+    expect(screen.queryByTitle("Closing pull request…")).not.toBeInTheDocument();
+  });
+
+  it("does not label ready pending as close", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.State, prNum: 42, stateAction: "ready" }],
+    });
+
+    render(<PrHeaderActions pr={openPr({ draft: true })} />);
+
+    expect(screen.getByText("Marking ready…")).toBeInTheDocument();
+    expect(screen.getByTitle("More actions")).toBeInTheDocument();
+    expect(screen.queryByTitle("Closing pull request…")).not.toBeInTheDocument();
+  });
+
+  it("does not label close pending as ready on a draft PR", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.State, prNum: 42, stateAction: "close" }],
+    });
+
+    render(<PrHeaderActions pr={openPr({ draft: true })} />);
+
+    expect(screen.getByTitle("Closing pull request…")).toBeInTheDocument();
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.queryByText("Marking ready…")).not.toBeInTheDocument();
+  });
+
   it("shows Ready but no Merge for an open draft PR", () => {
     render(<PrHeaderActions pr={openPr({ draft: true })} />);
     expect(screen.getByText("Ready")).toBeInTheDocument();

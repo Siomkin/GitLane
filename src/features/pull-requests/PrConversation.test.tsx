@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { PrConversation } from "./PrConversation";
 
@@ -46,6 +46,46 @@ beforeEach(() => {
 });
 
 describe("PrConversation composer loaders", () => {
+  it("restores posting feedback from the per-PR store after remount", () => {
+    usePulls.setState({
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Comment, prNum: 42 }],
+    });
+
+    render(<PrConversation key="remounted-42" pr={openPr()} />);
+
+    expect(screen.getByRole("button", { name: "Posting…" })).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("restores the exact review feedback from the per-PR store after remount", () => {
+    usePulls.setState({
+      prPendingActions: [
+        {
+          id: 1,
+          action: PR_PENDING_ACTION.Review,
+          prNum: 42,
+          reviewAction: "approve",
+        },
+      ],
+    });
+
+    render(<PrConversation key="remounted-42" pr={openPr()} />);
+
+    expect(screen.getByRole("button", { name: "Approving…" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "Request changes" })).toHaveAttribute("aria-busy", "false");
+  });
+
+  it("resets the draft when the keyed PR boundary changes", async () => {
+    const first = openPr();
+    const second = openPr({ num: 43, branch: "feat/next" });
+    const view = render(<PrConversation key={first.num} pr={first} />);
+
+    await userEvent.type(screen.getByPlaceholderText("Leave a comment…"), "PR 42 draft");
+    expect(screen.getByPlaceholderText("Leave a comment…")).toHaveValue("PR 42 draft");
+
+    view.rerender(<PrConversation key={second.num} pr={second} />);
+    expect(screen.getByPlaceholderText("Leave a comment…")).toHaveValue("");
+  });
+
   it("shows a posting spinner on Comment while the comment is in flight", async () => {
     let resolveComment!: (v: string) => void;
     const commentPr = vi.fn(() => new Promise<string>((r) => (resolveComment = r)));

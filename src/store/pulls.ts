@@ -38,6 +38,7 @@ import { claimPrRequestId, ownsPrRequest } from "./pullsRequests";
 let nextPrListRequestId = 1;
 let nextPrChecksRequestId = 1;
 let nextPrCommitsRequestId = 1;
+let nextPrPendingActionId = 1;
 /** The in-flight commits load that owns each PR number. The resource version
  * only detects prunes; an unchanged refresh reruns the Commits tab's
  * prsFetchedAt-keyed effect without bumping it, so two loads can overlap in the
@@ -45,8 +46,28 @@ let nextPrCommitsRequestId = 1;
  * (GL-164 review). Module state, not render state: nothing displays it. */
 const prCommitsRequests = new Map<number, number>();
 
-/** Which PR write op is in flight, so each control shows only its own busy state. */
-export type PrPendingAction = "merge" | "comment" | "review" | "state" | "create";
+/** Store-level write categories. These are coarser than `PR_ACTION_KEY`: the
+ * store coordinates domain writes, while components distinguish button labels. */
+export const PR_PENDING_ACTION = {
+  Merge: "merge",
+  Comment: "comment",
+  Review: "review",
+  State: "state",
+  Create: "create",
+} as const;
+
+export type PrPendingActionKind = (typeof PR_PENDING_ACTION)[keyof typeof PR_PENDING_ACTION];
+
+export interface PrPendingAction {
+  id: number;
+  action: PrPendingActionKind;
+  /** The affected PR, or null for create (which has no PR number yet). */
+  prNum: number | null;
+  /** Exact lifecycle verb when `action` is `State`. */
+  stateAction?: PrStateAction;
+  /** Exact review verb when `action` is `Review`. */
+  reviewAction?: ReviewAction;
+}
 
 interface PullsState {
   /** Pull requests for the open repo (from `gh`, via the bound account). */
@@ -110,10 +131,10 @@ interface PullsState {
    */
   prResourceVersion: Record<number, number>;
   /**
-   * The PR write ops currently in flight (merge/comment/review/state/create), as
+   * The PR write ops currently in flight, as
    * a multiset so concurrent writes are tracked independently — one action's
    * completion can't clear another's busy state. A control disables while any are
-   * pending; the merge button shows "Merging…" only when "merge" is among them.
+   * pending; PR-specific feedback matches both `PR_PENDING_ACTION` and `prNum`.
    */
   prPendingActions: PrPendingAction[];
 
@@ -231,6 +252,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       prDiffLoading: false,
       prThreadsLoadingByNum: {},
       prThreadsLoading: false,
+      prPendingActions: [],
     });
   },
 
@@ -660,7 +682,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   mergePr: async (num, method, deleteBranch) => {
     const out = await runPrAction(
       (path, account) => api.mergePullRequest(path, num, method, deleteBranch, account),
-      { action: "merge" },
+      { action: PR_PENDING_ACTION.Merge, prNum: num },
     );
     // State + checked-out branch can both change; reload the list and this PR.
     await get().loadPullRequests(true);
@@ -672,7 +694,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   commentPr: async (num, body) => {
     const out = await runPrAction(
       (path, account) => api.commentPullRequest(path, num, body, account),
-      { action: "comment" },
+      { action: PR_PENDING_ACTION.Comment, prNum: num },
     );
     await get().loadPrDetail(num, true);
     return out;
@@ -681,7 +703,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   reviewPr: async (num, action, body) => {
     const out = await runPrAction(
       (path, account) => api.reviewPullRequest(path, num, action, body, account),
-      { action: "review" },
+      { action: PR_PENDING_ACTION.Review, prNum: num, reviewAction: action },
     );
     await get().loadPrDetail(num, true);
     void get().loadPrChecks(num, true);
@@ -691,7 +713,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   setPrState: async (num, action) => {
     const out = await runPrAction(
       (path, account) => api.setPullRequestState(path, num, action, account),
-      { action: "state" },
+      { action: PR_PENDING_ACTION.State, prNum: num, stateAction: action },
     );
     await get().loadPullRequests(true);
     await get().loadPrDetail(num, true);
@@ -701,7 +723,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   createPr: async (base, head, title, body, draft) => {
     const out = await runPrAction(
       (path, account) => api.createPullRequest(path, base, head, title, body, draft, account),
-      { action: "create" },
+      { action: PR_PENDING_ACTION.Create, prNum: null },
     );
     await get().loadPullRequests(true);
     return out;
@@ -730,7 +752,19 @@ function prListLoadOwnsSlot(requestId: number): boolean {
 // and own their pending state locally (one busy thread must not disable the rest).
 async function runPrAction(
   body: (path: string, account: GithubAccountRef | null) => Promise<string>,
-  { action, trackPending = true }: { action?: PrPendingAction; trackPending?: boolean } = {},
+  {
+    action,
+    prNum = null,
+    stateAction,
+    reviewAction,
+    trackPending = true,
+  }: {
+    action?: PrPendingActionKind;
+    prNum?: number | null;
+    stateAction?: PrStateAction;
+    reviewAction?: ReviewAction;
+    trackPending?: boolean;
+  } = {},
 ): Promise<string> {
   const summary = useRepo.getState().summary;
   if (!summary) throw new Error("No repository");
@@ -740,12 +774,19 @@ async function runPrAction(
   // list-load error and must not be cleared/clobbered by a write op). Track the
   // action in a multiset so concurrent writes are independent: one finishing
   // removes only its own entry, never clearing another action's busy state.
-  usePulls.setState((s) => ({ prPendingActions: [...s.prPendingActions, action] }));
+  const pendingEntry: PrPendingAction = {
+    id: nextPrPendingActionId++,
+    action,
+    prNum,
+    ...(stateAction ? { stateAction } : {}),
+    ...(reviewAction ? { reviewAction } : {}),
+  };
+  usePulls.setState((s) => ({ prPendingActions: [...s.prPendingActions, pendingEntry] }));
   try {
     return await body(summary.path, account);
   } finally {
     usePulls.setState((s) => {
-      const i = s.prPendingActions.indexOf(action);
+      const i = s.prPendingActions.findIndex((pending) => pending.id === pendingEntry.id);
       return i === -1
         ? {}
         : { prPendingActions: [...s.prPendingActions.slice(0, i), ...s.prPendingActions.slice(i + 1)] };

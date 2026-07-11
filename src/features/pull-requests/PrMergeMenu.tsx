@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { cn } from "../../lib/cn";
 import type { MergeMethod } from "../../lib/api";
 import type { PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { useDismiss } from "../../hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
@@ -22,7 +22,11 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) 
   const methods = basic ? MERGE_METHODS.filter((m) => m.key !== "rebase") : MERGE_METHODS;
   // "Merging…" shows only while a merge is in flight, but the control disables
   // while ANY PR write runs so the user can't start a concurrent merge.
-  const merging = usePulls((s) => s.prPendingActions.includes("merge"));
+  const merging = usePulls((s) =>
+    s.prPendingActions.some((pending) =>
+      pending.action === PR_PENDING_ACTION.Merge && pending.prNum === pr.num
+    ),
+  );
   const busy = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();

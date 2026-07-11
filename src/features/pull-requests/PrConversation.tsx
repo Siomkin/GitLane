@@ -6,11 +6,11 @@
 import { useState } from "react";
 import { cn } from "../../lib/cn";
 import { initials, type PrComment, type PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
-import { useKeyedPrAction } from "./usePrAction";
+import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 
 export function PrConversation({ pr }: { pr: PullRequest }) {
   return (
@@ -58,11 +58,35 @@ function Composer({ pr }: { pr: PullRequest }) {
   const commentPr = usePulls((s) => s.commentPr);
   const reviewPr = usePulls((s) => s.reviewPr);
   const pending = usePulls((s) => s.prPendingActions.length > 0);
+  const commentPending = usePulls((s) =>
+    s.prPendingActions.some(
+      (entry) => entry.action === PR_PENDING_ACTION.Comment && entry.prNum === pr.num,
+    ),
+  );
+  const approvePending = usePulls((s) =>
+    s.prPendingActions.some(
+      (entry) =>
+        entry.action === PR_PENDING_ACTION.Review &&
+        entry.prNum === pr.num &&
+        entry.reviewAction === "approve",
+    ),
+  );
+  const requestChangesPending = usePulls((s) =>
+    s.prPendingActions.some(
+      (entry) =>
+        entry.action === PR_PENDING_ACTION.Review &&
+        entry.prNum === pr.num &&
+        entry.reviewAction === "request-changes",
+    ),
+  );
   const requestConfirm = useUi((s) => s.requestConfirm);
   const { pendingKey, start } = useKeyedPrAction();
   const [body, setBody] = useState("");
   const trimmed = body.trim();
   const isOpen = pr.state === "open";
+  const posting = pendingKey === PR_ACTION_KEY.Comment || commentPending;
+  const approving = pendingKey === PR_ACTION_KEY.Approve || approvePending;
+  const requestingChanges = pendingKey === PR_ACTION_KEY.RequestChanges || requestChangesPending;
 
   const after = (ok: boolean) => {
     if (ok) setBody("");
@@ -89,16 +113,16 @@ function Composer({ pr }: { pr: PullRequest }) {
                     confirmLabel: "Request changes",
                     danger: true,
                     onConfirm: async () =>
-                      after(await start("request-changes", () => reviewPr(pr.num, "request-changes", body), `Requested changes on #${pr.num}`)),
+                      after(await start(PR_ACTION_KEY.RequestChanges, () => reviewPr(pr.num, "request-changes", body), `Requested changes on #${pr.num}`)),
                   })
                 }
                 disabled={pending || !trimmed}
-                aria-busy={pendingKey === "request-changes"}
+                aria-busy={requestingChanges}
                 title={!trimmed ? "A note is required to request changes" : undefined}
                 className={ghostBtn}
               >
-                {pendingKey === "request-changes" && <InlineSpinner className="h-3.5 w-3.5" />}
-                {pendingKey === "request-changes" ? "Requesting…" : "Request changes"}
+                {requestingChanges && <InlineSpinner className="h-3.5 w-3.5" />}
+                {requestingChanges ? "Requesting…" : "Request changes"}
               </button>
               <button type="button"
                 onClick={() =>
@@ -107,26 +131,26 @@ function Composer({ pr }: { pr: PullRequest }) {
                     message: trimmed ? undefined : "Approve with no comment.",
                     confirmLabel: "Approve",
                     onConfirm: async () =>
-                      after(await start("approve", () => reviewPr(pr.num, "approve", body), `Approved #${pr.num}`)),
+                      after(await start(PR_ACTION_KEY.Approve, () => reviewPr(pr.num, "approve", body), `Approved #${pr.num}`)),
                   })
                 }
                 disabled={pending}
-                aria-busy={pendingKey === "approve"}
+                aria-busy={approving}
                 className={cn(ghostBtn, "text-emerald-600 dark:text-emerald-400")}
               >
-                {pendingKey === "approve" && <InlineSpinner className="h-3.5 w-3.5" />}
-                {pendingKey === "approve" ? "Approving…" : "Approve"}
+                {approving && <InlineSpinner className="h-3.5 w-3.5" />}
+                {approving ? "Approving…" : "Approve"}
               </button>
             </>
           )}
           <button type="button"
-            onClick={async () => after(await start("comment", () => commentPr(pr.num, body), "Comment posted"))}
+            onClick={async () => after(await start(PR_ACTION_KEY.Comment, () => commentPr(pr.num, body), "Comment posted"))}
             disabled={pending || !trimmed}
-            aria-busy={pendingKey === "comment"}
+            aria-busy={posting}
             className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
           >
-            {pendingKey === "comment" && <InlineSpinner className="h-3.5 w-3.5" />}
-            {pendingKey === "comment" ? "Posting…" : "Comment"}
+            {posting && <InlineSpinner className="h-3.5 w-3.5" />}
+            {posting ? "Posting…" : "Comment"}
           </button>
         </div>
       </div>

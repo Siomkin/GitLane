@@ -58,7 +58,7 @@ export const PrHeader = ({ pr }: { pr: PullRequest }) => {
           <span className={cn("h-1.5 w-1.5 rounded-full", sv.dot)} />
           {sv.label}
         </span>
-        <PrHeaderActions pr={pr} />
+        <PrHeaderActions key={pr.num} pr={pr} />
       </div>
       <div className="mt-4 flex gap-5 border-b border-black/5 dark:border-white/5">
         <Tab label="Info" active={prTab === "info"} onClick={() => setPrTab("info")} />

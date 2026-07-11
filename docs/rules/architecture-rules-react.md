@@ -56,6 +56,12 @@ that owns its concern:
   subscriptions, event listeners, timers, measurement (`useRepoWatcher`, `useDismiss`).
 - **Pure logic (no IPC, no Zustand) goes in `selection.ts`-style modules or `lib/`** so it's
   reusable and trivial to test.
+- **Shared string discriminants are typed constants, not repeated literals.** When an action,
+  status, mode, or pending key is written and compared in more than one place, define one
+  exported `as const` object and derive its union type from that object. Callers use the named
+  members for writes and comparisons so renames fail at compile time and refactors cannot leave
+  stale magic strings behind. Keep a literal inline only when it is local to one expression or
+  is an external wire value already typed by the API contract.
 - **Don't widen a store with another concern's state.** If graph churn would flicker your new
   state, it's in the wrong store — extract a slice (the `accounts.ts` split out of `ui.ts` is
   the precedent). But **don't pre-split a cohesive store** — see §4.

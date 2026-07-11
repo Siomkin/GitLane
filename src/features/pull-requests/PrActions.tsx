@@ -47,7 +47,7 @@ export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
         <ForgeIcon className="h-4 w-4" />
       </button>
       {hasStateActions && <span className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
-      {!basic && <PrLifecycleControls pr={pr} />}
+      {hasStateActions && <PrLifecycleControls pr={pr} />}
       {pr.state === "open" && !pr.draft && <PrMergeMenu pr={pr} basic={basic} />}
       <PrMoreMenu pr={pr} basic={basic} />
     </div>
