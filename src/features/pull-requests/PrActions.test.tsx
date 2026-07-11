@@ -223,9 +223,21 @@ describe("PrHeaderActions merge options", () => {
     await userEvent.click(screen.getByText("Create a merge commit"));
 
     const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
     expect(confirm?.message).not.toContain("feat/thing");
-    confirm?.onConfirm();
+    // Confirm runs an async store action (toast on resolve) — flush through act.
+    await act(async () => {
+      confirm?.onConfirm();
+    });
     expect(mergePr).toHaveBeenCalledWith(42, "merge", false);
+  });
+
+  it("offers all three merge strategies on GitHub (the default forge)", async () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+    expect(screen.getByText("Create a merge commit")).toBeInTheDocument();
+    expect(screen.getByText("Rebase and merge")).toBeInTheDocument();
   });
 
   it("closes the merge dropdown on an outside mousedown without merging", async () => {
@@ -246,6 +258,43 @@ describe("PrHeaderActions merge options", () => {
     expect(screen.getByText("Squash and merge")).toBeInTheDocument();
     await userEvent.click(screen.getByText("Merge"));
     expect(screen.queryByText("Squash and merge")).not.toBeInTheDocument();
+  });
+});
+
+describe("PrHeaderActions overflow menu", () => {
+  it("closes the overflow menu on an outside mousedown without acting", async () => {
+    render(<PrHeaderActions pr={openPr()} />);
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+
+    await userEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByText("Checkout branch")).not.toBeInTheDocument());
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
+  it("toasts the error and keeps the menu open when checkout fails", async () => {
+    const realShowToast = useUi.getState().showToast;
+    const showToast = vi.fn();
+    const checkoutBranch = vi.fn().mockRejectedValue(new Error("worktree is dirty"));
+    useRepo.setState({ checkoutBranch });
+    useUi.setState({ showToast });
+    try {
+      render(<PrHeaderActions pr={openPr()} />);
+      await userEvent.click(screen.getByTitle("More actions"));
+      await userEvent.click(screen.getByText("Checkout branch"));
+
+      await waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith("Error: worktree is dirty", "error"),
+      );
+      // Only a successful checkout dismisses the menu — a failure leaves it
+      // open so the user can retry.
+      expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+      expect(screen.queryByText("Checking out…")).not.toBeInTheDocument();
+    } finally {
+      // The store is a shared singleton — restore the real action.
+      useUi.setState({ showToast: realShowToast });
+    }
   });
 });
 
