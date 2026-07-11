@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, TerminalAgent } from "../../../lib/api";
 import { emptyAdvancedState } from "../../../lib/advancedRepoState";
@@ -49,6 +49,48 @@ beforeEach(() => {
 });
 
 describe("CommitModal", () => {
+  it("resets the ephemeral amend choice when reopened", () => {
+    useRepo.setState({
+      graph: {
+        commits: [
+          {
+            id: "abc",
+            shortId: "abc",
+            summary: "Local commit",
+            body: "",
+            authorName: "Alex",
+            authorEmail: "alex@example.com",
+            timestamp: 1,
+            parents: [],
+            lane: 0,
+            row: 0,
+            color: 0,
+            refs: [],
+          },
+        ],
+        edges: [],
+        laneCount: 1,
+        head: "abc",
+        truncated: false,
+      },
+    });
+    render(<CommitModal />);
+
+    fireEvent.click(screen.getByRole("switch", { name: /Add to previous commit/ }));
+    expect(screen.getByRole("switch", { name: /Add to previous commit/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    act(() => useUi.setState({ commitOpen: false }));
+    act(() => useUi.setState({ commitOpen: true }));
+
+    expect(screen.getByRole("switch", { name: /Add to previous commit/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
   it("keeps list view compact", () => {
     const { container } = render(<CommitModal />);
 

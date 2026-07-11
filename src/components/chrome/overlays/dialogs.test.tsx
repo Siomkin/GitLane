@@ -128,6 +128,19 @@ describe("CreateBranchDialog", () => {
     expect(useUi.getState().createBranchOpen).toBe(false);
   });
 
+  it("mounts a fresh name field when reopened", () => {
+    openDialog();
+    render(<CreateBranchDialog />);
+    fireEvent.change(screen.getByPlaceholderText("feature/my-branch"), {
+      target: { value: "stale/name" },
+    });
+
+    act(() => useUi.setState({ createBranchOpen: false }));
+    act(() => openDialog());
+
+    expect(screen.getByPlaceholderText("feature/my-branch")).toHaveValue("");
+  });
+
   it("stacks at z-[60], below confirm/prompt", () => {
     openDialog();
     const { container } = render(<CreateBranchDialog />);
