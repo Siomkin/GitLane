@@ -44,7 +44,9 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
 beforeEach(() => {
   useUi.setState({ confirm: null });
   usePulls.setState({ prPendingActions: [] });
-  useRepo.setState({ checkoutBranch: vi.fn() });
+  // Reset the forge so suite order can't leak a GitLab/Bitbucket variant into
+  // the GitHub-default tests (the provider describes set their own forge).
+  useRepo.setState({ checkoutBranch: vi.fn(), forge: null });
 });
 
 describe("PrHeaderActions merge", () => {
@@ -207,6 +209,155 @@ describe("PrHeaderActions merge", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Closing pull request…" })).not.toBeInTheDocument(),
     );
+  });
+});
+
+describe("PrHeaderActions merge options", () => {
+  it("passes deleteBranch=false and drops the branch line when the checkbox is unchecked", async () => {
+    const mergePr = vi.fn().mockResolvedValue("done");
+    usePulls.setState({ mergePr });
+
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    await userEvent.click(screen.getByText("Delete branch after merge"));
+    await userEvent.click(screen.getByText("Create a merge commit"));
+
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    expect(confirm?.message).not.toContain("feat/thing");
+    // Confirm runs an async store action (toast on resolve) — flush through act.
+    await act(async () => {
+      confirm?.onConfirm();
+    });
+    expect(mergePr).toHaveBeenCalledWith(42, "merge", false);
+  });
+
+  it("offers all three merge strategies on GitHub (the default forge)", async () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+    expect(screen.getByText("Create a merge commit")).toBeInTheDocument();
+    expect(screen.getByText("Rebase and merge")).toBeInTheDocument();
+  });
+
+  it("closes the merge dropdown on an outside mousedown without merging", async () => {
+    usePulls.setState({ mergePr: vi.fn() });
+    render(<PrHeaderActions pr={openPr()} />);
+
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+
+    await userEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByText("Squash and merge")).not.toBeInTheDocument());
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
+  it("toggles the dropdown closed on a second trigger click", async () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.queryByText("Squash and merge")).not.toBeInTheDocument();
+  });
+});
+
+describe("PrHeaderActions overflow menu", () => {
+  it("closes the overflow menu on an outside mousedown without acting", async () => {
+    render(<PrHeaderActions pr={openPr()} />);
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+
+    await userEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByText("Checkout branch")).not.toBeInTheDocument());
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
+  it("toasts the error and keeps the menu open when checkout fails", async () => {
+    const realShowToast = useUi.getState().showToast;
+    const showToast = vi.fn();
+    const checkoutBranch = vi.fn().mockRejectedValue(new Error("worktree is dirty"));
+    useRepo.setState({ checkoutBranch });
+    useUi.setState({ showToast });
+    try {
+      render(<PrHeaderActions pr={openPr()} />);
+      await userEvent.click(screen.getByTitle("More actions"));
+      await userEvent.click(screen.getByText("Checkout branch"));
+
+      await waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith("Error: worktree is dirty", "error"),
+      );
+      // Only a successful checkout dismisses the menu — a failure leaves it
+      // open so the user can retry.
+      expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+      expect(screen.queryByText("Checking out…")).not.toBeInTheDocument();
+    } finally {
+      // The store is a shared singleton — restore the real action.
+      useUi.setState({ showToast: realShowToast });
+    }
+  });
+});
+
+describe("PrHeaderActions state gating", () => {
+  it("shows Ready but no Merge for an open draft PR", () => {
+    render(<PrHeaderActions pr={openPr({ draft: true })} />);
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.queryByText("Merge")).not.toBeInTheDocument();
+  });
+
+  it("shows neither lifecycle nor merge nor Close for a merged PR (checkout stays)", async () => {
+    render(<PrHeaderActions pr={openPr({ state: "merged" })} />);
+
+    expect(screen.queryByText("Merge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reopen")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+    expect(screen.queryByText("Close pull request")).not.toBeInTheDocument();
+  });
+});
+
+describe("PrHeaderActions — Bitbucket (GL-141)", () => {
+  beforeEach(() => {
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.Bitbucket,
+        forge: "Bitbucket",
+        host: "bitbucket.org",
+        webUrl: "https://bitbucket.org/x/y",
+      },
+    });
+  });
+
+  it("labels the external link 'Open on Bitbucket'", () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.getByTitle("Open on Bitbucket")).toBeInTheDocument();
+  });
+
+  it("drops 'Rebase and merge' — Bitbucket has no rebase-merge strategy", async () => {
+    usePulls.setState({ mergePr: vi.fn() });
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+    expect(screen.getByText("Create a merge commit")).toBeInTheDocument();
+    expect(screen.queryByText("Rebase and merge")).toBeNull();
+  });
+
+  it("hides the reopen/ready/close lifecycle actions (unsupported for Bitbucket PRs)", async () => {
+    const closed = render(<PrHeaderActions pr={openPr({ state: "closed" })} />);
+    expect(screen.queryByText("Reopen")).toBeNull();
+    closed.unmount();
+
+    const draft = render(<PrHeaderActions pr={openPr({ draft: true })} />);
+    expect(screen.queryByText("Ready")).toBeNull();
+    draft.unmount();
+
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+    expect(screen.queryByText("Close pull request")).toBeNull();
   });
 });
 
