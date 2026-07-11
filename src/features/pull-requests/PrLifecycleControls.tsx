@@ -1,66 +1,77 @@
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import type { PullRequest } from "../../lib/prs";
-import { useKeyedPrAction } from "./usePrAction";
+import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { outlineBtn } from "./prActionStyles";
 
 /** Reopen (closed) / Ready (draft) state buttons. Close lives in PrMoreMenu. */
 export const PrLifecycleControls = ({ pr }: { pr: PullRequest }) => {
   const setPrState = usePulls((s) => s.setPrState);
   const pending = usePulls((s) => s.prPendingActions.length > 0);
+  const expectedStateAction = pr.state === "closed" ? "reopen" : pr.state === "open" && pr.draft ? "ready" : null;
+  const statePending = usePulls((s) =>
+    s.prPendingActions.some(
+      (entry) =>
+        entry.action === PR_PENDING_ACTION.State &&
+        entry.prNum === pr.num &&
+        entry.stateAction === expectedStateAction,
+    ),
+  );
   const requestConfirm = useUi((s) => s.requestConfirm);
   const { pendingKey, start } = useKeyedPrAction();
 
   if (pr.state === "closed") {
+    const reopening = pendingKey === PR_ACTION_KEY.Reopen || statePending;
     return (
       <button type="button"
         disabled={pending}
-        aria-busy={pendingKey === "reopen"}
+        aria-busy={reopening}
         onClick={() =>
           requestConfirm({
             title: `Reopen pull request #${pr.num}?`,
             message: "This will move the PR back to open.",
             confirmLabel: "Reopen",
-            onConfirm: () => void start("reopen", () => setPrState(pr.num, "reopen"), `Reopened #${pr.num}`),
+            onConfirm: () => void start(PR_ACTION_KEY.Reopen, () => setPrState(pr.num, "reopen"), `Reopened #${pr.num}`),
           })
         }
         className={outlineBtn}
       >
-        {pendingKey === "reopen" ? (
+        {reopening ? (
           <InlineSpinner className="h-4 w-4" />
         ) : (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
             <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
           </svg>
         )}
-        {pendingKey === "reopen" ? "Reopening…" : "Reopen"}
+        {reopening ? "Reopening…" : "Reopen"}
       </button>
     );
   }
   if (pr.state === "open" && pr.draft) {
+    const markingReady = pendingKey === PR_ACTION_KEY.Ready || statePending;
     return (
       <button type="button"
         disabled={pending}
-        aria-busy={pendingKey === "ready"}
+        aria-busy={markingReady}
         onClick={() =>
           requestConfirm({
             title: `Mark #${pr.num} ready for review?`,
             message: "This takes the PR out of draft so it can be reviewed and merged.",
             confirmLabel: "Ready for review",
-            onConfirm: () => void start("ready", () => setPrState(pr.num, "ready"), `#${pr.num} ready for review`),
+            onConfirm: () => void start(PR_ACTION_KEY.Ready, () => setPrState(pr.num, "ready"), `#${pr.num} ready for review`),
           })
         }
         className={outlineBtn}
       >
-        {pendingKey === "ready" ? (
+        {markingReady ? (
           <InlineSpinner className="h-4 w-4" />
         ) : (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
             <path d="M20 6 9 17l-5-5" />
           </svg>
         )}
-        {pendingKey === "ready" ? "Marking ready…" : "Ready"}
+        {markingReady ? "Marking ready…" : "Ready"}
       </button>
     );
   }

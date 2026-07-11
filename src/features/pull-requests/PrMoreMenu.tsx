@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import type { PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
 import { useDismiss } from "../../hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
-import { useKeyedPrAction } from "./usePrAction";
+import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { utilBtn } from "./prActionStyles";
 
 /** "..." overflow menu for secondary PR actions. "Checkout branch" is a local
@@ -16,14 +16,22 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) =
   // Close is a PR write (setPrState); gate it on the same flag as the other
   // controls so a concurrent write can't start while one is already in flight.
   const busy = usePulls((s) => s.prPendingActions.length > 0);
+  const statePending = usePulls((s) =>
+    s.prPendingActions.some((pending) =>
+      pending.action === PR_PENDING_ACTION.State &&
+      pending.prNum === pr.num &&
+      pending.stateAction === "close"
+    ),
+  );
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const { pendingKey, start } = useKeyedPrAction();
   const [open, setOpen] = useState(false);
   // Checkout is a repo write (not a `gh` PR action), so it tracks its own
-  // pending flag and keeps the menu open while it runs to host the spinner.
+  // pending flag. The trigger hosts feedback if the menu is dismissed while it runs.
   const [checkingOut, setCheckingOut] = useState(false);
+  const closing = pendingKey === PR_ACTION_KEY.Close || statePending;
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), ref);
 
@@ -43,15 +51,21 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) =
   return (
     <div ref={ref} className="relative">
       <button type="button"
-        title={pendingKey === "close" ? "Closing pull request…" : "More actions"}
+        title={
+          closing
+            ? "Closing pull request…"
+            : checkingOut
+              ? "Checking out branch…"
+              : "More actions"
+        }
         onClick={() => setOpen((o) => !o)}
         // Close runs after the menu has dismissed, so the overflow trigger is the
         // only control left on screen to host its in-flight feedback.
-        disabled={pendingKey === "close"}
-        aria-busy={pendingKey === "close"}
+        disabled={closing || checkingOut}
+        aria-busy={closing || checkingOut}
         className={utilBtn}
       >
-        {pendingKey === "close" ? (
+        {closing || checkingOut ? (
           <InlineSpinner className="h-4 w-4" />
         ) : (
           <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
@@ -90,7 +104,7 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) =
                   message: "You can reopen it later.",
                   confirmLabel: "Close pull request",
                   danger: true,
-                  onConfirm: () => void start("close", () => setPrState(pr.num, "close"), `Closed #${pr.num}`),
+                  onConfirm: () => void start(PR_ACTION_KEY.Close, () => setPrState(pr.num, "close"), `Closed #${pr.num}`),
                 });
               }}
               className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-45 disabled:hover:bg-transparent dark:text-rose-400"

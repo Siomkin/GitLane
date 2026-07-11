@@ -177,6 +177,21 @@ describe("PR comment markdown", () => {
     expect(screen.getByText("Outdated")).toBeInTheDocument();
   });
 
+  it("resets the resolved-thread filter when the PR changes", async () => {
+    const first = makePr({ num: 21, state: "open" });
+    const second = makePr({ num: 22, state: "open" });
+    const resolved = { ...thread("resolved", "resolved comment"), isResolved: true };
+    usePulls.setState({ prThreads: { [first.num]: [resolved], [second.num]: [resolved] } });
+    const view = render(<ReviewThreads key={first.num} pr={first} />);
+
+    await userEvent.click(screen.getByText("Show resolved (1)"));
+    expect(screen.getByText("resolved comment")).toBeInTheDocument();
+
+    view.rerender(<ReviewThreads key={second.num} pr={second} />);
+    expect(screen.queryByText("resolved comment")).not.toBeInTheDocument();
+    expect(screen.getByText("Show resolved (1)")).toBeInTheDocument();
+  });
+
   // Generous timeout: this userEvent-driven case blew the 5s default when the
   // CI box was starved (it overlapped a desktop build being killed) — the test
   // is correct, just slow under load.

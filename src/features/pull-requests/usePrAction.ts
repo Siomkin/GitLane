@@ -6,6 +6,19 @@
 import { useCallback, useRef, useState } from "react";
 import { useUi } from "../../store/ui";
 
+/** Component-local button keys. These select exact labels/spinners; the pulls
+ * store intentionally uses coarser `PR_PENDING_ACTION` domain categories. */
+export const PR_ACTION_KEY = {
+  Approve: "approve",
+  Close: "close",
+  Comment: "comment",
+  Ready: "ready",
+  Reopen: "reopen",
+  RequestChanges: "request-changes",
+} as const;
+
+export type PrActionKey = (typeof PR_ACTION_KEY)[keyof typeof PR_ACTION_KEY];
+
 export function useRunPrAction() {
   const showToast = useUi((s) => s.showToast);
   return useCallback(
@@ -35,10 +48,10 @@ export function useRunPrAction() {
  * toolbar's network-op runner. */
 export function useKeyedPrAction() {
   const run = useRunPrAction();
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [pendingKey, setPendingKey] = useState<PrActionKey | null>(null);
   const busyRef = useRef(false);
   const start = useCallback(
-    async (key: string, action: () => Promise<string>, okMessage?: string): Promise<boolean> => {
+    async (key: PrActionKey, action: () => Promise<string>, okMessage?: string): Promise<boolean> => {
       if (busyRef.current) return false;
       busyRef.current = true;
       setPendingKey(key);

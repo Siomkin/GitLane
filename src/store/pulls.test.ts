@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { usePulls } from "./pulls";
+import { PR_PENDING_ACTION, usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import { summaryToPr } from "@/lib/prs";
@@ -87,6 +87,43 @@ beforeEach(() => {
 });
 
 describe("pulls lazy-load error isolation", () => {
+  it("clears pending writes when the repository PR state resets", () => {
+    usePulls.setState({
+      prPendingActions: [
+        { id: 1, action: PR_PENDING_ACTION.State, prNum: 7, stateAction: "close" },
+      ],
+    });
+
+    usePulls.getState().reset();
+
+    expect(usePulls.getState().prPendingActions).toEqual([]);
+  });
+
+  it("tracks and removes concurrent same-PR writes by stable pending IDs", async () => {
+    const first = deferred<string>();
+    const second = deferred<string>();
+    invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    const firstWrite = usePulls.getState().commentPr(7, "first");
+    const secondWrite = usePulls.getState().commentPr(7, "second");
+
+    const pending = usePulls.getState().prPendingActions;
+    expect(pending).toHaveLength(2);
+    expect(pending.map(({ action, prNum }) => ({ action, prNum }))).toEqual([
+      { action: PR_PENDING_ACTION.Comment, prNum: 7 },
+      { action: PR_PENDING_ACTION.Comment, prNum: 7 },
+    ]);
+    expect(new Set(pending.map(({ id }) => id)).size).toBe(2);
+
+    first.reject(new Error("first failed"));
+    await expect(firstWrite).rejects.toThrow("first failed");
+    expect(usePulls.getState().prPendingActions.map(({ id }) => id)).toEqual([pending[1].id]);
+
+    second.reject(new Error("second failed"));
+    await expect(secondWrite).rejects.toThrow("second failed");
+    expect(usePulls.getState().prPendingActions).toEqual([]);
+  });
+
   it("scopes a diff failure to the PR without touching prError or the list", async () => {
     usePulls.setState({ pullRequests: [{ num: 7 } as never] });
     invokeMock.mockRejectedValueOnce("diff blew up");

@@ -60,6 +60,12 @@ beforeEach(() => {
 });
 
 describe("ActionBar layout order", () => {
+  it("stacks anchored popovers above the workspace", () => {
+    const { container } = render(<ActionBar />);
+
+    expect(container.firstElementChild).toHaveClass("relative", "z-40");
+  });
+
   it("places the provider indicator in the right cluster, just before Fetch (after the branch trigger)", () => {
     render(<ActionBar />);
 
