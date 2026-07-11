@@ -70,6 +70,7 @@ const SidePreview = ({
         </svg>
       </span>
     </div>
+    {/* Conflict lines are an immutable positional snapshot; duplicate text is valid. */}
     {lines.map((line, i) => (
       <div
         key={i}
@@ -126,6 +127,7 @@ export const InlineConflict = ({
   let lineNo = 0;
   return (
     <div ref={scrollRef} className="flex-1 overflow-auto py-1.5">
+      {/* Regions retain positional identity for this file; decisions only change their rendering. */}
       {regions.map((region, idx) => {
         if (region.kind === "ctx") {
           return region.lines.map((line, k) => {
@@ -175,6 +177,7 @@ export const InlineConflict = ({
         const rows = resolvedRows(region, dec, lineSelFor(idx));
         return (
           <div key={idx} data-region={idx} className="group relative">
+            {/* Resolved rows are an immutable positional projection and may contain duplicate lines. */}
             {rows.map((row, k) => (
               <div
                 key={k}

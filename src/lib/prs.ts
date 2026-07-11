@@ -44,6 +44,7 @@ export interface PrComment {
   author: PrAuthor;
   body: string;
   age: string;
+  createdAt: string;
 }
 
 /** Reviewer state as the UI renders it: a submitted verdict or still pending. */
@@ -153,7 +154,12 @@ function uiAuthor(a: ApiPrAuthor): PrAuthor {
 }
 
 function uiComment(c: ApiPrComment): PrComment {
-  return { author: uiAuthor(c.author), body: c.body, age: relativeAge(c.createdAt) };
+  return {
+    author: uiAuthor(c.author),
+    body: c.body,
+    age: relativeAge(c.createdAt),
+    createdAt: c.createdAt,
+  };
 }
 
 function lowerReviewState(raw: PrReview["state"]): ReviewerState {

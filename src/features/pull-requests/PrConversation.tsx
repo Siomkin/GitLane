@@ -24,8 +24,8 @@ export function PrConversation({ pr }: { pr: PullRequest }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {pr.commentList.map((c, i) => (
-            <CommentCard key={i} comment={c} />
+          {pr.commentList.map((c, index) => (
+            <CommentCard key={`${c.author.login}:${c.createdAt}:${index}`} comment={c} />
           ))}
         </div>
       )}

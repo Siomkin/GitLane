@@ -45,6 +45,25 @@ beforeEach(() => {
   usePulls.setState({ prPendingActions: [] });
 });
 
+describe("PrConversation comment identities", () => {
+  it("renders comments that share an author and provider timestamp", () => {
+    const createdAt = "2026-07-11T12:00:00Z";
+    render(
+      <PrConversation
+        pr={openPr({
+          commentList: [
+            { author, age: "now", createdAt, body: "First rapid comment" },
+            { author, age: "now", createdAt, body: "Second rapid comment" },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("First rapid comment")).toBeInTheDocument();
+    expect(screen.getByText("Second rapid comment")).toBeInTheDocument();
+  });
+});
+
 describe("PrConversation composer loaders", () => {
   it("restores posting feedback from the per-PR store after remount", () => {
     usePulls.setState({

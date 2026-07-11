@@ -1388,7 +1388,7 @@ describe("repo store — reorderOpenPaths", () => {
 
     expect(useRepo.getState().openPaths).toEqual(["/c", "/a", "/b"]);
     expect(useRepo.getState().summary?.path).toBe("/b");
-    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual([
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
       "/c",
       "/a",
       "/b",
@@ -1408,7 +1408,7 @@ describe("repo store — reorderOpenPaths", () => {
 
     expect(useRepo.getState().openPaths).toEqual(["/b", "/c", "/a"]);
     expect(useRepo.getState().summary?.path).toBe("/a");
-    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual([
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
       "/b",
       "/c",
       "/a",
@@ -1428,7 +1428,7 @@ describe("repo store — reorderOpenPaths", () => {
     useRepo.getState().reorderOpenPaths(0, 2);
 
     expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
-    expect(localStorage.getItem("gitlane.openPaths")).toBeNull();
+    expect(localStorage.getItem("gitlane.openPaths:v1")).toBeNull();
   });
 });
 
@@ -2729,7 +2729,7 @@ describe("repo store — worktree tabs (GL-110)", () => {
     });
     // The replaced tab's info no longer lingers.
     expect(useRepo.getState().tabInfoByPath["/repo"]).toBeUndefined();
-    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual([
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
       wtSummary.path,
       "/other",
     ]);
@@ -2807,7 +2807,7 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     // reopened on the surviving repo.
     expect(useRepo.getState().openPaths).toEqual(["/a"]);
     expect(useRepo.getState().summary?.path).toBe("/a");
-    expect(JSON.parse(localStorage.getItem("gitlane.openPaths") ?? "[]")).toEqual(["/a"]);
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual(["/a"]);
     expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
   });
 
