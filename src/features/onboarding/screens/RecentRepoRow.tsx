@@ -14,7 +14,7 @@ export const RecentRepoRow = ({ repo, onOpen }: { repo: RecentRepo; onOpen: () =
     : { background: `hsla(${hue},60%,50%,0.15)`, color: `hsl(${hue},55%,52%)` };
 
   return (
-    <button
+    <button type="button"
       onClick={onOpen}
       title={repo.path}
       className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white hover:shadow-sm dark:hover:bg-neutral-800"

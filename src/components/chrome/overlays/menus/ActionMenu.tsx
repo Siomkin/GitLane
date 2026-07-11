@@ -206,7 +206,7 @@ export function ActionMenu() {
           {items.map((item) => {
             const reasonId = item.disabledReason ? `action-reason-${item.kind}` : undefined;
             return (
-              <button
+              <button type="button"
                 key={item.label}
                 role="menuitem"
                 disabled={item.disabled}

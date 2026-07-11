@@ -34,7 +34,7 @@ const SidePreview = ({
   lines: string[];
   onUse: () => void;
 }) => (
-  <button
+  <button type="button"
     onClick={onUse}
     className={cn(
       "group block w-full bg-white text-left transition-colors dark:bg-neutral-800",
@@ -162,7 +162,7 @@ export const InlineConflict = ({
                 onUse={() => onDecide(idx, "theirs")}
               />
               <div className="flex border-t border-black/5 dark:border-white/5">
-                <button
+                <button type="button"
                   onClick={() => onDecide(idx, "both")}
                   className="h-7 w-full text-[11px] font-medium text-neutral-500 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
                 >
@@ -188,7 +188,7 @@ export const InlineConflict = ({
               </div>
             ))}
             <div className="absolute right-1.5 top-1 opacity-0 transition-opacity group-hover:opacity-100">
-              <button
+              <button type="button"
                 onClick={() => onUndo(idx)}
                 title={resolvedLabel(dec)}
                 className="flex h-6 items-center gap-1 rounded-md border border-black/10 bg-white/90 px-2 text-[11px] font-medium text-neutral-600 shadow-sm backdrop-blur-sm hover:bg-white dark:border-white/10 dark:bg-neutral-900/80 dark:text-neutral-200 dark:hover:bg-neutral-900"

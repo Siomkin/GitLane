@@ -50,7 +50,7 @@ export function HistorySearchBar({
             />
             <span className="shrink-0 whitespace-nowrap text-[11px] text-neutral-400">{countLabel}</span>
             {histQuery !== "" && (
-              <button
+              <button type="button"
                 onClick={clearHistQuery}
                 title="Clear search"
                 aria-label="Clear search"
@@ -76,7 +76,7 @@ export function HistorySearchBar({
           </>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1 text-neutral-400">
-          <button
+          <button type="button"
             onClick={toggleHistSearch}
             title="Search commits"
             aria-label="Search commits"
@@ -90,7 +90,7 @@ export function HistorySearchBar({
           >
             <SearchIcon className="h-4 w-4" />
           </button>
-          <button
+          <button type="button"
             onClick={toggleHistFilter}
             title="Highlight commits by kind"
             aria-label="Highlight commits by kind"
@@ -126,7 +126,7 @@ export function HistorySearchBar({
 /** A "Show" kind-filter pill — accent-filled when its filter is active. */
 function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       aria-pressed={active}
       className={cn(

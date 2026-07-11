@@ -106,15 +106,15 @@ export const UpdateSection = () => {
           <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">{sub}</div>
         </div>
         {status === "ready" ? (
-          <button className={accentButton} onClick={() => void restart()}>
+          <button type="button" className={accentButton} onClick={() => void restart()}>
             Relaunch
           </button>
         ) : status === "available" || canRetry ? (
-          <button className={accentButton} onClick={() => void downloadAndInstall()}>
+          <button type="button" className={accentButton} onClick={() => void downloadAndInstall()}>
             {canRetry ? "Retry download" : "Install update"}
           </button>
         ) : status === "downloading" ? null : (
-          <button className={secondaryButton} disabled={status === "checking"} onClick={() => void check()}>
+          <button type="button" className={secondaryButton} disabled={status === "checking"} onClick={() => void check()}>
             {status === "checking" ? "Checking…" : "Check for updates"}
           </button>
         )}

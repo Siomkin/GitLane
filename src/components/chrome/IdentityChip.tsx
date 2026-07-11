@@ -110,7 +110,7 @@ export function IdentityChip() {
 
   return (
     <div ref={ref} className="relative">
-      <button
+      <button type="button"
         onClick={() => setOpen((v) => !v)}
         title="Commit identity for this repository"
         className="flex h-8 items-center gap-1.5 rounded-full pl-1 pr-2.5 hover:bg-black/5 dark:hover:bg-white/5"
@@ -196,7 +196,7 @@ export function IdentityChip() {
             />
           </div>
 
-          <button
+          <button type="button"
             onClick={goAccessSettings}
             className="flex w-full items-center gap-2 border-t border-black/10 px-3.5 py-2.5 text-left text-[12px] text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100"
           >
@@ -228,7 +228,7 @@ function StatusRow({
   return (
     <div>
       <div className="px-3.5 pt-2.5 text-[11px] font-semibold tracking-wider text-neutral-400">{heading}</div>
-      <button
+      <button type="button"
         onClick={onClick}
         title={actionTitle}
         className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-black/5 dark:hover:bg-white/5"

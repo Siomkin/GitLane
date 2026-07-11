@@ -50,10 +50,10 @@ export const MissingRepoScreen = () => {
           </div>
 
           <div className="mt-7 flex items-center justify-center gap-2.5">
-            <button onClick={() => void closeRepo(missing.path)} className={secondaryButton}>
+            <button type="button" onClick={() => void closeRepo(missing.path)} className={secondaryButton}>
               Remove
             </button>
-            <button
+            <button type="button"
               onClick={() => void loadRepo(missing.path)}
               className={`flex items-center gap-2 ${secondaryButton}`}
             >
@@ -61,7 +61,7 @@ export const MissingRepoScreen = () => {
               Retry
             </button>
             {missing.kind === "notARepository" && (
-              <button
+              <button type="button"
                 disabled={initMissingRepoRunning}
                 onClick={() =>
                   requestConfirm({
@@ -79,7 +79,7 @@ export const MissingRepoScreen = () => {
                 {initMissingRepoRunning ? "Initializing…" : "Initialize as git repo"}
               </button>
             )}
-            <button
+            <button type="button"
               onClick={() => void locateMissingRepo()}
               className="flex h-10 items-center gap-2 rounded-xl bg-[color:var(--accent)] px-5 text-[13.5px] font-semibold text-white shadow-sm hover:brightness-110"
             >

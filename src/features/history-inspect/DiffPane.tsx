@@ -57,7 +57,7 @@ export function TruncatedNotice({ onShowFull }: { onShowFull: () => void }) {
         <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
       </svg>
       Diff capped for performance.
-      <button
+      <button type="button"
         onClick={onShowFull}
         className="ml-auto h-7 rounded-md border border-amber-500/30 px-2.5 text-[11.5px] font-semibold hover:bg-amber-500/10"
       >

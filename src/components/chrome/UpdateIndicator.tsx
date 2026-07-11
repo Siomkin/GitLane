@@ -24,7 +24,7 @@ export const UpdateIndicator = () => {
         : `Update available${newVersion ? ` (${newVersion})` : ""}`;
 
   return (
-    <button
+    <button type="button"
       onClick={() => openSettings("about")}
       title={title}
       aria-label={title}

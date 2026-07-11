@@ -34,7 +34,7 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) 
   if (pr.mergeable === "CONFLICTING") {
     return (
       <div className="group relative">
-        <button
+        <button type="button"
           disabled
           className="flex h-9 cursor-not-allowed items-center gap-1.5 rounded-lg bg-black/[0.06] px-3.5 text-[13px] font-medium text-neutral-400 dark:bg-white/10"
         >
@@ -68,7 +68,7 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) 
 
   return (
     <div ref={ref} className="relative">
-      <button
+      <button type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={busy}
         aria-busy={merging}
@@ -102,7 +102,7 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) 
         <div className="gp-pop absolute right-0 top-[calc(100%+6px)] z-50 w-[260px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_22px_50px_-10px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-800">
           <div className="p-1.5">
             {methods.map((m) => (
-              <button
+              <button type="button"
                 key={m.key}
                 onClick={() => doMerge(m.key)}
                 disabled={busy}

@@ -28,7 +28,7 @@ export function WipRow({
 }) {
   const openWipMenu = useUi((s) => s.openWipMenu);
   return (
-    <button
+    <button type="button"
       className={cn(
         "group absolute left-0 flex w-full cursor-pointer items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,

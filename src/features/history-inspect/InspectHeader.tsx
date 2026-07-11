@@ -27,7 +27,7 @@ export function InspectHeader({
 
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-black/5 px-3 dark:border-white/5">
-      <button
+      <button type="button"
         onClick={onBack}
         className="flex h-8 items-center gap-1 rounded-lg pl-1.5 pr-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
       >
@@ -51,7 +51,7 @@ export function InspectHeader({
       {showPath && (
         <>
           <span className="min-w-0 truncate font-mono text-[12px] text-neutral-400">{path}</span>
-          <button
+          <button type="button"
             onClick={onCopyPath}
             title="Copy path"
             className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
@@ -66,15 +66,15 @@ export function InspectHeader({
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {showSub && (
           <div className="flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]">
-            <button className={subButton(mode === "history")} onClick={onHistory}>
+            <button type="button" className={subButton(mode === "history")} onClick={onHistory}>
               History
             </button>
-            <button className={subButton(mode === "blame")} onClick={onBlame}>
+            <button type="button" className={subButton(mode === "blame")} onClick={onBlame}>
               Blame
             </button>
           </div>
         )}
-        <button
+        <button type="button"
           onClick={onBack}
           className="grid h-7 w-7 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
         >

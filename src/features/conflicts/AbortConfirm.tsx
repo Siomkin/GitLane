@@ -27,13 +27,13 @@ export const AbortConfirm = ({
         {abortBody(kind)}
       </p>
       <div className="mt-5 flex justify-end gap-2">
-        <button
+        <button type="button"
           onClick={onCancel}
           className="h-9 rounded-lg px-4 text-[13px] font-medium text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
         >
           Keep resolving
         </button>
-        <button
+        <button type="button"
           onClick={onConfirm}
           className="h-9 rounded-lg bg-rose-500 px-4 text-[13px] font-medium text-white hover:brightness-110"
         >

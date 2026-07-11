@@ -59,7 +59,7 @@ export function KeychainAccountCard({ account }: { account: KeychainAccount }) {
           GitLane-owned token in your OS keychain, fed to git for fetch and push.
         </div>
       </div>
-      <button
+      <button type="button"
         onClick={signOut}
         className={cn(
           "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium text-neutral-500 transition hover:bg-rose-500/10 hover:text-rose-600 dark:text-neutral-400 dark:hover:text-rose-400",

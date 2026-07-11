@@ -27,7 +27,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
         </div>
 
         <div className="flex max-w-[560px] flex-col gap-2.5">
-          <button
+          <button type="button"
             onClick={ob.goClone}
             className="group flex w-full items-center gap-4 rounded-2xl border border-black/5 bg-white p-4 text-left shadow-sm transition-all hover:border-[color:var(--accent)] hover:shadow-md dark:border-white/5 dark:bg-neutral-800"
           >
@@ -45,7 +45,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
             <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
           </button>
 
-          <button
+          <button type="button"
             onClick={ob.goInit}
             className="group flex w-full items-center gap-4 rounded-2xl border border-black/5 bg-white p-4 text-left shadow-sm transition-all hover:border-[color:var(--accent)] hover:shadow-md dark:border-white/5 dark:bg-neutral-800"
           >
@@ -63,7 +63,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
             <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
           </button>
 
-          <button
+          <button type="button"
             onClick={ob.openLocal}
             className="group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
           >
@@ -90,7 +90,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
             Recent repositories
           </div>
           {ob.recents.length > 0 && (
-            <button
+            <button type="button"
               onClick={ob.clearRecents}
               className="text-[12px] font-medium text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
             >

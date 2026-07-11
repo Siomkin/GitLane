@@ -61,7 +61,7 @@ export function CommitAsZone() {
         <div className="text-[11px] font-semibold tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
           COMMIT AS · GIT IDENTITY
         </div>
-        <button
+        <button type="button"
           onClick={() => {
             closeRepoSettings();
             openIdentitiesSettings();
@@ -134,7 +134,7 @@ export function CommitAsZone() {
             onSave={adoptAsIdentity}
             onClear={() => void applyCommitSource(null)}
           />
-          <button
+          <button type="button"
             onClick={() => setPicking(true)}
             className={cn(
               "mt-2 text-[12px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
@@ -182,7 +182,7 @@ export function CommitAsZone() {
                   : "No global git identity configured"}
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={() => setPicking(true)}
             className={cn(
               "h-8 shrink-0 rounded-lg px-3 text-[12.5px] font-medium text-neutral-500 transition hover:bg-black/[0.06] hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/10 dark:hover:text-neutral-200",
@@ -248,7 +248,7 @@ function UnmanagedIdentityCard({
             {name || "No name set"} · {email || "No email set"}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
+            <button type="button"
               onClick={onSave}
               className={cn(
                 "inline-flex h-8 items-center rounded-lg bg-emerald-600 px-3 text-[12.5px] font-semibold text-white hover:bg-emerald-500",
@@ -257,7 +257,7 @@ function UnmanagedIdentityCard({
             >
               Save as profile
             </button>
-            <button
+            <button type="button"
               onClick={onClear}
               className={cn(
                 "inline-flex h-8 items-center rounded-lg border border-black/10 px-3 text-[12.5px] font-semibold text-neutral-700 hover:bg-black/[0.04] dark:border-white/15 dark:text-neutral-200 dark:hover:bg-white/[0.06]",
@@ -291,7 +291,7 @@ function ProfileChoiceRow({
   onClick: () => void;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       aria-pressed={active}
       aria-label={title}

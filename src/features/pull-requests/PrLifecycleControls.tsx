@@ -14,7 +14,7 @@ export const PrLifecycleControls = ({ pr }: { pr: PullRequest }) => {
 
   if (pr.state === "closed") {
     return (
-      <button
+      <button type="button"
         disabled={pending}
         aria-busy={pendingKey === "reopen"}
         onClick={() =>
@@ -40,7 +40,7 @@ export const PrLifecycleControls = ({ pr }: { pr: PullRequest }) => {
   }
   if (pr.state === "open" && pr.draft) {
     return (
-      <button
+      <button type="button"
         disabled={pending}
         aria-busy={pendingKey === "ready"}
         onClick={() =>

@@ -95,7 +95,7 @@ export const ReviewThreadControls = ({ prNum, thread, authorInitials }: ReviewTh
       </form>
 
       <div className="flex items-center gap-3 border-t border-black/5 bg-black/[0.015] px-3.5 py-2.5 dark:border-white/5 dark:bg-white/[0.02]">
-        <button
+        <button type="button"
           onClick={toggleResolved}
           disabled={pending}
           aria-busy={pendingAction === "resolve"}

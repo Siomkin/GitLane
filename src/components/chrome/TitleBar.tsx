@@ -77,7 +77,7 @@ export const TitleBar = () => {
           })}
         </DragDropProvider>
         {openPaths.length > 0 && (
-          <button
+          <button type="button"
             className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
             onClick={openOnboarding}
             title="Open or create a repository"
@@ -88,20 +88,20 @@ export const TitleBar = () => {
       </div>
 
       <div data-tauri-drag-region className="ml-auto flex items-center gap-1">
-        <button
+        <button type="button"
           className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
           title="Search"
         >
           <SearchIcon className="h-4 w-4" />
         </button>
-        <button
+        <button type="button"
           className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
           onClick={() => onSettings()}
           title="Settings"
         >
           <SettingsIcon className="h-4 w-4" />
         </button>
-        <button
+        <button type="button"
           className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
           onClick={toggleTheme}
           title={theme === "dark" ? "Light mode" : "Dark mode"}

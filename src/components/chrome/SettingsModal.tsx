@@ -80,7 +80,7 @@ export function SettingsModal() {
                   {group}
                 </div>
                 {items.map((item) => (
-                  <button
+                  <button type="button"
                     key={item.key}
                     onClick={() => setTab(item.key)}
                     aria-current={tab === item.key ? "page" : undefined}
@@ -103,7 +103,7 @@ export function SettingsModal() {
               </div>
             ))}
           </div>
-          <button
+          <button type="button"
             onClick={() => setTab("about")}
             title="About GitLane"
             className={cn(
@@ -118,7 +118,7 @@ export function SettingsModal() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-none justify-end px-4 pt-3.5">
-            <button
+            <button type="button"
               onClick={close}
               aria-label="Close settings"
               className={cn(

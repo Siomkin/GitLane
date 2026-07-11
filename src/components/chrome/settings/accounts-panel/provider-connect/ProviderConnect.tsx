@@ -30,7 +30,7 @@ export function ProviderConnect({
   onRefresh: () => void;
 }) {
   const refresh = (
-    <button onClick={onRefresh} className={cn(refreshBtnCls, focusRing)}>
+    <button type="button" onClick={onRefresh} className={cn(refreshBtnCls, focusRing)}>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
         <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
         <path d="M21 3v5h-5" />
@@ -46,7 +46,7 @@ export function ProviderConnect({
       {/* header */}
       <div className="flex items-center gap-3">
         {onBack && (
-          <button
+          <button type="button"
             onClick={onBack}
             aria-label="Back"
             className={cn(

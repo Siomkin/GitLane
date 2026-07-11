@@ -41,7 +41,7 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
                 <TerminalTabIcon />
               </span>
               <span className="max-w-[160px] truncate">{tab.title}</span>
-              <button
+              <button type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (closeTab(repoPath, tab.id)) hideTerminal();
@@ -58,7 +58,7 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
           );
         })}
       </div>
-      <button
+      <button type="button"
         onClick={() => openTab(repoPath)}
         title="New terminal"
         className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"

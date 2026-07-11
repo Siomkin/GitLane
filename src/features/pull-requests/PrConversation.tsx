@@ -81,7 +81,7 @@ function Composer({ pr }: { pr: PullRequest }) {
         <div className="ml-auto flex items-center gap-2">
           {isOpen && (
             <>
-              <button
+              <button type="button"
                 onClick={() =>
                   requestConfirm({
                     title: `Request changes on #${pr.num}?`,
@@ -100,7 +100,7 @@ function Composer({ pr }: { pr: PullRequest }) {
                 {pendingKey === "request-changes" && <InlineSpinner className="h-3.5 w-3.5" />}
                 {pendingKey === "request-changes" ? "Requesting…" : "Request changes"}
               </button>
-              <button
+              <button type="button"
                 onClick={() =>
                   requestConfirm({
                     title: `Approve #${pr.num}?`,
@@ -119,7 +119,7 @@ function Composer({ pr }: { pr: PullRequest }) {
               </button>
             </>
           )}
-          <button
+          <button type="button"
             onClick={async () => after(await start("comment", () => commentPr(pr.num, body), "Comment posted"))}
             disabled={pending || !trimmed}
             aria-busy={pendingKey === "comment"}

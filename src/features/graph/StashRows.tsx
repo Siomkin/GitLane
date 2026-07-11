@@ -39,7 +39,7 @@ export function StashRow({
     onSelect(stash.oid, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
 
   return (
-    <button
+    <button type="button"
       className={cn(
         "group absolute left-0 flex w-full cursor-pointer items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,
@@ -100,7 +100,7 @@ export function StashFallbackRow({
   const openNav = useUi((state) => state.openNav);
 
   return (
-    <button
+    <button type="button"
       className={cn(
         "group absolute left-0 flex w-full cursor-pointer items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,
@@ -165,7 +165,7 @@ export function StashContextRow({
   const openStackedReview = useUi((state) => state.openStackedReview);
 
   return (
-    <button
+    <button type="button"
       className={cn(
         "group absolute left-0 flex w-full cursor-pointer items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,

@@ -133,13 +133,13 @@ export function CreatePrDialog() {
             Create as draft
           </label>
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={close}
               className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
             >
               Cancel
             </button>
-            <button
+            <button type="button"
               onClick={() => void submit()}
               disabled={!canSubmit || pending || creating}
               aria-busy={creating}

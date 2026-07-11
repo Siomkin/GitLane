@@ -39,7 +39,7 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
     return (
       <div className="rounded-xl border border-dashed border-rose-300/50 px-4 py-5 text-center text-[12.5px] text-neutral-400 dark:border-rose-400/25">
         <div className="mb-2.5 whitespace-pre-wrap break-words">Couldn't load review threads.</div>
-        <button
+        <button type="button"
           onClick={() => void loadPrThreads(pr.num, true)}
           className="rounded-md border border-black/10 px-2.5 py-1 text-[12px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
         >
@@ -63,7 +63,7 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
           {total}
         </span>
         {resolvedCount > 0 && (
-          <button
+          <button type="button"
             onClick={() => setHideResolved((h) => !h)}
             className="ml-auto rounded text-[12px] font-medium text-[color:var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
           >

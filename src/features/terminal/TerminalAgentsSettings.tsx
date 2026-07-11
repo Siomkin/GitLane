@@ -200,7 +200,7 @@ export function TerminalAgentsSettings() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-1.5">
-          <button
+          <button type="button"
             onClick={editor.reset}
             disabled={saving}
             className={cn(
@@ -210,7 +210,7 @@ export function TerminalAgentsSettings() {
           >
             Reset to defaults
           </button>
-          <button
+          <button type="button"
             disabled={saveDisabled}
             onClick={() => void editor.save()}
             className={cn(

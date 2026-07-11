@@ -32,7 +32,7 @@ export const ReflogEntryRow = ({
         </div>
       </div>
       <div className="flex items-center gap-1.5">
-        <button
+        <button type="button"
           className={cn(
             "h-7 rounded-md border border-black/10 px-2 text-[12px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5",
             focusRing,
@@ -41,7 +41,7 @@ export const ReflogEntryRow = ({
         >
           Branch
         </button>
-        <button
+        <button type="button"
           className={cn(
             "h-7 rounded-md border border-black/10 px-2 text-[12px] text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5",
             focusRing,

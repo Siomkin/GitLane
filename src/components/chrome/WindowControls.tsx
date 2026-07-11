@@ -41,10 +41,10 @@ export function WindowControls() {
   // top-right corner hit the close button rather than starting a resize drag.
   return (
     <div className="relative z-[101] -mr-4 flex self-stretch">
-      <button className={btn} onClick={() => void win()?.minimize().catch(() => {})} title="Minimize" aria-label="Minimize">
+      <button type="button" className={btn} onClick={() => void win()?.minimize().catch(() => {})} title="Minimize" aria-label="Minimize">
         <WindowMinimizeIcon />
       </button>
-      <button
+      <button type="button"
         className={btn}
         onClick={() => void win()?.toggleMaximize().catch(() => {})}
         title={maximized ? "Restore" : "Maximize"}
@@ -52,7 +52,7 @@ export function WindowControls() {
       >
         {maximized ? <WindowRestoreIcon /> : <WindowMaximizeIcon />}
       </button>
-      <button
+      <button type="button"
         className="grid h-full w-[44px] place-items-center text-neutral-500 transition-colors hover:bg-red-600 hover:text-white dark:text-neutral-300"
         onClick={() => void win()?.close().catch(() => {})}
         title="Close"

@@ -10,7 +10,7 @@ import { ChangeCounts } from "@/components/ui/ChangeCounts";
 /** The shared file row: working changes (with a stage/unstage action) and
  * commit changed-file lists (no action).
  *
- * The stage/unstage control is a sibling `<button>` overlaying the row — not
+ * The stage/unstage control is a sibling `<button type="button">` overlaying the row — not
  * nested inside the row button (which would be invalid HTML and produce a
  * double tab stop). It's hidden and `pointer-events-none` at rest so clicks at
  * the right edge still select the row, and reveals on row hover or its own

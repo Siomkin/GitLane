@@ -25,7 +25,7 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
       {/* Repo header */}
       <div className="flex h-14 shrink-0 items-center gap-3 border-b border-black/5 px-6 dark:border-white/5">
         {isEmpty ? (
-          <button
+          <button type="button"
             onClick={ob.goHome}
             className="grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
           >
@@ -68,13 +68,13 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
                 . There are no commits yet — make your first one to get started.
               </div>
               <div className="mt-6 flex items-center justify-center gap-2.5">
-                <button
+                <button type="button"
                   onClick={ob.revealResult}
                   className="h-10 rounded-xl border border-black/10 px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
                 >
                   {REVEAL_LABEL}
                 </button>
-                <button
+                <button type="button"
                   onClick={ob.enterResult}
                   className="h-10 rounded-xl bg-[color:var(--accent)] px-5 text-[13.5px] font-semibold text-white shadow-sm hover:brightness-110"
                 >
@@ -99,7 +99,7 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
                 Checked out {result.branch} — ready to start working
               </div>
               <div className="mt-6 flex items-center justify-center gap-2.5">
-                <button
+                <button type="button"
                   onClick={ob.enterResult}
                   className="h-10 rounded-xl bg-[color:var(--accent)] px-5 text-[13.5px] font-semibold text-white shadow-sm hover:brightness-110"
                 >

@@ -47,7 +47,7 @@ export function CompareView() {
           </svg>
           {compare.baseLabel}
         </span>
-        <button
+        <button type="button"
           onClick={() => void swap()}
           disabled={compare.head === null}
           title={compare.head === null ? "Working-tree comparison can't be swapped" : "Swap direction"}
@@ -136,7 +136,7 @@ export function CompareView() {
                 className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-neutral-400"
               />
               {hasFilter && (
-                <button
+                <button type="button"
                   onClick={() => setFilter("")}
                   className="grid h-5 w-5 shrink-0 place-items-center rounded text-neutral-400 hover:bg-black/10 dark:hover:bg-white/10"
                 >
@@ -203,7 +203,7 @@ function CompareFileRow({
   onSelect: () => void;
 }) {
   return (
-    <button
+    <button type="button"
       onClick={onSelect}
       className={cn(
         "flex h-11 w-full items-center gap-2.5 rounded-lg px-2 text-left",

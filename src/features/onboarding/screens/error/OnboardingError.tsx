@@ -59,13 +59,13 @@ export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
         )}
 
         <div className="mt-7 flex items-center justify-center gap-2.5">
-          <button
+          <button type="button"
             onClick={ob.goHome}
             className="h-10 rounded-xl border border-black/10 px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
           >
             Back to start
           </button>
-          <button
+          <button type="button"
             onClick={ob.cloneRecovery.retry}
             className="flex h-10 items-center gap-2 rounded-xl bg-[color:var(--accent)] px-5 text-[13.5px] font-semibold text-white shadow-sm hover:brightness-110"
           >

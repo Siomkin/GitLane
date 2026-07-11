@@ -111,7 +111,7 @@ const Pane = ({
         >
           {sub}
         </span>
-        <button
+        <button type="button"
           onClick={() => onSelectAll(side, !all)}
           className={cn(
             "ml-auto flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-[10.5px] font-semibold",
@@ -137,7 +137,7 @@ const Pane = ({
           >
             <span className="relative">
               {ln.blockFirst && (
-                <button
+                <button type="button"
                   onClick={() => onSetBlock(ln.regionIdx, side, !ln.blockAll)}
                   title="Select whole conflict block"
                   className={cn(
@@ -152,7 +152,7 @@ const Pane = ({
             <span className={NUM}>{ln.no}</span>
             <span className="grid place-items-center">
               {ln.conflict && (
-                <button
+                <button type="button"
                   onClick={() => onToggleLine(ln.regionIdx, side, ln.lineIdx)}
                   className={box(side, ln.picked)}
                 >
@@ -310,7 +310,7 @@ export const SplitConflict = ({
               >
                 conflict {active + 1} of {total}
               </span>
-              <button
+              <button type="button"
                 onClick={() => go(-1)}
                 disabled={active === 0}
                 aria-label="Previous conflict"
@@ -318,7 +318,7 @@ export const SplitConflict = ({
               >
                 <ChevronIcon dir="up" />
               </button>
-              <button
+              <button type="button"
                 onClick={() => go(1)}
                 disabled={active >= total - 1}
                 aria-label="Next conflict"
@@ -341,19 +341,19 @@ export const SplitConflict = ({
                   Conflict {ln.conflictNo} — pick lines above
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  <button
+                  <button type="button"
                     onClick={() => onTakeBlock(ln.regionIdx, "a")}
                     className="h-5 rounded bg-[var(--accent-soft)] px-2 text-[10px] font-semibold text-[color:var(--accent)] hover:brightness-95"
                   >
                     All A
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => onTakeBlock(ln.regionIdx, "b")}
                     className="h-5 rounded bg-[#3b7ff5]/12 px-2 text-[10px] font-semibold text-[#3b7ff5] hover:brightness-95"
                   >
                     All B
                   </button>
-                  <button
+                  <button type="button"
                     onClick={() => onTakeBlock(ln.regionIdx, "both")}
                     className="h-5 rounded border border-black/10 px-2 text-[10px] font-semibold text-neutral-500 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
                   >
@@ -370,7 +370,7 @@ export const SplitConflict = ({
                 <span className={NUM}>{ln.no}</span>
                 <span className="grid place-items-center">
                   {ln.removable && (
-                    <button
+                    <button type="button"
                       onClick={() => onToggleLine(ln.regionIdx, ln.side, ln.lineIdx)}
                       title="Remove from output"
                       className={box(ln.side, true)}

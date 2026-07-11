@@ -42,7 +42,7 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) =
 
   return (
     <div ref={ref} className="relative">
-      <button
+      <button type="button"
         title={pendingKey === "close" ? "Closing pull request…" : "More actions"}
         onClick={() => setOpen((o) => !o)}
         // Close runs after the menu has dismissed, so the overflow trigger is the
@@ -63,7 +63,7 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) =
       </button>
       {open && (
         <div className="gp-pop absolute right-0 top-[calc(100%+6px)] z-50 w-[208px] overflow-hidden rounded-xl border border-black/10 bg-white py-1.5 shadow-[0_22px_50px_-10px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-800">
-          <button
+          <button type="button"
             onClick={() => void runCheckout()}
             disabled={checkingOut}
             className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-neutral-700 transition-colors hover:bg-black/5 disabled:opacity-45 disabled:hover:bg-transparent dark:text-neutral-200 dark:hover:bg-white/5"
@@ -81,7 +81,7 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) =
           </button>
           {pr.state === "open" && !basic && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
           {pr.state === "open" && !basic && (
-            <button
+            <button type="button"
               disabled={busy}
               onClick={() => {
                 setOpen(false);
