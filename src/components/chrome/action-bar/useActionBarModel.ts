@@ -13,6 +13,7 @@ import type { PullRequest } from "../../../lib/prs";
 import type { RepoForge, RepoSummary } from "../../../lib/api";
 import { useAccounts } from "../../../store/accounts";
 import { usePulls } from "../../../store/pulls";
+import { prListRequestKey } from "../../../store/pullsQueue";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
 import type { SettingsTab } from "../../../store/ui";
@@ -154,11 +155,17 @@ export function useActionBarModel(): ActionBarModel {
   // before the PR panel opens. Foreground loads still happen in LeftPanel for a
   // visible spinner; these quiet loads just keep the badge current. The effect
   // is keyed by the primitives that actually own the polling identity — repo
-  // path, forge kind, PR-API account — so the dependencies are exhaustive
+  // path, forge kind, and the PR-API account the loads authenticate as
   // (GL-182; this effect carried the repo's last hook-lint warning).
   const repoPath = summary?.path ?? null;
   const forgeKind = forge?.kind ?? null;
-  const accountId = repoAccountRef?.accountId ?? null;
+  // The account identity behind `loadPullRequests` is `prAccountRef()` — the gh
+  // binding for GitHub, but glab readiness / native keychain tokens for GitLab
+  // and Bitbucket, which change WITHOUT `repoAccountRef` changing (saving or
+  // deleting a provider token, glab auth flipping). Fold the resolved ref into
+  // the same request key the pulls store computes, so any auth change re-arms
+  // polling immediately instead of staying stale until the next tick (GL-184).
+  const prPollKey = useAccounts((state) => prListRequestKey(repoPath ?? "", state.prAccountRef()));
   useEffect(() => {
     if (!repoPath || !isPrForge(forgeKind)) return;
     void loadPullRequests(false, true);
@@ -167,7 +174,7 @@ export function useActionBarModel(): ActionBarModel {
       void loadPullRequests(false, true);
     }, PR_BADGE_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [repoPath, forgeKind, accountId, loadPullRequests]);
+  }, [repoPath, forgeKind, prPollKey, loadPullRequests]);
 
   // ⌘ + Option + F opens the navigator and focuses its filter (the input
   // autofocuses on mount). `code === "KeyF"` since Option+F yields "ƒ" on macOS.
