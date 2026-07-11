@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import { highlight } from "./highlight";
+
+// The one invariant that matters (GL-195): the tokenizer must be LOSSLESS.
+// highlight.ts documents a prior regression where `\` matched no group and was
+// silently dropped from rendered diff lines — these tests make that class of
+// regex edit fail loudly. Colors are asserted only as representative
+// classifications (same-class tokens share a color), never as literal hexes.
+
+const rendered = (text: string, dark = true) =>
+  highlight(text, dark)
+    .map((t) => t.text)
+    .join("");
+
+const colorOf = (text: string, token: string, dark = true) => {
+  // Fail loudly on a missing token — an undefined-vs-undefined comparison
+  // would let relational assertions pass vacuously.
+  const found = highlight(text, dark).find((t) => t.text === token);
+  if (!found) throw new Error(`token ${JSON.stringify(token)} not produced for ${JSON.stringify(text)}`);
+  return found.color;
+};
+
+describe("highlight — lossless invariant", () => {
+  const cases: [string, string][] = [
+    ["plain code", "const x = fn(y) + 1;"],
+    ["punctuation soup", "(){}[];:,.<>=!+-*/%&|^?~@"],
+    ["backslashes", "path\\to\\file \\ end"],
+    ["the prior regression shape", 'invoke("cmd\\n") \\'],
+    ["unicode text", "héllo wörld — 日本語 → Ω≈ç√"],
+    ["emoji and symbols", "🚀 deploy § ± ° · #hash"],
+    ["comments", "let a = 1; // trailing note // twice"],
+    ["strings with escapes", `msg = "a \\"quoted\\" part" + 'it\\'s' + \`tpl \${x}\``],
+    ["numbers", "0xFF + 1_000.5 - 42"],
+    ["mixed rust-ish", "pub fn run(&mut self) -> Result<(), Error> { self.0 += 1 }"],
+    ["tabs and spaces", "\tindent  spaced\t\tend"],
+    ["lone unmatched chars", "\u0000\u2028\u2029"],
+  ];
+
+  for (const [label, input] of cases) {
+    it(`reproduces every character: ${label}`, () => {
+      expect(rendered(input, true)).toBe(input);
+      expect(rendered(input, false)).toBe(input);
+    });
+  }
+
+  it("returns no tokens for empty input", () => {
+    expect(highlight("", true)).toEqual([]);
+  });
+});
+
+describe("highlight — representative classification", () => {
+  it("groups keywords together and apart from identifiers", () => {
+    const src = "const value = returnable";
+    expect(colorOf(src, "const")).toBe(colorOf("if (x) return y", "return"));
+    expect(colorOf(src, "const")).not.toBe(colorOf(src, "value"));
+  });
+
+  it("colors a call name only when the paren follows immediately", () => {
+    const call = colorOf("doThing(1)", "doThing");
+    expect(call).toBe(colorOf("other(2)", "other"));
+    expect(call).not.toBe(colorOf("doThing + 1", "doThing"));
+    // A spaced paren is not a call — the identifier stays default-colored.
+    expect(colorOf("doThing (1)", "doThing")).not.toBe(call);
+
+    const type = colorOf("let x: MyType = y", "MyType");
+    expect(type).not.toBe(colorOf("let x: MyType = y", "y"));
+  });
+
+  it("keeps keyword, type, and call-name classes pairwise distinct", () => {
+    // A single fixture holding all three, so a palette collapse between any
+    // pair fails — the cm/str/num Set below can't see these slots.
+    const src = "const MyType = baz()";
+    const kw = colorOf(src, "const");
+    const ty = colorOf(src, "MyType");
+    const fn = colorOf(src, "baz");
+    expect(new Set([kw, ty, fn]).size).toBe(3);
+  });
+
+  for (const dark of [true, false]) {
+    it(`classifies comments, strings, and numbers distinctly (${dark ? "dark" : "light"})`, () => {
+      const src = '// note\n"text" + 42';
+      const [comment] = highlight("// note", dark);
+      const string = colorOf(src, '"text"', dark);
+      const number = colorOf(src, "42", dark);
+      expect(new Set([comment.color, string, number]).size).toBe(3);
+    });
+  }
+
+  it("keeps token text identical across dark and light palettes", () => {
+    const src = "const s = \"x\"; // done";
+    expect(highlight(src, true).map((t) => t.text)).toEqual(highlight(src, false).map((t) => t.text));
+  });
+});
