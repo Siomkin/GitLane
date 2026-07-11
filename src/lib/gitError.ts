@@ -227,7 +227,13 @@ function providerName(host: string | null | undefined): string {
   if (host === "bitbucket.org" || host.endsWith(".bitbucket.org")) return "Bitbucket";
   if (host === "github.com" || host.endsWith(".github.com")) return "GitHub";
   if (host === "gitlab.com" || host.endsWith(".gitlab.com")) return "GitLab";
-  if (host.includes("dev.azure.com") || host.includes("visualstudio.com")) return "Azure Repos";
+  if (
+    host === "dev.azure.com" ||
+    host.endsWith(".dev.azure.com") ||
+    host === "visualstudio.com" ||
+    host.endsWith(".visualstudio.com")
+  )
+    return "Azure Repos";
   return "Git";
 }
 

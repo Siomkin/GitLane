@@ -520,8 +520,8 @@ describe("URL-driven transitions", () => {
 
     act(() => result.current.cloneForm.setFolder("mine"));
     act(() => result.current.cloneForm.setUsername("me"));
-    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git".replace("repo", "repo")));
-    // No-op URL write: nothing may reset.
+    act(() => result.current.cloneForm.changeUrl("https://github.com/octo/repo.git"));
+    // No-op URL write (same URL again): nothing may reset.
     expect(result.current.cloneForm.folder).toBe("mine");
     expect(result.current.cloneForm.username).toBe("me");
 
