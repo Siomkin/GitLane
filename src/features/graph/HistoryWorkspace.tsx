@@ -8,7 +8,7 @@ import { buildHistoryRows } from "./historyRows";
 import { useRepo } from "../../store/repo";
 import { rowHeightFor, useUi } from "../../store/ui";
 import { useRevealScroll } from "../../hooks/useRevealScroll";
-import { CommitRow } from "./CommitRow";
+import { CommitRow } from "./commit-row";
 import { StashRow, StashFallbackRow, StashContextRow } from "./StashRows";
 import { WipRow } from "./WipRow";
 import { LoadMoreRow } from "./LoadMoreRow";
