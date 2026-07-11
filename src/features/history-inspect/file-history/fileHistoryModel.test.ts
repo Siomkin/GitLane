@@ -32,6 +32,7 @@ describe("fileHistoryModel", () => {
   });
 
   it("labels the revision count: hidden while loading, N+ when truncated", () => {
+    expect(revisionCountLabel(0, false, false)).toBe("0");
     expect(revisionCountLabel(5, false, false)).toBe("5");
     expect(revisionCountLabel(5, true, false)).toBe("5+");
     expect(revisionCountLabel(5, true, true)).toBe("");

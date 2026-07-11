@@ -73,6 +73,7 @@ export function FileHistoryView({
                 ))}
                 {history.hasMore && (
                   <button
+                    type="button"
                     className="mt-1 h-9 w-full rounded-lg border border-dashed border-black/10 text-[12px] font-medium text-neutral-500 hover:bg-black/5 disabled:opacity-60 dark:border-white/10 dark:text-neutral-400 dark:hover:bg-white/5"
                     disabled={history.loadingMore}
                     onClick={() => void loadMore()}
@@ -101,6 +102,7 @@ export function FileHistoryView({
             <div className="ml-auto flex items-center gap-2">
               <span className="font-mono text-[11px] text-neutral-400">at {selected.shortOid}</span>
               <button
+                type="button"
                 onClick={() => onBlameRevision(selected.oid, selected.path)}
                 className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
               >

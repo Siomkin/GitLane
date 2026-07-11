@@ -14,6 +14,7 @@ export function RevisionRow({
 }) {
   return (
     <button
+      type="button"
       onClick={onSelect}
       className={cn(
         "w-full space-y-1 rounded-lg px-2.5 py-2 text-left",

@@ -49,7 +49,10 @@ describe("shortAge", () => {
     expect(shortAge(at(30))).toBe("now");
   });
 
-  it("uses the largest unit that fits", () => {
+  it("uses the largest unit that fits, switching exactly at the boundaries", () => {
+    expect(shortAge(at(59))).toBe("now");
+    expect(shortAge(at(60))).toBe("1m");
+    expect(shortAge(at(3600))).toBe("1h");
     expect(shortAge(at(90))).toBe("1m");
     expect(shortAge(at(7200))).toBe("2h");
     expect(shortAge(at(3 * 86400))).toBe("3d");

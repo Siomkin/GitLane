@@ -53,6 +53,9 @@ const realOpenFileHistory = useRepo.getState().openFileHistory;
 const realRevealCommit = useRepo.getState().revealCommit;
 
 beforeEach(() => {
+  // Deliberately narrow isolation: FileHistoryView reads only `fileHistory`
+  // plus these four actions — if it ever subscribes to more repo state,
+  // extend this reset alongside it.
   useRepo.setState({
     fileHistory: null,
     selectFileHistoryRevision: realSelectRevision,
@@ -101,6 +104,8 @@ describe("FileHistoryView states", () => {
     render(<FileHistoryView onBlameRevision={noop} />);
     expect(screen.queryByText("Couldn't load history")).not.toBeInTheDocument();
     expect(screen.getByText("feat: change the file")).toBeInTheDocument();
+    // The error still surfaces — in the diff pane, not over the list.
+    expect(screen.getByText("boom")).toBeInTheDocument();
   });
 
   it("shows the empty state when no commits touch the path", () => {
@@ -179,7 +184,7 @@ describe("FileHistoryView selected revision", () => {
 
     expect(screen.getByText("app.ts")).toBeInTheDocument();
     expect(screen.getByText("at aaaa111")).toBeInTheDocument();
-    expect(screen.getAllByText("+3")).not.toHaveLength(0);
+    expect(screen.getAllByText("+3").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Open this commit" }));
     expect(revealCommit).toHaveBeenCalledWith("aaaa111");
@@ -192,14 +197,39 @@ describe("FileHistoryView selected revision", () => {
     expect(onBlameRevision).toHaveBeenCalledWith("aaaa111", "src/app.ts");
   });
 
-  it("copies the full SHA from the inspector", () => {
+  it("copies the FULL SHA from the inspector, not the abbreviated one", () => {
+    const fullOid = "aaaa111000000000000000000000000000000000";
     const writeText = vi.fn();
+    const realClipboard = navigator.clipboard;
     Object.assign(navigator, { clipboard: { writeText } });
-    useRepo.setState({ fileHistory: selectedState() });
-    render(<FileHistoryView onBlameRevision={noop} />);
+    try {
+      useRepo.setState({
+        fileHistory: historyState({
+          // Distinct oid vs shortOid so copying the short one would fail here.
+          entries: [entry({ oid: fullOid, shortOid: "aaaa111" })],
+          selectedOid: fullOid,
+          selectedPath: "src/app.ts",
+        }),
+      });
+      render(<FileHistoryView onBlameRevision={noop} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy SHA" }));
-    expect(writeText).toHaveBeenCalledWith("aaaa111");
+      fireEvent.click(screen.getByRole("button", { name: "Copy SHA" }));
+      expect(writeText).toHaveBeenCalledWith(fullOid);
+    } finally {
+      Object.assign(navigator, { clipboard: realClipboard });
+    }
+  });
+
+  it("shows the diff skeleton while the diff loads and the empty label before a selection", () => {
+    useRepo.setState({
+      fileHistory: historyState({ entries: [entry()], selectedOid: null }),
+    });
+    const { container, rerender } = render(<FileHistoryView onBlameRevision={noop} />);
+    expect(screen.getByText("Select a revision.")).toBeInTheDocument();
+
+    useRepo.setState({ fileHistory: { ...selectedState(), diffLoading: true } });
+    rerender(<FileHistoryView onBlameRevision={noop} />);
+    expect(container.querySelectorAll(".shim").length).toBeGreaterThan(0);
   });
 
   it("re-fetches the uncapped diff from the truncated notice", () => {

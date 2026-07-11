@@ -9,6 +9,7 @@ export function InspectorAction({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
     >

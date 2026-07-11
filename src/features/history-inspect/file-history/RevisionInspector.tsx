@@ -3,6 +3,8 @@ import { initials } from "../../../lib/ui";
 import { relativeTime } from "../inspect";
 import { InspectorAction } from "./InspectorAction";
 
+const copy = (text: string) => void navigator.clipboard?.writeText(text);
+
 export function RevisionInspector({
   entry,
   filePath,
@@ -14,12 +16,12 @@ export function RevisionInspector({
   onOpenCommit: () => void;
   onBlame: () => void;
 }) {
-  const copy = (text: string) => void navigator.clipboard?.writeText(text);
   return (
     <div className="space-y-3.5 p-4">
       <div className="flex items-center gap-2">
         <span className="font-mono text-[12px] text-neutral-400">{entry.shortOid}</span>
         <button
+          type="button"
           onClick={() => copy(entry.oid)}
           className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
         >
