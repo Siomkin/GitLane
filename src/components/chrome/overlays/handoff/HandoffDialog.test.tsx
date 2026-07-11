@@ -58,6 +58,112 @@ describe("HandoffDialog", () => {
     expect(screen.getByText(/2 uncommitted changes .* carried/)).toBeInTheDocument();
   });
 
+  it("keeps the selected destination in range as worktrees come and go", () => {
+    openDialog();
+    render(<HandoffDialog />);
+    const select = () =>
+      screen.getByRole("combobox", { name: "Destination workspace" }) as HTMLSelectElement;
+
+    // Pick the detached scratch worktree explicitly.
+    fireEvent.change(select(), { target: { value: "/work/repo-scratch" } });
+    expect(select().value).toBe("/work/repo-scratch");
+
+    // A watcher refresh drops that worktree — the picker must fall back to the
+    // first valid option rather than pointing at a gone path.
+    act(() =>
+      useRepo.setState({
+        worktrees: worktrees.filter((w) => w.path !== "/work/repo-scratch"),
+      }),
+    );
+    expect(select().value).toBe("/work/repo");
+
+    // The worktree reappears before the user submits — their explicit pick is
+    // honored again (derivation keeps the raw choice; it isn't overwritten).
+    act(() => useRepo.setState({ worktrees }));
+    expect(select().value).toBe("/work/repo-scratch");
+  });
+
+  it("submits the in-range destination after its original pick went away", async () => {
+    let resolveMove!: (msg: string) => void;
+    const moveBranchToWorktree = vi.fn(
+      () => new Promise<string>((resolve) => (resolveMove = resolve)),
+    );
+    useRepo.setState({ moveBranchToWorktree });
+    openDialog();
+    render(<HandoffDialog />);
+    const select = screen.getByRole("combobox", { name: "Destination workspace" });
+
+    fireEvent.change(select, { target: { value: "/work/repo-scratch" } });
+    act(() =>
+      useRepo.setState({
+        worktrees: worktrees.filter((w) => w.path !== "/work/repo-scratch"),
+        moveBranchToWorktree,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+    await waitFor(() =>
+      expect(moveBranchToWorktree).toHaveBeenCalledWith(
+        "feature",
+        "/work/repo-feature",
+        "/work/repo",
+        true,
+      ),
+    );
+    await act(async () => resolveMove("Moved feature to main"));
+  });
+
+  it("submits the original pick when the worktree reappears before submit", async () => {
+    let resolveMove!: (msg: string) => void;
+    const moveBranchToWorktree = vi.fn(
+      () => new Promise<string>((resolve) => (resolveMove = resolve)),
+    );
+    useRepo.setState({ moveBranchToWorktree });
+    openDialog();
+    render(<HandoffDialog />);
+    const select = screen.getByRole("combobox", { name: "Destination workspace" });
+
+    // Pick scratch, it vanishes, then reappears — the run must target the
+    // restored original path, not the fallback it snapped to while gone.
+    fireEvent.change(select, { target: { value: "/work/repo-scratch" } });
+    act(() =>
+      useRepo.setState({ worktrees: worktrees.filter((w) => w.path !== "/work/repo-scratch") }),
+    );
+    act(() => useRepo.setState({ worktrees }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+    await waitFor(() =>
+      expect(moveBranchToWorktree).toHaveBeenCalledWith(
+        "feature",
+        "/work/repo-feature",
+        "/work/repo-scratch",
+        true,
+      ),
+    );
+    await act(async () => resolveMove("Moved feature to repo-scratch"));
+  });
+
+  it("disables and guards Hand off when every destination is filtered out", () => {
+    const moveBranchToWorktree = vi.fn();
+    useRepo.setState({ moveBranchToWorktree });
+    openDialog();
+    render(<HandoffDialog />);
+
+    // Only the source worktree remains, so `handoffDestinationOptions` yields
+    // nothing — the button must disable and submit must be a no-op.
+    act(() =>
+      useRepo.setState({
+        worktrees: worktrees.filter((w) => w.path === "/work/repo-feature"),
+        moveBranchToWorktree,
+      }),
+    );
+
+    const button = screen.getByRole("button", { name: "Hand off" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(moveBranchToWorktree).not.toHaveBeenCalled();
+  });
+
   it("runs the carrying move and ticks the checklist off progress events", async () => {
     let resolveMove!: (msg: string) => void;
     const moveBranchToWorktree = vi.fn(

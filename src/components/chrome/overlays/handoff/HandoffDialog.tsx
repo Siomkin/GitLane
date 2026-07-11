@@ -55,7 +55,18 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
     () => handoffDestinationOptions(worktrees, req.sourcePath),
     [worktrees, req.sourcePath],
   );
-  const [dest, setDest] = useState(options[0]?.value ?? "");
+  // The user's raw pick. A live worktree refresh (FS watcher) can drop it from
+  // `options` while the dialog is still on the configure screen, so it is not
+  // necessarily a valid destination — read `selectedDest` (below), never this,
+  // for anything that acts on the choice.
+  const [preferredDest, setPreferredDest] = useState(options[0]?.value ?? "");
+  // Derive the in-range value during render rather than snapping the raw state
+  // in an effect: the user's explicit pick is preserved, so if the worktree
+  // reappears before they submit it is honored again instead of being silently
+  // overwritten.
+  const selectedDest = options.some((o) => o.value === preferredDest)
+    ? preferredDest
+    : options[0]?.value ?? "";
   // The checklist and destination name are captured when the run starts so the
   // mid-run repo refresh (which re-labels the destination with the handed-off
   // branch) can't rewrite the rows or the success title.
@@ -64,8 +75,8 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   const { phase, reached, message, start } = useHandoffRun(req);
 
   const sourceName = worktreeLeaf(req.sourcePath);
-  const destOption = options.find((o) => o.value === dest);
-  const destLabel = destOption?.label ?? (dest ? worktreeLeaf(dest) : "");
+  const destOption = options.find((o) => o.value === selectedDest);
+  const destLabel = destOption?.label ?? (selectedDest ? worktreeLeaf(selectedDest) : "");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -75,13 +86,6 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [closeHandoff]);
 
-  // A live worktree refresh (FS watcher) can drop the selected destination
-  // while the dialog is still on the configure screen — snap back to the first
-  // valid option rather than submitting a gone path.
-  useEffect(() => {
-    if (dest && !options.some((o) => o.value === dest)) setDest(options[0]?.value ?? "");
-  }, [dest, options]);
-
   // The success screen has no footer button (Codex-style) — move focus to the
   // header close button so keyboard users aren't stranded.
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -90,10 +94,10 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   }, [phase]);
 
   const submit = () => {
-    if (!dest) return;
+    if (!selectedDest) return;
     setStepLabels(handoffStepLabels(req.branch, destLabel));
     setDestName(destLabel);
-    start(dest);
+    start(selectedDest);
   };
 
   return (
@@ -162,8 +166,8 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
             <div className="mt-4 flex items-center gap-2 text-[12.5px] text-neutral-500 dark:text-neutral-400">
               <span className="shrink-0">Handing off to workspace</span>
               <select
-                value={dest}
-                onChange={(e) => setDest(e.target.value)}
+                value={selectedDest}
+                onChange={(e) => setPreferredDest(e.target.value)}
                 aria-label="Destination workspace"
                 className="min-w-0 flex-1 truncate rounded-md border border-black/10 bg-transparent px-1.5 py-1 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"
               >
@@ -185,7 +189,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
             <button
               type="button"
               onClick={submit}
-              disabled={!dest}
+              disabled={!selectedDest}
               className="mt-5 h-10 w-full rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
             >
               Hand off
