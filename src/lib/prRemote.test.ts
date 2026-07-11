@@ -24,6 +24,7 @@ describe("prRemoteHost", () => {
 describe("accountMatchesPrRemote", () => {
   it("matches hosts case-insensitively in both directions", () => {
     expect(accountMatchesPrRemote({ host: "GITHUB.com" }, forge("github.COM"))).toBe(true);
+    expect(accountMatchesPrRemote({ host: "github.com" }, forge("GITHUB.COM"))).toBe(true);
   });
 
   it("rejects a different host", () => {

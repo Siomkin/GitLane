@@ -9,6 +9,10 @@ describe("splitCommitMessage", () => {
     });
   });
 
+  it("treats everything after the first line as body, even without a blank separator", () => {
+    expect(splitCommitMessage("a\nb")).toEqual({ summary: "a", description: "b" });
+  });
+
   it("returns an empty description for a summary-only message", () => {
     expect(splitCommitMessage("feat: thing")).toEqual({ summary: "feat: thing", description: "" });
     expect(splitCommitMessage("feat: thing\n\n")).toEqual({ summary: "feat: thing", description: "" });

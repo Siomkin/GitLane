@@ -19,6 +19,7 @@ describe("initials", () => {
 
   it("collapses repeated and mixed whitespace between words", () => {
     expect(initials("  ada   \t lovelace  ")).toBe("AL");
+    expect(initials("  ada  ")).toBe("A");
   });
 
   it("uppercases non-ASCII letters (BMP)", () => {
