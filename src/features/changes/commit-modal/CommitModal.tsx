@@ -6,11 +6,10 @@
 // (commitSelected).
 
 import { useEffect, useState, type ReactNode } from "react";
-import { type FileChange } from "../../../lib/api";
+import { type FileChange, type TerminalAgent } from "../../../lib/api";
 import { fileWriteGuard, findGuardedFile } from "../../../lib/advancedRepoState";
 import { cn } from "../../../lib/cn";
 import { fullCommitMessage } from "../../../lib/commitMessage";
-import { focusRing } from "../../../lib/ui";
 import { useRepo } from "../../../store/repo";
 import { useTerminalAgents } from "../../../store/terminalAgents";
 import { useUi } from "../../../store/ui";
@@ -18,6 +17,9 @@ import { selectEnabledAgents } from "../../terminal/agents";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { ListView } from "./ListView";
 import { TreeView } from "./TreeView";
+import { CommitIdentitySelector } from "./CommitIdentitySelector";
+import { CommitWithAgentButton } from "./CommitWithAgentButton";
+import { useCommitIdentity } from "./useCommitIdentity";
 
 export const CommitModal = () => {
   const open = useUi((s) => s.commitOpen);
@@ -29,8 +31,8 @@ const CommitModalBody = () => {
   const close = useUi((s) => s.closeCommit);
   const view = useUi((s) => s.commitView);
   const setView = useUi((s) => s.setCommitView);
-  // Store-owned draft state intentionally survives close/reopen; only the
-  // modal's ephemeral choices (`amend`, selected agent) reset on remount.
+  // Store-owned draft state intentionally survives close/reopen; the modal's
+  // ephemeral `amend` choice resets on remount.
   const msg = useUi((s) => s.commitMsg);
   const setMsg = useUi((s) => s.setCommitMsg);
   const excluded = useUi((s) => s.commitExcluded);
@@ -43,7 +45,8 @@ const CommitModalBody = () => {
   const [amend, setAmend] = useState(false);
   const agentsRaw = useTerminalAgents((s) => s.agents);
   const loadAgents = useTerminalAgents((s) => s.loadAgents);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const identity = useCommitIdentity();
+  const identityUsable = identity.usable;
 
   const headCommit = graph?.commits.find((commit) => commit.id === graph.head && !commit.stash) ?? null;
   const canAmend =
@@ -51,11 +54,6 @@ const CommitModalBody = () => {
     !!headCommit &&
     !isCommitReachableFromRemote(graph, headCommit.id);
   const agents = selectEnabledAgents(agentsRaw);
-  const availableAgents = agents.filter((agent) => agent.available);
-  const selectedAgent =
-    agents.find((agent) => agent.id === selectedAgentId && agent.available) ??
-    availableAgents[0] ??
-    null;
 
   // Close on Escape.
   useEffect(() => {
@@ -89,7 +87,7 @@ const CommitModalBody = () => {
   const includedGuarded = findGuardedFile(included, changes);
   const commitBlocked = fileWriteGuard(includedGuarded, changes);
   const includedCount = included.length;
-  const canCommit = includedCount > 0 && msg.trim().length > 0 && !commitBlocked;
+  const canCommit = includedCount > 0 && msg.trim().length > 0 && !commitBlocked && identityUsable;
 
   const doCommit = () => {
     if (!canCommit) return;
@@ -97,14 +95,14 @@ const CommitModalBody = () => {
     close();
   };
 
-  const commitWithAgent = () => {
-    if (!selectedAgent) return;
+  const commitWithAgent = (agent: TerminalAgent) => {
+    if (!identityUsable || !agent.available) return;
     const instruction =
       msg.trim() ||
       (amend
         ? "Review the staged changes, add them to the previous commit, and update the commit message if needed."
         : "Review the staged changes, write a concise conventional-commit message, and commit them.");
-    sendToTerminal(instruction, selectedAgent.command);
+    sendToTerminal(instruction, agent.command);
     close();
   };
 
@@ -126,7 +124,6 @@ const CommitModalBody = () => {
     view === "tree"
       ? "h-[760px] w-[1280px] max-h-[calc(100vh-4rem)] max-w-[calc(100vw-4rem)]"
       : "h-[560px] w-[920px] max-h-[90%] max-w-full";
-  const modelSelectId = "commit-agent-model";
 
   return (
     <div className="fixed inset-0 z-[58] grid place-items-center p-8">
@@ -220,54 +217,9 @@ const CommitModalBody = () => {
             placeholder={amend ? "Amended commit message" : "Commit message (optional — leave empty to let the agent write it)"}
             className="h-14 w-full resize-none rounded-lg border border-black/10 bg-transparent p-2.5 text-[13px] text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
           />
+          <CommitIdentitySelector identity={identity} />
           <div className="flex items-center gap-2">
-            {agents.length > 0 ? (
-              <label className="flex min-w-0 items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
-                <span id={`${modelSelectId}-label`}>Model</span>
-                <select
-                  id={modelSelectId}
-                  aria-labelledby={`${modelSelectId}-label`}
-                  value={selectedAgent?.id ?? ""}
-                  onChange={(e) => setSelectedAgentId(e.target.value || null)}
-                  disabled={availableAgents.length === 0}
-                  className={cn(
-                    "h-9 max-w-[220px] rounded-lg border border-black/10 bg-white px-3 text-[13px] font-medium text-neutral-700 outline-none dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
-                    focusRing,
-                  )}
-                >
-                  {availableAgents.length === 0 && (
-                    <option value="" disabled>
-                      No available agents
-                    </option>
-                  )}
-                  {agents.map((agent) => (
-                    <option
-                      key={agent.id}
-                      value={agent.id}
-                      disabled={!agent.available}
-                      title={agent.available ? agent.command : `${agent.command} was not found on PATH`}
-                    >
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <span className="text-[12px] text-amber-600 dark:text-amber-400">
-                No enabled agents. Add one in Settings.
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={commitWithAgent}
-              disabled={!selectedAgent}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-[color:var(--accent)]">
-                <path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z" />
-              </svg>
-              Commit with agent
-            </button>
+            <CommitWithAgentButton agents={agents} disabled={!identityUsable} onPick={commitWithAgent} />
             <div className="ml-auto flex gap-2">
               <button
                 type="button"

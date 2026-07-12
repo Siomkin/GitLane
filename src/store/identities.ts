@@ -220,7 +220,9 @@ interface IdentitiesState {
   setDefaultManualIdentity: (id: string) => void;
   /** Apply a card (or `null` = this computer) to the open repo: writes local
    * git config. */
-  applyCommitSource: (ref: CommitSourceRef | null) => Promise<void>;
+  /** Returns whether the git-config write and reconciliation succeeded, so
+   * repo-scoped pickers can keep failed selections visibly inactive. */
+  applyCommitSource: (ref: CommitSourceRef | null) => Promise<boolean>;
 }
 
 export const useIdentities = create<IdentitiesState>((set, get) => ({
@@ -285,7 +287,7 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
 
   applyCommitSource: async (ref) => {
     const keys = openRepoKeys();
-    if (!keys) return;
+    if (!keys) return false;
     const { key, path } = keys;
 
     if (ref === null) {
@@ -293,35 +295,48 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
         await api.clearRepoIdentity(path);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
-        return;
+        return false;
       }
       // This computer → nothing applied.
       writeApplied(key, null);
-      if (!repoStillOpen(path)) return;
+      // The git write already succeeded, so report success even if the user
+      // switched repos before we could reconcile the (now-irrelevant) view state.
+      if (!repoStillOpen(path)) return true;
       // Publish the cleared identity immediately so a commit in the reconcile
       // window doesn't pin the previous card's author.
       useAccounts.getState().pinRepoIdentity(null, path);
-      await useAccounts.getState().hydrateRepoIdentity(path);
+      // Best-effort reconcile: the git-config write already succeeded, so a
+      // hydrate failure must not turn this into a reported failure.
+      try {
+        await useAccounts.getState().hydrateRepoIdentity(path);
+      } catch {
+        /* leave the optimistic pin in place until the next repo read */
+      }
       useUi.getState().showToast("This repo commits as this computer's git identity");
-      return;
+      return true;
     }
 
     const card = get().manualIdentities.find((p) => p.id === ref.id);
-    if (!card) return;
+    if (!card) return false;
     const email = card.email;
 
     try {
       await api.setRepoIdentity(path, card.name, email, signingArgs(card));
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
-      return;
+      return false;
     }
     // Record the applied card so selection stays unambiguous.
     writeApplied(key, ref);
-    if (!repoStillOpen(path)) return;
+    if (!repoStillOpen(path)) return true; // write succeeded (see above)
     useAccounts.getState().pinRepoIdentity(expectedIdentity(card, card.name, email), path);
-    await useAccounts.getState().hydrateRepoIdentity(path);
+    try {
+      await useAccounts.getState().hydrateRepoIdentity(path);
+    } catch {
+      /* best-effort: the git-config write already succeeded */
+    }
     useUi.getState().showToast(`This repo commits as ${card.label}`);
+    return true;
   },
 
 }));

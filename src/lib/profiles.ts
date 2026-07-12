@@ -31,6 +31,13 @@ export interface ProfileDraft {
   tagGpgSign?: boolean;
 }
 
+/** The signing badge label for a profile ("GPG signed" / "SSH signed"), or null
+ * when it doesn't sign. */
+export function signingLabel(profile: GitProfile): string | null {
+  if (!profile.signingKey || (!profile.gpgSign && !profile.tagGpgSign)) return null;
+  return profile.gpgFormat === "ssh" ? "SSH signed" : "GPG signed";
+}
+
 /** Two-letter avatar initials for a profile (from its label). */
 export function profileInitials(label: string): string {
   const trimmed = label.trim();

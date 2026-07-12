@@ -21,14 +21,20 @@ export function useDismiss(
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onCloseRef.current();
     };
+    // Capture Escape so it dismisses this surface *first* and doesn't also reach a
+    // parent's Escape handler (e.g. a popover inside a modal closes the popover,
+    // not the whole modal).
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseRef.current();
+      }
     };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open, ref]);
 }
