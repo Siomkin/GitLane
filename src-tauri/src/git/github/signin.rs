@@ -533,7 +533,7 @@ fn strip_ansi(s: &str) -> String {
         match chars.peek() {
             Some('[') => {
                 chars.next();
-                while let Some(n) = chars.next() {
+                for n in chars.by_ref() {
                     if n.is_ascii_alphabetic() {
                         break;
                     }
