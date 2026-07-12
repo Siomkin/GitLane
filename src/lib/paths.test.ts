@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { basename, dirname, isMarkdownPath, normalizeWatchPath, repoLabel } from "./paths";
+import {
+  basename,
+  dirname,
+  isMarkdownPath,
+  normalizeWatchPath,
+  pathsFromUriList,
+  repoLabel,
+} from "./paths";
 
 describe("basename", () => {
   it("returns the last segment", () => {
@@ -54,6 +61,37 @@ describe("isMarkdownPath", () => {
     expect(isMarkdownPath("src/App.tsx")).toBe(false);
     expect(isMarkdownPath("archive.md.bak")).toBe(false);
     expect(isMarkdownPath("md")).toBe(false);
+  });
+});
+
+describe("pathsFromUriList", () => {
+  it("parses a single file URI to a local path", () => {
+    expect(pathsFromUriList("file:///home/me/notes.txt")).toEqual([
+      "/home/me/notes.txt",
+    ]);
+  });
+
+  it("decodes percent-escaped characters", () => {
+    expect(pathsFromUriList("file:///home/me/my%20file.txt")).toEqual([
+      "/home/me/my file.txt",
+    ]);
+  });
+
+  it("keeps multiple entries in order and skips comments/blanks", () => {
+    const list = "# a comment\r\nfile:///a\r\n\r\nfile:///b\r\n";
+    expect(pathsFromUriList(list)).toEqual(["/a", "/b"]);
+  });
+
+  it("drops non-file schemes", () => {
+    expect(pathsFromUriList("https://example.com/x\nfile:///c")).toEqual(["/c"]);
+  });
+
+  it("ignores unparseable lines", () => {
+    expect(pathsFromUriList("not a uri\nfile:///d")).toEqual(["/d"]);
+  });
+
+  it("returns [] for an empty payload", () => {
+    expect(pathsFromUriList("")).toEqual([]);
   });
 });
 

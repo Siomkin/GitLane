@@ -30,6 +30,8 @@ import { useTerminalAgents } from "@/store/terminalAgents";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { xtermTheme } from "@/features/terminal/xtermTheme";
 import { selectEnabledAgents } from "@/features/terminal/agents";
+import { shellQuotePaths } from "@/features/terminal/dropPaths";
+import { pathsFromUriList } from "@/lib/paths";
 import { MONO_FONT } from "@/lib/ui";
 import { PaneController, type PaneView } from "./paneController";
 import { usePtyEvents } from "./usePtyEvents";
@@ -81,6 +83,28 @@ export function useTerminalPanes(): TerminalPanes {
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(el);
+
+      // Drop a file from the OS file manager to paste its shell-quoted path,
+      // matching GNOME/macOS Terminal. The WebView delivers the drag as normal
+      // HTML5 DnD (Tauri's `dragDropEnabled` is false), so the `file://` URIs
+      // arrive in `text/uri-list`. Pasting routes through xterm's normal input
+      // path (term.onData → PTY), honouring bracketed paste.
+      el.addEventListener("dragover", (e) => {
+        const dt = e.dataTransfer;
+        if (!dt || !dt.types.includes("Files")) return;
+        e.preventDefault();
+        dt.dropEffect = "copy";
+      });
+      el.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        if (!dt) return;
+        const paths = pathsFromUriList(dt.getData("text/uri-list"));
+        if (paths.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        term.paste(shellQuotePaths(paths));
+        term.focus();
+      });
       try {
         fit.fit();
       } catch {

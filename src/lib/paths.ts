@@ -22,6 +22,35 @@ export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
 }
 
+/** Parse a `text/uri-list` drag payload into local filesystem paths, dropping
+ * any non-`file:` entries (remote URLs, comment lines). Percent-escapes are
+ * decoded so `my%20file` becomes `my file`. Order is preserved. Used by both the
+ * integrated terminal's file-drop (paste path) and the window's folder-drop
+ * (open repo) — the OS delivers file drags as `file://` URIs in this format
+ * because Tauri's native drag handler is disabled (`dragDropEnabled: false`). */
+export function pathsFromUriList(uriList: string): string[] {
+  const paths: string[] = [];
+  for (const raw of uriList.split(/\r?\n/)) {
+    const line = raw.trim();
+    // The spec allows `#`-prefixed comment lines; skip them and blanks.
+    if (!line || line.startsWith("#")) continue;
+    let url: URL;
+    try {
+      url = new URL(line);
+    } catch {
+      continue;
+    }
+    if (url.protocol !== "file:") continue;
+    try {
+      paths.push(decodeURIComponent(url.pathname));
+    } catch {
+      // Malformed percent-encoding — fall back to the raw pathname.
+      paths.push(url.pathname);
+    }
+  }
+  return paths;
+}
+
 /**
  * Normalize an open-repository path so the same repo routes and sequences
  * identically regardless of a trailing-separator difference (GL-125). Used both

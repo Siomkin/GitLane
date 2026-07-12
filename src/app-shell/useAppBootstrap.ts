@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { useFileDropOpen } from "@/hooks/useFileDropOpen";
 import { useRepoWatcher } from "@/hooks/useRepoWatcher";
 import { isTauri } from "@/lib/platform";
 import { useAccounts } from "@/store/accounts";
@@ -30,4 +31,7 @@ export const useAppBootstrap = () => {
   }, []);
 
   useRepoWatcher(refresh);
+
+  // Drop a folder anywhere on the window to open it as a repository.
+  useFileDropOpen();
 };
