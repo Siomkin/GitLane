@@ -46,7 +46,8 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
                   e.stopPropagation();
                   if (closeTab(repoPath, tab.id)) hideTerminal();
                 }}
-                title="Close terminal"
+                title={`Close ${tab.title}`}
+                aria-label={`Close ${tab.title}`}
                 className={cn(
                   "grid h-4 w-4 place-items-center rounded text-neutral-400 hover:bg-black/10 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200",
                   active ? "opacity-70" : "opacity-0 group-hover:opacity-70",
@@ -61,6 +62,7 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
       <button type="button"
         onClick={() => openTab(repoPath)}
         title="New terminal"
+        aria-label="New terminal"
         className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"
       >
         <PlusIcon />

@@ -81,6 +81,7 @@ export const TitleBar = () => {
             className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
             onClick={openOnboarding}
             title="Open or create a repository"
+            aria-label="Open or create a repository"
           >
             <PlusIcon className="h-3.5 w-3.5" />
           </button>
@@ -91,6 +92,7 @@ export const TitleBar = () => {
         <button type="button"
           className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
           title="Search"
+          aria-label="Search"
         >
           <SearchIcon className="h-4 w-4" />
         </button>
@@ -98,6 +100,7 @@ export const TitleBar = () => {
           className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
           onClick={() => onSettings()}
           title="Settings"
+          aria-label="Settings"
         >
           <SettingsIcon className="h-4 w-4" />
         </button>
@@ -105,6 +108,7 @@ export const TitleBar = () => {
           className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
           onClick={toggleTheme}
           title={theme === "dark" ? "Light mode" : "Dark mode"}
+          aria-label={theme === "dark" ? "Light mode" : "Dark mode"}
         >
           {theme === "dark" ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
         </button>

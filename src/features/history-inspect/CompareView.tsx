@@ -51,6 +51,7 @@ export function CompareView() {
           onClick={() => void swap()}
           disabled={compare.head === null}
           title={compare.head === null ? "Working-tree comparison can't be swapped" : "Swap direction"}
+          aria-label={compare.head === null ? "Working-tree comparison can't be swapped" : "Swap direction"}
           className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/5"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4">
@@ -138,6 +139,7 @@ export function CompareView() {
               {hasFilter && (
                 <button type="button"
                   onClick={() => setFilter("")}
+                  aria-label="Clear path filter"
                   className="grid h-5 w-5 shrink-0 place-items-center rounded text-neutral-400 hover:bg-black/10 dark:hover:bg-white/10"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">

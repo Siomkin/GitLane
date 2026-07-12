@@ -38,6 +38,7 @@ export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
     <div className="ml-auto flex flex-none items-center gap-2">
       <button type="button"
         title={`Open on ${forgeName}`}
+        aria-label={`Open on ${forgeName}`}
         onClick={() => {
           if (pr.url) openExternalUrl(pr.url);
           else showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");

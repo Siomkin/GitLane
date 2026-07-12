@@ -3,6 +3,7 @@ import { cn } from "../../../../lib/cn";
 /** A monospace remote-URL input. Turns its border rose when `invalid`, otherwise
  * focuses to the accent. Shared by the add form and per-row edit. */
 export const RemoteUrlField = ({
+  id,
   value,
   onChange,
   invalid,
@@ -10,6 +11,7 @@ export const RemoteUrlField = ({
   autoFocus,
   ariaLabel,
 }: {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   invalid: boolean;
@@ -18,6 +20,7 @@ export const RemoteUrlField = ({
   ariaLabel?: string;
 }) => (
   <input
+    id={id}
     type="text"
     value={value}
     spellCheck={false}

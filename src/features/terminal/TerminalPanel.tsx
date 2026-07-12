@@ -117,6 +117,7 @@ export function TerminalLayer() {
             <button type="button"
               onClick={clearTerminal}
               title="Clear terminal"
+              aria-label="Clear terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               <ClearIcon />
@@ -124,6 +125,7 @@ export function TerminalLayer() {
             <button type="button"
               onClick={toggleTerminalExpanded}
               title={terminalExpanded ? "Restore terminal size" : "Maximize terminal"}
+              aria-label={terminalExpanded ? "Restore terminal size" : "Maximize terminal"}
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               {terminalExpanded ? <RestoreIcon /> : <ExpandIcon />}
@@ -131,6 +133,7 @@ export function TerminalLayer() {
             <button type="button"
               onClick={collapseTerminal}
               title="Collapse"
+              aria-label="Collapse"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               <CollapseIcon />
@@ -138,6 +141,7 @@ export function TerminalLayer() {
             <button type="button"
               onClick={hideTerminal}
               title="Hide terminal"
+              aria-label="Hide terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
               <CloseIcon />
