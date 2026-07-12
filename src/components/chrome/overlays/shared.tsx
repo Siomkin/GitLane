@@ -87,6 +87,11 @@ export interface MenuItem {
   indent?: boolean;
 }
 
+/** A thin divider row between menu items — state-free. */
+const sep = (key: string) => (
+  <div key={key} className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />
+);
+
 export function MenuPanel({
   left,
   top,
@@ -114,10 +119,6 @@ export function MenuPanel({
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   // openIndex changes the panel height, so re-fit on toggle as well as count.
   const pos = useFittedMenuPosition(left, top, panelRef, [items.length, openIndex]);
-
-  const sep = (key: string) => (
-    <div key={key} className="my-1 mx-2 h-px bg-black/5 dark:bg-white/5" />
-  );
 
   // A leaf row (also used for submenu children, with `nested` adding indent).
   const renderRow = (it: MenuItem, key: string, nested: boolean) => {

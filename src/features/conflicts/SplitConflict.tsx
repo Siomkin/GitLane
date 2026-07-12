@@ -22,6 +22,13 @@ const ChevronIcon = ({ dir }: { dir: "up" | "down" }) => (
   </svg>
 );
 
+/** Prev/next conflict nav-button classes — state-free. */
+const navBtn = (enabled: boolean) =>
+  cn(
+    "grid h-5 w-5 place-items-center rounded border border-black/10 text-neutral-500 dark:border-white/10 dark:text-neutral-300",
+    enabled ? "hover:bg-black/5 dark:hover:bg-white/5" : "cursor-not-allowed opacity-40",
+  );
+
 const ROW = "grid grid-cols-[26px_32px_18px_1fr] font-mono text-[12px] leading-[20px]";
 const NUM = "select-none pr-1.5 text-right text-neutral-300 dark:text-neutral-600";
 const tint = (side: Side) => (side === "a" ? "bg-[var(--accent-soft)]" : "bg-[#3b7ff5]/[0.10]");
@@ -269,14 +276,6 @@ export const SplitConflict = ({
     setActive(next);
     reveal(next, true);
   };
-
-  const navBtn = (enabled: boolean) =>
-    cn(
-      "grid h-5 w-5 place-items-center rounded border border-black/10 text-neutral-500 dark:border-white/10 dark:text-neutral-300",
-      enabled
-        ? "hover:bg-black/5 dark:hover:bg-white/5"
-        : "cursor-not-allowed opacity-40",
-    );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">

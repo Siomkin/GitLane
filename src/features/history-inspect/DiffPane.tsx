@@ -50,7 +50,7 @@ export function DiffPane({
 }
 
 /** Banner + action shown when the backend capped a diff at DIFF_LINE_LIMIT. */
-export function TruncatedNotice({ onShowFull }: { onShowFull: () => void }) {
+function TruncatedNotice({ onShowFull }: { onShowFull: () => void }) {
   return (
     <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.08] px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5 shrink-0">
