@@ -3,7 +3,7 @@
 // defaults to the checked-out branch; base to the repo's likely default branch.
 
 import { useMemo, useState } from "react";
-import type { BranchInfo } from "../../lib/api";
+import { BranchKind, type BranchInfo } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
 import { useUi } from "../../store/ui";
@@ -13,7 +13,7 @@ import { useRunPrAction } from "./usePrAction";
 /** Best guess at the base branch: the conventional default if present, else the
  * first local branch that isn't the current one. */
 function guessBase(branches: BranchInfo[], head: string | null): string {
-  const locals = branches.filter((b) => b.kind === "local").map((b) => b.name);
+  const locals = branches.filter((b) => b.kind === BranchKind.Local).map((b) => b.name);
   for (const name of ["main", "develop", "master"]) {
     if (locals.includes(name) && name !== head) return name;
   }
@@ -44,7 +44,7 @@ function CreatePrDialogBody() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [draft, setDraft] = useState(false);
-  const locals = branches.filter((b) => b.kind === "local").map((b) => b.name);
+  const locals = branches.filter((b) => b.kind === BranchKind.Local).map((b) => b.name);
   const canSubmit = !!title.trim() && !!base && !!head && base !== head;
 
   const submit = async () => {

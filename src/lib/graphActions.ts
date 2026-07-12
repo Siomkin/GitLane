@@ -1,14 +1,27 @@
-export type BranchRefKind = "local" | "remote";
+import { BranchKind } from "./api";
+
+/** A drag source is always a local or remote-tracking branch — same vocabulary
+ * as `BranchKind`. */
+export type BranchRefKind = BranchKind;
 
 export interface BranchDragRef {
   name: string;
   kind: BranchRefKind;
 }
 
+/** Kind of a graph drop target: a branch (local/remote) or a bare commit.
+ * Compare against `GraphTargetKind.Commit`, not `"commit"`. */
+export const GraphTargetKind = {
+  Local: BranchKind.Local,
+  Remote: BranchKind.Remote,
+  Commit: "commit",
+} as const;
+export type GraphTargetKind = (typeof GraphTargetKind)[keyof typeof GraphTargetKind];
+
 export type GraphDropTarget =
-  | { kind: "local"; name: string }
-  | { kind: "remote"; name: string }
-  | { kind: "commit"; sha: string; shortSha: string };
+  | { kind: typeof GraphTargetKind.Local; name: string }
+  | { kind: typeof GraphTargetKind.Remote; name: string }
+  | { kind: typeof GraphTargetKind.Commit; sha: string; shortSha: string };
 
 export interface FastForwardMoves {
   /** The local target branch can move forward to the dragged source ref. */
@@ -73,9 +86,9 @@ export function buildGraphActionSpecs(
   // A commit or a remote-tracking ref is a fixed point: only the dragged local
   // branch can move onto it. The label reads the target's short sha (commit) or
   // ref name (remote).
-  if (target.kind === "commit" || target.kind === "remote") {
-    if (source.kind !== "local") return [];
-    const at = target.kind === "commit" ? target.shortSha : target.name;
+  if (target.kind === GraphTargetKind.Commit || target.kind === GraphTargetKind.Remote) {
+    if (source.kind !== BranchKind.Local) return [];
+    const at = target.kind === GraphTargetKind.Commit ? target.shortSha : target.name;
     return [
       ...(ff.sourceToTarget
         ? [{
@@ -99,7 +112,7 @@ export function buildGraphActionSpecs(
 
   // Local source dropped on a local target: the dragged branch moves onto the
   // target. Single direction — the target is never rebased/reset here.
-  if (source.kind === "local") {
+  if (source.kind === BranchKind.Local) {
     return [
       ...(ff.sourceToTarget
         ? [{

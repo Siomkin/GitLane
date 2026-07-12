@@ -1,8 +1,14 @@
-import type { CommitNode } from "@/lib/api";
+import { BranchKind, RefKind, type CommitNode } from "@/lib/api";
 
-/** Which kind of ref a navigator row represents. Tags are navigate-only — never a
- * drag source or checkout/context-menu target. */
-export type RowKind = "local" | "remote" | "tag";
+/** Which kind of ref a navigator row represents: a branch (local/remote) plus
+ * tags, which are navigate-only — never a drag source or checkout/context-menu
+ * target. Compare against `RowKind.Tag`, not `"tag"`. */
+export const RowKind = {
+  Local: BranchKind.Local,
+  Remote: BranchKind.Remote,
+  Tag: "tag",
+} as const;
+export type RowKind = (typeof RowKind)[keyof typeof RowKind];
 
 /** A navigable ref row: a display name plus the commit oid to jump to. `oid` is
  * absent when the tip can't be resolved (e.g. a branch with no `target` whose tip
@@ -32,7 +38,7 @@ export function collectTags(commits: CommitNode[]): RefItem[] {
   const out: RefItem[] = [];
   for (const commit of commits) {
     for (const ref of commit.refs) {
-      if (ref.kind === "tag" && !seen.has(ref.name)) {
+      if (ref.kind === RefKind.Tag && !seen.has(ref.name)) {
         seen.add(ref.name);
         out.push({ name: ref.name, oid: commit.id });
       }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, BranchKind } from "@/lib/api";
 import {
   buildGraphActionSpecs,
   findOtherBranchWorktree,
+  GraphTargetKind,
   type FastForwardMoves,
   type GraphActionKind,
 } from "@/lib/graphActions";
@@ -49,15 +50,15 @@ export function ActionMenu() {
     let alive = true;
     // The rev the source could move onto: a local/remote ref by name, a commit
     // by sha.
-    const targetRef = menu.to.kind === "commit" ? menu.to.sha : menu.to.name;
+    const targetRef = menu.to.kind === GraphTargetKind.Commit ? menu.to.sha : menu.to.name;
     Promise.all([
       // targetToSource (moving the drop target forward) is only ever offered for
       // a remote ref dropped on a local branch — a local source moves the source,
       // so its reverse direction is never read. Skip the probe otherwise.
-      menu.to.kind === "local" && menu.from.kind === "remote"
+      menu.to.kind === GraphTargetKind.Local && menu.from.kind === BranchKind.Remote
         ? api.canFastForward(repoPath, menu.from.name, menu.to.name)
         : Promise.resolve(false),
-      menu.from.kind === "local"
+      menu.from.kind === BranchKind.Local
         ? api.canFastForward(repoPath, targetRef, menu.from.name)
         : Promise.resolve(false),
     ])
@@ -105,9 +106,9 @@ export function ActionMenu() {
     // Read-only targets (a commit or a remote-tracking ref) can only receive the
     // dragged local branch — the source moves, the target never does. The rev is
     // a commit sha or the remote ref's name.
-    if (to.kind !== "local") {
-      const rev = to.kind === "commit" ? to.sha : to.name;
-      const revLabel = to.kind === "commit" ? to.shortSha : to.name;
+    if (to.kind !== GraphTargetKind.Local) {
+      const rev = to.kind === GraphTargetKind.Commit ? to.sha : to.name;
+      const revLabel = to.kind === GraphTargetKind.Commit ? to.shortSha : to.name;
       switch (kind) {
         case "fast-forward-source":
           return () => act(() => fastForwardTo(rev, from.name));
@@ -162,10 +163,10 @@ export function ActionMenu() {
       case "merge-target":
       case "rebase-target":
       case "reset-target":
-        return to.kind === "local" ? to.name : null;
+        return to.kind === GraphTargetKind.Local ? to.name : null;
       case "rebase-source":
       case "reset-source":
-        return from.kind === "local" ? from.name : null;
+        return from.kind === BranchKind.Local ? from.name : null;
       default:
         return null;
     }
@@ -201,7 +202,7 @@ export function ActionMenu() {
         style={{ left: pos.left, top: pos.top, maxHeight: pos.maxHeight, animation: "gp-pop .12s ease-out" }}
       >
         <div className="border-b border-black/5 px-3.5 pb-2 pt-2.5 text-[11px] tracking-wide text-neutral-400 dark:border-white/5">
-          Drop {from.name} onto {to.kind === "commit" ? to.shortSha : to.name}
+          Drop {from.name} onto {to.kind === GraphTargetKind.Commit ? to.shortSha : to.name}
         </div>
         <div className="p-1.5">
           {items.map((item) => {

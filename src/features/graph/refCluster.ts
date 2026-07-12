@@ -1,7 +1,12 @@
-import type { RefLabel } from "../../lib/api";
+import { RefKind, type RefLabel } from "../../lib/api";
 
 // Current branch first, then local branches / groups, remotes, and finally tags.
-const REF_RANK: Record<RefLabel["kind"], number> = { head: 0, branch: 1, remote: 2, tag: 3 };
+const REF_RANK: Record<RefLabel["kind"], number> = {
+  [RefKind.Head]: 0,
+  [RefKind.Branch]: 1,
+  [RefKind.Remote]: 2,
+  [RefKind.Tag]: 3,
+};
 
 /** One rendered slot in a commit's ref cluster: either a lone ref or a local
  * branch grouped with its in-sync remote-tracking ref(s) of the same name. */
@@ -27,10 +32,10 @@ export function buildClusterItems(
   refs: RefLabel[],
   currentBranch: string | null,
 ): ClusterItem[] {
-  const visible = refs.filter((r) => r.kind !== "head");
-  const branches = visible.filter((r) => r.kind === "branch");
-  const remotes = visible.filter((r) => r.kind === "remote");
-  const others = visible.filter((r) => r.kind !== "branch" && r.kind !== "remote");
+  const visible = refs.filter((r) => r.kind !== RefKind.Head);
+  const branches = visible.filter((r) => r.kind === RefKind.Branch);
+  const remotes = visible.filter((r) => r.kind === RefKind.Remote);
+  const others = visible.filter((r) => r.kind !== RefKind.Branch && r.kind !== RefKind.Remote);
 
   const remotesByBase = new Map<string, RefLabel[]>();
   for (const r of remotes) {

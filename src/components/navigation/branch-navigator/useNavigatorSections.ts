@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { BranchSyncState, StashEntry, WorktreeInfo } from "@/lib/api";
+import { BranchKind, type BranchSyncState, type StashEntry, type WorktreeInfo } from "@/lib/api";
 import { isActiveWorktreePath, worktreeLabel } from "@/lib/worktrees";
 import { useRepo } from "@/store/repo";
 import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
@@ -85,7 +85,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   }
 
   const locals = branches
-    .filter((b) => b.kind === "local")
+    .filter((b) => b.kind === BranchKind.Local)
     .map((b) => ({
       name: b.name,
       oid: b.target ?? oidByName.get(b.name),
@@ -95,7 +95,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     }))
     .sort((a, b) => (a.name === head ? -1 : b.name === head ? 1 : a.name.localeCompare(b.name)));
   const remotes = branches
-    .filter((b) => b.kind === "remote")
+    .filter((b) => b.kind === BranchKind.Remote)
     .map((b) => ({ name: b.name, oid: b.target ?? oidByName.get(b.name), match: matches(b.name) }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const tags = allTags

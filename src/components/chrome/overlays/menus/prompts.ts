@@ -1,4 +1,4 @@
-import type { BranchInfo } from "@/lib/api";
+import { BranchKind, type BranchInfo } from "@/lib/api";
 import { validateBranchName } from "@/lib/refName";
 import type { RepoState } from "@/store/repoTypes";
 import type { PromptRequest } from "@/store/ui";
@@ -69,9 +69,9 @@ export function promptCompareBranch(
 ) {
   const others = branches.filter((x) => x.name !== head);
   const locals = others
-    .filter((x) => x.kind === "local")
+    .filter((x) => x.kind === BranchKind.Local)
     .sort((x, y) => (x.name === cur ? -1 : y.name === cur ? 1 : x.name.localeCompare(y.name)));
-  const remotes = others.filter((x) => x.kind === "remote").sort((x, y) => x.name.localeCompare(y.name));
+  const remotes = others.filter((x) => x.kind === BranchKind.Remote).sort((x, y) => x.name.localeCompare(y.name));
   const options = [
     ...locals.map((x) => ({ value: x.name, hint: x.name === cur ? "current" : undefined })),
     ...remotes.map((x) => ({ value: x.name, hint: "remote" })),

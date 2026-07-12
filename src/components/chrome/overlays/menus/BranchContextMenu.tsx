@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, BranchKind } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
 import { findOtherBranchWorktree } from "@/lib/graphActions";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
@@ -127,8 +127,8 @@ export function BranchContextMenu() {
   // since "reset cur to origin/main" etc. are exactly what you want on a remote.
   // `isLocal` is a POSITIVE check so an unresolved ref (missing from the branches
   // store) fails closed — local-only mutations hide rather than show on a remote.
-  const isLocal = info?.kind === "local";
-  const isRemote = info?.kind === "remote";
+  const isLocal = info?.kind === BranchKind.Local;
+  const isRemote = info?.kind === BranchKind.Remote;
   const remoteCheckout = remoteTrackingCheckoutCandidate(b, branches);
   const sync = info?.sync ?? null;
   const aheadBehind = sync && sync.upstream ? `↑${sync.ahead} ↓${sync.behind}` : null;

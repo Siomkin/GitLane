@@ -1,4 +1,4 @@
-import { api, type FileChange, type RepoSummary } from "../lib/api";
+import { api, BranchKind, type FileChange, type RepoSummary } from "../lib/api";
 import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "../lib/advancedRepoState";
 import { splitCommitMessage } from "../lib/commitMessage";
 import { findOtherBranchWorktree, type WorktreeRef } from "../lib/graphActions";
@@ -221,7 +221,7 @@ export function createRepoWriteActions(
   // The remote a push of `branch` targets — its configured remote from the
   // branch list, with the backend's "origin" fallback.
   const pushRemoteOf = (branch: string) =>
-    pushRemoteForBranch(get().branches.find((b) => b.kind === "local" && b.name === branch));
+    pushRemoteForBranch(get().branches.find((b) => b.kind === BranchKind.Local && b.name === branch));
   // The default push remote (tags land there when no remote is picked).
   const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
 
@@ -896,7 +896,7 @@ export function createRepoWriteActions(
       set({ loading: true, error: null });
       // Capture how far behind the tracked branch is *before* fetching so the
       // success toast can report how many commits the remote ref gained.
-      const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const behindBefore = head?.sync?.behind ?? 0;
       const only = get().remotes.length === 1 ? get().remotes[0].name : null;
       const notes = useNotifications.getState();
@@ -934,7 +934,7 @@ export function createRepoWriteActions(
         refreshed = false;
         console.warn("fetch: post-fetch refresh failed", err);
       }
-      const headAfter = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const headAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const gained = Math.max(0, (headAfter?.sync?.behind ?? 0) - behindBefore);
       const on = headAfter?.name ?? head?.name;
       notes.update(toastId, {
@@ -958,7 +958,7 @@ export function createRepoWriteActions(
     pull: async () => {
       const { summary } = get();
       if (!summary) return;
-      const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const remote = head?.upstreamRemote ?? "origin";
       const branch = head?.name ?? "HEAD";
       const upstream = head?.upstream ?? `${remote}/${branch}`;
@@ -988,7 +988,7 @@ export function createRepoWriteActions(
         refreshed = false;
         console.warn("pull: post-pull refresh failed", err);
       }
-      const tipAfter = get().branches.find((b) => b.kind === "local" && b.isHead)?.target ?? null;
+      const tipAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)?.target ?? null;
       // The pulled-vs-up-to-date distinction relies on the tip observed after
       // refresh; if refresh failed the tip is stale, so report a neutral success
       // rather than risk claiming "Already up to date" on a pull that moved HEAD.
@@ -1008,7 +1008,7 @@ export function createRepoWriteActions(
       // A bare push targets the checked-out branch's configured remote — send
       // that remote's account (GL-129). Capture the ahead count *before* the
       // push so the success toast can report how many commits went out.
-      const head = get().branches.find((b) => b.kind === "local" && b.isHead);
+      const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const remote = pushRemoteForBranch(head);
       // A bare push follows the configured upstream, whose branch name can differ
       // from the local branch — report the *upstream* branch (from `head.upstream`,

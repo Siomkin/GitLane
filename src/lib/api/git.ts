@@ -3,7 +3,25 @@ import type { GithubAccountRef } from "./github";
 import { parse } from "./validate";
 import { fileDiffSchema, repoGraphSchema, workingChangesSchema } from "./schemas";
 
-export type RefKind = "branch" | "remote" | "tag" | "head";
+/** Kind of ref a graph label carries, emitted by the backend. Compare against
+ * `RefKind.Tag` rather than a bare `"tag"` literal so a typo fails to compile.
+ * Keep in sync with the Rust side across the IPC boundary. */
+export const RefKind = {
+  Branch: "branch",
+  Remote: "remote",
+  Tag: "tag",
+  Head: "head",
+} as const;
+export type RefKind = (typeof RefKind)[keyof typeof RefKind];
+
+/** Kind of a branch entry / drag ref (a *local* or *remote-tracking* branch),
+ * distinct from `RefKind` (which also covers tags/HEAD). Same const-object rule:
+ * compare against `BranchKind.Local`, not `"local"`. */
+export const BranchKind = {
+  Local: "local",
+  Remote: "remote",
+} as const;
+export type BranchKind = (typeof BranchKind)[keyof typeof BranchKind];
 
 export interface RefLabel {
   name: string;
@@ -244,7 +262,7 @@ export interface RemoteInfo {
 
 export interface BranchInfo {
   name: string;
-  kind: "local" | "remote";
+  kind: BranchKind;
   target: string | null;
   isHead: boolean;
   upstream: string | null;
