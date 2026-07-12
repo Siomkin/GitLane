@@ -1,2 +1,2 @@
 export { FilesPanel } from "./FilesPanel";
-export { RepoFileWorkspace } from "./RepoFileWorkspace";
+export { RepoFileWorkspace } from "./file-workspace";

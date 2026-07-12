@@ -8,7 +8,7 @@
 import { memo, useMemo } from "react";
 import type { DiffHunk, DiffLine } from "../../lib/api";
 import { cn } from "../../lib/cn";
-import { highlight } from "../../lib/highlight";
+import { highlight, Language } from "../../lib/highlight";
 import { MONO_FONT } from "../../lib/ui";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { CheckIcon, MinusIcon, PlusIcon } from "@/components/ui/icons";
@@ -34,11 +34,13 @@ const DEL_RAIL = "#e0626f";
 export const numCell =
   "w-[42px] flex-none px-2 text-right text-neutral-400 dark:text-neutral-500 tabular-nums select-none";
 
-export function Tokens({ content }: { content: string }) {
+export function Tokens({ content, lang = Language.Generic }: { content: string; lang?: Language }) {
   const dark = useResolvedTheme() === "dark";
   // Highlighting runs a global regex per call; memoize so a parent re-render
-  // (or a sibling line's state change) doesn't re-tokenize this line.
-  const tokens = useMemo(() => highlight(content, dark), [content, dark]);
+  // (or a sibling line's state change) doesn't re-tokenize this line. Diffs pass
+  // no `lang` and keep the generic tokenizer (unchanged); the file viewer passes
+  // the file's detected language to colour by type.
+  const tokens = useMemo(() => highlight(content, dark, lang), [content, dark, lang]);
   if (tokens.length === 0) return <span className="whitespace-pre"> </span>;
   return (
     <span className="whitespace-pre">

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "../../store/repo";
+import { useUi } from "../../store/ui";
 import { FilesPanel } from "./FilesPanel";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -10,7 +11,15 @@ const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", 
 
 beforeEach(() => {
   invokeMock.mockReset();
+  // The change-gutter baseline read fires (fire-and-forget) after every file
+  // open/reload; default it to "no baseline" so it never consumes the content
+  // one-shot mocks the tests queue. It runs after the awaited content read, so
+  // the content `mockResolvedValueOnce`s are always consumed first.
+  invokeMock.mockImplementation((cmd: string) =>
+    cmd === "repo_file_head_text" ? Promise.resolve(null) : Promise.resolve(undefined),
+  );
   useRepo.setState({ summary, repoFiles: null, fileView: null });
+  useUi.setState({ confirm: null });
 });
 
 describe("FilesPanel", () => {
@@ -142,6 +151,23 @@ describe("FilesPanel", () => {
     expect(useRepo.getState().fileView?.content?.text).toBe("new");
   });
 
+  it("reloadFileView is a no-op under an open edit session (never clobbers the draft)", async () => {
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "old", size: 3, truncated: false, binary: false },
+        loading: false,
+        error: null,
+        edit: { draft: "my edits", baseSize: 3, saving: false, error: null },
+      },
+    });
+    await useRepo.getState().reloadFileView();
+    // The content is NOT re-read (so the draft is untouched); only the HEAD
+    // baseline may refresh (for the change gutter after an external checkout).
+    expect(invokeMock).not.toHaveBeenCalledWith("repo_file_text", expect.anything());
+    expect(useRepo.getState().fileView?.edit?.draft).toBe("my edits");
+  });
+
   it("reloadFileView closes the viewer when the file is gone (e.g. after checkout)", async () => {
     useRepo.setState({
       fileView: { path: "gone.ts", content: { text: "x", size: 1, truncated: false, binary: false }, loading: false, error: null },
@@ -206,6 +232,136 @@ describe("FilesPanel", () => {
     // The user opened b.ts; the late a.ts reload must not republish.
     expect(useRepo.getState().fileView?.path).toBe("b.ts");
     expect(useRepo.getState().fileView?.content?.text).toBe("B");
+  });
+
+  it("requestOpenRepoFile opens directly when the viewer is clean", async () => {
+    invokeMock.mockResolvedValueOnce({ text: "B", size: 1, truncated: false, binary: false });
+    useRepo.getState().requestOpenRepoFile("b.ts");
+    await waitFor(() => expect(useRepo.getState().fileView?.path).toBe("b.ts"));
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
+  it("requestOpenRepoFile confirms (and defers the open) when the viewer is dirty", async () => {
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "old", size: 3, truncated: false, binary: false },
+        loading: false,
+        error: null,
+        edit: { draft: "unsaved edits", baseSize: 3, saving: false, error: null },
+      },
+    });
+    useRepo.getState().requestOpenRepoFile("b.ts");
+    // No open yet — a confirm is pending and the dirty file is still shown.
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(useRepo.getState().fileView?.path).toBe("a.ts");
+    expect(useUi.getState().confirm?.title).toBe("Discard unsaved changes?");
+
+    // Confirming discards and opens the new file.
+    invokeMock.mockResolvedValueOnce({ text: "B", size: 1, truncated: false, binary: false });
+    useUi.getState().confirm!.onConfirm();
+    await waitFor(() => expect(useRepo.getState().fileView?.path).toBe("b.ts"));
+  });
+
+  it("saveFileEdit: a stale save can't publish into a reopened session", async () => {
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "v1", size: 2, truncated: false, binary: false },
+        loading: false,
+        error: null,
+        edit: { draft: "v2", baseSize: 2, saving: false, error: null },
+      },
+    });
+    let resolveWrite!: (n: number) => void;
+    invokeMock.mockImplementationOnce(() => new Promise((r) => (resolveWrite = r))); // write_repo_file
+    const save = useRepo.getState().saveFileEdit();
+    // The user closes and reopens the same file, then starts a fresh edit while
+    // the first write is still in flight (a new save session).
+    useRepo.getState().closeRepoFile();
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "external", size: 8, truncated: false, binary: false },
+        loading: false,
+        error: null,
+      },
+    });
+    useRepo.getState().beginFileEdit();
+    useRepo.getState().updateFileDraft("external edits");
+    resolveWrite(2);
+    await save;
+    // The old save's result must not clobber the new session.
+    expect(useRepo.getState().fileView?.content?.text).toBe("external");
+    expect(useRepo.getState().fileView?.edit?.draft).toBe("external edits");
+  });
+
+  it("requestOpenRepoFile is a no-op while a save is in flight", () => {
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "x", size: 1, truncated: false, binary: false },
+        loading: false,
+        error: null,
+        edit: { draft: "edited", baseSize: 1, saving: true, error: null },
+      },
+    });
+    useRepo.getState().requestOpenRepoFile("b.ts");
+    // No discard confirm and no navigation — the in-flight write can't be undone.
+    expect(useUi.getState().confirm).toBeNull();
+    expect(useRepo.getState().fileView?.path).toBe("a.ts");
+  });
+
+  it("discard confirm rechecks saving — a ⌘S after the dialog opens blocks navigation", () => {
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "x", size: 1, truncated: false, binary: false },
+        loading: false,
+        error: null,
+        edit: { draft: "edited", baseSize: 1, saving: false, error: null },
+      },
+    });
+    // Dirty but not saving → a discard confirm is offered.
+    useRepo.getState().requestOpenRepoFile("b.ts");
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.title).toBe("Discard unsaved changes?");
+    // A save starts before the user confirms.
+    useRepo.setState((s) => ({
+      fileView: { ...s.fileView!, edit: { ...s.fileView!.edit!, saving: true } },
+    }));
+    confirm!.onConfirm();
+    // Navigation is blocked (the write can't be undone); still on a.ts.
+    expect(useRepo.getState().fileView?.path).toBe("a.ts");
+    expect(invokeMock).not.toHaveBeenCalledWith("repo_file_text", expect.anything());
+  });
+
+  it("baseline fetch: a stale HEAD read can't overwrite a newer one", async () => {
+    let headCalls = 0;
+    let resolveStale!: (v: string) => void;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd !== "repo_file_head_text") return Promise.resolve(undefined);
+      headCalls++;
+      return headCalls === 1 ? new Promise((r) => (resolveStale = r)) : Promise.resolve("NEW");
+    });
+    useRepo.setState({
+      fileView: {
+        path: "a.ts",
+        content: { text: "x", size: 1, truncated: false, binary: false },
+        loading: false,
+        error: null,
+        edit: { draft: "x", baseSize: 1, saving: false, error: null },
+      },
+    });
+    // Two baseline fetches (reloadFileView refreshes the baseline while editing).
+    await useRepo.getState().reloadFileView(); // baseline #1 — pending
+    await useRepo.getState().reloadFileView(); // baseline #2 — resolves "NEW"
+    await waitFor(() => expect(useRepo.getState().fileView?.baseline).toBe("NEW"));
+    // The older read now lands, but its generation is stale → dropped.
+    resolveStale("OLD");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useRepo.getState().fileView?.baseline).toBe("NEW");
   });
 
   it("surfaces a listing failure with a retry", async () => {

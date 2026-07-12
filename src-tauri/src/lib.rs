@@ -506,6 +506,29 @@ async fn repo_file_text(
         .await
 }
 
+/// The committed (HEAD) text of one file — the baseline for the viewer/editor's
+/// uncommitted-change gutter markers. `None` when there's nothing to diff
+/// against (unborn HEAD, untracked path, binary/oversized blob). Reads a blob,
+/// so it runs on the blocking pool like the worktree read.
+#[tauri::command]
+async fn repo_file_head_text(path: String, file: String) -> Result<Option<String>, String> {
+    blocking(move || git::status::repo_file_head_text(&path, &file).map_err(|e| e.to_string())).await
+}
+
+/// Save an edited worktree file back to disk for the in-app file editor. A
+/// guarded, atomic write (overwrite-only, binary + size-match refusals, temp +
+/// rename) that runs on the blocking pool like the read; resolves with the new
+/// byte size.
+#[tauri::command]
+async fn write_repo_file(
+    path: String,
+    file: String,
+    content: String,
+    expected_size: Option<u64>,
+) -> Result<u64, String> {
+    blocking(move || git::write::write_repo_file(&path, &file, &content, expected_size)).await
+}
+
 // ---- working tree / staging ----
 
 #[tauri::command]
@@ -1630,6 +1653,8 @@ pub fn run() {
             discard_all,
             list_repo_files,
             repo_file_text,
+            repo_file_head_text,
+            write_repo_file,
             working_changes,
             file_diff,
             commit_files,

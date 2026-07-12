@@ -8,13 +8,13 @@ import { FileContextMenu } from "./FileContextMenu";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-const realOpenRepoFile = useRepo.getState().openRepoFile;
+const realRequestOpenRepoFile = useRepo.getState().requestOpenRepoFile;
 
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue({ text: "hi", size: 2, truncated: false, binary: false });
   useRepo.setState({
-    openRepoFile: realOpenRepoFile,
+    requestOpenRepoFile: realRequestOpenRepoFile,
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
     changes: emptyChanges,
     fileView: null,
@@ -31,14 +31,14 @@ describe("FileContextMenu", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("opens the file in the center pane and closes the menu", () => {
-    const openRepoFile = vi.fn().mockResolvedValue(undefined);
-    useRepo.setState({ openRepoFile });
+  it("opens the file in the center pane (via the dirty-guarded route) and closes the menu", () => {
+    const requestOpenRepoFile = vi.fn();
+    useRepo.setState({ requestOpenRepoFile });
     openMenu();
     render(<FileContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Open file" }));
-    expect(openRepoFile).toHaveBeenCalledWith("src/App.tsx");
+    expect(requestOpenRepoFile).toHaveBeenCalledWith("src/App.tsx");
     expect(useUi.getState().fileMenu).toBeNull();
   });
 });

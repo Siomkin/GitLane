@@ -11,6 +11,7 @@
 mod branches;
 mod cli;
 mod conflict_resolution;
+mod files;
 mod identity;
 mod lifecycle;
 mod operands;
@@ -31,6 +32,7 @@ pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
     reconflict_file, resolve_conflict_file, skip_operation,
 };
+pub use files::write_repo_file;
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use recovery::{

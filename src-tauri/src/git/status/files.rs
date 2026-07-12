@@ -112,3 +112,37 @@ pub fn repo_file_text(
         binary: false,
     })
 }
+
+/// The committed (HEAD) text of `file`, for the viewer/editor's uncommitted-
+/// change gutter markers — the baseline the current buffer is diffed against.
+/// `None` when there is nothing to diff against: an unborn HEAD, a path absent
+/// from HEAD (untracked/new), a non-blob (submodule/dir), or a binary/oversized
+/// blob (the gutter simply shows no markers there).
+pub fn repo_file_head_text(path: &str, file: &str) -> Result<Option<String>, git2::Error> {
+    let repo = open(path)?;
+    // Any failure to resolve HEAD → the committed blob just means "no baseline"
+    // (the gutter shows no markers), never a surfaced error: unborn branch, a
+    // broken symref/missing object, an absent path, or a non-blob entry.
+    let Ok(head) = repo.head() else {
+        return Ok(None);
+    };
+    let Ok(tree) = head.peel_to_commit().and_then(|c| c.tree()) else {
+        return Ok(None);
+    };
+    let Ok(entry) = tree.get_path(std::path::Path::new(file)) else {
+        return Ok(None); // not present at HEAD (untracked / newly added)
+    };
+    let Ok(object) = entry.to_object(&repo) else {
+        return Ok(None);
+    };
+    let Some(blob) = object.as_blob() else {
+        return Ok(None); // gitlink / tree — nothing to diff as text
+    };
+    let bytes = blob.content();
+    if bytes.len() as u64 > MAX_TEXT_BYTES
+        || bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0)
+    {
+        return Ok(None); // oversized or binary — no line-level baseline
+    }
+    Ok(Some(String::from_utf8_lossy(bytes).into_owned()))
+}
