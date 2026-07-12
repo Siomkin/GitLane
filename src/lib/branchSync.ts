@@ -1,4 +1,4 @@
-import type { BranchInfo, BranchSyncState, RepoSummary } from "./api";
+import { BranchKind, type BranchInfo, type BranchSyncState, type RepoSummary } from "./api";
 
 export interface CurrentBranchSyncView {
   label: string | null;
@@ -100,7 +100,7 @@ export const currentBranchSyncView = (
     };
   }
 
-  const branch = branches.find((item) => item.kind === "local" && item.name === summary.headBranch);
+  const branch = branches.find((item) => item.kind === BranchKind.Local && item.name === summary.headBranch);
   const sync = branch?.sync;
   if (!sync) {
     return {
@@ -161,7 +161,7 @@ export const defaultPublishTarget = (
     if (slash > 0) return `${upstream.slice(0, slash)}/${branchName}`;
   }
   const remotes = branches
-    .filter((b) => b.kind === "remote" && b.name.includes("/"))
+    .filter((b) => b.kind === BranchKind.Remote && b.name.includes("/"))
     .map((b) => b.name.slice(0, b.name.indexOf("/")));
   const remote = remotes.includes("origin") ? "origin" : remotes[0] ?? "origin";
   return `${remote}/${branchName}`;

@@ -1,5 +1,6 @@
 import { useUi } from "@/store/ui";
 import { CloseIcon, SearchIcon } from "@/components/ui/icons";
+import { RowKind } from "./refs";
 import { useNavigatorSections } from "./useNavigatorSections";
 import { BranchRow, Section, StashRow, WorktreeRow } from "./rows";
 
@@ -52,7 +53,7 @@ export function BranchNavigator() {
               <BranchRow
                 key={b.name}
                 name={b.name}
-                kind="local"
+                kind={RowKind.Local}
                 oid={b.oid}
                 isCurrent={b.name === head}
                 dimmed={filtering && !b.match}
@@ -69,7 +70,7 @@ export function BranchNavigator() {
               <BranchRow
                 key={b.name}
                 name={b.name}
-                kind="remote"
+                kind={RowKind.Remote}
                 oid={b.oid}
                 dimmed={filtering && !b.match}
                 query={filter}
@@ -83,7 +84,7 @@ export function BranchNavigator() {
               <BranchRow
                 key={t.name}
                 name={t.name}
-                kind="tag"
+                kind={RowKind.Tag}
                 oid={t.oid}
                 dimmed={filtering && !t.match}
                 query={filter}

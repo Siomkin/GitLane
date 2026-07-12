@@ -2,7 +2,7 @@
 // repo store so the non-trivial logic is testable in isolation (no Zustand, no
 // IPC). The store calls these and applies the result.
 
-import type { RepoGraph } from "../lib/api";
+import { RefKind, type RepoGraph } from "../lib/api";
 import { fullCommitMessage } from "../lib/commitMessage";
 
 export interface SelectionInput {
@@ -50,7 +50,7 @@ export function isCommitReachableFromRemote(graph: RepoGraph | null, sha: string
   const rows = realCommits(graph);
   const parentById = new Map(rows.map((commit) => [commit.id, commit.parents]));
   const stack = rows
-    .filter((commit) => commit.refs.some((ref) => ref.kind === "remote"))
+    .filter((commit) => commit.refs.some((ref) => ref.kind === RefKind.Remote))
     .map((commit) => commit.id);
   const seen = new Set<string>();
   while (stack.length > 0) {

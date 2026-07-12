@@ -1,5 +1,6 @@
 import { memo, type MouseEvent as ReactMouseEvent } from "react";
-import type { CommitNode } from "../../../lib/api";
+import { BranchKind, type CommitNode } from "../../../lib/api";
+import { GraphTargetKind } from "../../../lib/graphActions";
 import { cn } from "../../../lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useRepo } from "../../../store/repo";
@@ -47,7 +48,7 @@ export const CommitRow = memo(function CommitRow({
 
   // A commit is a target only for a local branch: remote-tracking refs are
   // useful sources for local-branch operations, but are never writable.
-  const isDropTarget = draggingFrom?.kind === "local";
+  const isDropTarget = draggingFrom?.kind === BranchKind.Local;
 
   // Not a <button type="button">: the expanded ref cluster nests its own buttons (split/combine
   // chevron), and a button-in-button is invalid HTML that breaks keyboard/click
@@ -92,13 +93,13 @@ export const CommitRow = memo(function CommitRow({
       }}
       onDragOver={(e) => isDropTarget && e.preventDefault()}
       onDrop={(e) => {
-        if (draggingFrom?.kind !== "local") return;
+        if (draggingFrom?.kind !== BranchKind.Local) return;
         e.preventDefault();
         useUi.getState().openActionMenu({
           x: e.clientX,
           y: e.clientY,
           from: draggingFrom,
-          to: { kind: "commit", sha: commit.id, shortSha: commit.shortId },
+          to: { kind: GraphTargetKind.Commit, sha: commit.id, shortSha: commit.shortId },
         });
         clearDrag();
       }}

@@ -10,7 +10,7 @@ import type { CurrentBranchSyncView } from "../../../lib/branchSync";
 import { changeTotal, summarizeChanges } from "../../../lib/changeSummary";
 import type { LeftTab } from "../../../lib/ui";
 import type { PullRequest } from "../../../lib/prs";
-import type { RepoForge, RepoSummary } from "../../../lib/api";
+import { BranchKind, type RepoForge, type RepoSummary } from "../../../lib/api";
 import { useAccounts } from "../../../store/accounts";
 import { usePulls } from "../../../store/pulls";
 import { prListRequestKey } from "../../../store/pullsQueue";
@@ -200,7 +200,7 @@ export function useActionBarModel(): ActionBarModel {
   const runPush = () => {
     const branch = summary?.headBranch;
     if (branch && currentSync.needsPublishPrompt) {
-      const info = branches.find((b) => b.kind === "local" && b.name === branch);
+      const info = branches.find((b) => b.kind === BranchKind.Local && b.name === branch);
       requestPrompt({
         title: `Publish ${branch}`,
         message: `Remote branch for ${branch} to push to and pull from.`,

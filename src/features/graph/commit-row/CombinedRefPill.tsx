@@ -1,4 +1,4 @@
-import type { RefLabel } from "../../../lib/api";
+import { BranchKind, type RefLabel } from "../../../lib/api";
 import { cn } from "../../../lib/cn";
 import { useUi } from "../../../store/ui";
 import { useBranchRefDrag } from "../../../hooks/useBranchRefDrag";
@@ -35,7 +35,7 @@ export function CombinedRefPill({
   // target); the remote ref is reachable by splitting.
   const { isDropTarget, dndProps } = useBranchRefDrag(local.name, {
     draggable: true,
-    kind: "local",
+    kind: BranchKind.Local,
     droppable: true,
     stopPropagation: true,
   });

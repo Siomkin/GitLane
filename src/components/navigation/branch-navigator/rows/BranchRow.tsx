@@ -6,7 +6,7 @@ import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { TreeIcon } from "@/components/ui/icons";
-import type { RowKind } from "../refs";
+import { RowKind } from "../refs";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { useRevealNavigate } from "../useRowActions";
 import { RowGlyph } from "./RowGlyph";
@@ -41,8 +41,8 @@ export function BranchRow({
   const openContextMenu = useUi((s) => s.openContextMenu);
   const openTagMenu = useUi((s) => s.openTagMenu);
   const tip = useTruncatedTooltip(name);
-  const draggable = kind !== "tag";
-  const syncLabel = kind === "local" ? syncBadgeLabel(sync) : null;
+  const draggable = kind !== RowKind.Tag;
+  const syncLabel = kind === RowKind.Local ? syncBadgeLabel(sync) : null;
   const { isDropTarget, dndProps } = useBranchRefDrag(
     name,
     draggable
@@ -62,7 +62,7 @@ export function BranchRow({
         focusRing,
         isCurrent
           ? "bg-[var(--accent-soft)] font-medium text-[color:var(--accent)]"
-          : kind === "remote"
+          : kind === RowKind.Remote
             ? "text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
             : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
         dimmed && DIM_CLASS,
@@ -79,7 +79,7 @@ export function BranchRow({
         e.preventDefault();
         // Tags are immutable pointers — they get their own menu (checkout /
         // branch / worktree / copy) keyed off the tagged commit oid.
-        if (kind === "tag") {
+        if (kind === RowKind.Tag) {
           if (oid) openTagMenu({ x: e.clientX, y: e.clientY, name, sha: oid });
           return;
         }

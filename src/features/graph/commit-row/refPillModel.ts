@@ -4,7 +4,7 @@
 // matrix without a render — the leaves keep the SVGs and the store wiring
 // (useBranchWorktreeName stays a hook; its result feeds `worktreeName` here).
 // No React, no IPC.
-import type { RefLabel } from "../../../lib/api";
+import { BranchKind, RefKind, type RefLabel } from "../../../lib/api";
 import type { BranchRefKind } from "../../../lib/graphActions";
 
 /** Glyph discriminant — the components map these to the actual SVGs. */
@@ -27,13 +27,13 @@ const PILL_BASE =
 
 /** Tone precedence mirrors the render: current wins, then tag, remote, local. */
 export function refPillModel(refLabel: RefLabel, current: boolean, worktreeName: string | null): RefPillModel {
-  const draggable = refLabel.kind === "branch" || refLabel.kind === "remote";
+  const draggable = refLabel.kind === RefKind.Branch || refLabel.kind === RefKind.Remote;
 
   const style = current
     ? "pl-1 pr-2 bg-[var(--accent)] text-white shadow-sm cursor-grab active:cursor-grabbing"
-    : refLabel.kind === "tag"
+    : refLabel.kind === RefKind.Tag
       ? "pl-1.5 pr-2 bg-amber-50 dark:bg-amber-400/10 border border-amber-300/70 dark:border-amber-400/25 text-amber-700 dark:text-amber-300"
-      : refLabel.kind === "remote"
+      : refLabel.kind === RefKind.Remote
         ? "pl-1.5 pr-2 bg-black/[0.04] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.06] text-neutral-500 dark:text-neutral-400 cursor-grab active:cursor-grabbing"
         : "pl-1.5 pr-2 bg-white dark:bg-neutral-700 border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 shadow-sm cursor-grab active:cursor-grabbing";
 
@@ -41,9 +41,9 @@ export function refPillModel(refLabel: RefLabel, current: boolean, worktreeName:
   // worktree glyph for a branch living in another checkout, else the fork.
   const icon: RefPillIcon = current
     ? "current"
-    : refLabel.kind === "tag"
+    : refLabel.kind === RefKind.Tag
       ? "tag"
-      : refLabel.kind === "remote"
+      : refLabel.kind === RefKind.Remote
         ? "remote"
         : worktreeName
           ? "worktree"
@@ -51,14 +51,14 @@ export function refPillModel(refLabel: RefLabel, current: boolean, worktreeName:
 
   return {
     draggable,
-    dragKind: draggable ? (refLabel.kind === "branch" ? "local" : "remote") : null,
+    dragKind: draggable ? (refLabel.kind === RefKind.Branch ? BranchKind.Local : BranchKind.Remote) : null,
     icon,
     className: `${PILL_BASE} ${style}`,
     // The worktree tooltip belongs to non-current local branches only. The
     // hook's enabled-gate already guarantees that in the app; gating here too
     // keeps the pure model safe for arbitrary callers.
     title:
-      refLabel.kind === "branch" && !current && worktreeName
+      refLabel.kind === RefKind.Branch && !current && worktreeName
         ? `Checked out in worktree: ${worktreeName}`
         : undefined,
   };

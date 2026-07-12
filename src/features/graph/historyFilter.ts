@@ -4,7 +4,7 @@
 // query/filter it reads from `useUi` and dims the commits that don't match
 // (rather than removing them), so the DAG stays whole and matches stand out.
 
-import type { CommitNode } from "../../lib/api";
+import { RefKind, type CommitNode } from "../../lib/api";
 import type { HistFilter } from "../../store/ui";
 
 /** True when the query or kind filter is active — the cue to switch the list
@@ -22,7 +22,7 @@ function matchesFilter(commit: CommitNode, filter: HistFilter): boolean {
     case "merges":
       return commit.parents.length > 1;
     case "tags":
-      return commit.refs.some((ref) => ref.kind === "tag");
+      return commit.refs.some((ref) => ref.kind === RefKind.Tag);
     default:
       return true;
   }

@@ -1,4 +1,4 @@
-import type { RefLabel } from "../../../lib/api";
+import { RefKind, type RefLabel } from "../../../lib/api";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { useRepo } from "../../../store/repo";
 import { useUi } from "../../../store/ui";
@@ -12,7 +12,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
   const openTagMenu = useUi((state) => state.openTagMenu);
   const checkoutBranch = useRepo((state) => state.checkoutBranch);
   const checkoutRemoteBranch = useRepo((state) => state.checkoutRemoteBranch);
-  const worktreeName = useBranchWorktreeName(refLabel.name, refLabel.kind === "branch" && !current);
+  const worktreeName = useBranchWorktreeName(refLabel.name, refLabel.kind === RefKind.Branch && !current);
   const model = refPillModel(refLabel, current, worktreeName);
   const name = refLabel.name;
   // The pill is nested in a droppable commit row, so stop drag events bubbling.
@@ -41,7 +41,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
       onDoubleClick={(e) => {
         if (!model.draggable) return;
         e.stopPropagation();
-        if (refLabel.kind === "remote") {
+        if (refLabel.kind === RefKind.Remote) {
           const remoteCheckout = remoteTrackingCheckoutCandidate(name, useRepo.getState().branches);
           if (remoteCheckout) {
             void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch((err) =>
@@ -57,7 +57,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (refLabel.kind === "tag") {
+        if (refLabel.kind === RefKind.Tag) {
           openTagMenu({ x: e.clientX, y: e.clientY, name, sha: targetSha });
           return;
         }

@@ -1,4 +1,5 @@
 import type { DragEvent as ReactDragEvent } from "react";
+import { BranchKind } from "../lib/api";
 import type { BranchRefKind } from "../lib/graphActions";
 import { useUi } from "../store/ui";
 
@@ -44,7 +45,7 @@ export function useBranchRefDrag(
     droppable &&
     draggingFrom != null &&
     !isSameRef &&
-    (options.draggable && (options.kind === "local" || draggingFrom.kind === "local"));
+    (options.draggable && (options.kind === BranchKind.Local || draggingFrom.kind === BranchKind.Local));
   const isDropTarget = canDropHere;
 
   if (!options.draggable) return { isDropTarget, dndProps: { draggable: false as const } };
