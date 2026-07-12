@@ -34,8 +34,16 @@ export function HistorySearchBar({
   const filterActive = histFilterOpen || histFilter !== "all";
 
   return (
-    <div className="shrink-0 border-b border-black/5 dark:border-white/5">
-      <div className="flex h-12 items-center gap-2 px-4">
+    <div className="shrink-0">
+      {/* Border on the row itself (not an outer wrapper) so the collapsed header
+          is exactly h-12 — matching the right panel / review headers to the
+          pixel. When the filter chips open, the divider moves to their row. */}
+      <div
+        className={cn(
+          "flex h-12 items-center gap-2 px-4",
+          !histFilterOpen && "border-b border-black/5 dark:border-white/5",
+        )}
+      >
         {histSearchOpen ? (
           <>
             <SearchIcon className="h-4 w-4 shrink-0 text-neutral-400" />
@@ -107,7 +115,7 @@ export function HistorySearchBar({
         </div>
       </div>
       {histFilterOpen && (
-        <div className="flex items-center gap-1.5 px-4 pb-2.5">
+        <div className="flex items-center gap-1.5 border-b border-black/5 px-4 pb-2.5 dark:border-white/5">
           <span className="mr-0.5 text-[11px] font-medium text-neutral-400">Highlight</span>
           {HIST_FILTERS.map((f) => (
             <FilterChip

@@ -515,6 +515,15 @@ export interface BinaryBlob {
   truncated: boolean;
 }
 
+/** One worktree file's text for the read-only file viewer. Binary and
+ * oversized files come back as flags (`text` absent / `truncated`). */
+export interface RepoFileContent {
+  text?: string;
+  size: number;
+  truncated: boolean;
+  binary: boolean;
+}
+
 export interface FileHistoryEntry {
   oid: string;
   shortOid: string;
@@ -839,6 +848,16 @@ export const gitApi = {
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */
   discardAll: (path: string) => invoke<string>("discard_all", { path }),
+
+  // ---- repository files (the Files browser) ----
+
+  /** Every file in the worktree (tracked + untracked, ignored excluded),
+   * repo-relative and sorted. */
+  listRepoFiles: (path: string) => invoke<string[]>("list_repo_files", { path }),
+
+  /** Read one worktree file's text for the read-only viewer. */
+  repoFileText: (path: string, file: string, maxBytes?: number) =>
+    invoke<RepoFileContent>("repo_file_text", { path, file, maxBytes: maxBytes ?? null }),
 
   // ---- working tree / staging ----
 

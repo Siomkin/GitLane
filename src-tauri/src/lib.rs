@@ -25,7 +25,8 @@ use git::types::{
     GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
     OauthClientStatus, OperationStatus, PrCheck, PrCommit, ProviderOauthResult, ProviderTokenStatus,
     PullRequestDetail, PullRequestSummary,
-    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoForge, RepoGraph, RepoIdentity,
+    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge,
+    RepoGraph, RepoIdentity,
     RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
@@ -480,6 +481,29 @@ async fn force_push(
 #[tauri::command]
 async fn discard_all(path: String) -> Result<String, String> {
     blocking(move || git::write::discard_all(&path)).await
+}
+
+// ---- repository files (the Files browser) ----
+
+/// Every file in the worktree (tracked + untracked, ignored excluded),
+/// repo-relative and sorted. The status pass can be expensive on large repos,
+/// so run it on the blocking pool like `commit_graph`.
+#[tauri::command]
+async fn list_repo_files(path: String) -> Result<Vec<String>, String> {
+    blocking(move || git::status::list_repo_files(&path).map_err(|e| e.to_string())).await
+}
+
+/// Read one worktree file's text for the read-only viewer. Binary/oversized
+/// content comes back as flags, never raw bytes. Reads up to a couple MiB off
+/// disk, so it runs on the blocking pool (like `read_binary_blob`).
+#[tauri::command]
+async fn repo_file_text(
+    path: String,
+    file: String,
+    max_bytes: Option<u64>,
+) -> Result<RepoFileContent, String> {
+    blocking(move || git::status::repo_file_text(&path, &file, max_bytes).map_err(|e| e.to_string()))
+        .await
 }
 
 // ---- working tree / staging ----
@@ -1604,6 +1628,8 @@ pub fn run() {
             delete_remote_branch,
             force_push,
             discard_all,
+            list_repo_files,
+            repo_file_text,
             working_changes,
             file_diff,
             commit_files,

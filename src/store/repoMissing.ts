@@ -108,6 +108,8 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       fileDiff: null,
       fileHistory: null,
       compare: null,
+      repoFiles: null,
+      fileView: null,
       error: null,
     });
     // Same repo-bound cleanup as a switch: PR state and any open repo-bound
@@ -277,6 +279,8 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       fileDiff: null,
       fileHistory: null,
       compare: null,
+      repoFiles: null,
+      fileView: null,
       error: null,
     });
     usePulls.getState().reset();

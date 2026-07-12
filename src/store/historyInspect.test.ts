@@ -337,6 +337,7 @@ describe("repo store — returnToGraph", () => {
     useRepo.setState({
       selectedFile: { path: "src/a.ts", source: "commit" },
     });
+    useRepo.setState({ fileView: { path: "src/a.ts", content: null, loading: false, error: null } });
     useUi.setState({
       leftTab: "pulls",
       stackedReview: { oid: "abc123", title: "stacked" },
@@ -347,6 +348,7 @@ describe("repo store — returnToGraph", () => {
     const repo = useRepo.getState();
     expect(repo.compare).toBeNull();
     expect(repo.fileHistory).toBeNull();
+    expect(repo.fileView).toBeNull();
     expect(repo.selectedFile).toBeNull();
     expect(useUi.getState().stackedReview).toBeNull();
     expect(useUi.getState().leftTab).toBe("history");

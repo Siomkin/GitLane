@@ -116,6 +116,8 @@ export function createRepoTabActions(
           fileDiff: null,
           fileHistory: null,
           compare: null,
+          repoFiles: null,
+          fileView: null,
         });
         usePulls.getState().reset();
         // Closing the last tab drops to the welcome screen; reset the view and
@@ -169,6 +171,8 @@ export function createRepoTabActions(
         fileDiff: null,
         fileHistory: null,
         compare: null,
+        repoFiles: null,
+        fileView: null,
       });
       persistSession(remaining, next);
       persistTabInfo(pruneTabInfo(get().tabInfoByPath, remaining));

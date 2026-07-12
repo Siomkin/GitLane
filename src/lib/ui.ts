@@ -1,5 +1,8 @@
 export type LeftTab = "history" | "changes" | "pulls";
 
+/** Right inspector panel tabs: contextual details vs the repository Files browser. */
+export type RightTab = "details" | "files";
+
 /** Shared monospace stack for diffs and the terminal. Lists a preferred face per
  *  platform so each OS renders its native programming font before the generic
  *  fallback: SF Mono/Menlo (macOS), Cascadia Code/Segoe UI Mono/Consolas

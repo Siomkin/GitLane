@@ -9,6 +9,7 @@ const base: CenterViewInput = {
   comparing: false,
   fileHistoryOpen: false,
   stackedReviewOpen: false,
+  fileViewOpen: false,
   changesAll: false,
   selectedFileSource: null,
 };
@@ -47,6 +48,15 @@ describe("deriveCenterView", () => {
     expect(deriveCenterView({ ...base, stackedReviewOpen: true, leftTab: "changes" })).toBe(
       "stacked",
     );
+  });
+
+  it("raises an open repository file over the tab views, below the overlays", () => {
+    expect(deriveCenterView({ ...base, fileViewOpen: true })).toBe("file");
+    expect(deriveCenterView({ ...base, fileViewOpen: true, leftTab: "changes" })).toBe("file");
+    // A stacked review opened later shows on top (openRepoFile closes it for
+    // the reverse order), and a history inspection outranks both.
+    expect(deriveCenterView({ ...base, fileViewOpen: true, stackedReviewOpen: true })).toBe("stacked");
+    expect(deriveCenterView({ ...base, fileViewOpen: true, comparing: true })).toBe("inspect");
   });
 
   it("splits the changes tab into all-files vs single-file review", () => {

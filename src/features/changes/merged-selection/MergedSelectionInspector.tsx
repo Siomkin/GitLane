@@ -40,7 +40,7 @@ export function MergedSelectionInspector() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 pb-5 pt-1.5">
       <div>
         <h1 className="text-[17px] font-semibold text-neutral-800 dark:text-neutral-100">
           {selectionCountLabel(count)}

@@ -16,6 +16,7 @@ export type CenterViewKey =
   | "pulls"
   | "inspect"
   | "stacked"
+  | "file"
   | "changes"
   | "review"
   | "review-commit"
@@ -32,6 +33,11 @@ export interface CenterViewInput {
   fileHistoryOpen: boolean;
   /** A stacked all-files review is open (ui store `stackedReview`). */
   stackedReviewOpen: boolean;
+  /** A repository file is open read-only from the Files tab (repo store
+   * `fileView`). Ranked just below the stacked review: a stacked review opened
+   * later shows on top (the file view resurfaces when it closes), while
+   * `openRepoFile` closes any stacked review so a file opened later wins too. */
+  fileViewOpen: boolean;
   /** Changes tab flavour: true = stacked all-files, false = single-file review. */
   changesAll: boolean;
   /** Source of the selected file, when one is selected (repo store `selectedFile`). */
@@ -43,6 +49,7 @@ export function deriveCenterView(input: CenterViewInput): CenterViewKey {
   if (input.leftTab === "pulls") return "pulls";
   if (input.comparing || input.fileHistoryOpen) return "inspect";
   if (input.stackedReviewOpen) return "stacked";
+  if (input.fileViewOpen) return "file";
   if (input.leftTab === "changes") return input.changesAll ? "changes" : "review";
   if (input.selectedFileSource === "commit") return "review-commit";
   return "history";

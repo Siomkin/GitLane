@@ -1301,3 +1301,120 @@ fn unstaging_a_staged_rename_restores_both_sides() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn list_repo_files_tracks_index_untracked_ignored_and_deleted() {
+    let dir = std::env::temp_dir().join("gitlane-list-files-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("src")).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    fs::write(dir.join("src/nested.txt"), "nested\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("src/nested.txt")).unwrap();
+        index.write().unwrap();
+    }
+    commit_index(&repo, "nested");
+
+    // Untracked file shows up; ignored file does not; a tracked file deleted
+    // from the worktree (but still in the index) is dropped.
+    fs::write(dir.join("untracked.txt"), "new\n").unwrap();
+    fs::write(dir.join(".gitignore"), "ignored.log\n").unwrap();
+    fs::write(dir.join("ignored.log"), "noise\n").unwrap();
+    fs::write(dir.join("gone.txt"), "bye\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new("gone.txt")).unwrap();
+        index.write().unwrap();
+    }
+    fs::remove_file(dir.join("gone.txt")).unwrap();
+
+    let path = dir.to_str().unwrap();
+    let files = super::list_repo_files(path).unwrap();
+    assert!(files.contains(&"tracked.txt".to_string()), "{files:?}");
+    assert!(files.contains(&"src/nested.txt".to_string()), "{files:?}");
+    assert!(files.contains(&"untracked.txt".to_string()), "{files:?}");
+    assert!(files.contains(&".gitignore".to_string()), "{files:?}");
+    assert!(!files.contains(&"ignored.log".to_string()), "{files:?}");
+    assert!(!files.contains(&"gone.txt".to_string()), "{files:?}");
+    // Sorted output — the frontend tree builder relies on it.
+    let mut sorted = files.clone();
+    sorted.sort();
+    assert_eq!(files, sorted);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn list_repo_files_skips_gitlink_submodule_entries() {
+    let dir = std::env::temp_dir().join("gitlane-list-gitlink-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "real.txt", "hi\n");
+
+    // Add a gitlink (submodule commit) index entry by hand — mode 0o160000.
+    {
+        let mut index = repo.index().unwrap();
+        let entry = git2::IndexEntry {
+            ctime: git2::IndexTime::new(0, 0),
+            mtime: git2::IndexTime::new(0, 0),
+            dev: 0,
+            ino: 0,
+            mode: 0o160000,
+            uid: 0,
+            gid: 0,
+            file_size: 0,
+            id: git2::Oid::from_str("0123456789012345678901234567890123456789").unwrap(),
+            flags: 0,
+            flags_extended: 0,
+            path: b"vendor/sub".to_vec(),
+        };
+        index.add(&entry).unwrap();
+        index.write().unwrap();
+    }
+
+    let files = super::list_repo_files(dir.to_str().unwrap()).unwrap();
+    assert!(files.contains(&"real.txt".to_string()), "{files:?}");
+    assert!(!files.contains(&"vendor/sub".to_string()), "gitlink listed: {files:?}");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn repo_file_text_reads_truncates_and_flags_binary() {
+    let dir = std::env::temp_dir().join("gitlane-file-text-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "plain.txt", "hello\nworld\n");
+    let path = dir.to_str().unwrap();
+
+    let plain = super::repo_file_text(path, "plain.txt", None).unwrap();
+    assert_eq!(plain.text.as_deref(), Some("hello\nworld\n"));
+    assert!(!plain.truncated && !plain.binary);
+    assert_eq!(plain.size, 12);
+
+    // A client cap may only lower the limit; content past it is cut.
+    fs::write(dir.join("big.txt"), "a".repeat(64)).unwrap();
+    let capped = super::repo_file_text(path, "big.txt", Some(16)).unwrap();
+    assert!(capped.truncated);
+    assert_eq!(capped.size, 64);
+    assert_eq!(capped.text.as_deref().map(|t| t.len()), Some(16));
+
+    fs::write(dir.join("blob.bin"), [0u8, 159, 146, 150]).unwrap();
+    let binary = super::repo_file_text(path, "blob.bin", None).unwrap();
+    assert!(binary.binary);
+    assert!(binary.text.is_none());
+
+    // Traversal and non-regular entries are refused.
+    assert!(super::repo_file_text(path, "../outside.txt", None).is_err());
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(dir.join("plain.txt"), dir.join("link.txt")).unwrap();
+        assert!(super::repo_file_text(path, "link.txt", None).is_err());
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}

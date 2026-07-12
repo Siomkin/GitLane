@@ -554,6 +554,19 @@ pub struct BinaryBlob {
     pub truncated: bool,
 }
 
+/// One worktree file's text for the read-only file viewer. Binary and
+/// oversized files come back as flags (`text: None` / `truncated`), never as
+/// raw bytes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoFileContent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    pub size: u64,
+    pub truncated: bool,
+    pub binary: bool,
+}
+
 /// One commit in a repository-relative file's history.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

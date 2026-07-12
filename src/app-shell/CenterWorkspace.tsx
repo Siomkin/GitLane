@@ -5,6 +5,7 @@ import { ConflictWorkspace } from "../features/conflicts";
 import { HistoryInspectWorkspace } from "../features/history-inspect";
 import { HistoryWorkspace } from "../features/graph/HistoryWorkspace";
 import { PullRequestDetail } from "../features/pull-requests/PullRequestDetail";
+import { RepoFileWorkspace } from "../features/repo-files";
 import { ReviewWorkspace } from "../features/review/ReviewWorkspace";
 import { StackedReview } from "../features/review/StackedReview";
 import { useRepo } from "../store/repo";
@@ -37,6 +38,7 @@ export const CenterWorkspace = () => {
   const fileHistoryPath = useRepo((state) => state.fileHistory?.path);
   const prSelected = useUi((state) => state.prSelected);
   const stackedOid = useUi((state) => state.stackedReview?.oid);
+  const fileViewPath = useRepo((state) => state.fileView?.path);
   // The full route transition, not a bare tab switch: a comparison, file
   // history, stacked review, or committed file's review outranks the tab in
   // deriveCenterView, so escaping a crashed view (or backing out of the
@@ -54,6 +56,7 @@ export const CenterWorkspace = () => {
         compareHead,
         fileHistoryPath,
         stackedOid,
+        fileViewPath,
       ]}
       fallback={({ error, reset }) => (
         <ErrorFallback
@@ -79,6 +82,8 @@ const workspaceFor = (view: CenterViewKey, backToGraph: () => void) => {
       return <HistoryInspectWorkspace />;
     case "stacked":
       return <StackedReview />;
+    case "file":
+      return <RepoFileWorkspace />;
     case "changes":
       return <ChangesWorkspace onBack={backToGraph} />;
     case "review":
