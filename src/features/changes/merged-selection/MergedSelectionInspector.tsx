@@ -1,9 +1,9 @@
 import { useState, type MouseEvent } from "react";
-import { summarizeFiles } from "../../../lib/changeSummary";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import { ChangeTypeCounts } from "../ChangeTypeCounts";
-import { ChangedFileList, FileViewToggle, type FileListView } from "../file-list";
+import { summarizeFiles } from "@/lib/changeSummary";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
+import { ChangedFileList, FileViewToggle, type FileListView } from "@/features/changes/file-list";
 import { SelectionCommitList } from "./SelectionCommitList";
 import { mergedCommitRows, selectionCountLabel } from "./mergedSelection";
 

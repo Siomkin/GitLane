@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileHistoryEntry } from "../../lib/api";
-import type { FileHistoryState } from "../../store/repoTypes";
-import { useRepo } from "../../store/repo";
+import type { FileHistoryEntry } from "@/lib/api";
+import type { FileHistoryState } from "@/store/repoTypes";
+import { useRepo } from "@/store/repo";
 import { FileHistoryView } from "./file-history";
 
 // View-state tests (GL-193): the file-history mode's visible branches, seeded

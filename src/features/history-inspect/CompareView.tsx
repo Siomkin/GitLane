@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import type { CompareScope } from "../../store/repoTypes";
-import type { FileChange } from "../../lib/api";
-import { basename, dirname } from "../../lib/paths";
-import { cn } from "../../lib/cn";
-import { useRepo } from "../../store/repo";
+import type { CompareScope } from "@/store/repoTypes";
+import type { FileChange } from "@/lib/api";
+import { basename, dirname } from "@/lib/paths";
+import { cn } from "@/lib/cn";
+import { useRepo } from "@/store/repo";
 import { StatusBadge, StatusPill } from "@/components/ui/StatusBadge";
 import { DiffPane } from "./DiffPane";
 

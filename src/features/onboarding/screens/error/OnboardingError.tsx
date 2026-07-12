@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import { buildAuthRecovery } from "../../authRecovery";
-import type { OnboardingApi } from "../../flows/useOnboarding";
-import { RetryIcon, WarningTriangle, XCircle } from "../../icons";
+import { buildAuthRecovery } from "@/features/onboarding/authRecovery";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { RetryIcon, WarningTriangle, XCircle } from "@/features/onboarding/icons";
 import { AuthRecoveryPanel } from "./AuthRecoveryPanel";
 
 /** The clone-failed screen. Renders the classified copy (exists / auth /

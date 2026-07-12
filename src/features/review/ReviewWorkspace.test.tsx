@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiffLine, FileDiff } from "../../lib/api";
-import { useRepo } from "../../store/repo";
+import type { DiffLine, FileDiff } from "@/lib/api";
+import { useRepo } from "@/store/repo";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 
 const invokeMock = vi.hoisted(() => vi.fn());

@@ -1,4 +1,4 @@
-import { RefKind, type RefLabel } from "../../lib/api";
+import { RefKind, type RefLabel } from "@/lib/api";
 
 // Current branch first, then local branches / groups, remotes, and finally tags.
 const REF_RANK: Record<RefLabel["kind"], number> = {

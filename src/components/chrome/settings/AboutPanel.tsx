@@ -6,13 +6,13 @@
 import { useEffect, useState } from "react";
 import { getTauriVersion, getIdentifier } from "@tauri-apps/api/app";
 
-import { openExternalUrl } from "../../../lib/openExternal";
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { isLinux, isMac, isTauri, isWindows } from "../../../lib/platform";
-import { useUi } from "../../../store/ui";
-import { useUpdates } from "../../../store/updates";
-import { GitLaneMarkIcon } from "../../ui/icons";
+import { openExternalUrl } from "@/lib/openExternal";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { isLinux, isMac, isTauri, isWindows } from "@/lib/platform";
+import { useUi } from "@/store/ui";
+import { useUpdates } from "@/store/updates";
+import { GitLaneMarkIcon } from "@/components/ui/icons";
 import { UpdateSection } from "./UpdateSection";
 
 const REPO = "https://github.com/Siomkin/GitLane";

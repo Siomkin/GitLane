@@ -1,12 +1,12 @@
 import { useCallback } from "react";
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { isMac, isTauri } from "../../lib/platform";
-import { tabDisplay } from "../../lib/tabs";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { useResolvedTheme } from "../../hooks/useResolvedTheme";
-import { MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "../ui/icons";
+import { isMac, isTauri } from "@/lib/platform";
+import { tabDisplay } from "@/lib/tabs";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { useResolvedTheme } from "@/hooks/useResolvedTheme";
+import { MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "@/components/ui/icons";
 import { IdentityChip } from "./IdentityChip";
 import { ProjectTab } from "./ProjectTab";
 import { UpdateIndicator } from "./UpdateIndicator";

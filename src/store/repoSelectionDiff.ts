@@ -4,7 +4,7 @@
 // current `commits` and publish the files behind a stale-response guard, so the
 // fetch lives here instead of being duplicated across the two action modules.
 
-import { api } from "../lib/api";
+import { api } from "@/lib/api";
 import type { RepoGet, RepoSet } from "./repoTypes";
 
 /** True when the live `selectionDiff` still targets exactly `commits` in `repo`.

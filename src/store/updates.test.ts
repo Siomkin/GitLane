@@ -6,9 +6,9 @@ const mocks = vi.hoisted(() => ({
   currentVersion: vi.fn(),
   relaunchApp: vi.fn(),
 }));
-vi.mock("../lib/updater", () => mocks);
+vi.mock("@/lib/updater", () => mocks);
 
-import type { Update } from "../lib/updater";
+import type { Update } from "@/lib/updater";
 import { useUi } from "./ui";
 import { useNotifications } from "./notifications";
 import { useUpdates, hasPendingUpdate } from "./updates";

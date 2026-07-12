@@ -2,8 +2,8 @@
 // it groups a flat list of staged files into a collapsible directory tree and
 // flattens it back to render-ready rows.
 
-import type { FileChange } from "../../lib/api";
-import { basename } from "../../lib/paths";
+import type { FileChange } from "@/lib/api";
+import { basename } from "@/lib/paths";
 
 /** A flattened row in the commit file tree: a (possibly chain-collapsed)
  * directory header or a leaf file. */

@@ -8,9 +8,9 @@
 // read-only for now (display only).
 
 import { useRef, useState } from "react";
-import { cn } from "../../lib/cn";
-import type { PrAuthor, PullRequest, Reviewer, ReviewerState } from "../../lib/prs";
-import { useDismiss } from "../../hooks/useDismiss";
+import { cn } from "@/lib/cn";
+import type { PrAuthor, PullRequest, Reviewer, ReviewerState } from "@/lib/prs";
+import { useDismiss } from "@/hooks/useDismiss";
 
 const REVIEW_DOT: Record<ReviewerState, string> = {
   approved: "bg-emerald-500",

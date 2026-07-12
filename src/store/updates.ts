@@ -6,7 +6,7 @@
 import { create } from "zustand";
 
 import { useUi } from "./ui";
-import { checkForUpdate, currentVersion, relaunchApp, type Update } from "../lib/updater";
+import { checkForUpdate, currentVersion, relaunchApp, type Update } from "@/lib/updater";
 
 export type UpdateStatus =
   | "idle" // not checked yet this session

@@ -1,10 +1,10 @@
 import { useState, type MouseEvent } from "react";
-import type { FileChange } from "../../../lib/api";
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { basename } from "../../../lib/paths";
-import { buildRows } from "../commitTree";
-import { FileRow } from "../FileRow";
+import type { FileChange } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { basename } from "@/lib/paths";
+import { buildRows } from "@/features/changes/commitTree";
+import { FileRow } from "@/features/changes/FileRow";
 import { FileIcon } from "@/components/ui/icons";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { StatusBadge } from "@/components/ui/StatusBadge";

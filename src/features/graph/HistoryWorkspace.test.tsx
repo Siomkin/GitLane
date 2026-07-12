@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommitNode, FileChange, RepoGraph, StashEntry } from "../../lib/api";
-import { emptyAdvancedState } from "../../lib/advancedRepoState";
-import { useRepo } from "../../store/repo";
-import { rowHeightFor, useUi } from "../../store/ui";
+import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { useRepo } from "@/store/repo";
+import { rowHeightFor, useUi } from "@/store/ui";
 import { HistoryWorkspace } from "./HistoryWorkspace";
 import { ColumnHandle } from "./ColumnHandle";
 

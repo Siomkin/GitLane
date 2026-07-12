@@ -8,13 +8,13 @@
 // the whoami lands (it can take a couple of seconds — the user may navigate
 // away otherwise).
 
-import type { ForgeAuthStatus } from "../../../../lib/api";
+import type { ForgeAuthStatus } from "@/lib/api";
 import { accountHandle, providerInitials } from "./providers";
-import { cn } from "../../../../lib/cn";
-import { supportsForgeCliSignOut } from "../../../../lib/forgeHelp";
-import { focusRing } from "../../../../lib/ui";
-import { useAccounts } from "../../../../store/accounts";
-import { useUi } from "../../../../store/ui";
+import { cn } from "@/lib/cn";
+import { supportsForgeCliSignOut } from "@/lib/forgeHelp";
+import { focusRing } from "@/lib/ui";
+import { useAccounts } from "@/store/accounts";
+import { useUi } from "@/store/ui";
 
 export function ConnectedForgeCard({
   status,

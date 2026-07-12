@@ -1,7 +1,7 @@
-import { BranchKind, type RefLabel } from "../../../lib/api";
-import { cn } from "../../../lib/cn";
-import { useUi } from "../../../store/ui";
-import { useBranchRefDrag } from "../../../hooks/useBranchRefDrag";
+import { BranchKind, type RefLabel } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { useUi } from "@/store/ui";
+import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { RefPill } from "./RefPill";
 import { useBranchWorktreeName } from "./useBranchWorktreeName";
 import { combinedRefPillModel } from "./refPillModel";

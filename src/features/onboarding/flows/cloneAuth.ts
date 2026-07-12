@@ -7,8 +7,8 @@
 // authenticate via …" status line and the actual clone can never disagree.
 // No React, no IPC; unit-tested for parity in cloneAuth.test.ts.
 
-import type { GitTransportAuthRef, GitTransportProvider } from "../../../lib/api";
-import { transportProviderForRemoteProvider, type RemoteUrlInfo } from "../../../lib/remotes";
+import type { GitTransportAuthRef, GitTransportProvider } from "@/lib/api";
+import { transportProviderForRemoteProvider, type RemoteUrlInfo } from "@/lib/remotes";
 
 /** The slice of a gh account the resolution needs (store/accounts `Account`). */
 export interface CloneAuthAccount {

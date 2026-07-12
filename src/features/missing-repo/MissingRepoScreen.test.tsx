@@ -7,8 +7,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { MissingRepoScreen } from "./MissingRepoScreen";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 
 beforeEach(() => {
   invokeMock.mockReset();

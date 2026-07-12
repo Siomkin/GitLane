@@ -2,8 +2,8 @@
 // range of visible diff lines, labelling that range, and composing the agent
 // hand-off message. Kept free of React/DOM so the range math is unit-testable.
 
-import type { DiffHunk, DiffLine } from "../../../lib/api";
-import type { ReviewNote } from "../../../store/ui";
+import type { DiffHunk, DiffLine } from "@/lib/api";
+import type { ReviewNote } from "@/store/ui";
 
 /** A visible diff line, addressable for comments. `seq` is its 0-based position
  * across the file's flattened (header-free) line list — matching diffRows' `seq`. */

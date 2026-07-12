@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { FileChange } from "../../lib/api";
+import type { FileChange } from "@/lib/api";
 import { FileRow } from "./FileRow";
 
 const file: FileChange = { path: "src/lib/paths.ts", status: "M", add: 3, del: 1, binary: false };

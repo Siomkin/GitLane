@@ -20,8 +20,8 @@ import {
   parseConflict,
   type ConflictRegion,
   type LineSelection,
-} from "../conflictModel";
-import type { OperationFile } from "../../../store/repo";
+} from "@/features/conflicts/conflictModel";
+import type { OperationFile } from "@/store/repo";
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
 const regions = parseConflict(MARKERS);

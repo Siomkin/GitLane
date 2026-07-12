@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- local markdown-preview text probe, the same disposable preview boundary as BinaryDiff's image blob (architecture-rules-react.md §1)
-import { api } from "../../../lib/api";
+import { api } from "@/lib/api";
 import { decodeBase64Text, type PreviewSource } from "./preview";
 
 /** Hard cap on markdown source rendered inline. Rendering a multi-megabyte

@@ -4,10 +4,10 @@
 // and the reword-HEAD gate (unpushed commits only).
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { CommitNode, RepoGraph } from "../../../../lib/api";
-import { useNotifications } from "../../../../store/notifications";
-import { useRepo } from "../../../../store/repo";
-import { useUi } from "../../../../store/ui";
+import type { CommitNode, RepoGraph } from "@/lib/api";
+import { useNotifications } from "@/store/notifications";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { CommitContextMenu } from "./CommitContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());

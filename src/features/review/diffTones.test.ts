@@ -2,7 +2,7 @@
 // row, in paint order, so minimap band positions match the scroll height.
 import { describe, expect, it } from "vitest";
 
-import type { DiffHunk, DiffLine } from "../../lib/api";
+import type { DiffHunk, DiffLine } from "@/lib/api";
 import { splitTones, unifiedTones } from "./diffTones";
 
 const line = (kind: DiffLine["kind"], content = "x"): DiffLine =>

@@ -3,7 +3,7 @@
 // `mergeOperationStatus` whenever it re-reads `operation_status` from the
 // backend; the conflict workspace consumes the resulting `OperationState`.
 
-import type { OperationStatus } from "../lib/api";
+import type { OperationStatus } from "@/lib/api";
 import type { OperationFile, OperationState } from "./repoTypes";
 
 /**

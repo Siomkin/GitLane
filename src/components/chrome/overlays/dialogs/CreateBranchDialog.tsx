@@ -2,7 +2,7 @@ import { useState } from "react";
 import { validateBranchName } from "@/lib/refName";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { useBranchOp } from "../shared";
+import { useBranchOp } from "@/components/chrome/overlays/shared";
 import {
   DialogCancelButton,
   DialogFooter,

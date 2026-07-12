@@ -3,10 +3,10 @@
 // defaults to the checked-out branch; base to the repo's likely default branch.
 
 import { useMemo, useState } from "react";
-import { BranchKind, type BranchInfo } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import { BranchKind, type BranchInfo } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 

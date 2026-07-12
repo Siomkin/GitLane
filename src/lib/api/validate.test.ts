@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { IpcValidationError, parse } from "./validate";
 import { api } from "./index";
-import { emptyAdvancedState } from "../advancedRepoState";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
 
 beforeEach(() => invokeMock.mockReset());
 

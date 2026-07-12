@@ -1,5 +1,5 @@
-import { useRepo } from "../store/repo";
-import { useUi } from "../store/ui";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { deriveCenterView, type CenterViewKey } from "./centerView";
 
 /** The derived center-view key, subscribed narrowly (one boolean/primitive per

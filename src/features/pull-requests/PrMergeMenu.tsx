@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
-import { cn } from "../../lib/cn";
-import type { MergeMethod } from "../../lib/api";
-import type { PullRequest } from "../../lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
-import { useDismiss } from "../../hooks/useDismiss";
+import { cn } from "@/lib/cn";
+import type { MergeMethod } from "@/lib/api";
+import type { PullRequest } from "@/lib/prs";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
+import { useDismiss } from "@/hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 

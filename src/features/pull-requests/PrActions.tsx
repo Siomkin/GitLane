@@ -5,11 +5,11 @@
 // gh's result. Split per surface in GL-187; this file stays the public
 // composer that derives the provider capabilities.
 
-import { openExternalUrl } from "../../lib/openExternal";
-import { ForgeKind } from "../../lib/api";
-import type { PullRequest } from "../../lib/prs";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { openExternalUrl } from "@/lib/openExternal";
+import { ForgeKind } from "@/lib/api";
+import type { PullRequest } from "@/lib/prs";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { BitbucketIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 import { PrLifecycleControls } from "./PrLifecycleControls";
 import { PrMergeMenu } from "./PrMergeMenu";

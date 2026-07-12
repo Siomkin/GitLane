@@ -2,7 +2,7 @@
 // the host is typed vs. shown as a fact, and when the form is submittable. Kept
 // out of the component so the 2-field/advanced behaviour is unit-testable.
 
-import { DEFAULT_CREDENTIAL_HOST } from "../../../../../../lib/forgeHelp";
+import { DEFAULT_CREDENTIAL_HOST } from "@/lib/forgeHelp";
 
 export interface CredentialEntryValues {
   host: string;

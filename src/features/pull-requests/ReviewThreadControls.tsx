@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from "react";
-import type { ReviewThread } from "../../lib/api";
-import { usePulls } from "../../store/pulls";
+import type { ReviewThread } from "@/lib/api";
+import { usePulls } from "@/store/pulls";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 

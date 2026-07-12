@@ -3,7 +3,7 @@
 // read/write wrappers, and the lookups over them. No Zustand, no IPC — the
 // store composes these; nothing here ever holds token material.
 
-import type { ForgeAuthProvider, RepoIdentity } from "../lib/api";
+import type { ForgeAuthProvider, RepoIdentity } from "@/lib/api";
 import type { StoredRepoAccountEntry } from "./accountBindings";
 
 // Per-repo PR-account bindings. Per-remote auth moved to git config (URL

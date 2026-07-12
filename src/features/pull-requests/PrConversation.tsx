@@ -4,10 +4,10 @@
 // gated by a confirm dialog. All go through the pulls store.
 
 import { useState } from "react";
-import { cn } from "../../lib/cn";
-import { initials, type PrComment, type PullRequest } from "../../lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import { cn } from "@/lib/cn";
+import { initials, type PrComment, type PullRequest } from "@/lib/prs";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";

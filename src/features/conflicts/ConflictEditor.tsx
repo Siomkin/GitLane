@@ -1,7 +1,7 @@
 import { FileIcon } from "@/components/ui/icons";
-import { cn } from "../../lib/cn";
-import { basename, dirname } from "../../lib/paths";
-import type { OperationFile } from "../../store/repo";
+import { cn } from "@/lib/cn";
+import { basename, dirname } from "@/lib/paths";
+import type { OperationFile } from "@/store/repo";
 import type { LineEditor, LineSelection, Region, RegionDecision } from "./conflictModel";
 import { InlineConflict } from "./InlineConflict";
 import { SplitConflict } from "./SplitConflict";

@@ -1,6 +1,6 @@
-import { useRepo } from "../../store/repo";
-import { advancedNotices } from "../../lib/advancedRepoState";
-import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
+import { useRepo } from "@/store/repo";
+import { advancedNotices } from "@/lib/advancedRepoState";
+import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { InspectHeader } from "./InspectHeader";
 import { FileHistoryView } from "./file-history";
 import { BlameView } from "./BlameView";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 import type { LineEditor, PaneRow } from "./conflictModel";
 import { Tokens } from "./ConflictLine";
 

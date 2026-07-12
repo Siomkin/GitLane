@@ -4,7 +4,7 @@
 // No store or IPC access here — the container owns store/API wiring.
 
 import { useCallback, useMemo } from "react";
-import type { OperationFile, OperationState } from "../../../store/repo";
+import type { OperationFile, OperationState } from "@/store/repo";
 import {
   buildLineEditor,
   effectiveDecision,
@@ -13,8 +13,8 @@ import {
   type LineSelection,
   type Region,
   type RegionDecision,
-} from "../conflictModel";
-import type { ConflictResolver } from "../useConflictResolver";
+} from "@/features/conflicts/conflictModel";
+import type { ConflictResolver } from "@/features/conflicts/useConflictResolver";
 import {
   fileCells,
   fileResolutionState,

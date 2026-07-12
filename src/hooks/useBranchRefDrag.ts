@@ -1,7 +1,7 @@
 import type { DragEvent as ReactDragEvent } from "react";
-import { BranchKind } from "../lib/api";
-import type { BranchRefKind } from "../lib/graphActions";
-import { useUi } from "../store/ui";
+import { BranchKind } from "@/lib/api";
+import type { BranchRefKind } from "@/lib/graphActions";
+import { useUi } from "@/store/ui";
 
 export type BranchRefDragOptions =
   | {

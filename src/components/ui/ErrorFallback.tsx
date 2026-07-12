@@ -1,5 +1,5 @@
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 /** Generic crash fallback rendered by an {@link ErrorBoundary}. Domain-free: it
  * takes a message and up to two actions, so a feature wraps its root in a

@@ -8,8 +8,8 @@
 // not something git pushes can use yet — saying "sign-in isn't available"
 // while the Accounts page shows @you signed in read as a contradiction.
 
-import type { ForgeAuthStatus } from "../../../../lib/api";
-import { detectRemoteUrl, providerLabel, type RemoteProvider } from "../../../../lib/remotes";
+import type { ForgeAuthStatus } from "@/lib/api";
+import { detectRemoteUrl, providerLabel, type RemoteProvider } from "@/lib/remotes";
 
 /** The slice of the store's `Account` the picker needs (structural — keeps
  * this module store-free and unit-testable). */

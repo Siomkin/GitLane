@@ -3,9 +3,9 @@
 // terminal touches the stash stack before the click lands (GL-117).
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useNotifications } from "../../../../store/notifications";
-import { useRepo } from "../../../../store/repo";
-import { useUi } from "../../../../store/ui";
+import { useNotifications } from "@/store/notifications";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { StashContextMenu } from "./StashContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());

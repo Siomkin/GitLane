@@ -4,7 +4,7 @@
 // continue/abort/skip the active merge/sequencer and do a full refresh because
 // the graph itself changes. All writes go through `lib/api` → real `git`.
 
-import { api } from "../lib/api";
+import { api } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import { operationLabel } from "./operation";
 import { useUi } from "./ui";

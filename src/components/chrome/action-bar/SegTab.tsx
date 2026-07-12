@@ -1,5 +1,5 @@
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import type { ReactNode } from "react";
 
 /** A tab in the Commits/PRs segmented control — the toolbar's 32px height

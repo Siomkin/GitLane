@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 
-import { useRepoWatcher } from "../hooks/useRepoWatcher";
-import { isTauri } from "../lib/platform";
-import { useAccounts } from "../store/accounts";
-import { useRepo } from "../store/repo";
-import { useUpdates } from "../store/updates";
+import { useRepoWatcher } from "@/hooks/useRepoWatcher";
+import { isTauri } from "@/lib/platform";
+import { useAccounts } from "@/store/accounts";
+import { useRepo } from "@/store/repo";
+import { useUpdates } from "@/store/updates";
 
 /** App-launch wiring, mounted once from the root: reopen the last active
  * repository, load `gh` accounts, run the quiet daily update check, and keep

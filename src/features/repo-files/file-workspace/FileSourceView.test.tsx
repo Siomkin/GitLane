@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { Language } from "../../../lib/highlight";
+import { Language } from "@/lib/highlight";
 import { FileSourceView } from "./FileSourceView";
 import { computeLineChanges } from "./lineChanges";
 

@@ -1,15 +1,15 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import type { FileChange, WorkingChanges } from "../../lib/api";
+import type { FileChange, WorkingChanges } from "@/lib/api";
 import {
   advancedNotices,
   fileWriteGuard,
   findGuardedFile,
-} from "../../lib/advancedRepoState";
-import { cn } from "../../lib/cn";
-import { summarizeChanges } from "../../lib/changeSummary";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { AdvancedRepoBanner } from "../advanced-repo/AdvancedRepoBanner";
+} from "@/lib/advancedRepoState";
+import { cn } from "@/lib/cn";
+import { summarizeChanges } from "@/lib/changeSummary";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
 

@@ -5,14 +5,14 @@
 // (never persisted); the composed text is the artefact.
 
 import { useEffect, useMemo, useState } from "react";
-import { cn } from "../../lib/cn";
-import { basename } from "../../lib/paths";
-import { focusRing } from "../../lib/ui";
-import { useTerminalAgents } from "../../store/terminalAgents";
-import { useUi } from "../../store/ui";
+import { cn } from "@/lib/cn";
+import { basename } from "@/lib/paths";
+import { focusRing } from "@/lib/ui";
+import { useTerminalAgents } from "@/store/terminalAgents";
+import { useUi } from "@/store/ui";
 import { CloseIcon, DiamondIcon } from "@/components/ui/icons";
-import { composeAgentMessage, orderedNotes } from "../review/comments/notes";
-import { selectEnabledAgents } from "../terminal/agents";
+import { composeAgentMessage, orderedNotes } from "@/features/review/comments/notes";
+import { selectEnabledAgents } from "@/features/terminal/agents";
 
 /** The popup: an editable, pre-composed message with an agent picker + Copy /
  * Send-to-terminal. */

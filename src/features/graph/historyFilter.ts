@@ -4,8 +4,8 @@
 // query/filter it reads from `useUi` and dims the commits that don't match
 // (rather than removing them), so the DAG stays whole and matches stand out.
 
-import { RefKind, type CommitNode } from "../../lib/api";
-import type { HistFilter } from "../../store/ui";
+import { RefKind, type CommitNode } from "@/lib/api";
+import type { HistFilter } from "@/store/ui";
 
 /** True when the query or kind filter is active — the cue to switch the list
  * into highlight mode (matches at full strength, everything else dimmed). */

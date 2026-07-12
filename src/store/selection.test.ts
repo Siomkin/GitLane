@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { RepoGraph } from "../lib/api";
+import type { RepoGraph } from "@/lib/api";
 import {
   buildCommitBatchPlan,
   buildSquashMessage,

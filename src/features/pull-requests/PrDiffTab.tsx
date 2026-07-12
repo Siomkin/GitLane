@@ -4,14 +4,14 @@
 // appears once per commit). Refetches after a manual refresh (prsFetchedAt
 // bumps, caches cleared).
 import { useEffect } from "react";
-import type { PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import type { PullRequest } from "@/lib/prs";
+import { usePulls } from "@/store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
-import { UnifiedDiffBody } from "../review/DiffBody";
-import { BinaryDiff } from "../review/BinaryDiff";
-import { HandToAgentBar } from "../review/comments";
+import { UnifiedDiffBody } from "@/features/review/DiffBody";
+import { BinaryDiff } from "@/features/review/BinaryDiff";
+import { HandToAgentBar } from "@/features/review/comments";
 import { groupByCommit, showCommitHeaders } from "./prDiffGroups";
 
 export function PrDiffTab({ pr }: { pr: PullRequest }) {

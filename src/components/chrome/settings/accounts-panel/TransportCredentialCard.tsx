@@ -1,14 +1,14 @@
 import { useReducer } from "react";
-import type { ForgeAuthProvider } from "../../../../lib/api";
-import { cn } from "../../../../lib/cn";
+import type { ForgeAuthProvider } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import {
   defaultsToProviderTokenForPullRequests,
   isForgeAuthProvider,
   supportsProviderTokenAuth,
-} from "../../../../lib/forgeHelp";
-import { focusRing } from "../../../../lib/ui";
-import { useAccounts } from "../../../../store/accounts";
-import { useUi } from "../../../../store/ui";
+} from "@/lib/forgeHelp";
+import { focusRing } from "@/lib/ui";
+import { useAccounts } from "@/store/accounts";
+import { useUi } from "@/store/ui";
 import { inputCls } from "./provider-connect/ui";
 import { providerInitials, providerLabel, type ProviderKey } from "./providers";
 

@@ -3,8 +3,8 @@
 // workspace container so the policies have a test boundary that doesn't
 // require mounting the component.
 
-import type { FileChange, WorkingChanges } from "../../../lib/api";
-import type { ChangeSource } from "../../../store/repo";
+import type { FileChange, WorkingChanges } from "@/lib/api";
+import type { ChangeSource } from "@/store/repo";
 
 /** One review row: the entry to show for a path, the source its diff comes
  * from, and its cache key within the current snapshot. */

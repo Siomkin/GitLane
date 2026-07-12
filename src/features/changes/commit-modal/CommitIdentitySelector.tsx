@@ -11,12 +11,12 @@
 
 import { useRef, useState } from "react";
 
-import { Badge, HintBadges, ProfileChoiceRow } from "../../../components/chrome/settings/identity-panel/identityChoices";
-import { GitBranchIcon } from "../../../components/ui/icons";
-import { useDismiss } from "../../../hooks/useDismiss";
-import { cn } from "../../../lib/cn";
-import { profileInitials, signingLabel } from "../../../lib/profiles";
-import { focusRing } from "../../../lib/ui";
+import { Badge, HintBadges, ProfileChoiceRow } from "@/components/chrome/settings/identity-panel/identityChoices";
+import { GitBranchIcon } from "@/components/ui/icons";
+import { useDismiss } from "@/hooks/useDismiss";
+import { cn } from "@/lib/cn";
+import { profileInitials, signingLabel } from "@/lib/profiles";
+import { focusRing } from "@/lib/ui";
 import { type CommitIdentityModel } from "./useCommitIdentity";
 
 export function CommitIdentitySelector({ identity }: { identity: CommitIdentityModel }) {

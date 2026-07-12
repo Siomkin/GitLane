@@ -3,8 +3,8 @@
 // user picks it — so this maps a provider to "what's the next step" without the
 // panel rendering a permanent card per provider. No React/IPC here.
 
-import type { ForgeAccount, ForgeAuthProvider, ForgeAuthStatus } from "../../../../lib/api";
-import { supportsPullRequests } from "../../../../lib/forgeHelp";
+import type { ForgeAccount, ForgeAuthProvider, ForgeAuthStatus } from "@/lib/api";
+import { supportsPullRequests } from "@/lib/forgeHelp";
 
 export type ProviderKey = "github" | ForgeAuthProvider;
 

@@ -4,10 +4,10 @@
 
 import { type ReactNode } from "react";
 
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { selectCommitSource } from "../../../../lib/identities";
-import { profileInitials } from "../../../../lib/profiles";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { selectCommitSource } from "@/lib/identities";
+import { profileInitials } from "@/lib/profiles";
 
 /** The hint-line badges: which card the current name/email match, plus how they
  * diverge from its saved values. Purely informational. */

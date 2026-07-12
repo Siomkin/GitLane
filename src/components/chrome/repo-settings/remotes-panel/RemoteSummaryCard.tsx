@@ -1,7 +1,7 @@
-import { cn } from "../../../../lib/cn";
-import type { RemoteInfo } from "../../../../lib/api";
-import { BitbucketIcon, CloudIcon, GitHubIcon, GitLabIcon } from "../../../ui/icons";
-import { detectRemoteUrl, providerSupportsPrs } from "../../../../lib/remotes";
+import { cn } from "@/lib/cn";
+import type { RemoteInfo } from "@/lib/api";
+import { BitbucketIcon, CloudIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
+import { detectRemoteUrl, providerSupportsPrs } from "@/lib/remotes";
 
 /** Headline card for the default push remote — its host, the remote name, PR
  * capability, and the account derived from that remote's auth context. For a

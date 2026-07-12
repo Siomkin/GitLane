@@ -4,9 +4,9 @@
 // checks, commits) via `gh`. Tab bodies live in sibling Pr*Tab files.
 
 import { useEffect } from "react";
-import { selectVisiblePrs, type PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import { selectVisiblePrs, type PullRequest } from "@/lib/prs";
+import { usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { LoadError } from "@/components/ui/Loading";
 import { PrDetailSkeleton } from "@/components/ui/Skeleton";
 import { PullRequestIcon } from "@/components/ui/icons";

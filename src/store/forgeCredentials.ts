@@ -4,7 +4,7 @@
 // the Accounts UI can show "connected" and offer forget/sign-out. The secret
 // itself lives in the user's Git credential helper, never here.
 
-import type { ForgeAuthProvider, ForgeAuthStatus } from "../lib/api";
+import type { ForgeAuthProvider, ForgeAuthStatus } from "@/lib/api";
 import { readForgeCredentials, writeForgeCredentials } from "./accountsStorage";
 
 /** Drop the saved-credential marker for `provider` (used by "forget saved

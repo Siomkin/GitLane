@@ -1,6 +1,6 @@
-import { cn } from "../../lib/cn";
-import { basename, dirname } from "../../lib/paths";
-import type { OperationFile } from "../../store/repo";
+import { cn } from "@/lib/cn";
+import { basename, dirname } from "@/lib/paths";
+import type { OperationFile } from "@/store/repo";
 
 const CheckIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3 w-3">

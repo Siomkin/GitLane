@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BinaryBlob, FileDiff } from "../../lib/api";
-import { useRepo } from "../../store/repo";
+import type { BinaryBlob, FileDiff } from "@/lib/api";
+import { useRepo } from "@/store/repo";
 import { BinaryDiff } from "./BinaryDiff";
 
 const invokeMock = vi.hoisted(() => vi.fn());

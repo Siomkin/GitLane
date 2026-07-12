@@ -1,5 +1,5 @@
-import { useRepo } from "../../../store/repo";
-import { parentDir } from "../onboarding";
+import { useRepo } from "@/store/repo";
+import { parentDir } from "@/features/onboarding/onboarding";
 
 /** Default parent directory for a new clone/init: alongside the most recent repo,
  * so the common case needs no Browse. Empty when there are no recents yet. Read

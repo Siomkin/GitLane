@@ -1,5 +1,5 @@
-import { useRepo } from "../../../store/repo";
-import { findOtherBranchWorktree } from "../../../lib/graphActions";
+import { useRepo } from "@/store/repo";
+import { findOtherBranchWorktree } from "@/lib/graphActions";
 
 /** Name of the worktree a local branch is checked out in (when it isn't the
  * open one), so its pill can show the worktree glyph. Returns a primitive so the

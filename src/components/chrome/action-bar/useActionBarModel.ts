@@ -5,18 +5,18 @@
 // and the DOM-anchored navigator dismissal.
 
 import { useEffect, useRef, useState } from "react";
-import { currentBranchSyncView, defaultPublishTarget } from "../../../lib/branchSync";
-import type { CurrentBranchSyncView } from "../../../lib/branchSync";
-import { changeTotal, summarizeChanges } from "../../../lib/changeSummary";
-import type { LeftTab } from "../../../lib/ui";
-import type { PullRequest } from "../../../lib/prs";
-import { BranchKind, type RepoForge, type RepoSummary } from "../../../lib/api";
-import { useAccounts } from "../../../store/accounts";
-import { usePulls } from "../../../store/pulls";
-import { prListRequestKey } from "../../../store/pullsQueue";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import type { SettingsTab } from "../../../store/ui";
+import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
+import type { CurrentBranchSyncView } from "@/lib/branchSync";
+import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
+import type { LeftTab } from "@/lib/ui";
+import type { PullRequest } from "@/lib/prs";
+import { BranchKind, type RepoForge, type RepoSummary } from "@/lib/api";
+import { useAccounts } from "@/store/accounts";
+import { usePulls } from "@/store/pulls";
+import { prListRequestKey } from "@/store/pullsQueue";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import type { SettingsTab } from "@/store/ui";
 import { deriveProviderState } from "./provider-indicator";
 import type { ProviderState } from "./provider-indicator";
 import { currentBranchLabel, findOpenPr, isPrForge, transportConfigured } from "./actionBarModel";

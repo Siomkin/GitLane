@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommitNode, RepoGraph } from "../../lib/api";
-import { emptyAdvancedState } from "../../lib/advancedRepoState";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import type { CommitNode, RepoGraph } from "@/lib/api";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { HistoryWorkspace } from "./HistoryWorkspace";
 
 const invokeMock = vi.hoisted(() => vi.fn());

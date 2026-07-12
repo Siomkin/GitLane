@@ -7,7 +7,7 @@ import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform 
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as RehypeSanitizeOptions } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { openExternalUrl } from "../../lib/openExternal";
+import { openExternalUrl } from "@/lib/openExternal";
 
 // Inline images are narrowed to a small raster allowlist with a length cap. SVG is
 // excluded on purpose — `data:image/svg+xml` can carry script/foreignObject — and

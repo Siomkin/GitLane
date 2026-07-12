@@ -1,8 +1,8 @@
 // PR Info tab: the stat line (state · files · comments · diff), metadata,
 // description, review threads, and conversation. Reads entirely from the cached
 // PR detail it's handed — no fetching of its own.
-import { cn } from "../../lib/cn";
-import type { PullRequest } from "../../lib/prs";
+import { cn } from "@/lib/cn";
+import type { PullRequest } from "@/lib/prs";
 import { Markdown } from "@/components/ui/Markdown";
 import { PrConversation } from "./PrConversation";
 import { ReviewThreads } from "./ReviewThreads";

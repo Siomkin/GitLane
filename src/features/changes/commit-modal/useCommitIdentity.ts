@@ -5,11 +5,11 @@
 
 import { useEffect, useState } from "react";
 
-import { type RepoIdentity } from "../../../lib/api";
-import { selectCommitSource } from "../../../lib/identities";
-import { type GitProfile } from "../../../lib/profiles";
-import { useAccounts } from "../../../store/accounts";
-import { appliedCommitSource, useIdentities } from "../../../store/identities";
+import { type RepoIdentity } from "@/lib/api";
+import { selectCommitSource } from "@/lib/identities";
+import { type GitProfile } from "@/lib/profiles";
+import { useAccounts } from "@/store/accounts";
+import { appliedCommitSource, useIdentities } from "@/store/identities";
 
 export interface CommitIdentityModel {
   loading: boolean;

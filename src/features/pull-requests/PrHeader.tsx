@@ -1,10 +1,10 @@
 // PR detail header: title, author/branch/state line, and the Info / Diff /
 // Checks / Commits tab strip. Renders from whatever PR shape it's handed (list
 // summary first, full detail once loaded).
-import { cn } from "../../lib/cn";
-import type { PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import { cn } from "@/lib/cn";
+import type { PullRequest } from "@/lib/prs";
+import { usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { PrHeaderActions } from "./PrActions";
 import { checkProgressLabel, checkSummary, countChecks, type PrCheckTone } from "./prChecks";
 import { stateView } from "./prState";

@@ -2,7 +2,7 @@
 // a comment selection, or — once a note ends on this line — a marker that
 // toggles the saved card.
 
-import { cn } from "../../../lib/cn";
+import { cn } from "@/lib/cn";
 import { MessageSquareIcon } from "@/components/ui/icons";
 import type { LineRowComments } from "./useLineComments";
 

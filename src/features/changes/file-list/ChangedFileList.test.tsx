@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { FileChange } from "../../../lib/api";
+import type { FileChange } from "@/lib/api";
 import { ChangedFileList } from "./ChangedFileList";
 
 const file = (path: string, over: Partial<FileChange> = {}): FileChange => ({

@@ -1,6 +1,6 @@
-import { CheckIcon, CloseIcon, EditIcon, FileIcon } from "../../../components/ui/icons";
-import { cn } from "../../../lib/cn";
-import { formatBytes } from "../format";
+import { CheckIcon, CloseIcon, EditIcon, FileIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
+import { formatBytes } from "@/features/repo-files/format";
 import { FileViewMode } from "./mode";
 
 const segBtn = (active: boolean) =>

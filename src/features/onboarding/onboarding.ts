@@ -3,7 +3,7 @@
 // presentation (relative time + avatar), and path math. No React, no IPC — all
 // of this is unit-tested in onboarding.test.ts.
 
-import { friendlyGitError } from "../../lib/gitError";
+import { friendlyGitError } from "@/lib/gitError";
 
 /** The seven onboarding screens (mirrors the RepoOnboarding mockup's `screen`). */
 export type OnboardingScreen =

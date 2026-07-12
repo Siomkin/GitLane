@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { emptyAdvancedState } from "../lib/advancedRepoState";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type {
   BranchInfo,
   GitTransportAuthRef,
@@ -14,8 +14,8 @@ import type {
   RepoGraph,
   RepoSummary,
   WorkingChanges,
-} from "../lib/api";
-import { ForgeKind } from "../lib/api";
+} from "@/lib/api";
+import { ForgeKind } from "@/lib/api";
 import { useAccounts, type Account } from "./accounts";
 import { useNotifications } from "./notifications";
 import { useRepo } from "./repo";

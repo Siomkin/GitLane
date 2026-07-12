@@ -4,8 +4,8 @@
 // glab, system credentials); the form only asks when the user wants to
 // override, so the first page is just "where from, where to".
 
-import type { OnboardingApi } from "../../flows/useOnboarding";
-import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "../../icons";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "@/features/onboarding/icons";
 import { CloneAuthStatus } from "./CloneAuthStatus";
 
 export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {

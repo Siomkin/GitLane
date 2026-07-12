@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ForgeAuthStatus } from "../../../../lib/api";
+import type { ForgeAuthStatus } from "@/lib/api";
 import { remoteAccountPickerModel, type PickerAccount } from "./remoteAccountOptions";
 
 const acct = (host: string, login: string, healthy = true): PickerAccount => ({

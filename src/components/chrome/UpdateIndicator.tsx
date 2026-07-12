@@ -4,9 +4,9 @@
 // look mirrors the Titlebar entry in the Claude Design project; state comes from
 // the `useUpdates` store.
 
-import { useUi } from "../../store/ui";
-import { useUpdates, hasPendingUpdate } from "../../store/updates";
-import { UpdateIcon } from "../ui/icons";
+import { useUi } from "@/store/ui";
+import { useUpdates, hasPendingUpdate } from "@/store/updates";
+import { UpdateIcon } from "@/components/ui/icons";
 
 export const UpdateIndicator = () => {
   const status = useUpdates((s) => s.status);

@@ -1,7 +1,7 @@
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
-import type { PullRequest } from "../../lib/prs";
+import type { PullRequest } from "@/lib/prs";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { outlineBtn } from "./prActionStyles";
 

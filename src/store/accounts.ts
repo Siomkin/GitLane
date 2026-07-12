@@ -28,17 +28,17 @@ import {
   type ProviderOauthResult,
   type RemoteInfo,
   type RepoIdentity,
-} from "../lib/api";
-import { ACCOUNT_COLORS } from "../lib/palette";
-import { supportsForgeWhoami } from "../lib/forgeHelp";
+} from "@/lib/api";
+import { ACCOUNT_COLORS } from "@/lib/palette";
+import { supportsForgeWhoami } from "@/lib/forgeHelp";
 import {
   credentialScopePath,
   detectRemoteUrl,
   forgeAuthProviderFor,
   prNoun,
   transportProviderForRemoteProvider,
-} from "../lib/remotes";
-import { repoIdentityKey } from "../lib/worktrees";
+} from "@/lib/remotes";
+import { repoIdentityKey } from "@/lib/worktrees";
 import {
   accountKey,
   accountMatchesRemoteHost,

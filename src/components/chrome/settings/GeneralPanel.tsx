@@ -2,10 +2,10 @@
 // state lives in the UI store; the segmented + swatch controls are one-offs used
 // only here, so they stay co-located. (Software update lives in the About panel.)
 
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { useUi, type Density, type Theme } from "../../../store/ui";
-import { ACCENTS, type AccentColor } from "../../../lib/accent";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useUi, type Density, type Theme } from "@/store/ui";
+import { ACCENTS, type AccentColor } from "@/lib/accent";
 import { SectionLabel } from "./controls";
 
 function Segmented<T extends string>({

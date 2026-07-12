@@ -1,6 +1,6 @@
-import type { OnboardingApi } from "../flows/useOnboarding";
-import { parseRepoName } from "../onboarding";
-import { SpinnerRing } from "../icons";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { parseRepoName } from "@/features/onboarding/onboarding";
+import { SpinnerRing } from "@/features/onboarding/icons";
 
 /** The clone-in-progress screen: a determinate bar driven by the backend's live
  * `clone-progress` events, plus a cancel control. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { detectRemoteUrl } from "../../../lib/remotes";
-import type { GitTransportAuthRef } from "../../../lib/api";
+import { detectRemoteUrl } from "@/lib/remotes";
+import type { GitTransportAuthRef } from "@/lib/api";
 import { cloneAuthStatusLine, planCloneAuth, type CloneAuthInputs } from "./cloneAuth";
 
 // Parity guard: this priority chain was extracted verbatim from startClone

@@ -5,8 +5,8 @@
 // IPC; the store passes its state in (PullsState structurally satisfies
 // `PrCacheSlice`).
 
-import type { FileDiff, PrCheck, ReviewThread } from "../lib/api";
-import type { PullRequest } from "../lib/prs";
+import type { FileDiff, PrCheck, ReviewThread } from "@/lib/api";
+import type { PullRequest } from "@/lib/prs";
 
 /** The cache fields of `PullsState` these rules read/write — a structural
  * subset so this module never imports the store. */

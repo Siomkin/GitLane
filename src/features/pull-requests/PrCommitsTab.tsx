@@ -4,11 +4,11 @@
 // via paginated GraphQL (`loadPrCommits`) and *replaces* the cached list —
 // `verified` is reliable structured data (signature.isValid), never inferred.
 import { useEffect, useState } from "react";
-import { openExternalUrl } from "../../lib/openExternal";
-import { cn } from "../../lib/cn";
-import type { PrCommitView, PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import { openExternalUrl } from "@/lib/openExternal";
+import { cn } from "@/lib/cn";
+import type { PrCommitView, PullRequest } from "@/lib/prs";
+import { usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { GitHubIcon } from "@/components/ui/icons";
 import { Loading, LoadError } from "@/components/ui/Loading";
 

@@ -6,13 +6,13 @@
 // with the exact registration checklist.
 
 import { useEffect, useState } from "react";
-import { cn } from "../../../../../lib/cn";
-import { focusRing } from "../../../../../lib/ui";
-import { openExternalUrl } from "../../../../../lib/openExternal";
-import type { ForgeAuthProvider } from "../../../../../lib/api";
-import { useUi } from "../../../../../store/ui";
-import { useAccounts } from "../../../../../store/accounts";
-import { DEFAULT_CREDENTIAL_HOST, supportsEditableOauthHost } from "../../../../../lib/forgeHelp";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { openExternalUrl } from "@/lib/openExternal";
+import type { ForgeAuthProvider } from "@/lib/api";
+import { useUi } from "@/store/ui";
+import { useAccounts } from "@/store/accounts";
+import { DEFAULT_CREDENTIAL_HOST, supportsEditableOauthHost } from "@/lib/forgeHelp";
 import { OAUTH_HELP } from "./oauth";
 import { ExternalIcon, inputCls, linkCls } from "./ui";
 

@@ -5,10 +5,10 @@
 // mounted), Initialize as git repo (the folder is fine, it just lost its
 // `.git` — GL-153, `notARepository` only), Locate… (it moved).
 
-import { FolderIcon, PlusIcon, RefreshIcon, WarningIcon } from "../../components/ui/icons";
-import { repoLabel } from "../../lib/paths";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { FolderIcon, PlusIcon, RefreshIcon, WarningIcon } from "@/components/ui/icons";
+import { repoLabel } from "@/lib/paths";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 
 const secondaryButton =
   "h-10 rounded-xl border border-black/10 px-4 text-[13.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5";

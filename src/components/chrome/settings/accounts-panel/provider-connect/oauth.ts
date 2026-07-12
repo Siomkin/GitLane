@@ -4,8 +4,8 @@
 // client id is registered the token/CLI paths lead and OAuth is demoted.
 
 import { useEffect, useState } from "react";
-import type { ForgeAuthProvider } from "../../../../../lib/api";
-import { useAccounts } from "../../../../../store/accounts";
+import type { ForgeAuthProvider } from "@/lib/api";
+import { useAccounts } from "@/store/accounts";
 
 /** Providers GitLane can sign into with native OAuth. */
 export const OAUTH_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "bitbucket"]);

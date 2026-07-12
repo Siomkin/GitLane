@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
-import type { PullRequest } from "../../lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { useDismiss } from "../../hooks/useDismiss";
+import type { PullRequest } from "@/lib/prs";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { useDismiss } from "@/hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { utilBtn } from "./prActionStyles";

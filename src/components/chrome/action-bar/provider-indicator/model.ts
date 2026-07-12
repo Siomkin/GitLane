@@ -1,5 +1,5 @@
-import { ForgeKind } from "../../../../lib/api";
-import type { RepoForge } from "../../../../lib/api";
+import { ForgeKind } from "@/lib/api";
+import type { RepoForge } from "@/lib/api";
 import type { ProviderState } from "./state";
 
 /** Glyph keys the popover resolves to real icon components in `ProviderPopover`.

@@ -3,7 +3,7 @@
 // should authenticate as. Token/keychain inputs are intentionally hidden while
 // the auth surface is simplified to CLI/GCM/SSH.
 
-import type { OnboardingApi } from "../../flows/useOnboarding";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 
 export const CloneAuthOptions = ({ ob }: { ob: OnboardingApi }) => {
   const manual = !ob.cloneForm.accountId;

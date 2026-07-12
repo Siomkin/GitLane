@@ -2,7 +2,7 @@
 // domain-free components/ui/) because it mirrors the history row shape; it
 // composes the generic `Skeleton` primitive.
 
-import { Skeleton } from "../../components/ui/Skeleton";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 // Varied summary-bar widths (% of row) so the placeholder reads like real commit
 // subjects of differing length instead of a uniform grid.

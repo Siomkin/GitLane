@@ -5,7 +5,7 @@
 // identity (`currentPrListRequestKey`) and the in-flight slot ownership
 // (`prListLoadOwnsSlot`) stays in pulls.ts.
 
-import type { GithubAccountRef } from "../lib/api";
+import type { GithubAccountRef } from "@/lib/api";
 
 export interface QueuedPrListLoad {
   /** force/quiet of the coalesced re-run (OR of force, AND of quiet across waiters). */

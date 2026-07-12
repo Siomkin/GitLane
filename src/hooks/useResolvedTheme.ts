@@ -10,8 +10,8 @@
 
 import { useSyncExternalStore } from "react";
 
-import { useUi } from "../store/ui";
-import { resolveTheme, PREFERS_DARK_QUERY } from "../lib/theme";
+import { useUi } from "@/store/ui";
+import { resolveTheme, PREFERS_DARK_QUERY } from "@/lib/theme";
 
 const mql =
   typeof window !== "undefined" && typeof window.matchMedia === "function"

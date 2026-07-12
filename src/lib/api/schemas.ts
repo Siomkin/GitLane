@@ -17,7 +17,7 @@
 // frontend doesn't read yet, which is the safe direction to be lenient in.
 
 import { z } from "zod";
-import { emptyAdvancedState } from "../advancedRepoState";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type {
   AdvancedRepoState,
   CommitNode,

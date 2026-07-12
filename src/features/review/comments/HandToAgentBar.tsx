@@ -2,8 +2,8 @@
 // pending comments and opens the "hand to agent" message composer. Replaces the
 // old floating notes tray — it lives at the bottom of the review surface.
 
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { DiamondIcon } from "@/components/ui/icons";
 
 export const HandToAgentBar = ({

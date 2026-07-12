@@ -6,7 +6,7 @@
 // wiring.
 
 import { useEffect } from "react";
-import { useIdentities } from "../../../../store/identities";
+import { useIdentities } from "@/store/identities";
 import { ThisComputerRow } from "./ThisComputerRow";
 import { ManualIdentitiesSection } from "./ManualIdentitiesSection";
 

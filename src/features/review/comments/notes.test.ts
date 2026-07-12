@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { DiffHunk } from "../../../lib/api";
-import type { ReviewNote } from "../../../store/ui";
+import type { DiffHunk } from "@/lib/api";
+import type { ReviewNote } from "@/store/ui";
 import {
   buildLineMeta,
   buildNote,

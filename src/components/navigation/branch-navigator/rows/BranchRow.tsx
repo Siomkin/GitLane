@@ -6,9 +6,9 @@ import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { TreeIcon } from "@/components/ui/icons";
-import { RowKind } from "../refs";
+import { RowKind } from "@/components/navigation/branch-navigator/refs";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
-import { useRevealNavigate } from "../useRowActions";
+import { useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
 import { RowGlyph } from "./RowGlyph";
 import { DIM_CLASS } from "./rowStyles";
 

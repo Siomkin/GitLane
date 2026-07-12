@@ -1,7 +1,7 @@
-import type { FileHistoryEntry } from "../../../lib/api";
-import { cn } from "../../../lib/cn";
+import type { FileHistoryEntry } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { relativeTime } from "../inspect";
+import { relativeTime } from "@/features/history-inspect/inspect";
 
 export function RevisionRow({
   entry,

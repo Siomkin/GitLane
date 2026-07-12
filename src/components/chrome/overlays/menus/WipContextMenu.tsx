@@ -7,7 +7,7 @@ import {
 import { CheckIcon, MinusIcon, PlusIcon, StashIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, useBranchOp, type MenuItem } from "../shared";
+import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 
 /** Right-click menu on the uncommitted "WIP" row. Acts on the whole working

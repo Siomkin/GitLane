@@ -4,8 +4,8 @@
 // not to GitLane's stores — surfacing it completes the picture without GitLane
 // taking ownership of it.
 
-import type { RepoIdentity } from "../../../../store/accounts";
-import { GitBranchIcon } from "../../../ui/icons";
+import type { RepoIdentity } from "@/store/accounts";
+import { GitBranchIcon } from "@/components/ui/icons";
 
 export function ThisComputerRow({ identity }: { identity: RepoIdentity | null }) {
   return (

@@ -4,10 +4,10 @@
 
 import { useRef, useState } from "react";
 
-import type { TerminalAgent } from "../../../lib/api";
-import { useDismiss } from "../../../hooks/useDismiss";
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
+import type { TerminalAgent } from "@/lib/api";
+import { useDismiss } from "@/hooks/useDismiss";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 const SparkleIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4 text-[color:var(--accent)]" aria-hidden>

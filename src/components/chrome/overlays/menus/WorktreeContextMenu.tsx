@@ -3,7 +3,7 @@ import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, useBranchOp, type MenuItem } from "../shared";
+import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 
 /** Right-click menu on a navigator worktree row. The row's left-click is the
  * primary "switch to this worktree" action now (GL-22); this menu carries the

@@ -11,7 +11,7 @@ import { createRepoSelectionActions } from "./repoSelectionActions";
 import { createRepoTabActions } from "./repoTabActions";
 import { createInitialRepoData, type RepoState } from "./repoTypes";
 import { readOpenPaths, readRecents, readTabInfo } from "./repoSession";
-import { pruneTabInfo } from "../lib/tabs";
+import { pruneTabInfo } from "@/lib/tabs";
 import { createRepoWriteActions } from "./repoWriteActions";
 
 export type {

@@ -1,8 +1,8 @@
 import type { MouseEvent } from "react";
-import type { FileChange } from "../../lib/api";
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
-import { basename, dirname } from "../../lib/paths";
+import type { FileChange } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { basename, dirname } from "@/lib/paths";
 import { FileIcon } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";

@@ -1,4 +1,4 @@
-import { cn } from "../../../../lib/cn";
+import { cn } from "@/lib/cn";
 
 /** A monospace remote-URL input. Turns its border rose when `invalid`, otherwise
  * focuses to the accent. Shared by the add form and per-row edit. */

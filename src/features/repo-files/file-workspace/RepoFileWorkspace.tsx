@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { FileIcon, WarningIcon } from "../../../components/ui/icons";
-import { languageForPath } from "../../../lib/highlight";
-import { useRepo } from "../../../store/repo";
-import { DISCARD_UNSAVED_CONFIRM, isFileViewDirty, isFileViewEditable } from "../../../store/repoFilesActions";
-import { useUi } from "../../../store/ui";
-import { formatBytes, splitLinesCapped, utf8Bytes } from "../format";
+import { FileIcon, WarningIcon } from "@/components/ui/icons";
+import { languageForPath } from "@/lib/highlight";
+import { useRepo } from "@/store/repo";
+import { DISCARD_UNSAVED_CONFIRM, isFileViewDirty, isFileViewEditable } from "@/store/repoFilesActions";
+import { useUi } from "@/store/ui";
+import { formatBytes, splitLinesCapped, utf8Bytes } from "@/features/repo-files/format";
 import { computeLineChangesText } from "./lineChanges";
 import { FileEditor } from "./FileEditor";
 import { FilePreview } from "./FilePreview";

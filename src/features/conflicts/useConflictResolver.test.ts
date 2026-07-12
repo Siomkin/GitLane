@@ -12,7 +12,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useConflictResolver } from "./useConflictResolver";
-import type { OperationState } from "../../store/repo";
+import type { OperationState } from "@/store/repo";
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
 

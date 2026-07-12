@@ -1,4 +1,4 @@
-import { cn } from "../../../lib/cn";
+import { cn } from "@/lib/cn";
 import { CheckIcon } from "@/components/ui/icons";
 
 // The include/exclude tick shared by the List and Tree views; `mixed` renders

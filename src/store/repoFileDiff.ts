@@ -9,7 +9,7 @@
 // flashes the diff spinner (the diff already on screen stays put until the new
 // one arrives); cf. `refreshCompare`, which likewise reconciles in place.
 
-import { api } from "../lib/api";
+import { api } from "@/lib/api";
 import type { ChangeSource, RepoGet, RepoSet } from "./repoTypes";
 
 // Monotonic counter so overlapping reconciles (watcher ticks outpacing a slow

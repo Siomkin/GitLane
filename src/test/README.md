@@ -20,7 +20,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 // Import the code under test *after* the mock is declared.
-import { usePulls } from "../store/pulls";
+import { usePulls } from "@/store/pulls";
 
 beforeEach(() => invokeMock.mockReset());
 

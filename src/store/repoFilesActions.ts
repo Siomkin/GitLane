@@ -1,4 +1,4 @@
-import { api } from "../lib/api";
+import { api } from "@/lib/api";
 import { useUi } from "./ui";
 import type { FileViewState, RepoGet, RepoSet, RepoState } from "./repoTypes";
 

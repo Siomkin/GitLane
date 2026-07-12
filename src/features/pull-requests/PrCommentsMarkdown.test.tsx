@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PullRequest } from "../../lib/prs";
-import type { ReviewThread } from "../../lib/api";
-import { usePulls } from "../../store/pulls";
+import type { PrAuthor, PullRequest } from "@/lib/prs";
+import type { ReviewThread } from "@/lib/api";
+import { usePulls } from "@/store/pulls";
 import { PrConversation } from "./PrConversation";
 import { ReviewThreads } from "./ReviewThreads";
 

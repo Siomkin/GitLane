@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ForgeKind } from "../../../../lib/api";
-import type { RepoForge } from "../../../../lib/api";
+import { ForgeKind } from "@/lib/api";
+import type { RepoForge } from "@/lib/api";
 import { deriveProviderState } from "./state";
 import type { ProviderAuthCtx } from "./state";
 

@@ -1,6 +1,6 @@
-import { cn } from "../../../../lib/cn";
-import { CheckIcon, WarningIcon } from "../../../ui/icons";
-import type { RemoteValidity, RemoteValidityLevel } from "../../../../lib/remotes";
+import { cn } from "@/lib/cn";
+import { CheckIcon, WarningIcon } from "@/components/ui/icons";
+import type { RemoteValidity, RemoteValidityLevel } from "@/lib/remotes";
 
 const TONE: Record<RemoteValidityLevel, string> = {
   neutral: "text-neutral-400 dark:text-neutral-500",

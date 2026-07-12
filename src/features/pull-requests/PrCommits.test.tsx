@@ -6,17 +6,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PrCommitView, PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import type { PrAuthor, PrCommitView, PullRequest } from "@/lib/prs";
+import { usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { PullRequestDetail } from "./PullRequestDetail";
 
 const { openUrl } = vi.hoisted(() => ({ openUrl: vi.fn() }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 // Render as if inside the Tauri webview so external links route through the
 // opener plugin (the helper falls back to window.open in a plain browser).
-vi.mock("../../lib/platform", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../lib/platform")>()),
+vi.mock("@/lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/platform")>()),
   isTauri: true,
 }));
 

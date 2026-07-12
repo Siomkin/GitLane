@@ -2,7 +2,7 @@
 // "Hide resolved" filter, and per-file grouping in first-seen thread order —
 // extracted so reply/pending rerenders don't redo the work and the semantics
 // are testable without a render. No React, no IPC.
-import type { ReviewThread } from "../../lib/api";
+import type { ReviewThread } from "@/lib/api";
 
 export interface ThreadFileGroup {
   path: string;

@@ -3,7 +3,7 @@
 // in the same order the unified/split views paint them, so minimap positions
 // match the scroll height. Pure.
 
-import type { DiffHunk } from "../../lib/api";
+import type { DiffHunk } from "@/lib/api";
 import { toSplitRows } from "./diffRows";
 
 export type Tone = "add" | "del" | "ctx" | "header";

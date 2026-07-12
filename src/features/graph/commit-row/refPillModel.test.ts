@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { RefLabel } from "../../../lib/api";
+import type { RefLabel } from "@/lib/api";
 import { combinedRefPillModel, refPillModel } from "./refPillModel";
 
 const ref = (kind: RefLabel["kind"], name = "feature"): RefLabel => ({ name, kind });

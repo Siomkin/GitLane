@@ -4,11 +4,11 @@
 
 import { useEffect, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- local disposable staged-diff preview probe (architecture-rules-react.md §1)
-import { api, type FileDiff } from "../../lib/api";
-import { cn } from "../../lib/cn";
-import { basename, dirname } from "../../lib/paths";
-import { UnifiedDiffBody } from "../review/DiffBody";
-import { BinaryDiff } from "../review/BinaryDiff";
+import { api, type FileDiff } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { basename, dirname } from "@/lib/paths";
+import { UnifiedDiffBody } from "@/features/review/DiffBody";
+import { BinaryDiff } from "@/features/review/BinaryDiff";
 
 export const DiffPreview = ({
   repoPath,

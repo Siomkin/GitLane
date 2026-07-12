@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileDiff } from "../../lib/api";
+import type { FileDiff } from "@/lib/api";
 import { hunkBody, hunkPatchUnavailableReason, lineStagePatchUnavailableReason } from "./hunkActions";
 
 const diff = (overrides: Partial<FileDiff> = {}): FileDiff => ({

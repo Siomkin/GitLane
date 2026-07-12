@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeOperationStatus, operationLabel } from "./operation";
 import type { OperationState } from "./repoTypes";
-import type { OperationStatus } from "../lib/api";
+import type { OperationStatus } from "@/lib/api";
 
 const status = (over: Partial<OperationStatus> = {}): OperationStatus => ({
   kind: "merge",

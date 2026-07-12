@@ -4,10 +4,10 @@
 // commit.gpgsign / tag.gpgsign toggles.
 
 import { useId, useState } from "react";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { isValidEmail } from "../identity";
-import { profileInitials, type GitProfile, type ProfileDraft } from "../../../../lib/profiles";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { isValidEmail } from "@/components/chrome/settings/identity";
+import { profileInitials, type GitProfile, type ProfileDraft } from "@/lib/profiles";
 import { SigningKeyField } from "./SigningKeyField";
 
 const inputCls =

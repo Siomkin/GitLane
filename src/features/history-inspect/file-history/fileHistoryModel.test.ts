@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileHistoryEntry } from "../../../lib/api";
+import type { FileHistoryEntry } from "@/lib/api";
 import { deletedEntry, revisionCountLabel, selectedEntry } from "./fileHistoryModel";
 
 const entry = (over: Partial<FileHistoryEntry> = {}): FileHistoryEntry => ({

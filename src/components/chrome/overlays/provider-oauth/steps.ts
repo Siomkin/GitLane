@@ -4,7 +4,7 @@
 // derivation lives in the shared `../progress` primitive; this file owns only the
 // event map and labels.
 
-import { stepIndexIn, stepStatus, type StepStatus } from "../progress";
+import { stepIndexIn, stepStatus, type StepStatus } from "@/components/chrome/overlays/progress";
 
 /** GitLab = device flow; Bitbucket = PKCE loopback. */
 export type OauthMode = "device" | "pkce";

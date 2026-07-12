@@ -23,7 +23,7 @@ import { InlineSpinner } from "@/components/ui/Loading";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRepo } from "@/store/repo";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
-import { StepRow } from "../progress";
+import { StepRow } from "@/components/chrome/overlays/progress";
 import {
   deleteWorktreeStepLabels,
   deleteWorktreeStepStatus,

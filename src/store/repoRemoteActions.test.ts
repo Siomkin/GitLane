@@ -6,7 +6,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "./repo";
-import type { RepoSummary } from "../lib/api";
+import type { RepoSummary } from "@/lib/api";
 
 const summary: RepoSummary = {
   path: "/repo",

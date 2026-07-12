@@ -1,8 +1,8 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
-import type { StashContextCommit, StashEntry } from "../../lib/api";
-import { cn } from "../../lib/cn";
+import type { StashContextCommit, StashEntry } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUi } from "../../store/ui";
+import { useUi } from "@/store/ui";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { StashIcon } from "@/components/ui/icons";
 import { formatDate } from "./historyRowShared";

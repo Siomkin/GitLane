@@ -6,14 +6,14 @@
 // (commitSelected).
 
 import { useEffect, useState, type ReactNode } from "react";
-import { type FileChange, type TerminalAgent } from "../../../lib/api";
-import { fileWriteGuard, findGuardedFile } from "../../../lib/advancedRepoState";
-import { cn } from "../../../lib/cn";
-import { fullCommitMessage } from "../../../lib/commitMessage";
-import { useRepo } from "../../../store/repo";
-import { useTerminalAgents } from "../../../store/terminalAgents";
-import { useUi } from "../../../store/ui";
-import { selectEnabledAgents } from "../../terminal/agents";
+import { type FileChange, type TerminalAgent } from "@/lib/api";
+import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
+import { cn } from "@/lib/cn";
+import { fullCommitMessage } from "@/lib/commitMessage";
+import { useRepo } from "@/store/repo";
+import { useTerminalAgents } from "@/store/terminalAgents";
+import { useUi } from "@/store/ui";
+import { selectEnabledAgents } from "@/features/terminal/agents";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { ListView } from "./ListView";
 import { TreeView } from "./TreeView";

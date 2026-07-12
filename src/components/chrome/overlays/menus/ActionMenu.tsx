@@ -11,7 +11,7 @@ import { focusRing } from "@/lib/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { Backdrop, useBranchOp, useFittedMenuPosition } from "../shared";
+import { Backdrop, useBranchOp, useFittedMenuPosition } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 
 /** Glyph + tint for an action kind — state-free. */

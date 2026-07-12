@@ -23,7 +23,7 @@ const { calls, pending, apiMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../lib/api", () => ({ api: apiMock }));
+vi.mock("@/lib/api", () => ({ api: apiMock }));
 
 import { unwatchRepo, watchRepo } from "./repoWatchQueue";
 

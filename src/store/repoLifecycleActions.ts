@@ -5,10 +5,10 @@
 // in repoMissing.ts; the ownership guards in repoGuards.ts.
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, isRepoOpenError, type RepoSummary } from "../lib/api";
-import { repoLabel } from "../lib/paths";
-import { groupedInsertIndex, pruneTabInfo, tabInfoFromSummary } from "../lib/tabs";
-import { repoIdentityKey } from "../lib/worktrees";
+import { api, isRepoOpenError, type RepoSummary } from "@/lib/api";
+import { repoLabel } from "@/lib/paths";
+import { groupedInsertIndex, pruneTabInfo, tabInfoFromSummary } from "@/lib/tabs";
+import { repoIdentityKey } from "@/lib/worktrees";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
 import { migrateIdentityBindings } from "./identities";

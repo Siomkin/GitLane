@@ -1,10 +1,10 @@
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { worktreeIndicatorView } from "../../../lib/worktrees";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import { handoffDestinationOptions, startWorktreeHandoff } from "../../../lib/worktreeHandoff";
-import { ArrowLeftIcon, TreeIcon } from "../../ui/icons";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { worktreeIndicatorView } from "@/lib/worktrees";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { handoffDestinationOptions, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { ArrowLeftIcon, TreeIcon } from "@/components/ui/icons";
 
 /** Toolbar cluster shown only when the open repo is itself a linked worktree
  * (GL-22) — the "you are here, not in the main checkout" signal:

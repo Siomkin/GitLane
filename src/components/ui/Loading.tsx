@@ -2,7 +2,7 @@
 // can take a few seconds, so these surface a clear spinner instead of a blank
 // or misleading "empty" state.
 
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 
 export function Spinner({ className, accent = false }: { className?: string; accent?: boolean }) {
   return (

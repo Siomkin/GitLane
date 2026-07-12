@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FileChange } from "../../../lib/api";
-import { emptyChanges } from "../../../store/repoTypes";
+import type { FileChange } from "@/lib/api";
+import { emptyChanges } from "@/store/repoTypes";
 import { ReviewFileSection } from "./ReviewFileSection";
 
 // GL-197 a11y: the header is a role="button" div (so the stage/unstage control

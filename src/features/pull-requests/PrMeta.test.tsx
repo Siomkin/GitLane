@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PullRequest } from "../../lib/prs";
+import type { PrAuthor, PullRequest } from "@/lib/prs";
 import { PrMeta } from "./PrMeta";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };

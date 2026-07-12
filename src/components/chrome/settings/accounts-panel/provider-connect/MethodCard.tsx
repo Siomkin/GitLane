@@ -3,7 +3,7 @@
 // border + badge; the rest are plain hairline cards under "Or connect another
 // way". Every method — CLI, GCM/helper, SSH, install — uses this same frame.
 
-import { cn } from "../../../../../lib/cn";
+import { cn } from "@/lib/cn";
 
 export function MethodCard({
   icon,

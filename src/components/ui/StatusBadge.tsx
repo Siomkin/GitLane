@@ -1,7 +1,7 @@
 // Status badge: a colored letter on a tinted background, matching the design.
 // M(odified) A(dded) D(eleted) U(ntracked) R(enamed) etc.
 
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 
 const NEUTRAL_TONE = "bg-black/[0.06] text-neutral-500 dark:bg-white/10";
 

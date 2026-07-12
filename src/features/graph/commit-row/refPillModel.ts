@@ -4,8 +4,8 @@
 // matrix without a render — the leaves keep the SVGs and the store wiring
 // (useBranchWorktreeName stays a hook; its result feeds `worktreeName` here).
 // No React, no IPC.
-import { BranchKind, RefKind, type RefLabel } from "../../../lib/api";
-import type { BranchRefKind } from "../../../lib/graphActions";
+import { BranchKind, RefKind, type RefLabel } from "@/lib/api";
+import type { BranchRefKind } from "@/lib/graphActions";
 
 /** Glyph discriminant — the components map these to the actual SVGs. */
 export type RefPillIcon = "current" | "tag" | "remote" | "worktree" | "branch";

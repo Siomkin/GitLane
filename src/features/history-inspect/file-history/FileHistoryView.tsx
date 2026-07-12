@@ -1,8 +1,8 @@
 import { useMemo } from "react";
-import { basename } from "../../../lib/paths";
-import { useRepo } from "../../../store/repo";
+import { basename } from "@/lib/paths";
+import { useRepo } from "@/store/repo";
 import { StatusPill } from "@/components/ui/StatusBadge";
-import { DiffPane } from "../DiffPane";
+import { DiffPane } from "@/features/history-inspect/DiffPane";
 import { deletedEntry, revisionCountLabel, selectedEntry } from "./fileHistoryModel";
 import { RevisionRow } from "./RevisionRow";
 import { RevisionInspector } from "./RevisionInspector";

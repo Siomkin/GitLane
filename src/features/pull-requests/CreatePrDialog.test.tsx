@@ -3,9 +3,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { CreatePrDialog } from "./CreatePrDialog";
 
 const realCreatePr = usePulls.getState().createPr;

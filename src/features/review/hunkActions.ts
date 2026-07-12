@@ -1,5 +1,5 @@
-import type { DiffHunk, DiffLine, FileDiff } from "../../lib/api";
-import type { ChangeSource } from "../../store/repo";
+import type { DiffHunk, DiffLine, FileDiff } from "@/lib/api";
+import type { ChangeSource } from "@/store/repo";
 
 /** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
  * which can't be staged. Built by the review container; both diff views consume it. */

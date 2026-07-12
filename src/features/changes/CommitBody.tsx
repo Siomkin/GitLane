@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 const COLLAPSED_MAX = 78; // px — ~3 lines of body text left peeking under the fade
 const FADE_MASK = "linear-gradient(to bottom,#000 50%,transparent)";

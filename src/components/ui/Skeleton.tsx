@@ -4,7 +4,7 @@
 
 import type { CSSProperties } from "react";
 
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 
 /** A single shimmering placeholder bar. Compose these to mimic real content. */
 export function Skeleton({ className, style }: { className?: string; style?: CSSProperties }) {

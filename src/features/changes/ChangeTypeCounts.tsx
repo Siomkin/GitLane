@@ -4,9 +4,9 @@
 // omitted so a worktree with only edits shows just the pencil count.
 
 import type { ReactNode } from "react";
-import { cn } from "../../lib/cn";
-import type { ChangeSummary } from "../../lib/changeSummary";
-import { EditIcon } from "../../components/ui/icons";
+import { cn } from "@/lib/cn";
+import type { ChangeSummary } from "@/lib/changeSummary";
+import { EditIcon } from "@/components/ui/icons";
 
 interface Part {
   key: keyof ChangeSummary;

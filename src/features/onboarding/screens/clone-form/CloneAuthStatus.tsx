@@ -4,10 +4,10 @@
 // link-outs instead — there is nothing to type for SSH.
 
 import { useState } from "react";
-import { openExternalUrl } from "../../../../lib/openExternal";
-import { sshKeyHelp } from "../../../../lib/forgeHelp";
-import { cloneProviderFor } from "../../flows/cloneAuth";
-import type { OnboardingApi } from "../../flows/useOnboarding";
+import { openExternalUrl } from "@/lib/openExternal";
+import { sshKeyHelp } from "@/lib/forgeHelp";
+import { cloneProviderFor } from "@/features/onboarding/flows/cloneAuth";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 import { CloneAuthOptions } from "./CloneAuthOptions";
 
 const linkCls =

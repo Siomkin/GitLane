@@ -3,7 +3,7 @@
 // applies. Pure — fixtures only, no store or IPC.
 import { describe, expect, it } from "vitest";
 
-import type { PullRequest } from "../lib/prs";
+import type { PullRequest } from "@/lib/prs";
 import {
   bumpResourceVersions,
   detailMatchesSummary,

@@ -3,16 +3,16 @@
 // for HTTPS, and SSH keys. Token/OAuth/keychain flows still exist underneath
 // but are not offered while this auth model is being simplified.
 
-import { cn } from "../../../../../lib/cn";
-import { focusRing } from "../../../../../lib/ui";
-import { openExternalUrl } from "../../../../../lib/openExternal";
-import type { ForgeAuthStatus } from "../../../../../lib/api";
-import { useAccounts } from "../../../../../store/accounts";
-import { accountHandle, prSupportedFor } from "../providers";
-import { CopyCommand } from "../CopyCommand";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { openExternalUrl } from "@/lib/openExternal";
+import type { ForgeAuthStatus } from "@/lib/api";
+import { useAccounts } from "@/store/accounts";
+import { accountHandle, prSupportedFor } from "@/components/chrome/settings/accounts-panel/providers";
+import { CopyCommand } from "@/components/chrome/settings/accounts-panel/CopyCommand";
 import { MethodCard } from "./MethodCard";
 import { CredentialEntryForm } from "./credential-entry";
-import { DEFAULT_CREDENTIAL_HOST, sshKeyHelp } from "../../../../../lib/forgeHelp";
+import { DEFAULT_CREDENTIAL_HOST, sshKeyHelp } from "@/lib/forgeHelp";
 import { DownloadIcon, ExternalIcon, KeyIcon, LockIcon, TerminalIcon, linkCls } from "./ui";
 
 const GCM_URL = "https://github.com/git-ecosystem/git-credential-manager#git-credential-manager";

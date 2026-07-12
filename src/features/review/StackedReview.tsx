@@ -4,13 +4,13 @@
 
 import { useEffect, useRef, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- local read-only multi-file review fetch, disposable probe (architecture-rules-react.md §1)
-import { api, type FileChange } from "../../lib/api";
-import { basename, dirname } from "../../lib/paths";
-import { summarizeFiles } from "../../lib/changeSummary";
-import { useLazyDiffs } from "../../hooks/useLazyDiffs";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { ChangeTypeCounts } from "../changes/ChangeTypeCounts";
+import { api, type FileChange } from "@/lib/api";
+import { basename, dirname } from "@/lib/paths";
+import { summarizeFiles } from "@/lib/changeSummary";
+import { useLazyDiffs } from "@/hooks/useLazyDiffs";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { FileIcon } from "@/components/ui/icons";
 import { BinaryDiff } from "./BinaryDiff";
 import { DiffTruncatedNotice, UnifiedDiffBody } from "./DiffBody";

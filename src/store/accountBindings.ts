@@ -4,7 +4,7 @@
 // **PR API** talks as (not a git operation), in the pre-GL-129 v2 shape that
 // released builds already wrote. No Zustand, no IPC.
 
-import type { GithubAccountRef } from "../lib/api";
+import type { GithubAccountRef } from "@/lib/api";
 
 export interface RepoAccountBindingV2 extends GithubAccountRef {
   version: 2;

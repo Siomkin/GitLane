@@ -3,9 +3,9 @@
 // the credential-helper/GCM context, and the SSH key pages for ssh remotes. No
 // React, no IPC.
 
-import type { ForgeAuthProvider } from "../../lib/api";
-import { sshKeyHelp, type SshKeyHelp } from "../../lib/forgeHelp";
-import { detectRemoteUrl, forgeAuthProviderFor, providerLabel } from "../../lib/remotes";
+import type { ForgeAuthProvider } from "@/lib/api";
+import { sshKeyHelp, type SshKeyHelp } from "@/lib/forgeHelp";
+import { detectRemoteUrl, forgeAuthProviderFor, providerLabel } from "@/lib/remotes";
 import { cloneProviderFor } from "./flows/cloneAuth";
 
 export interface AuthRecovery {

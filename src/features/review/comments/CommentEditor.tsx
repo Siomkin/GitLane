@@ -3,7 +3,7 @@
 // under the code, matching the diff body's left rail.
 
 import { useEffect, useRef } from "react";
-import { modEnter } from "../../../lib/platform";
+import { modEnter } from "@/lib/platform";
 import { MessageSquareIcon } from "@/components/ui/icons";
 import type { LineCommentsController } from "./useLineComments";
 

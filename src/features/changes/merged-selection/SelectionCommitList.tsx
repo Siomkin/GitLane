@@ -1,4 +1,4 @@
-import { initials } from "../../../lib/ui";
+import { initials } from "@/lib/ui";
 import { relativeCommitDate, type SelectionCommitRow } from "./mergedSelection";
 
 /** Upper bound on rendered commit rows. A shift-range can select thousands of

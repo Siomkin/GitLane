@@ -3,10 +3,10 @@
 // explicit "PRs enabled" marker that non-GitHub providers never show, and a
 // Sign out action (`gh auth logout` for exactly this account).
 
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { useAccounts, type Account } from "../../../../store/accounts";
-import { useUi } from "../../../../store/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useAccounts, type Account } from "@/store/accounts";
+import { useUi } from "@/store/ui";
 
 export function ConnectedAccountCard({ account }: { account: Account }) {
   const signOutGithub = useAccounts((s) => s.signOutGithub);

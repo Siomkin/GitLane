@@ -8,7 +8,7 @@
 // the real CLI) and leave the post-write reload + repo `refresh` to the caller,
 // which generation-guards them against a repo switch landing mid-await.
 
-import { api } from "../lib/api";
+import { api } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
 

@@ -1,4 +1,4 @@
-import { TreeIcon } from "../../../components/ui/icons";
+import { TreeIcon } from "@/components/ui/icons";
 import type { RefPillIcon } from "./refPillModel";
 
 /** The ref-pill glyphs, keyed by the model's icon discriminant. Shared by

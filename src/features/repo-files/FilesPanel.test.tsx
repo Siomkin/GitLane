@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { FilesPanel } from "./FilesPanel";
 
 const invokeMock = vi.hoisted(() => vi.fn());

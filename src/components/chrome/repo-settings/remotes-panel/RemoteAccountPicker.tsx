@@ -1,7 +1,7 @@
-import type { ForgeAuthStatus } from "../../../../lib/api";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { useAccounts } from "../../../../store/accounts";
+import type { ForgeAuthStatus } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useAccounts } from "@/store/accounts";
 import { remoteAccountPickerModel, type PickerAccount } from "./remoteAccountOptions";
 
 /** Sentinel option value for "no bound account" — the select needs a string. */

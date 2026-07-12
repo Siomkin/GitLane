@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import type { RemoteInfo } from "../../../../lib/api";
-import { CloudIcon, GitHubIcon, GitLabIcon, TrashIcon } from "../../../ui/icons";
-import { detectRemoteUrl, prAbbr, prNoun, providerSupportsPrs, validateRemoteUrl } from "../../../../lib/remotes";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import type { RemoteInfo } from "@/lib/api";
+import { CloudIcon, GitHubIcon, GitLabIcon, TrashIcon } from "@/components/ui/icons";
+import { detectRemoteUrl, prAbbr, prNoun, providerSupportsPrs, validateRemoteUrl } from "@/lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
-import type { ForgeAuthStatus } from "../../../../lib/api";
+import type { ForgeAuthStatus } from "@/lib/api";
 import { RemoteUrlField } from "./RemoteUrlField";
 import { RemoteValidityLine } from "./RemoteValidityLine";
 

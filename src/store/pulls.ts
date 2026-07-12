@@ -15,8 +15,8 @@ import {
   type PrStateAction,
   type ReviewAction,
   type ReviewThread,
-} from "../lib/api";
-import { detailToPr, summaryToPr, uiCommits, type PullRequest } from "../lib/prs";
+} from "@/lib/api";
+import { detailToPr, summaryToPr, uiCommits, type PullRequest } from "@/lib/prs";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import {

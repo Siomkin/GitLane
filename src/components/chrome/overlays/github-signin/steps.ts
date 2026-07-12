@@ -2,7 +2,7 @@
 // ids → the fixed display rows. Status derivation lives in the shared `../progress`
 // primitive; this file owns only the sign-in event map and labels.
 
-import { stepIndexIn, stepStatus, type StepStatus } from "../progress";
+import { stepIndexIn, stepStatus, type StepStatus } from "@/components/chrome/overlays/progress";
 
 /** Display rows, in order. `reached` starts at -1 (every row pending — the code
  * box shows its own "requesting…" spinner); each backend step advances to the

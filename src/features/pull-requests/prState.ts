@@ -2,7 +2,7 @@
 // returns the label + Tailwind class strings the header and Info stat-line share.
 // Open reads as accent/green, merged as purple, closed as rose — the class-based
 // palette that replaced the old per-state hex map.
-import type { PrState, PullRequest } from "../../lib/prs";
+import type { PrState, PullRequest } from "@/lib/prs";
 
 const STATE_DOT: Record<PrState, string> = {
   open: "bg-emerald-500 dark:bg-emerald-400",

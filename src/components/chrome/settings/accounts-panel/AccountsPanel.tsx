@@ -5,13 +5,13 @@
 // connecting an account never touches `user.name`/`user.email`.
 
 import { useEffect, useState } from "react";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { pullRequestLabel, supportsPullRequests, supportsPullRequestsViaForgeAuth } from "../../../../lib/forgeHelp";
-import { useAccounts } from "../../../../store/accounts";
-import { useRepo } from "../../../../store/repo";
-import { useUi } from "../../../../store/ui";
-import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor, type RemoteProvider } from "../../../../lib/remotes";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { pullRequestLabel, supportsPullRequests, supportsPullRequestsViaForgeAuth } from "@/lib/forgeHelp";
+import { useAccounts } from "@/store/accounts";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor, type RemoteProvider } from "@/lib/remotes";
 import { PROVIDERS, VISIBLE_PROVIDER_KEYS, type ProviderKey } from "./providers";
 import { ConnectedAccountCard } from "./ConnectedAccountCard";
 import { ConnectedForgeCard } from "./ConnectedForgeCard";

@@ -2,16 +2,16 @@
 // toggle, status, counts, stage/unstage checkbox) plus the lazily-loaded diff
 // body. Presentational — all state and dispatch come in as props (GL-174).
 
-import type { FileChange, FileDiff, WorkingChanges } from "../../../lib/api";
-import { fileWriteGuard } from "../../../lib/advancedRepoState";
-import { cn } from "../../../lib/cn";
-import { basename, dirname } from "../../../lib/paths";
-import type { ChangeSource } from "../../../store/repo";
+import type { FileChange, FileDiff, WorkingChanges } from "@/lib/api";
+import { fileWriteGuard } from "@/lib/advancedRepoState";
+import { cn } from "@/lib/cn";
+import { basename, dirname } from "@/lib/paths";
+import type { ChangeSource } from "@/store/repo";
 import { FileIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
-import { UnifiedDiffBody } from "../../review/DiffBody";
-import { BinaryDiff } from "../../review/BinaryDiff";
+import { UnifiedDiffBody } from "@/features/review/DiffBody";
+import { BinaryDiff } from "@/features/review/BinaryDiff";
 import { workSurface } from "./changesReviewModel";
 
 export function ReviewFileSection({

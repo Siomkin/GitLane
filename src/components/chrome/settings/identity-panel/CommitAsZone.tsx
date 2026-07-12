@@ -5,15 +5,15 @@
 
 import { useState } from "react";
 
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { useRepo } from "../../../../store/repo";
-import { useAccounts } from "../../../../store/accounts";
-import { appliedCommitSource, useIdentities } from "../../../../store/identities";
-import { selectCommitSource } from "../../../../lib/identities";
-import { profileInitials, signingLabel } from "../../../../lib/profiles";
-import { useUi } from "../../../../store/ui";
-import { ArrowUpRightIcon, GitBranchIcon, UserIcon } from "../../../ui/icons";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useRepo } from "@/store/repo";
+import { useAccounts } from "@/store/accounts";
+import { appliedCommitSource, useIdentities } from "@/store/identities";
+import { selectCommitSource } from "@/lib/identities";
+import { profileInitials, signingLabel } from "@/lib/profiles";
+import { useUi } from "@/store/ui";
+import { ArrowUpRightIcon, GitBranchIcon, UserIcon } from "@/components/ui/icons";
 import { Badge, HintBadges, ProfileChoiceRow } from "./identityChoices";
 
 export function CommitAsZone() {

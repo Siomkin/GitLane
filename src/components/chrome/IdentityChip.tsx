@@ -7,17 +7,17 @@
 // Bitbucket (GL-141).
 
 import { useEffect, useRef, useState } from "react";
-import { ForgeKind } from "../../lib/api";
-import { useDismiss } from "../../hooks/useDismiss";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { useAccounts } from "../../store/accounts";
-import { appliedCommitSource, useIdentities } from "../../store/identities";
-import { selectCommitSource } from "../../lib/identities";
-import { profileInitials } from "../../lib/profiles";
-import { accountMatchesPrRemote } from "../../lib/prRemote";
-import { BitbucketIcon, GitBranchIcon, GitLabIcon } from "../ui/icons";
-import { repoLabel } from "../../lib/paths";
+import { ForgeKind } from "@/lib/api";
+import { useDismiss } from "@/hooks/useDismiss";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { useAccounts } from "@/store/accounts";
+import { appliedCommitSource, useIdentities } from "@/store/identities";
+import { selectCommitSource } from "@/lib/identities";
+import { profileInitials } from "@/lib/profiles";
+import { accountMatchesPrRemote } from "@/lib/prRemote";
+import { BitbucketIcon, GitBranchIcon, GitLabIcon } from "@/components/ui/icons";
+import { repoLabel } from "@/lib/paths";
 
 export function IdentityChip() {
   const summary = useRepo((s) => s.summary);

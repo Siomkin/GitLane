@@ -9,9 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import type { FileChange, FileDiff, WorkingChanges } from "../../../lib/api";
-import { useRepo } from "../../../store/repo";
-import { emptyChanges } from "../../../store/repoTypes";
+import type { FileChange, FileDiff, WorkingChanges } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { emptyChanges } from "@/store/repoTypes";
 import { ChangesWorkspace } from "./ChangesWorkspace";
 
 const file = (path: string, add = 1, del = 0): FileChange => ({

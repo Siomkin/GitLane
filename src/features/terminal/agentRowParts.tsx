@@ -3,8 +3,8 @@
 // compact `AgentRowView` and the expanded `AgentRowEditor` reuse these so the
 // two states stay pixel-consistent. Pure props in, callbacks out.
 
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 /** Six-dot reorder grip. In the compact row it reveals on hover *or keyboard
  *  focus* (`revealOnHover`) so tabbing never lands on an invisible control; in

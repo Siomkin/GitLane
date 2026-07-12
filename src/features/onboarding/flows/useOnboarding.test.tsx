@@ -10,11 +10,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openDialogMock }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn().mockResolvedValue(() => {}) }));
 
 import { useOnboarding } from "./useOnboarding";
-import { useAccounts } from "../../../store/accounts";
-import { writeForgeCredentials } from "../../../store/accountsStorage";
-import { useRepo } from "../../../store/repo";
-import type { RecentRepo } from "../../../store/repoSession";
-import type { ForgeAuthStatus } from "../../../lib/api";
+import { useAccounts } from "@/store/accounts";
+import { writeForgeCredentials } from "@/store/accountsStorage";
+import { useRepo } from "@/store/repo";
+import type { RecentRepo } from "@/store/repoSession";
+import type { ForgeAuthStatus } from "@/lib/api";
 
 const missing: RecentRepo = {
   path: "/old/gone",

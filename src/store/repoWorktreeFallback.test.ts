@@ -13,9 +13,9 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: dialogMock }));
 
 import { useRepo } from "./repo";
 import { createInitialRepoData } from "./repoTypes";
-import type { RecentStatus, RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "../lib/api";
-import { emptyAdvancedState } from "../lib/advancedRepoState";
-import type { TabInfo } from "../lib/tabs";
+import type { RecentStatus, RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "@/lib/api";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import type { TabInfo } from "@/lib/tabs";
 
 const summaryAt = (path: string, extra: Partial<RepoSummary> = {}): RepoSummary => ({
   path,

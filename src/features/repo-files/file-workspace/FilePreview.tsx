@@ -1,4 +1,4 @@
-import { Markdown } from "../../../components/ui/Markdown";
+import { Markdown } from "@/components/ui/Markdown";
 
 /** Rendered preview of a previewable file. Markdown today (reuses the shared
  * `components/ui/Markdown` renderer used for PR bodies); the single place to

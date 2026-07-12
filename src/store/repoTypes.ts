@@ -19,10 +19,10 @@ import type {
   StashEntry,
   WorkingChanges,
   WorktreeInfo,
-} from "../lib/api";
+} from "@/lib/api";
 import type { RecentRepo } from "./repoSession";
-import type { TabInfo } from "../lib/tabs";
-import { emptyAdvancedState } from "../lib/advancedRepoState";
+import type { TabInfo } from "@/lib/tabs";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
 

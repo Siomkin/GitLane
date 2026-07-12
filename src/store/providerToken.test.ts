@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { useRepo } from "./repo";
 import { pickProviderTokenForHost, useAccounts, type StoredProviderToken } from "./accounts";
 import { providerTokenKey } from "./accountsStorage";
-import { ForgeKind, type RemoteInfo, type RepoForge } from "../lib/api";
+import { ForgeKind, type RemoteInfo, type RepoForge } from "@/lib/api";
 
 const gitlabRemote: RemoteInfo = {
   name: "origin",
