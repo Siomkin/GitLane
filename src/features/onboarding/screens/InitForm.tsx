@@ -1,6 +1,7 @@
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 import { GITIGNORE_TEMPLATES, type GitignoreTemplate } from "@/features/onboarding/onboarding";
-import { ChevronDown, ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "@/features/onboarding/icons";
+import { ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "@/features/onboarding/icons";
+import { ChevronDownIcon } from "@/components/ui/icons";
 
 /** The initialize-repository form: location, folder name, initial branch, and
  * the README + .gitignore starter options. */
@@ -142,7 +143,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+              <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
             </div>
           </div>
         </div>

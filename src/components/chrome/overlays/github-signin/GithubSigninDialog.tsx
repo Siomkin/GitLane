@@ -9,7 +9,13 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
-import { CheckIcon, CloseIcon, GitHubIcon, WarningIcon } from "@/components/ui/icons";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  GitHubIcon,
+  WarningIcon,
+} from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useAccounts } from "@/store/accounts";
@@ -37,8 +43,18 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
   );
   const [host, setHost] = useState(req.host === "" ? "github.com" : req.host);
   const [copied, setCopied] = useState(false);
+  const [copiedCommand, setCopiedCommand] = useState(false);
 
   const effectiveHost = mode === "dotcom" ? "github.com" : host.trim();
+
+  // The escape hatch when the in-app flow can't finish (a gh version whose
+  // prompts we can't drive, a locked-down keychain, an odd shell env): `gh` owns
+  // the credentials either way, so a plain terminal login lands in exactly the
+  // same place and GitLane picks the account up on the next accounts refresh.
+  const manualCommand =
+    effectiveHost && effectiveHost !== "github.com"
+      ? `gh auth login --hostname ${effectiveHost} --web`
+      : "gh auth login --web";
 
   const close = () => {
     if (run.phase === "running") run.cancel();
@@ -66,6 +82,16 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       setTimeout(() => setCopied(false), 1400);
     } catch {
       /* clipboard unavailable */
+    }
+  };
+
+  const copyCommand = async () => {
+    try {
+      await navigator.clipboard?.writeText(manualCommand);
+      setCopiedCommand(true);
+      setTimeout(() => setCopiedCommand(false), 1400);
+    } catch {
+      /* clipboard unavailable — the command is shown for manual copy */
     }
   };
 
@@ -135,19 +161,32 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             </div>
             <div className="mt-4 flex items-center gap-2 text-[12.5px] text-neutral-500 dark:text-neutral-400">
               <span className="shrink-0">Host</span>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value as "dotcom" | "enterprise")}
-                aria-label="GitHub host"
-                className="min-w-0 flex-1 rounded-md border border-black/10 bg-transparent px-1.5 py-1.5 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"
-              >
-                <option value="dotcom" className="dark:bg-neutral-800">
-                  GitHub.com
-                </option>
-                <option value="enterprise" className="dark:bg-neutral-800">
-                  GitHub Enterprise…
-                </option>
-              </select>
+              {/* `appearance-none` + an opaque background is load-bearing, not
+                  cosmetic: left native, WebKitGTK paints the control with the GTK
+                  theme's own chrome and colours, which ignores `bg-transparent`
+                  and renders a light widget (with washed-out text) inside the dark
+                  dialog. Stripping the native appearance lets our own styling —
+                  and the theme — actually apply. The chevron replaces the one the
+                  native widget drew for us. */}
+              <div className="relative min-w-0 flex-1">
+                <select
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as "dotcom" | "enterprise")}
+                  aria-label="GitHub host"
+                  className={cn(
+                    "h-9 w-full appearance-none rounded-md border border-black/10 bg-white pl-2.5 pr-7 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200",
+                    focusRing,
+                  )}
+                >
+                  <option value="dotcom" className="dark:bg-neutral-800">
+                    GitHub.com
+                  </option>
+                  <option value="enterprise" className="dark:bg-neutral-800">
+                    GitHub Enterprise…
+                  </option>
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+              </div>
             </div>
             {mode === "enterprise" && (
               <input
@@ -155,7 +194,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                 onChange={(e) => setHost(e.target.value)}
                 placeholder="github.your-company.com"
                 aria-label="Enterprise host"
-                className="mt-2 h-9 w-full rounded-md border border-black/10 bg-transparent px-2.5 font-mono text-[12.5px] text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"
+                className="mt-2 h-9 w-full rounded-md border border-black/10 bg-white px-2.5 font-mono text-[12.5px] text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200"
               />
             )}
             <button
@@ -303,6 +342,34 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             <div className="mt-2 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-neutral-400">
               {run.message}
             </div>
+
+            <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] px-3.5 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+              <div className="text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+                You can also sign in from a terminal — GitLane picks the account up from{" "}
+                <span className="rounded-md bg-black/[0.05] px-1.5 py-0.5 font-mono text-[11.5px] text-neutral-700 dark:bg-white/[0.07] dark:text-neutral-200">
+                  gh
+                </span>{" "}
+                once it’s done.
+              </div>
+              <div className="mt-2.5 flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-lg border border-black/10 bg-white/60 px-2.5 py-1.5 font-mono text-[11.5px] text-neutral-700 dark:border-white/10 dark:bg-black/20 dark:text-neutral-200">
+                  {manualCommand}
+                </code>
+                <button
+                  type="button"
+                  onClick={copyCommand}
+                  aria-label="Copy sign-in command"
+                  className={cn(
+                    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-black/10 bg-black/[0.03] px-2.5 text-[12px] font-semibold text-neutral-700 hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.05] dark:text-neutral-200 dark:hover:bg-white/10",
+                    focusRing,
+                  )}
+                >
+                  {copiedCommand ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
+                  {copiedCommand ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+
             <div className="mt-5 flex gap-2.5">
               <button
                 type="button"

@@ -226,6 +226,42 @@ describe("GithubSigninDialog", () => {
     expect(screen.queryByRole("button", { name: "Use for this repo" })).toBeNull();
   });
 
+  it("a failure offers the terminal fallback, copyable and scoped to the host", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    const signin = arm();
+    openDialog();
+    render(<GithubSigninDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+
+    await act(async () => signin.reject(new Error("gh: could not prompt")));
+    await waitFor(() => expect(screen.getByText("Sign-in didn’t finish")).toBeInTheDocument());
+
+    // The escape hatch: the exact command to run, ready to paste.
+    expect(screen.getByText("gh auth login --web")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy sign-in command" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("gh auth login --web"));
+    // Retrying is still the primary action.
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+
+  it("the fallback command carries --hostname for an enterprise host", async () => {
+    const signin = arm();
+    useUi.setState({ githubSignin: { host: "github.acme.com" } });
+    render(<GithubSigninDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+
+    await act(async () => signin.reject(new Error("boom")));
+    await waitFor(() =>
+      expect(
+        screen.getByText("gh auth login --hostname github.acme.com --web"),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it("closing from inside Settings closes only the sign-in dialog", () => {
     arm();
     useUi.setState({ settingsOpen: true, githubSignin: { host: "github.com" } });
