@@ -76,6 +76,7 @@ function CreatePrDialogBody() {
           <span className="font-mono font-semibold text-[color:var(--accent)]">{head || "?"}</span>
           <span>→</span>
           <select
+            aria-label="Base branch"
             value={base}
             onChange={(e) => setBase(e.target.value)}
             className="rounded-md border border-black/10 bg-transparent px-1.5 py-0.5 font-mono text-[12px] text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"

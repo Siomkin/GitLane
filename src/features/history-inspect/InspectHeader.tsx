@@ -54,6 +54,7 @@ export function InspectHeader({
           <button type="button"
             onClick={onCopyPath}
             title="Copy path"
+            aria-label="Copy path"
             className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5">
@@ -76,6 +77,8 @@ export function InspectHeader({
         )}
         <button type="button"
           onClick={onBack}
+          title="Close"
+          aria-label="Close"
           className="grid h-7 w-7 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5">

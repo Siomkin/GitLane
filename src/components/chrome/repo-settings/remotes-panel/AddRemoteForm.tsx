@@ -73,9 +73,9 @@ export const AddRemoteForm = ({
             }`}
           />
         </label>
-        <label className="block">
+        <label className="block" htmlFor="add-remote-url">
           <span className={LABEL}>URL</span>
-          <RemoteUrlField value={url} onChange={setUrl} invalid={urlValidity.level === "bad"} ariaLabel="Remote URL" />
+          <RemoteUrlField id="add-remote-url" value={url} onChange={setUrl} invalid={urlValidity.level === "bad"} ariaLabel="Remote URL" />
         </label>
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-3">

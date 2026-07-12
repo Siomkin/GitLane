@@ -82,6 +82,11 @@ export function BlameView() {
               return (
                 <div
                   key={line.lineNo}
+                  // Click-only by design: nearly every blame line carries an oid,
+                  // so making each a tab stop would flood the tab order in a large
+                  // (non-virtualised) blame. Keyboard selection here needs a
+                  // roving-tabindex / arrow-navigation design — tracked as a
+                  // follow-up; react-doctor's static-element warning is accepted.
                   onClick={() => line.oid && selectBlameLine(line.oid)}
                   style={{ borderColor: line.oid ? oidColor(line.oid) : "transparent" }}
                   className={

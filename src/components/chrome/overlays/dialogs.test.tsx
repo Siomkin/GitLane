@@ -44,6 +44,18 @@ describe("CreateBranchDialog", () => {
     expect(screen.getByText("feature/base")).toBeInTheDocument();
   });
 
+  it("exposes a labelled dialog and traps Tab focus inside it", () => {
+    openDialog("main");
+    render(<CreateBranchDialog />);
+    expect(screen.getByRole("dialog", { name: "Create branch" })).toBeInTheDocument();
+    // With an empty name the Create button is disabled, so Cancel is the last
+    // focusable — Tab from it wraps back to the (autofocused) name input.
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+    fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+    expect(screen.getByPlaceholderText("feature/my-branch")).toHaveFocus();
+  });
+
   it("submits the trimmed name on Enter and closes first", async () => {
     const createBranchAt = vi.fn().mockResolvedValue("Created");
     useRepo.setState({ createBranchAt });

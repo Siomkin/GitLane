@@ -26,9 +26,24 @@ export function ColumnHandle({ left, onResize }: { left: number; onResize: (widt
   };
   return (
     <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the graph column"
+      tabIndex={0}
       onMouseDown={onMouseDown}
+      onKeyDown={(e) => {
+        // Keyboard resize: arrows nudge by 16px (Shift for a coarser 48px step).
+        const step = e.shiftKey ? 48 : 16;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          onResize(left - step);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          onResize(left + step);
+        }
+      }}
       title="Drag to resize the graph column"
-      className="group absolute inset-y-0 z-20 w-2.5 cursor-col-resize"
+      className="group absolute inset-y-0 z-20 w-2.5 cursor-col-resize outline-none focus-visible:bg-[color:var(--accent)]/40"
       style={{ left, transform: "translateX(-50%)" }}
     >
       <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent group-hover:bg-[color:var(--accent)]/40" />

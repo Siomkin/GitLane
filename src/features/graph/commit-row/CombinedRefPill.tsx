@@ -50,6 +50,7 @@ export function CombinedRefPill({
             onToggle();
           }}
           title="Combine local + remote"
+          aria-label="Combine local + remote"
           className="grid h-[22px] w-[18px] shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/10"
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3.5 w-3.5">
@@ -69,12 +70,22 @@ export function CombinedRefPill({
   return (
     <span
       {...dndProps}
-      className={model.className}
+      role="button"
+      tabIndex={0}
+      aria-label={model.title}
+      className={cn(model.className, "outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]")}
       style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
       title={model.title}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle();
+        }
       }}
       onContextMenu={(e) => {
         e.preventDefault();

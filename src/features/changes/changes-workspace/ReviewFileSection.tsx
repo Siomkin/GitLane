@@ -37,10 +37,22 @@ export function ReviewFileSection({
   const disabledReason = fileWriteGuard(file, changes);
   return (
     <section className="border-b border-black/5 dark:border-white/5">
-      <button
-        type="button"
-        className="flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5"
+      {/* role="button" div (not a real <button>) so the stage/unstage control
+          below can be a real nested <button> without invalid button-in-button
+          nesting — the same pattern as WorktreeRow / CommitRow. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "Collapse" : "Expand"} ${file.path}`}
+        className="flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 cursor-pointer text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
         onClick={onHeader}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onHeader();
+          }
+        }}
       >
         <span className="w-3 flex-none text-[10px] text-neutral-400">{expanded ? "▾" : "▸"}</span>
         <span className="text-[color:var(--accent)]">
@@ -57,7 +69,9 @@ export function ReviewFileSection({
             {file.advanced.message}
           </span>
         )}
-        <span
+        <button
+          type="button"
+          disabled={!!disabledReason}
           className={cn(
             "grid h-[18px] w-[18px] flex-none place-items-center rounded-[5px] border text-[12px] font-extrabold",
             !staged && "border-black/20 dark:border-white/20",
@@ -72,11 +86,13 @@ export function ReviewFileSection({
             event.stopPropagation();
             if (!disabledReason) onToggle();
           }}
+          onKeyDown={(e) => e.stopPropagation()}
           title={disabledReason ?? (staged ? "Unstage file" : "Stage file")}
+          aria-label={disabledReason ?? (staged ? `Unstage ${file.path}` : `Stage ${file.path}`)}
         >
           ✓
-        </span>
-      </button>
+        </button>
+      </div>
       {expanded && (
         <div className="bg-white dark:bg-neutral-800">
           {loading ? (

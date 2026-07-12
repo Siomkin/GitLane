@@ -140,6 +140,7 @@ const Pane = ({
                 <button type="button"
                   onClick={() => onSetBlock(ln.regionIdx, side, !ln.blockAll)}
                   title="Select whole conflict block"
+                  aria-label="Select whole conflict block"
                   className={cn(
                     "absolute left-1.5 top-1/2 -translate-y-1/2",
                     box(side, ln.blockAll, ln.blockSome),
@@ -154,6 +155,8 @@ const Pane = ({
               {ln.conflict && (
                 <button type="button"
                   onClick={() => onToggleLine(ln.regionIdx, side, ln.lineIdx)}
+                  title="Toggle line selection"
+                  aria-label="Toggle line selection"
                   className={box(side, ln.picked)}
                 >
                   {ln.picked ? <CheckIcon /> : null}
@@ -382,6 +385,7 @@ export const SplitConflict = ({
                     <button type="button"
                       onClick={() => onToggleLine(ln.regionIdx, ln.side, ln.lineIdx)}
                       title="Remove from output"
+                      aria-label="Remove from output"
                       className={box(ln.side, true)}
                     >
                       <CheckIcon />

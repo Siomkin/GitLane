@@ -10,6 +10,7 @@ import { useRef } from "react";
 import { cn } from "../../lib/cn";
 import { focusRing } from "../../lib/ui";
 import { useDismiss } from "../../hooks/useDismiss";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { useUi, type SettingsTab } from "../../store/ui";
 import { useTerminalAgents } from "../../store/terminalAgents";
 import { useUpdates } from "../../store/updates";
@@ -45,11 +46,22 @@ export function SettingsModal() {
   // one is open so its Escape / backdrop click doesn't also tear down Settings
   // (which would drop the terminal editor's unsaved draft).
   const overlayBlocking = useUi(
-    (s) => s.confirm !== null || s.prompt !== null || s.githubSignin !== null,
+    (s) =>
+      s.confirm !== null ||
+      s.prompt !== null ||
+      s.githubSignin !== null ||
+      // Provider OAuth is launched from the Accounts panel *inside* Settings, so
+      // it must suspend Settings' dismiss AND focus trap too — otherwise the two
+      // document-level traps fight and Escape/backdrop tears down Settings under
+      // the OAuth dialog.
+      s.providerOauthSignin !== null,
   );
   const dialogRef = useRef<HTMLDivElement>(null);
   // Escape + outside-mousedown (backdrop) dismissal in one place. No-ops while closed.
   useDismiss(open && !overlayBlocking, close, dialogRef);
+  // Trap Tab focus in the panel — but yield while a nested confirm/prompt/sign-in
+  // overlay is up so that overlay's own trap owns focus.
+  useFocusTrap(open && !overlayBlocking, dialogRef);
   if (!open) return null;
 
   const groups = NAV.reduce<Record<string, typeof NAV>>((acc, item) => {
@@ -64,7 +76,8 @@ export function SettingsModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby={TITLE_ID}
-        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        tabIndex={-1}
+        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800"
       >
         <nav className="flex w-[232px] flex-none flex-col border-r border-black/10 bg-black/[0.03] px-3 py-[18px] dark:border-white/10 dark:bg-white/[0.04]">
           <div className="flex items-center gap-[11px] px-2 pb-4">

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import type { BranchSyncState } from "@/lib/api";
 import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
 import { useUi } from "@/store/ui";
@@ -53,8 +54,12 @@ export function BranchRow({
     <div
       {...tip}
       {...dndProps}
+      role="button"
+      tabIndex={0}
+      aria-label={isCurrent ? `Current ${kind} ${name}` : `Reveal ${kind} ${name}`}
       className={cn(
         "flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] transition-opacity",
+        focusRing,
         isCurrent
           ? "bg-[var(--accent-soft)] font-medium text-[color:var(--accent)]"
           : kind === "remote"
@@ -64,6 +69,12 @@ export function BranchRow({
       )}
       style={{ boxShadow: isDropTarget ? "inset 0 0 0 1.5px rgba(46,158,98,0.7)" : undefined }}
       onClick={() => navigate(oid)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          navigate(oid);
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         // Tags are immutable pointers — they get their own menu (checkout /

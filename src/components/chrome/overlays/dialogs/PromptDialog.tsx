@@ -89,6 +89,7 @@ export function PromptDialog() {
   return (
     <ModalFrame
       z="z-[80]"
+      label={prompt.title}
       panelClassName={prompt.multiline ? "w-[min(860px,calc(100vw-56px))]" : "w-[420px]"}
       onDismiss={closePrompt}
     >

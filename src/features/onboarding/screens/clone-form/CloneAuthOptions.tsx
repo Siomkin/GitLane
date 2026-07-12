@@ -11,6 +11,7 @@ export const CloneAuthOptions = ({ ob }: { ob: OnboardingApi }) => {
     <div className="mt-2.5 rounded-xl border border-black/[0.07] bg-black/[0.015] p-3.5 dark:border-white/[0.08] dark:bg-white/[0.025]">
       {ob.cloneForm.accounts.length > 0 && (
         <select
+          aria-label="Authentication account"
           value={ob.cloneForm.accountId ?? ""}
           onChange={(e) => ob.cloneForm.setAccountId(e.target.value || null)}
           className="mb-2 h-9 w-full rounded-lg border border-black/10 bg-white px-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"

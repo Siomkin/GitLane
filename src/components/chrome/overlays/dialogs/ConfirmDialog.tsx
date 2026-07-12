@@ -34,7 +34,7 @@ export function ConfirmDialog() {
   };
 
   return (
-    <ModalFrame z="z-[80]" onDismiss={closeConfirm}>
+    <ModalFrame z="z-[80]" label={confirm.title} onDismiss={closeConfirm}>
       <DialogTitle>{confirm.title}</DialogTitle>
       {confirm.message && (
         <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">{confirm.message}</div>

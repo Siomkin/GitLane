@@ -56,6 +56,7 @@ export function PrMeta({ pr }: { pr: PullRequest }) {
     <button type="button"
       onClick={() => setExpanded((e) => !e)}
       title={expanded ? "Show less" : "Show more"}
+      aria-label={expanded ? "Show less" : "Show more"}
       className={cn("ml-auto self-center", metaGear)}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")}>
@@ -192,7 +193,7 @@ function PlannedPicker({ title }: { title: string }) {
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} title={title} className={metaGear}>
+      <button type="button" onClick={() => setOpen((o) => !o)} title={title} aria-label={title} className={metaGear}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
           <path d="M12 5v14M5 12h14" />
         </svg>

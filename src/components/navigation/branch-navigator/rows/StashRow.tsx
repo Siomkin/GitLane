@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import type { StashEntry } from "@/lib/api";
 import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
@@ -26,8 +27,17 @@ export function StashRow({
   return (
     <div
       {...tip}
-      className={cn(ROW_CLASS, dimmed && DIM_CLASS)}
+      role="button"
+      tabIndex={0}
+      aria-label={`Reveal stash ${stash.message}`}
+      className={cn(ROW_CLASS, focusRing, dimmed && DIM_CLASS)}
       onClick={() => navigate(stash.oid)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          navigate(stash.oid);
+        }
+      }}
       onContextMenu={(e) => {
         e.preventDefault();
         openStashMenu({ x: e.clientX, y: e.clientY, oid: stash.oid, message: stash.message });

@@ -38,7 +38,7 @@ function CreateBranchDialogBody() {
   };
 
   return (
-    <ModalFrame z="z-[60]" onDismiss={() => setOpen(false)}>
+    <ModalFrame z="z-[60]" label="Create branch" onDismiss={() => setOpen(false)}>
       <DialogTitle>Create branch</DialogTitle>
       <div className="mt-1 text-[12.5px] text-neutral-400">
         Branches from <span className="font-semibold text-[color:var(--accent)]">{base}</span>
