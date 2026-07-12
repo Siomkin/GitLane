@@ -157,9 +157,11 @@ export function createRepoLifecycleActions(
         fileDiff: null,
         commitFiles: [],
         // Inspection slices are repo-bound; a switch must not leave an old repo's
-        // history/compare view mounted against the new (or null) summary.
+        // history/compare/files view mounted against the new (or null) summary.
         fileHistory: null,
         compare: null,
+        repoFiles: null,
+        fileView: null,
         selectionDiff: null,
         graphLimit: INITIAL_GRAPH_LIMIT,
         loadingMoreHistory: false,

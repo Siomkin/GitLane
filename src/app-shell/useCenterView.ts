@@ -11,6 +11,7 @@ export const useCenterView = (): CenterViewKey => {
   const inConflict = useRepo((state) => !!state.operation);
   const comparing = useRepo((state) => !!state.compare);
   const fileHistoryOpen = useRepo((state) => !!state.fileHistory);
+  const fileViewOpen = useRepo((state) => !!state.fileView);
   const selectedFileSource = useRepo((state) => state.selectedFile?.source ?? null);
   const leftTab = useUi((state) => state.leftTab);
   const stackedReviewOpen = useUi((state) => !!state.stackedReview);
@@ -21,6 +22,7 @@ export const useCenterView = (): CenterViewKey => {
     comparing,
     fileHistoryOpen,
     stackedReviewOpen,
+    fileViewOpen,
     changesAll,
     selectedFileSource,
   });

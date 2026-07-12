@@ -77,7 +77,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 pb-5 pt-1.5">
         <div className="flex items-center justify-between gap-2">
           <h1 className="min-w-0 truncate text-[16px] font-semibold text-neutral-800 dark:text-neutral-100">
             <span>{total} change{total === 1 ? "" : "s"} on </span>

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "../../lib/api";
 import { useRepo } from "../../store/repo";
 import { useUi } from "../../store/ui";
@@ -60,7 +60,6 @@ describe("CommitInspector", () => {
   it("renders selected stash metadata and files instead of falling back to the first graph commit", () => {
     render(<CommitInspector />);
 
-    expect(screen.getByText("stash@{2}")).toBeInTheDocument();
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.getByText("stashed.ts")).toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
@@ -82,30 +81,9 @@ describe("CommitInspector", () => {
 
     render(<CommitInspector />);
 
-    expect(screen.getByText("stash@{2}")).toBeInTheDocument();
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
-  });
-
-  it("copies the SHA when the commit pill is clicked, with inline confirmation", () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
-    useRepo.setState({
-      graph: { ...graph, commits: [commit({ id: "c1", shortId: "c1", summary: "real commit" })] },
-      stashes: [],
-      selectedCommit: "c1",
-      selectedCommits: ["c1"],
-    });
-    render(<CommitInspector />);
-
-    const pill = screen.getByRole("button", { name: "Copy SHA" });
-    expect(pill).toHaveTextContent("commit c1");
-    fireEvent.click(pill);
-    expect(writeText).toHaveBeenCalledWith("c1");
-    // Inline feedback replaces the old toast + separate button.
-    expect(screen.getByText("Copied")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Copy SHA" })).not.toBeInTheDocument();
   });
 
   it("offers a Path/Tree toggle that groups the changed files under a directory header", async () => {
@@ -139,7 +117,9 @@ describe("CommitInspector", () => {
 
     render(<CommitInspector />);
 
-    expect(screen.getByText("stash@{2}")).toBeInTheDocument();
+    // The synthesised stash's message drives the title (StashMeta path), and it
+    // does not fall back to a commit. The `stash@{n}` pill lives in the header's
+    // CommitCheckoutBar (covered in its own test).
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();

@@ -3,6 +3,7 @@
 
 import { create } from "zustand";
 import { createRepoConflictActions } from "./repoConflictActions";
+import { createRepoFilesActions } from "./repoFilesActions";
 import { createRepoLifecycleActions } from "./repoLifecycleActions";
 import { createRepoRefreshActions } from "./repoRefreshActions";
 import { createRepoRemoteActions } from "./repoRemoteActions";
@@ -35,6 +36,7 @@ export const useRepo = create<RepoState>((set, get) => ({
   ...createRepoTabActions(set, get),
   ...createRepoRefreshActions(set, get),
   ...createRepoSelectionActions(set, get),
+  ...createRepoFilesActions(set, get),
   ...createRepoWriteActions(set, get),
   ...createRepoRemoteActions(set, get),
   ...createRepoConflictActions(set, get),

@@ -12,6 +12,7 @@ import type {
   OperationKind,
   ReflogEntry,
   RemoteInfo,
+  RepoFileContent,
   RepoForge,
   RepoGraph,
   RepoSummary,
@@ -75,6 +76,24 @@ export interface FileHistoryState {
   blameRevision: string | null;
   /** SHA of the blame line the user picked (drives the blame inspector). */
   blameSelectedOid: string | null;
+}
+
+/** The repository file listing shown in the right panel's Files tab. Null until
+ * the tab first loads it; kept fresh by `refresh` while present. */
+export interface RepoFilesState {
+  /** Repo-relative paths, sorted (tracked + untracked, ignored excluded). */
+  files: string[];
+  loading: boolean;
+  error: string | null;
+}
+
+/** A repository file opened read-only in the center pane (from the Files tab). */
+export interface FileViewState {
+  /** Repo-relative path of the opened file. */
+  path: string;
+  content: RepoFileContent | null;
+  loading: boolean;
+  error: string | null;
 }
 
 /** The merged ("union") diff of a multi-commit selection (GL-68/GL-69). Present
@@ -187,6 +206,10 @@ export interface RepoState {
   fileHistory: FileHistoryState | null;
   /** The active compare surface (branch/commit/working diff), or null. */
   compare: CompareState | null;
+  /** The Files-tab repository listing, or null before its first load. */
+  repoFiles: RepoFilesState | null;
+  /** A repository file opened read-only in the center pane, or null. */
+  fileView: FileViewState | null;
   selectedFile: SelectedFile | null;
   fileDiff: FileDiff | null;
   selectedCommit: string | null;
@@ -439,6 +462,15 @@ export interface RepoState {
    * working-tree comparison, which has no second commit). */
   swapCompare: () => Promise<void>;
   closeCompare: () => void;
+  /** Load (or reload) the Files-tab repository listing. */
+  loadRepoFiles: () => Promise<void>;
+  /** Open a repository file read-only in the center pane (Files tab click). */
+  openRepoFile: (path: string) => Promise<void>;
+  /** Silently re-read the open file's content (watcher/checkout refresh) — keeps
+   * the current text visible until the new content lands; closes the viewer if
+   * the file is gone (e.g. it doesn't exist on the newly checked-out branch). */
+  reloadFileView: () => Promise<void>;
+  closeRepoFile: () => void;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;
@@ -529,6 +561,8 @@ export type RepoDataState = Pick<
   | "selectionDiff"
   | "fileHistory"
   | "compare"
+  | "repoFiles"
+  | "fileView"
   | "selectedFile"
   | "fileDiff"
   | "selectedCommit"
@@ -579,6 +613,8 @@ export function createInitialRepoData(
     selectionDiff: null,
     fileHistory: null,
     compare: null,
+    repoFiles: null,
+    fileView: null,
     selectedFile: null,
     fileDiff: null,
     selectedCommit: null,

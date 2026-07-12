@@ -11,7 +11,7 @@ import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "../lib/gitError";
 import type { ForgeAuthProvider } from "../lib/api";
-import type { LeftTab } from "../lib/ui";
+import type { LeftTab, RightTab } from "../lib/ui";
 import type { PrFilter } from "../lib/prs";
 import type { AccentColor } from "../lib/accent";
 import type { BranchDragRef, GraphDropTarget } from "../lib/graphActions";
@@ -353,6 +353,11 @@ interface UiState {
    * starts on history (see `onRepoSwitched`), so it never persists. */
   leftTab: LeftTab;
 
+  /** Which tab the right inspector panel shows: the contextual details
+   * (commit/working inspector) or the repository Files browser. Transient like
+   * `leftTab` — every repo starts on details. */
+  rightTab: RightTab;
+
   prFilter: PrFilter;
   prSelected: number | null;
   prTab: "info" | "diff" | "checks" | "commits";
@@ -498,6 +503,7 @@ interface UiState {
   closeStackedReview: () => void;
 
   setLeftTab: (tab: LeftTab) => void;
+  setRightTab: (tab: RightTab) => void;
   /** Open the changes view from the working-tree inspector: `all` picks the
    * stacked multi-file review; otherwise the single-file diff (used when
    * focusing one file from the right-panel list). */
@@ -649,6 +655,7 @@ export const useUi = create<UiState>()(
   stackedReview: null,
 
   leftTab: "history",
+  rightTab: "details",
 
   prFilter: "open",
   prSelected: null,
@@ -795,11 +802,13 @@ export const useUi = create<UiState>()(
   closeStackedReview: () => set({ stackedReview: null }),
 
   setLeftTab: (tab) => set((s) => (s.leftTab === tab ? s : { leftTab: tab })),
+  setRightTab: (tab) => set((s) => (s.rightTab === tab ? s : { rightTab: tab })),
   openChangesView: (all = false) => set({ leftTab: "changes", changesAll: all }),
   onWorkingTreeClean: () => set((s) => (s.leftTab === "changes" ? { leftTab: "history" } : s)),
   onRepoSwitched: () =>
     set({
       leftTab: "history",
+      rightTab: "details",
       changesAll: false,
       // A stacked review outranks the history tab in deriveCenterView, so a
       // leftover one would render the previous repo's oid against the new repo.

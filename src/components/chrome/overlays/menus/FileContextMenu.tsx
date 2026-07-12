@@ -1,6 +1,6 @@
 import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { basename } from "@/lib/paths";
-import { ClockIcon, CopyIcon, TrashIcon } from "@/components/ui/icons";
+import { ClockIcon, CopyIcon, FileTextIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "../shared";
@@ -12,6 +12,7 @@ export function FileContextMenu() {
   const showToast = useUi((s) => s.showToast);
   const discardFile = useRepo((s) => s.discardFile);
   const openFileHistory = useRepo((s) => s.openFileHistory);
+  const openRepoFile = useRepo((s) => s.openRepoFile);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const changes = useRepo((s) => s.changes);
   if (!menu) return null;
@@ -35,7 +36,12 @@ export function FileContextMenu() {
   // cluster so the rows don't each repeat the word + icon. The history views are
   // tucked into a History group below.
   const items: MenuItem[] = [
-    { label: "Copy", header: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
+    {
+      label: "Open file",
+      icon: <FileTextIcon className="h-4 w-4" />,
+      onClick: () => { close(); void openRepoFile(path); },
+    },
+    { label: "Copy", header: true, sep: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
     { label: "File name", onClick: () => copy(fileName, `Copied ${fileName}`) },
     { label: "Relative path", onClick: () => copy(path, "Copied relative path") },
     { label: "Full path", onClick: () => copy(fullPath, "Copied full path") },

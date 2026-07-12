@@ -70,6 +70,7 @@ export function createRepoSelectionActions(
       set((s) => ({
         compare: null,
         fileHistory: null,
+        fileView: null,
         ...(s.selectedFile?.source === "commit"
           ? { selectedFile: null, fileDiff: null, diffLoading: false }
           : {}),
@@ -103,6 +104,7 @@ export function createRepoSelectionActions(
         wipSelected: false,
         fileHistory: null,
         compare: null,
+        fileView: null,
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
@@ -146,6 +148,7 @@ export function createRepoSelectionActions(
         wipSelected: true,
         fileHistory: null,
         compare: null,
+        fileView: null,
         selectedCommit: null,
         selectedCommits: [],
         selectionAnchor: null,
@@ -171,7 +174,9 @@ export function createRepoSelectionActions(
       // An explicit selection supersedes any background reconcile in flight —
       // its result must not publish over this fresher fetch (GL-123).
       invalidateFileDiffReconciles();
-      set({ selectedFile: { path, source }, diffLoading: true, error: null });
+      // Selecting a file dismisses the standalone repo-file viewer — the diff of
+      // the chosen file takes over the center pane.
+      set({ selectedFile: { path, source }, fileView: null, diffLoading: true, error: null });
       try {
         // In a multi-commit selection a committed file's diff is the merged
         // ("union") diff across the whole selection, not the focus commit (GL-69).
@@ -236,6 +241,7 @@ export function createRepoSelectionActions(
       const fresh = () => get().summary?.path === repoPath && get().fileHistory?.path === requestPath;
       set({
         compare: null,
+        fileView: null,
         fileHistory: {
           path,
           mode,
@@ -429,6 +435,7 @@ export function createRepoSelectionActions(
       };
       set({
         fileHistory: null,
+        fileView: null,
         compare: {
           base,
           head,

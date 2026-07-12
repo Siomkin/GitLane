@@ -106,6 +106,12 @@ export function createRepoRefreshActions(
           // an external edit to it would stay stale until re-click. Refetch it
           // quietly; skip when it was just cleared as gone (GL-123).
           if (!selectedFileGone) void reconcileFileDiff(set, get, summary.path);
+          // The Files-tab listing mirrors the worktree; reload it (quietly, the
+          // old list stays visible) once it has been loaded at least once.
+          if (get().repoFiles) void get().loadRepoFiles();
+          // An open file viewer follows the worktree too — re-read it so an
+          // external edit is reflected (closes itself if the file vanished).
+          if (get().fileView) void get().reloadFileView();
           return;
         }
 
@@ -253,6 +259,11 @@ export function createRepoRefreshActions(
         // A full refresh can move branch/commit tips, so re-run any open
         // comparison (ref-to-ref as well as working-tree) to keep it truthful.
         if (get().compare) void get().refreshCompare();
+        // Keep the Files-tab listing in step with the refreshed worktree.
+        if (get().repoFiles) void get().loadRepoFiles();
+        // A full refresh follows a branch checkout (the graph moved) — re-read an
+        // open file so it shows the new branch's version, or closes if gone.
+        if (get().fileView) void get().reloadFileView();
         if (opts?.prs !== false) void usePulls.getState().loadPullRequests(false, true);
         // A non-quiet refresh held `loading`; replay anything deferred during it.
         flushPendingRefresh(get);
