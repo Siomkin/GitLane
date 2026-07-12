@@ -174,7 +174,10 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                   onChange={(e) => setMode(e.target.value as "dotcom" | "enterprise")}
                   aria-label="GitHub host"
                   className={cn(
-                    "h-9 w-full appearance-none rounded-md border border-black/10 bg-white pl-2.5 pr-7 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200",
+                    // Tailwind v4 emits only the unprefixed `appearance`, which
+                    // older WebKitGTK ignores — keep the prefixed form so the
+                    // native chrome is stripped there too.
+                    "h-9 w-full appearance-none [-webkit-appearance:none] rounded-md border border-black/10 bg-white pl-2.5 pr-7 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200",
                     focusRing,
                   )}
                 >

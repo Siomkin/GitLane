@@ -135,7 +135,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
                 aria-label=".gitignore template"
                 value={ob.initIgnore}
                 onChange={(e) => ob.setInitIgnore(e.target.value as GitignoreTemplate)}
-                className="h-8 appearance-none rounded-lg border border-black/10 bg-white pl-3 pr-7 text-[12.5px] font-medium text-neutral-600 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-300"
+                className="h-8 appearance-none [-webkit-appearance:none] rounded-lg border border-black/10 bg-white pl-3 pr-7 text-[12.5px] font-medium text-neutral-600 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-300"
               >
                 {GITIGNORE_TEMPLATES.map((tpl) => (
                   <option key={tpl} value={tpl}>
