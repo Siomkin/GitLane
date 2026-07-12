@@ -14,6 +14,7 @@ import {
   worktreeLeaf,
 } from "@/lib/worktreeHandoff";
 import { CheckIcon, CloseIcon, WarningIcon } from "@/components/ui/icons";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRepo } from "@/store/repo";
 import { useUi, type HandoffRequest } from "@/store/ui";
 import { StepRow } from "../progress";
@@ -93,6 +94,11 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
     if (phase === "done") closeRef.current?.focus();
   }, [phase]);
 
+  // Keep Tab focus inside the dialog (keyboard users can't reach the content
+  // behind it). Dismissal stays with the Escape listener + backdrop above.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, panelRef);
+
   const submit = () => {
     if (!selectedDest) return;
     setStepLabels(handoffStepLabels(req.branch, destLabel));
@@ -108,10 +114,13 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
       onClick={phase === "running" ? undefined : closeHandoff}
     >
       <div
+        ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label={`Hand off ${req.branch}`}
-        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        tabIndex={-1}
+        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
       >
         <div className="flex items-start justify-between">

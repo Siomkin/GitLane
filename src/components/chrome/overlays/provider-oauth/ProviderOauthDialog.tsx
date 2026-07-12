@@ -5,11 +5,12 @@
 // Follows the GL-106 GitHub sign-in shell and the shared step checklist. Cancel /
 // close discards the codes and stops the flow.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import {
   BitbucketIcon,
   CheckIcon,
@@ -56,6 +57,10 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.phase]);
 
+  // Trap Tab focus inside the dialog; dismissal stays with Escape + backdrop.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, panelRef);
+
   const badge =
     run.phase === "done" ? (
       <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400">
@@ -77,10 +82,13 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
       onClick={run.phase === "running" ? undefined : dismiss}
     >
       <div
+        ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label={`Sign in to ${forge.name}`}
-        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        tabIndex={-1}
+        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
       >
         <div className="flex items-start justify-between">

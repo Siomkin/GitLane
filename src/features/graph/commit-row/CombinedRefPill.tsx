@@ -70,12 +70,22 @@ export function CombinedRefPill({
   return (
     <span
       {...dndProps}
-      className={model.className}
+      role="button"
+      tabIndex={0}
+      aria-label={model.title}
+      className={cn(model.className, "outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]")}
       style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
       title={model.title}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle();
+        }
       }}
       onContextMenu={(e) => {
         e.preventDefault();

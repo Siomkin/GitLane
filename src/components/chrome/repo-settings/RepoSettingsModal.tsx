@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 import { cn } from "../../../lib/cn";
 import { focusRing } from "../../../lib/ui";
 import { useDismiss } from "../../../hooks/useDismiss";
+import { useFocusTrap } from "../../../hooks/useFocusTrap";
 import { useUi, type RepoSettingsSection } from "../../../store/ui";
 import { useRepo } from "../../../store/repo";
 import { IdentityPanel } from "../settings/identity-panel";
@@ -44,6 +45,8 @@ export function RepoSettingsModal() {
   const identityRef = useRef<HTMLDivElement>(null);
   const remotesRef = useRef<HTMLDivElement>(null);
   useDismiss(open && !overlayBlocking, close, dialogRef);
+  // Trap Tab focus in the panel — yield while a nested confirm/prompt overlay is up.
+  useFocusTrap(open && !overlayBlocking, dialogRef);
 
   // Sidebar clicks and deep links scroll to the section on the one page.
   // (Optional chaining on the method too — jsdom has no scrollIntoView.)
@@ -77,7 +80,8 @@ export function RepoSettingsModal() {
         role="dialog"
         aria-modal="true"
         aria-labelledby={TITLE_ID}
-        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-900"
+        tabIndex={-1}
+        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-900"
       >
         <h2 id={TITLE_ID} className="sr-only">
           Repository settings

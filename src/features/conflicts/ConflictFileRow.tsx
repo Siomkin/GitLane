@@ -48,9 +48,18 @@ export const ConflictFileRow = ({
   const dir = dirname(file.path);
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open conflict in ${file.path}`}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       className={cn(
-        "group relative flex h-12 cursor-pointer items-center gap-2.5 rounded-lg pl-2.5 pr-2 transition-colors",
+        "group relative flex h-12 cursor-pointer items-center gap-2.5 rounded-lg pl-2.5 pr-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
         selected ? "bg-[var(--accent-soft)]" : "hover:bg-black/5 dark:hover:bg-white/5",
       )}
     >
@@ -95,7 +104,9 @@ export const ConflictFileRow = ({
                 e.stopPropagation();
                 onAcceptOurs();
               }}
+              onKeyDown={(e) => e.stopPropagation()}
               title={`Accept ${oursSub}`}
+              aria-label={`Accept ${oursSub} for ${file.path}`}
               className="h-6 rounded-md bg-[var(--accent-soft)] px-1.5 text-[10px] font-semibold text-[color:var(--accent)] hover:brightness-95"
             >
               Ours
@@ -105,7 +116,9 @@ export const ConflictFileRow = ({
                 e.stopPropagation();
                 onAcceptTheirs();
               }}
+              onKeyDown={(e) => e.stopPropagation()}
               title={`Accept ${theirsSub}`}
+              aria-label={`Accept ${theirsSub} for ${file.path}`}
               className="h-6 rounded-md bg-[#3b7ff5]/[0.12] px-1.5 text-[10px] font-semibold text-[#3b7ff5] hover:brightness-95"
             >
               Theirs

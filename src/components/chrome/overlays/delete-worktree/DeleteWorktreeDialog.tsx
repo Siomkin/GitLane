@@ -20,6 +20,7 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRepo } from "@/store/repo";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
 import { StepRow } from "../progress";
@@ -81,6 +82,10 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
     if (phase === "done") closeRef.current?.focus();
   }, [phase]);
 
+  // Trap Tab focus inside the dialog; dismissal stays with Escape + backdrop.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, panelRef);
+
   const worktreeLeaf = basename(req.worktreePath);
 
   return (
@@ -91,10 +96,13 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
       onClick={phase === "running" ? undefined : closeDeleteWorktree}
     >
       <div
+        ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label={`Delete ${req.branch} and its worktree`}
-        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        tabIndex={-1}
+        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
       >
         <div className="flex items-start justify-between">

@@ -178,9 +178,19 @@ function PullRequestsPanel() {
             return (
               <div
                 key={pr.num}
+                role="button"
+                tabIndex={0}
+                aria-pressed={selected}
+                aria-label={`Pull request #${pr.num}: ${pr.title}`}
                 onClick={() => selectPr(pr.num)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    selectPr(pr.num);
+                  }
+                }}
                 className={cn(
-                  "cursor-pointer rounded-xl border p-3 transition-colors",
+                  "cursor-pointer rounded-xl border p-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
                   selected
                     ? "border-[color:var(--accent)] bg-[var(--accent-soft)]"
                     : "border-black/5 hover:bg-black/5 dark:border-white/5 dark:hover:bg-white/5",

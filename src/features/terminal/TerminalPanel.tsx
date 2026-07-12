@@ -66,6 +66,20 @@ export function TerminalLayer() {
       >
         {/* Top drag handle, wired to the existing height-adjust logic. */}
         <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the terminal"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 48 : 16;
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              adjustTerminalHeight(step);
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              adjustTerminalHeight(-step);
+            }
+          }}
           onMouseDown={(e) => {
             e.preventDefault();
             let lastY = e.clientY;
@@ -85,7 +99,7 @@ export function TerminalLayer() {
             document.body.style.userSelect = "none";
           }}
           title="Drag to resize"
-          className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize"
+          className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize outline-none focus-visible:bg-[color:var(--accent)]/40"
         />
 
         {/* Header bar. */}

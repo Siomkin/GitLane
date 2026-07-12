@@ -42,6 +42,24 @@ describe("BranchRow", () => {
     expect(useUi.getState().navOpen).toBe(false);
   });
 
+  it("activates from the keyboard with Enter and Space, preventing the default", () => {
+    const revealCommit = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ revealCommit });
+
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+    const row = screen.getByRole("button", { name: "Reveal local feature" });
+
+    expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
+    expect(revealCommit).toHaveBeenCalledWith("abc123");
+    expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
+    expect(revealCommit).toHaveBeenCalledTimes(2);
+  });
+
+  it("labels the checked-out branch row as current for screen readers", () => {
+    render(<BranchRow name="main" kind="local" oid="abc123" isCurrent />);
+    expect(screen.getByRole("button", { name: "Current local main" })).toBeInTheDocument();
+  });
+
   it("opens the branch context menu on right-click", () => {
     render(<BranchRow name="feature" kind="local" oid="abc123" />);
     fireEvent.contextMenu(screen.getByText("feature"));
@@ -230,6 +248,18 @@ describe("StashRow", () => {
     render(<StashRow stash={stash} />);
     fireEvent.click(screen.getByText("WIP on feature"));
 
+    expect(revealStash).toHaveBeenCalledWith("stash123");
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("reveals the stash from the keyboard with Enter, preventing the default", () => {
+    const revealStash = vi.fn();
+    useRepo.setState({ revealStash });
+
+    render(<StashRow stash={stash} />);
+    const row = screen.getByRole("button", { name: "Reveal stash WIP on feature" });
+
+    expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
     expect(revealStash).toHaveBeenCalledWith("stash123");
     expect(useUi.getState().navOpen).toBe(false);
   });

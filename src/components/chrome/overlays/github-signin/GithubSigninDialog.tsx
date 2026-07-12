@@ -4,13 +4,14 @@
 // to bind it to the open repo. Follows the GL-105 hand-off dialog shell and the
 // shared step checklist. Cancel kills the gh child; closing mid-run cancels it too.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
 import { CheckIcon, CloseIcon, GitHubIcon, WarningIcon } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUi, type GithubSigninRequest } from "@/store/ui";
@@ -53,6 +54,10 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.phase]);
 
+  // Trap Tab focus inside the dialog; dismissal stays with Escape + backdrop.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, panelRef);
+
   const copyCode = async () => {
     if (!run.code) return;
     try {
@@ -92,10 +97,13 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       onClick={run.phase === "running" ? undefined : close}
     >
       <div
+        ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
+        aria-modal="true"
         aria-label="Sign in to GitHub"
-        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800"
+        tabIndex={-1}
+        className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
       >
         <div className="flex items-start justify-between">

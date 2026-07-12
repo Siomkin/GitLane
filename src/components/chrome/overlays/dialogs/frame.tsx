@@ -1,15 +1,21 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 /** Shared modal shell for the small store-driven dialogs (create-branch /
  * confirm / prompt): the dimmed blurred backdrop, the popped panel, and the
  * dismiss wiring — a backdrop click dismisses, clicks inside the panel are
  * stopped so they never reach the backdrop. Escape handling intentionally stays
  * with each dialog (input-level vs window-level) — the frame owns only the
- * chrome. Domain-free, but scoped to overlays/ rather than components/ui. */
+ * chrome. Domain-free, but scoped to overlays/ rather than components/ui.
+ *
+ * The panel is a labelled `role="dialog"` with a focus trap (`useFocusTrap`), so
+ * keyboard users can't Tab out to the inert content behind it. A child's
+ * `autoFocus` still owns the initial focus target — the trap only cycles Tab. */
 export function ModalFrame({
   z,
   panelClassName = "w-[420px]",
+  label,
   onDismiss,
   children,
 }: {
@@ -19,18 +25,32 @@ export function ModalFrame({
   z: "z-[60]" | "z-[80]";
   /** Panel width (default the standard 420px dialog). */
   panelClassName?: string;
+  /** Accessible name for the dialog (screen readers announce it on open). */
+  label: string;
   onDismiss: () => void;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(true, panelRef);
   return (
     <div
       className={cn("fixed inset-0 grid place-items-center bg-black/30 backdrop-blur-sm", z)}
+      // Backdrop click is a redundant dismiss convenience; Escape and the
+      // dialog's own controls are the keyboard/AT paths, and the focus trap
+      // keeps focus off this element. (react-doctor no-static-element-interactions
+      // fires here; the native <dialog> ::backdrop that would silence it is
+      // unavailable — jsdom can't showModal — so this stays a documented residual.)
       onClick={onDismiss}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] dark:border-white/10 dark:bg-neutral-800",
+          "rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800",
           panelClassName,
         )}
         style={{ animation: "gp-pop .14s ease-out" }}
