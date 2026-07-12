@@ -2,11 +2,11 @@
 // git credential prompts. GCM/helper and SSH are still valid transport-only
 // fallbacks for users who do not install gh or do not need PRs in GitLane.
 
-import { cn } from "../../../../../lib/cn";
-import { focusRing } from "../../../../../lib/ui";
-import { openExternalUrl } from "../../../../../lib/openExternal";
-import { useUi } from "../../../../../store/ui";
-import { CopyCommand } from "../CopyCommand";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { openExternalUrl } from "@/lib/openExternal";
+import { useUi } from "@/store/ui";
+import { CopyCommand } from "@/components/chrome/settings/accounts-panel/CopyCommand";
 import { CredentialEntryForm } from "./credential-entry";
 import { MethodCard } from "./MethodCard";
 import { ExternalIcon, KeyIcon, LockIcon, TerminalIcon, linkCls } from "./ui";

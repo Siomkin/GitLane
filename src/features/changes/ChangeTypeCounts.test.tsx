@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { ChangeSummary } from "../../lib/changeSummary";
+import type { ChangeSummary } from "@/lib/changeSummary";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 
 const summary = (over: Partial<ChangeSummary> = {}): ChangeSummary => ({

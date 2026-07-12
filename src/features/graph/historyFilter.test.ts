@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { CommitNode, RefLabel } from "../../lib/api";
+import type { CommitNode, RefLabel } from "@/lib/api";
 import { commitMatches, isFiltering, matchingIds } from "./historyFilter";
 
 let seq = 0;

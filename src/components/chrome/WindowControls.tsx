@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CloseIcon, WindowMaximizeIcon, WindowMinimizeIcon, WindowRestoreIcon } from "../ui/icons";
+import { CloseIcon, WindowMaximizeIcon, WindowMinimizeIcon, WindowRestoreIcon } from "@/components/ui/icons";
 
 // getCurrentWindow() reads window.__TAURI_INTERNALS__ and throws synchronously
 // when it's absent (browser dev / jsdom). The caller only mounts this inside

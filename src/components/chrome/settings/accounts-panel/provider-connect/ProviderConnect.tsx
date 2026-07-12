@@ -4,10 +4,10 @@
 // Provider CLI paths are preferred when they enable PR/MR features; GCM/helper
 // and SSH remain visible as transport-only fallbacks.
 
-import { cn } from "../../../../../lib/cn";
-import { focusRing } from "../../../../../lib/ui";
-import type { ForgeAuthStatus } from "../../../../../lib/api";
-import { providerInitials, type ProviderMeta } from "../providers";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import type { ForgeAuthStatus } from "@/lib/api";
+import { providerInitials, type ProviderMeta } from "@/components/chrome/settings/accounts-panel/providers";
 import { GithubConnect } from "./GithubConnect";
 import { ForgeConnect } from "./ForgeConnect";
 import { refreshBtnCls } from "./ui";

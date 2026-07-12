@@ -1,5 +1,5 @@
-import { api } from "../lib/api";
-import { normalizeWatchPath } from "../lib/paths";
+import { api } from "@/lib/api";
+import { normalizeWatchPath } from "@/lib/paths";
 
 /**
  * Per-path FIFO sequencing for the filesystem watch/unwatch IPC calls (GL-125).

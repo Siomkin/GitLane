@@ -2,7 +2,7 @@
 // diff bodies can be windowed (one virtual row per header/line) instead of
 // mounting every line. Kept free of React/DOM so the row math is unit-testable.
 
-import type { DiffHunk, DiffLine } from "../../lib/api";
+import type { DiffHunk, DiffLine } from "@/lib/api";
 
 /** One side of a split-view row, preserving the original hunk line index so
  * line-level write actions can address the backend diff state precisely. */

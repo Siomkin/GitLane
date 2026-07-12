@@ -5,7 +5,7 @@ import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { StashIcon } from "@/components/ui/icons";
-import { useRevealStashNavigate } from "../useRowActions";
+import { useRevealStashNavigate } from "@/components/navigation/branch-navigator/useRowActions";
 import { DIM_CLASS } from "./rowStyles";
 
 const ROW_CLASS =

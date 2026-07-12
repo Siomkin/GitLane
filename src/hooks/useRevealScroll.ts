@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import type { CommitNode } from "../lib/api";
-import { useRepo } from "../store/repo";
-import { useUi } from "../store/ui";
+import type { CommitNode } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 
 interface RevealScrollParams {
   /** The commit rows currently laid out (always the full DAG — search dims

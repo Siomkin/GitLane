@@ -1,4 +1,4 @@
-import { Language, languageForPath } from "../../../lib/highlight";
+import { Language, languageForPath } from "@/lib/highlight";
 
 /** The viewer's Source/Preview switch (GL-212). Compare against
  * `FileViewMode.Preview`, never a bare `"preview"` literal (the RefKind idiom). */

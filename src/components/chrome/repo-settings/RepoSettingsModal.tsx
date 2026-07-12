@@ -8,13 +8,13 @@
 // link scroll hint ("Manage remotes…" lands on the remotes section).
 
 import { useEffect, useRef } from "react";
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { useDismiss } from "../../../hooks/useDismiss";
-import { useFocusTrap } from "../../../hooks/useFocusTrap";
-import { useUi, type RepoSettingsSection } from "../../../store/ui";
-import { useRepo } from "../../../store/repo";
-import { IdentityPanel } from "../settings/identity-panel";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useDismiss } from "@/hooks/useDismiss";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useUi, type RepoSettingsSection } from "@/store/ui";
+import { useRepo } from "@/store/repo";
+import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
 import { RemotesPanel } from "./remotes-panel";
 

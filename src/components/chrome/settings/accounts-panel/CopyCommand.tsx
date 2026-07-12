@@ -3,8 +3,8 @@
 // clipboard plugin is needed for plain text.
 
 import { useState } from "react";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 export function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);

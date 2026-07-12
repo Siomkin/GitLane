@@ -1,8 +1,8 @@
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUi } from "../../store/ui";
-import { ChangeTypeCounts } from "../changes/ChangeTypeCounts";
-import type { ChangeSummary } from "../../lib/changeSummary";
+import { useUi } from "@/store/ui";
+import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
+import type { ChangeSummary } from "@/lib/changeSummary";
 
 /** The synthetic "uncommitted changes" row pinned to the top of history when
  * the working tree is dirty. Clicking it selects the WIP (the right inspector

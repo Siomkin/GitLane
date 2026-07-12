@@ -3,7 +3,7 @@
 // several commits appears once per commit. Grouping is by CONSECUTIVE runs of
 // the same commit oid — deliberately not a map keyed by oid — so the groups
 // mirror the patch's own segment order. No React, no IPC.
-import type { FileDiff } from "../../lib/api/git";
+import type { FileDiff } from "@/lib/api/git";
 
 /** One commit's worth of consecutive file cards. `index` is the file's global
  * position, kept for stable card keys (same-path files repeat across commits).

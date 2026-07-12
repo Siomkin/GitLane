@@ -19,9 +19,9 @@ vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
 vi.stubGlobal("cancelAnimationFrame", () => {});
 
 import { ConflictWorkspace } from "./ConflictWorkspace";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import type { OperationState } from "../../../store/repo";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import type { OperationState } from "@/store/repo";
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
 const RESOLVED_OURS = "start\nour line\nend\n";

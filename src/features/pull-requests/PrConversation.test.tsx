@@ -4,9 +4,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PullRequest } from "../../lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useUi } from "../../store/ui";
+import type { PrAuthor, PullRequest } from "@/lib/prs";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useUi } from "@/store/ui";
 import { PrConversation } from "./PrConversation";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };

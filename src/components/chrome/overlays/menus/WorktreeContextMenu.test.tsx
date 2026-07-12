@@ -3,9 +3,9 @@
 // the one backing the open tab, and locked removal is forced.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { emptyAdvancedState } from "../../../../lib/advancedRepoState";
-import { useRepo } from "../../../../store/repo";
-import { useUi } from "../../../../store/ui";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { WorktreeContextMenu } from "./WorktreeContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());

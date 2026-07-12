@@ -3,8 +3,8 @@
 // (one axis: split-layout rendering), so they share this file (GL-162).
 
 import { useMemo, type ReactNode } from "react";
-import type { DiffLine, FileDiff } from "../../lib/api";
-import { cn } from "../../lib/cn";
+import type { DiffLine, FileDiff } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { HunkCardHeader, LineStageButton, MONO, numCell, Tokens } from "./DiffBody";
 import {
   buildLineMeta,

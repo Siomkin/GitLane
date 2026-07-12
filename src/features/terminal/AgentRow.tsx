@@ -3,8 +3,8 @@
 // `AgentRowEditor` by the `editing` flag. All draft state and orchestration live
 // in `useTerminalAgentDraft`; drag is pointer-driven from the list container.
 
-import { cn } from "../../lib/cn";
-import type { TerminalAgent } from "../../lib/api";
+import { cn } from "@/lib/cn";
+import type { TerminalAgent } from "@/lib/api";
 import type { CheckStatus } from "./agentDraft";
 import { AgentRowView } from "./AgentRowView";
 import { AgentRowEditor } from "./AgentRowEditor";

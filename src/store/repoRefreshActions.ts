@@ -3,8 +3,8 @@
 // and full), history paging, and the reflog read. Opening/closing repos lives
 // in repoLifecycleActions.ts / repoTabActions.ts.
 
-import { api } from "../lib/api";
-import { tabInfoFromSummary } from "../lib/tabs";
+import { api } from "@/lib/api";
+import { tabInfoFromSummary } from "@/lib/tabs";
 import { useAccounts } from "./accounts";
 import { mergeOperationStatus } from "./operation";
 import { usePulls } from "./pulls";

@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommitNode, RepoGraph } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { emptyChanges } from "../../store/repoTypes";
+import type { CommitNode, RepoGraph } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { emptyChanges } from "@/store/repoTypes";
 import { RightPanel } from "./RightPanel";
 
 const invokeMock = vi.hoisted(() => vi.fn());

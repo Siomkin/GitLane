@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the conflict-resolution flow (architecture-rules-react.md §1)
-import { api, type ConflictFileContent } from "../../lib/api";
-import type { OperationState } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { api, type ConflictFileContent } from "@/lib/api";
+import type { OperationState } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { hunkFingerprint, parseConflict, type RegionDecision } from "./conflictModel";
 
 export type EditorMode = "inline" | "split";

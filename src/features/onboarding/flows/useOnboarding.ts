@@ -7,10 +7,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the onboarding flow (architecture-rules-react.md §1)
-import { api } from "../../../lib/api";
-import { useRepo } from "../../../store/repo";
-import type { RecentRepo } from "../../../store/repoSession";
-import type { OnboardingResult, OnboardingScreen } from "../onboarding";
+import { api } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import type { RecentRepo } from "@/store/repoSession";
+import type { OnboardingResult, OnboardingScreen } from "@/features/onboarding/onboarding";
 import { useCloneFlow } from "./useCloneFlow";
 import { useInitFlow } from "./useInitFlow";
 

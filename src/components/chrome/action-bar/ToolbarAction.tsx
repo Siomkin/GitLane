@@ -1,6 +1,6 @@
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { Spinner } from "../../ui/Loading";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { Spinner } from "@/components/ui/Loading";
 import type { MouseEvent, ReactNode } from "react";
 
 /** Icon-first toolbar button: shows the icon at rest and crossfades to a centred

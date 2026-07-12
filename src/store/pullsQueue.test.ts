@@ -3,7 +3,7 @@
 // plain callbacks, so no store or IPC mocking is needed.
 import { describe, expect, it, vi } from "vitest";
 
-import type { GithubAccountRef } from "../lib/api";
+import type { GithubAccountRef } from "@/lib/api";
 import {
   cancelQueuedPrListLoad,
   mergeQueuedPrListLoad,

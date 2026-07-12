@@ -1,6 +1,6 @@
-import type { FileDiff } from "../../lib/api";
-import { cn } from "../../lib/cn";
-import { basename, dirname } from "../../lib/paths";
+import type { FileDiff } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { basename, dirname } from "@/lib/paths";
 import { CodeIcon, EyeIcon, FileIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";

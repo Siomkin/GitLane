@@ -1,9 +1,9 @@
 import { useSortable } from "@dnd-kit/react/sortable";
-import { cn } from "../../lib/cn";
-import { repoLabel } from "../../lib/paths";
-import type { TabDisplay } from "../../lib/tabs";
-import { focusRing } from "../../lib/ui";
-import { CloseIcon, FolderIcon, TreeIcon } from "../ui/icons";
+import { cn } from "@/lib/cn";
+import { repoLabel } from "@/lib/paths";
+import type { TabDisplay } from "@/lib/tabs";
+import { focusRing } from "@/lib/ui";
+import { CloseIcon, FolderIcon, TreeIcon } from "@/components/ui/icons";
 
 interface ProjectTabProps {
   path: string;

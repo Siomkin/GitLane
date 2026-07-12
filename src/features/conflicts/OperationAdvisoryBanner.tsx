@@ -1,4 +1,4 @@
-import type { OperationAdvisory } from "../../lib/api";
+import type { OperationAdvisory } from "@/lib/api";
 
 /** A slim, read-only banner for a non-drivable in-progress git state (`git am`
  * or bisect). GitLane can't continue/abort these in-app — unlike the

@@ -1,6 +1,6 @@
-import type { FileDiff } from "../../lib/api";
-import { UnifiedDiffBody } from "../review/DiffBody";
-import { BinaryDiff } from "../review/BinaryDiff";
+import type { FileDiff } from "@/lib/api";
+import { UnifiedDiffBody } from "@/features/review/DiffBody";
+import { BinaryDiff } from "@/features/review/BinaryDiff";
 
 /** Shared diff pane for the file-history and compare views: a loading skeleton,
  * error/empty/binary states, then the unified diff with a "show full" affordance

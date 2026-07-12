@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { type FileChange } from "../../../lib/api";
-import { cn } from "../../../lib/cn";
-import { basename } from "../../../lib/paths";
-import { useUi } from "../../../store/ui";
+import { type FileChange } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { basename } from "@/lib/paths";
+import { useUi } from "@/store/ui";
 import { FileIcon } from "@/components/ui/icons";
 import { Resizer } from "@/components/ui/Resizer";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
-import { DiffPreview } from "../DiffPreview";
-import { buildRows } from "../commitTree";
+import { DiffPreview } from "@/features/changes/DiffPreview";
+import { buildRows } from "@/features/changes/commitTree";
 import { Checkbox } from "./Checkbox";
 
 const TREE_MIN_WIDTH = 300;

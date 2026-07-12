@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { FileDiff } from "../../lib/api";
+import type { FileDiff } from "@/lib/api";
 import { HunkCardHeader, UnifiedLine } from "./DiffBody";
 import { buildLineMeta, useLineComments } from "./comments";
 import { flattenUnified } from "./diffRows";

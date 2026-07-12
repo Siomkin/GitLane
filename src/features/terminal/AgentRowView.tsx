@@ -3,7 +3,7 @@
 // and the hover-revealed Edit / Duplicate / Delete actions. Clicking the name
 // (or the pencil) expands the row into `AgentRowEditor`.
 
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 import { bin } from "./agentDraft";
 import type { AgentRowProps } from "./AgentRow";
 import {

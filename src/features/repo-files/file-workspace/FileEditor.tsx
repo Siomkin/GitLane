@@ -1,9 +1,9 @@
 import { memo, useDeferredValue, useEffect, useMemo, useRef } from "react";
-import { WarningIcon } from "../../../components/ui/icons";
-import { cn } from "../../../lib/cn";
-import type { Language } from "../../../lib/highlight";
-import { MONO_FONT } from "../../../lib/ui";
-import { Tokens } from "../../review/DiffBody";
+import { WarningIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
+import type { Language } from "@/lib/highlight";
+import { MONO_FONT } from "@/lib/ui";
+import { Tokens } from "@/features/review/DiffBody";
 import { rulerMarksFrom } from "./changeMarks";
 import { ChangeBar, OverviewRuler } from "./changeMarkers";
 import { computeLineChangesText, countLines, LineChange, type LineChanges } from "./lineChanges";

@@ -2,7 +2,7 @@
 // stats, so showing "+0 −0" reads as "no change"; render a "binary" tag instead
 // so the lists distinguish a binary blob from a genuinely empty text change.
 
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 
 export const ChangeCounts = ({
   add,

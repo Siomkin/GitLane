@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { ForgeKind, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "../lib/api";
+import { ForgeKind, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
 import { useRepo } from "./repo";
 import { useAccounts, type Account, type StoredProviderToken } from "./accounts";
 import { useNotifications } from "./notifications";

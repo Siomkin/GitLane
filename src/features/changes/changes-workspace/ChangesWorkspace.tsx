@@ -3,13 +3,13 @@
 // per-snapshot diff cache live in useWorkingTreeDiffs; the row rendering in
 // ReviewFileSection; the pure policies in changesReviewModel.
 
-import { advancedNotices, fileWriteGuard, findGuardedFile } from "../../../lib/advancedRepoState";
-import { summarizeChanges } from "../../../lib/changeSummary";
-import { control } from "../../../lib/ui";
-import { useRepo } from "../../../store/repo";
-import { AdvancedRepoBanner } from "../../advanced-repo/AdvancedRepoBanner";
-import { HandToAgentBar } from "../../review/comments/HandToAgentBar";
-import { ChangeTypeCounts } from "../ChangeTypeCounts";
+import { advancedNotices, fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
+import { summarizeChanges } from "@/lib/changeSummary";
+import { control } from "@/lib/ui";
+import { useRepo } from "@/store/repo";
+import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
+import { HandToAgentBar } from "@/features/review/comments/HandToAgentBar";
+import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { WORK_SURFACES } from "./changesReviewModel";
 import { ReviewFileSection } from "./ReviewFileSection";
 import { useWorkingTreeDiffs } from "./useWorkingTreeDiffs";

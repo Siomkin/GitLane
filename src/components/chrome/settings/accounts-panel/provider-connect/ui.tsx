@@ -3,8 +3,8 @@
 // external-link glyph, and the class strings that keep inputs/links/buttons
 // consistent across the OAuth, CLI, and credential-helper paths.
 
-import { cn } from "../../../../../lib/cn";
-import { focusRing } from "../../../../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 export const linkCls =
   "inline-flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--accent)] hover:underline";

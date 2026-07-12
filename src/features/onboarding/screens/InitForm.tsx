@@ -1,6 +1,6 @@
-import type { OnboardingApi } from "../flows/useOnboarding";
-import { GITIGNORE_TEMPLATES, type GitignoreTemplate } from "../onboarding";
-import { ChevronDown, ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "../icons";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { GITIGNORE_TEMPLATES, type GitignoreTemplate } from "@/features/onboarding/onboarding";
+import { ChevronDown, ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "@/features/onboarding/icons";
 
 /** The initialize-repository form: location, folder name, initial branch, and
  * the README + .gitignore starter options. */

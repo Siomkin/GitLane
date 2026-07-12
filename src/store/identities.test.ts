@@ -8,9 +8,9 @@ const state = vi.hoisted(() => ({
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import type { RepoSummary } from "../lib/api";
-import type { GitProfile } from "../lib/profiles";
-import type { CommitSourceRef } from "../lib/identities";
+import type { RepoSummary } from "@/lib/api";
+import type { GitProfile } from "@/lib/profiles";
+import type { CommitSourceRef } from "@/lib/identities";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import { appliedCommitSource, useIdentities } from "./identities";

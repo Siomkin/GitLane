@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { DragEvent } from "react";
 import { renderHook } from "@testing-library/react";
-import { useUi } from "../store/ui";
-import type { BranchDragRef } from "../lib/graphActions";
+import { useUi } from "@/store/ui";
+import type { BranchDragRef } from "@/lib/graphActions";
 import { useBranchRefDrag } from "./useBranchRefDrag";
 
 const startDrag = vi.fn();

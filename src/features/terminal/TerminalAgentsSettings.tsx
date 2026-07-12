@@ -7,9 +7,9 @@
 // reorder animation.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
-import { type TerminalAgent } from "../../lib/api";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { type TerminalAgent } from "@/lib/api";
 import { AgentRow } from "./AgentRow";
 import { useTerminalAgentDraft } from "./useTerminalAgentDraft";
 import { previewAvailability, type PreviewAvailability } from "./agentDraft";

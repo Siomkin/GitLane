@@ -1,6 +1,6 @@
-import { cn } from "../../lib/cn";
-import { operationLabel } from "../../store/operation";
-import type { ActiveOperationKind } from "../../store/repo";
+import { cn } from "@/lib/cn";
+import { operationLabel } from "@/store/operation";
+import type { ActiveOperationKind } from "@/store/repo";
 
 const continueLabel = (kind: ActiveOperationKind) =>
   kind === "merge"

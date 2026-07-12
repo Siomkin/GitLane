@@ -5,19 +5,19 @@ import { GraphLayer } from "./GraphLayer";
 import { HistorySearchBar } from "./HistorySearchBar";
 import { isFiltering, matchingIds } from "./historyFilter";
 import { buildHistoryRows } from "./historyRows";
-import { useRepo } from "../../store/repo";
-import { rowHeightFor, useUi } from "../../store/ui";
-import { useRevealScroll } from "../../hooks/useRevealScroll";
+import { useRepo } from "@/store/repo";
+import { rowHeightFor, useUi } from "@/store/ui";
+import { useRevealScroll } from "@/hooks/useRevealScroll";
 import { CommitRow } from "./commit-row";
 import { StashRow, StashFallbackRow, StashContextRow } from "./StashRows";
 import { WipRow } from "./WipRow";
 import { LoadMoreRow } from "./LoadMoreRow";
 import { ColumnHandle } from "./ColumnHandle";
 import { HistorySkeleton } from "./HistorySkeleton";
-import { LoadError } from "../../components/ui/Loading";
-import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
-import { changeTotal, summarizeChanges } from "../../lib/changeSummary";
-import { repoIdentityKey } from "../../lib/worktrees";
+import { LoadError } from "@/components/ui/Loading";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
+import { repoIdentityKey } from "@/lib/worktrees";
 
 const HISTORY_OVERSCAN_ROWS = 8;
 // GL-23: minimum rows ahead of the trailing load-more row at which a near-bottom

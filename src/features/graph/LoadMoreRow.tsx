@@ -1,4 +1,4 @@
-import { cn } from "../../lib/cn";
+import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 
 /** The trailing "Load more commits" row shown when the graph is truncated. */

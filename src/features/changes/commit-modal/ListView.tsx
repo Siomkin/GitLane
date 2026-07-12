@@ -1,6 +1,6 @@
-import { type FileChange } from "../../../lib/api";
-import { basename, dirname } from "../../../lib/paths";
-import { useUi } from "../../../store/ui";
+import { type FileChange } from "@/lib/api";
+import { basename, dirname } from "@/lib/paths";
+import { useUi } from "@/store/ui";
 import { FileIcon } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";

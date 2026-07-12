@@ -3,9 +3,9 @@
 // localStorage so the app reopens them on launch. Pure storage helpers — no
 // Zustand, no IPC (selection.ts-style module).
 
-import { repoLabel } from "../lib/paths";
-import { readMigratedStorage } from "../lib/storage";
-import type { TabInfo } from "../lib/tabs";
+import { repoLabel } from "@/lib/paths";
+import { readMigratedStorage } from "@/lib/storage";
+import type { TabInfo } from "@/lib/tabs";
 
 const LS_OPEN = "gitlane.openPaths:v1";
 const LS_OPEN_LEGACY = "gitlane.openPaths";

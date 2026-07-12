@@ -1,4 +1,4 @@
-import type { ChangeSource } from "../../store/repoTypes";
+import type { ChangeSource } from "@/store/repoTypes";
 
 /**
  * The notes "surface" key for the single-file review pane's open file. A

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import type { CommitNode, StashEntry } from "../../lib/api";
-import { StashIcon } from "../../components/ui/icons";
-import { summarizeFiles } from "../../lib/changeSummary";
-import { fullCommitMessage, splitCommitMessage } from "../../lib/commitMessage";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import type { CommitNode, StashEntry } from "@/lib/api";
+import { StashIcon } from "@/components/ui/icons";
+import { summarizeFiles } from "@/lib/changeSummary";
+import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";

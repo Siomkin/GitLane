@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CommitNode, FileChange, RepoGraph } from "../../../lib/api";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
+import type { CommitNode, FileChange, RepoGraph } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { MergedSelectionInspector } from "./MergedSelectionInspector";
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({

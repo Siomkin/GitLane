@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommitNode } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import type { CommitNode } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { CommitRow } from "./commit-row";
 
 const commit = (over: Partial<CommitNode> = {}): CommitNode => ({

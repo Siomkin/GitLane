@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useUi, type ProviderOauthSigninRequest } from "@/store/ui";
-import { StepRow } from "../progress";
+import { StepRow } from "@/components/chrome/overlays/progress";
 import { oauthModeFor, oauthStepCount, oauthStepLabel, oauthStepStatus } from "./steps";
 import { useProviderOauthRun } from "./useProviderOauthRun";
 

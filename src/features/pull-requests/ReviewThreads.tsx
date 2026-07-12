@@ -6,10 +6,10 @@
 // The inline diff snippet (anchored hunk) is a planned follow-up.
 
 import { useEffect, useMemo, useState } from "react";
-import { cn } from "../../lib/cn";
-import { initials, relativeAge, type PullRequest } from "../../lib/prs";
-import type { PrComment, ReviewThread } from "../../lib/api";
-import { usePulls } from "../../store/pulls";
+import { cn } from "@/lib/cn";
+import { initials, relativeAge, type PullRequest } from "@/lib/prs";
+import type { PrComment, ReviewThread } from "@/lib/api";
+import { usePulls } from "@/store/pulls";
 import { Markdown } from "@/components/ui/Markdown";
 import { ReviewThreadControls } from "./ReviewThreadControls";
 import { reviewThreadsModel } from "./reviewThreadsModel";

@@ -3,9 +3,9 @@
 // Identity panel's rows, these are not selectable: applying a profile is a
 // per-repo decision made elsewhere.
 
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { profileInitials, type GitProfile } from "../../../../lib/profiles";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { profileInitials, type GitProfile } from "@/lib/profiles";
 
 export function ProfileRow({ profile, onEdit }: { profile: GitProfile; onEdit: () => void }) {
   const signLabel = profile.gpgFormat === "ssh" ? "SSH signed" : "GPG signed";

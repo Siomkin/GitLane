@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LANE_COLORS } from "../graph/palette";
+import { LANE_COLORS } from "@/features/graph/palette";
 import { oidColor, relativeTime, shortAge } from "./inspect";
 
 // Pin "now" so the boundary math is deterministic (GL-193).

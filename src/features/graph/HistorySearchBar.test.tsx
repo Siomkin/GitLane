@@ -1,6 +1,6 @@
 import { render } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { useUi } from "../../store/ui";
+import { useUi } from "@/store/ui";
 import { HistorySearchBar } from "./HistorySearchBar";
 
 beforeEach(() => {

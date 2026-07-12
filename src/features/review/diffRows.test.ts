@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DiffHunk, DiffLine } from "../../lib/api";
+import type { DiffHunk, DiffLine } from "@/lib/api";
 import { flattenSplit, flattenUnified, toSplitRows } from "./diffRows";
 
 const line = (

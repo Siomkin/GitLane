@@ -5,7 +5,7 @@
 
 import type { ReactNode } from "react";
 import type { ProviderKey } from "./providers";
-import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "../../../ui/icons";
+import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 
 type IconProps = { className?: string };
 

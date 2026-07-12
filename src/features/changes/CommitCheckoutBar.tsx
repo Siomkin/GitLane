@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckIcon, StashIcon } from "../../components/ui/icons";
-import { cn } from "../../lib/cn";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { CheckIcon, StashIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { useInspectorCommit } from "./useInspectorCommit";
 
 /** The selected commit's identity pill + Checkout action, shown at the left of

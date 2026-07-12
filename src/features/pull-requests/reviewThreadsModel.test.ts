@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ReviewThread } from "../../lib/api";
+import type { ReviewThread } from "@/lib/api";
 import { reviewThreadsModel } from "./reviewThreadsModel";
 
 const thread = (over: Partial<ReviewThread> = {}): ReviewThread => ({

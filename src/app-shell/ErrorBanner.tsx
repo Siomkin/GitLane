@@ -1,4 +1,4 @@
-import { useRepo } from "../store/repo";
+import { useRepo } from "@/store/repo";
 
 /** The global repo-error bar under the title bar: store actions that fail
  * outside a dedicated surface (open, refresh, graph reads) publish one

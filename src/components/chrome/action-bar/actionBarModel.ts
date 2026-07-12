@@ -3,9 +3,9 @@
 // gate for badge polling. Framework-free — `useActionBarModel` calls these
 // per render (they are cheap); tests drive them directly.
 
-import { ForgeKind, type RemoteInfo, type RepoSummary } from "../../../lib/api";
-import { detectRemoteUrl } from "../../../lib/remotes";
-import type { PullRequest } from "../../../lib/prs";
+import { ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
+import { detectRemoteUrl } from "@/lib/remotes";
+import type { PullRequest } from "@/lib/prs";
 
 /** The branch trigger's label: detached SHA, unborn placeholder, or the branch. */
 export function currentBranchLabel(summary: RepoSummary | null): string {

@@ -9,9 +9,9 @@ import { useRepo } from "./repo";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
 import { useUi } from "./ui";
-import { ForgeKind } from "../lib/api";
-import { emptyAdvancedState } from "../lib/advancedRepoState";
-import type { PullRequest } from "../lib/prs";
+import { ForgeKind } from "@/lib/api";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import type { PullRequest } from "@/lib/prs";
 import type {
   BranchInfo,
   CommitNode,
@@ -21,7 +21,7 @@ import type {
   StashEntry,
   WorkingChanges,
   WorktreeInfo,
-} from "../lib/api";
+} from "@/lib/api";
 
 // A minimal summary so actions that require an open repo proceed.
 const summary: RepoSummary = {
@@ -767,7 +767,7 @@ describe("repo store — large history", () => {
   // stale until re-click.
   describe("open-diff reconcile", () => {
     // A minimal schema-valid FileDiff (lib/api validates the file_diff shape).
-    const diff = (over: Partial<import("../lib/api").FileDiff> = {}) => ({
+    const diff = (over: Partial<import("@/lib/api").FileDiff> = {}) => ({
       path: "src/a.ts",
       status: "M" as const,
       add: 1,

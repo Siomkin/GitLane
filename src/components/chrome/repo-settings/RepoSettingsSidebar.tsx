@@ -1,7 +1,7 @@
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import type { RepoSettingsSection } from "../../../store/ui";
-import { ArrowUpRightIcon, IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "../../ui/icons";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import type { RepoSettingsSection } from "@/store/ui";
+import { ArrowUpRightIcon, IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "@/components/ui/icons";
 
 // One page since GL-130: these entries SCROLL to their section rather than
 // swapping pages. Keep the labels job-oriented so commit authorship and network

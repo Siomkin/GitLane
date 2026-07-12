@@ -4,8 +4,8 @@ import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { FolderIcon, MoreVerticalIcon, TreeIcon } from "@/components/ui/icons";
-import type { WorktreeItem } from "../useNavigatorSections";
-import { useOpenWorktree, useRevealNavigate } from "../useRowActions";
+import type { WorktreeItem } from "@/components/navigation/branch-navigator/useNavigatorSections";
+import { useOpenWorktree, useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
 import { DIM_CLASS } from "./rowStyles";
 
 /** A worktree row — two lines so sibling worktrees are distinguishable: the

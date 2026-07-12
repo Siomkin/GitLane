@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FileDiff } from "../../../lib/api";
+import type { FileDiff } from "@/lib/api";
 import { decodeBase64Text, previewSource } from "./preview";
 
 const diff = (over: Partial<FileDiff>): FileDiff => ({

@@ -1,5 +1,5 @@
-import { cn } from "../../lib/cn";
-import { useUi, type HistFilter } from "../../store/ui";
+import { cn } from "@/lib/cn";
+import { useUi, type HistFilter } from "@/store/ui";
 import { CloseIcon, FilterIcon, SearchIcon } from "@/components/ui/icons";
 
 const HIST_FILTERS: { key: HistFilter; label: string }[] = [

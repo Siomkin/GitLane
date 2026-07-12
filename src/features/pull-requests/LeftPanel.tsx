@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { cn } from "../../lib/cn";
-import { relativeSince, selectVisiblePrs } from "../../lib/prs";
-import { ForgeKind } from "../../lib/api";
-import { usePulls } from "../../store/pulls";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { cn } from "@/lib/cn";
+import { relativeSince, selectVisiblePrs } from "@/lib/prs";
+import { ForgeKind } from "@/lib/api";
+import { usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
 import { PlusIcon } from "@/components/ui/icons";

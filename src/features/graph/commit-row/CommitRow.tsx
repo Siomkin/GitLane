@@ -1,13 +1,13 @@
 import { memo, type MouseEvent as ReactMouseEvent } from "react";
-import { BranchKind, type CommitNode } from "../../../lib/api";
-import { GraphTargetKind } from "../../../lib/graphActions";
-import { cn } from "../../../lib/cn";
+import { BranchKind, type CommitNode } from "@/lib/api";
+import { GraphTargetKind } from "@/lib/graphActions";
+import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useRepo } from "../../../store/repo";
-import { selectionForContextMenu } from "../../../store/selection";
-import { useUi } from "../../../store/ui";
+import { useRepo } from "@/store/repo";
+import { selectionForContextMenu } from "@/store/selection";
+import { useUi } from "@/store/ui";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
-import { formatDate } from "../historyRowShared";
+import { formatDate } from "@/features/graph/historyRowShared";
 import { RefCluster } from "./RefCluster";
 
 export const CommitRow = memo(function CommitRow({

@@ -3,11 +3,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ForgeKind } from "../../lib/api";
-import type { PrAuthor, PullRequest } from "../../lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "../../store/pulls";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import { ForgeKind } from "@/lib/api";
+import type { PrAuthor, PullRequest } from "@/lib/prs";
+import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { PrHeaderActions } from "./PrActions";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };

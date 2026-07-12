@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { FileDiff } from "../lib/api";
+import type { FileDiff } from "@/lib/api";
 import { MAX_CONCURRENT_DIFFS, useLazyDiffs } from "./useLazyDiffs";
 
 /** A fetch whose settlement we control, so concurrency is observable. */

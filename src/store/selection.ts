@@ -2,8 +2,8 @@
 // repo store so the non-trivial logic is testable in isolation (no Zustand, no
 // IPC). The store calls these and applies the result.
 
-import { RefKind, type RepoGraph } from "../lib/api";
-import { fullCommitMessage } from "../lib/commitMessage";
+import { RefKind, type RepoGraph } from "@/lib/api";
+import { fullCommitMessage } from "@/lib/commitMessage";
 
 export interface SelectionInput {
   /** Commit ids in graph/display order (newest first). */

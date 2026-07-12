@@ -6,8 +6,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- local per-file diff fetch via useLazyDiffs, disposable probe (architecture-rules-react.md §1)
-import { api, type FileDiff, type WorkingChanges } from "../../../lib/api";
-import { useLazyDiffs } from "../../../hooks/useLazyDiffs";
+import { api, type FileDiff, type WorkingChanges } from "@/lib/api";
+import { useLazyDiffs } from "@/hooks/useLazyDiffs";
 import { deriveReviewRows, rowPathsKey, KEY_SEP } from "./changesReviewModel";
 
 export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | null) {

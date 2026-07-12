@@ -1,8 +1,8 @@
 import { useRef } from "react";
-import { cn } from "../../../lib/cn";
-import { useDismiss } from "../../../hooks/useDismiss";
-import { focusRing } from "../../../lib/ui";
-import { BranchNavigator } from "../../navigation/branch-navigator";
+import { cn } from "@/lib/cn";
+import { useDismiss } from "@/hooks/useDismiss";
+import { focusRing } from "@/lib/ui";
+import { BranchNavigator } from "@/components/navigation/branch-navigator";
 import {
   BranchIcon,
   ClockIcon,
@@ -12,7 +12,7 @@ import {
   PushIcon,
   StashIcon,
   TerminalIcon,
-} from "../../ui/icons";
+} from "@/components/ui/icons";
 import { SegTab } from "./SegTab";
 import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";

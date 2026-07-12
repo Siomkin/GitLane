@@ -1,6 +1,6 @@
-import type { FileHistoryEntry } from "../../../lib/api";
-import { initials } from "../../../lib/ui";
-import { relativeTime } from "../inspect";
+import type { FileHistoryEntry } from "@/lib/api";
+import { initials } from "@/lib/ui";
+import { relativeTime } from "@/features/history-inspect/inspect";
 import { InspectorAction } from "./InspectorAction";
 
 const copy = (text: string) => void navigator.clipboard?.writeText(text);

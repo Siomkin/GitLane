@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { CommitNode, RepoGraph } from "../../../lib/api";
+import type { CommitNode, RepoGraph } from "@/lib/api";
 import { mergedCommitRows, relativeCommitDate, selectionCountLabel } from "./mergedSelection";
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({

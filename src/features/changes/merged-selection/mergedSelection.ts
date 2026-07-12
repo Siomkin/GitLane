@@ -2,7 +2,7 @@
 // React, no IPC — they map the loaded graph + selection into render-ready rows
 // and labels, so the container only wires state and the logic stays testable.
 
-import type { RepoGraph } from "../../../lib/api";
+import type { RepoGraph } from "@/lib/api";
 
 /** A selected commit as the inspector's commit list renders it. */
 export interface SelectionCommitRow {

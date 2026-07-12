@@ -4,10 +4,10 @@
 // transport. Token/keychain entry is intentionally hidden while the auth surface
 // is simplified to CLI/GCM/SSH.
 
-import { openExternalUrl } from "../../../../lib/openExternal";
-import { useUi } from "../../../../store/ui";
-import type { AuthRecovery } from "../../authRecovery";
-import type { OnboardingApi } from "../../flows/useOnboarding";
+import { openExternalUrl } from "@/lib/openExternal";
+import { useUi } from "@/store/ui";
+import type { AuthRecovery } from "@/features/onboarding/authRecovery";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 
 const linkCls =
   "inline-flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--accent)] hover:underline";

@@ -1,6 +1,6 @@
-import { isMac, isWindows } from "../../../lib/platform";
-import type { OnboardingApi } from "../flows/useOnboarding";
-import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "../icons";
+import { isMac, isWindows } from "@/lib/platform";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "@/features/onboarding/icons";
 
 /** Platform-appropriate label for the reveal-in-file-manager action (the backend
  * reveal_path is cross-platform; only the wording differs). */

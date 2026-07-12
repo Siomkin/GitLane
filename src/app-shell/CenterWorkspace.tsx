@@ -1,15 +1,15 @@
-import { ErrorBoundary } from "../components/ui/ErrorBoundary";
-import { ErrorFallback } from "../components/ui/ErrorFallback";
-import { ChangesWorkspace } from "../features/changes/changes-workspace";
-import { ConflictWorkspace } from "../features/conflicts";
-import { HistoryInspectWorkspace } from "../features/history-inspect";
-import { HistoryWorkspace } from "../features/graph/HistoryWorkspace";
-import { PullRequestDetail } from "../features/pull-requests/PullRequestDetail";
-import { RepoFileWorkspace } from "../features/repo-files";
-import { ReviewWorkspace } from "../features/review/ReviewWorkspace";
-import { StackedReview } from "../features/review/StackedReview";
-import { useRepo } from "../store/repo";
-import { useUi } from "../store/ui";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { ErrorFallback } from "@/components/ui/ErrorFallback";
+import { ChangesWorkspace } from "@/features/changes/changes-workspace";
+import { ConflictWorkspace } from "@/features/conflicts";
+import { HistoryInspectWorkspace } from "@/features/history-inspect";
+import { HistoryWorkspace } from "@/features/graph/HistoryWorkspace";
+import { PullRequestDetail } from "@/features/pull-requests/PullRequestDetail";
+import { RepoFileWorkspace } from "@/features/repo-files";
+import { ReviewWorkspace } from "@/features/review/ReviewWorkspace";
+import { StackedReview } from "@/features/review/StackedReview";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { useCenterView } from "./useCenterView";
 import type { CenterViewKey } from "./centerView";
 

@@ -4,9 +4,9 @@
 // used. Each tile shows the provider's capability + local CLI/account state so
 // the pick is informed.
 
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { useAccounts } from "../../../../store/accounts";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useAccounts } from "@/store/accounts";
 import {
   capabilityHint,
   cliStatusLine,

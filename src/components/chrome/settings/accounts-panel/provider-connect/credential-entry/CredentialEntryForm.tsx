@@ -5,16 +5,16 @@
 // this form is reused, but it is not shown by the simplified setup cards.
 
 import { useState } from "react";
-import { cn } from "../../../../../../lib/cn";
-import { focusRing } from "../../../../../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import {
   defaultTransportUsername,
   isForgeAuthProvider,
   supportsProviderTokenAuth,
-} from "../../../../../../lib/forgeHelp";
-import type { ForgeAuthProvider } from "../../../../../../lib/api";
-import { useAccounts } from "../../../../../../store/accounts";
-import { inputCls } from "../ui";
+} from "@/lib/forgeHelp";
+import type { ForgeAuthProvider } from "@/lib/api";
+import { useAccounts } from "@/store/accounts";
+import { inputCls } from "@/components/chrome/settings/accounts-panel/provider-connect/ui";
 import { canSubmit, hostFieldInitiallyEditable, resolveHost } from "./credentialEntry";
 
 export type CredentialDestination = "helper" | "keychain";

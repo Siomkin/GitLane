@@ -36,6 +36,20 @@ const UI_PURITY = {
     "components/ui must stay domain-free: no store, feature, or lib/api imports (architecture-rules-react.md §2).",
 };
 
+// Parent-directory imports couple a module to its current nesting depth. Keep
+// same-folder imports (`./...`) local, and use the configured `@/` alias for
+// every import that crosses a folder boundary.
+const PARENT_RELATIVE_IMPORT = {
+  group: ["../**"],
+  message: "Use the @/ alias instead of a parent-directory import.",
+};
+
+const PARENT_RELATIVE_VITEST_MOCK = {
+  selector:
+    "CallExpression[callee.object.name='vi'][callee.property.name=/^(mock|doMock)$/][arguments.0.value=/^\\.\\.\\//]",
+  message: "Use the @/ alias instead of a parent-directory path in vi.mock().",
+};
+
 const restrict = (options) => ({ "no-restricted-imports": ["error", options] });
 
 // A flat config is just an array of config objects; export one directly (the
@@ -67,7 +81,8 @@ export default [
     },
     plugins: { "react-hooks": reactHooks },
     rules: {
-      ...restrict({ paths: [RAW_INVOKE], patterns: [API_OBJECTS] }),
+      ...restrict({ paths: [RAW_INVOKE], patterns: [API_OBJECTS, PARENT_RELATIVE_IMPORT] }),
+      "no-restricted-syntax": ["error", PARENT_RELATIVE_VITEST_MOCK],
       // The codebase already annotates intentional dependency omissions with
       // react-hooks/exhaustive-deps directives; define the rule so those resolve.
       // rules-of-hooks is a hard correctness gate; exhaustive-deps is advisory
@@ -79,7 +94,7 @@ export default [
   // Stores own domain data loading: they may import the `api` object, never raw invoke.
   {
     files: ["src/store/**/*.{ts,tsx}"],
-    rules: restrict({ paths: [RAW_INVOKE] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
   },
   // Documented boundary sites that legitimately import the `api` object: the PTY
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
@@ -94,21 +109,22 @@ export default [
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
       "src/components/chrome/overlays/menus/WipContextMenu.tsx",
     ],
-    rules: restrict({ paths: [RAW_INVOKE] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
   },
   // components/ui primitives stay domain-free.
   {
     files: ["src/components/ui/**/*.{ts,tsx}"],
-    rules: restrict({ paths: [RAW_INVOKE], patterns: [UI_PURITY] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [UI_PURITY, PARENT_RELATIVE_IMPORT] }),
   },
   // lib/api owns the raw IPC surface — both invoke and the api objects originate here.
   {
     files: ["src/lib/api/**/*.{ts,tsx}"],
-    rules: { "no-restricted-imports": "off" },
+    rules: restrict({ patterns: [PARENT_RELATIVE_IMPORT] }),
   },
-  // Tests mock the boundary and build fixtures; the import invariants don't apply.
+  // Tests mock the boundary and build fixtures, so the architecture import
+  // restrictions do not apply; the parent-relative path convention still does.
   {
     files: ["src/**/*.test.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
-    rules: { "no-restricted-imports": "off" },
+    rules: restrict({ patterns: [PARENT_RELATIVE_IMPORT] }),
   },
 ];

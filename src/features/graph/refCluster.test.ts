@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { RefLabel } from "../../lib/api";
+import type { RefLabel } from "@/lib/api";
 import { remoteBase, buildClusterItems } from "./refCluster";
 
 const r = (name: string, kind: RefLabel["kind"]): RefLabel => ({ name, kind });

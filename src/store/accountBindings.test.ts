@@ -3,7 +3,7 @@
 // accounts store derivation.
 import { describe, expect, it } from "vitest";
 
-import type { GithubAccountRef } from "../lib/api";
+import type { GithubAccountRef } from "@/lib/api";
 import {
   accountKey,
   accountMatchesLegacy,

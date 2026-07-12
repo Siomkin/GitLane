@@ -10,8 +10,8 @@
 // (unit-tested, no IPC/Zustand); `migrateStoredRemoteUsernames` executes the
 // plan (IPC writes, binding persistence, remote-list re-read, error toast).
 
-import { api, type RemoteInfo } from "../lib/api";
-import { detectRemoteUrl } from "../lib/remotes";
+import { api, type RemoteInfo } from "@/lib/api";
+import { detectRemoteUrl } from "@/lib/remotes";
 import {
   isV3Binding,
   prEntryFromRemoteBinding,

@@ -4,8 +4,8 @@
 // "Done" button that collapses the row back to `AgentRowView`. A warning line
 // appears while the row is invalid or its command isn't on PATH.
 
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import { bin } from "./agentDraft";
 import type { AgentRowProps } from "./AgentRow";
 import {

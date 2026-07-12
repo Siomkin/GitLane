@@ -17,7 +17,7 @@ import { CheckIcon, CloseIcon, WarningIcon } from "@/components/ui/icons";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRepo } from "@/store/repo";
 import { useUi, type HandoffRequest } from "@/store/ui";
-import { StepRow } from "../progress";
+import { StepRow } from "@/components/chrome/overlays/progress";
 import { handoffStepLabels, handoffStepStatus } from "./steps";
 import { useHandoffRun } from "./useHandoffRun";
 

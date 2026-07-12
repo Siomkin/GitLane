@@ -1,6 +1,6 @@
-import type { RecentRepo } from "../../../store/repoSession";
-import { avatarFor, relativeTime } from "../onboarding";
-import { BranchPillIcon } from "../icons";
+import type { RecentRepo } from "@/store/repoSession";
+import { avatarFor, relativeTime } from "@/features/onboarding/onboarding";
+import { BranchPillIcon } from "@/features/onboarding/icons";
 
 /** One row in the onboarding "Recent repositories" list: avatar, name (+ a
  * "Missing" badge when the path is gone), path, last-open time, and either the

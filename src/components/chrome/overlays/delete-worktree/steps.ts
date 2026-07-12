@@ -4,7 +4,7 @@
 // (extracted in GL-106); this file keeps only the delete-specific event map and
 // labels.
 
-import { stepIndexIn, stepStatus, type StepStatus } from "../progress";
+import { stepIndexIn, stepStatus, type StepStatus } from "@/components/chrome/overlays/progress";
 
 /** Display rows, in execution order. The backend emits one id per phase it
  * begins; the final "Refreshing" row has no backend event — it's the frontend

@@ -1,8 +1,8 @@
 import type { ComponentType } from "react";
-import { openExternalUrl } from "../../../../lib/openExternal";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import type { RepoSettingsSection } from "../../../../store/ui";
+import { openExternalUrl } from "@/lib/openExternal";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import type { RepoSettingsSection } from "@/store/ui";
 import {
   ArrowUpRightIcon,
   AzureDevOpsIcon,
@@ -24,7 +24,7 @@ import {
   SettingsIcon,
   WarningIcon,
   WebhookIcon,
-} from "../../../ui/icons";
+} from "@/components/ui/icons";
 import { PopoverLinkRow } from "./PopoverLinkRow";
 import type { PopoverIconKey, ProviderPopoverModel } from "./model";
 

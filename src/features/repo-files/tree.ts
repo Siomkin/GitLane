@@ -3,7 +3,7 @@
 // directory tree (collapsed by default) and flattens it to render-ready rows,
 // following the commit modal's `commitTree.ts` idiom.
 
-import { basename } from "../../lib/paths";
+import { basename } from "@/lib/paths";
 
 /** A flattened row in the Files tree: a (possibly chain-collapsed) directory
  * header or a leaf file. */

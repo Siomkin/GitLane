@@ -4,7 +4,7 @@
 // succeeded so callers can clear their own input on success.
 
 import { useCallback, useRef, useState } from "react";
-import { useUi } from "../../store/ui";
+import { useUi } from "@/store/ui";
 
 /** Component-local button keys. These select exact labels/spinners; the pulls
  * store intentionally uses coarser `PR_PENDING_ACTION` domain categories. */

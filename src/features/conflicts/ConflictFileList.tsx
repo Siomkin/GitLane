@@ -1,5 +1,5 @@
-import { cn } from "../../lib/cn";
-import type { OperationFile } from "../../store/repo";
+import { cn } from "@/lib/cn";
+import type { OperationFile } from "@/store/repo";
 import { ConflictFileRow } from "./ConflictFileRow";
 
 export const ConflictFileList = ({

@@ -1,7 +1,7 @@
-import { cn } from "../../lib/cn";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { FilesPanel } from "../repo-files";
+import { cn } from "@/lib/cn";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { FilesPanel } from "@/features/repo-files";
 import { CommitCheckoutBar } from "./CommitCheckoutBar";
 import { CommitInspector } from "./CommitInspector";
 import { MergedSelectionInspector } from "./merged-selection";

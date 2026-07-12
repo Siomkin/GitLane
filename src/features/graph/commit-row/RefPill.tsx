@@ -1,8 +1,8 @@
-import { RefKind, type RefLabel } from "../../../lib/api";
+import { RefKind, type RefLabel } from "@/lib/api";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import { useBranchRefDrag } from "../../../hooks/useBranchRefDrag";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { useBranchWorktreeName } from "./useBranchWorktreeName";
 import { refPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";

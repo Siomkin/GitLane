@@ -1,7 +1,7 @@
 import { CheckIcon, CopyIcon, PlusIcon, PushIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, useBranchOp, type MenuItem } from "../shared";
+import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { promptCreateWorktree } from "./prompts";
 
 /** Right-click menu on a tag ref (graph pill or navigator row). Tags are

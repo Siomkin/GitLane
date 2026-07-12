@@ -3,7 +3,7 @@ import { basename } from "@/lib/paths";
 import { ClockIcon, CopyIcon, FileTextIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, type MenuItem } from "../shared";
+import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 
 export function FileContextMenu() {
   const menu = useUi((s) => s.fileMenu);

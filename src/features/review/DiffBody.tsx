@@ -6,11 +6,11 @@
 // simpler two-pane layout.
 
 import { memo, useMemo } from "react";
-import type { DiffHunk, DiffLine } from "../../lib/api";
-import { cn } from "../../lib/cn";
-import { highlight, Language } from "../../lib/highlight";
-import { MONO_FONT } from "../../lib/ui";
-import { useResolvedTheme } from "../../hooks/useResolvedTheme";
+import type { DiffHunk, DiffLine } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { highlight, Language } from "@/lib/highlight";
+import { MONO_FONT } from "@/lib/ui";
+import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { CheckIcon, MinusIcon, PlusIcon } from "@/components/ui/icons";
 import {
   buildLineMeta,

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import { useNotifications } from "../../../store/notifications";
-import { emptyAdvancedState } from "../../../lib/advancedRepoState";
-import { BranchRow } from "../../navigation/branch-navigator/rows";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { useNotifications } from "@/store/notifications";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { BranchRow } from "@/components/navigation/branch-navigator/rows";
 import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
 // BranchContextMenu probes `api.canFastForward` (→ invoke) from an effect when a

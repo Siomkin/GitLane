@@ -13,7 +13,7 @@ import {
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan, buildSquashMessage, getSquashEligibility, isCommitReachableFromRemote } from "@/store/selection";
 import { useUi } from "@/store/ui";
-import { MenuPanel, useBranchOp, type MenuItem } from "../shared";
+import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCreateWorktree, promptNewBranchWorktree } from "./prompts";
 

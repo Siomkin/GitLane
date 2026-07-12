@@ -19,21 +19,21 @@
 
 import { create } from "zustand";
 
-import { api, type RepoIdentity } from "../lib/api";
+import { api, type RepoIdentity } from "@/lib/api";
 import {
   migrateAppliedProfileMap,
   type CommitSourceRef,
-} from "../lib/identities";
-import { ACCOUNT_COLORS } from "../lib/palette";
-import { type GitProfile, type ProfileDraft } from "../lib/profiles";
-import { readMigratedStorage } from "../lib/storage";
-import { migratePathKey, repoIdentityKey } from "../lib/worktrees";
+} from "@/lib/identities";
+import { ACCOUNT_COLORS } from "@/lib/palette";
+import { type GitProfile, type ProfileDraft } from "@/lib/profiles";
+import { readMigratedStorage } from "@/lib/storage";
+import { migratePathKey, repoIdentityKey } from "@/lib/worktrees";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import { useUi } from "./ui";
 
-export type { GitProfile as ManualIdentity, ProfileDraft as ManualIdentityDraft } from "../lib/profiles";
-export type { CommitSourceRef } from "../lib/identities";
+export type { GitProfile as ManualIdentity, ProfileDraft as ManualIdentityDraft } from "@/lib/profiles";
+export type { CommitSourceRef } from "@/lib/identities";
 
 // All non-secret app metadata (signing fields are key ids/paths, never private
 // material), so localStorage is the right tier per GL-48.

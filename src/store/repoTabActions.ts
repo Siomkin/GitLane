@@ -5,8 +5,8 @@
 // repoLifecycleActions.ts; these actions delegate to it via `get()`.
 
 import { arrayMove } from "@dnd-kit/helpers";
-import { api } from "../lib/api";
-import { pruneTabInfo, tabInfoFromStatus } from "../lib/tabs";
+import { api } from "@/lib/api";
+import { pruneTabInfo, tabInfoFromStatus } from "@/lib/tabs";
 import { usePulls } from "./pulls";
 import {
   persistRecents,

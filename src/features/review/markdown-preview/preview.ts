@@ -1,8 +1,8 @@
 // Pure helpers for the markdown Preview mode of the review surface: which blob
 // the rendered side comes from, and decoding its base64 payload to text.
 
-import type { ChangeSource } from "../../../store/repoTypes";
-import type { FileDiff } from "../../../lib/api";
+import type { ChangeSource } from "@/store/repoTypes";
+import type { FileDiff } from "@/lib/api";
 
 /** Which blob the preview reads: a committed/staged blob (`oid`) or the
  * working-tree file (`file`, repo-relative). Mirrors `BinaryDiff`'s sources. */

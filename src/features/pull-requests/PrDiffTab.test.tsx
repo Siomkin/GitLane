@@ -6,9 +6,9 @@
 // tests, so no IPC is involved.
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { PrAuthor, PullRequest } from "../../lib/prs";
-import type { FileDiff } from "../../lib/api/git";
-import { usePulls } from "../../store/pulls";
+import type { PrAuthor, PullRequest } from "@/lib/prs";
+import type { FileDiff } from "@/lib/api/git";
+import { usePulls } from "@/store/pulls";
 import { PrDiffTab } from "./PrDiffTab";
 
 const author: PrAuthor = { name: "Alex Smith", login: "alexsmith", initials: "AS" };

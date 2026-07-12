@@ -1,6 +1,6 @@
-import type { OnboardingApi } from "../flows/useOnboarding";
+import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 import { RecentRepoRow } from "./RecentRepoRow";
-import { ChevronRight, CloneIcon, FolderGlyph, NewRepoIcon } from "../icons";
+import { ChevronRight, CloneIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
 
 /** The onboarding start screen: clone / init / open actions on the left, the
  * recent-repositories list on the right. */

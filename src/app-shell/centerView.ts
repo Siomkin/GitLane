@@ -8,8 +8,8 @@
 // to a component and derives the error boundary's reset keys from the same
 // decision, so the dispatch can't drift apart.
 
-import type { LeftTab } from "../lib/ui";
-import type { ChangeSource } from "../store/repoTypes";
+import type { LeftTab } from "@/lib/ui";
+import type { ChangeSource } from "@/store/repoTypes";
 
 export type CenterViewKey =
   | "conflict"

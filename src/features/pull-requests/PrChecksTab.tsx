@@ -1,7 +1,7 @@
 // PR Checks tab: renders the selected PR's CI checks once the parent detail
 // container has loaded them, plus an inline retry on checks-load failure.
-import type { PullRequest } from "../../lib/prs";
-import { usePulls } from "../../store/pulls";
+import type { PullRequest } from "@/lib/prs";
+import { usePulls } from "@/store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { CHECK_STATUS_LABEL, checkSummary, countChecks, type PrCheckTone } from "./prChecks";
 

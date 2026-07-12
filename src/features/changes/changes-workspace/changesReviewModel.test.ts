@@ -2,7 +2,7 @@
 // ordering, and the within-snapshot cache key.
 import { describe, expect, it } from "vitest";
 
-import type { FileChange, WorkingChanges } from "../../../lib/api";
+import type { FileChange, WorkingChanges } from "@/lib/api";
 import { deriveReviewRows, diffKey, rowPathsKey, KEY_SEP } from "./changesReviewModel";
 
 const file = (path: string, over: Partial<FileChange> = {}): FileChange => ({

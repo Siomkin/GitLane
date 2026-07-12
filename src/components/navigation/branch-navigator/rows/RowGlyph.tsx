@@ -1,4 +1,4 @@
-import { RowKind } from "../refs";
+import { RowKind } from "@/components/navigation/branch-navigator/refs";
 
 /** The leading glyph: a check for the checked-out branch, otherwise a kind-specific
  * monochrome icon (branch fork / cloud / tag), matching the design. */

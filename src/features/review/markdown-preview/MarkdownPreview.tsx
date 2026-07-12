@@ -2,11 +2,11 @@
 // the selected .md file (worktree / index / commit blob) through the same
 // sanitized GFM renderer as PR descriptions, instead of the raw diff.
 
-import type { FileDiff } from "../../../lib/api";
-import type { ChangeSource } from "../../../store/repoTypes";
-import { useRepo } from "../../../store/repo";
+import type { FileDiff } from "@/lib/api";
+import type { ChangeSource } from "@/store/repoTypes";
+import { useRepo } from "@/store/repo";
 import { Markdown } from "@/components/ui/Markdown";
-import { formatBytes } from "../../../lib/binaryFile";
+import { formatBytes } from "@/lib/binaryFile";
 import { previewSource } from "./preview";
 import { useMarkdownText } from "./useMarkdownText";
 

@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { useUi } from "../../../store/ui";
+import { useUi } from "@/store/ui";
 import { buildNote, refIndex, scopeText, type LineMeta } from "./notes";
 
 type Range = { fromSeq: number; toSeq: number };

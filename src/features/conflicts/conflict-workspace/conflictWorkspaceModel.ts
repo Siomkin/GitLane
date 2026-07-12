@@ -5,8 +5,8 @@
 // resolution flags. Framework-free — `useConflictWorkspaceModel` memoizes over
 // these; the tests drive them directly.
 
-import type { ConflictFileContent } from "../../../lib/api";
-import type { ActiveOperationKind, OperationFile } from "../../../store/repo";
+import type { ConflictFileContent } from "@/lib/api";
+import type { ActiveOperationKind, OperationFile } from "@/store/repo";
 import {
   buildResolved,
   conflictRegionCount,
@@ -21,7 +21,7 @@ import {
   type LineSelection,
   type Region,
   type RegionDecision,
-} from "../conflictModel";
+} from "@/features/conflicts/conflictModel";
 
 /** One side of a conflict hunk in the line editor's pick encoding. */
 export type EditorSide = "a" | "b";

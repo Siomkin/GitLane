@@ -1,4 +1,4 @@
-import { useRepo } from "../../store/repo";
+import { useRepo } from "@/store/repo";
 import { DiffTruncatedNotice } from "./DiffBody";
 
 // "Show full diff" footer for a backend-truncated diff. Reads the store action

@@ -1,11 +1,11 @@
 import type { CSSProperties } from "react";
-import { useRepo } from "../../../store/repo";
-import { useUi } from "../../../store/ui";
-import { AbortConfirm } from "../AbortConfirm";
-import { ConflictBanner } from "../ConflictBanner";
-import { ConflictEditor } from "../ConflictEditor";
-import { ConflictFileList } from "../ConflictFileList";
-import { useConflictResolver } from "../useConflictResolver";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { AbortConfirm } from "@/features/conflicts/AbortConfirm";
+import { ConflictBanner } from "@/features/conflicts/ConflictBanner";
+import { ConflictEditor } from "@/features/conflicts/ConflictEditor";
+import { ConflictFileList } from "@/features/conflicts/ConflictFileList";
+import { useConflictResolver } from "@/features/conflicts/useConflictResolver";
 import { stagePlanFor } from "./conflictWorkspaceModel";
 import { useConflictWorkspaceModel } from "./useConflictWorkspaceModel";
 

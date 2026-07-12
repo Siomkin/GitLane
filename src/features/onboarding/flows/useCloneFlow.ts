@@ -7,12 +7,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the clone flow/session (architecture-rules-react.md §1)
-import { api, type CloneProgress } from "../../../lib/api";
-import { supportsProviderTokenAuth } from "../../../lib/forgeHelp";
-import { repoLabel } from "../../../lib/paths";
-import { detectRemoteUrl, forgeAuthProviderFor, withUrlUser } from "../../../lib/remotes";
-import { pickProviderTokenForHost, useAccounts } from "../../../store/accounts";
-import { readForgeCredentials } from "../../../store/accountsStorage";
+import { api, type CloneProgress } from "@/lib/api";
+import { supportsProviderTokenAuth } from "@/lib/forgeHelp";
+import { repoLabel } from "@/lib/paths";
+import { detectRemoteUrl, forgeAuthProviderFor, withUrlUser } from "@/lib/remotes";
+import { pickProviderTokenForHost, useAccounts } from "@/store/accounts";
+import { readForgeCredentials } from "@/store/accountsStorage";
 import {
   canceledCloneCopy,
   classifyCloneError,
@@ -24,7 +24,7 @@ import {
   parseRepoName,
   retryRerunsClone,
   validateCloneUrl,
-} from "../onboarding";
+} from "@/features/onboarding/onboarding";
 import { cloneAuthStatusLine, cloneProviderFor, planCloneAuth } from "./cloneAuth";
 import { defaultParent } from "./parents";
 

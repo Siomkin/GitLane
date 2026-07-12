@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { FileDiff } from "../../lib/api/git";
+import type { FileDiff } from "@/lib/api/git";
 import { groupByCommit, showCommitHeaders } from "./prDiffGroups";
 
 const fileDiff = (over: Partial<FileDiff> = {}): FileDiff => ({

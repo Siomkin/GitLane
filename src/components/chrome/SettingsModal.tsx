@@ -7,15 +7,15 @@
 // from `useUi`.
 
 import { useRef } from "react";
-import { cn } from "../../lib/cn";
-import { focusRing } from "../../lib/ui";
-import { useDismiss } from "../../hooks/useDismiss";
-import { useFocusTrap } from "../../hooks/useFocusTrap";
-import { useUi, type SettingsTab } from "../../store/ui";
-import { useTerminalAgents } from "../../store/terminalAgents";
-import { useUpdates } from "../../store/updates";
-import { GitLaneMarkIcon } from "../ui/icons";
-import { TerminalAgentsSettings } from "../../features/terminal/TerminalAgentsSettings";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useDismiss } from "@/hooks/useDismiss";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
+import { useUi, type SettingsTab } from "@/store/ui";
+import { useTerminalAgents } from "@/store/terminalAgents";
+import { useUpdates } from "@/store/updates";
+import { GitLaneMarkIcon } from "@/components/ui/icons";
+import { TerminalAgentsSettings } from "@/features/terminal/TerminalAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
 import { AccountsPanel } from "./settings/accounts-panel";
 import { IdentitiesPanel } from "./settings/identities-panel";

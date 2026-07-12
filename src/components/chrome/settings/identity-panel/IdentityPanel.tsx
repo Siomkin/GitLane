@@ -3,8 +3,8 @@
 // in the remote-access section; this panel only writes author/signing config.
 
 import { useEffect } from "react";
-import { useRepo } from "../../../../store/repo";
-import { useIdentities } from "../../../../store/identities";
+import { useRepo } from "@/store/repo";
+import { useIdentities } from "@/store/identities";
 import { CommitAsZone } from "./CommitAsZone";
 
 export function IdentityPanel() {

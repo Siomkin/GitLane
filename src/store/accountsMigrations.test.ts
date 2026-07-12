@@ -7,11 +7,11 @@ const setRemoteUsername = vi.hoisted(() => vi.fn(async () => {}));
 const listRemotes = vi.hoisted(() => vi.fn(async () => {}));
 const showToast = vi.hoisted(() => vi.fn());
 
-vi.mock("../lib/api", () => ({ api: { setRemoteUsername } }));
+vi.mock("@/lib/api", () => ({ api: { setRemoteUsername } }));
 vi.mock("./repo", () => ({ useRepo: { getState: () => ({ listRemotes }) } }));
 vi.mock("./ui", () => ({ useUi: { getState: () => ({ showToast }) } }));
 
-import type { GithubAccountRef, RemoteInfo } from "../lib/api";
+import type { GithubAccountRef, RemoteInfo } from "@/lib/api";
 import { accountKey, type BindableAccount } from "./accountBindings";
 import { readBindings, writeBindings } from "./accountsStorage";
 import {

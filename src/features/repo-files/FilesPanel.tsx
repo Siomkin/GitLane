@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { SearchIcon } from "../../components/ui/icons";
-import { useRepo } from "../../store/repo";
+import { SearchIcon } from "@/components/ui/icons";
+import { useRepo } from "@/store/repo";
 import { buildFileRows, filterFiles } from "./tree";
 import { DirRow, FileRow } from "./rows";
 

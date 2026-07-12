@@ -1,6 +1,6 @@
-import type { CommitNode, StashEntry } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import { isCommitReachableFromRemote } from "../../store/selection";
+import type { CommitNode, StashEntry } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { isCommitReachableFromRemote } from "@/store/selection";
 
 /** The commit (or stash) the right-panel Details view is inspecting, derived
  * from the current selection. Shared by the header's identity/Checkout bar

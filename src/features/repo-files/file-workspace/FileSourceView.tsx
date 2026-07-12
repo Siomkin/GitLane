@@ -1,6 +1,6 @@
-import { MONO_FONT } from "../../../lib/ui";
-import type { Language } from "../../../lib/highlight";
-import { Tokens, numCell } from "../../review/DiffBody";
+import { MONO_FONT } from "@/lib/ui";
+import type { Language } from "@/lib/highlight";
+import { Tokens, numCell } from "@/features/review/DiffBody";
 import { ChangeBar } from "./changeMarkers";
 import { LineChange, type LineChanges } from "./lineChanges";
 

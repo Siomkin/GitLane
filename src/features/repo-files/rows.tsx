@@ -1,6 +1,6 @@
-import { ChevronRightIcon, FileIcon, FolderIcon } from "../../components/ui/icons";
-import { cn } from "../../lib/cn";
-import { basename } from "../../lib/paths";
+import { ChevronRightIcon, FileIcon, FolderIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
+import { basename } from "@/lib/paths";
 
 /** Indent per tree depth level, in px. */
 const INDENT = 14;

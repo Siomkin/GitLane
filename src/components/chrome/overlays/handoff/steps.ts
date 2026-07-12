@@ -3,7 +3,7 @@
 // the shared `../progress` primitive (extracted in GL-106); this file keeps only
 // the hand-off-specific event map and labels.
 
-import { stepIndexIn, stepStatus, type StepStatus } from "../progress";
+import { stepIndexIn, stepStatus, type StepStatus } from "@/components/chrome/overlays/progress";
 
 /** Display rows, in execution order. Each row owns one or more backend step ids
  * (`stashSource` + `stashDestination` both surface as "Stashing…"); a step that

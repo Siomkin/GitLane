@@ -5,10 +5,10 @@
 // the component is left with rendering only. IPC stays in the store/api.
 
 import { useEffect, useRef, useState } from "react";
-import { useUi } from "../../store/ui";
-import { useTerminalAgents } from "../../store/terminalAgents";
+import { useUi } from "@/store/ui";
+import { useTerminalAgents } from "@/store/terminalAgents";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the terminal-agent probe (architecture-rules-react.md §1)
-import { api, type TerminalAgent } from "../../lib/api";
+import { api, type TerminalAgent } from "@/lib/api";
 import {
   type AgentCheck,
   type CheckStatus,

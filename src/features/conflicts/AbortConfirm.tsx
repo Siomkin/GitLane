@@ -1,5 +1,5 @@
-import { operationLabel } from "../../store/operation";
-import type { ActiveOperationKind } from "../../store/repo";
+import { operationLabel } from "@/store/operation";
+import type { ActiveOperationKind } from "@/store/repo";
 
 const abortBody = (kind: ActiveOperationKind) => {
   if (kind === "carry") {

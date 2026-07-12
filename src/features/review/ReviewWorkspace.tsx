@@ -1,8 +1,8 @@
 import { useState } from "react";
-import type { DiffLine } from "../../lib/api";
-import { fileWriteGuard } from "../../lib/advancedRepoState";
-import { isMarkdownPath } from "../../lib/paths";
-import { useRepo } from "../../store/repo";
+import type { DiffLine } from "@/lib/api";
+import { fileWriteGuard } from "@/lib/advancedRepoState";
+import { isMarkdownPath } from "@/lib/paths";
+import { useRepo } from "@/store/repo";
 import { BinaryDiff } from "./BinaryDiff";
 import { MarkdownPreview } from "./markdown-preview";
 import { HandToAgentBar } from "./comments";

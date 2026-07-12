@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RemoteInfo } from "../../../../lib/api";
-import { detectRemoteUrl } from "../../../../lib/remotes";
-import { useRepo } from "../../../../store/repo";
-import { useAccounts } from "../../../../store/accounts";
-import { useUi } from "../../../../store/ui";
-import { Spinner } from "../../../ui/Loading";
+import type { RemoteInfo } from "@/lib/api";
+import { detectRemoteUrl } from "@/lib/remotes";
+import { useRepo } from "@/store/repo";
+import { useAccounts } from "@/store/accounts";
+import { useUi } from "@/store/ui";
+import { Spinner } from "@/components/ui/Loading";
 import { RemoteRow } from "./RemoteRow";
 import { RemoteSummaryCard } from "./RemoteSummaryCard";
 import { AddRemoteForm } from "./AddRemoteForm";

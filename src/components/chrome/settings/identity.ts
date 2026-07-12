@@ -1,7 +1,7 @@
 // Pure validation helpers for the commit-identity editor — no React, no IPC, so
 // the dirty/valid rules that gate the Save button are testable in isolation.
 
-import type { RepoIdentity } from "../../../store/accounts";
+import type { RepoIdentity } from "@/store/accounts";
 
 /** A pragmatic "looks like an email" check: one `@`, a dotted domain, no spaces. */
 export function isValidEmail(email: string): boolean {

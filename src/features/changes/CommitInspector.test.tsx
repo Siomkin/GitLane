@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CommitNode, FileChange, RepoGraph, StashEntry } from "../../lib/api";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
+import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { CommitInspector } from "./CommitInspector";
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({

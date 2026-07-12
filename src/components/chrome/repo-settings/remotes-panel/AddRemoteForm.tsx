@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { focusRing } from "../../../../lib/ui";
-import { PlusIcon } from "../../../ui/icons";
-import { isValidRemoteName, validateRemoteUrl } from "../../../../lib/remotes";
+import { focusRing } from "@/lib/ui";
+import { PlusIcon } from "@/components/ui/icons";
+import { isValidRemoteName, validateRemoteUrl } from "@/lib/remotes";
 import { RemoteUrlField } from "./RemoteUrlField";
 import { RemoteValidityLine } from "./RemoteValidityLine";
 

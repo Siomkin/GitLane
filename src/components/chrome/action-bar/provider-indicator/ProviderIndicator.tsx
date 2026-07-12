@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import type { ComponentType } from "react";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { ForgeKind } from "../../../../lib/api";
-import type { RepoForge } from "../../../../lib/api";
-import type { RepoSettingsSection } from "../../../../store/ui";
-import { useDismiss } from "../../../../hooks/useDismiss";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { ForgeKind } from "@/lib/api";
+import type { RepoForge } from "@/lib/api";
+import type { RepoSettingsSection } from "@/store/ui";
+import { useDismiss } from "@/hooks/useDismiss";
 import {
   AzureDevOpsIcon,
   BitbucketIcon,
@@ -16,7 +16,7 @@ import {
   GitHubIcon,
   GitLabIcon,
   WarningIcon,
-} from "../../../ui/icons";
+} from "@/components/ui/icons";
 import { ProviderPopover } from "./ProviderPopover";
 import { providerPopoverModel } from "./model";
 import type { ProviderState } from "./state";

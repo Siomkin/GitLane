@@ -4,9 +4,9 @@
 // screen. `createMissingRepoHandlers` returns the classify/route handlers the
 // lifecycle and refresh slices share; the routing internals stay private here.
 
-import { api, isRepoOpenError } from "../lib/api";
-import { pruneTabInfo, type TabInfo } from "../lib/tabs";
-import { trimTrailingSlash } from "../lib/worktrees";
+import { api, isRepoOpenError } from "@/lib/api";
+import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
+import { trimTrailingSlash } from "@/lib/worktrees";
 import { usePulls } from "./pulls";
 import {
   beginGraphRequest,

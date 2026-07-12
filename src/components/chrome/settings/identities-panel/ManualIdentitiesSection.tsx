@@ -8,14 +8,14 @@
 // drifts from the edited identity.
 
 import { useEffect, useState } from "react";
-import { cn } from "../../../../lib/cn";
-import { focusRing } from "../../../../lib/ui";
-import { useRepo } from "../../../../store/repo";
-import { useAccounts } from "../../../../store/accounts";
-import { appliedCommitSource, useIdentities } from "../../../../store/identities";
-import { selectCommitSource } from "../../../../lib/identities";
-import { type ProfileDraft } from "../../../../lib/profiles";
-import { useUi } from "../../../../store/ui";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useRepo } from "@/store/repo";
+import { useAccounts } from "@/store/accounts";
+import { appliedCommitSource, useIdentities } from "@/store/identities";
+import { selectCommitSource } from "@/lib/identities";
+import { type ProfileDraft } from "@/lib/profiles";
+import { useUi } from "@/store/ui";
 import { ProfileEditor } from "./ProfileEditor";
 import { ProfileRow } from "./ProfileRow";
 

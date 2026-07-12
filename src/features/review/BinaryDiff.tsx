@@ -5,12 +5,12 @@
 // before/after) for previewable image types. Read-only: no editing of bytes.
 
 import { useEffect, useState } from "react";
-import type { BinaryFileKind } from "../../lib/binaryFile";
-import { binaryFileKind, changeVerb, formatBytes, formatDelta } from "../../lib/binaryFile";
+import type { BinaryFileKind } from "@/lib/binaryFile";
+import { binaryFileKind, changeVerb, formatBytes, formatDelta } from "@/lib/binaryFile";
 // eslint-disable-next-line no-restricted-imports -- local binary-blob image preview probe (architecture-rules-react.md §1)
-import { api, type FileDiff } from "../../lib/api";
-import { cn } from "../../lib/cn";
-import { useRepo } from "../../store/repo";
+import { api, type FileDiff } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { useRepo } from "@/store/repo";
 import { FileIcon } from "@/components/ui/icons";
 
 /** Which blob a preview reads: a committed/staged blob (`oid`) or, when the diff

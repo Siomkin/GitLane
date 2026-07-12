@@ -6,10 +6,10 @@
 
 import { useEffect, type ComponentType } from "react";
 
-import { cn } from "../../../lib/cn";
-import { focusRing } from "../../../lib/ui";
-import { useUpdates, type UpdateStatus } from "../../../store/updates";
-import { CheckIcon, RefreshIcon, UpdateIcon, WarningIcon } from "../../ui/icons";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
+import { useUpdates, type UpdateStatus } from "@/store/updates";
+import { CheckIcon, RefreshIcon, UpdateIcon, WarningIcon } from "@/components/ui/icons";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;

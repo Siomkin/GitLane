@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { FileChange } from "../../lib/api";
-import { emptyAdvancedState } from "../../lib/advancedRepoState";
-import { useRepo } from "../../store/repo";
-import { useUi } from "../../store/ui";
-import { FileContextMenu } from "../../components/chrome/overlays";
+import type { FileChange } from "@/lib/api";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
+import { FileContextMenu } from "@/components/chrome/overlays";
 import { WorkingInspector } from "./WorkingInspector";
 
 const staged = (path: string): FileChange => ({ path, status: "M", add: 1, del: 0, binary: false });

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { useRepo } from "../../../store/repo";
-import { useUi, type ConfirmRequest, type PromptRequest } from "../../../store/ui";
+import { useRepo } from "@/store/repo";
+import { useUi, type ConfirmRequest, type PromptRequest } from "@/store/ui";
 import { CreateBranchDialog, ConfirmDialog, PromptDialog } from "./dialogs";
 
 // These dialogs are store-driven: each renders whatever its slice of `useUi`

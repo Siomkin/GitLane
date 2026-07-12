@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import type { FileDiff } from "../lib/api";
+import type { FileDiff } from "@/lib/api";
 
 /** One file's diff fetch: a cache `key` and a thunk that loads it. The thunk
  * owns the actual `api.*` call, so the hook never imports the IPC layer. */

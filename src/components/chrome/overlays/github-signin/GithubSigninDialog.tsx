@@ -15,7 +15,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUi, type GithubSigninRequest } from "@/store/ui";
-import { StepRow } from "../progress";
+import { StepRow } from "@/components/chrome/overlays/progress";
 import { SIGNIN_STEP_COUNT, signinStepLabel, signinStepStatus } from "./steps";
 import { useGithubSigninRun } from "./useGithubSigninRun";
 

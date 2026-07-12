@@ -1,7 +1,7 @@
-import { openExternalUrl } from "../../../../lib/openExternal";
-import { focusRing } from "../../../../lib/ui";
-import { cn } from "../../../../lib/cn";
-import { ArrowUpRightIcon } from "../../../ui/icons";
+import { openExternalUrl } from "@/lib/openExternal";
+import { focusRing } from "@/lib/ui";
+import { cn } from "@/lib/cn";
+import { ArrowUpRightIcon } from "@/components/ui/icons";
 import type { ReactNode } from "react";
 
 /** A single external-link row in the provider popover (GitHub PRs/Issues, repo

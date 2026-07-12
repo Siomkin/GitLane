@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import type { RefLabel } from "../../../lib/api";
-import { buildClusterItems } from "../refCluster";
+import type { RefLabel } from "@/lib/api";
+import { buildClusterItems } from "@/features/graph/refCluster";
 import { CombinedRefPill } from "./CombinedRefPill";
 import { RefPill } from "./RefPill";
 

@@ -1,7 +1,7 @@
 // Pure, framework-free helpers shared by the history-inspection views
 // (file history, blame, compare). No React, no store, no IPC.
 
-import { LANE_COLORS } from "../graph/palette";
+import { LANE_COLORS } from "@/features/graph/palette";
 
 /** Compact relative time ("2 days ago") from a unix-seconds timestamp. */
 export function relativeTime(unixSeconds: number): string {
