@@ -198,11 +198,13 @@ export function AccountsPanel() {
           />
         ) : (
           <>
+            {/* Only a genuine failure lands here now. An unusable `gh` (missing,
+                too old) is no longer an error at all — it just means no GitHub
+                accounts, and the reason is raised on the GitHub connect flow,
+                where the user actually asked for it. */}
             {accountsError && (
               <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3.5 py-3 text-[12px] text-rose-500">
-                {accountsError.includes("gh) not found")
-                  ? "GitHub CLI (gh) not found. Install it from cli.github.com."
-                  : accountsError}
+                {accountsError}
               </div>
             )}
 

@@ -50,8 +50,21 @@ fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
     result.map_err(|err| err.to_ipc_string())
 }
 
+/// List the signed-in GitHub accounts.
+///
+/// `gh` is an optional dependency, so an unusable `gh` (not installed, too old,
+/// missing a capability) is **not** an error here — it simply means there are no
+/// GitHub accounts, which is exactly true. GitLane used to surface it as a red
+/// "GitHub CLI unavailable" banner in the toolbar and the Accounts panel on
+/// every launch, nagging users who only ever clone a public repo and never open
+/// a pull request. The explanation is still raised — verbatim — by the calls that
+/// genuinely need gh (listing PRs, signing in), i.e. exactly when the user
+/// reaches for GitHub. See [`GithubError::is_gh_unusable`].
 pub fn accounts() -> Result<Vec<GithubAccount>, String> {
-    ipc(GithubService::default().accounts())
+    match GithubService::default().accounts() {
+        Err(err) if err.is_gh_unusable() => Ok(Vec::new()),
+        result => ipc(result),
+    }
 }
 
 /// Sign one account out of `gh` (removes its credential-store entry). Like
