@@ -1,6 +1,14 @@
 import { cn } from "../../../lib/cn";
 import type { FileListView } from "./types";
 
+const btn = (active: boolean) =>
+  cn(
+    "px-2.5 h-6 rounded-md",
+    active
+      ? "bg-white dark:bg-neutral-700 shadow-sm font-medium text-neutral-800 dark:text-neutral-100"
+      : "text-neutral-500 dark:text-neutral-400",
+  );
+
 /** Path / Tree segmented toggle for a changed-files list — matches the diff
  * view's Unified/Split control idiom. Shared across the commit, working-changes,
  * and merged-selection inspectors (GL-28). */
@@ -11,13 +19,6 @@ export function FileViewToggle({
   view: FileListView;
   onChange: (view: FileListView) => void;
 }) {
-  const btn = (active: boolean) =>
-    cn(
-      "px-2.5 h-6 rounded-md",
-      active
-        ? "bg-white dark:bg-neutral-700 shadow-sm font-medium text-neutral-800 dark:text-neutral-100"
-        : "text-neutral-500 dark:text-neutral-400",
-    );
   return (
     <div
       role="group"

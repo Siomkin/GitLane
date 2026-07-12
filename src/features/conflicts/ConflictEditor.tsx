@@ -7,6 +7,15 @@ import { InlineConflict } from "./InlineConflict";
 import { SplitConflict } from "./SplitConflict";
 import type { EditorMode } from "./useConflictResolver";
 
+/** Segmented-toggle button classes (Inline / Split) — state-free. */
+const seg = (active: boolean) =>
+  cn(
+    "h-6 rounded-md px-2.5",
+    active
+      ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
+      : "text-neutral-500 dark:text-neutral-400",
+  );
+
 const CheckIcon = ({ className }: { className: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={className}>
     <path d="M20 6 9 17l-5-5" />
@@ -175,14 +184,6 @@ export const ConflictEditor = ({
       : resolved
         ? "All conflicts resolved — stage to finish this file"
         : `${decidedCount} of ${totalHunks} conflict${totalHunks === 1 ? "" : "s"} resolved`;
-
-  const seg = (active: boolean) =>
-    cn(
-      "h-6 rounded-md px-2.5",
-      active
-        ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-        : "text-neutral-500 dark:text-neutral-400",
-    );
 
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800">

@@ -46,6 +46,15 @@ const HANDLES: Handle[] = [
   { dir: "SouthEast", cursor: "cursor-nwse-resize", style: { bottom: 0, right: 0, width: CORNER, height: CORNER } },
 ];
 
+/** Hand the edge/corner drag back to the OS via startResizeDragging — state-free. */
+const onDown = (dir: ResizeDirection) => (e: PointerEvent<HTMLDivElement>) => {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  win()
+    ?.startResizeDragging(dir)
+    .catch(() => {});
+};
+
 export function WindowResizeHandles() {
   const [maximized, setMaximized] = useState(false);
 
@@ -66,14 +75,6 @@ export function WindowResizeHandles() {
       .catch(() => {});
     return () => unlisten?.();
   }, []);
-
-  const onDown = (dir: ResizeDirection) => (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    win()
-      ?.startResizeDragging(dir)
-      .catch(() => {});
-  };
 
   // A maximized window can't be edge-resized, and the grips would otherwise sit
   // over the screen corners — intercepting the click users aim at the close

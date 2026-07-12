@@ -13,6 +13,16 @@ import { useUi } from "@/store/ui";
 import { Backdrop, useBranchOp, useFittedMenuPosition } from "../shared";
 import { previewConfirm } from "./previewConfirm";
 
+/** Glyph + tint for an action kind — state-free. */
+const iconFor = (kind: GraphActionKind) =>
+  kind.startsWith("fast-forward")
+    ? { icon: "⏩", iconBg: "rgba(47,158,126,0.18)" }
+    : kind.startsWith("rebase")
+      ? { icon: "⤴", iconBg: "rgba(91,141,239,0.18)" }
+      : kind.startsWith("reset")
+        ? { icon: "⤓", iconBg: "rgba(224,98,111,0.18)" }
+        : { icon: "⛙", iconBg: "rgba(47,158,126,0.18)" };
+
 export function ActionMenu() {
   const menu = useUi((s) => s.actionMenu);
   const close = useUi((s) => s.closeOverlays);
@@ -141,15 +151,6 @@ export function ActionMenu() {
         return () => {};
     }
   };
-
-  const iconFor = (kind: GraphActionKind) =>
-    kind.startsWith("fast-forward")
-      ? { icon: "⏩", iconBg: "rgba(47,158,126,0.18)" }
-      : kind.startsWith("rebase")
-        ? { icon: "⤴", iconBg: "rgba(91,141,239,0.18)" }
-        : kind.startsWith("reset")
-          ? { icon: "⤓", iconBg: "rgba(224,98,111,0.18)" }
-          : { icon: "⛙", iconBg: "rgba(47,158,126,0.18)" };
 
   // The branch a checkout-based op must check out before running: merge/rebase/
   // reset all switch the working tree to the ref they mutate (merge via

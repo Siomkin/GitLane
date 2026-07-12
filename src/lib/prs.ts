@@ -21,15 +21,6 @@ export type PrState = "open" | "merged" | "closed";
  * UI store imports it so the union has a single source of truth. */
 export type PrFilter = "open" | "closed" | "all";
 
-/** Display label per PR state. Shared by the docked list and the detail header
- * so they never drift. State colors come from Tailwind class maps in the PR
- * components, not from here. */
-export const PR_META: Record<PrState, { label: string }> = {
-  open: { label: "Open" },
-  merged: { label: "Merged" },
-  closed: { label: "Closed" },
-};
-
 /** Author as the UI renders it: display name + avatar initials. `login` is the
  * stable GitHub handle (kept for identity — display names aren't unique and can
  * be empty on comment authors, so dedupe/compare on this, not `name`). */

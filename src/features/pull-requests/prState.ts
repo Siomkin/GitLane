@@ -1,7 +1,7 @@
 // PR state → presentation mapping. Pure (no React, no IPC): given a PR it
 // returns the label + Tailwind class strings the header and Info stat-line share.
 // Open reads as accent/green, merged as purple, closed as rose — the class-based
-// palette replacement for the old `PR_META.color` hexes.
+// palette that replaced the old per-state hex map.
 import type { PrState, PullRequest } from "../../lib/prs";
 
 const STATE_DOT: Record<PrState, string> = {
