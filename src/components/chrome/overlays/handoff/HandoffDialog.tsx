@@ -20,6 +20,7 @@ import { useUi, type HandoffRequest } from "@/store/ui";
 import { StepRow } from "@/components/chrome/overlays/progress";
 import { handoffStepLabels, handoffStepStatus } from "./steps";
 import { useHandoffRun } from "./useHandoffRun";
+import { Select } from "@/components/ui/Select";
 
 /** The branch-between-workspaces glyph shown in the dialog's badge. */
 function HandoffMarkIcon({ className }: { className?: string }) {
@@ -174,18 +175,19 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
             </div>
             <div className="mt-4 flex items-center gap-2 text-[12.5px] text-neutral-500 dark:text-neutral-400">
               <span className="shrink-0">Handing off to workspace</span>
-              <select
+              <Select
+                wrapperClassName="min-w-0 flex-1"
                 value={selectedDest}
                 onChange={(e) => setPreferredDest(e.target.value)}
                 aria-label="Destination workspace"
-                className="min-w-0 flex-1 truncate rounded-md border border-black/10 bg-transparent px-1.5 py-1 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"
+                className="w-full truncate rounded-md border border-black/10 bg-white pl-1.5 py-1 text-[12.5px] font-medium text-neutral-700 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200"
               >
                 {options.map((o) => (
                   <option key={o.value} value={o.value} className="dark:bg-neutral-800">
                     {o.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             {destOption && (
               <div className="mt-1.5 truncate text-right font-mono text-[10.5px] text-neutral-400">

@@ -8,6 +8,7 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { useUi } from "@/store/ui";
 import type { AuthRecovery } from "@/features/onboarding/authRecovery";
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { Select } from "@/components/ui/Select";
 
 const linkCls =
   "inline-flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--accent)] hover:underline";
@@ -57,11 +58,12 @@ export const AuthRecoveryPanel = ({ ob, recovery }: { ob: OnboardingApi; recover
             )}
           </div>
           {ob.cloneForm.accounts.length > 0 && (
-            <select
+            <Select
+              wrapperClassName="mt-3"
               aria-label="Authentication account"
               value={ob.cloneForm.accountId ?? ""}
               onChange={(e) => ob.cloneForm.setAccountId(e.target.value || null)}
-              className="mt-3 h-9 w-full rounded-lg border border-black/10 bg-white px-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+              className="h-9 w-full rounded-lg border border-black/10 bg-white pl-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
             >
               <option value="">Use Git credential helper or GCM…</option>
               {ob.cloneForm.accounts.map((a) => (
@@ -69,7 +71,7 @@ export const AuthRecoveryPanel = ({ ob, recovery }: { ob: OnboardingApi; recover
                   Retry as @{a.login} via {a.forge}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           {!ob.cloneForm.accountId && (
             <>

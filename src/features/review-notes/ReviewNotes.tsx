@@ -13,6 +13,7 @@ import { useUi } from "@/store/ui";
 import { CloseIcon, DiamondIcon } from "@/components/ui/icons";
 import { composeAgentMessage, orderedNotes } from "@/features/review/comments/notes";
 import { selectEnabledAgents } from "@/features/terminal/agents";
+import { Select } from "@/components/ui/Select";
 
 /** The popup: an editable, pre-composed message with an agent picker + Copy /
  * Send-to-terminal. */
@@ -141,14 +142,14 @@ export function AgentMessageDialog() {
           {agents.length > 0 ? (
             <label className="mr-auto flex min-w-0 items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
               <span id={`${modelSelectId}-label`}>Model</span>
-              <select
+              <Select
                 id={modelSelectId}
                 aria-labelledby={`${modelSelectId}-label`}
                 value={selectedAgent?.id ?? ""}
                 onChange={(e) => setSelectedAgentId(e.target.value || null)}
                 disabled={availableAgents.length === 0}
                 className={cn(
-                  "h-9 max-w-[220px] rounded-lg border border-black/10 bg-white px-3 text-[13px] font-medium text-neutral-700 outline-none dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
+                  "h-9 max-w-[220px] rounded-lg border border-black/10 bg-white pl-3 text-[13px] font-medium text-neutral-700 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
                   focusRing,
                 )}
               >
@@ -167,7 +168,7 @@ export function AgentMessageDialog() {
                     {agent.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ) : (
             <span className="mr-auto text-[12px] text-amber-600 dark:text-amber-400">

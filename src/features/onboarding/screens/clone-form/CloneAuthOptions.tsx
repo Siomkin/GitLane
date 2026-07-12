@@ -4,17 +4,19 @@
 // the auth surface is simplified to CLI/GCM/SSH.
 
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
+import { Select } from "@/components/ui/Select";
 
 export const CloneAuthOptions = ({ ob }: { ob: OnboardingApi }) => {
   const manual = !ob.cloneForm.accountId;
   return (
     <div className="mt-2.5 rounded-xl border border-black/[0.07] bg-black/[0.015] p-3.5 dark:border-white/[0.08] dark:bg-white/[0.025]">
       {ob.cloneForm.accounts.length > 0 && (
-        <select
+        <Select
+          wrapperClassName="mb-2"
           aria-label="Authentication account"
           value={ob.cloneForm.accountId ?? ""}
           onChange={(e) => ob.cloneForm.setAccountId(e.target.value || null)}
-          className="mb-2 h-9 w-full rounded-lg border border-black/10 bg-white px-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
+          className="h-9 w-full rounded-lg border border-black/10 bg-white pl-2.5 text-[13px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200"
         >
           <option value="">System git credentials / username below</option>
           {ob.cloneForm.accounts.map((a) => (
@@ -22,7 +24,7 @@ export const CloneAuthOptions = ({ ob }: { ob: OnboardingApi }) => {
               @{a.login} via {a.forge}
             </option>
           ))}
-        </select>
+        </Select>
       )}
       {manual && (
         <div>

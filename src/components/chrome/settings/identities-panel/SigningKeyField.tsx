@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 // eslint-disable-next-line no-restricted-imports -- local signing-keys read probe for the key picker (architecture-rules-react.md §1)
 import { api, type SigningKey } from "@/lib/api";
+import { Select } from "@/components/ui/Select";
 
 const MANUAL = "__manual__";
 
@@ -65,11 +66,11 @@ export function SigningKeyField({
   return (
     <div className="flex flex-col gap-2">
       {!noKeys && (
-        <select
+        <Select
           aria-label="Signing key"
           value={showManual ? MANUAL : inList ? value : ""}
           onChange={(e) => onSelect(e.target.value)}
-          className={cn(fieldCls, "w-full px-3", focusRing)}
+          className={cn(fieldCls, "w-full pl-3", focusRing)}
         >
           <option value="">No signing key</option>
           {gpgKeys.length > 0 && (
@@ -91,7 +92,7 @@ export function SigningKeyField({
             </optgroup>
           )}
           <option value={MANUAL}>Paste a key manually…</option>
-        </select>
+        </Select>
       )}
 
       {showManual && (

@@ -9,13 +9,8 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  CloseIcon,
-  GitHubIcon,
-  WarningIcon,
-} from "@/components/ui/icons";
+import { CheckIcon, CloseIcon, GitHubIcon, WarningIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useAccounts } from "@/store/accounts";
@@ -161,35 +156,23 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             </div>
             <div className="mt-4 flex items-center gap-2 text-[12.5px] text-neutral-500 dark:text-neutral-400">
               <span className="shrink-0">Host</span>
-              {/* `appearance-none` + an opaque background is load-bearing, not
-                  cosmetic: left native, WebKitGTK paints the control with the GTK
-                  theme's own chrome and colours, which ignores `bg-transparent`
-                  and renders a light widget (with washed-out text) inside the dark
-                  dialog. Stripping the native appearance lets our own styling —
-                  and the theme — actually apply. The chevron replaces the one the
-                  native widget drew for us. */}
-              <div className="relative min-w-0 flex-1">
-                <select
-                  value={mode}
-                  onChange={(e) => setMode(e.target.value as "dotcom" | "enterprise")}
-                  aria-label="GitHub host"
-                  className={cn(
-                    // Tailwind v4 emits only the unprefixed `appearance`, which
-                    // older WebKitGTK ignores — keep the prefixed form so the
-                    // native chrome is stripped there too.
-                    "h-9 w-full appearance-none [-webkit-appearance:none] rounded-md border border-black/10 bg-white pl-2.5 pr-7 text-[12.5px] font-medium text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200",
-                    focusRing,
-                  )}
-                >
-                  <option value="dotcom" className="dark:bg-neutral-800">
-                    GitHub.com
-                  </option>
-                  <option value="enterprise" className="dark:bg-neutral-800">
-                    GitHub Enterprise…
-                  </option>
-                </select>
-                <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
-              </div>
+              <Select
+                wrapperClassName="min-w-0 flex-1"
+                value={mode}
+                onChange={(e) => setMode(e.target.value as "dotcom" | "enterprise")}
+                aria-label="GitHub host"
+                className={cn(
+                  "h-9 w-full rounded-md border border-black/10 bg-white pl-2.5 text-[12.5px] font-medium text-neutral-700 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200",
+                  focusRing,
+                )}
+              >
+                <option value="dotcom" className="dark:bg-neutral-800">
+                  GitHub.com
+                </option>
+                <option value="enterprise" className="dark:bg-neutral-800">
+                  GitHub Enterprise…
+                </option>
+              </Select>
             </div>
             {mode === "enterprise" && (
               <input
