@@ -12,7 +12,7 @@ export function FileContextMenu() {
   const showToast = useUi((s) => s.showToast);
   const discardFile = useRepo((s) => s.discardFile);
   const openFileHistory = useRepo((s) => s.openFileHistory);
-  const openRepoFile = useRepo((s) => s.openRepoFile);
+  const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const changes = useRepo((s) => s.changes);
   if (!menu) return null;
@@ -39,7 +39,7 @@ export function FileContextMenu() {
     {
       label: "Open file",
       icon: <FileTextIcon className="h-4 w-4" />,
-      onClick: () => { close(); void openRepoFile(path); },
+      onClick: () => { close(); requestOpenRepoFile(path); },
     },
     { label: "Copy", header: true, sep: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
     { label: "File name", onClick: () => copy(fileName, `Copied ${fileName}`) },

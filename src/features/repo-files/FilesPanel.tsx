@@ -14,7 +14,7 @@ export function FilesPanel() {
   const repoPath = useRepo((s) => s.summary?.path);
   const repoFiles = useRepo((s) => s.repoFiles);
   const loadRepoFiles = useRepo((s) => s.loadRepoFiles);
-  const openRepoFile = useRepo((s) => s.openRepoFile);
+  const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
   const openPath = useRepo((s) => s.fileView?.path ?? null);
 
   const [query, setQuery] = useState("");
@@ -94,7 +94,7 @@ export function FilesPanel() {
                   depth={0}
                   fullPath
                   active={path === openPath}
-                  onOpen={() => void openRepoFile(path)}
+                  onOpen={() => requestOpenRepoFile(path)}
                 />
               ))}
               {matches.length > MAX_FILTER_MATCHES && (
@@ -122,7 +122,7 @@ export function FilesPanel() {
                 path={row.path}
                 depth={row.depth}
                 active={row.path === openPath}
-                onOpen={() => void openRepoFile(row.path)}
+                onOpen={() => requestOpenRepoFile(row.path)}
               />
             ),
           )

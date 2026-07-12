@@ -87,13 +87,35 @@ export interface RepoFilesState {
   error: string | null;
 }
 
-/** A repository file opened read-only in the center pane (from the Files tab). */
+/** In-app edit session for the open file (GL-212). Present only while editing.
+ * Dirtiness is derived (`draft !== content.text`) rather than stored, so a save
+ * that republishes `content.text` clears it with no extra bookkeeping. */
+export interface FileEditState {
+  /** The editable buffer, seeded from `content.text` on entry. */
+  draft: string;
+  /** Byte size the draft was baselined from — passed to `write_repo_file` as the
+   * on-disk size guard, and advanced to the new size after each save. */
+  baseSize: number;
+  /** True while a save is in flight. */
+  saving: boolean;
+  /** Last save failure to surface (cleared on the next edit/save). */
+  error: string | null;
+}
+
+/** A repository file opened in the center pane (from the Files tab). Read-only
+ * by default (GL-211); `edit` is set once the user starts editing (GL-212). */
 export interface FileViewState {
   /** Repo-relative path of the opened file. */
   path: string;
   content: RepoFileContent | null;
   loading: boolean;
   error: string | null;
+  /** The active edit session, or null/absent when viewing read-only. */
+  edit?: FileEditState | null;
+  /** Committed (HEAD) text, the baseline for the uncommitted-change gutter
+   * markers. `null` when there's nothing to diff against (untracked, binary,
+   * oversized, or unborn HEAD); absent on fixtures that predate the field. */
+  baseline?: string | null;
 }
 
 /** The merged ("union") diff of a multi-commit selection (GL-68/GL-69). Present
@@ -466,11 +488,26 @@ export interface RepoState {
   loadRepoFiles: () => Promise<void>;
   /** Open a repository file read-only in the center pane (Files tab click). */
   openRepoFile: (path: string) => Promise<void>;
+  /** Open a repository file, first confirming discard if the current viewer has
+   * unsaved edits. The entry point every file-open affordance should use. */
+  requestOpenRepoFile: (path: string) => void;
   /** Silently re-read the open file's content (watcher/checkout refresh) — keeps
    * the current text visible until the new content lands; closes the viewer if
    * the file is gone (e.g. it doesn't exist on the newly checked-out branch). */
   reloadFileView: () => Promise<void>;
   closeRepoFile: () => void;
+  /** Enter in-app edit mode for the open file (seeds the draft from the current
+   * text). No-op unless the file is editable (present, text, not binary, not
+   * truncated). */
+  beginFileEdit: () => void;
+  /** Update the editable draft as the user types. */
+  updateFileDraft: (text: string) => void;
+  /** Discard edits, resetting the draft to the last-saved text (stays in edit mode). */
+  revertFileEdit: () => void;
+  /** Leave edit mode (discarding any draft). Callers guard unsaved changes. */
+  endFileEdit: () => void;
+  /** Save the draft to disk (`write_repo_file`); keeps edit mode open. */
+  saveFileEdit: () => Promise<void>;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;

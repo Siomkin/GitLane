@@ -22,7 +22,7 @@ mod working;
 pub use blob::read_binary_blob;
 pub use commit::{commit_file_diff, commit_files};
 pub use compare::{compare_file_diff, compare_refs};
-pub use files::{list_repo_files, repo_file_text};
+pub use files::{list_repo_files, repo_file_head_text, repo_file_text};
 pub use history::{file_blame, file_history};
 pub use range::{diff_range, diff_range_file};
 pub use selection::{selection_diff, selection_diff_file};

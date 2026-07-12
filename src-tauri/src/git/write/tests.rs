@@ -13,7 +13,7 @@ use super::{
     reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file, revert,
     revert_many, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
     skip_operation, stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list,
-    stash_pop, unstage_all, unstage_file, unstage_files, worktrees,
+    stash_pop, unstage_all, unstage_file, unstage_files, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::TransportCredential;
@@ -3815,4 +3815,114 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
     assert!(trimmed_sibling.join("wrong.txt").exists());
 
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A minimal committed repo with one text file, for the file-editor writes.
+fn repo_with_file(tag: &str, name: &str, contents: &[u8]) -> TempRepo {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join(name), contents).unwrap();
+    repo.git_ok(&["add", name]);
+    repo.git_ok(&["commit", "-q", "-m", "seed"]);
+    repo
+}
+
+#[test]
+fn write_repo_file_overwrites_and_reports_new_size() {
+    let repo = repo_with_file("wrf-ok", "a.txt", b"old\n");
+    let size = write_repo_file(repo.path(), "a.txt", "new content\n", Some(4)).expect("write ok");
+    assert_eq!(size, "new content\n".len() as u64);
+    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "new content\n");
+}
+
+#[test]
+fn write_repo_file_rejects_size_mismatch() {
+    let repo = repo_with_file("wrf-size", "a.txt", b"old\n");
+    // On-disk is 4 bytes; a caller that loaded a different size (or a truncated
+    // >2 MiB prefix) must be refused before the unseen remainder is destroyed.
+    let err = write_repo_file(repo.path(), "a.txt", "x", Some(999)).unwrap_err();
+    assert!(err.contains("changed on disk"), "unexpected: {err}");
+    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+}
+
+#[test]
+fn write_repo_file_refuses_new_file() {
+    let repo = repo_with_file("wrf-new", "a.txt", b"old\n");
+    // Overwrite-only: the panel never lists a nonexistent path.
+    assert!(write_repo_file(repo.path(), "nope.txt", "x", None).is_err());
+    assert!(!repo.0.join("nope.txt").exists());
+}
+
+#[test]
+fn write_repo_file_refuses_binary_content_and_binary_target() {
+    let repo = repo_with_file("wrf-bin", "a.txt", b"old\n");
+    // NUL in the incoming content — scanned in full, not just the sniff window.
+    assert!(write_repo_file(repo.path(), "a.txt", "a\0b", Some(4)).is_err());
+    let late_nul = format!("{}\0", "x".repeat(9000));
+    assert!(write_repo_file(repo.path(), "a.txt", &late_nul, Some(4)).is_err());
+    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+
+    // NUL already on disk — an editor should never have offered it as text.
+    let bin = repo_with_file("wrf-bin2", "b.bin", b"\0\0\0\0");
+    let err = write_repo_file(bin.path(), "b.bin", "text", Some(4)).unwrap_err();
+    assert!(err.contains("binary"), "unexpected: {err}");
+}
+
+#[test]
+fn write_repo_file_refuses_oversized_and_dotgit_paths() {
+    let repo = repo_with_file("wrf-cap", "a.txt", b"old\n");
+    // A file larger than the read cap could only have been read as a prefix.
+    let big = repo.0.join("big.txt");
+    std::fs::write(&big, vec![b'x'; 2 * 1024 * 1024 + 1]).unwrap();
+    let err = write_repo_file(repo.path(), "big.txt", "x", None).unwrap_err();
+    assert!(err.contains("too large"), "unexpected: {err}");
+
+    // Incoming content is capped too — a small file can't be grown past the cap.
+    let huge = "x".repeat(2 * 1024 * 1024 + 1);
+    let err = write_repo_file(repo.path(), "a.txt", &huge, Some(4)).unwrap_err();
+    assert!(err.contains("too large"), "unexpected: {err}");
+    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+
+    // The raw IPC surface must not be pointed at repository metadata.
+    assert!(write_repo_file(repo.path(), ".git/config", "x", None).is_err());
+    assert!(write_repo_file(repo.path(), ".GIT/config", "x", None).is_err());
+}
+
+#[test]
+fn write_repo_file_leaves_original_intact_and_preserves_mode() {
+    let repo = repo_with_file("wrf-atomic", "a.sh", b"#!/bin/sh\necho hi\n");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(repo.0.join("a.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
+        let before = std::fs::metadata(repo.0.join("a.sh")).unwrap().permissions().mode() & 0o777;
+        write_repo_file(repo.path(), "a.sh", "#!/bin/sh\necho bye\n", Some(18)).expect("write ok");
+        let after = std::fs::metadata(repo.0.join("a.sh")).unwrap().permissions().mode() & 0o777;
+        assert_eq!(before, after, "executable bit must survive the atomic replace");
+    }
+    assert_eq!(std::fs::read_to_string(repo.0.join("a.sh")).unwrap(), "#!/bin/sh\necho bye\n");
+    // No temp files should be left behind in the worktree.
+    let leftovers: Vec<_> = std::fs::read_dir(&repo.0)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().contains("gitlane-tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "atomic write left a temp file behind");
+}
+
+#[test]
+fn write_repo_file_rejects_traversal_and_symlink() {
+    let repo = repo_with_file("wrf-guard", "a.txt", b"old\n");
+    assert!(write_repo_file(repo.path(), "../escape.txt", "x", None).is_err());
+    assert!(write_repo_file(repo.path(), "/etc/hosts", "x", None).is_err());
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("a.txt", repo.0.join("link.txt")).unwrap();
+        // A symlink is not a regular file — refuse rather than follow it.
+        assert!(write_repo_file(repo.path(), "link.txt", "x", None).is_err());
+    }
 }

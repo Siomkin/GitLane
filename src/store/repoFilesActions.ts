@@ -1,6 +1,29 @@
 import { api } from "../lib/api";
 import { useUi } from "./ui";
-import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
+import type { FileViewState, RepoGet, RepoSet, RepoState } from "./repoTypes";
+
+/** Shared copy for the "you have unsaved edits" confirmation, used both when
+ * closing/leaving the editor and when opening another file over a dirty one. */
+export const DISCARD_UNSAVED_CONFIRM = {
+  title: "Discard unsaved changes?",
+  message: "Your edits to this file haven't been saved.",
+  confirmLabel: "Discard",
+  danger: true,
+} as const;
+
+/** Whether the file's editable buffer diverges from its last-saved text. Derived
+ * (not stored) so a save that republishes `content.text` clears it for free. */
+export const isFileViewDirty = (fileView: FileViewState | null): boolean =>
+  !!fileView?.edit && fileView.edit.draft !== (fileView.content?.text ?? "");
+
+/** Whether a file's current content can be edited in place. Truncated (>2 MiB)
+ * and binary reads are refused: the buffer holds only a prefix (or no text), so
+ * saving it would destroy the unseen remainder. */
+export const isFileViewEditable = (fileView: FileViewState | null): boolean =>
+  !!fileView?.content &&
+  !fileView.content.binary &&
+  !fileView.content.truncated &&
+  fileView.content.text != null;
 
 /** Whether a `repo_file_text` failure means the file is gone (absent on the
  * newly checked-out branch, deleted, or replaced by a non-regular entry) versus
@@ -18,12 +41,48 @@ const isMissingFileError = (e: unknown): boolean =>
 export function createRepoFilesActions(
   set: RepoSet,
   get: RepoGet,
-): Pick<RepoState, "loadRepoFiles" | "openRepoFile" | "reloadFileView" | "closeRepoFile"> {
+): Pick<
+  RepoState,
+  | "loadRepoFiles"
+  | "openRepoFile"
+  | "requestOpenRepoFile"
+  | "reloadFileView"
+  | "closeRepoFile"
+  | "beginFileEdit"
+  | "updateFileDraft"
+  | "revertFileEdit"
+  | "endFileEdit"
+  | "saveFileEdit"
+> {
   // Per-store generation counters. Only the newest request may publish; a
   // superseded in-flight response (older generation) is dropped on arrival.
   let listGen = 0;
   let viewGen = 0;
   let reloadGen = 0;
+  let saveGen = 0;
+  let baselineGen = 0;
+
+  // Fetch the committed (HEAD) baseline for the uncommitted-change gutter/ruler
+  // and attach it to the open file — best-effort (a failure just means no
+  // markers) and fired after the content read so it never perturbs the content
+  // freshness guards. Guarded so a slow response can't attach to a different
+  // file. Kept separate (not Promise.all with the content read) so the content
+  // read's request sequencing is unchanged.
+  const fetchBaseline = (repoPath: string, path: string) => {
+    // A generation guard so an older baseline read (a prior open/reload/edit on
+    // the same path, e.g. across an external HEAD move) can't overwrite a newer
+    // one — path identity alone can't tell two requests apart.
+    const gen = ++baselineGen;
+    void Promise.resolve(api.repoFileHeadText(repoPath, path))
+      .then((baseline) => {
+        if (typeof baseline !== "string" && baseline !== null) return; // only a real string / null
+        const cur = get().fileView;
+        if (gen === baselineGen && get().summary?.path === repoPath && cur?.path === path) {
+          set({ fileView: { ...cur, baseline } });
+        }
+      })
+      .catch(() => {});
+  };
 
   return {
     loadRepoFiles: async () => {
@@ -77,6 +136,7 @@ export function createRepoFilesActions(
         const content = await api.repoFileText(repoPath, path);
         if (!fresh()) return;
         set({ fileView: { path, content, loading: false, error: null } });
+        fetchBaseline(repoPath, path);
       } catch (e) {
         if (!fresh()) return;
         set({ fileView: { path, content: null, loading: false, error: String(e) } });
@@ -88,6 +148,14 @@ export function createRepoFilesActions(
       if (!summary || !fileView) return;
       const repoPath = summary.path;
       const path = fileView.path;
+      // Never re-read the content under an open edit session — a watcher tick
+      // (including the one our own save fires) would otherwise clobber the draft.
+      // The baseline is still refreshed so the change gutter re-diffs against a
+      // HEAD moved by an external commit/checkout mid-edit.
+      if (fileView.edit) {
+        fetchBaseline(repoPath, path);
+        return;
+      }
       // Defer to a user-driven open (capture `viewGen`, don't bump — a newer
       // `openRepoFile` bumps it and supersedes this) and to any newer reload
       // (bump `reloadGen`), so the freshest read always wins and a slower older
@@ -104,6 +172,8 @@ export function createRepoFilesActions(
         const content = await api.repoFileText(repoPath, path);
         if (!fresh()) return;
         set({ fileView: { path, content, loading: false, error: null } });
+        // Re-read the baseline too — a checkout/commit moves HEAD.
+        fetchBaseline(repoPath, path);
       } catch (e) {
         if (!fresh()) return;
         // Only a genuinely-gone file dismisses the viewer (e.g. it doesn't exist
@@ -113,6 +183,106 @@ export function createRepoFilesActions(
       }
     },
 
+    requestOpenRepoFile: (path) => {
+      const fileView = get().fileView;
+      // Ignore navigation while a save is committing: a discard confirm here would
+      // claim the edits were dropped while the (uncancellable) write still lands
+      // on disk. The write is near-instant, so the click just no-ops; retry after.
+      if (fileView?.edit?.saving) return;
+      // Guard the one navigation the in-viewer confirm can't reach: picking
+      // another file (Files panel row, file context menu) over a dirty editor.
+      if (isFileViewDirty(fileView)) {
+        useUi.getState().requestConfirm({
+          ...DISCARD_UNSAVED_CONFIRM,
+          // Re-check at execution time: a ⌘S between opening this dialog and
+          // confirming it must not let navigation proceed while the write lands.
+          onConfirm: () => {
+            if (get().fileView?.edit?.saving) return;
+            void get().openRepoFile(path);
+          },
+        });
+      } else {
+        void get().openRepoFile(path);
+      }
+    },
+
     closeRepoFile: () => set({ fileView: null }),
+
+    beginFileEdit: () => {
+      const { summary, fileView } = get();
+      if (!fileView || !isFileViewEditable(fileView) || fileView.edit) return;
+      // Starting a new edit session invalidates any still-in-flight save from a
+      // previous one on the same path (close → reopen → edit), so its late
+      // response can't publish into this fresh session.
+      saveGen++;
+      set({
+        fileView: {
+          ...fileView,
+          edit: { draft: fileView.content!.text ?? "", baseSize: fileView.content!.size, saving: false, error: null },
+        },
+      });
+      // Refresh the baseline on edit entry so the change gutter reflects any
+      // checkout since the file was opened.
+      if (summary?.path) fetchBaseline(summary.path, fileView.path);
+    },
+
+    updateFileDraft: (text) => {
+      const { fileView } = get();
+      if (!fileView?.edit) return;
+      set({ fileView: { ...fileView, edit: { ...fileView.edit, draft: text, error: null } } });
+    },
+
+    revertFileEdit: () => {
+      const { fileView } = get();
+      if (!fileView?.edit) return;
+      set({
+        fileView: {
+          ...fileView,
+          edit: { ...fileView.edit, draft: fileView.content?.text ?? "", error: null },
+        },
+      });
+    },
+
+    endFileEdit: () => {
+      const { fileView } = get();
+      if (!fileView?.edit) return;
+      set({ fileView: { ...fileView, edit: null } });
+    },
+
+    saveFileEdit: async () => {
+      const { summary, fileView } = get();
+      if (!summary || !fileView?.edit || !fileView.content) return;
+      if (fileView.edit.saving) return;
+      const repoPath = summary.path;
+      const path = fileView.path;
+      const draft = fileView.edit.draft;
+      const baseSize = fileView.edit.baseSize;
+      // A monotonic guard so a response can't publish into a *different* edit
+      // session — closing and reopening the same path mid-save bumps this, and
+      // the stale result is dropped. (The textarea is read-only while saving, so
+      // the captured `draft` can't go stale under the in-flight write.)
+      const gen = ++saveGen;
+      set({ fileView: { ...fileView, edit: { ...fileView.edit, saving: true, error: null } } });
+      try {
+        const newSize = await api.writeRepoFile(repoPath, path, draft, baseSize);
+        // Only publish if the same file is still open in the same save session.
+        const cur = get().fileView;
+        if (gen !== saveGen || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
+        // Republish the saved text as the clean baseline: `content.text` now
+        // equals the draft (dirty clears), size advances so a second save's
+        // guard matches the new on-disk size.
+        set({
+          fileView: {
+            ...cur,
+            content: cur.content ? { ...cur.content, text: draft, size: newSize } : cur.content,
+            edit: { ...cur.edit, baseSize: newSize, saving: false, error: null },
+          },
+        });
+      } catch (e) {
+        const cur = get().fileView;
+        if (gen !== saveGen || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
+        set({ fileView: { ...cur, edit: { ...cur.edit, saving: false, error: String(e) } } });
+      }
+    },
   };
 }

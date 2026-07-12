@@ -859,6 +859,24 @@ export const gitApi = {
   repoFileText: (path: string, file: string, maxBytes?: number) =>
     invoke<RepoFileContent>("repo_file_text", { path, file, maxBytes: maxBytes ?? null }),
 
+  /** The committed (HEAD) text of a file — the baseline for the viewer/editor's
+   * uncommitted-change gutter markers. `null` when there's nothing to diff
+   * against (unborn HEAD, untracked path, binary/oversized blob). */
+  repoFileHeadText: (path: string, file: string) =>
+    invoke<string | null>("repo_file_head_text", { path, file }),
+
+  /** Save an edited worktree file (in-app editor, GL-212). `expectedSize` is the
+   * byte size the buffer was read from — the backend refuses the write if the
+   * on-disk size differs (external change / truncated read). Resolves with the
+   * new byte size. Overwrite-only; binary content/targets are refused. */
+  writeRepoFile: (path: string, file: string, content: string, expectedSize?: number) =>
+    invoke<number>("write_repo_file", {
+      path,
+      file,
+      content,
+      expectedSize: expectedSize ?? null,
+    }),
+
   // ---- working tree / staging ----
 
   workingChanges: async (path: string): Promise<WorkingChanges> =>

@@ -1418,3 +1418,49 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn repo_file_head_text_returns_committed_baseline() {
+    let dir = std::env::temp_dir().join("gitlane-file-head-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "a.txt", "one\ntwo\n");
+    let path = dir.to_str().unwrap();
+
+    // The committed content is returned even after the worktree diverges — that
+    // divergence is exactly what the change gutter visualizes.
+    fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+    assert_eq!(
+        super::repo_file_head_text(path, "a.txt").unwrap().as_deref(),
+        Some("one\ntwo\n"),
+    );
+
+    // Untracked / not-in-HEAD → no baseline.
+    fs::write(dir.join("new.txt"), "fresh\n").unwrap();
+    assert_eq!(super::repo_file_head_text(path, "new.txt").unwrap(), None);
+    assert_eq!(super::repo_file_head_text(path, "missing.txt").unwrap(), None);
+
+    // A binary blob at HEAD has no line baseline.
+    commit_bytes(&repo, &dir, "blob.bin", &[0u8, 1, 2, 3]);
+    assert_eq!(super::repo_file_head_text(path, "blob.bin").unwrap(), None);
+
+    // A HEAD blob past the cap yields no baseline (would only be a prefix).
+    commit_bytes(&repo, &dir, "big.txt", &vec![b'x'; 2 * 1024 * 1024 + 1]);
+    assert_eq!(super::repo_file_head_text(path, "big.txt").unwrap(), None);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn repo_file_head_text_unborn_head_has_no_baseline() {
+    // Fresh repo, no commits: HEAD is unborn, so there's nothing to diff against.
+    let dir = std::env::temp_dir().join("gitlane-file-head-unborn");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    Repository::init(&dir).unwrap();
+    let path = dir.to_str().unwrap();
+    fs::write(dir.join("a.txt"), "new\n").unwrap();
+    assert_eq!(super::repo_file_head_text(path, "a.txt").unwrap(), None);
+    let _ = fs::remove_dir_all(&dir);
+}
