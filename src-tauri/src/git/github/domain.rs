@@ -34,6 +34,11 @@ pub enum GithubError {
         installed: String,
         required: String,
     },
+    /// `gh` is installed but GitLane cannot drive it: it is missing a capability
+    /// from the baseline, or it printed a version banner we could not read.
+    GhUnusable {
+        detail: String,
+    },
     UnsupportedForge {
         forge: String,
         host: String,
@@ -61,6 +66,25 @@ pub enum GithubError {
 }
 
 impl GithubError {
+    /// True when the failure means `gh` simply cannot serve GitHub for us: it is
+    /// not installed, is older than the capability baseline, is missing a
+    /// capability, or printed a version banner we could not read.
+    ///
+    /// `gh` is an **optional** dependency — cloning a public repo, committing,
+    /// fetching and pushing all work without it, and a user who never opens a
+    /// pull request has no reason to install it. So callers that merely
+    /// *enumerate* accounts degrade this to "no GitHub accounts" rather than
+    /// raising an app-level error that nags from the toolbar and the Accounts
+    /// panel. Callers that genuinely need `gh` (listing PRs, signing in) still
+    /// surface the message, at the moment the user reaches for GitHub.
+    pub fn is_gh_unusable(&self) -> bool {
+        match self {
+            Self::ProviderUnavailable { provider } => provider == GH_PROVIDER,
+            Self::UnsupportedVersion { .. } | Self::GhUnusable { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn from_command(operation: &'static str, err: String) -> Self {
         let lower = err.to_ascii_lowercase();
         if lower.contains("gh) not found")
@@ -115,6 +139,7 @@ impl GithubError {
             Self::UnsupportedVersion { installed, required } => format!(
                 "GitHub CLI version {installed} is unsupported. GitLane requires gh {required} or newer; upgrade from {GH_UPGRADE_URL}."
             ),
+            Self::GhUnusable { detail } => detail.clone(),
             Self::UnsupportedForge { forge, host } => {
                 format!("GitLane supports GitHub pull requests, GitLab merge requests, and Bitbucket pull requests; the {forge} remote at {host} isn't supported yet.")
             }

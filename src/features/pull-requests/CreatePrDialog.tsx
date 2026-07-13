@@ -9,6 +9,7 @@ import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
+import { Select } from "@/components/ui/Select";
 
 /** Best guess at the base branch: the conventional default if present, else the
  * first local branch that isn't the current one. */
@@ -75,11 +76,11 @@ function CreatePrDialogBody() {
         <div className="mt-1 flex items-center gap-1.5 text-[12.5px] text-neutral-400">
           <span className="font-mono font-semibold text-[color:var(--accent)]">{head || "?"}</span>
           <span>→</span>
-          <select
+          <Select
             aria-label="Base branch"
             value={base}
             onChange={(e) => setBase(e.target.value)}
-            className="rounded-md border border-black/10 bg-transparent px-1.5 py-0.5 font-mono text-[12px] text-neutral-700 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"
+            className="rounded-md border border-black/10 bg-white pl-1.5 py-0.5 font-mono text-[12px] text-neutral-700 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200"
           >
             {!locals.includes(base) && <option value={base}>{base}</option>}
             {locals.map((b) => (
@@ -87,7 +88,7 @@ function CreatePrDialogBody() {
                 {b}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <input

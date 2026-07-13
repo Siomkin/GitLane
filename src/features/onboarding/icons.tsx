@@ -80,14 +80,6 @@ export function ChevronLeft(props: IconProps) {
   );
 }
 
-export function ChevronDown(props: IconProps) {
-  return (
-    <Base strokeWidth={2} {...props}>
-      <path d="m6 9 6 6 6-6" />
-    </Base>
-  );
-}
-
 /** Open ring — spun via an `animate-spin`/inline style by the caller. */
 export function SpinnerRing(props: IconProps) {
   return (

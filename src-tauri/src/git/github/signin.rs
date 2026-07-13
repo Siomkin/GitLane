@@ -36,6 +36,11 @@ struct SignInProgress {
     url: Option<String>,
 }
 
+/// Size of the PTY we drive `gh` in — also what we report back when its TUI
+/// probes for the window size (see [`TerminalProbes`]).
+const PTY_ROWS: u16 = 24;
+const PTY_COLS: u16 = 120;
+
 /// Shared slot for the in-flight sign-in: the running child (so [`cancel_sign_in`]
 /// can kill it) plus a sticky `canceled` flag. The flag closes a race — a Cancel
 /// can land in the window between [`sign_in_web`] being dispatched and its spawn
@@ -96,8 +101,8 @@ pub fn sign_in_web(
     let pty_system: Box<dyn PtySystem> = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
-            rows: 24,
-            cols: 120,
+            rows: PTY_ROWS,
+            cols: PTY_COLS,
             pixel_width: 0,
             pixel_height: 0,
         })
@@ -258,6 +263,77 @@ fn wait_for_child(slot: &SignInSlot, shared: &Arc<Mutex<ReaderShared>>) -> Optio
     }
 }
 
+/// `ESC[6n` — device status report: "where is the cursor?".
+const DSR_CURSOR: &str = "\u{1b}[6n";
+/// `ESC[999;999f` — park the cursor far off-screen so the DSR that follows reports
+/// the clamped position, i.e. the window size.
+const CURSOR_TO_LIMIT: &str = "\u{1b}[999;999f";
+/// `ESC]11;?` — OSC 11: "what is your background colour?".
+const OSC_BACKGROUND: &str = "\u{1b}]11;?";
+/// Every probe we know how to answer. Order matters only for prefix matching.
+const PROBES: [&str; 3] = [CURSOR_TO_LIMIT, DSR_CURSOR, OSC_BACKGROUND];
+
+/// Answers the terminal probes gh's TUI prompts expect an emulator to reply to.
+///
+/// gh ≥ 2.96 renders its confirm prompts ("Authenticate Git with your GitHub
+/// credentials?") with a Bubble Tea TUI. On start it probes the terminal — an
+/// OSC 11 background-colour query plus `ESC[6n` cursor reports, one of them
+/// preceded by a move to 999;999 to measure the window — and it will **not read a
+/// single keystroke until those replies come back**. A bare PTY has no emulator on
+/// the master end, so nothing answers: gh parks on the credentials prompt forever,
+/// the `\r` below is swallowed, no one-time code is ever printed, and the sign-in
+/// dialog spins on "Requesting a one-time code…" forever. The integrated terminal
+/// never hit this because xterm.js answers the probes for it.
+///
+/// So answer them here. The values need only be *plausible* — the TUI just needs
+/// the handshake to complete before it starts reading input.
+#[derive(Default)]
+struct TerminalProbes {
+    /// A probe split across two reads, carried until its tail arrives.
+    carry: String,
+    /// `ESC[999;999f` was seen, so the next `ESC[6n` is asking for the size.
+    sizing: bool,
+}
+
+impl TerminalProbes {
+    /// Feed one raw (un-stripped) chunk of gh's output and reply to any probe in it.
+    fn answer(&mut self, raw: &str, writer: &mut dyn Write) {
+        self.carry.push_str(raw);
+        let mut reply = String::new();
+        let mut cut = 0;
+        loop {
+            // No escape left in the tail — there is nothing to carry over.
+            let Some(rel) = self.carry[cut..].find('\u{1b}') else {
+                cut = self.carry.len();
+                break;
+            };
+            let at = cut + rel;
+            let rest = &self.carry[at..];
+            if let Some(probe) = PROBES.iter().find(|p| rest.starts_with(**p)) {
+                match *probe {
+                    CURSOR_TO_LIMIT => self.sizing = true,
+                    DSR_CURSOR if std::mem::take(&mut self.sizing) => {
+                        reply.push_str(&format!("\u{1b}[{PTY_ROWS};{PTY_COLS}R"));
+                    }
+                    DSR_CURSOR => reply.push_str("\u{1b}[1;1R"),
+                    _ => reply.push_str("\u{1b}]11;rgb:1e1e/1e1e/1e1e\u{1b}\\"),
+                }
+                cut = at + probe.len();
+            } else if PROBES.iter().any(|p| p.starts_with(rest)) {
+                cut = at; // a probe split across reads — keep it for the next chunk
+                break;
+            } else {
+                cut = at + 1; // some other escape sequence — not ours to answer
+            }
+        }
+        self.carry.drain(..cut);
+        if !reply.is_empty() {
+            let _ = writer.write_all(reply.as_bytes());
+            let _ = writer.flush();
+        }
+    }
+}
+
 /// Read gh's PTY output to EOF, emitting `github-signin-progress` milestones and
 /// answering its prompts (open-browser, git-credential). Stores the parsed login
 /// and a transcript tail in `shared` for the main flow to pick up. Runs detached.
@@ -270,6 +346,7 @@ fn drive_reader(
 ) {
     let mut transcript = String::new();
     let mut buf = [0u8; 4096];
+    let mut probes = TerminalProbes::default();
     let mut reauth_answered = false;
     let mut code_seen = false;
     let mut enter_sent = false;
@@ -284,7 +361,11 @@ fn drive_reader(
                 break; // EOF — the PTY finally closed.
             }
             Ok(n) => {
-                let chunk = strip_ansi(&String::from_utf8_lossy(&buf[..n]));
+                let raw = String::from_utf8_lossy(&buf[..n]);
+                // Answer the TUI's terminal probes *first*: until the handshake
+                // completes gh's prompts ignore every keystroke we send below.
+                probes.answer(&raw, &mut *writer);
+                let chunk = strip_ansi(&raw);
                 debug_log(format_args!("gh: {chunk:?}"));
                 transcript.push_str(&chunk);
                 bound_transcript(&mut transcript);
@@ -437,26 +518,43 @@ fn extract_signin_error(transcript: &str) -> String {
         .unwrap_or_else(|| "GitHub sign-in didn’t complete. Please try again.".to_string())
 }
 
-/// Strip ANSI/CSI escape sequences so parsing sees plain text (gh styles some of
-/// its prompts). Best-effort: drops `ESC [ … <letter>` runs and any lone `ESC x`.
+/// Strip ANSI escape sequences so parsing sees plain text (gh styles its prompts
+/// and its TUI probes the terminal). Best-effort: drops `ESC [ … <letter>` CSI
+/// runs, `ESC ] … <BEL|ST>` OSC runs (else the payload of a background-colour
+/// query would land in the transcript as stray `11;?` text), and any lone `ESC x`.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
-        if c == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        match chars.peek() {
+            Some('[') => {
                 chars.next();
-                while let Some(&n) = chars.peek() {
-                    chars.next();
+                for n in chars.by_ref() {
                     if n.is_ascii_alphabetic() {
                         break;
                     }
                 }
-            } else {
+            }
+            // OSC: runs until BEL or ST (`ESC \`).
+            Some(']') => {
+                chars.next();
+                while let Some(n) = chars.next() {
+                    if n == '\u{7}' {
+                        break;
+                    }
+                    if n == '\u{1b}' {
+                        chars.next(); // the `\` of the ST terminator
+                        break;
+                    }
+                }
+            }
+            _ => {
                 chars.next();
             }
-        } else {
-            out.push(c);
         }
     }
     out
@@ -523,6 +621,60 @@ mod tests {
         let raw = "\u{1b}[1m! First copy your one-time code:\u{1b}[0m ABCD-1234";
         let clean = strip_ansi(raw);
         assert!(parse_code(&clean, "github.com").is_some());
+    }
+
+    #[test]
+    fn strips_osc_queries_out_of_the_transcript() {
+        // The TUI's background-colour query must not leak its `11;?` payload into
+        // the text we scan for prompt markers.
+        let raw = "\u{1b}]11;?\u{1b}\\\u{1b}[0;1;92m? \u{1b}[0mAuthenticate Git";
+        assert_eq!(strip_ansi(raw), "? Authenticate Git");
+        assert_eq!(strip_ansi("\u{1b}]11;?\u{7}done"), "done");
+    }
+
+    /// The regression this file exists to prevent: gh's Bubble Tea prompts block on
+    /// these probes, so an unanswered one means no code and an infinite spinner.
+    #[test]
+    fn answers_the_probes_gh_blocks_on() {
+        let mut probes = TerminalProbes::default();
+        let mut out: Vec<u8> = Vec::new();
+        probes.answer("\u{1b}]11;?\u{1b}\\\u{1b}[6n", &mut out);
+        let replies = String::from_utf8(out).unwrap();
+        assert!(replies.contains("\u{1b}]11;rgb:"), "background query unanswered");
+        assert!(replies.ends_with("\u{1b}[1;1R"), "cursor report unanswered");
+    }
+
+    #[test]
+    fn the_sizing_probe_reports_the_pty_size() {
+        // `ESC[999;999f` then a DSR is gh measuring the window: it must get back the
+        // PTY's real size, not a cursor position.
+        let mut probes = TerminalProbes::default();
+        let mut out: Vec<u8> = Vec::new();
+        probes.answer("\u{1b}7\u{1b}[999;999f\u{1b}[6n", &mut out);
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("\u{1b}[{PTY_ROWS};{PTY_COLS}R")
+        );
+    }
+
+    #[test]
+    fn a_probe_split_across_reads_is_still_answered() {
+        // 4 KiB reads land wherever they land; a probe cut in half must not be lost.
+        let mut probes = TerminalProbes::default();
+        let mut out: Vec<u8> = Vec::new();
+        probes.answer("credentials? (Y/n) \u{1b}[6", &mut out);
+        assert!(out.is_empty(), "answered a half-read probe");
+        probes.answer("n", &mut out);
+        assert_eq!(String::from_utf8(out).unwrap(), "\u{1b}[1;1R");
+    }
+
+    #[test]
+    fn ordinary_styling_is_never_mistaken_for_a_probe() {
+        let mut probes = TerminalProbes::default();
+        let mut out: Vec<u8> = Vec::new();
+        probes.answer("\u{1b}[0;1;92m? \u{1b}[0mAuthenticate\u{1b}[0m\r\n", &mut out);
+        assert!(out.is_empty(), "replied to plain SGR styling");
+        assert!(probes.carry.is_empty(), "retained non-probe bytes");
     }
 
     #[test]

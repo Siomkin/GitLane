@@ -147,10 +147,12 @@ pub(super) fn ensure_supported() -> Result<GhCapabilities, GithubError> {
     }
     if !caps.auth_status_json || !caps.auth_token_host_user || !caps.pr_diff_patch || !caps.graphql
     {
-        return Err(GithubError::CommandFailed(format!(
-            "GitHub CLI {version} is missing capabilities required by GitLane. Upgrade from https://cli.github.com.",
-            version = caps.version
-        )));
+        return Err(GithubError::GhUnusable {
+            detail: format!(
+                "GitHub CLI {version} is missing capabilities required by GitLane. Upgrade from https://cli.github.com.",
+                version = caps.version
+            ),
+        });
     }
     Ok(caps)
 }
@@ -158,8 +160,11 @@ pub(super) fn ensure_supported() -> Result<GhCapabilities, GithubError> {
 fn detect_capabilities() -> Result<GhCapabilities, GithubError> {
     let version_raw = run_gh(".", &["version"], None)
         .map_err(|err| GithubError::from_command("gh version", err))?;
-    let version = parse_gh_version(&version_raw).ok_or_else(|| {
-        GithubError::InvalidResponse(format!("failed to parse gh version output: {version_raw}"))
+    let version = parse_gh_version(&version_raw).ok_or_else(|| GithubError::GhUnusable {
+        detail: format!(
+            "Could not read the GitHub CLI version from: {}",
+            version_raw.lines().next().unwrap_or("").trim()
+        ),
     })?;
     let auth_status_help = run_gh(".", &["auth", "status", "--help"], None)
         .map_err(|err| GithubError::from_command("gh auth status help", err))?;
@@ -181,10 +186,23 @@ fn detect_capabilities() -> Result<GhCapabilities, GithubError> {
     })
 }
 
+/// Pull `major.minor.patch` out of gh's version banner.
+///
+/// Distro and source builds append a git-describe suffix — Debian/Arch ship
+/// `gh version 2.74.0-19-gea8fc856e (2025-06-09)`. The old parser trimmed
+/// non-digit/dot characters from both *ends* of each token, which left
+/// `2.74.0-19-gea8fc856` and then failed to parse `0-19-gea8fc856` as the patch;
+/// with no token left to try it reported "failed to parse gh version output" and
+/// gh looked broken rather than merely old. Take the leading numeric run instead,
+/// so any suffix (`-19-g…`, `-rc1`, `+hash`) is simply ignored.
 fn parse_gh_version(raw: &str) -> Option<GhVersion> {
     raw.split_whitespace().find_map(|part| {
-        let cleaned = part.trim_matches(|c: char| !c.is_ascii_digit() && c != '.');
-        let mut pieces = cleaned.split('.');
+        let head: String = part
+            .trim_start_matches('v')
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let mut pieces = head.split('.');
         let major = pieces.next()?.parse().ok()?;
         let minor = pieces.next()?.parse().ok()?;
         let patch = pieces.next()?.parse().ok()?;
@@ -403,6 +421,58 @@ mod tests {
                 patch: 3
             })
         );
+    }
+
+    /// The regression: Debian/Arch and source builds carry a git-describe suffix.
+    /// The old parser choked on it and reported gh as unreadable ("failed to parse
+    /// gh version output"), which surfaced as a red error — even though the version
+    /// is right there and merely old.
+    #[test]
+    fn parses_gh_version_from_a_distro_build_suffix() {
+        assert_eq!(
+            parse_gh_version("gh version 2.74.0-19-gea8fc856e (2025-06-09)\nhttps://github.com/cli/cli/releases/latest"),
+            Some(GhVersion { major: 2, minor: 74, patch: 0 })
+        );
+        assert_eq!(
+            parse_gh_version("gh version v2.96.1+deb1 (2026-07-02)"),
+            Some(GhVersion { major: 2, minor: 96, patch: 1 })
+        );
+    }
+
+    #[test]
+    fn a_version_banner_with_no_version_is_still_unparsable() {
+        // The URL line alone must not be mistaken for a version.
+        assert_eq!(
+            parse_gh_version("https://github.com/cli/cli/releases/latest"),
+            None
+        );
+        assert_eq!(parse_gh_version(""), None);
+    }
+
+    /// `gh` is optional: every "can't use gh" failure must be classified as such,
+    /// so enumerating accounts degrades to "none" instead of nagging with an error.
+    #[test]
+    fn every_unusable_gh_failure_is_classified_as_unusable() {
+        assert!(GithubError::ProviderUnavailable {
+            provider: GH_PROVIDER.to_string()
+        }
+        .is_gh_unusable());
+        assert!(GithubError::UnsupportedVersion {
+            installed: "2.74.0".into(),
+            required: MIN_GH_VERSION.to_string(),
+        }
+        .is_gh_unusable());
+        assert!(GithubError::GhUnusable {
+            detail: "missing capabilities".into()
+        }
+        .is_gh_unusable());
+        // A real failure stays a real failure — it must still reach the user.
+        assert!(!GithubError::NotAuthenticated {
+            host: "github.com".into(),
+            account: None
+        }
+        .is_gh_unusable());
+        assert!(!GithubError::CommandFailed("boom".into()).is_gh_unusable());
     }
 
     #[test]

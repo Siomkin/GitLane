@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useAccounts } from "@/store/accounts";
 import { remoteAccountPickerModel, type PickerAccount } from "./remoteAccountOptions";
+import { Select } from "@/components/ui/Select";
 
 /** Sentinel option value for "no bound account" — the select needs a string. */
 const SYSTEM = "";
@@ -51,13 +52,13 @@ export const RemoteAccountPicker = ({
         Account
       </span>
       {model.matching.length > 0 ? (
-        <select
+        <Select
           aria-label={`Account for ${remote.name}`}
           value={selectedId ?? SYSTEM}
           disabled={busy}
           onChange={(e) => onPick(e.target.value === SYSTEM ? null : e.target.value)}
           className={cn(
-            "h-8 max-w-[300px] rounded-lg border border-black/10 bg-white px-2.5 text-[12.5px] font-medium text-neutral-700 disabled:opacity-40 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200",
+            "h-8 max-w-[300px] rounded-lg border border-black/10 bg-white pl-2.5 text-[12.5px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200",
             focusRing,
           )}
         >
@@ -68,7 +69,7 @@ export const RemoteAccountPicker = ({
               {a.healthy ? "" : " — needs re-auth"}
             </option>
           ))}
-        </select>
+        </Select>
       ) : (
         <span className="text-pretty text-[12px] text-neutral-500 dark:text-neutral-400">{note}</span>
       )}

@@ -1,6 +1,7 @@
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 import { GITIGNORE_TEMPLATES, type GitignoreTemplate } from "@/features/onboarding/onboarding";
-import { ChevronDown, ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "@/features/onboarding/icons";
+import { ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "@/features/onboarding/icons";
+import { Select } from "@/components/ui/Select";
 
 /** The initialize-repository form: location, folder name, initial branch, and
  * the README + .gitignore starter options. */
@@ -129,21 +130,18 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
                 Optional starter ignore rules.
               </span>
             </span>
-            <div className="relative">
-              <select
-                aria-label=".gitignore template"
-                value={ob.initIgnore}
-                onChange={(e) => ob.setInitIgnore(e.target.value as GitignoreTemplate)}
-                className="h-8 appearance-none rounded-lg border border-black/10 bg-white pl-3 pr-7 text-[12.5px] font-medium text-neutral-600 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-300"
-              >
-                {GITIGNORE_TEMPLATES.map((tpl) => (
-                  <option key={tpl} value={tpl}>
-                    {tpl}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
-            </div>
+            <Select
+              aria-label=".gitignore template"
+              value={ob.initIgnore}
+              onChange={(e) => ob.setInitIgnore(e.target.value as GitignoreTemplate)}
+              className="h-8 rounded-lg border border-black/10 bg-white pl-3 text-[12.5px] font-medium text-neutral-600 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-300"
+            >
+              {GITIGNORE_TEMPLATES.map((tpl) => (
+                <option key={tpl} value={tpl}>
+                  {tpl}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
 
