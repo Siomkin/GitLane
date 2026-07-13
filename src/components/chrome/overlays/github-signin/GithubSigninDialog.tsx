@@ -18,6 +18,7 @@ import { useRepo } from "@/store/repo";
 import { useUi, type GithubSigninRequest } from "@/store/ui";
 import { StepRow } from "@/components/chrome/overlays/progress";
 import { SIGNIN_STEP_COUNT, signinStepLabel, signinStepStatus } from "./steps";
+import { githubSigninCommand } from "./signinCommand";
 import { useGithubSigninRun } from "./useGithubSigninRun";
 
 export function GithubSigninDialog() {
@@ -46,10 +47,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
   // prompts we can't drive, a locked-down keychain, an odd shell env): `gh` owns
   // the credentials either way, so a plain terminal login lands in exactly the
   // same place and GitLane picks the account up on the next accounts refresh.
-  const manualCommand =
-    effectiveHost && effectiveHost !== "github.com"
-      ? `gh auth login --hostname ${effectiveHost} --web`
-      : "gh auth login --web";
+  const manualCommand = githubSigninCommand(effectiveHost);
 
   const close = () => {
     if (run.phase === "running") run.cancel();
