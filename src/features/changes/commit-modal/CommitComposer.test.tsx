@@ -83,6 +83,12 @@ const openCommitMenu = () => {
   fireEvent.click(screen.getByRole("button", { name: "More commit actions" }));
 };
 
+/** Render and expand the composer (it mounts as the collapsed bar). */
+const renderComposer = () => {
+  render(<CommitComposer />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand commit composer" }));
+};
+
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command: string) => {
@@ -134,7 +140,7 @@ beforeEach(() => {
 
 describe("CommitComposer", () => {
   it("renders the structured composer inline and shows the effective identity", async () => {
-    render(<CommitComposer />);
+    renderComposer();
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
@@ -147,7 +153,7 @@ describe("CommitComposer", () => {
   });
 
   it("composes the conventional fields into the shared commit message", () => {
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.change(screen.getByRole("combobox", { name: "Commit type" }), {
       target: { value: "feat" },
@@ -169,7 +175,7 @@ describe("CommitComposer", () => {
   });
 
   it("parses an externally delivered draft into the structured fields", () => {
-    render(<CommitComposer />);
+    renderComposer();
 
     act(() => {
       useUi.getState().setCommitMsg("chore(docker): restart services\n\nSet restart policy.");
@@ -183,7 +189,7 @@ describe("CommitComposer", () => {
 
   it("carries the message across the Message / Conventional style switch", () => {
     useUi.setState({ commitMsg: "fix(ui): keep the text" });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Message" }));
     expect(screen.getByRole("textbox", { name: "Commit message" })).toHaveValue(
@@ -198,7 +204,7 @@ describe("CommitComposer", () => {
     const commitSelected = vi.fn(async () => true);
     useRepo.setState({ commitSelected });
     useUi.setState({ commitMsg: "feat(changes): move commit controls inline" });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
 
@@ -213,7 +219,7 @@ describe("CommitComposer", () => {
     const commitSelected = vi.fn(async () => false);
     useRepo.setState({ commitSelected });
     useUi.setState({ commitMsg: "fix: keep this message" });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
 
@@ -225,7 +231,7 @@ describe("CommitComposer", () => {
     const push = vi.fn(async () => {});
     useRepo.setState({ push, branches: [localBranch()] });
     useUi.setState({ commitMsg: "fix: something" });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -248,7 +254,7 @@ describe("CommitComposer", () => {
       ],
     });
     useUi.setState({ commitMsg: "fix: something", requestPrompt });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -263,7 +269,7 @@ describe("CommitComposer", () => {
     const push = vi.fn(async () => {});
     useRepo.setState({ push, forge: githubForge, branches: [localBranch()] });
     useUi.setState({ commitMsg: "fix: something" });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -285,7 +291,7 @@ describe("CommitComposer", () => {
       ],
     });
     useUi.setState({ commitMsg: "fix: something" });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -305,7 +311,7 @@ describe("CommitComposer", () => {
     });
     useRepo.setState({ push, commitSelected, branches: [localBranch()] });
     useUi.setState({ commitMsg: "fix: something" });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -332,7 +338,7 @@ describe("CommitComposer", () => {
       ],
     });
     useUi.setState({ commitMsg: "fix: something", requestPrompt, showToast });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -346,7 +352,7 @@ describe("CommitComposer", () => {
   });
 
   it("strips parens from the scope so the message always round-trips", () => {
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.change(screen.getByRole("combobox", { name: "Commit type" }), {
       target: { value: "feat" },
@@ -362,7 +368,7 @@ describe("CommitComposer", () => {
   });
 
   it("closes an open popover on outside scroll (viewport-fixed anchor goes stale)", () => {
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     expect(screen.getByRole("menu", { name: "Draft with agent" })).toBeInTheDocument();
@@ -372,7 +378,7 @@ describe("CommitComposer", () => {
   });
 
   it("keeps a popover open while scrolling inside its own list", () => {
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     fireEvent.scroll(screen.getByRole("menu", { name: "Draft with agent" }));
@@ -385,7 +391,7 @@ describe("CommitComposer", () => {
       summary: { path: "/repo", workdir: "/repo", headBranch: null, headOid: "abc", detached: true },
     });
     useUi.setState({ commitMsg: "fix: something" });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -400,7 +406,7 @@ describe("CommitComposer", () => {
     const commitSelected = vi.fn(() => new Promise<boolean>((resolve) => { resolveCommit = resolve; }));
     useRepo.setState({ commitSelected });
     useUi.setState({ commitMsg: "fix: original" });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
     act(() => {
@@ -415,7 +421,7 @@ describe("CommitComposer", () => {
 
   it("hides the open-PR action for a repo without a PR forge", () => {
     useUi.setState({ commitMsg: "fix: something" });
-    render(<CommitComposer />);
+    renderComposer();
 
     openCommitMenu();
     expect(screen.queryByRole("menuitem", { name: "Commit, push & open PR…" })).not.toBeInTheDocument();
@@ -423,7 +429,7 @@ describe("CommitComposer", () => {
 
   it("amends via the commit menu with a prefilled message and visible state", async () => {
     useRepo.setState({ graph: amendableGraph() });
-    render(<CommitComposer />);
+    renderComposer();
 
     openCommitMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: "Amend previous commit" }));
@@ -446,7 +452,7 @@ describe("CommitComposer", () => {
         commitInstruction: "Commit the staged work using our team convention.",
       },
     });
-    render(<CommitComposer />);
+    renderComposer();
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
     openCommitMenu();
@@ -461,7 +467,7 @@ describe("CommitComposer", () => {
   it("keeps the composer visible while an agent drafts through the one-shot mailbox", () => {
     const sendToTerminal = vi.fn();
     useUi.setState({ sendToTerminal });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
@@ -480,7 +486,7 @@ describe("CommitComposer", () => {
   it("sends an edited message as the draft improvement target", () => {
     const sendToTerminal = vi.fn();
     useUi.setState({ sendToTerminal, commitMsg: "fix: initial message" });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Improve" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
@@ -496,7 +502,7 @@ describe("CommitComposer", () => {
   it("marks the remembered draft agent as the active menu choice", () => {
     useTerminalAgents.setState({ agents: [agent(), agent({ id: "claude", name: "claude", command: "claude" })] });
     useUi.setState({ commitDraftAgent: "codex" });
-    render(<CommitComposer />);
+    renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     // The active row carries a second svg (sparkle + check); others only the sparkle.
@@ -523,7 +529,7 @@ describe("CommitComposer", () => {
       },
     });
     useUi.setState({ commitMsg: "chore: update dependency" });
-    render(<CommitComposer />);
+    renderComposer();
 
     expect(screen.getByRole("button", { name: "Commit 1 file → main" })).toBeDisabled();
     expect(
@@ -535,7 +541,7 @@ describe("CommitComposer", () => {
 
   it("shows one settings hint when no agents are enabled", () => {
     useTerminalAgents.setState({ agents: [] });
-    render(<CommitComposer />);
+    renderComposer();
 
     expect(screen.getAllByText("No enabled agents. Add one in Settings.")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Draft" })).not.toBeInTheDocument();
@@ -543,15 +549,18 @@ describe("CommitComposer", () => {
     expect(screen.queryByText("Commit with agent")).not.toBeInTheDocument();
   });
 
-  it("collapses to a summary bar and restores the editor on click", () => {
+  it("starts collapsed and restores the editor state across collapse cycles", () => {
     useUi.setState({ commitMsg: "fix: half-written" });
     render(<CommitComposer />);
 
+    // Collapsed by default; the bar advertises the in-progress message.
+    expect(screen.queryByRole("textbox", { name: "Commit summary" })).not.toBeInTheDocument();
+    expect(screen.getByText("Continue message →")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand commit composer" }));
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toHaveValue("half-written");
+
     fireEvent.click(screen.getByRole("button", { name: "Collapse commit composer" }));
     expect(screen.queryByRole("textbox", { name: "Commit summary" })).not.toBeInTheDocument();
-
-    const reopen = screen.getByRole("button", { name: /Continue message/ });
-    fireEvent.click(reopen);
-    expect(screen.getByRole("textbox", { name: "Commit summary" })).toHaveValue("half-written");
   });
 });

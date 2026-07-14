@@ -48,7 +48,9 @@ export function CommitComposer() {
   const forge = useRepo((state) => state.forge);
   const graph = useRepo((state) => state.graph);
   const commitSelected = useRepo((state) => state.commitSelected);
-  const [composerOpen, setComposerOpen] = useState(true);
+  // Collapsed by default — the slim bar keeps the file list roomy until the
+  // user actually starts a commit.
+  const [composerOpen, setComposerOpen] = useState(false);
   const [amend, setAmend] = useState(false);
   const agentsRaw = useTerminalAgents((state) => state.agents);
   const loadAgents = useTerminalAgents((state) => state.loadAgents);
@@ -242,6 +244,7 @@ export function CommitComposer() {
     return (
       <button
         type="button"
+        aria-label="Expand commit composer"
         aria-expanded={false}
         onClick={() => setComposerOpen(true)}
         className="flex h-12 w-full items-center gap-2.5 px-4 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
