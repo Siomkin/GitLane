@@ -68,6 +68,10 @@ export const terminalApi = {
   takeAgentCommitDraft: (path: string, token: string) =>
     invoke<string | null>("take_agent_commit_draft", { path, token }),
 
+  /** Consume a completed working-change summary from a terminal agent. */
+  takeAgentChangeSummary: (path: string, token: string) =>
+    invoke<string | null>("take_agent_change_summary", { path, token }),
+
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
    *  Returns its `sessionId`; existing sessions keep running. */
   ptySpawn: (path: string, cols: number, rows: number) =>

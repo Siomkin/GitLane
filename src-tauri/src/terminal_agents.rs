@@ -16,6 +16,8 @@ use tauri::{AppHandle, Manager};
 
 const DRAFT_PREFIX: &str = "gitlane-commit-draft-";
 const MAX_DRAFT_BYTES: u64 = 8 * 1024;
+const SUMMARY_PREFIX: &str = "gitlane-change-summary-";
+const MAX_SUMMARY_BYTES: u64 = 2 * 1024;
 const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
 const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
@@ -320,6 +322,37 @@ pub fn take_commit_draft(path: &str, token: &str) -> Result<Option<String>, Stri
     Ok(Some(message.trim().to_owned()))
 }
 
+/// Consume a short change summary written by a configured interactive agent.
+/// The filename lives in this worktree's Git directory, and the frontend token
+/// is restricted before it can become part of a path.
+pub fn take_change_summary(path: &str, token: &str) -> Result<Option<String>, String> {
+    if token.is_empty()
+        || token.len() > 64
+        || !token.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("Invalid change-summary token.".into());
+    }
+    let repo = git2::Repository::open(path).map_err(|error| error.to_string())?;
+    let summary_path = repo.path().join(format!("{SUMMARY_PREFIX}{token}"));
+    let metadata = match fs::metadata(&summary_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Could not inspect the change summary: {error}")),
+    };
+    if metadata.len() > MAX_SUMMARY_BYTES {
+        let _ = fs::remove_file(&summary_path);
+        return Err("The agent change summary is unexpectedly large.".into());
+    }
+    let summary = fs::read_to_string(&summary_path)
+        .map_err(|error| format!("Could not read the change summary: {error}"))?;
+    if summary.trim().is_empty() {
+        return Ok(None);
+    }
+    fs::remove_file(&summary_path)
+        .map_err(|error| format!("Could not consume the change summary: {error}"))?;
+    Ok(Some(summary.trim().to_owned()))
+}
+
 /// Extract the executable token from a command line: tokenize honoring shell
 /// quoting (so `"/path with spaces/cli"` stays one token), then skip any
 /// leading `VAR=value` environment-assignment prefixes (e.g. the `FOO=bar` in
@@ -390,6 +423,14 @@ mod tests {
         assert_eq!(
             take_commit_draft(".", "../escape").unwrap_err(),
             "Invalid agent draft token."
+        );
+    }
+
+    #[test]
+    fn change_summary_rejects_unsafe_tokens() {
+        assert_eq!(
+            take_change_summary(".", "../escape").unwrap_err(),
+            "Invalid change-summary token."
         );
     }
 

@@ -209,6 +209,7 @@ export function createRepoWriteActions(
   | "amendHeadMessage"
   | "commitSelected"
   | "takeAgentCommitDraft"
+  | "takeAgentChangeSummary"
   | "stash"
   | "fetch"
   | "pull"
@@ -228,6 +229,8 @@ export function createRepoWriteActions(
   return {
     takeAgentCommitDraft: async (repoPath, token) =>
       api.takeAgentCommitDraft(repoPath, token),
+    takeAgentChangeSummary: async (repoPath, token) =>
+      api.takeAgentChangeSummary(repoPath, token),
     checkoutBranch: async (name) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");

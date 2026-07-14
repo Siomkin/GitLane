@@ -314,6 +314,8 @@ export interface RepoState {
   loadMoreHistory: () => Promise<void>;
   /** Poll and consume a commit-message draft handed back by a terminal agent. */
   takeAgentCommitDraft: (repoPath: string, token: string) => Promise<string | null>;
+  /** Poll and consume an inline working-change summary from a terminal agent. */
+  takeAgentChangeSummary: (repoPath: string, token: string) => Promise<string | null>;
   /** Search every commit reachable from repository refs without expanding the
    * bounded graph first. The caller owns transient query/result UI state. */
   searchHistory: (query: HistorySearchQuery) => Promise<HistorySearchPage>;
