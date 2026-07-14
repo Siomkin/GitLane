@@ -897,6 +897,10 @@ describe("ActionMenu", () => {
       "preview_reset",
       expect.objectContaining({ target: "main", mode: "mixed", source: "feature" }),
     );
+    // HEAD is main, so the single dialog also covers the checkout prerequisite
+    // (GL-217) — no second popup stacks on top of the preview confirm.
+    expect(useUi.getState().confirm!.message).toContain('check out branch "feature"');
+    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and reset (mixed)");
 
     useUi.getState().confirm!.onConfirm();
     await waitFor(() => expect(resetCurrentTo).toHaveBeenCalledWith("main", "mixed"));
@@ -928,8 +932,60 @@ describe("ActionMenu", () => {
 
     // The only rebase offered moves the local target onto the remote.
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
+    // HEAD is already main, so there is no checkout prerequisite and no popup.
+    expect(useUi.getState().confirm).toBeNull();
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("origin/feature"));
     expect(checkoutBranch).toHaveBeenCalledWith("main");
+  });
+
+  it("rebase-target asks to approve the checkout when HEAD is on a different branch", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto origin/feature");
+    useRepo.setState({
+      // HEAD is elsewhere: rebasing the drop target (main) first checks it out.
+      summary: { ...localSummary, headBranch: "feature" },
+      branches: [remoteBranch("origin/feature"), localBranch("main"), localBranch("feature")],
+      checkoutBranch,
+      rebaseOnto,
+    });
+    useUi.setState({
+      actionMenu: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      },
+    });
+    render(<ActionMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    expect(confirm!.title).toBe("Check out main?");
+    expect(confirm!.confirmLabel).toBe("Check out and rebase");
+    expect(checkoutBranch).not.toHaveBeenCalled();
+
+    confirm!.onConfirm();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("origin/feature"));
+    expect(checkoutBranch).toHaveBeenCalledWith("main");
+  });
+
+  it("always asks before a checkout-based op when HEAD is detached", () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      // Detached HEAD: any branch checkout is a real switch, so the gate shows
+      // even though headBranch may still report the last branch name.
+      summary: { ...localSummary, headBranch: "feature", detached: true },
+      branches: [localBranch("feature"), localBranch("main")],
+      checkoutBranch,
+    });
+    openActionMenu("feature", "main");
+    render(<ActionMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
+    expect(useUi.getState().confirm).not.toBeNull();
+    expect(useUi.getState().confirm!.title).toBe("Check out feature?");
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   // A checkout-based op (rebase/reset of the dragged branch, or merge — all check
