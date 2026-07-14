@@ -16,6 +16,9 @@ use tauri::{AppHandle, Manager};
 
 const DRAFT_PREFIX: &str = "gitlane-commit-draft-";
 const MAX_DRAFT_BYTES: u64 = 8 * 1024;
+const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
+const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
+const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
 
 pub const DEFAULT_DRAFT_INSTRUCTION: &str =
     "Review the staged changes and draft a concise conventional commit message.";
@@ -137,13 +140,31 @@ fn defaults() -> Vec<AgentEntry> {
             enabled: false,
         },
         AgentEntry {
-            id: "codex-gpt-5-5-medium".into(),
-            name: "codex 5.5 medium".into(),
-            command: "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'".into(),
-            description: "Launch Codex with GPT-5.5 at medium reasoning effort".into(),
+            id: "codex-gpt-5-6-sol-light".into(),
+            name: "codex 5.6 sol light".into(),
+            command: "codex --model gpt-5.6-sol -c 'model_reasoning_effort=\"low\"'".into(),
+            description: "Launch Codex with GPT-5.6 Sol at low reasoning effort".into(),
             enabled: false,
         },
     ]
+}
+
+/// Replace the untouched legacy Codex preset while preserving user edits and
+/// the enabled toggle. The exact name + command match avoids rewriting a row
+/// that merely retained the built-in id after being customized.
+fn migrate_builtin_presets(mut entries: Vec<AgentEntry>) -> Vec<AgentEntry> {
+    let replacement = defaults().pop().expect("defaults include the Codex preset");
+    for entry in &mut entries {
+        if entry.id == LEGACY_CODEX_ID
+            && entry.name == LEGACY_CODEX_NAME
+            && entry.command == LEGACY_CODEX_COMMAND
+        {
+            let enabled = entry.enabled;
+            *entry = replacement.clone();
+            entry.enabled = enabled;
+        }
+    }
+    entries
 }
 
 /// Path to the agent config in the per-app data dir
@@ -216,7 +237,10 @@ pub fn load(app: &AppHandle) -> Vec<TerminalAgent> {
         },
         Err(_) => defaults(),
     };
-    entries.iter().map(TerminalAgent::from).collect()
+    migrate_builtin_presets(entries)
+        .iter()
+        .map(TerminalAgent::from)
+        .collect()
 }
 
 /// Persist the full agent list (replaces the config). `available` is dropped —
@@ -404,7 +428,7 @@ mod tests {
                 "claude",
                 "codex",
                 "claude-opus-4-8-medium",
-                "codex-gpt-5-5-medium"
+                "codex-gpt-5-6-sol-light"
             ]
         );
         let commands: Vec<&str> = d.iter().map(|a| a.command.as_str()).collect();
@@ -414,12 +438,37 @@ mod tests {
                 "claude",
                 "codex",
                 "claude --model claude-opus-4-8 --effort medium",
-                "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'"
+                "codex --model gpt-5.6-sol -c 'model_reasoning_effort=\"low\"'"
             ]
         );
         let enabled: Vec<bool> = d.iter().map(|a| a.enabled).collect();
         assert_eq!(enabled, [true, true, false, false]);
         assert!(d.iter().all(|a| !a.description.is_empty()));
+    }
+
+    #[test]
+    fn migrates_only_the_untouched_legacy_codex_preset() {
+        let legacy = AgentEntry {
+            id: LEGACY_CODEX_ID.into(),
+            name: LEGACY_CODEX_NAME.into(),
+            command: LEGACY_CODEX_COMMAND.into(),
+            description: "old description".into(),
+            enabled: true,
+        };
+        let mut customized = legacy.clone();
+        customized.name = "my codex".into();
+
+        let migrated = migrate_builtin_presets(vec![legacy, customized.clone()]);
+
+        assert_eq!(migrated[0].id, "codex-gpt-5-6-sol-light");
+        assert_eq!(migrated[0].name, "codex 5.6 sol light");
+        assert_eq!(
+            migrated[0].command,
+            "codex --model gpt-5.6-sol -c 'model_reasoning_effort=\"low\"'"
+        );
+        assert!(migrated[0].enabled, "migration preserves the user's toggle");
+        assert_eq!(migrated[1].name, customized.name);
+        assert_eq!(migrated[1].command, customized.command);
     }
 
     #[test]

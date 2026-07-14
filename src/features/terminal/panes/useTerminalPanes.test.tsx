@@ -137,7 +137,12 @@ beforeEach(() => {
   useRepo.setState({ summary: summaryFor("/current") });
   useTerminals.setState({ byRepo: {} });
   useTerminalAgents.setState({ loadAgents: vi.fn() });
-  useUi.setState({ terminalView: "hidden", terminalExpanded: false, terminalInject: null });
+  useUi.setState({
+    terminalView: "hidden",
+    terminalViewByRepo: {},
+    terminalExpanded: false,
+    terminalInject: null,
+  });
 });
 
 afterEach(() => {
@@ -145,9 +150,9 @@ afterEach(() => {
 });
 
 describe("pane lifecycle across repo/tab switches (GL-177)", () => {
-  it("keeps hidden panes mounted across repo switches — no dispose, no respawn", async () => {
+  it("hides a terminal in a new repo and restores the original repo's live pane", async () => {
     useRepo.setState({ summary: summaryFor("/repoA") });
-    useUi.setState({ terminalView: "open" });
+    useUi.getState().expandTerminal();
     const { host } = renderPanes();
     await flush();
 
@@ -156,31 +161,32 @@ describe("pane lifecycle across repo/tab switches (GL-177)", () => {
     const paneA = host.children[0] as HTMLElement;
     expect(paneA.style.display).toBe("block");
 
-    // Switch to another repo: it gets its own tab + pane; repo A's pane is
-    // only hidden — same xterm instance, never disposed, scrollback intact.
+    // A repository with no terminal state stays hidden and must not spawn a
+    // shell merely because repo A's terminal was open.
     await act(async () => {
       useRepo.setState({ summary: summaryFor("/repoB") });
+      useUi.getState().onRepoSwitched();
     });
     await flush();
 
-    expect(spawnCalls()).toHaveLength(2);
-    expect(spawnCalls()[1][1]).toMatchObject({ path: "/repoB" });
+    expect(useUi.getState().terminalView).toBe("hidden");
+    expect(spawnCalls()).toHaveLength(1);
     expect(xterm.instances[0].disposed).toBe(false);
     expect(paneA.style.display).toBe("none");
-    expect((host.children[1] as HTMLElement).style.display).toBe("block");
 
-    // Switch back: the original pane reappears without a new spawn or a new
-    // xterm — the exact "no remount, no scrollback loss" guarantee.
+    // Returning to repo A restores its open state and the exact pane without a
+    // respawn, preserving the terminal process and scrollback.
     await act(async () => {
       useRepo.setState({ summary: summaryFor("/repoA") });
+      useUi.getState().onRepoSwitched();
     });
     await flush();
 
-    expect(spawnCalls()).toHaveLength(2);
-    expect(xterm.instances).toHaveLength(2);
+    expect(useUi.getState().terminalView).toBe("open");
+    expect(spawnCalls()).toHaveLength(1);
+    expect(xterm.instances).toHaveLength(1);
     expect(xterm.instances[0].disposed).toBe(false);
     expect(paneA.style.display).toBe("block");
-    expect((host.children[1] as HTMLElement).style.display).toBe("none");
   });
 
   it("routes pty-exit to the owning pane only and flips alive for the active pane", async () => {
@@ -360,6 +366,40 @@ describe("pane lifecycle across repo/tab switches (GL-177)", () => {
 });
 
 describe("delayed injection delivery and cancellation (GL-177)", () => {
+  it("launches an agent draft in a new pane without typing into the running pane", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({
+      summary: summaryFor("/repoA"),
+      takeAgentCommitDraft: vi.fn().mockResolvedValue(null),
+    });
+    useUi.setState({ terminalView: "open" });
+    const { unmount } = renderPanes();
+    await flush();
+    const existingId = useTerminals.getState().byRepo["/repoA"].activeId;
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        { token: "draft-token", agentName: "codex", repoPath: "/repoA", startedAt: 1 },
+        "the prompt",
+        "codex --model gpt-5.6-sol",
+      );
+    });
+    await flush();
+    await flush();
+
+    expect(spawnCalls()).toHaveLength(2);
+    expect(useTerminals.getState().byRepo["/repoA"].activeId).not.toBe(existingId);
+    const writes = invokeMock.mock.calls.filter((call) => call[0] === "pty_write");
+    expect(writes).toContainEqual([
+      "pty_write",
+      expect.objectContaining({ sessionId: 2 }),
+    ]);
+    expect(writes.some((call) => call[1]?.sessionId === 1)).toBe(false);
+
+    useUi.getState().cancelAgentCommitDraft();
+    unmount();
+  });
+
   it("delivers an agent-launch injection once the agent's prompt is ready", async () => {
     vi.useFakeTimers();
     useRepo.setState({ summary: summaryFor("/repoA") });
@@ -490,5 +530,6 @@ describe("terminal injection ownership (GL-176 review)", () => {
       command: "claude",
       repoKey: "/current",
     });
+    expect(useTerminals.getState().byRepo["/current"].tabs).toHaveLength(1);
   });
 });

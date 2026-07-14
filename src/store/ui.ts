@@ -9,6 +9,7 @@ import { persist } from "zustand/middleware";
 import { usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
+import { useTerminals } from "./terminals";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "@/lib/gitError";
 import type { ForgeAuthProvider } from "@/lib/api";
 import type { LeftTab, RightTab } from "@/lib/ui";
@@ -20,6 +21,7 @@ import { resolveTheme, systemPrefersDark } from "@/lib/theme";
 export type { AccentColor };
 export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
+export type TerminalView = "hidden" | "collapsed" | "open";
 export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "about";
 
 /** A terminal agent draft request collected asynchronously by the composer. It is scoped
@@ -327,10 +329,16 @@ interface UiState {
   worktreeMenu: WorktreeMenu | null;
   recoveryOpen: boolean;
   /** In-app terminal: floating panel that collapses to a status pill without
-   * killing the PTY. `hidden` = no panel (PTY killed); `collapsed` = pill;
+   * killing the PTY. `hidden` = no chrome; `collapsed` = status launcher;
    * `open` = full floating panel. */
-  terminalView: "hidden" | "collapsed" | "open";
+  terminalView: TerminalView;
+  /** Per-repository terminal chrome. PTYs/tabs are already repo-scoped; this
+   * keeps switching repos from opening a shell merely because another repo's
+   * terminal was visible. */
+  terminalViewByRepo: Record<string, TerminalView>;
   terminalHeight: number;
+  /** Saved user-selected popup edges. `null` uses the left-aligned 50% default. */
+  terminalHorizontalLayout: { leftInset: number; rightInset: number } | null;
   terminalExpanded: boolean;
   /** Pending text queued to be pasted into the terminal PTY (bracketed paste).
    * Consumed by the TerminalLayer once the PTY is alive, then cleared. When
@@ -484,8 +492,10 @@ interface UiState {
   collapseTerminal: () => void;
   expandTerminal: () => void;
   hideTerminal: () => void;
+  forgetTerminalView: (repoPath: string) => void;
   toggleTerminalExpanded: () => void;
   adjustTerminalHeight: (dy: number) => void;
+  setTerminalHorizontalInsets: (left: number, right: number) => void;
   /** Open the terminal and queue `text` to be pasted into it. When `command`
    * is provided, launch that terminal agent before pasting the text. The
    * injection is stamped with the active repo and delivers only there. */
@@ -592,6 +602,19 @@ interface UiState {
   dismissToast: () => void;
 }
 
+function terminalViewPatch(
+  state: Pick<UiState, "terminalViewByRepo">,
+  terminalView: TerminalView,
+): Pick<UiState, "terminalView" | "terminalViewByRepo"> {
+  const repoPath = useRepo.getState().summary?.path;
+  return {
+    terminalView,
+    terminalViewByRepo: repoPath
+      ? { ...state.terminalViewByRepo, [repoPath]: terminalView }
+      : state.terminalViewByRepo,
+  };
+}
+
 /** Every transient context/action menu cleared at once. Spread into any `set`
  * that opens a menu, modal, or review so exactly one menu is ever live. */
 const noMenus = {
@@ -645,7 +668,9 @@ export const useUi = create<UiState>()(
   worktreeMenu: null,
   recoveryOpen: false,
   terminalView: "hidden",
+  terminalViewByRepo: {},
   terminalHeight: 480,
+  terminalHorizontalLayout: null,
   terminalExpanded: false,
   terminalInject: null,
   createBranchOpen: false,
@@ -758,31 +783,53 @@ export const useUi = create<UiState>()(
   // shell — panes persist per repo so reopening restores them; a PTY dies only
   // when the user closes its tab (see `store/terminals`).
   toggleTerminal: () =>
-    set((s) => ({
-      terminalView:
+    set((s) => {
+      const view =
         s.terminalView === "hidden"
           ? "open"
           : s.terminalView === "open"
             ? "collapsed"
-            : "open",
-    })),
-  collapseTerminal: () => set({ terminalView: "collapsed" }),
-  expandTerminal: () => set({ terminalView: "open" }),
-  hideTerminal: () => set({ terminalView: "hidden", terminalExpanded: false }),
+            : "open";
+      return terminalViewPatch(s, view);
+    }),
+  collapseTerminal: () => set((s) => terminalViewPatch(s, "collapsed")),
+  expandTerminal: () => set((s) => terminalViewPatch(s, "open")),
+  hideTerminal: () => set((s) => ({ ...terminalViewPatch(s, "hidden"), terminalExpanded: false })),
+  forgetTerminalView: (repoPath) =>
+    set((s) => {
+      if (!(repoPath in s.terminalViewByRepo)) return s;
+      const { [repoPath]: _forgotten, ...terminalViewByRepo } = s.terminalViewByRepo;
+      return {
+        terminalViewByRepo,
+        terminalView:
+          useRepo.getState().summary?.path === repoPath ? "hidden" : s.terminalView,
+      };
+    }),
   toggleTerminalExpanded: () => set((s) => ({ terminalExpanded: !s.terminalExpanded })),
   // Down = taller. Clamp so the compact panel stays usable without eating the whole window.
   adjustTerminalHeight: (dy) =>
     set((s) => ({ terminalHeight: Math.max(160, Math.min(860, s.terminalHeight + dy)) })),
+  setTerminalHorizontalInsets: (left, right) =>
+    set({
+      terminalHorizontalLayout: {
+        leftInset: Math.max(8, Math.min(8192, Math.round(left))),
+        rightInset: Math.max(8, Math.min(8192, Math.round(right))),
+      },
+    }),
   // Open the terminal and stash the message; the TerminalLayer pastes it once the
   // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
   // repo whose flow queued it (one-shot cross-store read) so it can never
   // deliver into another repo's shell (GL-176 review).
   sendToTerminal: (text, command) => {
     const repoKey = useRepo.getState().summary?.path ?? null;
-    set({
-      terminalView: "open",
+    // A live PTY does not reveal whether its foreground program is the shell,
+    // this agent, another agent, or an unrelated TUI. Every agent launch gets
+    // a fresh tab so its command can never be typed into an unknown prompt.
+    if (command && repoKey) useTerminals.getState().openTab(repoKey);
+    set((s) => ({
+      ...terminalViewPatch(s, "open"),
       terminalInject: command ? { text, command, repoKey } : { text, repoKey },
-    });
+    }));
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
   closeOverlays: () => set({ ...noMenus, draggingFrom: null }),
@@ -800,8 +847,9 @@ export const useUi = create<UiState>()(
   openChangesView: (all = false) => set({ leftTab: "changes", changesAll: all }),
   onWorkingTreeClean: () =>
     set((s) => (s.leftTab === "changes" ? { leftTab: "history", commitMsg: "" } : { commitMsg: "" })),
-  onRepoSwitched: () =>
-    set({
+  onRepoSwitched: () => {
+    const activeRepoPath = useRepo.getState().summary?.path;
+    set((s) => ({
       leftTab: "history",
       rightTab: "details",
       changesAll: false,
@@ -818,7 +866,10 @@ export const useUi = create<UiState>()(
       onboardingOpen: false,
       commitMsg: "",
       agentCommitDraft: null,
-    }),
+      terminalView: (activeRepoPath ? s.terminalViewByRepo[activeRepoPath] : undefined) ?? "hidden",
+      terminalExpanded: false,
+    }));
+  },
 
   setPrFilter: (filter) => {
     if (get().prFilter === filter) return;
@@ -851,7 +902,17 @@ export const useUi = create<UiState>()(
         const draft = await useRepo.getState().takeAgentCommitDraft(request.repoPath, request.token);
         if (get().agentCommitDraft?.token !== request.token) return;
         if (draft) {
-          set({ agentCommitDraft: null, commitMsg: draft });
+          set((s) => ({
+            ...terminalViewPatch(
+              s,
+              s.terminalView === "open" ? "collapsed" : s.terminalView,
+            ),
+            agentCommitDraft: null,
+            commitMsg: draft,
+            // The mailbox result is now visible in the inline composer. Minimize
+            // only an open panel; preserve an explicit user collapse/hide.
+            terminalExpanded: s.terminalView === "open" ? false : s.terminalExpanded,
+          }));
           return;
         }
         if (Date.now() - request.startedAt >= 120_000) {
@@ -967,6 +1028,7 @@ export const useUi = create<UiState>()(
         graphWidthsByRepo: s.graphWidthsByRepo,
         whenWidth: s.whenWidth,
         terminalHeight: s.terminalHeight,
+        terminalHorizontalLayout: s.terminalHorizontalLayout,
         terminalExpanded: s.terminalExpanded,
         prFilter: s.prFilter,
         collapsed: s.collapsed,
