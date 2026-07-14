@@ -35,7 +35,10 @@ const graph: RepoGraph = {
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue([]);
+  invokeMock.mockImplementation(async (command: string) => {
+    if (command === "default_git_identity" || command === "repo_identity") return null;
+    return [];
+  });
   useRepo.setState({
     graph,
     stashes: [],

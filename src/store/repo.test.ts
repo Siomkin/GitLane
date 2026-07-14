@@ -602,7 +602,7 @@ describe("repo store — rename staging (GL-127)", () => {
     });
   });
 
-  it("commit modal exclude of a staged rename unstages both its paths", async () => {
+  it("commits the complete staged set and reports success", async () => {
     useRepo.setState({
       changes: {
         staged: [
@@ -616,15 +616,10 @@ describe("repo store — rename staging (GL-127)", () => {
     });
     invokeMock.mockImplementation(refreshInvoke);
 
-    // Uncheck the staged rename in the modal; commit the rest.
-    await useRepo.getState().commitSelected("Subject", ["src/new.ts"], false);
+    const committed = await useRepo.getState().commitSelected("Subject", false);
 
-    // The excluded rename is dropped on both sides before committing, so its old
-    // path's deletion isn't left staged and committed as half a rename.
-    expect(invokeMock).toHaveBeenCalledWith("unstage_files", {
-      path: "/repo",
-      files: ["src/new.ts", "src/old.ts"],
-    });
+    expect(committed).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith("unstage_files", expect.anything());
     expect(invokeMock).toHaveBeenCalledWith("commit", expect.objectContaining({ path: "/repo" }));
   });
 });

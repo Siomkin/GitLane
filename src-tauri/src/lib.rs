@@ -15,7 +15,7 @@ mod updater;
 mod watcher;
 
 use terminal::TerminalState;
-use terminal_agents::TerminalAgent;
+use terminal_agents::{CommitAgentMessages, TerminalAgent};
 use watcher::WatcherState;
 
 use git::types::{
@@ -1422,6 +1422,26 @@ fn terminal_agents_set(app: tauri::AppHandle, agents: Vec<TerminalAgent>) -> Res
     terminal_agents::save(&app, &agents)
 }
 
+/// Read the user-editable instructions used by Draft / Improve and Commit with
+/// agent. Fixed safety and delivery suffixes are assembled in the frontend.
+#[tauri::command]
+fn commit_agent_messages_get(app: tauri::AppHandle) -> CommitAgentMessages {
+    terminal_agents::load_messages(&app)
+}
+
+#[tauri::command]
+fn commit_agent_messages_set(
+    app: tauri::AppHandle,
+    messages: CommitAgentMessages,
+) -> Result<(), String> {
+    terminal_agents::save_messages(&app, &messages)
+}
+
+#[tauri::command]
+fn commit_agent_messages_reset(app: tauri::AppHandle) -> Result<CommitAgentMessages, String> {
+    terminal_agents::reset_messages_to_defaults(&app)
+}
+
 /// Reset the agent config to the shipped defaults and return them. Used by the
 /// Settings "Reset to defaults" action.
 #[tauri::command]
@@ -1749,6 +1769,9 @@ pub fn run() {
             terminal_agents_get,
             terminal_agents_set,
             terminal_agents_reset,
+            commit_agent_messages_get,
+            commit_agent_messages_set,
+            commit_agent_messages_reset,
             terminal_agent_probe,
             take_agent_commit_draft,
             pty_spawn,

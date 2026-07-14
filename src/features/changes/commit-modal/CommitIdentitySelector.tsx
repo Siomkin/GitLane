@@ -1,11 +1,11 @@
-// Commit-dialog identity control (GL-213): shows the effective git author
+// Inline commit identity control (GL-213): shows the effective git author
 // (name · email) and lets the user switch between "This computer" (global git
 // config) and a saved identity card. Presentational — the identity view-model
 // (load/apply state, effective identity, usability) lives in useCommitIdentity,
-// owned by the commit modal. Reuses the settings picker's ProfileChoiceRow so the
+// owned by the commit composer. Reuses the settings picker's ProfileChoiceRow so the
 // choices look identical to the Commit-author settings page.
 //
-// It sits on its own footer row so the full name · email is visible without
+// It sits on its own row so the full name · email is visible without
 // truncation — the ticket requires the effective identity to be readable at a
 // glance, and a card label alone is not enough.
 

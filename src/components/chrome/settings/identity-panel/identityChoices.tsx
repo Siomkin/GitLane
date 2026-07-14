@@ -1,5 +1,5 @@
 // Shared commit-identity choice UI — the radio-style profile rows and their
-// badges. Used by the settings CommitAsZone picker and the commit dialog's
+// badges. Used by the settings CommitAsZone picker and the commit composer's
 // identity selector (GL-213), so both render identical choices.
 
 import { type ReactNode } from "react";

@@ -22,7 +22,7 @@ export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
 export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "about";
 
-/** A terminal agent draft request that outlives the commit modal. It is scoped
+/** A terminal agent draft request collected asynchronously by the composer. It is scoped
  * to the repository that launched it so a late result cannot cross repo tabs. */
 export interface AgentCommitDraftRequest {
   token: string;
@@ -384,19 +384,7 @@ interface UiState {
   histFilter: HistFilter;
   histFilterOpen: boolean;
 
-  /** The "Commit Changes" modal raised by the Start-commit button. Operates on
-   * the staged set: each file can be excluded from this commit (unchecked), and
-   * the body switches between a flat List and a collapsible Tree + inline diff. */
-  commitOpen: boolean;
-  commitView: "list" | "tree";
-  /** Path of the file previewed in the tree view's diff pane. */
-  commitSelFile: string | null;
-  /** Collapsed directories in the tree view (keyed by the joined dir path). */
-  commitCollapsed: Record<string, boolean>;
-  /** Staged paths the user unchecked — excluded from this commit (unstaged
-   * before committing, so they survive as working changes). */
-  commitExcluded: Record<string, boolean>;
-  /** Draft commit message (empty = let the agent write it). */
+  /** Draft message shown by the inline composer in the Working Changes inspector. */
   commitMsg: string;
   /** Pending terminal-agent draft handoff. Session-only and repo-scoped. */
   agentCommitDraft: AgentCommitDraftRequest | null;
@@ -550,24 +538,15 @@ interface UiState {
   /** Reset both search query and kind filter to their inert state. */
   clearHistFilters: () => void;
 
-  /** Open the commit modal (resets exclusions + message; defaults to List). */
+  /** Reveal the inline commit composer in the Working Changes inspector. */
   openCommit: () => void;
-  closeCommit: () => void;
-  /** Hand commit-message drafting to a terminal agent, close the modal while
-   * the terminal is interactive, and reopen it when the draft arrives. */
+  /** Hand commit-message drafting to a terminal agent and collect its mailbox result. */
   startAgentCommitDraft: (
     request: AgentCommitDraftRequest,
     instruction: string,
     command: string,
   ) => void;
   cancelAgentCommitDraft: () => void;
-  setCommitView: (view: "list" | "tree") => void;
-  selectCommitFile: (path: string) => void;
-  toggleCommitCollapse: (dir: string) => void;
-  /** Toggle one staged file in/out of the commit. */
-  toggleCommitFile: (path: string) => void;
-  /** Check/uncheck every file under a directory at once. */
-  setCommitDir: (paths: string[], included: boolean) => void;
   setCommitMsg: (msg: string) => void;
 
   /** Pin/replace a local comment on a diff line range (keyed by file + range). */
@@ -687,11 +666,6 @@ export const useUi = create<UiState>()(
   histFilter: "all",
   histFilterOpen: false,
 
-  commitOpen: false,
-  commitView: "list",
-  commitSelFile: null,
-  commitCollapsed: {},
-  commitExcluded: {},
   commitMsg: "",
   agentCommitDraft: null,
 
@@ -824,7 +798,8 @@ export const useUi = create<UiState>()(
   setLeftTab: (tab) => set((s) => (s.leftTab === tab ? s : { leftTab: tab })),
   setRightTab: (tab) => set((s) => (s.rightTab === tab ? s : { rightTab: tab })),
   openChangesView: (all = false) => set({ leftTab: "changes", changesAll: all }),
-  onWorkingTreeClean: () => set((s) => (s.leftTab === "changes" ? { leftTab: "history" } : s)),
+  onWorkingTreeClean: () =>
+    set((s) => (s.leftTab === "changes" ? { leftTab: "history", commitMsg: "" } : { commitMsg: "" })),
   onRepoSwitched: () =>
     set({
       leftTab: "history",
@@ -841,7 +816,7 @@ export const useUi = create<UiState>()(
       histFilter: "all",
       histFilterOpen: false,
       onboardingOpen: false,
-      commitOpen: false,
+      commitMsg: "",
       agentCommitDraft: null,
     }),
 
@@ -865,12 +840,10 @@ export const useUi = create<UiState>()(
   setHistFilter: (filter) => set({ histFilter: filter }),
   clearHistFilters: () => set((s) => (s.histQuery === "" && s.histFilter === "all" ? s : { histQuery: "", histFilter: "all" })),
 
-  openCommit: () =>
-    set({ commitOpen: true, commitView: "list", commitExcluded: {}, commitMsg: "", commitSelFile: null }),
-  closeCommit: () => set({ commitOpen: false }),
+  openCommit: () => set({ leftTab: "changes", changesAll: false, rightTab: "details" }),
   startAgentCommitDraft: (request, instruction, command) => {
     get().sendToTerminal(instruction, command);
-    set({ agentCommitDraft: request, commitOpen: false });
+    set({ agentCommitDraft: request });
 
     const poll = async () => {
       if (get().agentCommitDraft?.token !== request.token) return;
@@ -878,7 +851,7 @@ export const useUi = create<UiState>()(
         const draft = await useRepo.getState().takeAgentCommitDraft(request.repoPath, request.token);
         if (get().agentCommitDraft?.token !== request.token) return;
         if (draft) {
-          set({ agentCommitDraft: null, commitMsg: draft, commitOpen: true });
+          set({ agentCommitDraft: null, commitMsg: draft });
           return;
         }
         if (Date.now() - request.startedAt >= 120_000) {
@@ -897,26 +870,6 @@ export const useUi = create<UiState>()(
     setTimeout(() => void poll(), 500);
   },
   cancelAgentCommitDraft: () => set({ agentCommitDraft: null }),
-  setCommitView: (view) => set({ commitView: view }),
-  selectCommitFile: (path) => set({ commitSelFile: path }),
-  toggleCommitCollapse: (dir) =>
-    set((s) => ({ commitCollapsed: { ...s.commitCollapsed, [dir]: !s.commitCollapsed[dir] } })),
-  toggleCommitFile: (path) =>
-    set((s) => {
-      const next = { ...s.commitExcluded };
-      if (next[path]) delete next[path];
-      else next[path] = true;
-      return { commitExcluded: next };
-    }),
-  setCommitDir: (paths, included) =>
-    set((s) => {
-      const next = { ...s.commitExcluded };
-      for (const p of paths) {
-        if (included) delete next[p];
-        else next[p] = true;
-      }
-      return { commitExcluded: next };
-    }),
   setCommitMsg: (msg) => set({ commitMsg: msg }),
 
   addReviewNote: (note) =>

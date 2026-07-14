@@ -1,6 +1,5 @@
-// "Commit with agent" split control (GL-213 follow-up): the model is no longer a
-// separate footer selector — clicking the button opens a small popup of the
-// enabled terminal agents, and clicking one commits with that agent.
+// Agent action used by the inline commit composer. Clicking the button opens a
+// small popup of enabled terminal agents; clicking one delegates the action.
 
 import { useRef, useState } from "react";
 

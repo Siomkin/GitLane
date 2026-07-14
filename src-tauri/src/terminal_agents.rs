@@ -17,6 +17,30 @@ use tauri::{AppHandle, Manager};
 const DRAFT_PREFIX: &str = "gitlane-commit-draft-";
 const MAX_DRAFT_BYTES: u64 = 8 * 1024;
 
+pub const DEFAULT_DRAFT_INSTRUCTION: &str =
+    "Review the staged changes and draft a concise conventional commit message.";
+pub const DEFAULT_COMMIT_INSTRUCTION: &str =
+    "Review the staged changes, write a concise conventional-commit message, and commit them.";
+
+/// User-editable instructions for the two commit-agent actions. GitLane keeps
+/// its safety, excluded-path, and one-shot delivery suffixes outside this
+/// persisted text so users cannot accidentally remove the handoff contract.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitAgentMessages {
+    pub draft_instruction: String,
+    pub commit_instruction: String,
+}
+
+impl Default for CommitAgentMessages {
+    fn default() -> Self {
+        Self {
+            draft_instruction: DEFAULT_DRAFT_INSTRUCTION.into(),
+            commit_instruction: DEFAULT_COMMIT_INSTRUCTION.into(),
+        }
+    }
+}
+
 /// An agent as it crosses the IPC boundary: the editable fields plus the
 /// PATH-probed `available` flag (computed on read, ignored on save).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +154,53 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
     Ok(dir.join("terminal-agents.json"))
+}
+
+fn messages_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
+    Ok(dir.join("commit-agent-messages.json"))
+}
+
+/// Load the saved commit-agent instructions. A missing or corrupt config uses
+/// the shipped defaults so both commit actions remain usable.
+pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
+    messages_config_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<CommitAgentMessages>(&text).ok())
+        .filter(valid_messages)
+        .unwrap_or_default()
+}
+
+/// Persist both instructions atomically. Blank instructions are rejected at
+/// the IPC boundary even though the Settings UI also validates them.
+pub fn save_messages(app: &AppHandle, messages: &CommitAgentMessages) -> Result<(), String> {
+    if !valid_messages(messages) {
+        return Err("Draft and commit instructions are required.".into());
+    }
+    let path = messages_config_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
+    }
+    let json = serde_json::to_string_pretty(messages)
+        .map_err(|e| format!("failed to serialize commit agent messages: {e}"))?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, json).map_err(|e| format!("failed to write commit agent messages: {e}"))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("failed to save commit agent messages: {e}"))?;
+    Ok(())
+}
+
+pub fn reset_messages_to_defaults(app: &AppHandle) -> Result<CommitAgentMessages, String> {
+    let messages = CommitAgentMessages::default();
+    save_messages(app, &messages)?;
+    Ok(messages)
+}
+
+fn valid_messages(messages: &CommitAgentMessages) -> bool {
+    !messages.draft_instruction.trim().is_empty() && !messages.commit_instruction.trim().is_empty()
 }
 
 /// Load the agent config, seeding defaults on first launch. Each agent's
@@ -273,6 +344,22 @@ fn which(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commit_agent_message_defaults_are_valid_and_use_camel_case() {
+        let messages = CommitAgentMessages::default();
+        assert!(valid_messages(&messages));
+        let json = serde_json::to_value(&messages).unwrap();
+        assert_eq!(json["draftInstruction"], DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(json["commitInstruction"], DEFAULT_COMMIT_INSTRUCTION);
+    }
+
+    #[test]
+    fn commit_agent_messages_reject_blank_instructions() {
+        let mut messages = CommitAgentMessages::default();
+        messages.draft_instruction = "  ".into();
+        assert!(!valid_messages(&messages));
+    }
 
     #[test]
     fn commit_draft_rejects_unsafe_tokens() {

@@ -20,9 +20,7 @@ beforeEach(() => {
     histFilter: "all",
     histFilterOpen: false,
     onboardingOpen: false,
-    commitOpen: false,
     commitMsg: "",
-    commitExcluded: {},
     agentCommitDraft: null,
   });
 });
@@ -41,6 +39,18 @@ describe("view-tab transitions", () => {
 
     useUi.getState().openChangesView();
     expect(useUi.getState().changesAll).toBe(false);
+  });
+
+  it("openCommit reveals the inline composer in the Working Changes inspector", () => {
+    useUi.setState({ leftTab: "history", rightTab: "files", changesAll: true });
+
+    useUi.getState().openCommit();
+
+    expect(useUi.getState()).toMatchObject({
+      leftTab: "changes",
+      rightTab: "details",
+      changesAll: false,
+    });
   });
 
   it("onWorkingTreeClean leaves the changes view but never touches other tabs", () => {
@@ -81,7 +91,7 @@ describe("view-tab transitions", () => {
       histFilter: "merges",
       histFilterOpen: true,
       onboardingOpen: true,
-      commitOpen: true,
+      commitMsg: "old message",
       agentCommitDraft: {
         token: "old-token",
         agentName: "codex",
@@ -104,20 +114,18 @@ describe("view-tab transitions", () => {
     expect(s.histFilter).toBe("all");
     expect(s.histFilterOpen).toBe(false);
     expect(s.onboardingOpen).toBe(false);
-    expect(s.commitOpen).toBe(false);
+    expect(s.commitMsg).toBe("");
     expect(s.agentCommitDraft).toBeNull();
   });
 
-  it("keeps polling after the modal closes and reopens it with the agent draft", async () => {
+  it("keeps polling while the inline composer remains available and fills its message", async () => {
     vi.useFakeTimers();
     const takeAgentCommitDraft = vi.fn()
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce("feat(changes): draft from agent");
     useRepo.setState({ takeAgentCommitDraft });
     useUi.setState({
-      commitOpen: true,
       commitMsg: "initial guidance",
-      commitExcluded: { "skip-me.ts": true },
     });
 
     useUi.getState().startAgentCommitDraft(
@@ -126,7 +134,6 @@ describe("view-tab transitions", () => {
       "codex",
     );
 
-    expect(useUi.getState().commitOpen).toBe(false);
     expect(useUi.getState().terminalView).toBe("open");
     expect(useUi.getState().terminalInject).toEqual(expect.objectContaining({
       text: "draft this commit",
@@ -135,13 +142,11 @@ describe("view-tab transitions", () => {
 
     await vi.advanceTimersByTimeAsync(500);
     expect(takeAgentCommitDraft).toHaveBeenLastCalledWith("/repo", "draft-token");
-    expect(useUi.getState().commitOpen).toBe(false);
+    expect(useUi.getState().commitMsg).toBe("initial guidance");
 
     await vi.advanceTimersByTimeAsync(1_000);
     expect(useUi.getState().agentCommitDraft).toBeNull();
     expect(useUi.getState().commitMsg).toBe("feat(changes): draft from agent");
-    expect(useUi.getState().commitExcluded).toEqual({ "skip-me.ts": true });
-    expect(useUi.getState().commitOpen).toBe(true);
   });
 
   it("ignores an agent draft that resolves after a repository switch", async () => {
@@ -151,7 +156,7 @@ describe("view-tab transitions", () => {
       resolveDraft = resolve;
     }));
     useRepo.setState({ takeAgentCommitDraft });
-    useUi.setState({ commitOpen: true, commitMsg: "keep this" });
+    useUi.setState({ commitMsg: "keep this" });
 
     useUi.getState().startAgentCommitDraft(
       { token: "stale-token", agentName: "claude", repoPath: "/old-repo", startedAt: Date.now() },
@@ -166,7 +171,6 @@ describe("view-tab transitions", () => {
     await Promise.resolve();
 
     expect(useUi.getState().agentCommitDraft).toBeNull();
-    expect(useUi.getState().commitMsg).toBe("keep this");
-    expect(useUi.getState().commitOpen).toBe(false);
+    expect(useUi.getState().commitMsg).toBe("");
   });
 });

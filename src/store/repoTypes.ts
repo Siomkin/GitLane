@@ -534,10 +534,9 @@ export interface RepoState {
   commit: (summary: string, description: string, amend: boolean) => Promise<void>;
   /** Reword the previous commit when it has not been pushed. */
   amendHeadMessage: (summary: string, description: string) => Promise<string>;
-  /** Commit the staged set minus `excludePaths` (those are unstaged first, so
-   * they survive as working changes), with `message` as the summary. Backs the
-   * Commit-Changes modal's per-file checkboxes. */
-  commitSelected: (message: string, excludePaths: string[], amend?: boolean) => Promise<void>;
+  /** Commit the currently staged changes with `message`. Returns whether the
+   * commit completed, so the inline composer only clears after success. */
+  commitSelected: (message: string, amend?: boolean) => Promise<boolean>;
   stash: () => Promise<void>;
   fetch: () => Promise<void>;
   pull: () => Promise<void>;
