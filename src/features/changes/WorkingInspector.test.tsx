@@ -27,8 +27,8 @@ describe("WorkingInspector", () => {
   it("replaces Start commit with an inline composer disabled for an empty stage", () => {
     render(<WorkingInspector onOpenChanges={() => {}} />);
     expect(screen.queryByRole("button", { name: "Start commit" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Commit message" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Commit 0 files/ })).toBeDisabled();
   });
 
   it("keeps the inline composer in the main inspector once something is staged", () => {
@@ -40,7 +40,7 @@ describe("WorkingInspector", () => {
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
     expect(screen.queryByRole("button", { name: "Start commit" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Commit message" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeInTheDocument();
   });
 
   it("disables staging for a visible path outside sparse checkout", () => {

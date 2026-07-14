@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileChange, TerminalAgent } from "@/lib/api";
+import { BranchKind, ForgeKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type TerminalAgent } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { ComposerMode } from "@/lib/conventionalCommit";
 import { useAccounts } from "@/store/accounts";
 import {
   DEFAULT_COMMIT_AGENT_MESSAGES,
@@ -34,6 +35,54 @@ const agent = (over: Partial<TerminalAgent> = {}): TerminalAgent => ({
   ...over,
 });
 
+const commit = (over: Partial<CommitNode> = {}): CommitNode => ({
+  id: "head-oid",
+  shortId: "abc1234",
+  summary: "previous summary",
+  body: "",
+  authorName: "Ada",
+  authorEmail: "ada@example.test",
+  timestamp: 1,
+  parents: [],
+  lane: 0,
+  row: 0,
+  color: 0,
+  refs: [],
+  ...over,
+});
+
+const localBranch = (over: Partial<BranchInfo> = {}): BranchInfo => ({
+  name: "main",
+  kind: BranchKind.Local,
+  target: "head-oid",
+  isHead: true,
+  upstream: "origin/main",
+  remote: null,
+  sync: { status: "upToDate", upstream: "origin/main", ahead: 0, behind: 0 },
+  ...over,
+});
+
+const githubForge: RepoForge = {
+  hasRemote: true,
+  kind: ForgeKind.GitHub,
+  forge: "GitHub",
+  host: "github.com",
+  webUrl: "https://github.com/acme/repo",
+};
+
+/** The graph that makes amend available: an unpushed head commit. */
+const amendableGraph = () => ({
+  commits: [commit()],
+  edges: [],
+  laneCount: 1,
+  head: "head-oid",
+  truncated: false,
+});
+
+const openCommitMenu = () => {
+  fireEvent.click(screen.getByRole("button", { name: "More commit actions" }));
+};
+
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command: string) => {
@@ -49,6 +98,8 @@ beforeEach(() => {
   useRepo.setState({
     summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
     graph: null,
+    forge: null,
+    branches: [],
     changes: {
       staged: [staged("src/feature.ts")],
       unstaged: [],
@@ -56,9 +107,13 @@ beforeEach(() => {
       advanced: emptyAdvancedState,
     },
     commitSelected: vi.fn(async () => true),
+    push: vi.fn(async () => {}),
+    publishBranch: vi.fn(async () => ""),
   });
   useUi.setState({
     commitMsg: "",
+    commitComposerMode: ComposerMode.Conventional,
+    commitDraftAgent: null,
     agentCommitDraft: null,
     sendToTerminal: vi.fn(),
   });
@@ -77,16 +132,65 @@ beforeEach(() => {
 });
 
 describe("CommitComposer", () => {
-  it("renders inline without modal chrome and shows the effective identity", async () => {
+  it("renders the structured composer inline and shows the effective identity", async () => {
     render(<CommitComposer />);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Commit message" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Commit body" })).toBeVisible();
     expect(
       await screen.findByRole("button", {
         name: "Commit identity: Alex Global · alex@example.dev",
       }),
     ).toBeVisible();
+  });
+
+  it("composes the conventional fields into the shared commit message", () => {
+    render(<CommitComposer />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Commit type" }), {
+      target: { value: "feat" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit scope" }), {
+      target: { value: "changes" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit summary" }), {
+      target: { value: "move commit controls inline" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit body" }), {
+      target: { value: "Because inline." },
+    });
+
+    expect(useUi.getState().commitMsg).toBe(
+      "feat(changes): move commit controls inline\n\nBecause inline.",
+    );
+    expect(screen.getByText("42/50")).toBeVisible();
+  });
+
+  it("parses an externally delivered draft into the structured fields", () => {
+    render(<CommitComposer />);
+
+    act(() => {
+      useUi.getState().setCommitMsg("chore(docker): restart services\n\nSet restart policy.");
+    });
+
+    expect(screen.getByRole("combobox", { name: "Commit type" })).toHaveValue("chore");
+    expect(screen.getByRole("textbox", { name: "Commit scope" })).toHaveValue("docker");
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toHaveValue("restart services");
+    expect(screen.getByRole("textbox", { name: "Commit body" })).toHaveValue("Set restart policy.");
+  });
+
+  it("carries the message across the Message / Conventional style switch", () => {
+    useUi.setState({ commitMsg: "fix(ui): keep the text" });
+    render(<CommitComposer />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Message" }));
+    expect(screen.getByRole("textbox", { name: "Commit message" })).toHaveValue(
+      "fix(ui): keep the text",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Conventional" }));
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toHaveValue("keep the text");
   });
 
   it("commits the staged set and clears the message only after success", async () => {
@@ -95,7 +199,7 @@ describe("CommitComposer", () => {
     useUi.setState({ commitMsg: "feat(changes): move commit controls inline" });
     render(<CommitComposer />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Commit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
 
     expect(commitSelected).toHaveBeenCalledWith(
       "feat(changes): move commit controls inline",
@@ -110,13 +214,89 @@ describe("CommitComposer", () => {
     useUi.setState({ commitMsg: "fix: keep this message" });
     render(<CommitComposer />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Commit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
 
     expect(commitSelected).toHaveBeenCalled();
     expect(useUi.getState().commitMsg).toBe("fix: keep this message");
   });
 
-  it("uses the configured Commit with agent instruction", async () => {
+  it("pushes after a successful Commit & push", async () => {
+    const push = vi.fn(async () => {});
+    useRepo.setState({ push, branches: [localBranch()] });
+    useUi.setState({ commitMsg: "fix: something" });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit & push" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(useRepo.getState().commitSelected).toHaveBeenCalledWith("fix: something", false);
+  });
+
+  it("routes Commit & push through the publish prompt when there is no upstream", async () => {
+    const push = vi.fn(async () => {});
+    const requestPrompt = vi.fn();
+    useRepo.setState({
+      push,
+      branches: [
+        localBranch({
+          upstream: null,
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        }),
+      ],
+    });
+    useUi.setState({ commitMsg: "fix: something", requestPrompt });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit & push" }));
+
+    await waitFor(() => expect(requestPrompt).toHaveBeenCalled());
+    expect(requestPrompt.mock.calls[0][0].title).toBe("Publish main");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("opens the create-PR dialog once Commit, push & open PR has pushed", async () => {
+    const push = vi.fn(async () => {});
+    useRepo.setState({ push, forge: githubForge, branches: [localBranch()] });
+    useUi.setState({ commitMsg: "fix: something" });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit, push & open PR…" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    await waitFor(() => expect(useUi.getState().createPrOpen).toBe(true));
+  });
+
+  it("hides the open-PR action for a repo without a PR forge", () => {
+    useUi.setState({ commitMsg: "fix: something" });
+    render(<CommitComposer />);
+
+    openCommitMenu();
+    expect(screen.queryByRole("menuitem", { name: "Commit, push & open PR…" })).not.toBeInTheDocument();
+  });
+
+  it("amends via the commit menu with a prefilled message and visible state", async () => {
+    useRepo.setState({ graph: amendableGraph() });
+    render(<CommitComposer />);
+
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Amend previous commit" }));
+
+    expect(useUi.getState().commitMsg).toBe("previous summary");
+    expect(screen.getByText(/Amending abc1234/)).toBeVisible();
+    const amendButton = screen.getByRole("button", { name: "Amend last commit" });
+    await waitFor(() => expect(amendButton).toBeEnabled());
+
+    fireEvent.click(amendButton);
+    expect(useRepo.getState().commitSelected).toHaveBeenCalledWith("previous summary", true);
+  });
+
+  it("uses the configured Commit with agent instruction from the commit menu", async () => {
     const sendToTerminal = vi.fn();
     useUi.setState({ sendToTerminal });
     useCommitAgentMessages.setState({
@@ -128,7 +308,7 @@ describe("CommitComposer", () => {
     render(<CommitComposer />);
 
     await screen.findByRole("button", { name: /^Commit identity:/ });
-    fireEvent.click(screen.getByRole("button", { name: "Commit with agent" }));
+    openCommitMenu();
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
     expect(sendToTerminal).toHaveBeenCalledWith(
@@ -142,7 +322,7 @@ describe("CommitComposer", () => {
     useUi.setState({ sendToTerminal });
     render(<CommitComposer />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Draft with agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
     const instruction = sendToTerminal.mock.calls[0]?.[0] as string;
@@ -151,8 +331,9 @@ describe("CommitComposer", () => {
     );
     expect(instruction).toContain("Using shell file commands, not apply_patch");
     expect(instruction).toContain("end the turn immediately and run no more tools or commands");
-    expect(screen.getByRole("textbox", { name: "Commit message" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("codex is drafting");
+    expect(useUi.getState().commitDraftAgent).toBe("codex");
   });
 
   it("sends an edited message as the draft improvement target", () => {
@@ -160,7 +341,7 @@ describe("CommitComposer", () => {
     useUi.setState({ sendToTerminal, commitMsg: "fix: initial message" });
     render(<CommitComposer />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Improve with agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Improve" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
     expect(sendToTerminal).toHaveBeenCalledWith(
@@ -169,6 +350,15 @@ describe("CommitComposer", () => {
       ),
       "codex",
     );
+  });
+
+  it("marks the remembered draft agent as the active menu choice", () => {
+    useUi.setState({ commitDraftAgent: "codex" });
+    render(<CommitComposer />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft" }));
+    const item = screen.getByRole("menuitem", { name: /codex/ });
+    expect(item.querySelector("svg:last-of-type")).not.toBeNull();
   });
 
   it("blocks commit actions for guarded staged changes", () => {
@@ -192,7 +382,7 @@ describe("CommitComposer", () => {
     useUi.setState({ commitMsg: "chore: update dependency" });
     render(<CommitComposer />);
 
-    expect(screen.getByRole("button", { name: "Commit" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Commit 1 file → main" })).toBeDisabled();
     expect(
       screen.getByText(
         "Submodule: modified files inside submodule. Use the terminal for submodule updates.",
@@ -205,6 +395,20 @@ describe("CommitComposer", () => {
     render(<CommitComposer />);
 
     expect(screen.getAllByText("No enabled agents. Add one in Settings.")).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "Commit with agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Draft" })).not.toBeInTheDocument();
+    openCommitMenu();
+    expect(screen.queryByText("Commit with agent")).not.toBeInTheDocument();
+  });
+
+  it("collapses to a summary bar and restores the editor on click", () => {
+    useUi.setState({ commitMsg: "fix: half-written" });
+    render(<CommitComposer />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse commit composer" }));
+    expect(screen.queryByRole("textbox", { name: "Commit summary" })).not.toBeInTheDocument();
+
+    const reopen = screen.getByRole("button", { name: /Continue message/ });
+    fireEvent.click(reopen);
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toHaveValue("half-written");
   });
 });

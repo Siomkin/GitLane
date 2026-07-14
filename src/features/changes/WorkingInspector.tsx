@@ -159,7 +159,8 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
         />
       </div>
 
-      <div className="max-h-[55%] shrink-0 overflow-auto border-t border-black/5 p-4 dark:border-white/5">
+      {/* The composer owns its padding — collapsed it is a full-bleed bar. */}
+      <div className="max-h-[55%] shrink-0 overflow-auto border-t border-black/5 dark:border-white/5">
         <CommitComposer />
       </div>
     </div>

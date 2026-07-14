@@ -15,6 +15,7 @@ import type { ForgeAuthProvider } from "@/lib/api";
 import type { LeftTab, RightTab } from "@/lib/ui";
 import type { PrFilter } from "@/lib/prs";
 import type { AccentColor } from "@/lib/accent";
+import { ComposerMode } from "@/lib/conventionalCommit";
 import type { BranchDragRef, GraphDropTarget } from "@/lib/graphActions";
 import { resolveTheme, systemPrefersDark } from "@/lib/theme";
 
@@ -394,6 +395,12 @@ interface UiState {
 
   /** Draft message shown by the inline composer in the Working Changes inspector. */
   commitMsg: string;
+  /** The composer's message style — free-form or structured conventional
+   * commit. A view preference, so it persists. */
+  commitComposerMode: ComposerMode;
+  /** Id of the terminal agent last used to draft a commit message, shown as the
+   * active choice in the composer's Draft menu. Persists across sessions. */
+  commitDraftAgent: string | null;
   /** Pending terminal-agent draft handoff. Session-only and repo-scoped. */
   agentCommitDraft: AgentCommitDraftRequest | null;
 
@@ -558,6 +565,8 @@ interface UiState {
   ) => void;
   cancelAgentCommitDraft: () => void;
   setCommitMsg: (msg: string) => void;
+  setCommitComposerMode: (mode: ComposerMode) => void;
+  setCommitDraftAgent: (agentId: string | null) => void;
 
   /** Pin/replace a local comment on a diff line range (keyed by file + range). */
   addReviewNote: (note: Omit<ReviewNote, "id">) => void;
@@ -692,6 +701,8 @@ export const useUi = create<UiState>()(
   histFilterOpen: false,
 
   commitMsg: "",
+  commitComposerMode: ComposerMode.Conventional,
+  commitDraftAgent: null,
   agentCommitDraft: null,
 
   reviewNotes: [],
@@ -932,6 +943,8 @@ export const useUi = create<UiState>()(
   },
   cancelAgentCommitDraft: () => set({ agentCommitDraft: null }),
   setCommitMsg: (msg) => set({ commitMsg: msg }),
+  setCommitComposerMode: (mode) => set({ commitComposerMode: mode }),
+  setCommitDraftAgent: (agentId) => set({ commitDraftAgent: agentId }),
 
   addReviewNote: (note) =>
     set((s) => {
@@ -1032,6 +1045,8 @@ export const useUi = create<UiState>()(
         terminalExpanded: s.terminalExpanded,
         prFilter: s.prFilter,
         collapsed: s.collapsed,
+        commitComposerMode: s.commitComposerMode,
+        commitDraftAgent: s.commitDraftAgent,
       }),
     },
   ),

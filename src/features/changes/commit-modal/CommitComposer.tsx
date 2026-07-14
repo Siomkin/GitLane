@@ -1,12 +1,23 @@
-// Inline commit controls for the Working Changes inspector. The staged list
-// directly above this composer is the source of truth for commit inclusion, so
-// there is no second modal-only file selector to reconcile.
+// Inline commit controls for the Working Changes inspector (commit panel
+// redesign). The staged list directly above this composer is the source of
+// truth for commit inclusion. One collapsible surface, two message styles —
+// free-form or structured conventional commit — with the agent Draft control
+// folded into the editor row and the commit variants (& push / & open PR /
+// amend / with agent) behind the split button's caret.
 
-import { useEffect, useState } from "react";
-import { type TerminalAgent } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { BranchKind, type TerminalAgent } from "@/lib/api";
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
-import { cn } from "@/lib/cn";
+import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
 import { fullCommitMessage } from "@/lib/commitMessage";
+import {
+  ComposerMode,
+  composeConventionalMessage,
+  parseConventionalMessage,
+  type ConventionalFields,
+} from "@/lib/conventionalCommit";
+import { isPrForge } from "@/components/chrome/action-bar/actionBarModel";
+import { ChevronDownIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
 import { isCommitReachableFromRemote } from "@/store/selection";
@@ -14,20 +25,30 @@ import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { selectEnabledAgents } from "@/features/terminal/agents";
 import { CommitIdentitySelector } from "./CommitIdentitySelector";
-import { CommitWithAgentButton } from "./CommitWithAgentButton";
 import { useCommitIdentity } from "./useCommitIdentity";
+import { CommitMessageEditor } from "./CommitMessageEditor";
+import { CommitSplitButton } from "./CommitSplitButton";
+import { DraftAgentControl } from "./DraftAgentControl";
 
 export function CommitComposer() {
   const msg = useUi((state) => state.commitMsg);
   const setMsg = useUi((state) => state.setCommitMsg);
+  const mode = useUi((state) => state.commitComposerMode);
+  const setMode = useUi((state) => state.setCommitComposerMode);
+  const draftAgentId = useUi((state) => state.commitDraftAgent);
+  const setDraftAgentId = useUi((state) => state.setCommitDraftAgent);
   const sendToTerminal = useUi((state) => state.sendToTerminal);
   const agentCommitDraft = useUi((state) => state.agentCommitDraft);
   const startAgentCommitDraft = useUi((state) => state.startAgentCommitDraft);
   const cancelAgentCommitDraft = useUi((state) => state.cancelAgentCommitDraft);
+  const requestPrompt = useUi((state) => state.requestPrompt);
+  const openCreatePr = useUi((state) => state.openCreatePr);
   const changes = useRepo((state) => state.changes);
   const summary = useRepo((state) => state.summary);
+  const forge = useRepo((state) => state.forge);
   const graph = useRepo((state) => state.graph);
   const commitSelected = useRepo((state) => state.commitSelected);
+  const [composerOpen, setComposerOpen] = useState(true);
   const [amend, setAmend] = useState(false);
   const agentsRaw = useTerminalAgents((state) => state.agents);
   const loadAgents = useTerminalAgents((state) => state.loadAgents);
@@ -35,7 +56,27 @@ export function CommitComposer() {
   const loadAgentMessages = useCommitAgentMessages((state) => state.loadMessages);
   const identity = useCommitIdentity();
 
+  // The structured (conventional) view of `commitMsg`. Field edits compose back
+  // into the message; any external message change — an agent draft landing, the
+  // post-commit clear, the amend prefill — re-parses into the fields. The ref
+  // marks messages we composed ourselves so those don't re-parse mid-typing.
+  const [fields, setFields] = useState<ConventionalFields>(() => parseConventionalMessage(msg));
+  const lastSyncedMsg = useRef(msg);
+  useEffect(() => {
+    if (msg === lastSyncedMsg.current) return;
+    lastSyncedMsg.current = msg;
+    setFields(parseConventionalMessage(msg));
+  }, [msg]);
+  const updateFields = (patch: Partial<ConventionalFields>) => {
+    const next = { ...fields, ...patch };
+    setFields(next);
+    const composed = composeConventionalMessage(next);
+    lastSyncedMsg.current = composed;
+    setMsg(composed);
+  };
+
   const staged = changes.staged;
+  const branch = summary?.headBranch ?? "HEAD";
   const headCommit = graph?.commits.find((commit) => commit.id === graph.head && !commit.stash) ?? null;
   const canAmend =
     Boolean(summary?.headBranch) && headCommit !== null && !isCommitReachableFromRemote(graph, headCommit.id);
@@ -45,7 +86,20 @@ export function CommitComposer() {
     : null;
   const commitBlocked = fileWriteGuard(findGuardedFile(staged, changes), changes);
   const hasStaged = staged.length > 0;
-  const canCommit = hasStaged && msg.trim().length > 0 && !commitBlocked && identity.usable;
+  const messageReady =
+    mode === ComposerMode.Conventional ? fields.subject.trim().length > 0 : msg.trim().length > 0;
+  const canCommit = hasStaged && messageReady && !commitBlocked && identity.usable;
+  const commitDisabledTitle =
+    commitBlocked ??
+    (!hasStaged
+      ? "Stage files to commit"
+      : !messageReady
+        ? mode === ComposerMode.Conventional
+          ? "Write a short summary first"
+          : "Write a commit message first"
+        : !identity.usable
+          ? "Set a usable Git identity before committing"
+          : null);
 
   useEffect(() => {
     void loadAgents();
@@ -59,12 +113,55 @@ export function CommitComposer() {
     if (!canAmend) setAmend(false);
   }, [canAmend]);
 
-  const doCommit = async () => {
-    if (!canCommit) return;
+  const doCommit = async (): Promise<boolean> => {
+    if (!canCommit) return false;
     const committed = await commitSelected(msg.trim(), amend);
-    if (!committed) return;
+    if (!committed) return false;
     setMsg("");
     setAmend(false);
+    return true;
+  };
+
+  /** Push the checked-out branch the way the toolbar does — through the publish
+   * prompt when it has no (resolvable) upstream. `afterPushed` chains only when
+   * the branch verifiably reached its upstream (push/publish surface their own
+   * failures as toasts and resolve, so success is read back from sync state). */
+  const pushCurrentBranch = (afterPushed?: () => void) => {
+    const repo = useRepo.getState();
+    const current = repo.summary?.headBranch;
+    const finish = async (action: () => Promise<unknown>) => {
+      await action();
+      if (!afterPushed) return;
+      const after = useRepo.getState();
+      const sync = currentBranchSyncView(after.summary, after.branches);
+      if (!sync.canPush && !sync.needsPublishPrompt) afterPushed();
+    };
+    if (current && currentBranchSyncView(repo.summary, repo.branches).needsPublishPrompt) {
+      const info = repo.branches.find((b) => b.kind === BranchKind.Local && b.name === current);
+      requestPrompt({
+        title: `Publish ${current}`,
+        message: `Remote branch for ${current} to push to and pull from.`,
+        placeholder: "origin/branch",
+        defaultValue: defaultPublishTarget(
+          repo.branches,
+          current,
+          info?.upstream,
+          info?.sync?.status !== "staleUpstream",
+        ),
+        confirmLabel: "Publish",
+        onSubmit: (upstream) => void finish(() => repo.publishBranch(current, upstream)),
+      });
+      return;
+    }
+    void finish(() => repo.push());
+  };
+
+  const commitAndPush = async () => {
+    if (await doCommit()) pushCurrentBranch();
+  };
+
+  const commitPushOpenPr = async () => {
+    if (await doCommit()) pushCurrentBranch(() => openCreatePr());
   };
 
   const commitWithAgent = (agent: TerminalAgent) => {
@@ -79,6 +176,7 @@ export function CommitComposer() {
 
   const draftWithAgent = (agent: TerminalAgent) => {
     if (!hasStaged || commitBlocked || !agent.available || !summary) return;
+    setDraftAgentId(agent.id);
     const token = crypto.randomUUID().replace(/-/g, "");
     const filename = `gitlane-commit-draft-${token}`;
     const existingDraft = msg.trim();
@@ -112,32 +210,73 @@ export function CommitComposer() {
     }
   };
 
+  if (!composerOpen) {
+    return (
+      <button
+        type="button"
+        aria-expanded={false}
+        onClick={() => setComposerOpen(true)}
+        className="flex h-12 w-full items-center gap-2.5 px-4 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+      >
+        <ChevronDownIcon className="h-4 w-4 shrink-0 -rotate-90 text-neutral-400" />
+        <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">Commit</span>
+        <span className="text-[12px] text-neutral-400">{staged.length} staged</span>
+        <span className="ml-auto shrink-0 text-[12px] font-medium text-[color:var(--accent)]">
+          {msg.trim() ? "Continue message →" : "Write message →"}
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <div className="space-y-2.5">
+    <div className="flex flex-col gap-2.5 px-4 pb-4 pt-2.5">
+      <div className="flex items-center">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+          Commit · {staged.length} staged
+        </span>
+        <button
+          type="button"
+          aria-label="Collapse commit composer"
+          aria-expanded
+          onClick={() => setComposerOpen(false)}
+          className="ml-auto grid h-6 w-6 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/10"
+        >
+          <ChevronDownIcon className="h-4 w-4" />
+        </button>
+      </div>
       {commitBlocked && (
         <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
           {commitBlocked}
         </div>
       )}
-      {canAmend && (
-        <button type="button" role="switch" aria-checked={amend} onClick={toggleAmend}
-          className="flex w-full items-center gap-3 rounded-lg border border-black/10 px-3 py-2 text-left hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/5"
-        >
-          <span className={cn("flex h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors", amend ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20") }>
-            <span className="h-4 w-4 rounded-full bg-white shadow-sm" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[13px] font-medium text-neutral-800 dark:text-neutral-100">Add to previous commit</span>
-            <span className="block truncate text-[11.5px] text-neutral-400">Available because {headCommit?.shortId} has not been pushed</span>
-          </span>
-        </button>
-      )}
-      <textarea
-        aria-label="Commit message"
-        value={msg}
-        onChange={(event) => setMsg(event.target.value)}
-        placeholder={amend ? "Amended commit message" : "Commit message (optional — leave empty to let the agent write it)"}
-        className="h-20 w-full resize-y rounded-lg border border-black/10 bg-transparent p-2.5 text-[13px] text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
+      <CommitMessageEditor
+        mode={mode}
+        onModeChange={setMode}
+        msg={msg}
+        onMsgChange={setMsg}
+        fields={fields}
+        onFieldsChange={updateFields}
+        amend={amend}
+        actions={
+          agents.length === 0 ? (
+            <span className="text-[12px] text-amber-600 dark:text-amber-400">
+              No enabled agents. Add one in Settings.
+            </span>
+          ) : (
+            <DraftAgentControl
+              agents={agents}
+              activeAgentId={draftAgentId}
+              improve={msg.trim().length > 0}
+              disabled={!hasStaged || Boolean(commitBlocked) || draftingAgent !== null}
+              disabledTitle={
+                !hasStaged
+                  ? "Stage files before drafting a commit message"
+                  : commitBlocked ?? "Wait for the current agent draft"
+              }
+              onPick={draftWithAgent}
+            />
+          )
+        }
       />
       {draftingAgent && (
         <div role="status" className="flex items-center justify-between rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-[12px] text-[color:var(--accent)]">
@@ -145,35 +284,43 @@ export function CommitComposer() {
           <button type="button" className="font-semibold" onClick={cancelAgentCommitDraft}>Stop waiting</button>
         </div>
       )}
-      <CommitIdentitySelector identity={identity} />
-      <div className="flex flex-wrap items-center gap-2">
-        {agents.length === 0 ? (
-          <span className="text-[12px] text-amber-600 dark:text-amber-400">
-            No enabled agents. Add one in Settings.
+      {amend && (
+        <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
+          <span className="min-w-0">
+            Amending {headCommit?.shortId} — the staged files join the previous commit
           </span>
-        ) : (
-          <>
-            <CommitWithAgentButton
-              agents={agents}
-              disabled={!hasStaged || Boolean(commitBlocked) || draftingAgent !== null}
-              onPick={draftWithAgent}
-              label={msg.trim() ? "Improve with agent" : "Draft with agent"}
-              disabledTitle={!hasStaged ? "Stage files before drafting a commit message" : commitBlocked ?? "Wait for the current agent draft"}
-            />
-            <CommitWithAgentButton
-              agents={agents}
-              disabled={!hasStaged || Boolean(commitBlocked) || !identity.usable}
-              onPick={commitWithAgent}
-              disabledTitle={!hasStaged ? "Stage files before committing with an agent" : commitBlocked ?? "Set a usable Git identity before committing with an agent"}
-            />
-          </>
-        )}
-        <button type="button" onClick={() => void doCommit()} disabled={!canCommit} title={commitBlocked ?? undefined}
-          className={cn("ml-auto h-9 rounded-lg px-4 text-[13px] font-medium", canCommit ? "bg-[var(--accent)] text-white hover:brightness-110" : "cursor-not-allowed bg-black/[0.06] text-neutral-400 dark:bg-white/10")}
-        >
-          {amend ? "Amend" : "Commit"}
-        </button>
-      </div>
+          <button type="button" className="shrink-0 font-semibold" onClick={toggleAmend}>
+            Cancel
+          </button>
+        </div>
+      )}
+      <CommitIdentitySelector identity={identity} />
+      <CommitSplitButton
+        stagedCount={staged.length}
+        branch={branch}
+        amend={amend}
+        canCommit={canCommit}
+        blockedTitle={commitDisabledTitle}
+        canAmend={canAmend}
+        amendTitle={
+          canAmend
+            ? `Rewrite ${headCommit?.shortId} with the staged changes and message`
+            : "Available when the previous commit has not been pushed"
+        }
+        showOpenPr={isPrForge(forge?.kind)}
+        agents={agents}
+        agentsDisabled={!hasStaged || Boolean(commitBlocked) || !identity.usable}
+        agentsDisabledTitle={
+          !hasStaged
+            ? "Stage files before committing with an agent"
+            : commitBlocked ?? "Set a usable Git identity before committing with an agent"
+        }
+        onCommit={() => void doCommit()}
+        onCommitAndPush={() => void commitAndPush()}
+        onCommitPushOpenPr={() => void commitPushOpenPr()}
+        onToggleAmend={toggleAmend}
+        onCommitWithAgent={commitWithAgent}
+      />
     </div>
   );
 }
