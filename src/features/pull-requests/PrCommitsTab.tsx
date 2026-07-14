@@ -8,7 +8,6 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { cn } from "@/lib/cn";
 import type { PrCommitView, PullRequest } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
-import { useUi } from "@/store/ui";
 import { GitHubIcon } from "@/components/ui/icons";
 import { Loading, LoadError } from "@/components/ui/Loading";
 
@@ -71,12 +70,11 @@ export function PrCommitsTab({ pr }: { pr: PullRequest }) {
 }
 
 function CommitRow({ commit }: { commit: PrCommitView }) {
-  const showToast = useUi((s) => s.showToast);
   const [copied, setCopied] = useState(false);
 
+  // The transient `copied` check on the pill is the feedback — no toast.
   const copySha = () => {
     void navigator.clipboard?.writeText(commit.oid);
-    showToast(`Copied ${commit.shortOid}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1200);
   };

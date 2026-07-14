@@ -88,7 +88,6 @@ export function WorktreeContextMenu() {
     onClick: () => {
       close();
       void navigator.clipboard?.writeText(path);
-      showToast("Copied path");
     },
   });
   // Don't offer removal of the primary worktree (git refuses) or the one

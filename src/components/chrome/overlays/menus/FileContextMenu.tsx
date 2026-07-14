@@ -9,7 +9,6 @@ export function FileContextMenu() {
   const menu = useUi((s) => s.fileMenu);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const showToast = useUi((s) => s.showToast);
   const discardFile = useRepo((s) => s.discardFile);
   const openFileHistory = useRepo((s) => s.openFileHistory);
   const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
@@ -26,10 +25,11 @@ export function FileContextMenu() {
   // Absolute path = repo root + repo-relative path (workdir has no trailing slash).
   const fullPath = workdir ? `${workdir.replace(/\/+$/, "")}/${path}` : path;
 
-  const copy = (text: string, toast: string) => {
+  // Copies close the menu with no toast — a clipboard write is instant and
+  // risk-free, so a notification is pure noise (GL-217).
+  const copy = (text: string) => {
     close();
     void navigator.clipboard?.writeText(text);
-    showToast(toast);
   };
 
   // Copy is the most-used action here, so it leads — a "Copy" header labels the
@@ -42,9 +42,9 @@ export function FileContextMenu() {
       onClick: () => { close(); requestOpenRepoFile(path); },
     },
     { label: "Copy", header: true, sep: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
-    { label: "File name", onClick: () => copy(fileName, `Copied ${fileName}`) },
-    { label: "Relative path", onClick: () => copy(path, "Copied relative path") },
-    { label: "Full path", onClick: () => copy(fullPath, "Copied full path") },
+    { label: "File name", onClick: () => copy(fileName) },
+    { label: "Relative path", onClick: () => copy(path) },
+    { label: "Full path", onClick: () => copy(fullPath) },
     {
       label: "History",
       icon: <ClockIcon className="h-4 w-4" />,

@@ -16,7 +16,6 @@ export function TagContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
-  const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const checkoutDetached = useRepo((s) => s.checkoutDetached);
@@ -61,7 +60,7 @@ export function TagContextMenu() {
       label: "Copy tag name",
       icon: <CopyIcon className="h-4 w-4" />,
       sep: true,
-      onClick: () => { close(); void navigator.clipboard?.writeText(name); showToast(`Copied ${name}`); },
+      onClick: () => { close(); void navigator.clipboard?.writeText(name); },
     },
     {
       label: "Delete local tag",
