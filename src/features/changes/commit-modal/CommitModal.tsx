@@ -37,6 +37,9 @@ const CommitModalBody = () => {
   const setMsg = useUi((s) => s.setCommitMsg);
   const excluded = useUi((s) => s.commitExcluded);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
+  const agentCommitDraft = useUi((s) => s.agentCommitDraft);
+  const startAgentCommitDraft = useUi((s) => s.startAgentCommitDraft);
+  const cancelAgentCommitDraft = useUi((s) => s.cancelAgentCommitDraft);
   const changes = useRepo((s) => s.changes);
   const staged = changes.staged;
   const summary = useRepo((s) => s.summary);
@@ -54,6 +57,9 @@ const CommitModalBody = () => {
     !!headCommit &&
     !isCommitReachableFromRemote(graph, headCommit.id);
   const agents = selectEnabledAgents(agentsRaw);
+  const draftingAgent = agentCommitDraft && agentCommitDraft.repoPath === summary?.path
+    ? agentCommitDraft.agentName
+    : null;
 
   // Close on Escape.
   useEffect(() => {
@@ -104,6 +110,30 @@ const CommitModalBody = () => {
         : "Review the staged changes, write a concise conventional-commit message, and commit them.");
     sendToTerminal(instruction, agent.command);
     close();
+  };
+
+  const draftWithAgent = (agent: TerminalAgent) => {
+    if (!agent.available || !summary) return;
+    const token = crypto.randomUUID().replace(/-/g, "");
+    const filename = `gitlane-commit-draft-${token}`;
+    const existingDraft = msg.trim();
+    const ignored = excludedPaths.length
+      ? ` Ignore these staged paths when describing the commit: ${excludedPaths.map((path) => JSON.stringify(path)).join(", ")}.`
+      : "";
+    const task = existingDraft
+      ? `Review the staged changes and improve this existing conventional commit message: ${JSON.stringify(existingDraft)}.`
+      : "Review the staged changes and draft a concise conventional commit message.";
+    const instruction =
+      `${task} Do not commit and do not modify the working tree.${ignored} ` +
+      "Finish all analysis before delivering the draft. Write only the final plain-text commit message to a temporary file. " +
+      `As your final tool action, atomically rename it to the path printed by: git rev-parse --git-path '${filename}'. ` +
+      "That destination is a one-shot mailbox which GitLane deletes immediately after reading. A successful rename means delivery succeeded even if the destination disappears; do not inspect, read, list, or verify it afterward. " +
+      "Once the rename succeeds, end the turn immediately and run no more tools or commands.";
+    startAgentCommitDraft(
+      { token, agentName: agent.name, repoPath: summary.path, startedAt: Date.now() },
+      instruction,
+      agent.command,
+    );
   };
 
   const toggleAmend = () => {
@@ -217,9 +247,30 @@ const CommitModalBody = () => {
             placeholder={amend ? "Amended commit message" : "Commit message (optional — leave empty to let the agent write it)"}
             className="h-14 w-full resize-none rounded-lg border border-black/10 bg-transparent p-2.5 text-[13px] text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
           />
+          {draftingAgent && (
+            <div role="status" className="flex items-center justify-between rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-[12px] text-[color:var(--accent)]">
+              <span>{draftingAgent} is drafting a message in the terminal…</span>
+              <button type="button" className="font-semibold" onClick={cancelAgentCommitDraft}>
+                Stop waiting
+              </button>
+            </div>
+          )}
           <CommitIdentitySelector identity={identity} />
           <div className="flex items-center gap-2">
-            <CommitWithAgentButton agents={agents} disabled={!identityUsable} onPick={commitWithAgent} />
+            {agents.length === 0 ? (
+              <span className="text-[12px] text-amber-600 dark:text-amber-400">No enabled agents. Add one in Settings.</span>
+            ) : (
+              <>
+                <CommitWithAgentButton
+                  agents={agents}
+                  disabled={draftingAgent !== null}
+                  onPick={draftWithAgent}
+                  label={msg.trim() ? "Improve with agent" : "Draft with agent"}
+                  disabledTitle="Wait for the current agent draft"
+                />
+                <CommitWithAgentButton agents={agents} disabled={!identityUsable} onPick={commitWithAgent} />
+              </>
+            )}
             <div className="ml-auto flex gap-2">
               <button
                 type="button"

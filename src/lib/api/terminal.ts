@@ -47,6 +47,10 @@ export const terminalApi = {
   terminalAgentProbe: (command: string) =>
     invoke<boolean>("terminal_agent_probe", { command }),
 
+  /** Consume a completed commit-message draft from the selected terminal agent. */
+  takeAgentCommitDraft: (path: string, token: string) =>
+    invoke<string | null>("take_agent_commit_draft", { path, token }),
+
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
    *  Returns its `sessionId`; existing sessions keep running. */
   ptySpawn: (path: string, cols: number, rows: number) =>

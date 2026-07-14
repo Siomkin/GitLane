@@ -54,6 +54,7 @@ beforeEach(() => {
     commitCollapsed: {},
     commitExcluded: {},
     commitMsg: "",
+    agentCommitDraft: null,
   });
   useTerminalAgents.setState({
     agents: [
@@ -280,6 +281,63 @@ describe("CommitModal", () => {
 
     expect(sendToTerminal).toHaveBeenCalledWith(
       "Review the staged changes, write a concise conventional-commit message, and commit them.",
+      "codex",
+    );
+    expect(useUi.getState().commitOpen).toBe(false);
+  });
+
+  it("closes while an agent drafts so the terminal stays interactive", () => {
+    const sendToTerminal = vi.fn();
+    const commitSelected = vi.fn();
+    useUi.setState({ sendToTerminal });
+    useRepo.setState({ commitSelected });
+    render(<CommitModal />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft with agent" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /claude/ }));
+
+    expect(sendToTerminal).toHaveBeenCalledWith(
+      expect.stringContaining("Do not commit and do not modify the working tree"),
+      "claude",
+    );
+    const instruction = sendToTerminal.mock.calls[0]?.[0] as string;
+    expect(instruction).toContain("As your final tool action, atomically rename it");
+    expect(instruction).toContain("one-shot mailbox which GitLane deletes immediately");
+    expect(instruction).toContain("do not inspect, read, list, or verify it afterward");
+    expect(instruction).toContain("end the turn immediately and run no more tools or commands");
+    expect(screen.queryByRole("textbox", { name: "Commit message" })).toBeNull();
+    expect(useUi.getState().commitOpen).toBe(false);
+    expect(useUi.getState().agentCommitDraft).toEqual(expect.objectContaining({
+      agentName: "claude",
+      repoPath: "/repo",
+    }));
+    expect(commitSelected).not.toHaveBeenCalled();
+
+    // Reopening manually while the draft is pending exposes an explicit cancel,
+    // but the normal path leaves the terminal unobstructed until the result lands.
+    act(() => useUi.setState({ commitOpen: true }));
+    expect(screen.getByRole("status")).toHaveTextContent("claude is drafting");
+    fireEvent.click(screen.getByRole("button", { name: "Stop waiting" }));
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+  });
+
+  it("offers to improve an edited draft and sends the current message as the rewrite target", () => {
+    const sendToTerminal = vi.fn();
+    useUi.setState({ sendToTerminal });
+    render(<CommitModal />);
+
+    expect(screen.getByRole("button", { name: "Draft with agent" })).toBeVisible();
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit message" }), {
+      target: { value: "fix: initial message" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Improve with agent" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
+
+    expect(sendToTerminal).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'improve this existing conventional commit message: "fix: initial message"',
+      ),
       "codex",
     );
     expect(useUi.getState().commitOpen).toBe(false);

@@ -209,6 +209,7 @@ export function createRepoWriteActions(
   | "commit"
   | "amendHeadMessage"
   | "commitSelected"
+  | "takeAgentCommitDraft"
   | "stash"
   | "fetch"
   | "pull"
@@ -226,6 +227,8 @@ export function createRepoWriteActions(
   const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
 
   return {
+    takeAgentCommitDraft: async (repoPath, token) =>
+      api.takeAgentCommitDraft(repoPath, token),
     checkoutBranch: async (name) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");

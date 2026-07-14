@@ -367,8 +367,6 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     renderPanes();
     await flush();
 
-    // The launched agent enables bracketed paste (its prompt is up).
-    xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
       useUi.setState({
         terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
@@ -377,10 +375,52 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     await flush(); // launch write resolved; the prompt-wait timer is armed
     expect(invokeMock).toHaveBeenCalledWith("pty_write", expect.objectContaining({ sessionId: 1 }));
 
+    // The launched agent enables bracketed paste after the command write (its
+    // prompt is now ready), rather than inheriting the shell's pre-launch mode.
+    xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
       vi.advanceTimersByTime(500);
     });
 
+    expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
+    expect(useUi.getState().terminalInject).toBeNull();
+  });
+
+  it("does not mistake the shell's bracketed-paste mode for an agent-ready prompt", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    // zsh may already enable bracketed paste at its own prompt. The command
+    // must launch first; that inherited mode cannot release the queued text.
+    xterm.instances[0].modes.bracketedPasteMode = true;
+    await act(async () => {
+      useUi.setState({
+        terminalInject: { text: "the prompt", command: "codex", repoKey: "/repoA" },
+      });
+    });
+    await flush();
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(xterm.instances[0].pasted).toHaveLength(0);
+    expect(useUi.getState().terminalInject).not.toBeNull();
+
+    // Agent startup leaves the shell input mode, then enables bracketed paste
+    // for its own prompt. Only that post-launch transition releases the text.
+    xterm.instances[0].modes.bracketedPasteMode = false;
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(xterm.instances[0].pasted).toHaveLength(0);
+
+    xterm.instances[0].modes.bracketedPasteMode = true;
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
   });

@@ -19,12 +19,17 @@ export function CommitWithAgentButton({
   agents,
   disabled,
   onPick,
+  label = "Commit with agent",
+  disabledTitle = "Set a usable Git identity before committing with an agent",
 }: {
   /** The enabled terminal agents (may include ones not on PATH). */
   agents: TerminalAgent[];
   /** Blocks committing (e.g. no usable commit identity). */
   disabled: boolean;
   onPick: (agent: TerminalAgent) => void;
+  /** Visible button text and accessible menu label. */
+  label?: string;
+  disabledTitle?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,10 +54,10 @@ export function CommitWithAgentButton({
         aria-expanded={open}
         title={
           disabled
-            ? "Set a usable Git identity before committing with an agent"
+            ? disabledTitle
             : available.length === 0
               ? "No available agents on PATH"
-              : "Choose an agent to commit with"
+              : `Choose an agent for ${label.toLowerCase()}`
         }
         className={cn(
           "flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-3.5 text-[13px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5",
@@ -60,7 +65,7 @@ export function CommitWithAgentButton({
         )}
       >
         <SparkleIcon />
-        Commit with agent
+        {label}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-neutral-400" aria-hidden>
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -69,7 +74,7 @@ export function CommitWithAgentButton({
       {open && (
         <div
           role="menu"
-          aria-label="Commit with agent"
+          aria-label={label}
           className="absolute bottom-full left-0 z-[80] mb-2 max-h-[280px] w-[260px] overflow-auto rounded-xl border border-black/10 bg-white p-1.5 shadow-[0_18px_44px_-8px_rgba(0,0,0,0.42)] dark:border-white/10 dark:bg-neutral-800"
         >
           {agents.map((agent) => (

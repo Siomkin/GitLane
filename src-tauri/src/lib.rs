@@ -1439,6 +1439,14 @@ async fn terminal_agent_probe(command: String) -> Result<bool, String> {
     blocking(move || Ok(terminal_agents::probe(&command))).await
 }
 
+/// Poll the unique Git-metadata handoff file used when an interactive agent
+/// drafts a commit message. Reading/removing the tiny file is intentionally a
+/// sync command; the expensive work remains in the agent's terminal session.
+#[tauri::command]
+fn take_agent_commit_draft(path: String, token: String) -> Result<Option<String>, String> {
+    terminal_agents::take_commit_draft(&path, &token)
+}
+
 /// Spawn a new in-app terminal PTY running the user's login shell in `path` and
 /// return its `sessionId`; existing sessions keep running. Output streams back as
 /// `pty-data` events tagged with that id; exit fires `pty-exit`.
@@ -1742,6 +1750,7 @@ pub fn run() {
             terminal_agents_set,
             terminal_agents_reset,
             terminal_agent_probe,
+            take_agent_commit_draft,
             pty_spawn,
             pty_write,
             pty_resize,

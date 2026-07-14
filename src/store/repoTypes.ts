@@ -310,6 +310,8 @@ export interface RepoState {
   }) => Promise<void>;
   /** Request the next bounded page of graph history. */
   loadMoreHistory: () => Promise<void>;
+  /** Poll and consume a commit-message draft handed back by a terminal agent. */
+  takeAgentCommitDraft: (repoPath: string, token: string) => Promise<string | null>;
   loadReflog: () => Promise<void>;
   selectCommit: (id: string | null) => Promise<void>;
   /** Select `id`, surface the graph, and request a scroll to it. Used by the

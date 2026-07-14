@@ -22,6 +22,15 @@ export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
 export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "about";
 
+/** A terminal agent draft request that outlives the commit modal. It is scoped
+ * to the repository that launched it so a late result cannot cross repo tabs. */
+export interface AgentCommitDraftRequest {
+  token: string;
+  agentName: string;
+  repoPath: string;
+  startedAt: number;
+}
+
 /** Seed values handed to the global Profiles editor when a repo-scoped surface
  * starts a create (e.g. adopting an unmanaged local identity). */
 export interface ProfilePrefill {
@@ -389,6 +398,8 @@ interface UiState {
   commitExcluded: Record<string, boolean>;
   /** Draft commit message (empty = let the agent write it). */
   commitMsg: string;
+  /** Pending terminal-agent draft handoff. Session-only and repo-scoped. */
+  agentCommitDraft: AgentCommitDraftRequest | null;
 
   /** Session-only review notes pinned to diff lines — the input to the "prepare
    * message for agent" flow. Never persisted (cleared on repo switch). */
@@ -542,6 +553,14 @@ interface UiState {
   /** Open the commit modal (resets exclusions + message; defaults to List). */
   openCommit: () => void;
   closeCommit: () => void;
+  /** Hand commit-message drafting to a terminal agent, close the modal while
+   * the terminal is interactive, and reopen it when the draft arrives. */
+  startAgentCommitDraft: (
+    request: AgentCommitDraftRequest,
+    instruction: string,
+    command: string,
+  ) => void;
+  cancelAgentCommitDraft: () => void;
   setCommitView: (view: "list" | "tree") => void;
   selectCommitFile: (path: string) => void;
   toggleCommitCollapse: (dir: string) => void;
@@ -674,6 +693,7 @@ export const useUi = create<UiState>()(
   commitCollapsed: {},
   commitExcluded: {},
   commitMsg: "",
+  agentCommitDraft: null,
 
   reviewNotes: [],
   agentMessageOpen: false,
@@ -821,6 +841,8 @@ export const useUi = create<UiState>()(
       histFilter: "all",
       histFilterOpen: false,
       onboardingOpen: false,
+      commitOpen: false,
+      agentCommitDraft: null,
     }),
 
   setPrFilter: (filter) => {
@@ -846,6 +868,35 @@ export const useUi = create<UiState>()(
   openCommit: () =>
     set({ commitOpen: true, commitView: "list", commitExcluded: {}, commitMsg: "", commitSelFile: null }),
   closeCommit: () => set({ commitOpen: false }),
+  startAgentCommitDraft: (request, instruction, command) => {
+    get().sendToTerminal(instruction, command);
+    set({ agentCommitDraft: request, commitOpen: false });
+
+    const poll = async () => {
+      if (get().agentCommitDraft?.token !== request.token) return;
+      try {
+        const draft = await useRepo.getState().takeAgentCommitDraft(request.repoPath, request.token);
+        if (get().agentCommitDraft?.token !== request.token) return;
+        if (draft) {
+          set({ agentCommitDraft: null, commitMsg: draft, commitOpen: true });
+          return;
+        }
+        if (Date.now() - request.startedAt >= 120_000) {
+          set({ agentCommitDraft: null });
+          get().showToast("The agent did not return a commit-message draft within two minutes.", "error");
+          return;
+        }
+        setTimeout(() => void poll(), 1_000);
+      } catch (error) {
+        if (get().agentCommitDraft?.token !== request.token) return;
+        set({ agentCommitDraft: null });
+        get().showToast(`Could not collect the agent's commit-message draft: ${String(error)}`, "error");
+      }
+    };
+
+    setTimeout(() => void poll(), 500);
+  },
+  cancelAgentCommitDraft: () => set({ agentCommitDraft: null }),
   setCommitView: (view) => set({ commitView: view }),
   selectCommitFile: (path) => set({ commitSelFile: path }),
   toggleCommitCollapse: (dir) =>
