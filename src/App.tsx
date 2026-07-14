@@ -18,6 +18,7 @@ import { isMac, isTauri } from "./lib/platform";
 import { useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useResolvedTheme } from "./hooks/useResolvedTheme";
+import { useAutoFetch } from "./hooks/useAutoFetch";
 import "./App.css";
 
 const App = () => {
@@ -36,6 +37,7 @@ const App = () => {
   const closeOnboarding = useUi((state) => state.closeOnboarding);
 
   useAppBootstrap();
+  useAutoFetch();
 
   // The derived view machine (see app-shell/centerView.ts). An active
   // merge/rebase/cherry-pick/revert takes over the center pane: the repo is in

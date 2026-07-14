@@ -1,6 +1,7 @@
 import { api, BranchKind, type FileChange, type RepoSummary } from "@/lib/api";
 import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "@/lib/advancedRepoState";
 import { splitCommitMessage } from "@/lib/commitMessage";
+import { friendlyGitError } from "@/lib/gitError";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { pushRemoteForBranch, remoteNameForUpstream } from "@/lib/remoteAccounts";
@@ -225,6 +226,18 @@ export function createRepoWriteActions(
     pushRemoteForBranch(get().branches.find((b) => b.kind === BranchKind.Local && b.name === branch));
   // The default push remote (tags land there when no remote is picked).
   const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
+  // Every network transport call (fetch/pull/push/publish/…) runs inside this
+  // wrapper so `netOps` reflects in-flight remote work. Pull and push don't hold
+  // `loading`, so this is the only store-visible signal the auto-fetch scheduler
+  // has to avoid overlapping a foreground transport operation.
+  const trackNet = async <T>(work: () => Promise<T>): Promise<T> => {
+    set((s) => ({ netOps: s.netOps + 1 }));
+    try {
+      return await work();
+    } finally {
+      set((s) => ({ netOps: Math.max(0, s.netOps - 1) }));
+    }
+  };
 
   return {
     takeAgentCommitDraft: async (repoPath, token) =>
@@ -306,7 +319,7 @@ export function createRepoWriteActions(
 
     pushBranch: (branch) =>
       runOp(get, async (summary) => {
-        await api.pushBranch(summary.path, branch, authFor(pushRemoteOf(branch)));
+        await trackNet(() => api.pushBranch(summary.path, branch, authFor(pushRemoteOf(branch))));
         return `Pushed ${branch}`;
       }),
 
@@ -316,7 +329,7 @@ export function createRepoWriteActions(
           upstream,
           get().remotes.map((r) => r.name),
         );
-        await api.publishBranch(summary.path, branch, upstream, authFor(remote));
+        await trackNet(() => api.publishBranch(summary.path, branch, upstream, authFor(remote)));
         return `Published ${branch} to ${upstream}`;
       }),
 
@@ -526,7 +539,7 @@ export function createRepoWriteActions(
     pushTag: (name, remote) =>
       runOp(get, async (summary) => {
         const target = remote ?? defaultRemote();
-        await api.pushTag(summary.path, name, target, authFor(target));
+        await trackNet(() => api.pushTag(summary.path, name, target, authFor(target)));
         return `Pushed tag ${name} to ${target}`;
       }),
 
@@ -597,13 +610,13 @@ export function createRepoWriteActions(
 
     deleteRemoteBranch: (remote, branch) =>
       runOp(get, async (summary) => {
-        await api.deleteRemoteBranch(summary.path, remote, branch, authFor(remote));
+        await trackNet(() => api.deleteRemoteBranch(summary.path, remote, branch, authFor(remote)));
         return `Deleted ${remote}/${branch}`;
       }),
 
     forcePush: (branch) =>
       runOp(get, async (summary) => {
-        await api.forcePush(summary.path, branch, authFor(pushRemoteOf(branch)));
+        await trackNet(() => api.forcePush(summary.path, branch, authFor(pushRemoteOf(branch))));
         return `Force-pushed ${branch} (with lease)`;
       }),
 
@@ -890,9 +903,9 @@ export function createRepoWriteActions(
       }
     },
 
-    fetch: async () => {
+    fetch: async (opts) => {
       const { summary, forge } = get();
-      if (!summary) return;
+      if (!summary) return false;
       set({ loading: true, error: null });
       // Capture how far behind the tracked branch is *before* fetching so the
       // success toast can report how many commits the remote ref gained.
@@ -900,12 +913,14 @@ export function createRepoWriteActions(
       const behindBefore = head?.sync?.behind ?? 0;
       const only = get().remotes.length === 1 ? get().remotes[0].name : null;
       const notes = useNotifications.getState();
-      const toastId = notes.notify({
-        kind: "progress",
-        title: only ? `Fetching ${only}…` : "Fetching…",
-        body: forge?.host ? `Contacting ${forge.host}` : undefined,
-        progress: "indeterminate",
-      });
+      const toastId = opts?.quiet
+        ? null
+        : notes.notify({
+            kind: "progress",
+            title: only ? `Fetching ${only}…` : "Fetching…",
+            body: forge?.host ? `Contacting ${forge.host}` : undefined,
+            progress: "indeterminate",
+          });
       try {
         // One {remote, account} pair per bound remote (GL-129); remotes
         // without a binding are omitted and fetch through the system
@@ -915,16 +930,28 @@ export function createRepoWriteActions(
           .filter((pair): pair is { remote: string; auth: NonNullable<typeof pair.auth> } =>
             pair.auth !== null,
           );
-        await api.fetch(summary.path, remoteAccounts);
+        await trackNet(() => api.fetch(summary.path, remoteAccounts));
       } catch (e) {
         // Replay any re-sync deferred while this fetch held `loading` (GL-20 review).
         set({ loading: false });
         flushPendingRefresh(get);
-        notes.dismiss(toastId);
-        useUi.getState().showToast(String(e), "error");
-        return;
+        if (toastId !== null) {
+          notes.dismiss(toastId);
+          useUi.getState().showToast(String(e), "error");
+        } else {
+          console.warn("auto-fetch failed", friendlyGitError(String(e)));
+        }
+        return false;
       }
       set({ loading: false });
+      if (opts?.quiet) {
+        // The fetch rewrote FETCH_HEAD (and any updated remote refs) under
+        // .git, so the watcher fires its own quiet re-sync — skip the
+        // foreground refresh (and its PR reload) entirely; just replay
+        // anything deferred while this fetch held `loading`.
+        flushPendingRefresh(get);
+        return true;
+      }
       // Fetch succeeded — refresh (best-effort) so the count reflects new refs,
       // then report. A refresh failure can't relabel a successful fetch.
       let refreshed = true;
@@ -937,7 +964,7 @@ export function createRepoWriteActions(
       const headAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const gained = Math.max(0, (headAfter?.sync?.behind ?? 0) - behindBefore);
       const on = headAfter?.name ?? head?.name;
-      notes.update(toastId, {
+      if (toastId !== null) notes.update(toastId, {
         kind: "success",
         title: only ? `Fetched ${only}` : "Fetched",
         // The count comes from post-fetch branch state, so it's only trustworthy
@@ -953,6 +980,7 @@ export function createRepoWriteActions(
         progress: undefined,
         duration: 5000,
       });
+      return true;
     },
 
     pull: async () => {
@@ -973,7 +1001,7 @@ export function createRepoWriteActions(
         progress: "indeterminate",
       });
       try {
-        await api.pull(summary.path, authFor(head?.upstreamRemote ?? null));
+        await trackNet(() => api.pull(summary.path, authFor(head?.upstreamRemote ?? null)));
       } catch (e) {
         notes.dismiss(toastId);
         useUi.getState().showToast(String(e), "error");
@@ -1030,7 +1058,7 @@ export function createRepoWriteActions(
         progress: "indeterminate",
       });
       try {
-        await api.push(summary.path, authFor(remote));
+        await trackNet(() => api.push(summary.path, authFor(remote)));
       } catch (e) {
         // Drop the in-flight progress toast; the error keeps its own persistent,
         // scrollable toast (via the legacy forwarder → friendlyGitError).

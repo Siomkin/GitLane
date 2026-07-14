@@ -1,10 +1,18 @@
-// General settings: appearance (theme), accent colour, and graph density. All
-// state lives in the UI store; the segmented + swatch controls are one-offs used
-// only here, so they stay co-located. (Software update lives in the About panel.)
+// General settings: appearance (theme), accent colour, graph density, and the
+// background-fetch cadence. All state lives in the UI store; the segmented +
+// swatch controls are one-offs used only here, so they stay co-located.
+// (Software update lives in the About panel.)
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUi, type Density, type Theme } from "@/store/ui";
+import {
+  AUTO_FETCH_MINUTES,
+  sanitizeAutoFetchMinutes,
+  useUi,
+  type AutoFetchMinutes,
+  type Density,
+  type Theme,
+} from "@/store/ui";
 import { ACCENTS, type AccentColor } from "@/lib/accent";
 import { SectionLabel } from "./controls";
 
@@ -89,6 +97,10 @@ export function GeneralPanel() {
   const setAccent = useUi((s) => s.setAccent);
   const density = useUi((s) => s.density);
   const setDensity = useUi((s) => s.setDensity);
+  const autoFetchEnabled = useUi((s) => s.autoFetchEnabled);
+  const setAutoFetchEnabled = useUi((s) => s.setAutoFetchEnabled);
+  const autoFetchMinutes = useUi((s) => sanitizeAutoFetchMinutes(s.autoFetchMinutes));
+  const setAutoFetchMinutes = useUi((s) => s.setAutoFetchMinutes);
 
   return (
     <>
@@ -107,7 +119,7 @@ export function GeneralPanel() {
         <SectionLabel>ACCENT COLOR</SectionLabel>
         <AccentSwatches value={accent} onChange={setAccent} />
       </div>
-      <div>
+      <div className="mb-6">
         <SectionLabel>GRAPH DENSITY</SectionLabel>
         <Segmented<Density>
           value={density}
@@ -115,6 +127,49 @@ export function GeneralPanel() {
           onChange={setDensity}
           ariaLabel="Graph density"
         />
+      </div>
+      <div>
+        <SectionLabel>BACKGROUND FETCH</SectionLabel>
+        <div className="max-w-[420px] rounded-xl border border-black/10 p-3 dark:border-white/10">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">Automatically fetch remotes</div>
+              <div className="mt-0.5 text-[11.5px] text-neutral-400">Runs only while GitLane is visible, online, and idle.</div>
+            </div>
+            <button type="button"
+              role="switch"
+              aria-checked={autoFetchEnabled}
+              aria-label="Automatically fetch remotes"
+              onClick={() => setAutoFetchEnabled(!autoFetchEnabled)}
+              className={cn(
+                "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
+                autoFetchEnabled ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
+                focusRing,
+              )}
+            >
+              <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
+            </button>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-4">
+            <div className="text-[12.5px] text-neutral-600 dark:text-neutral-300">Fetch interval</div>
+            <select
+              aria-label="Automatic fetch interval"
+              value={autoFetchMinutes}
+              disabled={!autoFetchEnabled}
+              onChange={(event) => setAutoFetchMinutes(Number(event.target.value) as AutoFetchMinutes)}
+              className={cn(
+                "h-8 rounded-lg border border-black/10 bg-white px-2 text-xs disabled:opacity-50 dark:border-white/10 dark:bg-neutral-900",
+                focusRing,
+              )}
+            >
+              {AUTO_FETCH_MINUTES.map((m) => (
+                <option key={m} value={m}>
+                  {m === 60 ? "Every hour" : `Every ${m} min`}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
     </>
   );

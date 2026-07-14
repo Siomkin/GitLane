@@ -256,6 +256,11 @@ export interface RepoState {
    * refreshes so loading more history is not undone by the next watcher event. */
   graphLimit: number;
   loading: boolean;
+  /** Count of in-flight network git operations (fetch/pull/push/publish/…).
+   * Pull and push don't hold [`loading`] — they serialize in the ActionBar's
+   * component-local guard — so the auto-fetch scheduler checks this instead to
+   * avoid overlapping a foreground transport operation. */
+  netOps: number;
   /** True while the initial commit graph for a freshly opened repo is still in
    * flight. Decoupled from [`loading`] so the app shell + history skeleton can
    * paint as soon as the (cheap) summary lands, without waiting on the heavy
@@ -548,7 +553,11 @@ export interface RepoState {
    * commit completed, so the inline composer only clears after success. */
   commitSelected: (message: string, amend?: boolean) => Promise<boolean>;
   stash: () => Promise<void>;
-  fetch: () => Promise<void>;
+  /** Fetch all remotes. Quiet mode suppresses progress/success notifications
+   * for scheduled background runs while preserving the same auth routing.
+   * Resolves true when the fetch itself succeeded (even if the follow-up
+   * refresh failed), so the auto-fetch scheduler can back off on failures. */
+  fetch: (opts?: { quiet?: boolean }) => Promise<boolean>;
   pull: () => Promise<void>;
   push: () => Promise<void>;
   // ---- remotes (Repository settings → Remotes) ----
@@ -620,6 +629,7 @@ export type RepoDataState = Pick<
   | "revealTarget"
   | "graphLimit"
   | "loading"
+  | "netOps"
   | "graphLoading"
   | "loadingMoreHistory"
   | "diffLoading"
@@ -672,6 +682,7 @@ export function createInitialRepoData(
     revealTarget: null,
     graphLimit: INITIAL_GRAPH_LIMIT,
     loading: false,
+    netOps: 0,
     graphLoading: false,
     loadingMoreHistory: false,
     diffLoading: false,

@@ -146,6 +146,50 @@ describe("fetch — per-remote transport auth pairs", () => {
   });
 });
 
+describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
+  it("succeeds with no toasts, skips the foreground refresh, and returns true", async () => {
+    const ok = await useRepo.getState().fetch({ quiet: true });
+
+    expect(ok).toBe(true);
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+    // No foreground refresh: the graph reload is the refresh's signature read —
+    // the watcher's own quiet re-sync picks up the fetched refs instead.
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
+    expect(useRepo.getState().loading).toBe(false);
+  });
+
+  it("returns false on failure without surfacing any toast", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "fetch" ? Promise.reject("auth failed") : refreshInvoke(cmd),
+    );
+
+    const ok = await useRepo.getState().fetch({ quiet: true });
+
+    expect(ok).toBe(false);
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+    expect(useRepo.getState().loading).toBe(false);
+    warnSpy.mockRestore();
+  });
+
+  it("manual fetch still reports success (returns true) and quiet holds netOps while running", async () => {
+    let netOpsDuring = -1;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "fetch") {
+        netOpsDuring = useRepo.getState().netOps;
+        return Promise.resolve(null);
+      }
+      return refreshInvoke(cmd);
+    });
+
+    const ok = await useRepo.getState().fetch({ quiet: true });
+
+    expect(ok).toBe(true);
+    expect(netOpsDuring).toBe(1);
+    expect(useRepo.getState().netOps).toBe(0);
+  });
+});
+
 describe("fetch / pull — progress toast → success (or dropped on error)", () => {
   it("fetch resolves into a Fetched success with the new-commit count", async () => {
     // Single remote → named title; the post-fetch branch read reports the
