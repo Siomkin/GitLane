@@ -22,7 +22,6 @@ export function CommitContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
-  const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openStackedReview = useUi((s) => s.openStackedReview);
   const openRangeReview = useUi((s) => s.openRangeReview);
@@ -122,7 +121,6 @@ export function CommitContextMenu() {
         onClick: () => {
           close();
           void navigator.clipboard?.writeText(orderedSel.join("\n"));
-          showToast(`Copied ${n} SHAs`);
         },
       },
     ];
@@ -193,13 +191,13 @@ export function CommitContextMenu() {
   ];
 
   const copy: MenuItem[] = [
-    { label: "Copy commit SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(sha); showToast(`Copied ${shortSha}`); } },
+    { label: "Copy commit SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(sha); } },
     {
       label: "Copy",
       icon: <CopyIcon className="h-4 w-4" />,
       submenu: [
-        { label: "Subject", onClick: () => { close(); void navigator.clipboard?.writeText(subject); showToast("Copied subject"); } },
-        { label: "Full message", onClick: () => { close(); const full = body ? `${subject}\n\n${body}` : subject; void navigator.clipboard?.writeText(full); showToast("Copied message"); } },
+        { label: "Subject", onClick: () => { close(); void navigator.clipboard?.writeText(subject); } },
+        { label: "Full message", onClick: () => { close(); const full = body ? `${subject}\n\n${body}` : subject; void navigator.clipboard?.writeText(full); } },
       ],
     },
   ];

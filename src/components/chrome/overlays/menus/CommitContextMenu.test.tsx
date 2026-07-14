@@ -280,7 +280,8 @@ describe("CommitContextMenu (batch selection)", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy 2 commit SHAs" }));
     // Graph (newest-first) order wins regardless of click order.
     expect(writeText).toHaveBeenCalledWith("c1abcdef\nc3abcdef");
-    expect(useNotifications.getState().toasts.some((t) => t.title === "Copied 2 SHAs")).toBe(true);
+    // A clipboard copy is silent — no "Copied" toast noise (GL-217).
+    expect(useNotifications.getState().toasts).toHaveLength(0);
     expect(useUi.getState().commitMenu).toBeNull();
   });
 });

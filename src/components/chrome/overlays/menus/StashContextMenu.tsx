@@ -8,7 +8,6 @@ export function StashContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
-  const showToast = useUi((s) => s.showToast);
   const openStackedReview = useUi((s) => s.openStackedReview);
   const applyStash = useRepo((s) => s.applyStash);
   const branchFromStash = useRepo((s) => s.branchFromStash);
@@ -49,8 +48,8 @@ export function StashContextMenu() {
       icon: <CopyIcon className="h-4 w-4" />,
       sep: true,
       submenu: [
-        { label: "Stash SHA", onClick: () => { close(); void navigator.clipboard?.writeText(oid); showToast(`Copied ${oid.slice(0, 7)}`); } },
-        { label: "Stash message", onClick: () => { close(); void navigator.clipboard?.writeText(message); showToast("Copied stash message"); } },
+        { label: "Stash SHA", onClick: () => { close(); void navigator.clipboard?.writeText(oid); } },
+        { label: "Stash message", onClick: () => { close(); void navigator.clipboard?.writeText(message); } },
       ],
     },
     {

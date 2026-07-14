@@ -227,7 +227,7 @@ export function BranchContextMenu() {
   }
   if (existingWt) {
     const children: MenuItem[] = [
-      { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); showToast("Copied path"); } },
+      { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } },
     ];
     // Only offer the hand-off when a valid destination actually exists (bare /
     // prunable worktrees are filtered out), so it's never a dead click.
@@ -259,10 +259,10 @@ export function BranchContextMenu() {
 
   // ---- copy (used constantly, kept in plain sight) ----
   const copy: MenuItem[] = [
-    { label: "Copy branch name", icon: <CopyIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(b); showToast(`Copied ${b}`); } },
+    { label: "Copy branch name", icon: <CopyIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(b); } },
   ];
   if (tip) {
-    copy.push({ label: "Copy tip SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(tip); showToast(`Copied ${tipShort}`); } });
+    copy.push({ label: "Copy tip SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(tip); } });
   }
 
   // ---- danger zone: rare + destructive, folded away behind one row ----

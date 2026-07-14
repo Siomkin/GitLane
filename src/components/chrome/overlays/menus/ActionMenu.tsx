@@ -13,6 +13,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { Backdrop, useBranchOp, useFittedMenuPosition } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
+import { confirmCheckoutPrereq } from "./checkoutPrereq";
 
 /** Glyph + tint for an action kind — state-free. */
 const iconFor = (kind: GraphActionKind) =>
@@ -34,6 +35,9 @@ export function ActionMenu() {
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const resetCurrentTo = useRepo((s) => s.resetCurrentTo);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
+  // Null when detached — a detached HEAD always makes the checkout a real
+  // branch switch, so the prerequisite confirm must show.
+  const headBranch = useRepo((s) => (s.summary?.detached ? null : s.summary?.headBranch ?? null));
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const worktrees = useRepo((s) => s.worktrees);
   const run = useBranchOp();
@@ -83,12 +87,17 @@ export function ActionMenu() {
     void run(op);
   };
 
-  const requestMixedReset = (branch: string, target: string, targetLabel: string) =>
+  // Reset checks out `branch` first; when that's a real branch switch, the one
+  // preview confirm covers both steps (GL-217 — no stacked prerequisite popup).
+  const requestMixedReset = (branch: string, target: string, targetLabel: string) => {
+    const needsCheckout = headBranch !== branch;
     void previewConfirm({
       requestConfirm,
       title: `Reset ${branch} to ${targetLabel}?`,
-      message: "Mixed reset — changes are kept in the working tree, unstaged.",
-      confirmLabel: "Reset (mixed)",
+      message: needsCheckout
+        ? `GitLane must first check out branch "${branch}". Mixed reset — changes are kept in the working tree, unstaged.`
+        : "Mixed reset — changes are kept in the working tree, unstaged.",
+      confirmLabel: needsCheckout ? "Check out and reset (mixed)" : "Reset (mixed)",
       preview: () =>
         repoPath
           ? // `branch` (not HEAD) is the ref being reset — it's checked out in
@@ -101,6 +110,7 @@ export function ActionMenu() {
           return resetCurrentTo(target, "mixed");
         }),
     });
+  };
 
   const handler = (kind: GraphActionKind): (() => void) => {
     // Read-only targets (a commit or a remote-tracking ref) can only receive the
@@ -114,9 +124,17 @@ export function ActionMenu() {
           return () => act(() => fastForwardTo(rev, from.name));
         case "rebase-source":
           return () =>
-            act(async () => {
-              await checkoutBranch(from.name);
-              return rebaseOnto(rev);
+            confirmCheckoutPrereq({
+              headBranch,
+              branch: from.name,
+              operation: `rebase ${from.name} onto ${revLabel}`,
+              confirmLabel: "Check out and rebase",
+              requestConfirm,
+              proceed: () =>
+                act(async () => {
+                  await checkoutBranch(from.name);
+                  return rebaseOnto(rev);
+                }),
             });
         case "reset-source":
           return () => requestMixedReset(from.name, rev, revLabel);
@@ -131,18 +149,44 @@ export function ActionMenu() {
       case "fast-forward-source":
         return () => act(() => fastForwardTo(to.name, from.name));
       case "merge-target":
-        return () => act(() => mergeInto(from.name, to.name));
+        // `mergeInto` checks out the target branch when it isn't HEAD — the
+        // same implicit prerequisite, so it gets the same approval gate.
+        return () =>
+          confirmCheckoutPrereq({
+            headBranch,
+            branch: to.name,
+            operation: `merge ${from.name} into ${to.name}`,
+            confirmLabel: "Check out and merge",
+            requestConfirm,
+            proceed: () => act(() => mergeInto(from.name, to.name)),
+          });
       case "rebase-target":
         return () =>
-          act(async () => {
-            await checkoutBranch(to.name);
-            return rebaseOnto(from.name);
+          confirmCheckoutPrereq({
+            headBranch,
+            branch: to.name,
+            operation: `rebase ${to.name} onto ${from.name}`,
+            confirmLabel: "Check out and rebase",
+            requestConfirm,
+            proceed: () =>
+              act(async () => {
+                await checkoutBranch(to.name);
+                return rebaseOnto(from.name);
+              }),
           });
       case "rebase-source":
         return () =>
-          act(async () => {
-            await checkoutBranch(from.name);
-            return rebaseOnto(to.name);
+          confirmCheckoutPrereq({
+            headBranch,
+            branch: from.name,
+            operation: `rebase ${from.name} onto ${to.name}`,
+            confirmLabel: "Check out and rebase",
+            requestConfirm,
+            proceed: () =>
+              act(async () => {
+                await checkoutBranch(from.name);
+                return rebaseOnto(to.name);
+              }),
           });
       case "reset-target":
         return () => requestMixedReset(to.name, from.name, from.name);

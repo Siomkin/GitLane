@@ -8,7 +8,6 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { cn } from "@/lib/cn";
 import type { PrCommitView, PullRequest } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
-import { useUi } from "@/store/ui";
 import { GitHubIcon } from "@/components/ui/icons";
 import { Loading, LoadError } from "@/components/ui/Loading";
 
@@ -71,14 +70,19 @@ export function PrCommitsTab({ pr }: { pr: PullRequest }) {
 }
 
 function CommitRow({ commit }: { commit: PrCommitView }) {
-  const showToast = useUi((s) => s.showToast);
   const [copied, setCopied] = useState(false);
 
-  const copySha = () => {
-    void navigator.clipboard?.writeText(commit.oid);
-    showToast(`Copied ${commit.shortOid}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+  // The transient `copied` check on the pill is the feedback — no toast. It
+  // only shows after the clipboard write resolves, so a rejected write never
+  // fakes success (the pill just stays unchanged).
+  const copySha = async () => {
+    try {
+      await navigator.clipboard?.writeText(commit.oid);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Clipboard unavailable — leave the pill as-is.
+    }
   };
 
   return (
@@ -119,7 +123,7 @@ function CommitRow({ commit }: { commit: PrCommitView }) {
       </div>
       <button
         type="button"
-        onClick={copySha}
+        onClick={() => void copySha()}
         title={`Copy full SHA: ${commit.oid}`}
         className="flex flex-none items-center gap-1.5 rounded-md bg-black/[0.04] px-2 py-1 font-mono text-[11px] text-neutral-500 transition-colors hover:bg-black/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:bg-white/[0.06] dark:text-neutral-400 dark:hover:bg-white/10"
       >
