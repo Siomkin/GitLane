@@ -115,6 +115,7 @@ beforeEach(() => {
     commitComposerMode: ComposerMode.Conventional,
     commitDraftAgent: null,
     agentCommitDraft: null,
+    createPrOpen: false,
     sendToTerminal: vi.fn(),
   });
   useTerminalAgents.setState({
@@ -272,6 +273,146 @@ describe("CommitComposer", () => {
     await waitFor(() => expect(useUi.getState().createPrOpen).toBe(true));
   });
 
+  it("does not open the create-PR dialog when the push did not land", async () => {
+    // push() toasts its own failures and resolves; on failure the post-push
+    // refresh never runs, so the branch stays `ahead` — the chain must stop.
+    const push = vi.fn(async () => {});
+    useRepo.setState({
+      push,
+      forge: githubForge,
+      branches: [
+        localBranch({ sync: { status: "ahead", upstream: "origin/main", ahead: 1, behind: 0 } }),
+      ],
+    });
+    useUi.setState({ commitMsg: "fix: something" });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit, push & open PR…" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(useUi.getState().createPrOpen).toBe(false);
+  });
+
+  it("aborts the push chain when the checkout changes while the commit is in flight", async () => {
+    const push = vi.fn(async () => {});
+    const commitSelected = vi.fn(async () => {
+      useRepo.setState({
+        summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "zzz", detached: false },
+      });
+      return true;
+    });
+    useRepo.setState({ push, commitSelected, branches: [localBranch()] });
+    useUi.setState({ commitMsg: "fix: something" });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit & push" }));
+
+    await waitFor(() => expect(commitSelected).toHaveBeenCalled());
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("toasts a publish failure instead of rejecting unhandled", async () => {
+    const publishBranch = vi.fn(async () => {
+      throw new Error("publish exploded");
+    });
+    const requestPrompt = vi.fn();
+    const showToast = vi.fn();
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge,
+      branches: [
+        localBranch({
+          upstream: null,
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        }),
+      ],
+    });
+    useUi.setState({ commitMsg: "fix: something", requestPrompt, showToast });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit, push & open PR…" }));
+
+    await waitFor(() => expect(requestPrompt).toHaveBeenCalled());
+    await requestPrompt.mock.calls[0][0].onSubmit("origin/main");
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.stringContaining("publish exploded"), "error"));
+    expect(useUi.getState().createPrOpen).toBe(false);
+  });
+
+  it("strips parens from the scope so the message always round-trips", () => {
+    render(<CommitComposer />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Commit type" }), {
+      target: { value: "feat" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit scope" }), {
+      target: { value: "ui)" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit summary" }), {
+      target: { value: "subject" },
+    });
+
+    expect(useUi.getState().commitMsg).toBe("feat(ui): subject");
+  });
+
+  it("closes an open popover on outside scroll (viewport-fixed anchor goes stale)", () => {
+    render(<CommitComposer />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft" }));
+    expect(screen.getByRole("menu", { name: "Draft with agent" })).toBeInTheDocument();
+
+    fireEvent.scroll(window);
+    expect(screen.queryByRole("menu", { name: "Draft with agent" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a popover open while scrolling inside its own list", () => {
+    render(<CommitComposer />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft" }));
+    fireEvent.scroll(screen.getByRole("menu", { name: "Draft with agent" }));
+
+    expect(screen.getByRole("menu", { name: "Draft with agent" })).toBeInTheDocument();
+  });
+
+  it("disables the chained push actions on a detached HEAD", async () => {
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: null, headOid: "abc", detached: true },
+    });
+    useUi.setState({ commitMsg: "fix: something" });
+    render(<CommitComposer />);
+
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+
+    const pushItem = screen.getByRole("menuitem", { name: "Commit & push" });
+    expect(pushItem).toBeDisabled();
+    expect(pushItem).toHaveAttribute("title", "Check out a branch to push");
+  });
+
+  it("keeps a message edited while the commit was in flight", async () => {
+    let resolveCommit: (ok: boolean) => void = () => {};
+    const commitSelected = vi.fn(() => new Promise<boolean>((resolve) => { resolveCommit = resolve; }));
+    useRepo.setState({ commitSelected });
+    useUi.setState({ commitMsg: "fix: original" });
+    render(<CommitComposer />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
+    act(() => {
+      useUi.getState().setCommitMsg("fix: edited meanwhile");
+    });
+    await act(async () => {
+      resolveCommit(true);
+    });
+
+    expect(useUi.getState().commitMsg).toBe("fix: edited meanwhile");
+  });
+
   it("hides the open-PR action for a repo without a PR forge", () => {
     useUi.setState({ commitMsg: "fix: something" });
     render(<CommitComposer />);
@@ -353,12 +494,14 @@ describe("CommitComposer", () => {
   });
 
   it("marks the remembered draft agent as the active menu choice", () => {
+    useTerminalAgents.setState({ agents: [agent(), agent({ id: "claude", name: "claude", command: "claude" })] });
     useUi.setState({ commitDraftAgent: "codex" });
     render(<CommitComposer />);
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
-    const item = screen.getByRole("menuitem", { name: /codex/ });
-    expect(item.querySelector("svg:last-of-type")).not.toBeNull();
+    // The active row carries a second svg (sparkle + check); others only the sparkle.
+    expect(screen.getByRole("menuitem", { name: /codex/ }).querySelectorAll("svg")).toHaveLength(2);
+    expect(screen.getByRole("menuitem", { name: /claude/ }).querySelectorAll("svg")).toHaveLength(1);
   });
 
   it("blocks commit actions for guarded staged changes", () => {

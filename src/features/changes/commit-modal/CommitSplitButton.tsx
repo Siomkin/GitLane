@@ -55,6 +55,7 @@ export function CommitSplitButton({
   blockedTitle,
   canAmend,
   amendTitle,
+  pushBlockedTitle,
   showOpenPr,
   agents,
   agentsDisabled,
@@ -75,6 +76,10 @@ export function CommitSplitButton({
   canAmend: boolean;
   /** Tooltip for the amend item — the reason when disabled, hint when enabled. */
   amendTitle: string;
+  /** Why the chained push actions are unavailable (e.g. detached HEAD), or
+   * null when pushing is possible. Chained items disable on it — a plain
+   * commit still works without a branch, but `pushCurrentBranch` cannot. */
+  pushBlockedTitle: string | null;
   /** Whether the repo's forge supports pull requests. */
   showOpenPr: boolean;
   agents: TerminalAgent[];
@@ -147,8 +152,8 @@ export function CommitSplitButton({
           </MenuItem>
           <MenuItem
             icon={<PushIcon className="h-3.5 w-3.5" />}
-            disabled={!canCommit}
-            title={blockedTitle ?? undefined}
+            disabled={!canCommit || Boolean(pushBlockedTitle)}
+            title={pushBlockedTitle ?? blockedTitle ?? undefined}
             onPick={pick(onCommitAndPush)}
           >
             {amend ? "Amend & push" : "Commit & push"}
@@ -156,8 +161,8 @@ export function CommitSplitButton({
           {showOpenPr && !amend && (
             <MenuItem
               icon={<BranchIcon className="h-3.5 w-3.5" />}
-              disabled={!canCommit}
-              title={blockedTitle ?? undefined}
+              disabled={!canCommit || Boolean(pushBlockedTitle)}
+              title={pushBlockedTitle ?? blockedTitle ?? undefined}
               onPick={pick(onCommitPushOpenPr)}
             >
               Commit, push & open PR…

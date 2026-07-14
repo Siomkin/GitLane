@@ -115,28 +115,47 @@ export function CommitComposer() {
 
   const doCommit = async (): Promise<boolean> => {
     if (!canCommit) return false;
-    const committed = await commitSelected(msg.trim(), amend);
+    const submitted = msg;
+    const committed = await commitSelected(submitted.trim(), amend);
     if (!committed) return false;
-    setMsg("");
+    // Don't wipe edits (or a delivered agent draft) that landed while the
+    // commit IPC was in flight — clear only the message that was committed.
+    if (useUi.getState().commitMsg === submitted) setMsg("");
     setAmend(false);
     return true;
   };
 
   /** Push the checked-out branch the way the toolbar does — through the publish
-   * prompt when it has no (resolvable) upstream. `afterPushed` chains only when
-   * the branch verifiably reached its upstream (push/publish surface their own
-   * failures as toasts and resolve, so success is read back from sync state). */
+   * prompt when it has no (resolvable) upstream. Every step is scoped to the
+   * checkout captured here: switching repo tabs or branches while a step is in
+   * flight (or the prompt is open) aborts the chain instead of acting on the
+   * new checkout. `afterPushed` chains only when the refreshed sync state shows
+   * the branch verifiably reached its upstream (`upToDate`) — `push()` toasts
+   * its own failures and resolves, so its promise proves nothing. */
   const pushCurrentBranch = (afterPushed?: () => void) => {
     const repo = useRepo.getState();
+    const repoPath = repo.summary?.path;
     const current = repo.summary?.headBranch;
-    const finish = async (action: () => Promise<unknown>) => {
-      await action();
-      if (!afterPushed) return;
-      const after = useRepo.getState();
-      const sync = currentBranchSyncView(after.summary, after.branches);
-      if (!sync.canPush && !sync.needsPublishPrompt) afterPushed();
+    if (!repoPath || !current) return;
+    const sameCheckout = () => {
+      const state = useRepo.getState();
+      return state.summary?.path === repoPath && state.summary.headBranch === current ? state : null;
     };
-    if (current && currentBranchSyncView(repo.summary, repo.branches).needsPublishPrompt) {
+    const finish = async (action: () => Promise<unknown>) => {
+      try {
+        await action();
+      } catch (error) {
+        // `publishBranch` rejects for the caller to toast (runOp contract);
+        // `push` handles its own failures and resolves.
+        useUi.getState().showToast(String(error), "error");
+        return;
+      }
+      if (!afterPushed) return;
+      const after = sameCheckout();
+      const head = after?.branches.find((b) => b.kind === BranchKind.Local && b.name === current);
+      if (head?.sync?.status === "upToDate") afterPushed();
+    };
+    if (currentBranchSyncView(repo.summary, repo.branches).needsPublishPrompt) {
       const info = repo.branches.find((b) => b.kind === BranchKind.Local && b.name === current);
       requestPrompt({
         title: `Publish ${current}`,
@@ -149,20 +168,29 @@ export function CommitComposer() {
           info?.sync?.status !== "staleUpstream",
         ),
         confirmLabel: "Publish",
-        onSubmit: (upstream) => void finish(() => repo.publishBranch(current, upstream)),
+        onSubmit: (upstream) => {
+          const state = sameCheckout();
+          if (state) void finish(() => state.publishBranch(current, upstream));
+        },
       });
       return;
     }
     void finish(() => repo.push());
   };
 
-  const commitAndPush = async () => {
-    if (await doCommit()) pushCurrentBranch();
+  /** Commit, then run `then` only if the same repo + branch are still checked
+   * out — the user can switch tabs while the commit IPC is in flight, and the
+   * chained push must never target that other checkout. */
+  const commitThen = async (then: () => void) => {
+    const before = useRepo.getState().summary;
+    if (!(await doCommit())) return;
+    const after = useRepo.getState().summary;
+    if (after?.path === before?.path && after?.headBranch === before?.headBranch) then();
   };
 
-  const commitPushOpenPr = async () => {
-    if (await doCommit()) pushCurrentBranch(() => openCreatePr());
-  };
+  const commitAndPush = () => commitThen(() => pushCurrentBranch());
+
+  const commitPushOpenPr = () => commitThen(() => pushCurrentBranch(() => openCreatePr()));
 
   const commitWithAgent = (agent: TerminalAgent) => {
     if (!hasStaged || commitBlocked || !identity.usable || !agent.available) return;
@@ -222,7 +250,11 @@ export function CommitComposer() {
         <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">Commit</span>
         <span className="text-[12px] text-neutral-400">{staged.length} staged</span>
         <span className="ml-auto shrink-0 text-[12px] font-medium text-[color:var(--accent)]">
-          {msg.trim() ? "Continue message →" : "Write message →"}
+          {draftingAgent
+            ? `${draftingAgent} is drafting…`
+            : msg.trim()
+              ? "Continue message →"
+              : "Write message →"}
         </span>
       </button>
     );
@@ -302,6 +334,7 @@ export function CommitComposer() {
         canCommit={canCommit}
         blockedTitle={commitDisabledTitle}
         canAmend={canAmend}
+        pushBlockedTitle={summary?.headBranch ? null : "Check out a branch to push"}
         amendTitle={
           canAmend
             ? `Rewrite ${headCommit?.shortId} with the staged changes and message`

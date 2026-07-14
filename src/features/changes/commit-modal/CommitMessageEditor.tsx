@@ -132,7 +132,8 @@ export function CommitMessageEditor({
                   <input
                     aria-label="Commit scope"
                     value={fields.scope}
-                    onChange={(event) => onFieldsChange({ scope: event.target.value })}
+                    // Parens can't round-trip through `type(scope): subject`.
+                    onChange={(event) => onFieldsChange({ scope: event.target.value.replace(/[()]/g, "") })}
                     placeholder="scope"
                     className="w-[64px] shrink-0 bg-transparent font-mono text-[13px] text-neutral-700 outline-none placeholder:text-neutral-300 dark:text-neutral-200 dark:placeholder:text-neutral-600"
                   />
