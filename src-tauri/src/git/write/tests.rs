@@ -2,7 +2,7 @@ use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolutio
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;
 use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
-use super::staging::{apply_hunk_patch, patch_diff_args};
+use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_push_remote, cherry_pick,
     cherry_pick_many, checkout_remote_branch, clear_repo_identity, continue_operation, create_tag,
@@ -454,6 +454,218 @@ fn discard_all_clears_staged_files_in_unborn_repo() {
     assert!(
         out.trim().is_empty(),
         "repo not clean after discard: {out:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn discard_all_reports_an_emptied_unborn_index_when_cleanup_fails() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = TempRepo::new("discard-unborn-clean-failure");
+    repo.git_ok(&["init", "-q"]);
+    std::fs::create_dir(repo.0.join("blocked")).unwrap();
+    std::fs::write(repo.0.join("blocked/staged.txt"), "new\n").unwrap();
+    repo.git_ok(&["add", "blocked/staged.txt"]);
+    std::fs::set_permissions(
+        repo.0.join("blocked"),
+        std::fs::Permissions::from_mode(0o555),
+    )
+    .unwrap();
+
+    let result = discard_all(repo.path());
+
+    std::fs::set_permissions(
+        repo.0.join("blocked"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let error = result.expect_err("unwritable parent should block cleanup");
+    assert!(
+        error.contains("The index was cleared, but untracked cleanup could not finish"),
+        "unexpected partial-failure diagnostic: {error}"
+    );
+    assert!(
+        repo.0.join("blocked/staged.txt").exists(),
+        "failed cleanup should leave the worktree file in place"
+    );
+    let cached = repo.git(&["ls-files", "--cached"]);
+    assert!(
+        String::from_utf8_lossy(&cached.stdout).trim().is_empty(),
+        "the diagnostic promises that the unborn index was cleared"
+    );
+}
+
+#[test]
+fn discard_all_preserves_empty_untracked_directories() {
+    let repo = TempRepo::new("discard-empty-dir");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
+
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::create_dir(repo.0.join("untracked-dir")).unwrap();
+    std::fs::write(repo.0.join("untracked-dir/file.txt"), "new\n").unwrap();
+    std::fs::create_dir(repo.0.join("empty-dir")).unwrap();
+
+    discard_all(repo.path()).expect("discard_all");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+    assert!(!repo.0.join("untracked-dir/file.txt").exists());
+    assert!(
+        repo.0.join("untracked-dir").is_dir(),
+        "only the reported untracked file is removed; the directory shell remains"
+    );
+    assert!(
+        repo.0.join("empty-dir").is_dir(),
+        "empty directories are not Git changes and must be preserved"
+    );
+    let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(
+        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "repo should be clean after discard"
+    );
+}
+
+#[test]
+fn discard_all_preserves_nested_empty_directories_inside_cleaned_trees() {
+    let repo = TempRepo::new("discard-nested-empty");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
+
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::create_dir_all(repo.0.join("untracked-dir/empty-nested")).unwrap();
+    std::fs::write(repo.0.join("untracked-dir/file.txt"), "new\n").unwrap();
+
+    discard_all(repo.path()).expect("discard_all");
+
+    assert!(!repo.0.join("untracked-dir/file.txt").exists());
+    assert!(
+        repo.0.join("untracked-dir/empty-nested").is_dir(),
+        "nested empty directories must survive cleanup of sibling untracked files"
+    );
+}
+
+#[test]
+fn discard_all_preserves_nested_git_repositories_and_resets_other_changes() {
+    let repo = repo_with_file("discard-nested-repo", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::write(repo.0.join("untracked.txt"), "remove me\n").unwrap();
+    std::fs::create_dir(repo.0.join("nested")).unwrap();
+    repo.git_ok(&["-C", "nested", "init", "-q"]);
+    std::fs::write(repo.0.join("nested/file.txt"), "nested\n").unwrap();
+
+    let result = discard_all(repo.path()).expect("nested repositories are a protected exception");
+
+    assert!(
+        result.contains("preserved nested Git repositories") && result.contains("nested/"),
+        "success must report the protected path: {result}"
+    );
+    assert!(
+        repo.0.join("nested/.git").is_dir(),
+        "a single -f must preserve an untracked nested repository"
+    );
+    assert!(
+        !repo.0.join("untracked.txt").exists(),
+        "ordinary untracked files should still be removed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n",
+        "tracked edits should still be reset"
+    );
+}
+
+#[test]
+fn discard_all_reports_when_reset_fails_after_untracked_cleanup() {
+    let repo = repo_with_file("discard-reset-failure", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::write(repo.0.join("untracked.txt"), "new\n").unwrap();
+    std::fs::write(repo.0.join(".git/index.lock"), "locked\n").unwrap();
+
+    let result = discard_all(repo.path());
+
+    std::fs::remove_file(repo.0.join(".git/index.lock")).unwrap();
+    let error = result.expect_err("the index lock should block reset");
+    assert!(
+        error.contains("Untracked cleanup completed, but tracked changes could not be reset"),
+        "unexpected partial-failure diagnostic: {error}"
+    );
+    assert!(
+        !repo.0.join("untracked.txt").exists(),
+        "untracked cleanup should finish before reset starts"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "changed\n",
+        "failed reset should leave tracked edits intact"
+    );
+}
+
+#[test]
+fn discard_all_cleans_untracked_paths_across_argument_batches() {
+    let repo = repo_with_file("discard-batches", "tracked.txt", b"base\n");
+    for index in 0..=CLEAN_PATH_BATCH_MAX_ARGS {
+        std::fs::write(repo.0.join(format!("untracked-{index}.txt")), "new\n").unwrap();
+    }
+
+    discard_all(repo.path()).expect("discard_all");
+
+    let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(
+        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "every untracked path should be cleaned across batches"
+    );
+}
+
+#[test]
+fn discard_all_preserves_leading_whitespace_in_untracked_paths() {
+    let repo = repo_with_file("discard-leading-space", "tracked.txt", b"base\n");
+    let path = repo.0.join(" leading-space.txt");
+    std::fs::write(&path, "new\n").unwrap();
+
+    discard_all(repo.path()).expect("discard_all");
+
+    assert!(!path.exists(), "the exact leading-space path should be cleaned");
+}
+
+#[cfg(not(windows))]
+#[test]
+fn discard_all_treats_pathspec_magic_as_a_literal_filename() {
+    let repo = repo_with_file("discard-pathspec-magic", "tracked.txt", b"base\n");
+    let path = repo.0.join(":(");
+    std::fs::write(&path, "new\n").unwrap();
+
+    discard_all(repo.path()).expect("discard_all");
+
+    assert!(!path.exists(), "the pathspec-like filename should be cleaned");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn discard_all_removes_non_utf8_untracked_paths() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let repo = repo_with_file("discard-non-utf8", "tracked.txt", b"base\n");
+    let path = OsStr::from_bytes(b"untracked\xff.txt");
+    std::fs::write(repo.0.join(path), b"new\n").unwrap();
+
+    discard_all(repo.path()).expect("discard_all");
+
+    assert!(
+        !repo.0.join(path).exists(),
+        "non-UTF-8 untracked paths must be removed, not lossy-skipped"
     );
 }
 
@@ -2240,6 +2452,30 @@ fn discard_all_preview_warns_about_untracked_limits() {
         .warnings
         .iter()
         .any(|line| line.contains("Untracked files")));
+    assert!(preview
+        .warnings
+        .iter()
+        .any(|line| line.contains("empty directories are preserved")));
+}
+
+#[test]
+fn discard_all_preview_lists_preserved_nested_git_repositories() {
+    let repo = repo_with_file("discard-preview-nested-repo", "tracked.txt", b"base\n");
+    std::fs::create_dir(repo.0.join("nested")).unwrap();
+    repo.git_ok(&["-C", "nested", "init", "-q"]);
+    std::fs::write(repo.0.join("nested/file.txt"), "nested\n").unwrap();
+
+    let preview = preview_discard_all(repo.path()).expect("preview");
+
+    assert!(preview.summary.contains("removable untracked"));
+    assert!(preview
+        .details
+        .iter()
+        .any(|line| line.contains("Nested Git repositories") && line.contains("nested/")));
+    assert!(preview
+        .warnings
+        .iter()
+        .any(|line| line.contains("protected") && line.contains("will remain")));
 }
 
 #[test]
@@ -3418,6 +3654,18 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
         !repo.0.join("untracked.txt").exists(),
         "untracked file is cleaned"
     );
+}
+
+#[test]
+fn discard_file_preserves_empty_directory_shells() {
+    let repo = repo_with_file("discard-file-empty-dirs", "tracked.txt", b"base\n");
+    std::fs::create_dir_all(repo.0.join("untracked/empty-nested")).unwrap();
+    std::fs::write(repo.0.join("untracked/file.txt"), "new\n").unwrap();
+
+    discard_file(repo.path(), "untracked/file.txt", false).expect("discard untracked file");
+
+    assert!(!repo.0.join("untracked/file.txt").exists());
+    assert!(repo.0.join("untracked/empty-nested").is_dir());
 }
 
 #[test]

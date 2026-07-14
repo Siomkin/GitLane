@@ -1,7 +1,8 @@
 //! Shared real-`git` subprocess helpers.
 
+use std::ffi::OsString;
 use std::io::Write;
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
 
 // Stops git's own HTTPS username/password prompts from blocking the app/dev
 // terminal. SSH and external askpass helpers have their own prompting paths.
@@ -39,6 +40,25 @@ pub(super) fn run_git(repo: &str, args: &[&str]) -> Result<String, String> {
     run_git_env(repo, args, &[])
 }
 
+/// Like [`run_git`], but trailing path arguments are passed as [`OsString`] so
+/// NUL-delimited machine output can be forwarded byte-for-byte on Unix.
+pub(super) fn run_git_os_paths(
+    repo: &str,
+    prefix_args: &[&str],
+    path_args: &[OsString],
+) -> Result<String, String> {
+    let mut cmd = git_command(repo);
+    cmd.args(prefix_args).args(path_args).stdin(Stdio::null());
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    finish(output.status, &stdout, &stderr, prefix_args)
+}
+
 /// Like [`run_git`] but with extra environment variables — used to pass a
 /// bound account's `GH_TOKEN` through git's credential helper on push.
 pub(super) fn run_git_env(
@@ -46,42 +66,62 @@ pub(super) fn run_git_env(
     args: &[&str],
     envs: &[(&str, &str)],
 ) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo).args(args);
-    // macOS GUI apps launch with a minimal PATH; use the augmented one so a
-    // Homebrew git (and any credential helpers/signing tools it invokes) is found.
-    cmd.env("PATH", crate::shell::path());
-    // GitLane must surface missing credentials through IPC instead of letting
-    // git block the dev/app terminal with an invisible password prompt.
-    cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
-        .stdin(Stdio::null());
-    for (k, v) in envs {
-        cmd.env(k, v);
-    }
-    crate::shell::hide_console(&mut cmd);
-
-    let output = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
-
+    let output = git_output(repo, args, envs)?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     finish(output.status, &stdout, &stderr, args)
 }
 
+/// Run git and return stdout byte-for-byte on success. This is reserved for
+/// NUL-delimited machine output where [`run_git`]'s user-facing whitespace trim
+/// would corrupt a leading-space path.
+pub(super) fn run_git_stdout_raw(repo: &str, args: &[&str]) -> Result<Vec<u8>, String> {
+    let output = git_output(repo, args, &[])?;
+    if output.status.success() {
+        return Ok(output.stdout);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    match finish(output.status, &stdout, &stderr, args) {
+        Err(error) => Err(error),
+        Ok(_) => unreachable!("a failed git process cannot finish successfully"),
+    }
+}
+
+fn git_output(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Output, String> {
+    let mut cmd = git_command(repo);
+    cmd.args(args);
+    // GitLane must surface missing credentials through IPC instead of letting
+    // git block the dev/app terminal with an invisible password prompt.
+    cmd.stdin(Stdio::null());
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+
+    cmd.output()
+        .map_err(|e| format!("failed to launch git: {e}"))
+}
+
+fn git_command(repo: &str) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo);
+    // macOS GUI apps launch with a minimal PATH; use the augmented one so a
+    // Homebrew git (and any credential helpers/signing tools it invokes) is found.
+    cmd.env("PATH", crate::shell::path());
+    cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED);
+    crate::shell::hide_console(&mut cmd);
+    cmd
+}
+
 /// Run `git -C <repo> <args...>` with `input` connected to stdin.
 pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Result<String, String> {
-    let mut cmd = Command::new("git");
-    cmd.arg("-C")
-        .arg(repo)
-        .args(args)
-        .env("PATH", crate::shell::path())
-        .env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
+    let mut cmd = git_command(repo);
+    cmd.args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    crate::shell::hide_console(&mut cmd);
 
     let mut child = cmd
         .spawn()
@@ -144,7 +184,7 @@ pub(super) fn run_git_env_stable_diagnostics(
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{finish, run_git_env};
+    use super::{finish, run_git_env, run_git_stdout_raw};
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Command, ExitStatus};
     use std::{io::Write, net::TcpListener};
@@ -197,6 +237,22 @@ mod tests {
     fn success_returns_trimmed_combined_output() {
         let out = finish(exit(0), "ok\n", "", &["status"]).unwrap();
         assert_eq!(out, "ok");
+    }
+
+    #[test]
+    fn raw_stdout_preserves_leading_space_and_nul_delimiter() {
+        let repo = TestRepo::new("gitlane-raw-stdout");
+        let init = Command::new("git")
+            .args(["init", "-q", repo.path()])
+            .output()
+            .expect("git init launches");
+        assert!(init.status.success(), "git init failed");
+        std::fs::write(repo.0.join(" leading-space.txt"), "new\n").unwrap();
+
+        let output = run_git_stdout_raw(repo.path(), &["ls-files", "--others", "-z"])
+            .expect("raw git output");
+
+        assert_eq!(output, b" leading-space.txt\0");
     }
 
     #[test]

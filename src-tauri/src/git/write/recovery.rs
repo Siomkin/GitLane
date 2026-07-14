@@ -212,7 +212,10 @@ pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
     // Fail closed: read status directly (not the lossy `status_lines`) so a stale
     // or inaccessible repo errors out instead of rendering a misleading "working
     // tree is already clean" before a discard. GL-42 review.
-    let status = limited_lines(run_git(repo, &["status", "--porcelain=v1"])?, 16);
+    let status = limited_lines(
+        run_git(repo, &["status", "--porcelain=v1", "--untracked-files=all"])?,
+        16,
+    );
     let mut details = Vec::new();
     if status.is_empty() {
         details.push("The working tree is already clean.".to_string());
@@ -222,14 +225,30 @@ pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
             status.join("; ")
         ));
     }
-    Ok(DestructivePreview {
-        summary: "Discard every staged, unstaged, and untracked working-tree change".to_string(),
-        details,
-        warnings: vec![
-            "Tracked edits may be recoverable only if they were previously committed or stashed."
+    let nested_repos = super::staging::nested_untracked_repo_labels(repo)?;
+    if !nested_repos.is_empty() {
+        details.push(format!(
+            "Nested Git repositories that will be preserved: {}",
+            nested_repos.join(", ")
+        ));
+    }
+    let mut warnings = vec![
+        "Tracked edits may be recoverable only if they were previously committed or stashed."
+            .to_string(),
+        "Untracked files Git can remove are not recoverable from the reflog; empty directories are preserved."
+            .to_string(),
+    ];
+    if !nested_repos.is_empty() {
+        warnings.push(
+            "Nested Git repositories are protected and will remain after other changes are discarded."
                 .to_string(),
-            "Untracked files removed by git clean are not recoverable from the reflog.".to_string(),
-        ],
+        );
+    }
+    Ok(DestructivePreview {
+        summary: "Discard every staged, unstaged, and removable untracked working-tree change"
+            .to_string(),
+        details,
+        warnings,
     })
 }
 
