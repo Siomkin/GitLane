@@ -24,12 +24,16 @@ describe("WorkingInspector", () => {
     expect(screen.getAllByText("No files.")).toHaveLength(2);
   });
 
-  it("disables 'Start commit' when nothing is staged", () => {
+  it("replaces Start commit with an inline composer disabled for an empty stage", () => {
     render(<WorkingInspector onOpenChanges={() => {}} />);
-    expect(screen.getByRole("button", { name: "Start commit" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Start commit" })).not.toBeInTheDocument();
+    // The composer mounts as its collapsed bar; expanding reveals the editor.
+    fireEvent.click(screen.getByRole("button", { name: "Expand commit composer" }));
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Commit 0 files/ })).toBeDisabled();
   });
 
-  it("enables 'Start commit' once something is staged", () => {
+  it("keeps the inline composer in the main inspector once something is staged", () => {
     // selectedFile already points at the staged file, so the keep-selection
     // effect is a no-op (no async selectFile → no IPC needed here).
     useRepo.setState({
@@ -37,7 +41,8 @@ describe("WorkingInspector", () => {
       selectedFile: { path: "a.ts", source: "staged" },
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
-    expect(screen.getByRole("button", { name: "Start commit" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Start commit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand commit composer" })).toBeInTheDocument();
   });
 
   it("disables staging for a visible path outside sparse checkout", () => {

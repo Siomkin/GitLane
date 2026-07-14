@@ -14,6 +14,36 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
+const DRAFT_PREFIX: &str = "gitlane-commit-draft-";
+const MAX_DRAFT_BYTES: u64 = 8 * 1024;
+const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
+const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
+const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
+
+pub const DEFAULT_DRAFT_INSTRUCTION: &str =
+    "Review the staged changes and draft a concise conventional commit message.";
+pub const DEFAULT_COMMIT_INSTRUCTION: &str =
+    "Review the staged changes, write a concise conventional-commit message, and commit them.";
+
+/// User-editable instructions for the two commit-agent actions. GitLane keeps
+/// its safety, excluded-path, and one-shot delivery suffixes outside this
+/// persisted text so users cannot accidentally remove the handoff contract.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitAgentMessages {
+    pub draft_instruction: String,
+    pub commit_instruction: String,
+}
+
+impl Default for CommitAgentMessages {
+    fn default() -> Self {
+        Self {
+            draft_instruction: DEFAULT_DRAFT_INSTRUCTION.into(),
+            commit_instruction: DEFAULT_COMMIT_INSTRUCTION.into(),
+        }
+    }
+}
+
 /// An agent as it crosses the IPC boundary: the editable fields plus the
 /// PATH-probed `available` flag (computed on read, ignored on save).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,13 +140,31 @@ fn defaults() -> Vec<AgentEntry> {
             enabled: false,
         },
         AgentEntry {
-            id: "codex-gpt-5-5-medium".into(),
-            name: "codex 5.5 medium".into(),
-            command: "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'".into(),
-            description: "Launch Codex with GPT-5.5 at medium reasoning effort".into(),
+            id: "codex-gpt-5-6-sol-light".into(),
+            name: "codex 5.6 sol light".into(),
+            command: "codex --model gpt-5.6-sol -c 'model_reasoning_effort=\"low\"'".into(),
+            description: "Launch Codex with GPT-5.6 Sol at low reasoning effort".into(),
             enabled: false,
         },
     ]
+}
+
+/// Replace the untouched legacy Codex preset while preserving user edits and
+/// the enabled toggle. The exact name + command match avoids rewriting a row
+/// that merely retained the built-in id after being customized.
+fn migrate_builtin_presets(mut entries: Vec<AgentEntry>) -> Vec<AgentEntry> {
+    let replacement = defaults().pop().expect("defaults include the Codex preset");
+    for entry in &mut entries {
+        if entry.id == LEGACY_CODEX_ID
+            && entry.name == LEGACY_CODEX_NAME
+            && entry.command == LEGACY_CODEX_COMMAND
+        {
+            let enabled = entry.enabled;
+            *entry = replacement.clone();
+            entry.enabled = enabled;
+        }
+    }
+    entries
 }
 
 /// Path to the agent config in the per-app data dir
@@ -127,6 +175,53 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
     Ok(dir.join("terminal-agents.json"))
+}
+
+fn messages_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
+    Ok(dir.join("commit-agent-messages.json"))
+}
+
+/// Load the saved commit-agent instructions. A missing or corrupt config uses
+/// the shipped defaults so both commit actions remain usable.
+pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
+    messages_config_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<CommitAgentMessages>(&text).ok())
+        .filter(valid_messages)
+        .unwrap_or_default()
+}
+
+/// Persist both instructions atomically. Blank instructions are rejected at
+/// the IPC boundary even though the Settings UI also validates them.
+pub fn save_messages(app: &AppHandle, messages: &CommitAgentMessages) -> Result<(), String> {
+    if !valid_messages(messages) {
+        return Err("Draft and commit instructions are required.".into());
+    }
+    let path = messages_config_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
+    }
+    let json = serde_json::to_string_pretty(messages)
+        .map_err(|e| format!("failed to serialize commit agent messages: {e}"))?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, json).map_err(|e| format!("failed to write commit agent messages: {e}"))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("failed to save commit agent messages: {e}"))?;
+    Ok(())
+}
+
+pub fn reset_messages_to_defaults(app: &AppHandle) -> Result<CommitAgentMessages, String> {
+    let messages = CommitAgentMessages::default();
+    save_messages(app, &messages)?;
+    Ok(messages)
+}
+
+fn valid_messages(messages: &CommitAgentMessages) -> bool {
+    !messages.draft_instruction.trim().is_empty() && !messages.commit_instruction.trim().is_empty()
 }
 
 /// Load the agent config, seeding defaults on first launch. Each agent's
@@ -142,7 +237,10 @@ pub fn load(app: &AppHandle) -> Vec<TerminalAgent> {
         },
         Err(_) => defaults(),
     };
-    entries.iter().map(TerminalAgent::from).collect()
+    migrate_builtin_presets(entries)
+        .iter()
+        .map(TerminalAgent::from)
+        .collect()
 }
 
 /// Persist the full agent list (replaces the config). `available` is dropped —
@@ -188,6 +286,38 @@ fn probe_available(command: &str) -> bool {
 /// typing (possibly unsaved). Thin wrapper over [`probe_available`].
 pub fn probe(command: &str) -> bool {
     probe_available(command)
+}
+
+/// Consume a commit-message draft written by an interactive terminal agent.
+/// The token is generated by the frontend and restricted to a filename-safe
+/// alphabet. Resolving through libgit2's git directory keeps linked worktrees
+/// isolated from the main checkout.
+pub fn take_commit_draft(path: &str, token: &str) -> Result<Option<String>, String> {
+    if token.is_empty()
+        || token.len() > 64
+        || !token.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("Invalid agent draft token.".into());
+    }
+    let repo = git2::Repository::open(path).map_err(|error| error.to_string())?;
+    let draft_path = repo.path().join(format!("{DRAFT_PREFIX}{token}"));
+    let metadata = match fs::metadata(&draft_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Could not inspect the agent draft: {error}")),
+    };
+    if metadata.len() > MAX_DRAFT_BYTES {
+        let _ = fs::remove_file(&draft_path);
+        return Err("The agent draft is unexpectedly large.".into());
+    }
+    let message = fs::read_to_string(&draft_path)
+        .map_err(|error| format!("Could not read the agent draft: {error}"))?;
+    if message.trim().is_empty() {
+        return Ok(None);
+    }
+    fs::remove_file(&draft_path)
+        .map_err(|error| format!("Could not consume the agent draft: {error}"))?;
+    Ok(Some(message.trim().to_owned()))
 }
 
 /// Extract the executable token from a command line: tokenize honoring shell
@@ -240,6 +370,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn commit_agent_message_defaults_are_valid_and_use_camel_case() {
+        let messages = CommitAgentMessages::default();
+        assert!(valid_messages(&messages));
+        let json = serde_json::to_value(&messages).unwrap();
+        assert_eq!(json["draftInstruction"], DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(json["commitInstruction"], DEFAULT_COMMIT_INSTRUCTION);
+    }
+
+    #[test]
+    fn commit_agent_messages_reject_blank_instructions() {
+        let mut messages = CommitAgentMessages::default();
+        messages.draft_instruction = "  ".into();
+        assert!(!valid_messages(&messages));
+    }
+
+    #[test]
+    fn commit_draft_rejects_unsafe_tokens() {
+        assert_eq!(
+            take_commit_draft(".", "../escape").unwrap_err(),
+            "Invalid agent draft token."
+        );
+    }
+
+    #[test]
+    fn commit_draft_is_consumed_from_the_git_directory() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("gitlane-agent-draft-{unique}"));
+        fs::create_dir_all(&dir).unwrap();
+        let repo = git2::Repository::init(&dir).unwrap();
+        let draft = repo.path().join("gitlane-commit-draft-safe-token");
+        fs::write(&draft, "feat: generated draft\n").unwrap();
+
+        assert_eq!(
+            take_commit_draft(dir.to_str().unwrap(), "safe-token").unwrap(),
+            Some("feat: generated draft".into())
+        );
+        assert!(!draft.exists());
+        assert_eq!(
+            take_commit_draft(dir.to_str().unwrap(), "safe-token").unwrap(),
+            None
+        );
+        drop(repo);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn defaults_lists_four_builtin_agents() {
         let d = defaults();
         let ids: Vec<&str> = d.iter().map(|a| a.id.as_str()).collect();
@@ -249,7 +428,7 @@ mod tests {
                 "claude",
                 "codex",
                 "claude-opus-4-8-medium",
-                "codex-gpt-5-5-medium"
+                "codex-gpt-5-6-sol-light"
             ]
         );
         let commands: Vec<&str> = d.iter().map(|a| a.command.as_str()).collect();
@@ -259,12 +438,37 @@ mod tests {
                 "claude",
                 "codex",
                 "claude --model claude-opus-4-8 --effort medium",
-                "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'"
+                "codex --model gpt-5.6-sol -c 'model_reasoning_effort=\"low\"'"
             ]
         );
         let enabled: Vec<bool> = d.iter().map(|a| a.enabled).collect();
         assert_eq!(enabled, [true, true, false, false]);
         assert!(d.iter().all(|a| !a.description.is_empty()));
+    }
+
+    #[test]
+    fn migrates_only_the_untouched_legacy_codex_preset() {
+        let legacy = AgentEntry {
+            id: LEGACY_CODEX_ID.into(),
+            name: LEGACY_CODEX_NAME.into(),
+            command: LEGACY_CODEX_COMMAND.into(),
+            description: "old description".into(),
+            enabled: true,
+        };
+        let mut customized = legacy.clone();
+        customized.name = "my codex".into();
+
+        let migrated = migrate_builtin_presets(vec![legacy, customized.clone()]);
+
+        assert_eq!(migrated[0].id, "codex-gpt-5-6-sol-light");
+        assert_eq!(migrated[0].name, "codex 5.6 sol light");
+        assert_eq!(
+            migrated[0].command,
+            "codex --model gpt-5.6-sol -c 'model_reasoning_effort=\"low\"'"
+        );
+        assert!(migrated[0].enabled, "migration preserves the user's toggle");
+        assert_eq!(migrated[1].name, customized.name);
+        assert_eq!(migrated[1].command, customized.command);
     }
 
     #[test]

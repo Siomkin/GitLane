@@ -1,5 +1,5 @@
-// Pure file-tree builder for the commit modal's Tree view. No React, no IPC —
-// it groups a flat list of staged files into a collapsible directory tree and
+// Pure file-tree builder for the Working Changes Tree view. No React, no IPC —
+// it groups a flat list of changed files into a collapsible directory tree and
 // flattens it back to render-ready rows.
 
 import type { FileChange } from "@/lib/api";

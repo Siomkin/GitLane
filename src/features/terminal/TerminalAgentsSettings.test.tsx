@@ -5,6 +5,10 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import type { TerminalAgent } from "@/lib/api";
+import {
+  DEFAULT_COMMIT_AGENT_MESSAGES,
+  useCommitAgentMessages,
+} from "@/store/commitAgentMessages";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
@@ -35,6 +39,11 @@ function stubBackend(get: TerminalAgent[] = [agent()]) {
     if (command === "terminal_agents_set") return Promise.resolve();
     if (command === "terminal_agents_reset") return Promise.resolve(get);
     if (command === "terminal_agent_probe") return Promise.resolve(true);
+    if (command === "commit_agent_messages_get")
+      return Promise.resolve(DEFAULT_COMMIT_AGENT_MESSAGES);
+    if (command === "commit_agent_messages_set") return Promise.resolve();
+    if (command === "commit_agent_messages_reset")
+      return Promise.resolve(DEFAULT_COMMIT_AGENT_MESSAGES);
     return Promise.resolve();
   });
 }
@@ -42,6 +51,11 @@ function stubBackend(get: TerminalAgent[] = [agent()]) {
 beforeEach(() => {
   invokeMock.mockReset();
   useTerminalAgents.setState({ agents: [agent()], loading: false, error: null });
+  useCommitAgentMessages.setState({
+    messages: DEFAULT_COMMIT_AGENT_MESSAGES,
+    loading: false,
+    error: null,
+  });
   useUi.setState({ confirm: null });
   useNotifications.setState({ toasts: [] });
 });
@@ -53,6 +67,102 @@ async function openEditor(name: string) {
 }
 
 describe("TerminalAgentsSettings", () => {
+  it("uses the full available settings-content width", () => {
+    stubBackend();
+    const { container } = render(<TerminalAgentsSettings />);
+
+    expect(container.firstElementChild).toHaveClass("w-full");
+    expect(container.firstElementChild).not.toHaveClass("max-w-[860px]");
+  });
+
+  it("saves commit-agent messages independently from the agent list", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    const saveMessages = await screen.findByRole("button", { name: "Save messages" });
+    expect(saveMessages).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Draft / improve instruction" }), {
+      target: { value: "Summarize the staged changes as a conventional commit." },
+    });
+    expect(saveMessages).toBeEnabled();
+    fireEvent.click(saveMessages);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
+        messages: expect.objectContaining({
+          draftInstruction: "Summarize the staged changes as a conventional commit.",
+        }),
+      }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("terminal_agents_set", expect.anything());
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(
+      "Saved commit agent messages",
+    );
+  });
+
+  it("resets only the draft instruction and waits for Save messages", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
+      if (command === "commit_agent_messages_get")
+        return Promise.resolve({
+          draftInstruction: "Customized draft",
+          commitInstruction: "Customized commit",
+        });
+      if (command === "commit_agent_messages_set") return Promise.resolve();
+      return Promise.resolve();
+    });
+    render(<TerminalAgentsSettings />);
+
+    expect(await screen.findByDisplayValue("Customized draft")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reset Draft / improve instruction" }));
+
+    expect(screen.getByDisplayValue(DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction)).toBeVisible();
+    expect(screen.getByDisplayValue("Customized commit")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save messages" })).toBeEnabled();
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_agent_messages_reset");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save messages" }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
+        messages: {
+          draftInstruction: DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction,
+          commitInstruction: "Customized commit",
+        },
+      }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("terminal_agents_reset");
+  });
+
+  it("resets only the commit instruction", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
+      if (command === "commit_agent_messages_get")
+        return Promise.resolve({
+          draftInstruction: "Customized draft",
+          commitInstruction: "Customized commit",
+        });
+      return Promise.resolve();
+    });
+    render(<TerminalAgentsSettings />);
+
+    expect(await screen.findByDisplayValue("Customized commit")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Reset Commit instruction" }));
+
+    expect(screen.getByDisplayValue("Customized draft")).toBeVisible();
+    expect(screen.getByDisplayValue(DEFAULT_COMMIT_AGENT_MESSAGES.commitInstruction)).toBeVisible();
+  });
+
+  it("places the terminal panel preview above the agents and commit-agent messages", async () => {
+    stubBackend();
+    render(<TerminalAgentsSettings />);
+
+    const preview = screen.getByText("TERMINAL PANEL PREVIEW");
+    const firstAgent = await screen.findByRole("button", { name: "Edit Claude" });
+    const messages = screen.getByRole("heading", { name: "Commit agent messages" });
+    expect(preview.compareDocumentPosition(firstAgent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(preview.compareDocumentPosition(messages) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("keeps Save visible but disabled until the draft changes", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);

@@ -1,7 +1,7 @@
 // Pure tree builder for the right panel's repository Files browser. No React,
 // no IPC — it groups the backend's flat sorted path list into a collapsible
 // directory tree (collapsed by default) and flattens it to render-ready rows,
-// following the commit modal's `commitTree.ts` idiom.
+// following the Working Changes `commitTree.ts` idiom.
 
 import { basename } from "@/lib/paths";
 

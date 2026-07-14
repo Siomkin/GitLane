@@ -439,6 +439,15 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+/** Filled four-point sparkle marking agent/AI affordances. */
+export function SparkleIcon(props: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+      <path d="M12 3l1.6 4.9L18.5 9.5l-4.9 1.6L12 16l-1.6-4.9L5.5 9.5l4.9-1.6z" />
+    </svg>
+  );
+}
+
 export function FileTextIcon(props: IconProps) {
   return (
     <IconBase {...props}>

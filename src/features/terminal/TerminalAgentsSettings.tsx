@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { type TerminalAgent } from "@/lib/api";
 import { AgentRow } from "./AgentRow";
+import { CommitAgentMessagesSettings } from "./CommitAgentMessagesSettings";
 import { useTerminalAgentDraft } from "./useTerminalAgentDraft";
 import { previewAvailability, type PreviewAvailability } from "./agentDraft";
 
@@ -188,7 +189,7 @@ export function TerminalAgentsSettings() {
   const saveDisabled = !dirty || !valid || saving;
 
   return (
-    <div className="flex h-full max-w-[860px] flex-col">
+    <div className="flex h-full w-full flex-col">
       <div className="-mx-1 flex flex-none items-start justify-between gap-4 bg-white px-1 pb-5 pt-1 dark:bg-neutral-800">
         <div className="min-w-0">
           <h2 className="text-[30px] font-bold tracking-tight text-neutral-900 dark:text-white">
@@ -224,6 +225,30 @@ export function TerminalAgentsSettings() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto pb-9 pr-2">
+        <div className="mb-7 rounded-xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/[0.08] dark:bg-black/20">
+          <div className="mb-3 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
+            TERMINAL PANEL PREVIEW
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="grid h-8 place-items-center rounded-md bg-black/[0.06] px-2.5 text-[12.5px] font-medium text-neutral-800 dark:bg-white/10 dark:text-neutral-100">
+              Terminal
+            </span>
+            <span className="mx-1 h-4 w-px bg-black/10 dark:bg-white/10" />
+            {previewAgents.map((a) => (
+              <PreviewAgent
+                key={a.id}
+                agent={a}
+                availability={previewAvailability(a, savedAgents.get(a.id), checks[a.id])}
+              />
+            ))}
+            {previewAgents.length === 0 && (
+              <span className="text-[12.5px] italic text-neutral-400 dark:text-neutral-500">
+                No agents enabled
+              </span>
+            )}
+          </div>
+        </div>
+
         {error && (
           <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3.5 py-3 text-[12.5px] text-rose-600 dark:text-rose-400">
             {error}
@@ -274,29 +299,7 @@ export function TerminalAgentsSettings() {
           Add agent
         </button>
 
-        <div className="mt-7 rounded-xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/[0.08] dark:bg-black/20">
-          <div className="mb-3 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
-            TERMINAL PANEL PREVIEW
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="grid h-8 place-items-center rounded-md bg-black/[0.06] px-2.5 text-[12.5px] font-medium text-neutral-800 dark:bg-white/10 dark:text-neutral-100">
-              Terminal
-            </span>
-            <span className="mx-1 h-4 w-px bg-black/10 dark:bg-white/10" />
-            {previewAgents.map((a) => (
-              <PreviewAgent
-                key={a.id}
-                agent={a}
-                availability={previewAvailability(a, savedAgents.get(a.id), checks[a.id])}
-              />
-            ))}
-            {previewAgents.length === 0 && (
-              <span className="text-[12.5px] italic text-neutral-400 dark:text-neutral-500">
-                No agents enabled
-              </span>
-            )}
-          </div>
-        </div>
+        <CommitAgentMessagesSettings />
       </div>
     </div>
   );

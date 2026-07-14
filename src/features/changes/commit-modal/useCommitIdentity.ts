@@ -1,5 +1,5 @@
-// Commit-dialog identity view-model (GL-213). Owns the identity load + apply
-// state and derives the effective author / usability, so the commit modal can
+// Commit-composer identity view-model (GL-213). Owns the identity load + apply
+// state and derives the effective author / usability, so the composer can
 // read `usable` directly (gating Commit / Commit-with-agent) and hand the model
 // to the presentational selector — no child→parent callback effect needed.
 
@@ -52,7 +52,7 @@ export function useCommitIdentity(): CommitIdentityModel {
   const activeManual =
     selection.kind === "manual" ? manuals.find((p) => p.id === selection.id) ?? null : null;
   const effective = repoIdentity ?? defaultIdentity;
-  const hasEffective = Boolean(effective?.name.trim() && effective?.email.trim());
+  const hasEffective = Boolean(effective?.name?.trim() && effective?.email?.trim());
   // Committable as soon as we know a usable name+email — a pinned repo identity
   // doesn't wait on the global-config load; only an apply-in-flight blocks.
   const usable = hasEffective && !applying;

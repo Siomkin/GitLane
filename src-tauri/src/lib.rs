@@ -15,7 +15,7 @@ mod updater;
 mod watcher;
 
 use terminal::TerminalState;
-use terminal_agents::TerminalAgent;
+use terminal_agents::{CommitAgentMessages, TerminalAgent};
 use watcher::WatcherState;
 
 use git::types::{
@@ -1422,6 +1422,26 @@ fn terminal_agents_set(app: tauri::AppHandle, agents: Vec<TerminalAgent>) -> Res
     terminal_agents::save(&app, &agents)
 }
 
+/// Read the user-editable instructions used by Draft / Improve and Commit with
+/// agent. Fixed safety and delivery suffixes are assembled in the frontend.
+#[tauri::command]
+fn commit_agent_messages_get(app: tauri::AppHandle) -> CommitAgentMessages {
+    terminal_agents::load_messages(&app)
+}
+
+#[tauri::command]
+fn commit_agent_messages_set(
+    app: tauri::AppHandle,
+    messages: CommitAgentMessages,
+) -> Result<(), String> {
+    terminal_agents::save_messages(&app, &messages)
+}
+
+#[tauri::command]
+fn commit_agent_messages_reset(app: tauri::AppHandle) -> Result<CommitAgentMessages, String> {
+    terminal_agents::reset_messages_to_defaults(&app)
+}
+
 /// Reset the agent config to the shipped defaults and return them. Used by the
 /// Settings "Reset to defaults" action.
 #[tauri::command]
@@ -1437,6 +1457,14 @@ async fn terminal_agents_reset(app: tauri::AppHandle) -> Result<Vec<TerminalAgen
 #[tauri::command]
 async fn terminal_agent_probe(command: String) -> Result<bool, String> {
     blocking(move || Ok(terminal_agents::probe(&command))).await
+}
+
+/// Poll the unique Git-metadata handoff file used when an interactive agent
+/// drafts a commit message. Reading/removing the tiny file is intentionally a
+/// sync command; the expensive work remains in the agent's terminal session.
+#[tauri::command]
+fn take_agent_commit_draft(path: String, token: String) -> Result<Option<String>, String> {
+    terminal_agents::take_commit_draft(&path, &token)
 }
 
 /// Spawn a new in-app terminal PTY running the user's login shell in `path` and
@@ -1741,7 +1769,11 @@ pub fn run() {
             terminal_agents_get,
             terminal_agents_set,
             terminal_agents_reset,
+            commit_agent_messages_get,
+            commit_agent_messages_set,
+            commit_agent_messages_reset,
             terminal_agent_probe,
+            take_agent_commit_draft,
             pty_spawn,
             pty_write,
             pty_resize,

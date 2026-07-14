@@ -42,6 +42,7 @@ export function useTerminalInjection({
     const { view } = pane;
     let cancelled = false;
     let timer: number | undefined;
+    const bracketedBeforeLaunch = view.bracketedPaste();
     const paste = () => {
       if (cancelled) return;
       view.paste(terminalInject.text);
@@ -55,9 +56,19 @@ export function useTerminalInjection({
         // injection queued instead of dropping the text on the floor (GL-176).
         if (!ok) return;
         const startedAt = Date.now();
+        // Interactive shells such as zsh can already have bracketed paste
+        // enabled at their prompt. That pre-launch mode is not evidence that
+        // the agent is ready: accepting it pasted the message while `codex`
+        // was still starting, and the TUI redraw then discarded the input.
+        // If it was already enabled, require a post-launch off -> on
+        // transition. Agents that do not expose such a transition still use
+        // the bounded fallback below.
+        let sawBracketedOff = !bracketedBeforeLaunch;
         const waitForPrompt = () => {
           if (cancelled) return;
-          if (view.bracketedPaste() || Date.now() - startedAt > 4000) {
+          const bracketed = view.bracketedPaste();
+          if (!bracketed) sawBracketedOff = true;
+          if ((sawBracketedOff && bracketed) || Date.now() - startedAt > 4000) {
             paste();
             return;
           }

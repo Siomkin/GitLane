@@ -16,10 +16,12 @@
 // + reconcile), or the shell exits. The tab strip lives in `TerminalTabs`, the
 // xterm/PTY lifecycle in `useTerminalPanes`.
 
+import { useRef } from "react";
 import { cn } from "@/lib/cn";
 import { useUi } from "@/store/ui";
 import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
+import { TerminalResizeHandles } from "./TerminalResizeHandles";
 import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./terminalIcons";
 
 /**
@@ -30,14 +32,17 @@ import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./t
 export function TerminalLayer() {
   const terminalView = useUi((s) => s.terminalView);
   const terminalHeight = useUi((s) => s.terminalHeight);
+  const terminalHorizontalLayout = useUi((s) => s.terminalHorizontalLayout);
   const terminalExpanded = useUi((s) => s.terminalExpanded);
   const adjustTerminalHeight = useUi((s) => s.adjustTerminalHeight);
+  const setTerminalHorizontalInsets = useUi((s) => s.setTerminalHorizontalInsets);
   const collapseTerminal = useUi((s) => s.collapseTerminal);
   const expandTerminal = useUi((s) => s.expandTerminal);
   const toggleTerminalExpanded = useUi((s) => s.toggleTerminalExpanded);
   const hideTerminal = useUi((s) => s.hideTerminal);
 
   const { hostRef, alive, agents, terminalPath, runAgent, clearTerminal } = useTerminalPanes();
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // The layer is always mounted (App hoists it out of the repo-summary gate so
   // panes survive repo switches), so hide the drawer itself when there's no repo
@@ -51,9 +56,11 @@ export function TerminalLayer() {
       {/* Open drawer. Kept mounted (just hidden) while collapsed/hidden/no-repo so
           the xterm instances + PTYs survive the whole app session. */}
       <div
+        ref={panelRef}
         aria-hidden={!visible || terminalView !== "open"}
+        inert={!visible || terminalView !== "open"}
         className={cn(
-          "absolute left-2.5 right-2.5 bottom-2.5 z-[45] min-w-0 overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_-12px_44px_-12px_rgba(0,0,0,0.35)] transition duration-150 dark:border-white/10 dark:bg-neutral-900",
+          "absolute z-[45] min-w-0 overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_-12px_44px_-12px_rgba(0,0,0,0.35)] transition-[opacity,transform] duration-150 dark:border-white/10 dark:bg-neutral-900",
           // Mutually exclusive display: `hidden` (display:none, panes persist)
           // vs. the drawer's flex column — never both, so display:none can't lose
           // to `flex` on class ordering.
@@ -62,45 +69,27 @@ export function TerminalLayer() {
             terminalView === "collapsed" &&
             "pointer-events-none translate-y-3 scale-[0.98] opacity-0",
         )}
-        style={{ height: terminalExpanded ? "calc(100% - 20px)" : terminalHeight }}
+        style={{
+          height: terminalExpanded ? "calc(100% - 16px)" : terminalHeight,
+          bottom: 8,
+          left: terminalExpanded
+            ? 8
+            : Math.max(8, terminalHorizontalLayout?.leftInset ?? 8),
+          right:
+            terminalExpanded
+              ? 8
+              : terminalHorizontalLayout
+                ? Math.max(8, terminalHorizontalLayout.rightInset)
+                : "calc(50% - 8px)",
+        }}
       >
-        {/* Top drag handle, wired to the existing height-adjust logic. */}
-        <div
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize the terminal"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            const step = e.shiftKey ? 48 : 16;
-            if (e.key === "ArrowUp") {
-              e.preventDefault();
-              adjustTerminalHeight(step);
-            } else if (e.key === "ArrowDown") {
-              e.preventDefault();
-              adjustTerminalHeight(-step);
-            }
-          }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            let lastY = e.clientY;
-            const move = (ev: MouseEvent) => {
-              adjustTerminalHeight(lastY - ev.clientY);
-              lastY = ev.clientY;
-            };
-            const up = () => {
-              window.removeEventListener("mousemove", move);
-              window.removeEventListener("mouseup", up);
-              document.body.style.cursor = "";
-              document.body.style.userSelect = "";
-            };
-            window.addEventListener("mousemove", move);
-            window.addEventListener("mouseup", up);
-            document.body.style.cursor = "ns-resize";
-            document.body.style.userSelect = "none";
-          }}
-          title="Drag to resize"
-          className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize outline-none focus-visible:bg-[color:var(--accent)]/40"
-        />
+        {!terminalExpanded && (
+          <TerminalResizeHandles
+            panelRef={panelRef}
+            adjustHeight={adjustTerminalHeight}
+            setInsets={setTerminalHorizontalInsets}
+          />
+        )}
 
         {/* Header bar. */}
         <div className="flex h-10 shrink-0 items-center gap-3 border-b border-black/5 bg-black/[0.03] px-3 dark:border-white/10 dark:bg-white/[0.04]">
@@ -178,7 +167,8 @@ export function TerminalLayer() {
         <button type="button"
           onClick={expandTerminal}
           title="Expand terminal"
-          className="absolute bottom-2.5 left-2.5 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+          aria-label={alive ? "Terminal running" : "Terminal idle"}
+          className="absolute bottom-2 left-2 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
         >
           <svg
             viewBox="0 0 24 24"
@@ -200,9 +190,6 @@ export function TerminalLayer() {
           />
           <span className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
             {alive ? "Terminal running" : "Terminal idle"}
-          </span>
-          <span className="max-w-[280px] truncate font-mono text-[12px] text-neutral-400">
-            {terminalPath}
           </span>
         </button>
       )}

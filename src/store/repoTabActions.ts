@@ -54,6 +54,7 @@ export function createRepoTabActions(
       // background-repo close would leave shells running with no UI). Keyed by
       // the same identity path as `openPaths`.
       useTerminals.getState().closeRepoTerminals(path);
+      useUi.getState().forgetTerminalView(path);
       // Closing the missing-repo tab (its X, or Remove on the screen): the repo
       // data was already cleared when the state was entered, so just drop the
       // tab + state and land on a neighbour or the welcome screen (GL-108).

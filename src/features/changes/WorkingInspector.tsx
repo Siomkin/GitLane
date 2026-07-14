@@ -5,16 +5,16 @@ import {
   fileWriteGuard,
   findGuardedFile,
 } from "@/lib/advancedRepoState";
-import { cn } from "@/lib/cn";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
+import { CommitComposer } from "./commit-modal";
 import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
 
 /** Inspector for working changes — lists unstaged/staged files with inline
- * stage/unstage actions and the Start-commit button that raises the modal. */
+ * stage/unstage actions and an always-available commit composer. */
 export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: boolean) => void }) {
   const changes = useRepo((state) => state.changes);
   const selectedFile = useRepo((state) => state.selectedFile);
@@ -27,7 +27,6 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const unstageAll = useRepo((state) => state.unstageAll);
   const summary = useRepo((state) => state.summary);
   const [view, setView] = useState<FileListView>("path");
-  const openCommit = useUi((state) => state.openCommit);
   const openFileMenu = useUi((state) => state.openFileMenu);
   const fileMenu = useUi((state) => state.fileMenu);
   const total = changes.staged.length + changes.unstaged.length;
@@ -36,7 +35,6 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const stagedGuarded = findGuardedFile(changes.staged, changes);
   const stageAllBlocked = fileWriteGuard(unstagedGuarded, changes);
   const unstageAllBlocked = fileWriteGuard(stagedGuarded, changes);
-  const commitBlocked = fileWriteGuard(stagedGuarded, changes);
   // Unmerged paths whose owning operation isn't currently driving the conflict
   // workspace (e.g. `git am`/`bisect`, or a transient detection failure). Shown
   // read-only here so they never vanish from the UI — resolution still happens
@@ -161,25 +159,9 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
         />
       </div>
 
-      <div className="shrink-0 border-t border-black/5 p-4 dark:border-white/5">
-        <button type="button"
-          className={cn(
-            "h-10 w-full rounded-lg text-[13px] font-medium",
-            changes.staged.length > 0 && !commitBlocked
-              ? "bg-[var(--accent)] text-white hover:brightness-110"
-              : "cursor-not-allowed bg-black/[0.06] text-neutral-400 dark:bg-white/10",
-          )}
-          disabled={changes.staged.length === 0 || !!commitBlocked}
-          title={commitBlocked ?? undefined}
-          onClick={openCommit}
-        >
-          {commitBlocked ? "Commit blocked" : "Start commit"}
-        </button>
-        {commitBlocked && (
-          <p className="mt-2 text-[11.5px] leading-4 text-amber-600 dark:text-amber-400">
-            {commitBlocked}
-          </p>
-        )}
+      {/* The composer owns its padding — collapsed it is a full-bleed bar. */}
+      <div className="max-h-[55%] shrink-0 overflow-auto border-t border-black/5 dark:border-white/5">
+        <CommitComposer />
       </div>
     </div>
   );

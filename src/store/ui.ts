@@ -9,18 +9,30 @@ import { persist } from "zustand/middleware";
 import { usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
+import { useTerminals } from "./terminals";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "@/lib/gitError";
 import type { ForgeAuthProvider } from "@/lib/api";
 import type { LeftTab, RightTab } from "@/lib/ui";
 import type { PrFilter } from "@/lib/prs";
 import type { AccentColor } from "@/lib/accent";
+import { ComposerMode } from "@/lib/conventionalCommit";
 import type { BranchDragRef, GraphDropTarget } from "@/lib/graphActions";
 import { resolveTheme, systemPrefersDark } from "@/lib/theme";
 
 export type { AccentColor };
 export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
+export type TerminalView = "hidden" | "collapsed" | "open";
 export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "about";
+
+/** A terminal agent draft request collected asynchronously by the composer. It is scoped
+ * to the repository that launched it so a late result cannot cross repo tabs. */
+export interface AgentCommitDraftRequest {
+  token: string;
+  agentName: string;
+  repoPath: string;
+  startedAt: number;
+}
 
 /** Seed values handed to the global Profiles editor when a repo-scoped surface
  * starts a create (e.g. adopting an unmanaged local identity). */
@@ -318,10 +330,16 @@ interface UiState {
   worktreeMenu: WorktreeMenu | null;
   recoveryOpen: boolean;
   /** In-app terminal: floating panel that collapses to a status pill without
-   * killing the PTY. `hidden` = no panel (PTY killed); `collapsed` = pill;
+   * killing the PTY. `hidden` = no chrome; `collapsed` = status launcher;
    * `open` = full floating panel. */
-  terminalView: "hidden" | "collapsed" | "open";
+  terminalView: TerminalView;
+  /** Per-repository terminal chrome. PTYs/tabs are already repo-scoped; this
+   * keeps switching repos from opening a shell merely because another repo's
+   * terminal was visible. */
+  terminalViewByRepo: Record<string, TerminalView>;
   terminalHeight: number;
+  /** Saved user-selected popup edges. `null` uses the left-aligned 50% default. */
+  terminalHorizontalLayout: { leftInset: number; rightInset: number } | null;
   terminalExpanded: boolean;
   /** Pending text queued to be pasted into the terminal PTY (bracketed paste).
    * Consumed by the TerminalLayer once the PTY is alive, then cleared. When
@@ -375,20 +393,16 @@ interface UiState {
   histFilter: HistFilter;
   histFilterOpen: boolean;
 
-  /** The "Commit Changes" modal raised by the Start-commit button. Operates on
-   * the staged set: each file can be excluded from this commit (unchecked), and
-   * the body switches between a flat List and a collapsible Tree + inline diff. */
-  commitOpen: boolean;
-  commitView: "list" | "tree";
-  /** Path of the file previewed in the tree view's diff pane. */
-  commitSelFile: string | null;
-  /** Collapsed directories in the tree view (keyed by the joined dir path). */
-  commitCollapsed: Record<string, boolean>;
-  /** Staged paths the user unchecked — excluded from this commit (unstaged
-   * before committing, so they survive as working changes). */
-  commitExcluded: Record<string, boolean>;
-  /** Draft commit message (empty = let the agent write it). */
+  /** Draft message shown by the inline composer in the Working Changes inspector. */
   commitMsg: string;
+  /** The composer's message style — free-form or structured conventional
+   * commit. A view preference, so it persists. */
+  commitComposerMode: ComposerMode;
+  /** Id of the terminal agent last used to draft a commit message, shown as the
+   * active choice in the composer's Draft menu. Persists across sessions. */
+  commitDraftAgent: string | null;
+  /** Pending terminal-agent draft handoff. Session-only and repo-scoped. */
+  agentCommitDraft: AgentCommitDraftRequest | null;
 
   /** Session-only review notes pinned to diff lines — the input to the "prepare
    * message for agent" flow. Never persisted (cleared on repo switch). */
@@ -485,8 +499,10 @@ interface UiState {
   collapseTerminal: () => void;
   expandTerminal: () => void;
   hideTerminal: () => void;
+  forgetTerminalView: (repoPath: string) => void;
   toggleTerminalExpanded: () => void;
   adjustTerminalHeight: (dy: number) => void;
+  setTerminalHorizontalInsets: (left: number, right: number) => void;
   /** Open the terminal and queue `text` to be pasted into it. When `command`
    * is provided, launch that terminal agent before pasting the text. The
    * injection is stamped with the active repo and delivers only there. */
@@ -539,17 +555,18 @@ interface UiState {
   /** Reset both search query and kind filter to their inert state. */
   clearHistFilters: () => void;
 
-  /** Open the commit modal (resets exclusions + message; defaults to List). */
+  /** Reveal the inline commit composer in the Working Changes inspector. */
   openCommit: () => void;
-  closeCommit: () => void;
-  setCommitView: (view: "list" | "tree") => void;
-  selectCommitFile: (path: string) => void;
-  toggleCommitCollapse: (dir: string) => void;
-  /** Toggle one staged file in/out of the commit. */
-  toggleCommitFile: (path: string) => void;
-  /** Check/uncheck every file under a directory at once. */
-  setCommitDir: (paths: string[], included: boolean) => void;
+  /** Hand commit-message drafting to a terminal agent and collect its mailbox result. */
+  startAgentCommitDraft: (
+    request: AgentCommitDraftRequest,
+    instruction: string,
+    command: string,
+  ) => void;
+  cancelAgentCommitDraft: () => void;
   setCommitMsg: (msg: string) => void;
+  setCommitComposerMode: (mode: ComposerMode) => void;
+  setCommitDraftAgent: (agentId: string | null) => void;
 
   /** Pin/replace a local comment on a diff line range (keyed by file + range). */
   addReviewNote: (note: Omit<ReviewNote, "id">) => void;
@@ -592,6 +609,19 @@ interface UiState {
    *  code with a title/body/actions/progress should call `useNotifications`. */
   showToast: (message: string, tone?: "ok" | "error") => void;
   dismissToast: () => void;
+}
+
+function terminalViewPatch(
+  state: Pick<UiState, "terminalViewByRepo">,
+  terminalView: TerminalView,
+): Pick<UiState, "terminalView" | "terminalViewByRepo"> {
+  const repoPath = useRepo.getState().summary?.path;
+  return {
+    terminalView,
+    terminalViewByRepo: repoPath
+      ? { ...state.terminalViewByRepo, [repoPath]: terminalView }
+      : state.terminalViewByRepo,
+  };
 }
 
 /** Every transient context/action menu cleared at once. Spread into any `set`
@@ -647,7 +677,9 @@ export const useUi = create<UiState>()(
   worktreeMenu: null,
   recoveryOpen: false,
   terminalView: "hidden",
+  terminalViewByRepo: {},
   terminalHeight: 480,
+  terminalHorizontalLayout: null,
   terminalExpanded: false,
   terminalInject: null,
   createBranchOpen: false,
@@ -668,12 +700,10 @@ export const useUi = create<UiState>()(
   histFilter: "all",
   histFilterOpen: false,
 
-  commitOpen: false,
-  commitView: "list",
-  commitSelFile: null,
-  commitCollapsed: {},
-  commitExcluded: {},
   commitMsg: "",
+  commitComposerMode: ComposerMode.Conventional,
+  commitDraftAgent: null,
+  agentCommitDraft: null,
 
   reviewNotes: [],
   agentMessageOpen: false,
@@ -764,31 +794,53 @@ export const useUi = create<UiState>()(
   // shell — panes persist per repo so reopening restores them; a PTY dies only
   // when the user closes its tab (see `store/terminals`).
   toggleTerminal: () =>
-    set((s) => ({
-      terminalView:
+    set((s) => {
+      const view =
         s.terminalView === "hidden"
           ? "open"
           : s.terminalView === "open"
             ? "collapsed"
-            : "open",
-    })),
-  collapseTerminal: () => set({ terminalView: "collapsed" }),
-  expandTerminal: () => set({ terminalView: "open" }),
-  hideTerminal: () => set({ terminalView: "hidden", terminalExpanded: false }),
+            : "open";
+      return terminalViewPatch(s, view);
+    }),
+  collapseTerminal: () => set((s) => terminalViewPatch(s, "collapsed")),
+  expandTerminal: () => set((s) => terminalViewPatch(s, "open")),
+  hideTerminal: () => set((s) => ({ ...terminalViewPatch(s, "hidden"), terminalExpanded: false })),
+  forgetTerminalView: (repoPath) =>
+    set((s) => {
+      if (!(repoPath in s.terminalViewByRepo)) return s;
+      const { [repoPath]: _forgotten, ...terminalViewByRepo } = s.terminalViewByRepo;
+      return {
+        terminalViewByRepo,
+        terminalView:
+          useRepo.getState().summary?.path === repoPath ? "hidden" : s.terminalView,
+      };
+    }),
   toggleTerminalExpanded: () => set((s) => ({ terminalExpanded: !s.terminalExpanded })),
   // Down = taller. Clamp so the compact panel stays usable without eating the whole window.
   adjustTerminalHeight: (dy) =>
     set((s) => ({ terminalHeight: Math.max(160, Math.min(860, s.terminalHeight + dy)) })),
+  setTerminalHorizontalInsets: (left, right) =>
+    set({
+      terminalHorizontalLayout: {
+        leftInset: Math.max(8, Math.min(8192, Math.round(left))),
+        rightInset: Math.max(8, Math.min(8192, Math.round(right))),
+      },
+    }),
   // Open the terminal and stash the message; the TerminalLayer pastes it once the
   // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
   // repo whose flow queued it (one-shot cross-store read) so it can never
   // deliver into another repo's shell (GL-176 review).
   sendToTerminal: (text, command) => {
     const repoKey = useRepo.getState().summary?.path ?? null;
-    set({
-      terminalView: "open",
+    // A live PTY does not reveal whether its foreground program is the shell,
+    // this agent, another agent, or an unrelated TUI. Every agent launch gets
+    // a fresh tab so its command can never be typed into an unknown prompt.
+    if (command && repoKey) useTerminals.getState().openTab(repoKey);
+    set((s) => ({
+      ...terminalViewPatch(s, "open"),
       terminalInject: command ? { text, command, repoKey } : { text, repoKey },
-    });
+    }));
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
   closeOverlays: () => set({ ...noMenus, draggingFrom: null }),
@@ -804,9 +856,11 @@ export const useUi = create<UiState>()(
   setLeftTab: (tab) => set((s) => (s.leftTab === tab ? s : { leftTab: tab })),
   setRightTab: (tab) => set((s) => (s.rightTab === tab ? s : { rightTab: tab })),
   openChangesView: (all = false) => set({ leftTab: "changes", changesAll: all }),
-  onWorkingTreeClean: () => set((s) => (s.leftTab === "changes" ? { leftTab: "history" } : s)),
-  onRepoSwitched: () =>
-    set({
+  onWorkingTreeClean: () =>
+    set((s) => (s.leftTab === "changes" ? { leftTab: "history", commitMsg: "" } : { commitMsg: "" })),
+  onRepoSwitched: () => {
+    const activeRepoPath = useRepo.getState().summary?.path;
+    set((s) => ({
       leftTab: "history",
       rightTab: "details",
       changesAll: false,
@@ -821,7 +875,12 @@ export const useUi = create<UiState>()(
       histFilter: "all",
       histFilterOpen: false,
       onboardingOpen: false,
-    }),
+      commitMsg: "",
+      agentCommitDraft: null,
+      terminalView: (activeRepoPath ? s.terminalViewByRepo[activeRepoPath] : undefined) ?? "hidden",
+      terminalExpanded: false,
+    }));
+  },
 
   setPrFilter: (filter) => {
     if (get().prFilter === filter) return;
@@ -843,30 +902,49 @@ export const useUi = create<UiState>()(
   setHistFilter: (filter) => set({ histFilter: filter }),
   clearHistFilters: () => set((s) => (s.histQuery === "" && s.histFilter === "all" ? s : { histQuery: "", histFilter: "all" })),
 
-  openCommit: () =>
-    set({ commitOpen: true, commitView: "list", commitExcluded: {}, commitMsg: "", commitSelFile: null }),
-  closeCommit: () => set({ commitOpen: false }),
-  setCommitView: (view) => set({ commitView: view }),
-  selectCommitFile: (path) => set({ commitSelFile: path }),
-  toggleCommitCollapse: (dir) =>
-    set((s) => ({ commitCollapsed: { ...s.commitCollapsed, [dir]: !s.commitCollapsed[dir] } })),
-  toggleCommitFile: (path) =>
-    set((s) => {
-      const next = { ...s.commitExcluded };
-      if (next[path]) delete next[path];
-      else next[path] = true;
-      return { commitExcluded: next };
-    }),
-  setCommitDir: (paths, included) =>
-    set((s) => {
-      const next = { ...s.commitExcluded };
-      for (const p of paths) {
-        if (included) delete next[p];
-        else next[p] = true;
+  openCommit: () => set({ leftTab: "changes", changesAll: false, rightTab: "details" }),
+  startAgentCommitDraft: (request, instruction, command) => {
+    get().sendToTerminal(instruction, command);
+    set({ agentCommitDraft: request });
+
+    const poll = async () => {
+      if (get().agentCommitDraft?.token !== request.token) return;
+      try {
+        const draft = await useRepo.getState().takeAgentCommitDraft(request.repoPath, request.token);
+        if (get().agentCommitDraft?.token !== request.token) return;
+        if (draft) {
+          set((s) => ({
+            ...terminalViewPatch(
+              s,
+              s.terminalView === "open" ? "collapsed" : s.terminalView,
+            ),
+            agentCommitDraft: null,
+            commitMsg: draft,
+            // The mailbox result is now visible in the inline composer. Minimize
+            // only an open panel; preserve an explicit user collapse/hide.
+            terminalExpanded: s.terminalView === "open" ? false : s.terminalExpanded,
+          }));
+          return;
+        }
+        if (Date.now() - request.startedAt >= 120_000) {
+          set({ agentCommitDraft: null });
+          get().showToast("The agent did not return a commit-message draft within two minutes.", "error");
+          return;
+        }
+        setTimeout(() => void poll(), 1_000);
+      } catch (error) {
+        if (get().agentCommitDraft?.token !== request.token) return;
+        set({ agentCommitDraft: null });
+        get().showToast(`Could not collect the agent's commit-message draft: ${String(error)}`, "error");
       }
-      return { commitExcluded: next };
-    }),
+    };
+
+    setTimeout(() => void poll(), 500);
+  },
+  cancelAgentCommitDraft: () => set({ agentCommitDraft: null }),
   setCommitMsg: (msg) => set({ commitMsg: msg }),
+  setCommitComposerMode: (mode) => set({ commitComposerMode: mode }),
+  setCommitDraftAgent: (agentId) => set({ commitDraftAgent: agentId }),
 
   addReviewNote: (note) =>
     set((s) => {
@@ -963,9 +1041,12 @@ export const useUi = create<UiState>()(
         graphWidthsByRepo: s.graphWidthsByRepo,
         whenWidth: s.whenWidth,
         terminalHeight: s.terminalHeight,
+        terminalHorizontalLayout: s.terminalHorizontalLayout,
         terminalExpanded: s.terminalExpanded,
         prFilter: s.prFilter,
         collapsed: s.collapsed,
+        commitComposerMode: s.commitComposerMode,
+        commitDraftAgent: s.commitDraftAgent,
       }),
     },
   ),

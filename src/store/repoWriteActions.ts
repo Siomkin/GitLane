@@ -40,10 +40,9 @@ function renamePaths(bucket: FileChange[], path: string): string[] | null {
 }
 
 // Expand a path list so any rename in `bucket` also contributes its old side.
-// Folder roll-ups (stagePaths/unstagePaths) and the commit modal's partial
-// exclude pass new-side paths only; without this a rename under a rolled-up
-// directory — or an unchecked staged rename — would leave the old path's
-// deletion in the opposite state (the same GL-127 bug in the bulk flows).
+// Folder roll-ups (stagePaths/unstagePaths) pass new-side paths only; without
+// this a rename under a rolled-up directory would leave the old path's deletion
+// in the opposite state (the same GL-127 bug in the bulk flows).
 // De-duplicated (a rename and its source both selected won't double up); order
 // preserved for stable git invocations.
 function withRenameCounterparts(bucket: FileChange[], paths: string[]): string[] {
@@ -209,6 +208,7 @@ export function createRepoWriteActions(
   | "commit"
   | "amendHeadMessage"
   | "commitSelected"
+  | "takeAgentCommitDraft"
   | "stash"
   | "fetch"
   | "pull"
@@ -226,6 +226,8 @@ export function createRepoWriteActions(
   const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
 
   return {
+    takeAgentCommitDraft: async (repoPath, token) =>
+      api.takeAgentCommitDraft(repoPath, token),
     checkoutBranch: async (name) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
@@ -853,28 +855,23 @@ export function createRepoWriteActions(
         return "Updated commit message";
       }),
 
-    commitSelected: async (message, excludePaths, amend = false) => {
+    commitSelected: async (message, amend = false) => {
       const { summary } = get();
-      if (!summary) return;
+      if (!summary) return false;
       const { changes } = get();
-      const included = changes.staged.filter((file) => !excludePaths.includes(file.path));
-      if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(included, changes), changes))) return;
+      if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(changes.staged, changes), changes))) {
+        return false;
+      }
       const identity = useAccounts.getState().repoIdentity;
       try {
-        // Files unchecked in the modal are dropped from this commit by unstaging
-        // them first; they stay in the working tree. Expand renames so unchecking
-        // a staged rename also unstages its old-path deletion, instead of leaving
-        // that "D" staged and committing half the rename (GL-127).
-        // Unstage the excluded set atomically so a partial failure can't leave
-        // some of them staged.
-        const excluded = withRenameCounterparts(changes.staged, excludePaths);
-        if (excluded.length > 0) await api.unstageFiles(summary.path, excluded);
         const { summary: subject, description } = splitCommitMessage(message);
         await api.commit(summary.path, subject, description, amend, identity?.name, identity?.email);
         await get().refresh();
         set({ selectedFile: null, fileDiff: null, wipSelected: false });
+        return true;
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
+        return false;
       }
     },
 

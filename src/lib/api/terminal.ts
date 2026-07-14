@@ -19,6 +19,11 @@ export interface TerminalAgent {
   available: boolean;
 }
 
+export interface CommitAgentMessages {
+  draftInstruction: string;
+  commitInstruction: string;
+}
+
 export interface PtySpawnResponse {
   sessionId: number;
 }
@@ -43,9 +48,25 @@ export const terminalApi = {
   /** Reset the agent config to the shipped defaults; returns the fresh list. */
   terminalAgentsReset: () => invoke<TerminalAgent[]>("terminal_agents_reset"),
 
+  /** Read the editable instructions used by commit-agent actions. */
+  commitAgentMessagesGet: () =>
+    invoke<CommitAgentMessages>("commit_agent_messages_get"),
+
+  /** Persist both commit-agent instructions independently from the agent list. */
+  commitAgentMessagesSet: (messages: CommitAgentMessages) =>
+    invoke<void>("commit_agent_messages_set", { messages }),
+
+  /** Restore the shipped commit-agent instructions and return them. */
+  commitAgentMessagesReset: () =>
+    invoke<CommitAgentMessages>("commit_agent_messages_reset"),
+
   /** Probe whether a single command's executable resolves on PATH (live check). */
   terminalAgentProbe: (command: string) =>
     invoke<boolean>("terminal_agent_probe", { command }),
+
+  /** Consume a completed commit-message draft from the selected terminal agent. */
+  takeAgentCommitDraft: (path: string, token: string) =>
+    invoke<string | null>("take_agent_commit_draft", { path, token }),
 
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
    *  Returns its `sessionId`; existing sessions keep running. */
