@@ -71,6 +71,26 @@ describe("SuggestInput", () => {
     expect(onPick).not.toHaveBeenCalled();
   });
 
+  it("wires aria-controls and aria-activedescendant to the active option", () => {
+    const { input } = setup();
+    fireEvent.focus(input);
+    // Open with nothing highlighted: controls the listbox, no active descendant.
+    const listbox = screen.getByRole("listbox");
+    expect(input).toHaveAttribute("aria-controls", listbox.id);
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+
+    // Arrow to the first option: activedescendant points at its id.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const [first] = screen.getAllByRole("option");
+    expect(first.id).toBeTruthy();
+    expect(input).toHaveAttribute("aria-activedescendant", first.id);
+
+    // Closing clears both associations.
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input).not.toHaveAttribute("aria-controls");
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+  });
+
   it("closes on Escape and renders nothing without items", () => {
     const { input } = setup();
     fireEvent.focus(input);

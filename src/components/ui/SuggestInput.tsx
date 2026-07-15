@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/cn";
 
 export interface SuggestItem {
@@ -42,6 +42,11 @@ export function SuggestInput({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  // Stable ids so the input can point `aria-controls` at the listbox and
+  // `aria-activedescendant` at the highlighted option (WAI-ARIA combobox).
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const optionId = (index: number) => `${baseId}-option-${index}`;
 
   // Keep the highlight inside the list when the suggestions shrink.
   useEffect(() => {
@@ -99,16 +104,19 @@ export function SuggestInput({
         role="combobox"
         aria-expanded={showList}
         aria-autocomplete="list"
+        aria-controls={showList ? listboxId : undefined}
+        aria-activedescendant={showList && active >= 0 ? optionId(active) : undefined}
         aria-label={ariaLabel}
         className={className}
       />
       {showList && (
         <ul
           role="listbox"
+          id={listboxId}
           className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-md border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-neutral-900"
         >
           {items.map((item, index) => (
-            <li key={`${item.value}-${index}`} role="option" aria-selected={index === active}>
+            <li key={`${item.value}-${index}`} id={optionId(index)} role="option" aria-selected={index === active}>
               <button
                 type="button"
                 tabIndex={-1}
