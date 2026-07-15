@@ -19,6 +19,7 @@ const summaryFor = (path: string) => ({
 const pageWith = (id: string): HistorySearchPage => ({
   results: [{ id, shortId: id, summary: `commit ${id}`, authorName: "Ann", authorEmail: "ann@x", timestamp: 0 }],
   truncated: false,
+  workTruncated: false,
 });
 const graphWith = (ids: string[]): RepoGraph => ({
   commits: ids.map((id) => ({ id, refs: [], authorName: "", authorEmail: "" }) as unknown as CommitNode),
@@ -84,6 +85,42 @@ describe("AdvancedHistorySearch async isolation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     expect(screen.queryByText("commit c1")).not.toBeInTheDocument();
+  });
+
+  it("explains how to narrow a work-bounded partial result", async () => {
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => ({ ...pageWith("c1"), truncated: true, workTruncated: true }),
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+
+    expect(
+      await screen.findByText("Showing partial results — narrow the revision or date range."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the result-cap message when the work budget was not exhausted", async () => {
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => ({ ...pageWith("c1"), truncated: true }),
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+
+    expect(await screen.findByText("Showing the first 200 matches.")).toBeInTheDocument();
+  });
+
+  it("describes an empty work-bounded search as a partial scan", async () => {
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => ({ results: [], truncated: true, workTruncated: true }),
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+
+    expect(await screen.findByText("No matches in the scanned history.")).toBeInTheDocument();
+    expect(screen.queryByText("No matching commits.")).not.toBeInTheDocument();
   });
 
   it("resets the query and results when the repository switches", async () => {

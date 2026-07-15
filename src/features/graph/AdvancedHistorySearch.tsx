@@ -340,7 +340,12 @@ export function AdvancedHistorySearch() {
             onSelect={(id) => void reveal(id)}
             busyId={revealing}
             truncated={page.truncated}
-            truncatedLabel="Showing the first 200 matches."
+            truncatedLabel={
+              page.workTruncated
+                ? "Showing partial results — narrow the revision or date range."
+                : "Showing the first 200 matches."
+            }
+            emptyLabel={page.workTruncated ? "No matches in the scanned history." : undefined}
           />
         </div>
       )}

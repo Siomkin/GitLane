@@ -1,12 +1,15 @@
-use std::path::Path;
-
 use git2::{Diff, Oid, Repository, Sort};
 use regex::{Regex, RegexBuilder};
 
 use crate::git::types::{HistorySearchPage, HistorySearchQuery, HistorySearchResult};
 
+use super::open;
+
 const DEFAULT_LIMIT: usize = 200;
 const MAX_LIMIT: usize = 1_000;
+/// Diff filters are deliberately work-bounded separately from their result
+/// cap: a rare `-G`/`-S`/path match must not diff an entire large history.
+const MAX_DIFFS_SCANNED: usize = 1_000;
 
 fn non_empty(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
@@ -137,7 +140,15 @@ fn occurrence_changed(repo: &Repository, diff: &Diff<'_>, needle: &str) -> bool 
 }
 
 pub fn search_history(path: &str, query: HistorySearchQuery) -> Result<HistorySearchPage, String> {
-    let repo = Repository::open(Path::new(path)).map_err(|error| error.to_string())?;
+    search_history_with_budget(path, query, MAX_DIFFS_SCANNED)
+}
+
+fn search_history_with_budget(
+    path: &str,
+    query: HistorySearchQuery,
+    max_diffs_scanned: usize,
+) -> Result<HistorySearchPage, String> {
+    let repo = open(path).map_err(|error| error.to_string())?;
     let message_pattern = compile_pattern("message", query.message_pattern)?;
     let changed_pattern = compile_pattern("diff", query.changed_pattern)?;
     let author = non_empty(query.author).map(|value| value.to_lowercase());
@@ -153,6 +164,8 @@ pub fn search_history(path: &str, query: HistorySearchQuery) -> Result<HistorySe
     let needs_diff = path_query.is_some() || changed_pattern.is_some() || occurrence_text.is_some();
     let mut results = Vec::new();
     let mut truncated = false;
+    let mut work_truncated = false;
+    let mut diffs_scanned = 0;
 
     for oid in walk {
         let commit = repo
@@ -188,6 +201,12 @@ pub fn search_history(path: &str, query: HistorySearchQuery) -> Result<HistorySe
         }
 
         if needs_diff {
+            if diffs_scanned >= max_diffs_scanned {
+                truncated = true;
+                work_truncated = true;
+                break;
+            }
+            diffs_scanned += 1;
             let tree = commit.tree().map_err(|error| error.to_string())?;
             let parent_tree = commit.parent(0).ok().and_then(|parent| parent.tree().ok());
             let diff = repo
@@ -232,12 +251,16 @@ pub fn search_history(path: &str, query: HistorySearchQuery) -> Result<HistorySe
         });
     }
 
-    Ok(HistorySearchPage { results, truncated })
+    Ok(HistorySearchPage {
+        results,
+        truncated,
+        work_truncated,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{compile_pattern, non_empty, search_history};
+    use super::{compile_pattern, non_empty, search_history, search_history_with_budget};
     use crate::git::types::HistorySearchQuery;
     use git2::{Oid, Repository, Signature, Time};
     use std::path::{Path, PathBuf};
@@ -364,5 +387,50 @@ mod tests {
         let error = search_history(dir.str_path(), q).unwrap_err();
         assert!(error.contains("Unknown revision"), "got: {error}");
         assert!(!error.contains("class="), "must not leak libgit2 internals: {error}");
+    }
+
+    #[test]
+    fn diff_filter_stops_at_the_work_budget_and_signals_truncation() {
+        let dir = TempRepo::new("diff-budget");
+        let repo = Repository::init(dir.path()).unwrap();
+        let first = commit_at(&repo, "refs/heads/main", "first", &[], 1_000);
+        let second = commit_at(&repo, "refs/heads/main", "second", &[first], 2_000);
+        commit_at(&repo, "refs/heads/main", "third", &[second], 3_000);
+
+        let mut q = empty_query();
+        q.changed_pattern = Some("never-matches".into());
+        let page = search_history_with_budget(dir.str_path(), q, 2).unwrap();
+
+        assert!(page.results.is_empty());
+        assert!(page.truncated);
+        assert!(page.work_truncated);
+    }
+
+    #[test]
+    fn result_cap_truncation_is_not_reported_as_work_truncation() {
+        let dir = TempRepo::new("result-cap");
+        let repo = Repository::init(dir.path()).unwrap();
+        let first = commit_at(&repo, "refs/heads/main", "first", &[], 1_000);
+        commit_at(&repo, "refs/heads/main", "second", &[first], 2_000);
+
+        let mut q = empty_query();
+        q.limit = Some(1);
+        let page = search_history(dir.str_path(), q).unwrap();
+
+        assert_eq!(page.results.len(), 1);
+        assert!(page.truncated);
+        assert!(!page.work_truncated);
+    }
+
+    #[test]
+    fn discovers_the_repository_from_a_subdirectory() {
+        let dir = TempRepo::new("discover");
+        let repo = Repository::init(dir.path()).unwrap();
+        commit_at(&repo, "refs/heads/main", "from-root", &[], 1_000);
+        let nested = dir.path().join("nested");
+        std::fs::create_dir(&nested).unwrap();
+
+        let page = search_history(nested.to_str().unwrap(), empty_query()).unwrap();
+        assert_eq!(summaries(&page), vec!["from-root".to_string()]);
     }
 }
