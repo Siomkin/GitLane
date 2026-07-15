@@ -17,7 +17,7 @@ import { useFixedPopover } from "@/features/changes/useFixedPopover";
 export function CommitIdentitySelector({ identity }: { identity: CommitIdentityModel }) {
   const { loading, applying, error, usable, effective, identityText, sourceLabel, selection, activeManual, manuals, defaultIdentity, apply } =
     identity;
-  const { ref, open, menuStyle, toggle, close } = useFixedPopover();
+  const { ref, menuRef, open, menuStyle, toggle, close, portal } = useFixedPopover();
 
   const choose = (target: { kind: "manual"; id: string } | null) => {
     close();
@@ -83,8 +83,9 @@ export function CommitIdentitySelector({ identity }: { identity: CommitIdentityM
           Change
         </button>
 
-        {open && (
+        {portal(() => (
           <div
+            ref={menuRef}
             role="group"
             aria-label={`Commit identity choices — ${sourceLabel}`}
             style={menuStyle}
@@ -124,7 +125,7 @@ export function CommitIdentitySelector({ identity }: { identity: CommitIdentityM
               );
             })}
           </div>
-        )}
+        ))}
       </div>
       {error && <span className="shrink-0 text-[11.5px] text-red-600 dark:text-red-400">{error}</span>}
     </div>

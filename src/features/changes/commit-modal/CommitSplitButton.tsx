@@ -91,7 +91,7 @@ export function CommitSplitButton({
   onToggleAmend: () => void;
   onCommitWithAgent: (agent: TerminalAgent) => void;
 }) {
-  const { ref, open, menuStyle, toggle, close } = useFixedPopover();
+  const { ref, menuRef, open, menuStyle, toggle, close, portal } = useFixedPopover();
 
   const label = amend
     ? "Amend last commit"
@@ -135,8 +135,9 @@ export function CommitSplitButton({
         <ChevronDownIcon className="h-4 w-4" />
       </button>
 
-      {open && (
+      {portal(() => (
         <div
+          ref={menuRef}
           role="menu"
           aria-label="Commit actions"
           style={menuStyle}
@@ -210,7 +211,7 @@ export function CommitSplitButton({
             </>
           )}
         </div>
-      )}
+      ))}
     </div>
   );
 }
