@@ -8,6 +8,11 @@ import { AgentActionControl } from "./AgentActionControl";
 
 const EMPTY_AGENTS: TerminalAgent[] = [];
 
+// Describing a diff is a heavier task than drafting a commit message — the agent
+// reads every changed file and writes a detailed explanation — so it needs a
+// more generous ceiling than the commit-draft flow's two minutes.
+const DESCRIBE_TIMEOUT_MS = 5 * 60_000;
+
 export function AgentChangeDescription({
   contextKey,
   instruction,
@@ -96,9 +101,11 @@ export function AgentChangeDescription({
           }
           return;
         }
-        if (Date.now() - startedAt >= 120_000) {
+        if (Date.now() - startedAt >= DESCRIBE_TIMEOUT_MS) {
           setLoading(false);
-          setError("The agent did not return a description within two minutes.");
+          setError(
+            `The agent did not return a description within ${DESCRIBE_TIMEOUT_MS / 60_000} minutes.`,
+          );
           return;
         }
         window.setTimeout(() => void poll(), 1_000);
