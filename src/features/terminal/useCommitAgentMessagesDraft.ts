@@ -7,7 +7,11 @@ import {
 import { useUi } from "@/store/ui";
 
 const signature = (messages: CommitAgentMessages) =>
-  JSON.stringify([messages.draftInstruction, messages.commitInstruction]);
+  JSON.stringify([
+    messages.draftInstruction,
+    messages.commitInstruction,
+    messages.descriptionInstruction,
+  ]);
 
 export function useCommitAgentMessagesDraft() {
   const saved = useCommitAgentMessages((state) => state.messages);
@@ -31,7 +35,11 @@ export function useCommitAgentMessagesDraft() {
   }, [saved]);
 
   const dirty = signature(draft) !== signature(saved);
-  const valid = Boolean(draft.draftInstruction.trim() && draft.commitInstruction.trim());
+  const valid = Boolean(
+    draft.draftInstruction.trim() &&
+      draft.commitInstruction.trim() &&
+      draft.descriptionInstruction.trim(),
+  );
 
   const update = (field: keyof CommitAgentMessages, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -48,11 +56,12 @@ export function useCommitAgentMessagesDraft() {
       const normalized = {
         draftInstruction: draft.draftInstruction.trim(),
         commitInstruction: draft.commitInstruction.trim(),
+        descriptionInstruction: draft.descriptionInstruction.trim(),
       };
       await saveMessages(normalized);
       setDraft(normalized);
       syncedSignature.current = signature(normalized);
-      showToast("Saved commit agent messages");
+      showToast("Saved agent instructions");
     } catch (saveError) {
       showToast(String(saveError instanceof Error ? saveError.message : saveError), "error");
     } finally {

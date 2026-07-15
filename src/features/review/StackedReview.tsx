@@ -11,6 +11,7 @@ import { useLazyDiffs } from "@/hooks/useLazyDiffs";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
+import { AgentChangeDescription } from "@/features/changes/AgentChangeDescription";
 import { FileIcon } from "@/components/ui/icons";
 import { BinaryDiff } from "./BinaryDiff";
 import { DiffTruncatedNotice, UnifiedDiffBody } from "./DiffBody";
@@ -65,6 +66,11 @@ export function StackedReview() {
     : range
       ? `range:${range.base}..${range.head}`
       : `commit:${oid ?? ""}`;
+  const descriptionInstruction = selection
+    ? `Review the combined changes introduced by these commits: ${selection.join(", ")}.`
+    : range
+      ? `Review the changes in commit range ${range.base}..${range.head}.`
+      : `Review commit or stash ${oid ?? ""}.`;
 
   // Fetch the file list for this oid/range; reset the diff cache + collapse.
   useEffect(() => {
@@ -171,6 +177,13 @@ export function StackedReview() {
           Graph
         </button>
       </div>
+
+      {!loading && files.length > 0 && (
+        <AgentChangeDescription
+          contextKey={surface}
+          instruction={descriptionInstruction}
+        />
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-neutral-800">
         {loading ? (

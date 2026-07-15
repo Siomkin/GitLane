@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { StackedReview } from "./StackedReview";
 
@@ -52,6 +53,12 @@ beforeEach(() => {
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
     selectedFile: null,
   });
+  useTerminalAgents.setState({
+    agents: [],
+    loading: false,
+    error: null,
+    loadAgents: vi.fn(async () => {}),
+  });
   useUi.setState({
     stackedReview: { oid: "c1", range: undefined, title: "Reviewing c1" },
     reviewNotes: [],
@@ -90,6 +97,34 @@ describe("StackedReview — progressive load + collapse", () => {
       file: "bun.lock",
       full: false,
     });
+  });
+
+  it("offers an AI description for an already committed review", async () => {
+    const sendToTerminal = vi.fn();
+    useTerminalAgents.setState({
+      agents: [{ id: "codex", name: "codex", command: "codex", description: "", enabled: true, available: true }],
+    });
+    useUi.setState({ sendToTerminal });
+    useRepo.setState({
+      takeAgentChangeSummary: vi.fn(async () =>
+        "Introduces the committed behavior and updates its supporting tests.",
+      ),
+    });
+
+    render(<StackedReview />);
+    await screen.findByText("Explain what these changes do");
+    fireEvent.click(screen.getByRole("button", { name: "Describe changes with agent" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "codex" }));
+
+    expect(sendToTerminal).toHaveBeenCalledWith(
+      expect.stringContaining("Review commit or stash c1"),
+      "codex",
+    );
+    expect(
+      await screen.findByText(
+        "Introduces the committed behavior and updates its supporting tests.",
+      ),
+    ).toBeVisible();
   });
 
   it("offers 'show full diff' on a truncated diff and re-fetches uncapped", async () => {

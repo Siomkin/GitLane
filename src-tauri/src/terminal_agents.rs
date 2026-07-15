@@ -17,7 +17,10 @@ use tauri::{AppHandle, Manager};
 const DRAFT_PREFIX: &str = "gitlane-commit-draft-";
 const MAX_DRAFT_BYTES: u64 = 8 * 1024;
 const SUMMARY_PREFIX: &str = "gitlane-change-summary-";
-const MAX_SUMMARY_BYTES: u64 = 2 * 1024;
+// A safety guard against an agent accidentally delivering a huge artifact,
+// not a desired description-length limit. Normal detailed explanations should
+// fit comfortably beneath it.
+const MAX_SUMMARY_BYTES: u64 = 32 * 1024;
 const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
 const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
@@ -26,8 +29,14 @@ pub const DEFAULT_DRAFT_INSTRUCTION: &str =
     "Review the staged changes and draft a concise conventional commit message.";
 pub const DEFAULT_COMMIT_INSTRUCTION: &str =
     "Review the staged changes, write a concise conventional-commit message, and commit them.";
+pub const DEFAULT_DESCRIPTION_INSTRUCTION: &str =
+    "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.";
 
-/// User-editable instructions for the two commit-agent actions. GitLane keeps
+fn default_description_instruction() -> String {
+    DEFAULT_DESCRIPTION_INSTRUCTION.into()
+}
+
+/// User-editable instructions for terminal-agent actions. GitLane keeps
 /// its safety, excluded-path, and one-shot delivery suffixes outside this
 /// persisted text so users cannot accidentally remove the handoff contract.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -35,6 +44,8 @@ pub const DEFAULT_COMMIT_INSTRUCTION: &str =
 pub struct CommitAgentMessages {
     pub draft_instruction: String,
     pub commit_instruction: String,
+    #[serde(default = "default_description_instruction")]
+    pub description_instruction: String,
 }
 
 impl Default for CommitAgentMessages {
@@ -42,6 +53,7 @@ impl Default for CommitAgentMessages {
         Self {
             draft_instruction: DEFAULT_DRAFT_INSTRUCTION.into(),
             commit_instruction: DEFAULT_COMMIT_INSTRUCTION.into(),
+            description_instruction: DEFAULT_DESCRIPTION_INSTRUCTION.into(),
         }
     }
 }
@@ -187,8 +199,8 @@ fn messages_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("commit-agent-messages.json"))
 }
 
-/// Load the saved commit-agent instructions. A missing or corrupt config uses
-/// the shipped defaults so both commit actions remain usable.
+/// Load the saved agent instructions. A missing or corrupt config uses the
+/// shipped defaults so all agent actions remain usable.
 pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
     messages_config_path(app)
         .ok()
@@ -198,11 +210,11 @@ pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
         .unwrap_or_default()
 }
 
-/// Persist both instructions atomically. Blank instructions are rejected at
+/// Persist all instructions atomically. Blank instructions are rejected at
 /// the IPC boundary even though the Settings UI also validates them.
 pub fn save_messages(app: &AppHandle, messages: &CommitAgentMessages) -> Result<(), String> {
     if !valid_messages(messages) {
-        return Err("Draft and commit instructions are required.".into());
+        return Err("Description, draft, and commit instructions are required.".into());
     }
     let path = messages_config_path(app)?;
     if let Some(parent) = path.parent() {
@@ -223,7 +235,9 @@ pub fn reset_messages_to_defaults(app: &AppHandle) -> Result<CommitAgentMessages
 }
 
 fn valid_messages(messages: &CommitAgentMessages) -> bool {
-    !messages.draft_instruction.trim().is_empty() && !messages.commit_instruction.trim().is_empty()
+    !messages.draft_instruction.trim().is_empty()
+        && !messages.commit_instruction.trim().is_empty()
+        && !messages.description_instruction.trim().is_empty()
 }
 
 /// Load the agent config, seeding defaults on first launch. Each agent's
@@ -322,7 +336,7 @@ pub fn take_commit_draft(path: &str, token: &str) -> Result<Option<String>, Stri
     Ok(Some(message.trim().to_owned()))
 }
 
-/// Consume a short change summary written by a configured interactive agent.
+/// Consume a change description written by a configured interactive agent.
 /// The filename lives in this worktree's Git directory, and the frontend token
 /// is restricted before it can become part of a path.
 pub fn take_change_summary(path: &str, token: &str) -> Result<Option<String>, String> {
@@ -409,6 +423,19 @@ mod tests {
         let json = serde_json::to_value(&messages).unwrap();
         assert_eq!(json["draftInstruction"], DEFAULT_DRAFT_INSTRUCTION);
         assert_eq!(json["commitInstruction"], DEFAULT_COMMIT_INSTRUCTION);
+        assert_eq!(json["descriptionInstruction"], DEFAULT_DESCRIPTION_INSTRUCTION);
+    }
+
+    #[test]
+    fn commit_agent_messages_add_description_default_to_legacy_config() {
+        let messages: CommitAgentMessages = serde_json::from_value(serde_json::json!({
+            "draftInstruction": "Custom draft",
+            "commitInstruction": "Custom commit"
+        }))
+        .unwrap();
+        assert_eq!(messages.draft_instruction, "Custom draft");
+        assert_eq!(messages.commit_instruction, "Custom commit");
+        assert_eq!(messages.description_instruction, DEFAULT_DESCRIPTION_INSTRUCTION);
     }
 
     #[test]
