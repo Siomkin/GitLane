@@ -415,13 +415,20 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     await flush(); // launch write resolved; the prompt-wait timer is armed
     expect(invokeMock).toHaveBeenCalledWith("pty_write", expect.objectContaining({ sessionId: 1 }));
 
-    // The launched agent enables bracketed paste after the command write (its
-    // prompt is now ready), rather than inheriting the shell's pre-launch mode.
+    // The launched agent enables bracketed paste after the command write. That
+    // alone is not readiness (codex enables it while still booting and drops
+    // early input) — the paste additionally waits for the PTY output to go
+    // quiet. Nothing has pasted at the first poll…
     xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
       vi.advanceTimersByTime(500);
     });
+    expect(xterm.instances[0].pasted).toHaveLength(0);
 
+    // …and it delivers once the quiet window has elapsed with the mode on.
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
   });

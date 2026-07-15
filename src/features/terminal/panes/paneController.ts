@@ -55,6 +55,10 @@ export interface Pane {
   /** True from create until spawn settles — input in that window gets a
    * "still starting" notice, not a dead-shell one. */
   spawning: boolean;
+  /** When PTY output last arrived (0 = never). The agent-launch injection uses
+   * this as a readiness signal: a TUI is accepting input once it has STOPPED
+   * drawing, so the paste waits for output quiescence (GL-176 follow-up). */
+  lastOutputAt: number;
   /** The KIND of write-feedback notice last printed with no success since
    * ("" = none). Coalesced per kind: a keystroke burst prints one line, but a
    * new failure mode (delivery failed → shell exited) still surfaces instead
@@ -90,6 +94,7 @@ export class PaneController {
       alive: false,
       onData: null,
       spawning: true,
+      lastOutputAt: 0,
       lastWriteNotice: "",
     };
     this.panes.set(tabId, pane);
@@ -170,7 +175,10 @@ export class PaneController {
   routeData(sessionId: number, data: ArrayLike<number>): void {
     const tabId = this.bySession.get(sessionId);
     if (!tabId) return;
-    this.panes.get(tabId)?.view.term.write(new Uint8Array(data));
+    const pane = this.panes.get(tabId);
+    if (!pane) return;
+    pane.lastOutputAt = Date.now();
+    pane.view.term.write(new Uint8Array(data));
   }
 
   routeExit(sessionId: number): void {
