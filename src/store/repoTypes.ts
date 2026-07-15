@@ -309,12 +309,16 @@ export interface RepoState {
   /** Clear the entire recent list. */
   clearRecents: () => void;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working
-   * changes, avoiding a graph rebuild for ordinary file/index watcher events. */
+   * changes, avoiding a graph rebuild for ordinary file/index watcher events.
+   * Never rejects — errors are recorded in store state — but resolves `true`
+   * only when it actually published fresh data for the repo it started on;
+   * `false` when it was deferred, superseded, or failed, so callers (the fetch
+   * toast) can tell whether post-refresh reads are trustworthy. */
   refresh: (opts?: {
     prs?: boolean;
     quiet?: boolean;
     scope?: "all" | "worktree";
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   /** Request the next bounded page of graph history. */
   loadMoreHistory: () => Promise<void>;
   /** Poll and consume a commit-message draft handed back by a terminal agent. */

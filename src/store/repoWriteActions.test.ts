@@ -302,48 +302,82 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
   });
 
   it("keeps the fetch success toast when the post-fetch refresh fails", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const realRefresh = useRepo.getState().refresh;
+    // The REAL refresh runs and fails on its graph read — it never rejects, it
+    // resolves false — so this exercises the production contract, not a mock's.
     useRepo.setState({
       remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
       branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
-      refresh: vi.fn().mockRejectedValue(new Error("refresh boom")),
     });
-    try {
-      await useRepo.getState().fetch();
-      const toasts = useNotifications.getState().toasts;
-      expect(toasts).toHaveLength(1);
-      expect(toasts[0].kind).toBe("success");
-      expect(toasts[0].title).toBe("Fetched origin");
-      // Refresh failed → drop the (now-untrustworthy) count rather than claim
-      // "No new commits".
-      expect(toasts[0].body).toBeUndefined();
-    } finally {
-      useRepo.setState({ refresh: realRefresh });
-      warn.mockRestore();
-    }
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().fetch();
+
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe("success");
+    expect(toasts[0].title).toBe("Fetched origin");
+    // Refresh failed → drop the (now-untrustworthy) count rather than claim
+    // "No new commits".
+    expect(toasts[0].body).toBeUndefined();
+  });
+
+  it("a fetch that outlives a repo switch leaves the new repo's lifecycle alone", async () => {
+    const otherSummary = { ...summary, path: "/other", workdir: "/other" };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "fetch") {
+        // A repo switch lands while the fetch is on the wire: the new repo's
+        // load owns `loading` now.
+        useRepo.setState({ summary: otherSummary, loading: true });
+        return Promise.resolve(null);
+      }
+      return refreshInvoke(cmd);
+    });
+
+    const ok = await useRepo.getState().fetch();
+
+    expect(ok).toBe(true);
+    // The stale completion must not clear the new repo's loading or refresh it
+    // (commit_graph is the refresh's signature read).
+    expect(useRepo.getState().loading).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
+    // The toast still resolves — the fetch did succeed — but without a count
+    // read from the wrong repo's branches.
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("success");
+    expect(toast?.body).toBeUndefined();
   });
 
   it("keeps the pull success toast when the post-pull refresh fails", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const realRefresh = useRepo.getState().refresh;
+    // Real refresh, real failure (see the fetch twin above).
     useRepo.setState({
       branches: [
         branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
       ],
-      refresh: vi.fn().mockRejectedValue(new Error("refresh boom")),
     });
-    try {
-      await useRepo.getState().pull();
-      const toasts = useNotifications.getState().toasts;
-      expect(toasts).toHaveLength(1);
-      expect(toasts[0].kind).toBe("success");
-      // Refresh failed → neutral "Pulled", never a stale "Already up to date".
-      expect(toasts[0].title).toBe("Pulled");
-    } finally {
-      useRepo.setState({ refresh: realRefresh });
-      warn.mockRestore();
-    }
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().pull();
+
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe("success");
+    // Refresh failed → neutral "Pulled", never a stale "Already up to date".
+    expect(toasts[0].title).toBe("Pulled");
+  });
+});
+
+describe("refresh — explicit success result", () => {
+  it("resolves true on a full refresh and false when a read fails", async () => {
+    await expect(useRepo.getState().refresh()).resolves.toBe(true);
+
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
+    );
+    await expect(useRepo.getState().refresh()).resolves.toBe(false);
   });
 });
 

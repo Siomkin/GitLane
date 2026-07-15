@@ -906,6 +906,11 @@ export function createRepoWriteActions(
     fetch: async (opts) => {
       const { summary, forge } = get();
       if (!summary) return false;
+      // The operation owner: every post-await store write below is guarded on
+      // the displayed repo still being this one, so a fetch that outlives a
+      // repo switch can't clear the new repo's loading lifecycle or refresh the
+      // wrong checkout. Toast plumbing is global UI and stays unguarded.
+      const opPath = summary.path;
       set({ loading: true, error: null });
       // Capture how far behind the tracked branch is *before* fetching so the
       // success toast can report how many commits the remote ref gained.
@@ -933,8 +938,10 @@ export function createRepoWriteActions(
         await trackNet(() => api.fetch(summary.path, remoteAccounts));
       } catch (e) {
         // Replay any re-sync deferred while this fetch held `loading` (GL-20 review).
-        set({ loading: false });
-        flushPendingRefresh(get);
+        if (get().summary?.path === opPath) {
+          set({ loading: false });
+          flushPendingRefresh(get);
+        }
         if (toastId !== null) {
           notes.dismiss(toastId);
           useUi.getState().showToast(String(e), "error");
@@ -942,6 +949,19 @@ export function createRepoWriteActions(
           console.warn("auto-fetch failed", friendlyGitError(String(e)));
         }
         return false;
+      }
+      if (get().summary?.path !== opPath) {
+        // Switched repos mid-fetch: the new repo's load owns `loading` now.
+        // The fetch itself succeeded, so resolve the toast — but without a
+        // count, which would be read from the wrong repo's branches.
+        if (toastId !== null)
+          notes.update(toastId, {
+            kind: "success",
+            title: only ? `Fetched ${only}` : "Fetched",
+            progress: undefined,
+            duration: 5000,
+          });
+        return true;
       }
       set({ loading: false });
       if (opts?.quiet) {
@@ -953,14 +973,10 @@ export function createRepoWriteActions(
         return true;
       }
       // Fetch succeeded — refresh (best-effort) so the count reflects new refs,
-      // then report. A refresh failure can't relabel a successful fetch.
-      let refreshed = true;
-      try {
-        await get().refresh();
-      } catch (err) {
-        refreshed = false;
-        console.warn("fetch: post-fetch refresh failed", err);
-      }
+      // then report. `refresh` never rejects; it reports success as a boolean
+      // (false = deferred/superseded/failed), and a refresh failure can't
+      // relabel a successful fetch.
+      const refreshed = await get().refresh();
       const headAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const gained = Math.max(0, (headAfter?.sync?.behind ?? 0) - behindBefore);
       const on = headAfter?.name ?? head?.name;
@@ -968,11 +984,12 @@ export function createRepoWriteActions(
         kind: "success",
         title: only ? `Fetched ${only}` : "Fetched",
         // The count comes from post-fetch branch state, so it's only trustworthy
-        // when the refresh landed. If refresh failed, drop the detail rather than
-        // claim "No new commits" (which could be wrong). "No new commits" (vs "up
-        // to date") because a fetch that gained nothing doesn't mean the branch is
-        // synced — it may still be behind; only pull can claim sync.
-        body: !refreshed
+        // when the refresh landed on this same repo. If it didn't, drop the
+        // detail rather than claim "No new commits" (which could be wrong).
+        // "No new commits" (vs "up to date") because a fetch that gained nothing
+        // doesn't mean the branch is synced — it may still be behind; only pull
+        // can claim sync.
+        body: !refreshed || get().summary?.path !== opPath
           ? undefined
           : gained > 0 && on
             ? `↓${gained} new commit${gained === 1 ? "" : "s"} on ${on}`
@@ -1008,14 +1025,10 @@ export function createRepoWriteActions(
         return;
       }
       // Pull succeeded — refresh (best-effort) to observe the new tip, then
-      // report. A refresh failure can't relabel a successful pull.
-      let refreshed = true;
-      try {
-        await get().refresh();
-      } catch (err) {
-        refreshed = false;
-        console.warn("pull: post-pull refresh failed", err);
-      }
+      // report. `refresh` never rejects; it reports success as a boolean
+      // (false = deferred/superseded/failed), and a refresh failure can't
+      // relabel a successful pull.
+      const refreshed = await get().refresh();
       const tipAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)?.target ?? null;
       // The pulled-vs-up-to-date distinction relies on the tip observed after
       // refresh; if refresh failed the tip is stale, so report a neutral success
