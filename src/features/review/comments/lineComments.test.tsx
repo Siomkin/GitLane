@@ -1,9 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DiffHunk } from "@/lib/api";
 import { useUi } from "@/store/ui";
 import { UnifiedDiffBody } from "@/features/review/DiffBody";
 import { HandToAgentBar } from "./HandToAgentBar";
+import { useMultiFileLineComments } from "./useLineComments";
+import type { LineMeta } from "./notes";
 
 const hunks: DiffHunk[] = [
   {
@@ -61,6 +63,54 @@ describe("in-diff local comments", () => {
     render(<UnifiedDiffBody hunks={hunks} file="a.ts" surface="work" />);
     // The note belongs to another surface, so no anchor marker is rendered here.
     expect(screen.queryByRole("button", { name: "Toggle comment" })).toBeNull();
+  });
+
+  it("keeps stacked-review comments file-scoped across eviction and reload", () => {
+    const line = (code: string): LineMeta[] => [
+      { seq: 0, side: "R", lineNo: 1, ref: "R1", code },
+    ];
+    const loaded = new Map([
+      ["a.ts", line("from a")],
+      ["b.ts", line("from b")],
+    ]);
+    const { result, rerender } = renderHook(
+      ({ linesByFile }: { linesByFile: ReadonlyMap<string, LineMeta[]> }) =>
+        useMultiFileLineComments("commit:c1", linesByFile),
+      { initialProps: { linesByFile: loaded } },
+    );
+    const mouseEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    act(() => {
+      result.current
+        .controllerFor("a.ts")
+        .rowFor(0)
+        .onHandleDown(mouseEvent as never);
+    });
+    fireEvent.mouseUp(document);
+
+    expect(result.current.controllerFor("a.ts").rowFor(0).editHere).toBe(true);
+    expect(result.current.controllerFor("b.ts").rowFor(0).editHere).toBe(false);
+
+    act(() => result.current.controllerFor("a.ts").setDraft("fix file a"));
+    act(() => result.current.controllerFor("a.ts").save());
+    expect(useUi.getState().reviewNotes).toMatchObject([
+      { surface: "commit:c1", file: "a.ts", body: "fix file a" },
+    ]);
+    expect(result.current.controllerFor("a.ts").rowFor(0).isAnchor).toBe(true);
+    expect(result.current.controllerFor("b.ts").rowFor(0).isAnchor).toBe(false);
+
+    // Eviction removes the file's line metadata, not its durable note. Reloading
+    // the same diff resolves the saved refs and restores the anchor.
+    rerender({ linesByFile: new Map([["b.ts", line("from b")]]) });
+    expect(result.current.controllerFor("a.ts").rowFor(0).isAnchor).toBe(false);
+    rerender({ linesByFile: loaded });
+    expect(result.current.controllerFor("a.ts").rowFor(0)).toMatchObject({
+      isAnchor: true,
+      body: "fix file a",
+    });
   });
 
   it("HandToAgentBar surfaces the pending count and opens the composer", () => {

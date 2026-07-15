@@ -70,6 +70,67 @@ describe("useLazyDiffs", () => {
     expect(calls).toBe(1);
   });
 
+  it("evicts settled entries so a virtual surface can re-fetch them", async () => {
+    let calls = 0;
+    const item = {
+      key: "far-away",
+      fetch: () => {
+        calls += 1;
+        return Promise.resolve({ path: "far-away" } as FileDiff);
+      },
+    };
+    const { result } = renderHook(() => useLazyDiffs());
+
+    await act(async () => result.current.ensure([item]));
+    expect(result.current.diffs).toHaveProperty("far-away");
+
+    act(() => result.current.evict(["far-away"]));
+    expect(result.current.diffs).not.toHaveProperty("far-away");
+
+    await act(async () => result.current.ensure([item]));
+    expect(calls).toBe(2);
+    expect(result.current.diffs).toHaveProperty("far-away");
+  });
+
+  it("drops obsolete queued viewport work without cancelling active fetches", async () => {
+    const activeDefs = Array.from({ length: MAX_CONCURRENT_DIFFS }, () => deferred());
+    const staleDefs = Array.from({ length: 2 }, () => deferred());
+    const currentDefs = Array.from({ length: 2 }, () => deferred());
+    const started: string[] = [];
+    const item = (key: string, d: ReturnType<typeof deferred>) => ({
+      key,
+      fetch: () => {
+        started.push(key);
+        return d.promise;
+      },
+    });
+    const active = activeDefs.map((d, index) => item(`active${index}`, d));
+    const stale = staleDefs.map((d, index) => item(`stale${index}`, d));
+    const current = currentDefs.map((d, index) => item(`current${index}`, d));
+
+    const { result } = renderHook(() => useLazyDiffs());
+    act(() => result.current.ensure([...active, ...stale]));
+    expect(started).toHaveLength(MAX_CONCURRENT_DIFFS);
+
+    // The viewport jumps while the physical window is full. Pending work from
+    // the old window is discarded; already-started work remains capacity-bound.
+    act(() => {
+      result.current.retainQueued(current.map(({ key }) => key));
+      result.current.ensure(current);
+    });
+    await act(async () => {
+      activeDefs[0].resolve({} as FileDiff);
+    });
+    expect(started[MAX_CONCURRENT_DIFFS]).toBe("current0");
+    expect(started).not.toContain("stale0");
+    expect(started).not.toContain("stale1");
+
+    await act(async () => {
+      activeDefs.slice(1).forEach((d) => d.resolve({} as FileDiff));
+      currentDefs.forEach((d) => d.resolve({} as FileDiff));
+    });
+  });
+
   it("drops in-flight results after reset() so a new set isn't polluted", async () => {
     const def = deferred();
     const { result } = renderHook(() => useLazyDiffs());

@@ -83,6 +83,7 @@ beforeEach(() => {
   useRepo.setState({
     summary,
     selectedFile: null,
+    fileSelectionRequestId: 0,
     fileDiff: null,
     selectedCommit: null,
     graphLimit: 2_000,
@@ -1153,8 +1154,10 @@ describe("repo store — large history", () => {
       await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
       // The user re-clicks the same row; selectFile completes (diffLoading back
       // to false) before the reconcile's slower response lands.
+      const requestId = useRepo.getState().fileSelectionRequestId;
       await useRepo.getState().selectFile("src/a.ts", "unstaged");
       expect(useRepo.getState().fileDiff).toEqual(foreground);
+      expect(useRepo.getState().fileSelectionRequestId).toBe(requestId + 1);
       slow.resolve(diff({ add: 99 }));
       await slow.promise;
       await Promise.resolve();
