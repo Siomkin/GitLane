@@ -21,6 +21,7 @@ export function SearchResultsList({
   busyId,
   truncated,
   truncatedLabel,
+  emptyLabel,
 }: {
   results: SearchResultItem[];
   onSelect: (id: string) => void;
@@ -29,13 +30,16 @@ export function SearchResultsList({
   /** The result set itself was capped upstream (advanced search's page). */
   truncated?: boolean;
   truncatedLabel?: string;
+  emptyLabel?: string;
 }) {
   const visible = results.slice(0, MAX_RENDERED_RESULTS);
   const capped = results.length > visible.length;
   return (
     <div className="max-h-64 overflow-auto rounded-md border border-black/5 bg-white dark:border-white/5 dark:bg-neutral-900">
       {visible.length === 0 ? (
-        <p className="px-3 py-4 text-center text-xs text-neutral-400">No matching commits.</p>
+        <p className="px-3 py-4 text-center text-xs text-neutral-400">
+          {emptyLabel ?? "No matching commits."}
+        </p>
       ) : (
         visible.map((result) => (
           <button

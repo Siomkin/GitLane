@@ -100,6 +100,7 @@ export interface HistorySearchResult {
 export interface HistorySearchPage {
   results: HistorySearchResult[];
   truncated: boolean;
+  workTruncated: boolean;
 }
 
 export interface RepoSummary {

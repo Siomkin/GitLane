@@ -38,7 +38,7 @@ export function createRepoRefreshActions(
   return {
     searchHistory: async (query) => {
       const repoPath = get().summary?.path;
-      if (!repoPath) return { results: [], truncated: false };
+      if (!repoPath) return { results: [], truncated: false, workTruncated: false };
       return api.searchHistory(repoPath, query);
     },
     suggestTreePaths: async (filter) => {

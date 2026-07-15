@@ -107,6 +107,7 @@ export const historySearchPageSchema = z.object({
     timestamp: z.number(),
   })),
   truncated: z.boolean(),
+  workTruncated: z.boolean(),
 });
 
 // ---- working_changes → WorkingChanges ----

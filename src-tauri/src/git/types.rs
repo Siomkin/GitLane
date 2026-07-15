@@ -127,8 +127,11 @@ pub struct HistorySearchResult {
 #[serde(rename_all = "camelCase")]
 pub struct HistorySearchPage {
     pub results: Vec<HistorySearchResult>,
-    /// True when more matches exist beyond the requested result cap.
+    /// True when the requested result cap or the diff-work budget stopped the
+    /// search before the reachable history was exhausted.
     pub truncated: bool,
+    /// True specifically when the diff-work budget stopped the search.
+    pub work_truncated: bool,
 }
 
 /// High-level repository state shown in the title bar / status area.
