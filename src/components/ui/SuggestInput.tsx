@@ -10,6 +10,11 @@ export interface SuggestItem {
   hint?: string;
 }
 
+/** Pull a highlight index back inside a list that may have shrunk. Kept in one
+ * place so the render-time derivation, the normalization effect, and the arrow
+ * stepper can't drift apart. `-1` (no highlight) is preserved. */
+const clampToList = (index: number, length: number) => (index >= length ? length - 1 : index);
+
 /**
  * A text input with a lightweight suggestion dropdown. Domain-free: the
  * parent computes `items` for the current value (sync or async) and decides
@@ -52,13 +57,13 @@ export function SuggestInput({
   // render so `aria-activedescendant` / `aria-selected` / the highlight never
   // point at an option id that isn't rendered on the same frame (a post-paint
   // effect alone leaves a one-frame gap).
-  const safeActive = active >= items.length ? items.length - 1 : active;
+  const safeActive = clampToList(active, items.length);
 
   // …and the effect keeps the raw state in range too, so a stale out-of-range
   // index can't resurface if the list shrinks and later regrows without user
   // input (e.g. async suggestion refresh while a row is arrow-highlighted).
   useEffect(() => {
-    setActive((current) => (current >= items.length ? items.length - 1 : current));
+    setActive((current) => clampToList(current, items.length));
   }, [items.length]);
 
   const showList = open && items.length > 0;
@@ -80,7 +85,7 @@ export function SuggestInput({
       // wraps by one. (A plain modulo step from -1 would skip to n-2 on ArrowUp.)
       // Clamp first so a stale index left over from a larger list steps sanely.
       setActive((current) => {
-        const cur = current >= items.length ? items.length - 1 : current;
+        const cur = clampToList(current, items.length);
         return cur < 0 ? (down ? 0 : items.length - 1) : (cur + (down ? 1 : -1) + items.length) % items.length;
       });
       return;

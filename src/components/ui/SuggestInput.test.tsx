@@ -131,6 +131,25 @@ describe("SuggestInput", () => {
     expect(screen.queryByRole("option", { selected: true })).not.toBeInTheDocument();
   });
 
+  it("normalizes the highlight through a non-empty shrink then regrow (3→1→3)", () => {
+    const three = [
+      { value: "a", hint: "branch" },
+      { value: "b", hint: "branch" },
+      { value: "c", hint: "branch" },
+    ];
+    const { input, rerender } = setup({ items: three });
+    fireEvent.focus(input);
+    // Highlight index 2, shrink to one (clamps raw state to 0), regrow to three.
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    rerender({ items: [three[0]] });
+    rerender({ items: three });
+    // Highlight settled at the clamped index 0 — never resurfaces at index 2.
+    const options = screen.getAllByRole("option");
+    expect(input).toHaveAttribute("aria-activedescendant", options[0].id);
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[2]).toHaveAttribute("aria-selected", "false");
+  });
+
   it("closes on Escape and renders nothing without items", () => {
     const { input } = setup();
     fireEvent.focus(input);
