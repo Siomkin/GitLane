@@ -1,6 +1,6 @@
 [package]
 name = "gitlane"
-version = "1.2.0-beta.1"
+version = "1.3.0-beta.1"
 description = "GitLane — a visual git client"
 authors = ["Siomkin Alexander <siomkin.alexander@gmail.com>"]
 license = "GPL-3.0-or-later"
