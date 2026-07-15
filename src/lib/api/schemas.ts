@@ -27,6 +27,7 @@ import type {
   FileChange,
   FileDiff,
   GraphEdge,
+  HistorySearchPage,
   LfsState,
   RefLabel,
   RepoGraph,
@@ -93,6 +94,18 @@ export const repoGraphSchema = z.object({
   wipLane: z.number().nullish(),
   wipColor: z.number().nullish(),
   head: z.string().nullable(),
+  truncated: z.boolean(),
+});
+
+export const historySearchPageSchema = z.object({
+  results: z.array(z.object({
+    id: z.string(),
+    shortId: z.string(),
+    summary: z.string(),
+    authorName: z.string(),
+    authorEmail: z.string(),
+    timestamp: z.number(),
+  })),
   truncated: z.boolean(),
 });
 
@@ -317,6 +330,7 @@ assertEqual<z.infer<typeof stashRefSchema>, StashRef>(true);
 assertEqual<z.infer<typeof commitNodeSchema>, CommitNode>(true);
 assertEqual<z.infer<typeof graphEdgeSchema>, GraphEdge>(true);
 assertEqual<z.infer<typeof repoGraphSchema>, RepoGraph>(true);
+assertEqual<z.infer<typeof historySearchPageSchema>, HistorySearchPage>(true);
 
 assertEqual<z.infer<typeof fileAdvancedStateSchema>, FileAdvancedState>(true);
 assertEqual<z.infer<typeof fileChangeSchema>, FileChange>(true);

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
@@ -109,8 +109,12 @@ const compactRowHeight = rowHeightFor("Compact");
 
 // A matched summary is split across <mark> highlight nodes, so match on full
 // textContent and pick the innermost element, then climb to the row (role=button).
+// Scoped to the graph's scroll container: while a query is active the search
+// bar's results panel repeats the same summary text above the rows.
 const deepestWithText = (text: string) => {
-  const all = screen.getAllByText((_, node) => node?.textContent?.trim() === text);
+  const all = within(screen.getByTestId("history-scroll")).getAllByText(
+    (_, node) => node?.textContent?.trim() === text,
+  );
   return all.find((el) => !all.some((o) => o !== el && el.contains(o)))!;
 };
 const rowFor = (msg: string) => deepestWithText(msg).closest('[role="button"]')!;

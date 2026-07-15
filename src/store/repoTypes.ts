@@ -8,6 +8,8 @@ import type {
   FileChange,
   FileDiff,
   FileHistoryEntry,
+  HistorySearchPage,
+  HistorySearchQuery,
   OperationAdvisory,
   OperationKind,
   ReflogEntry,
@@ -312,6 +314,12 @@ export interface RepoState {
   loadMoreHistory: () => Promise<void>;
   /** Poll and consume a commit-message draft handed back by a terminal agent. */
   takeAgentCommitDraft: (repoPath: string, token: string) => Promise<string | null>;
+  /** Search every commit reachable from repository refs without expanding the
+   * bounded graph first. The caller owns transient query/result UI state. */
+  searchHistory: (query: HistorySearchQuery) => Promise<HistorySearchPage>;
+  /** HEAD-tree paths containing `filter` — the advanced search's File-path
+   * autosuggest. Best-effort: no repo (or a read failure) suggests nothing. */
+  suggestTreePaths: (filter: string) => Promise<string[]>;
   loadReflog: () => Promise<void>;
   selectCommit: (id: string | null) => Promise<void>;
   /** Select `id`, surface the graph, and request a scroll to it. Used by the
