@@ -85,7 +85,9 @@ export function useTerminalInjection({
           if (cancelled) return;
           const bracketed = view.bracketedPaste();
           if (!bracketed) sawBracketedOff = true;
-          const quiet = Date.now() - (pane.lastOutputAt || startedAt) >= QUIET_MS;
+          // Ignore pre-launch timestamps: an idle shell's last prompt must not
+          // count as "already quiet" before the agent has produced any output.
+          const quiet = Date.now() - Math.max(pane.lastOutputAt, startedAt) >= QUIET_MS;
           // Paste once the agent asked for bracketed paste AND its startup
           // rendering has gone quiet; the bounded fallback still guarantees
           // the text is never dropped for agents without either signal.
