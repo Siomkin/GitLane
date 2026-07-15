@@ -91,7 +91,7 @@ describe("SuggestInput", () => {
       { value: "b", hint: "branch" },
       { value: "c", hint: "branch" },
     ];
-    const { input, rerender } = setup({ items: three });
+    const { input, rerender, onPick } = setup({ items: three });
     fireEvent.focus(input);
     // Highlight the last (index 2) option.
     fireEvent.keyDown(input, { key: "ArrowUp" });
@@ -105,9 +105,30 @@ describe("SuggestInput", () => {
     const activedescendant = input.getAttribute("aria-activedescendant");
     expect(activedescendant).toBe(options[0].id);
 
-    // Enter now picks the surviving (clamped) option rather than nothing.
+    // Enter now picks the surviving (clamped) option, not nothing.
     fireEvent.keyDown(input, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith("a");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("does not resurrect a stale highlight when the list empties and regrows", () => {
+    const three = [
+      { value: "a", hint: "branch" },
+      { value: "b", hint: "branch" },
+      { value: "c", hint: "branch" },
+    ];
+    const { input, rerender } = setup({ items: three });
+    fireEvent.focus(input);
+    // Highlight index 2, then let the list empty out (e.g. async refresh) with
+    // no typing/arrowing in between, then repopulate to the original length.
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    rerender({ items: [] });
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+    rerender({ items: three });
+    // The old index-2 highlight must NOT come back on its own; the input opens
+    // unhighlighted until the user navigates again.
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+    expect(screen.queryByRole("option", { selected: true })).not.toBeInTheDocument();
   });
 
   it("closes on Escape and renders nothing without items", () => {

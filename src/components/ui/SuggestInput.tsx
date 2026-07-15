@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/cn";
 
 export interface SuggestItem {
@@ -48,10 +48,18 @@ export function SuggestInput({
   const listboxId = `${baseId}-listbox`;
   const optionId = (index: number) => `${baseId}-option-${index}`;
 
-  // Keep the highlight inside the list when the suggestions shrink. Derived
-  // during render (not a post-paint effect) so `aria-activedescendant` never
-  // points at an option id that isn't rendered on the same frame.
+  // Clamp the highlight to the current list. `safeActive` is derived during
+  // render so `aria-activedescendant` / `aria-selected` / the highlight never
+  // point at an option id that isn't rendered on the same frame (a post-paint
+  // effect alone leaves a one-frame gap).
   const safeActive = active >= items.length ? items.length - 1 : active;
+
+  // …and the effect keeps the raw state in range too, so a stale out-of-range
+  // index can't resurface if the list shrinks and later regrows without user
+  // input (e.g. async suggestion refresh while a row is arrow-highlighted).
+  useEffect(() => {
+    setActive((current) => (current >= items.length ? items.length - 1 : current));
+  }, [items.length]);
 
   const showList = open && items.length > 0;
 
