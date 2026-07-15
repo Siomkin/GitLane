@@ -108,6 +108,43 @@ describe("ChangeSummaryCard", () => {
     expect(await screen.findByText("Summary survived the Git metadata refresh.")).toBeVisible();
   });
 
+  it("keeps polling when only advanced repo state (LFS/submodule) refreshes", async () => {
+    let resolveSummary: (value: string) => void = () => {};
+    const takeAgentChangeSummary = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSummary = resolve;
+        }),
+    );
+    useUi.setState({ sendToTerminal: vi.fn() });
+    useRepo.setState({ takeAgentChangeSummary });
+
+    const { rerender } = render(<ChangeSummaryCard changes={changes} />);
+    fireEvent.click(screen.getByRole("button", { name: "Describe changes with agent" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "codex" }));
+    await waitFor(() => expect(takeAgentChangeSummary).toHaveBeenCalledTimes(1));
+
+    // A watcher refresh that only changes advanced state — the file buckets are
+    // untouched — must not change the context key and cancel the in-flight poll.
+    rerender(
+      <ChangeSummaryCard
+        changes={{
+          ...changes,
+          advanced: {
+            ...emptyAdvancedState,
+            lfs: { ...emptyAdvancedState.lfs, detected: true },
+          },
+        }}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("describing these changes");
+
+    act(() => resolveSummary("Summary survived the advanced-state refresh."));
+    expect(
+      await screen.findByText("Summary survived the advanced-state refresh."),
+    ).toBeVisible();
+  });
+
   it("uses the change-description instruction configured in Settings", () => {
     const sendToTerminal = vi.fn();
     useUi.setState({ sendToTerminal });

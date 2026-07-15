@@ -8,6 +8,7 @@ export function AgentActionControl({
   agents,
   activeAgentId,
   label,
+  actionTitle,
   buttonAriaLabel,
   menuLabel,
   menuAriaLabel = menuLabel,
@@ -19,6 +20,8 @@ export function AgentActionControl({
   agents: TerminalAgent[];
   activeAgentId: string | null;
   label: string;
+  /** Hover title when the control is usable; defaults to `${label} with an agent`. */
+  actionTitle?: string;
   buttonAriaLabel?: string;
   menuLabel: string;
   menuAriaLabel?: string;
@@ -45,7 +48,7 @@ export function AgentActionControl({
             ? disabledTitle
             : available.length === 0
               ? "No available agents on PATH"
-              : `${label} with an agent`
+              : (actionTitle ?? `${label} with an agent`)
         }
         className={cn(
           "flex h-7 items-center gap-1.5 rounded-lg px-2 text-[12px] font-medium text-[color:var(--accent)] transition-colors disabled:cursor-not-allowed disabled:opacity-45",

@@ -30,6 +30,7 @@ export function DraftAgentControl({
       agents={agents}
       activeAgentId={activeAgentId}
       label={label}
+      actionTitle={`${label} the commit message with an agent`}
       menuLabel={`${label} with`}
       menuAriaLabel={`${label} with agent`}
       disabled={disabled}
