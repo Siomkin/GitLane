@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CommitNode, HistorySearchPage, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { AdvancedHistorySearch } from "./AdvancedHistorySearch";
+import { datePlaceholders } from "./advancedSearchModel";
 
 const realActions = {
   searchHistory: useRepo.getState().searchHistory,
@@ -58,12 +59,89 @@ describe("AdvancedHistorySearch filter chips", () => {
     render(<AdvancedHistorySearch />);
     const message = screen.getByPlaceholderText("regex — fix|refactor") as HTMLInputElement;
     const author = screen.getByPlaceholderText("name or email") as HTMLInputElement;
+    const since = screen.getByLabelText("Committed after") as HTMLInputElement;
     fireEvent.change(message, { target: { value: "fix" } });
     fireEvent.change(author, { target: { value: "Ann" } });
+    fireEvent.change(since, { target: { value: "2020-01-01" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     expect(message.value).toBe("");
     expect(author.value).toBe("");
+    expect(since.value).toBe("");
+    expect(screen.queryByRole("button", { name: "Clear all" })).not.toBeInTheDocument();
+  });
+
+  it("flags an unparseable date instead of chip-ing or searching it", () => {
+    render(<AdvancedHistorySearch />);
+    const since = screen.getByLabelText("Committed after") as HTMLInputElement;
+    fireEvent.change(since, { target: { value: "2223213123" } });
+
+    // No lying chip for a value the query would drop; the field is flagged and
+    // the search is blocked instead.
+    expect(screen.queryByRole("button", { name: /Remove After/ })).not.toBeInTheDocument();
+    expect(since).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/Dates must be YYYY-MM-DD/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search repository" })).toBeDisabled();
+
+    fireEvent.change(since, { target: { value: "2025-07-15" } });
+    expect(screen.getByRole("button", { name: "Remove After 2025-07-15 filter" })).toBeInTheDocument();
+    expect(since).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("adopts the placeholder on Tab in an empty date field, but not on Shift+Tab or over a value", () => {
+    render(<AdvancedHistorySearch />);
+    const hints = datePlaceholders();
+    const since = screen.getByLabelText("Committed after") as HTMLInputElement;
+    const until = screen.getByLabelText("Committed before") as HTMLInputElement;
+
+    fireEvent.keyDown(since, { key: "Tab", shiftKey: true });
+    expect(since.value).toBe(""); // backing out never fills
+
+    fireEvent.keyDown(since, { key: "Tab" });
+    expect(since.value).toBe(hints.since);
+    expect(
+      screen.getByRole("button", { name: `Remove After ${hints.since} filter` }),
+    ).toBeInTheDocument();
+
+    fireEvent.change(until, { target: { value: "20200101" } });
+    fireEvent.keyDown(until, { key: "Tab" });
+    expect(until.value).toBe("2020-01-01"); // a typed value is never overwritten
+  });
+
+  it("masks typed digits into YYYY-MM-DD", () => {
+    render(<AdvancedHistorySearch />);
+    const since = screen.getByLabelText("Committed after") as HTMLInputElement;
+    fireEvent.change(since, { target: { value: "20250715" } });
+    expect(since.value).toBe("2025-07-15");
+    expect(screen.getByRole("button", { name: "Remove After 2025-07-15 filter" })).toBeInTheDocument();
+  });
+
+  it("holds the invalid flag while typing and raises it on blur", () => {
+    render(<AdvancedHistorySearch />);
+    const since = screen.getByLabelText("Committed after") as HTMLInputElement;
+    fireEvent.focus(since);
+    fireEvent.change(since, { target: { value: "22" } });
+
+    // Mid-edit: no nagging, but the search is already (quietly) blocked.
+    expect(since).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByText(/Dates must be/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search repository" })).toBeDisabled();
+
+    fireEvent.blur(since);
+    expect(since).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/Dates must be/)).toBeInTheDocument();
+  });
+
+  it("hints the date range with placeholders (-1y / today) without activating a filter", () => {
+    render(<AdvancedHistorySearch />);
+    const hints = datePlaceholders();
+    const since = screen.getByLabelText("Committed after") as HTMLInputElement;
+    const until = screen.getByLabelText("Committed before") as HTMLInputElement;
+    expect(since.value).toBe("");
+    expect(until.value).toBe("");
+    expect(since.placeholder).toBe(hints.since);
+    expect(until.placeholder).toBe(hints.until);
+    // Placeholders are hints, not filters — no chips, no Clear all.
     expect(screen.queryByRole("button", { name: "Clear all" })).not.toBeInTheDocument();
   });
 });
