@@ -3,10 +3,11 @@
 // prompts.ts. The barrel keeps the pre-split `overlays/menus` import surface.
 //
 // Importing the `api` object (the canFastForward probe, preview* reads) is only
-// allowed for the menu files named in the eslint allowlist (eslint.config.js,
-// GL-58) — currently ActionMenu, BranchContextMenu, CommitContextMenu, and
-// WipContextMenu. A new menu that adds a probe/preview read must be added
-// there too, or `bun run lint` fails CI.
+// allowed for the files named in the eslint allowlist (eslint.config.js, GL-58) —
+// currently ActionMenu, BranchContextMenu, CommitContextMenu, and the shared
+// useDiscardAllChanges hook (WipContextMenu now goes through that hook, GL-236).
+// A new menu that adds a probe/preview read must be added there too, or
+// `bun run lint` fails CI.
 export { ActionMenu } from "./ActionMenu";
 export { BranchContextMenu } from "./BranchContextMenu";
 export { CommitContextMenu } from "./CommitContextMenu";

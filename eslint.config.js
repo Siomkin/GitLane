@@ -99,7 +99,8 @@ export default [
   // Documented boundary sites that legitimately import the `api` object: the PTY
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
   // and controller never touch `api`, GL-177) and the context-menu probe /
-  // destructive-preview reads in the menus folder module (GL-156)
+  // destructive-preview reads in the menus folder module (GL-156), including the
+  // shared discard-all hook that owns the `previewDiscardAll` read (GL-236)
   // (architecture-rules-react.md §1).
   {
     files: [
@@ -107,7 +108,7 @@ export default [
       "src/components/chrome/overlays/menus/ActionMenu.tsx",
       "src/components/chrome/overlays/menus/BranchContextMenu.tsx",
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
-      "src/components/chrome/overlays/menus/WipContextMenu.tsx",
+      "src/components/chrome/overlays/menus/useDiscardAllChanges.ts",
     ],
     rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
   },

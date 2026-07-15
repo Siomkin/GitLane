@@ -4,10 +4,13 @@ import {
   advancedNotices,
   fileWriteGuard,
   findGuardedFile,
+  guardedAdvancedWriteMessage,
 } from "@/lib/advancedRepoState";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { TrashIcon } from "@/components/ui/icons";
+import { useDiscardAllChanges } from "@/components/chrome/overlays/menus/useDiscardAllChanges";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { CommitComposer } from "./commit-modal";
@@ -35,6 +38,11 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const stagedGuarded = findGuardedFile(changes.staged, changes);
   const stageAllBlocked = fileWriteGuard(unstagedGuarded, changes);
   const unstageAllBlocked = fileWriteGuard(stagedGuarded, changes);
+  const discardAllChanges = useDiscardAllChanges(summary?.path ?? null);
+  // Discard clears the whole working tree, so it shares the WIP menu's bulk
+  // guard — the same sparse-checkout / submodule advanced-write block that
+  // gates staging — rather than a single per-file stage guard.
+  const discardAllBlocked = guardedAdvancedWriteMessage(changes);
   // Unmerged paths whose owning operation isn't currently driving the conflict
   // workspace (e.g. `git am`/`bisect`, or a transient detection failure). Shown
   // read-only here so they never vanish from the UI — resolution still happens
@@ -96,7 +104,38 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
             but the conflicts list below still honours the Path/Tree view). */}
         {(total > 0 || conflicted.length > 0) && (
           <div className="flex items-center justify-between">
-            <ChangeTypeCounts summary={summarizeChanges(changes)} />
+            <div className="flex items-center gap-2">
+              <ChangeTypeCounts summary={summarizeChanges(changes)} />
+              {/* Discard-all sits quietly next to the change counts: a grey trash
+                  icon behind a divider that, on hover, reddens and reveals its
+                  "Discard all" label — a destructive whole-tree action that
+                  doesn't compete for attention with the primary controls. */}
+              {/* The divider and the trash icon pair up as one discard control:
+                  grouped tightly together, set apart from the change counts. */}
+              {total > 0 && (
+                <div className="flex items-center gap-1">
+                  <span aria-hidden className="h-3.5 w-px flex-none bg-black/10 dark:bg-white/10" />
+                  {/* Reads as a quiet link: a grey trash icon sized to the change
+                      counts that reddens and reveals its "Discard all" label on
+                      hover or keyboard focus — a real <button> (it runs an action,
+                      not navigation), so keyboard users get the focus ring and the
+                      label without a pointer. */}
+                  <button
+                    type="button"
+                    aria-label="Discard all changes"
+                    title={discardAllBlocked ?? "Discard all changes"}
+                    onClick={discardAllBlocked ? undefined : discardAllChanges}
+                    disabled={!!discardAllBlocked}
+                    className="group ml-0.5 inline-flex items-center rounded text-neutral-400 transition hover:text-red-600 focus-visible:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-neutral-400 dark:hover:text-red-400 dark:focus-visible:text-red-400"
+                  >
+                    <TrashIcon className="h-3 w-3 group-hover:hidden group-focus-visible:hidden" />
+                    <span className="hidden text-[12px] font-medium underline underline-offset-2 group-hover:inline group-focus-visible:inline">
+                      Discard all
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
             <FileViewToggle view={view} onChange={setView} />
           </div>
         )}

@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { FileChange } from "@/lib/api";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+
+import type { DestructivePreview, FileChange } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useTerminalAgents } from "@/store/terminalAgents";
 import { FileContextMenu } from "@/components/chrome/overlays";
 import { WorkingInspector } from "./WorkingInspector";
 
@@ -14,6 +19,10 @@ beforeEach(() => {
   // Reset the git-domain slice this component reads to a clean, empty tree.
   useRepo.setState({ changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState }, selectedFile: null });
   useUi.setState({ fileMenu: null });
+  // The embedded commit composer reads the terminal-agents store on render.
+  // Stub it so the mocked `invoke` can't leave `agents` unset (its loader would
+  // otherwise resolve to a non-array and crash `selectEnabledAgents`).
+  useTerminalAgents.setState({ agents: [], loading: false, error: null, loadAgents: vi.fn(async () => {}) });
 });
 
 describe("WorkingInspector", () => {
@@ -228,5 +237,107 @@ describe("FileContextMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Blame" }));
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts", "blame");
+  });
+});
+
+// The header exposes a whole-tree "Discard all" beside "review all →", reusing
+// the WIP menu's preview → confirm → run flow so the destructive path is shared.
+describe("WorkingInspector — discard all", () => {
+  const preview: DestructivePreview = { summary: "Discards 1 file", details: [], warnings: [] };
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "preview_discard_all") return Promise.resolve(preview);
+      if (cmd === "discard_all") return Promise.resolve("Discarded all changes.");
+      return Promise.resolve(null);
+    });
+    useRepo.setState({
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    });
+  });
+
+  it("previews and, on confirm, discards the whole working tree", async () => {
+    const requestConfirm = vi.fn();
+    useUi.setState({ requestConfirm });
+    useRepo.setState({
+      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [], advanced: emptyAdvancedState },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Discard all changes" }));
+
+    await waitFor(() => expect(requestConfirm).toHaveBeenCalledTimes(1));
+    const req = requestConfirm.mock.calls[0][0];
+    expect(req).toMatchObject({ confirmLabel: "Discard all", danger: true });
+    expect(invokeMock).toHaveBeenCalledWith("preview_discard_all", { path: "/r" });
+    expect(invokeMock).not.toHaveBeenCalledWith("discard_all", expect.anything());
+
+    act(() => req.onConfirm());
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("discard_all", { path: "/r" }));
+  });
+
+  it("hides Discard all when the working tree is clean", () => {
+    useUi.setState({ requestConfirm: vi.fn() });
+    useRepo.setState({
+      changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
+      selectedFile: null,
+    });
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Discard all changes" })).not.toBeInTheDocument();
+  });
+
+  it("does not discard when the confirmation is dismissed", async () => {
+    const requestConfirm = vi.fn();
+    useUi.setState({ requestConfirm });
+    useRepo.setState({
+      changes: { staged: [], unstaged: [staged("src/a.ts")], conflicted: [], advanced: emptyAdvancedState },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Discard all changes" }));
+
+    // The preview opens the confirm, but dismissing it (never calling onConfirm)
+    // must leave the irreversible discard un-run.
+    await waitFor(() => expect(requestConfirm).toHaveBeenCalledTimes(1));
+    expect(invokeMock).toHaveBeenCalledWith("preview_discard_all", { path: "/r" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("discard_all", expect.anything());
+  });
+
+  it("disables Discard all when a bulk write is guarded", () => {
+    const requestConfirm = vi.fn();
+    useUi.setState({ requestConfirm });
+    // A file outside the sparse checkout makes the shared advanced-write guard
+    // non-null, so the whole-tree discard is blocked with an explanatory title.
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [staged("docs/hidden.txt")],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        },
+      },
+      selectedFile: { path: "docs/hidden.txt", source: "unstaged" },
+    });
+
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+    const button = screen.getByRole("button", { name: "Discard all changes" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+    );
+
+    fireEvent.click(button);
+    expect(invokeMock).not.toHaveBeenCalledWith("preview_discard_all", expect.anything());
+    expect(requestConfirm).not.toHaveBeenCalled();
   });
 });

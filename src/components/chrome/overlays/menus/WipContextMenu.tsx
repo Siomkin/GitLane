@@ -1,4 +1,3 @@
-import { api } from "@/lib/api";
 import {
   fileWriteGuard,
   findGuardedFile,
@@ -7,8 +6,8 @@ import {
 import { CheckIcon, MinusIcon, PlusIcon, StashIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
-import { previewConfirm } from "./previewConfirm";
+import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
+import { useDiscardAllChanges } from "./useDiscardAllChanges";
 
 /** Right-click menu on the uncommitted "WIP" row. Acts on the whole working
  * tree; the staged/unstaged split is read from the repo store so stage/unstage
@@ -16,15 +15,13 @@ import { previewConfirm } from "./previewConfirm";
 export function WipContextMenu() {
   const menu = useUi((s) => s.wipMenu);
   const close = useUi((s) => s.closeOverlays);
-  const requestConfirm = useUi((s) => s.requestConfirm);
   const openCommit = useUi((s) => s.openCommit);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const changes = useRepo((s) => s.changes);
   const stageAll = useRepo((s) => s.stageAll);
   const unstageAll = useRepo((s) => s.unstageAll);
   const stash = useRepo((s) => s.stash);
-  const discardAll = useRepo((s) => s.discardAll);
-  const run = useBranchOp();
+  const discardAllChanges = useDiscardAllChanges(repoPath);
   if (!menu) return null;
 
   const hasStaged = changes.staged.length > 0;
@@ -71,20 +68,7 @@ export function WipContextMenu() {
     disabled: !!bulkGuard,
     disabledReason: bulkGuard ?? undefined,
     sep: true,
-    onClick: () =>
-      void previewConfirm({
-        requestConfirm,
-        title: "Discard all changes?",
-        message:
-          "Every uncommitted change — staged, unstaged, and untracked files — will be permanently discarded. This can't be undone.",
-        confirmLabel: "Discard all",
-        danger: true,
-        preview: () =>
-          repoPath
-            ? api.previewDiscardAll(repoPath)
-            : Promise.reject(new Error("No repository")),
-        onConfirm: () => void run(() => discardAll()),
-      }),
+    onClick: discardAllChanges,
   });
 
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={208} />;
