@@ -2,22 +2,21 @@
 // changed file shown in one scroll with its unified diff. Used by "Review all"
 // on a commit and by the stash viewer.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- local read-only multi-file review fetch, disposable probe (architecture-rules-react.md §1)
 import { api, type FileChange } from "@/lib/api";
-import { basename, dirname } from "@/lib/paths";
 import { summarizeFiles } from "@/lib/changeSummary";
 import { useLazyDiffs } from "@/hooks/useLazyDiffs";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
-import { AgentChangeDescription } from "@/features/changes/AgentChangeDescription";
-import { FileIcon } from "@/components/ui/icons";
-import { BinaryDiff } from "./BinaryDiff";
-import { DiffTruncatedNotice, UnifiedDiffBody } from "./DiffBody";
 import { HandToAgentBar } from "./comments";
-import { StatusPill } from "@/components/ui/StatusBadge";
-import { ChangeCounts } from "@/components/ui/ChangeCounts";
+import { StackedReviewList } from "./StackedReviewList";
+import {
+  buildStackedReviewModel,
+  estimatedDiffBodySize,
+  stackedDiffKey,
+} from "./stackedReviewRows";
 
 /** Changed-line count above which a file starts collapsed, so a lockfile-sized
  * diff doesn't mount thousands of rows (or get fetched) until asked for. */
@@ -28,6 +27,10 @@ const LARGE_DIFF_LINES = 500;
 const GENERATED_FILE =
   /(^|\/)(bun\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.lock|composer\.lock|go\.sum|Gemfile\.lock|poetry\.lock)$|\.min\.(js|css)$|\.map$/i;
 
+/** Loaded file bodies retained while scrolling. Offscreen overflow entries are
+ * replaced by numeric height placeholders and re-fetched on revisit. */
+export const MAX_CACHED_STACKED_DIFFS = 24;
+
 function startsCollapsed(file: FileChange): boolean {
   return file.add + file.del > LARGE_DIFF_LINES || GENERATED_FILE.test(file.path);
 }
@@ -37,6 +40,7 @@ export function StackedReview() {
   const closeStackedReview = useUi((s) => s.closeStackedReview);
   const summary = useRepo((s) => s.summary);
   const selectedFile = useRepo((s) => s.selectedFile);
+  const fileSelectionRequestId = useRepo((s) => s.fileSelectionRequestId);
   const clearSelectedFile = useRepo((s) => s.clearSelectedFile);
   const [files, setFiles] = useState<FileChange[]>([]);
   const [listLoading, setListLoading] = useState(true);
@@ -44,15 +48,11 @@ export function StackedReview() {
   // Files the reviewer chose to see in full after the backend truncated a large
   // diff. Their fetch re-keys (`path:full`) so the cache holds a distinct entry.
   const [fullFiles, setFullFiles] = useState<Set<string>>(new Set());
-  const diffKeyFor = (p: string) => (fullFiles.has(p) ? `${p}:full` : p);
+  const [placeholderSizes, setPlaceholderSizes] = useState<Record<string, number>>({});
   // Per-file diff cache. Keyed by path, which is *not* content-stable across
   // commits, so we reset() on every oid/range change to drop the previous
   // commit's cache and invalidate its in-flight fetches.
-  const { diffs, ensure, reset } = useLazyDiffs();
-
-  // Section elements, keyed by path, so picking a file in the right-panel list
-  // can scroll its diff into view (and expand it if it was collapsed).
-  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const { diffs, ensure, retainQueued, evict, reset } = useLazyDiffs();
 
   const oid = review?.oid ?? null;
   const range = review?.range ?? null;
@@ -79,6 +79,7 @@ export function StackedReview() {
     setListLoading(true);
     reset();
     setFullFiles(new Set());
+    setPlaceholderSizes({});
     (async () => {
       try {
         // Selection mode unions a multi-commit pick; range mode diffs base..head;
@@ -110,45 +111,114 @@ export function StackedReview() {
     };
   }, [oid, range, selection, path, reset]);
 
-  // Lazily fetch the diff of each *open* file once the list is in (bounded
-  // concurrency lives in useLazyDiffs). Collapsed large/generated files are not
-  // fetched until expanded — re-running on `collapsed` picks them up then.
-  useEffect(() => {
-    if (!path || !oid) return;
-    ensure(
-      files
-        .filter((f) => !collapsed[f.path])
-        .map((f) => {
-          const full = fullFiles.has(f.path);
+  // The virtual list reports only the viewport + overscan paths. This keeps a
+  // 200-file review from immediately fetching every small file; expanding or
+  // navigating to a file re-runs the callback with that path in the window.
+  const requestVisibleFiles = useCallback(
+    (visiblePaths: string[], measureFileBody?: (filePath: string) => number | null) => {
+      if (!path || !oid) return;
+      const visible = new Set(visiblePaths);
+      const visibleFiles = files.filter(
+        (file) => visible.has(file.path) && !collapsed[file.path],
+      );
+      const visibleKeys = new Set(
+        visibleFiles.map((file) => stackedDiffKey(file.path, fullFiles)),
+      );
+      // Requests that have not started are cheap to discard. Keep active IPC
+      // work capacity-bound, but do not let an old viewport stay ahead of the
+      // user's current viewport in the pending queue.
+      retainQueued(visibleKeys);
+      ensure(
+        visibleFiles.map((file) => {
+          const full = fullFiles.has(file.path);
           return {
-            key: diffKeyFor(f.path),
+            key: stackedDiffKey(file.path, fullFiles),
             fetch: () =>
               selection
-                ? api.selectionDiffFile(path, selection, f.path, full)
+                ? api.selectionDiffFile(path, selection, file.path, full)
                 : range
-                  ? api.diffRangeFile(path, range.base, range.head, f.path, full)
-                  : api.commitFileDiff(path, oid, f.path, full),
+                  ? api.diffRangeFile(path, range.base, range.head, file.path, full)
+                  : api.commitFileDiff(path, oid, file.path, full),
           };
         }),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- diffKeyFor derives from fullFiles
-  }, [files, collapsed, fullFiles, path, oid, range, selection, ensure]);
+      );
+
+      const cachedKeys = Object.keys(diffs);
+      const overflow = cachedKeys.length - MAX_CACHED_STACKED_DIFFS;
+      if (overflow <= 0) return;
+      const toEvict = cachedKeys.filter((key) => !visibleKeys.has(key)).slice(0, overflow);
+      if (toEvict.length === 0) return;
+      const pathByKey = new Map(
+        files.map((file) => [stackedDiffKey(file.path, fullFiles), file.path]),
+      );
+      setPlaceholderSizes((current) => {
+        const next = { ...current };
+        // A placeholder is consumed once its diff re-resolves; drop those
+        // entries here (the same cadence they are created on) so the map stays
+        // bounded by keys currently standing in for an evicted diff.
+        for (const key of Object.keys(next)) {
+          if (diffs[key] !== undefined) delete next[key];
+        }
+        for (const key of toEvict) {
+          const diff = diffs[key];
+          if (!diff) continue;
+          // Prefer the virtualizer's measured body height (it includes comment
+          // cards and binary previews); estimate only when nothing measured.
+          const filePath = pathByKey.get(key);
+          const measured = filePath != null ? measureFileBody?.(filePath) : null;
+          next[key] = measured ?? estimatedDiffBodySize(diff);
+        }
+        return next;
+      });
+      evict(toEvict);
+    },
+    [
+      collapsed,
+      diffs,
+      ensure,
+      evict,
+      files,
+      fullFiles,
+      oid,
+      path,
+      range,
+      retainQueued,
+      selection,
+    ],
+  );
 
   // Only the file list gates the view; each file's diff then streams into its
   // own section, so the first files are reviewable before the slowest resolves.
   const loading = listLoading;
 
-  // Clicking a file in the right-panel changed-files list selects it; scroll
-  // that section into view here and expand it. Depends on `files` so it also
-  // fires once the diffs finish loading if a file was picked while loading.
+  // Clicking a file in the right-panel changed-files list expands it. The
+  // virtual list owns the corresponding scrollToIndex navigation.
   useEffect(() => {
     if (selectedFile?.source !== "commit") return;
     const target = selectedFile.path;
-    const el = sectionRefs.current[target];
-    if (!el) return;
+    if (!files.some((file) => file.path === target)) return;
     setCollapsed((c) => (c[target] ? { ...c, [target]: false } : c));
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [selectedFile?.path, selectedFile?.source, files]);
+
+  const model = useMemo(
+    () => buildStackedReviewModel(files, collapsed, diffs, fullFiles, placeholderSizes),
+    [collapsed, diffs, files, fullFiles, placeholderSizes],
+  );
+  const toggleFile = useCallback(
+    (filePath: string) =>
+      setCollapsed((current) => ({ ...current, [filePath]: !current[filePath] })),
+    [],
+  );
+  const showFullDiff = useCallback(
+    (filePath: string) => {
+      // The capped payload is superseded as soon as the user requests the full
+      // version. Do not retain both potentially-large FileDiff objects while
+      // the full request uses its distinct cache identity.
+      evict([filePath]);
+      setFullFiles((current) => new Set(current).add(filePath));
+    },
+    [evict],
+  );
 
   if (!review) return null;
 
@@ -178,78 +248,26 @@ export function StackedReview() {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-neutral-800">
-        {loading ? (
-          <div className="grid h-full place-content-center text-sm text-neutral-400">Loading diffs…</div>
-        ) : files.length === 0 ? (
-          <div className="grid h-full place-content-center text-sm text-neutral-400">No changes.</div>
-        ) : (
-          <>
-          <AgentChangeDescription
-            contextKey={surface}
-            instruction={descriptionInstruction}
-          />
-          {files.map((file) => {
-            const open = !collapsed[file.path];
-            const diff = diffs[diffKeyFor(file.path)];
-            const active = selectedFile?.source === "commit" && selectedFile.path === file.path;
-            return (
-              <section
-                key={file.path}
-                ref={(el) => {
-                  sectionRefs.current[file.path] = el;
-                }}
-                className="border-b border-black/5 dark:border-white/5"
-              >
-                <button type="button"
-                  className={`flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 text-left backdrop-blur border-b border-black/5 dark:border-white/5 ${
-                    active
-                      ? "bg-[var(--accent-soft)]"
-                      : "bg-white/95 dark:bg-neutral-800/95"
-                  }`}
-                  onClick={() => setCollapsed((c) => ({ ...c, [file.path]: !c[file.path] }))}
-                >
-                  <span className="w-3 flex-none text-[10px] text-neutral-400">{open ? "▾" : "▸"}</span>
-                  <span className="text-[color:var(--accent)]">
-                    <FileIcon path={file.path} size={20} />
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">
-                    <span className="text-neutral-400">{dirname(file.path)}</span>
-                    <strong className="font-semibold text-neutral-800 dark:text-neutral-100">{basename(file.path)}</strong>
-                  </span>
-                  <StatusPill status={file.status} />
-                  <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-[11px]" />
-                </button>
-                {open && (
-                  <div className="bg-white dark:bg-neutral-800">
-                    {diff === undefined ? (
-                      <div className="px-4 py-3 text-xs text-neutral-400">Loading diff…</div>
-                    ) : diff && diff.binary ? (
-                      <BinaryDiff diff={diff} />
-                    ) : diff && !diff.binary ? (
-                      <>
-                        <UnifiedDiffBody hunks={diff.hunks} file={file.path} surface={surface} />
-                        {diff.truncated && (
-                          <DiffTruncatedNotice
-                            onShowFull={() =>
-                              setFullFiles((prev) => new Set(prev).add(file.path))
-                            }
-                          />
-                        )}
-                      </>
-                    ) : (
-                      <div className="px-4 py-3 text-xs text-neutral-400">
-                        {diff === null ? "Couldn't load diff." : "No visible diff."}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
-            );
-          })}
-          </>
-        )}
-      </div>
+      {loading ? (
+        <div className="grid min-h-0 flex-1 place-content-center text-sm text-neutral-400">
+          Loading diffs…
+        </div>
+      ) : files.length === 0 ? (
+        <div className="grid min-h-0 flex-1 place-content-center text-sm text-neutral-400">
+          No changes.
+        </div>
+      ) : (
+        <StackedReviewList
+          model={model}
+          surface={surface}
+          descriptionInstruction={descriptionInstruction}
+          selectedPath={selectedFile?.source === "commit" ? selectedFile.path : null}
+          fileSelectionRequestId={fileSelectionRequestId}
+          onToggle={toggleFile}
+          onShowFull={showFullDiff}
+          onVisibleFiles={requestVisibleFiles}
+        />
+      )}
 
       <HandToAgentBar surfaces={[surface]} />
     </main>

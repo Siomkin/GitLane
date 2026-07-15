@@ -176,7 +176,13 @@ export function createRepoSelectionActions(
       invalidateFileDiffReconciles();
       // Selecting a file dismisses the standalone repo-file viewer — the diff of
       // the chosen file takes over the center pane.
-      set({ selectedFile: { path, source }, fileView: null, diffLoading: true, error: null });
+      set((state) => ({
+        selectedFile: { path, source },
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        fileView: null,
+        diffLoading: true,
+        error: null,
+      }));
       try {
         // In a multi-commit selection a committed file's diff is the merged
         // ("union") diff across the whole selection, not the focus commit (GL-69).

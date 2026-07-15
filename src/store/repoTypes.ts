@@ -235,6 +235,10 @@ export interface RepoState {
   /** A repository file opened read-only in the center pane, or null. */
   fileView: FileViewState | null;
   selectedFile: SelectedFile | null;
+  /** Monotonic identity of explicit file-selection requests. Unlike
+   * `selectedFile`, this changes when the user re-selects the active file so
+   * virtual review surfaces can repeat navigation to its offscreen header. */
+  fileSelectionRequestId: number;
   fileDiff: FileDiff | null;
   selectedCommit: string | null;
   /** All currently selected commit ids (range or additive multi-select). The
@@ -625,6 +629,7 @@ export type RepoDataState = Pick<
   | "repoFiles"
   | "fileView"
   | "selectedFile"
+  | "fileSelectionRequestId"
   | "fileDiff"
   | "selectedCommit"
   | "selectedCommits"
@@ -678,6 +683,7 @@ export function createInitialRepoData(
     repoFiles: null,
     fileView: null,
     selectedFile: null,
+    fileSelectionRequestId: 0,
     fileDiff: null,
     selectedCommit: null,
     selectedCommits: [],

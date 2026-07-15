@@ -9,4 +9,9 @@ export {
   scopeText,
   type LineMeta,
 } from "./notes";
-export { useLineComments, type LineCommentsController, type LineRowComments } from "./useLineComments";
+export {
+  useLineComments,
+  useMultiFileLineComments,
+  type LineCommentsController,
+  type LineRowComments,
+} from "./useLineComments";

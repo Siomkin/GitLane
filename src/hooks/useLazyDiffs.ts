@@ -110,6 +110,39 @@ export function useLazyDiffs() {
     [pump],
   );
 
+  /** Keep only the named requests that have not started yet. Active fetches are
+   * deliberately untouched because their IPC promises cannot be cancelled.
+   * Virtual surfaces use this before `ensure()` so an old viewport cannot stay
+   * ahead of the user's current viewport in the pending queue. */
+  const retainQueued = useCallback((keys: Iterable<string>) => {
+    if (queue.current.length === 0) return;
+    const keep = new Set(keys);
+    const retained = queue.current.filter((item) => keep.has(item.key));
+    if (retained.length === queue.current.length) return;
+    queue.current = retained;
+    queued.current = new Set(retained.map((item) => item.key));
+  }, []);
+
+  /** Remove settled cache entries without disturbing queued/in-flight work.
+   * Callers with a long-lived virtual surface can retain only a nearby window
+   * and re-fetch an evicted key when it becomes visible again. */
+  const evict = useCallback((keys: Iterable<string>) => {
+    const drop = new Set(keys);
+    if (drop.size === 0) return;
+    setDiffs((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const key of drop) {
+        if (!(key in next)) continue;
+        delete next[key];
+        changed = true;
+      }
+      if (!changed) return current;
+      cacheRef.current = next;
+      return next;
+    });
+  }, []);
+
   /** Drop the cache and invalidate any in-flight/queued fetches (used when the
    * keyed set changes meaning, e.g. switching the reviewed commit). Queued
    * items are removed outright; already-started fetches can't be cancelled, so
@@ -128,5 +161,5 @@ export function useLazyDiffs() {
     setDiffs({});
   }, []);
 
-  return { diffs, ensure, reset };
+  return { diffs, ensure, retainQueued, evict, reset };
 }

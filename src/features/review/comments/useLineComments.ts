@@ -1,8 +1,9 @@
 // Per-file controller for the in-diff "local comment" system. Owns the
 // drag-to-select range, the inline-editor draft, and the saved-card open state,
 // and exposes a `rowFor(seq)` view-model the diff body renders per line. One
-// instance per rendered file (single-file review, or each file in a stacked
-// review), so two files' selections never interfere.
+// Single-file views use one controller; the stacked review shares one state
+// machine across its loaded file map and asks it for a file-scoped controller,
+// so selections never cross file boundaries.
 //
 // Known limitation: drag-to-select extends via each row's `onMouseEnter`, so a
 // selection only spans rows currently mounted by the virtualizer (the visible
@@ -14,9 +15,14 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { useUi } from "@/store/ui";
 import { buildNote, refIndex, scopeText, type LineMeta } from "./notes";
 
-type Range = { fromSeq: number; toSeq: number };
+type Range = { file: string; fromSeq: number; toSeq: number };
 type EditRange = Range & { editId: string | null };
 type Placed = { id: string; body: string; fromSeq: number; toSeq: number };
+type FileContext = {
+  lines: LineMeta[];
+  placed: Placed[];
+  anchorBySeq: Map<number, Placed>;
+};
 
 /** Per-line view-model for the comment affordances (handle column + cards). */
 export interface LineRowComments {
@@ -57,16 +63,19 @@ export interface LineCommentsController {
 }
 
 const norm = (r: Range): Range => ({
+  file: r.file,
   fromSeq: Math.min(r.fromSeq, r.toSeq),
   toSeq: Math.max(r.fromSeq, r.toSeq),
 });
 
-export function useLineComments(
+/** One comment state machine shared by every currently loaded file in a stacked
+ * review. Only one range/editor can be active at a time, so this preserves the
+ * single-file interaction model without mounting one hook/controller per file. */
+export function useMultiFileLineComments(
   surface: string,
-  file: string,
-  lines: LineMeta[],
+  linesByFile: ReadonlyMap<string, LineMeta[]>,
   opts?: { confineDragToSide?: boolean },
-): LineCommentsController {
+): { controllerFor: (file: string) => LineCommentsController } {
   // Split view confines a drag to the side it started on (left/old vs right/new),
   // so dragging across columns doesn't select the interleaved opposite side.
   const confineDragToSide = !!opts?.confineDragToSide;
@@ -79,27 +88,31 @@ export function useLineComments(
   const [draft, setDraft] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const refToSeq = useMemo(() => refIndex(lines), [lines]);
-
-  // Resolve each saved note's stored refs to positions in the *current* diff;
-  // drop any whose anchor lines no longer exist (the diff re-flowed).
-  const placed = useMemo<Placed[]>(() => {
-    const out: Placed[] = [];
-    for (const n of allNotes) {
-      if (n.surface !== surface || n.file !== file) continue;
-      const a = refToSeq.get(n.fromRef);
-      const b = refToSeq.get(n.toRef);
-      if (a == null || b == null) continue;
-      out.push({ id: n.id, body: n.body, fromSeq: Math.min(a, b), toSeq: Math.max(a, b) });
+  // Resolve saved refs independently for each loaded file. Files outside the
+  // virtualized review's loaded set have no controller state or line metadata.
+  const contexts = useMemo(() => {
+    const result = new Map<string, FileContext>();
+    for (const [file, lines] of linesByFile) {
+      const refToSeq = refIndex(lines);
+      const placed: Placed[] = [];
+      for (const note of allNotes) {
+        if (note.surface !== surface || note.file !== file) continue;
+        const a = refToSeq.get(note.fromRef);
+        const b = refToSeq.get(note.toRef);
+        if (a == null || b == null) continue;
+        placed.push({
+          id: note.id,
+          body: note.body,
+          fromSeq: Math.min(a, b),
+          toSeq: Math.max(a, b),
+        });
+      }
+      const anchorBySeq = new Map<number, Placed>();
+      for (const note of placed) anchorBySeq.set(note.toSeq, note);
+      result.set(file, { lines, placed, anchorBySeq });
     }
-    return out;
-  }, [allNotes, surface, file, refToSeq]);
-
-  const anchorBySeq = useMemo(() => {
-    const m = new Map<number, Placed>();
-    for (const p of placed) m.set(p.toSeq, p);
-    return m;
-  }, [placed]);
+    return result;
+  }, [allNotes, surface, linesByFile]);
 
   // Release anywhere ends a drag and opens the editor over the selected range —
   // a click (no movement) yields a single-line range.
@@ -118,12 +131,15 @@ export function useLineComments(
 
   const save = useCallback(() => {
     const body = draft.trim();
-    if (editRange && body) {
-      addReviewNote(buildNote(surface, file, lines, editRange.fromSeq, editRange.toSeq, body));
+    const lines = editRange ? contexts.get(editRange.file)?.lines : undefined;
+    if (editRange && lines && body) {
+      addReviewNote(
+        buildNote(surface, editRange.file, lines, editRange.fromSeq, editRange.toSeq, body),
+      );
     }
     setEditRange(null);
     setDraft("");
-  }, [addReviewNote, draft, editRange, surface, file, lines]);
+  }, [addReviewNote, contexts, draft, editRange, surface]);
 
   const cancel = useCallback(() => {
     setEditRange(null);
@@ -144,13 +160,20 @@ export function useLineComments(
   );
 
   const rowFor = useCallback(
-    (seq: number): LineRowComments => {
-      const anchor = anchorBySeq.get(seq) ?? null;
-      const sel = drag ?? editRange;
-      const selecting = sel != null && seq >= Math.min(sel.fromSeq, sel.toSeq) && seq <= Math.max(sel.fromSeq, sel.toSeq);
-      const covered = !selecting && placed.some((p) => seq >= p.fromSeq && seq <= p.toSeq);
-      const editingThisAnchor = anchor != null && editRange?.editId === anchor.id;
-      const editHere = editRange != null && seq === editRange.toSeq;
+    (file: string, seq: number): LineRowComments => {
+      const context = contexts.get(file);
+      const lines = context?.lines ?? [];
+      const anchor = context?.anchorBySeq.get(seq) ?? null;
+      const selecting =
+        (drag?.file === file && seq >= Math.min(drag.fromSeq, drag.toSeq) && seq <= Math.max(drag.fromSeq, drag.toSeq)) ||
+        (editRange?.file === file &&
+          seq >= Math.min(editRange.fromSeq, editRange.toSeq) &&
+          seq <= Math.max(editRange.fromSeq, editRange.toSeq));
+      const covered =
+        !selecting && !!context?.placed.some((note) => seq >= note.fromSeq && seq <= note.toSeq);
+      const editingThisAnchor =
+        anchor != null && editRange?.file === file && editRange.editId === anchor.id;
+      const editHere = editRange?.file === file && seq === editRange.toSeq;
       const cardOpen = anchor != null && openId === anchor.id && !editingThisAnchor;
       const scope = editHere
         ? scopeText(lines[editRange.fromSeq]?.ref ?? "", lines[editRange.toSeq]?.ref ?? "")
@@ -170,23 +193,28 @@ export function useLineComments(
         onHandleDown: (e) => {
           e.preventDefault();
           e.stopPropagation();
-          setDrag({ fromSeq: seq, toSeq: seq });
+          setDrag({ file, fromSeq: seq, toSeq: seq });
           setEditRange(null);
           setOpenId(null);
         },
         onRowEnter: () =>
           setDrag((d) => {
-            if (!d) return d;
+            if (!d || d.file !== file) return d;
             // In split view, only extend across rows on the same side.
             if (confineDragToSide && lines[seq]?.side !== lines[d.fromSeq]?.side) return d;
-            return { fromSeq: d.fromSeq, toSeq: seq };
+            return { file, fromSeq: d.fromSeq, toSeq: seq };
           }),
         toggleCard: () => {
           if (anchor) setOpenId((id) => (id === anchor.id ? null : anchor.id));
         },
         edit: () => {
           if (!anchor) return;
-          setEditRange({ fromSeq: anchor.fromSeq, toSeq: anchor.toSeq, editId: anchor.id });
+          setEditRange({
+            file,
+            fromSeq: anchor.fromSeq,
+            toSeq: anchor.toSeq,
+            editId: anchor.id,
+          });
           setDraft(anchor.body);
           setOpenId(null);
         },
@@ -197,8 +225,31 @@ export function useLineComments(
         },
       };
     },
-    [anchorBySeq, drag, editRange, openId, placed, lines, removeReviewNote, confineDragToSide],
+    [confineDragToSide, contexts, drag, editRange, openId, removeReviewNote],
   );
 
-  return { active: drag != null || editRange != null, draft, setDraft, save, cancel, onDraftKey, rowFor };
+  const controllerFor = useCallback(
+    (file: string): LineCommentsController => ({
+      active: drag?.file === file || editRange?.file === file,
+      draft,
+      setDraft,
+      save,
+      cancel,
+      onDraftKey,
+      rowFor: (seq) => rowFor(file, seq),
+    }),
+    [cancel, drag, draft, editRange, onDraftKey, rowFor, save],
+  );
+
+  return { controllerFor };
+}
+
+export function useLineComments(
+  surface: string,
+  file: string,
+  lines: LineMeta[],
+  opts?: { confineDragToSide?: boolean },
+): LineCommentsController {
+  const linesByFile = useMemo(() => new Map([[file, lines]]), [file, lines]);
+  return useMultiFileLineComments(surface, linesByFile, opts).controllerFor(file);
 }
