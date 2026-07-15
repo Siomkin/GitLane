@@ -50,7 +50,13 @@ export function useTerminalInjection({
       clearTerminalInject();
     };
     if (terminalInject.command) {
-      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\n`)).then((ok) => {
+      // Submit with a carriage return, not a bare LF: that is what the Enter
+      // key actually sends, and it is required on Windows ConPTY (cmd.exe /
+      // PowerShell) where a lone `\n` does not submit the line — the agent
+      // command would be typed but never executed, then the prompt would paste
+      // onto the same line ("codexReview the staged changes…"). Unix PTYs map
+      // CR->LF via the ICRNL line discipline, so `\r` works there too.
+      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\r`)).then((ok) => {
         if (cancelled) return;
         // The launch write failed (surfaced in the terminal) — keep the
         // injection queued instead of dropping the text on the floor (GL-176).
@@ -64,11 +70,28 @@ export function useTerminalInjection({
         // transition. Agents that do not expose such a transition still use
         // the bounded fallback below.
         let sawBracketedOff = !bracketedBeforeLaunch;
+        // Bracketed paste alone is NOT readiness: agents like codex enable it
+        // within ~500 ms of launch, while still booting, and silently discard
+        // input that arrives before their composer is up. What actually marks
+        // a TUI as ready for input is that it has STOPPED drawing — so beyond
+        // the bracketed-paste gate, require the PTY output to have been quiet
+        // for a beat. On macOS/Linux the zsh off -> on transition already
+        // fires at the right moment and the quiescence check adds a small
+        // safety margin; on Windows (cmd.exe never pre-enables the mode, and
+        // the on-transition comes far too early) quiescence is the signal
+        // that makes the paste land instead of vanishing into codex's boot.
+        const QUIET_MS = 600;
         const waitForPrompt = () => {
           if (cancelled) return;
           const bracketed = view.bracketedPaste();
           if (!bracketed) sawBracketedOff = true;
-          if ((sawBracketedOff && bracketed) || Date.now() - startedAt > 4000) {
+          // Ignore pre-launch timestamps: an idle shell's last prompt must not
+          // count as "already quiet" before the agent has produced any output.
+          const quiet = Date.now() - Math.max(pane.lastOutputAt, startedAt) >= QUIET_MS;
+          // Paste once the agent asked for bracketed paste AND its startup
+          // rendering has gone quiet; the bounded fallback still guarantees
+          // the text is never dropped for agents without either signal.
+          if ((sawBracketedOff && bracketed && quiet) || Date.now() - startedAt > 8000) {
             paste();
             return;
           }

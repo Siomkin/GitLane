@@ -11,6 +11,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+// Pin the platform: `isWindows` is derived from the jsdom user-agent, which
+// follows the machine running the tests. On Windows it would bolt the ConPTY
+// stream-cursor guard onto every pane and its extra DECTCEM writes would skew
+// the write-count assertions below. The guard has its own unit tests
+// (streamCursorGuard.test.ts) and wiring tests (paneController.test.ts).
+vi.mock("@/lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/platform")>()),
+  isWindows: false,
+}));
+
 // Capture pty-data/pty-exit handlers so tests can fire backend events, and
 // track unlisten so cleanup is observable.
 const ptyEvents = vi.hoisted(() => ({
@@ -400,7 +410,45 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     unmount();
   });
 
-  it("delivers an agent-launch injection once the agent's prompt is ready", async () => {
+  it("submits the agent-launch command with a trailing CR (Windows ConPTY)", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.setState({
+        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+      });
+    });
+    await flush();
+
+    const launch = invokeMock.mock.calls.find((call) => call[0] === "pty_write");
+    expect(launch).toBeTruthy();
+    const data = (launch![1] as { data: Uint8Array }).data;
+    expect(data[data.length - 1]).toBe(0x0d);
+    expect(new TextDecoder().decode(data)).toBe("claude\r");
+  });
+
+  it("runAgent submits with a trailing CR", async () => {
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    const { result } = renderPanes();
+    await flush();
+
+    await act(async () => {
+      result.current.runAgent("codex --model gpt-5.6-sol");
+    });
+    await flush();
+
+    const write = invokeMock.mock.calls.find((call) => call[0] === "pty_write");
+    expect(write).toBeTruthy();
+    const data = (write![1] as { data: Uint8Array }).data;
+    expect(new TextDecoder().decode(data)).toBe("codex --model gpt-5.6-sol\r");
+  });
+
+  it("delivers an agent-launch injection once output goes quiet with bracketed paste on", async () => {
     vi.useFakeTimers();
     useRepo.setState({ summary: summaryFor("/repoA") });
     useUi.setState({ terminalView: "open" });
@@ -413,15 +461,57 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
       });
     });
     await flush(); // launch write resolved; the prompt-wait timer is armed
-    expect(invokeMock).toHaveBeenCalledWith("pty_write", expect.objectContaining({ sessionId: 1 }));
 
-    // The launched agent enables bracketed paste after the command write (its
-    // prompt is now ready), rather than inheriting the shell's pre-launch mode.
+    // Bracketed paste alone is not readiness — stream boot frames so the quiet
+    // window keeps resetting. Paste must stay deferred while output arrives.
+    xterm.instances[0].modes.bracketedPasteMode = true;
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        ptyEvents.handlers.get("pty-data")?.({ payload: { sessionId: 1, data: [65] } });
+        vi.advanceTimersByTime(200);
+      });
+      expect(xterm.instances[0].pasted).toHaveLength(0);
+    }
+
+    // …and it delivers once the quiet window has elapsed with the mode on.
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
+    expect(useUi.getState().terminalInject).toBeNull();
+  });
+
+  it("ignores a pre-launch lastOutputAt when measuring quiescence", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    // Idle shell wrote its prompt long before the agent launch — that timestamp
+    // must not satisfy the quiet gate on its own.
+    await act(async () => {
+      ptyEvents.handlers.get("pty-data")?.({ payload: { sessionId: 1, data: [36] } });
+      vi.advanceTimersByTime(60_000);
+    });
+
+    await act(async () => {
+      useUi.setState({
+        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+      });
+    });
+    await flush();
+
     xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
       vi.advanceTimersByTime(500);
     });
+    // 500 ms < QUIET_MS (600); a stale pre-launch timestamp would have pasted.
+    expect(xterm.instances[0].pasted).toHaveLength(0);
 
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
   });
@@ -450,7 +540,8 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     expect(useUi.getState().terminalInject).not.toBeNull();
 
     // Agent startup leaves the shell input mode, then enables bracketed paste
-    // for its own prompt. Only that post-launch transition releases the text.
+    // for its own prompt. Only that post-launch transition releases the text
+    // (after the quiet window from launch, since there is no post-launch output).
     xterm.instances[0].modes.bracketedPasteMode = false;
     await act(async () => {
       vi.advanceTimersByTime(100);
@@ -459,7 +550,7 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(700);
     });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
@@ -484,7 +575,7 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     unmount();
     await act(async () => {
-      vi.advanceTimersByTime(10_000); // past the poll interval AND the 4s fallback
+      vi.advanceTimersByTime(10_000); // past the poll interval AND the 8s fallback
     });
 
     // The cancelled wait must neither paste nor consume the injection.

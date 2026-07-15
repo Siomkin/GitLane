@@ -19,6 +19,7 @@ function deferred<T>() {
 function fakeView() {
   const lines: string[] = [];
   const written: Uint8Array[] = [];
+  const cursorEvents: string[] = [];
   let dataCb: ((data: string) => void) | null = null;
   let disposed = false;
   let removed = false;
@@ -55,11 +56,17 @@ function fakeView() {
     paste: () => {},
     bracketedPaste: () => false,
     clear: () => {},
+    streamCursor: {
+      onOutput: (data: Uint8Array) => cursorEvents.push(`output:${data.length}`),
+      noteUserInput: () => cursorEvents.push("input"),
+      dispose: () => cursorEvents.push("dispose"),
+    },
   };
   return {
     view,
     lines,
     written,
+    cursorEvents,
     type: (data: string) => dataCb?.(data),
     get disposed() {
       return disposed;
@@ -297,6 +304,20 @@ describe("PaneController — multi-pane event routing (GL-177)", () => {
     controller.routeData(1, [104]);
     controller.routeExit(1);
     expect(views[0].written).toHaveLength(0);
+  });
+});
+
+describe("PaneController — stream-cursor guard wiring", () => {
+  it("feeds PTY output and user keystrokes to the view's guard, and disposes it", async () => {
+    const { controller, views } = setup();
+    controller.create("tab1", "/repo");
+    await Promise.resolve();
+
+    controller.routeData(1, [104, 105]); // after the terminal write, so the
+    views[0].type("x"); //                  guard's hide lands after the chunk
+    controller.dispose("tab1");
+
+    expect(views[0].cursorEvents).toEqual(["output:2", "input", "dispose"]);
   });
 });
 

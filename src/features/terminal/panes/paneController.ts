@@ -33,6 +33,14 @@ export interface PaneView {
   bracketedPaste(): boolean;
   /** Clear the scrollback. */
   clear(): void;
+  /** Optional ConPTY cursor-artifact suppressor (Windows panes only — see
+   * streamCursorGuard.ts). The controller feeds it output and keystrokes;
+   * the view factory decides whether the platform needs one. */
+  streamCursor?: {
+    onOutput(data: Uint8Array): void;
+    noteUserInput(): void;
+    dispose(): void;
+  };
 }
 
 /** The PTY IPC surface the controller needs (`api.pty*` in production). */
@@ -55,6 +63,10 @@ export interface Pane {
   /** True from create until spawn settles — input in that window gets a
    * "still starting" notice, not a dead-shell one. */
   spawning: boolean;
+  /** When PTY output last arrived (0 = never). The agent-launch injection uses
+   * this as a readiness signal: a TUI is accepting input once it has STOPPED
+   * drawing, so the paste waits for output quiescence (GL-176 follow-up). */
+  lastOutputAt: number;
   /** The KIND of write-feedback notice last printed with no success since
    * ("" = none). Coalesced per kind: a keystroke burst prints one line, but a
    * new failure mode (delivery failed → shell exited) still surfaces instead
@@ -90,10 +102,12 @@ export class PaneController {
       alive: false,
       onData: null,
       spawning: true,
+      lastOutputAt: 0,
       lastWriteNotice: "",
     };
     this.panes.set(tabId, pane);
     pane.onData = view.term.onData((data) => {
+      view.streamCursor?.noteUserInput();
       void this.write(tabId, new TextEncoder().encode(data));
     });
     view.term.writeln("\x1b[2mStarting shell in " + cwd + "…\x1b[0m");
@@ -132,6 +146,7 @@ export class PaneController {
     const pane = this.panes.get(tabId);
     if (!pane) return;
     pane.onData?.dispose();
+    pane.view.streamCursor?.dispose();
     if (pane.sessionId != null) {
       this.bySession.delete(pane.sessionId);
       void this.io.kill(pane.sessionId).catch(() => {});
@@ -170,7 +185,12 @@ export class PaneController {
   routeData(sessionId: number, data: ArrayLike<number>): void {
     const tabId = this.bySession.get(sessionId);
     if (!tabId) return;
-    this.panes.get(tabId)?.view.term.write(new Uint8Array(data));
+    const pane = this.panes.get(tabId);
+    if (!pane) return;
+    pane.lastOutputAt = Date.now();
+    const bytes = new Uint8Array(data);
+    pane.view.term.write(bytes);
+    pane.view.streamCursor?.onOutput(bytes);
   }
 
   routeExit(sessionId: number): void {
