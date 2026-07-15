@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/cn";
 
 export interface SuggestItem {
@@ -9,6 +9,11 @@ export interface SuggestItem {
   /** Dimmed right-side annotation (an email, "remote", "tag", …). */
   hint?: string;
 }
+
+/** Pull a highlight index back inside a list that may have shrunk. Kept in one
+ * place so the render-time derivation, the normalization effect, and the arrow
+ * stepper can't drift apart. `-1` (no highlight) is preserved. */
+const clampToList = (index: number, length: number) => (index >= length ? length - 1 : index);
 
 /**
  * A text input with a lightweight suggestion dropdown. Domain-free: the
@@ -42,10 +47,23 @@ export function SuggestInput({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  // Stable ids so the input can point `aria-controls` at the listbox and
+  // `aria-activedescendant` at the highlighted option (WAI-ARIA combobox).
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const optionId = (index: number) => `${baseId}-option-${index}`;
 
-  // Keep the highlight inside the list when the suggestions shrink.
+  // Clamp the highlight to the current list. `safeActive` is derived during
+  // render so `aria-activedescendant` / `aria-selected` / the highlight never
+  // point at an option id that isn't rendered on the same frame (a post-paint
+  // effect alone leaves a one-frame gap).
+  const safeActive = clampToList(active, items.length);
+
+  // …and the effect keeps the raw state in range too, so a stale out-of-range
+  // index can't resurface if the list shrinks and later regrows without user
+  // input (e.g. async suggestion refresh while a row is arrow-highlighted).
   useEffect(() => {
-    setActive((current) => (current >= items.length ? items.length - 1 : current));
+    setActive((current) => clampToList(current, items.length));
   }, [items.length]);
 
   const showList = open && items.length > 0;
@@ -65,14 +83,16 @@ export function SuggestInput({
       // From no active row (just opened, or open-but-unhighlighted) ArrowDown
       // lands on the first item and ArrowUp on the last; from an active row it
       // wraps by one. (A plain modulo step from -1 would skip to n-2 on ArrowUp.)
-      setActive((current) =>
-        current < 0 ? (down ? 0 : items.length - 1) : (current + (down ? 1 : -1) + items.length) % items.length,
-      );
+      // Clamp first so a stale index left over from a larger list steps sanely.
+      setActive((current) => {
+        const cur = clampToList(current, items.length);
+        return cur < 0 ? (down ? 0 : items.length - 1) : (cur + (down ? 1 : -1) + items.length) % items.length;
+      });
       return;
     } else if (event.key === "Enter") {
-      if (showList && active >= 0 && items[active]) {
+      if (showList && safeActive >= 0 && items[safeActive]) {
         event.preventDefault();
-        pick(items[active]);
+        pick(items[safeActive]);
       }
     } else if (event.key === "Escape" || event.key === "Tab") {
       setOpen(false);
@@ -99,16 +119,20 @@ export function SuggestInput({
         role="combobox"
         aria-expanded={showList}
         aria-autocomplete="list"
+        aria-haspopup="listbox"
+        aria-controls={showList ? listboxId : undefined}
+        aria-activedescendant={showList && safeActive >= 0 ? optionId(safeActive) : undefined}
         aria-label={ariaLabel}
         className={className}
       />
       {showList && (
         <ul
           role="listbox"
+          id={listboxId}
           className="absolute left-0 right-0 top-full z-20 mt-1 max-h-48 overflow-auto rounded-md border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-neutral-900"
         >
           {items.map((item, index) => (
-            <li key={`${item.value}-${index}`} role="option" aria-selected={index === active}>
+            <li key={`${item.value}-${index}`} id={optionId(index)} role="option" aria-selected={index === safeActive}>
               <button
                 type="button"
                 tabIndex={-1}
@@ -121,7 +145,7 @@ export function SuggestInput({
                 onMouseEnter={() => setActive(index)}
                 className={cn(
                   "flex w-full items-center gap-2 px-2 py-1 text-left text-xs",
-                  index === active
+                  index === safeActive
                     ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
                     : "text-neutral-700 dark:text-neutral-200",
                 )}

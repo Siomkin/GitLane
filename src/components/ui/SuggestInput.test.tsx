@@ -10,20 +10,14 @@ const items = [
 const setup = (over: Partial<Parameters<typeof SuggestInput>[0]> = {}) => {
   const onPick = vi.fn();
   const onChange = vi.fn();
-  render(
-    <SuggestInput
-      value=""
-      onChange={onChange}
-      onPick={onPick}
-      items={items}
-      ariaLabel="Revision"
-      {...over}
-    />,
-  );
+  const props = { value: "", onChange, onPick, items, ariaLabel: "Revision", ...over };
+  const { rerender } = render(<SuggestInput {...props} />);
   return {
     input: screen.getByRole("combobox", { name: over.ariaLabel ?? "Revision" }),
     onPick,
     onChange,
+    rerender: (next: Partial<Parameters<typeof SuggestInput>[0]>) =>
+      rerender(<SuggestInput {...props} {...next} />),
   };
 };
 
@@ -69,6 +63,91 @@ describe("SuggestInput", () => {
     fireEvent.focus(input);
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it("wires aria-controls and aria-activedescendant to the active option", () => {
+    const { input } = setup();
+    fireEvent.focus(input);
+    // Open with nothing highlighted: controls the listbox, no active descendant.
+    const listbox = screen.getByRole("listbox");
+    expect(input).toHaveAttribute("aria-controls", listbox.id);
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+
+    // Arrow to the first option: activedescendant points at its id.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const [first] = screen.getAllByRole("option");
+    expect(first.id).toBeTruthy();
+    expect(input).toHaveAttribute("aria-activedescendant", first.id);
+
+    // Closing clears both associations.
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input).not.toHaveAttribute("aria-controls");
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+  });
+
+  it("keeps aria-activedescendant on a rendered option when the list shrinks", () => {
+    const three = [
+      { value: "a", hint: "branch" },
+      { value: "b", hint: "branch" },
+      { value: "c", hint: "branch" },
+    ];
+    const { input, rerender, onPick } = setup({ items: three });
+    fireEvent.focus(input);
+    // Highlight the last (index 2) option.
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input).toHaveAttribute("aria-activedescendant", screen.getAllByRole("option")[2].id);
+
+    // Shrink to a single item: activedescendant must clamp to a rendered id,
+    // never dangle at the old index-2 id (no post-paint frame gap).
+    rerender({ items: [three[0]] });
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(1);
+    const activedescendant = input.getAttribute("aria-activedescendant");
+    expect(activedescendant).toBe(options[0].id);
+
+    // Enter now picks the surviving (clamped) option, not nothing.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith("a");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("does not resurrect a stale highlight when the list empties and regrows", () => {
+    const three = [
+      { value: "a", hint: "branch" },
+      { value: "b", hint: "branch" },
+      { value: "c", hint: "branch" },
+    ];
+    const { input, rerender } = setup({ items: three });
+    fireEvent.focus(input);
+    // Highlight index 2, then let the list empty out (e.g. async refresh) with
+    // no typing/arrowing in between, then repopulate to the original length.
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    rerender({ items: [] });
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+    rerender({ items: three });
+    // The old index-2 highlight must NOT come back on its own; the input opens
+    // unhighlighted until the user navigates again.
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+    expect(screen.queryByRole("option", { selected: true })).not.toBeInTheDocument();
+  });
+
+  it("normalizes the highlight through a non-empty shrink then regrow (3→1→3)", () => {
+    const three = [
+      { value: "a", hint: "branch" },
+      { value: "b", hint: "branch" },
+      { value: "c", hint: "branch" },
+    ];
+    const { input, rerender } = setup({ items: three });
+    fireEvent.focus(input);
+    // Highlight index 2, shrink to one (clamps raw state to 0), regrow to three.
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    rerender({ items: [three[0]] });
+    rerender({ items: three });
+    // Highlight settled at the clamped index 0 — never resurfaces at index 2.
+    const options = screen.getAllByRole("option");
+    expect(input).toHaveAttribute("aria-activedescendant", options[0].id);
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[2]).toHaveAttribute("aria-selected", "false");
   });
 
   it("closes on Escape and renders nothing without items", () => {
