@@ -11,6 +11,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+// Pin the platform: `isWindows` is derived from the jsdom user-agent, which
+// follows the machine running the tests. On Windows it would bolt the ConPTY
+// stream-cursor guard onto every pane and its extra DECTCEM writes would skew
+// the write-count assertions below. The guard has its own unit tests
+// (streamCursorGuard.test.ts) and wiring tests (paneController.test.ts).
+vi.mock("@/lib/platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/platform")>()),
+  isWindows: false,
+}));
+
 // Capture pty-data/pty-exit handlers so tests can fire backend events, and
 // track unlisten so cleanup is observable.
 const ptyEvents = vi.hoisted(() => ({

@@ -33,6 +33,14 @@ export interface PaneView {
   bracketedPaste(): boolean;
   /** Clear the scrollback. */
   clear(): void;
+  /** Optional ConPTY cursor-artifact suppressor (Windows panes only — see
+   * streamCursorGuard.ts). The controller feeds it output and keystrokes;
+   * the view factory decides whether the platform needs one. */
+  streamCursor?: {
+    onOutput(data: Uint8Array): void;
+    noteUserInput(): void;
+    dispose(): void;
+  };
 }
 
 /** The PTY IPC surface the controller needs (`api.pty*` in production). */
@@ -99,6 +107,7 @@ export class PaneController {
     };
     this.panes.set(tabId, pane);
     pane.onData = view.term.onData((data) => {
+      view.streamCursor?.noteUserInput();
       void this.write(tabId, new TextEncoder().encode(data));
     });
     view.term.writeln("\x1b[2mStarting shell in " + cwd + "…\x1b[0m");
@@ -137,6 +146,7 @@ export class PaneController {
     const pane = this.panes.get(tabId);
     if (!pane) return;
     pane.onData?.dispose();
+    pane.view.streamCursor?.dispose();
     if (pane.sessionId != null) {
       this.bySession.delete(pane.sessionId);
       void this.io.kill(pane.sessionId).catch(() => {});
@@ -178,7 +188,9 @@ export class PaneController {
     const pane = this.panes.get(tabId);
     if (!pane) return;
     pane.lastOutputAt = Date.now();
-    pane.view.term.write(new Uint8Array(data));
+    const bytes = new Uint8Array(data);
+    pane.view.term.write(bytes);
+    pane.view.streamCursor?.onOutput(bytes);
   }
 
   routeExit(sessionId: number): void {

@@ -31,7 +31,9 @@ import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { xtermTheme } from "@/features/terminal/xtermTheme";
 import { selectEnabledAgents } from "@/features/terminal/agents";
 import { MONO_FONT } from "@/lib/ui";
+import { isWindows } from "@/lib/platform";
 import { PaneController, type PaneView } from "./paneController";
+import { StreamCursorGuard } from "./streamCursorGuard";
 import { usePtyEvents } from "./usePtyEvents";
 import { usePaneReconciler } from "./usePaneReconciler";
 import { useTerminalInjection } from "./useTerminalInjection";
@@ -96,6 +98,13 @@ export function useTerminalPanes(): TerminalPanes {
         paste: (text) => term.paste(text),
         bracketedPaste: () => term.modes.bracketedPasteMode,
         clear: () => term.clear(),
+        // ConPTY shows the cursor parked at the repaint origin between its
+        // per-frame write bursts, which xterm renders as a cursor jumping
+        // through redrawn text while a TUI animates — Windows only, so other
+        // platforms keep their rendering untouched (see streamCursorGuard.ts).
+        streamCursor: isWindows
+          ? new StreamCursorGuard((seq) => term.write(seq))
+          : undefined,
       };
     };
     controllerRef.current = new PaneController(
