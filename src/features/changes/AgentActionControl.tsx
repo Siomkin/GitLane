@@ -30,7 +30,7 @@ export function AgentActionControl({
   disabledTitle: string;
   onPick: (agent: TerminalAgent) => void;
 }) {
-  const { ref, open, menuStyle, toggle, close } = useFixedPopover({ placement });
+  const { ref, menuRef, open, menuStyle, toggle, close, portal } = useFixedPopover({ placement });
   const available = agents.filter((agent) => agent.available);
   const blocked = disabled || available.length === 0;
 
@@ -61,8 +61,9 @@ export function AgentActionControl({
         <ChevronDownIcon className="h-3 w-3" />
       </button>
 
-      {open && (
+      {portal(() => (
         <div
+          ref={menuRef}
           role="menu"
           aria-label={menuAriaLabel}
           style={menuStyle}
@@ -103,7 +104,7 @@ export function AgentActionControl({
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 }
