@@ -10,20 +10,14 @@ const items = [
 const setup = (over: Partial<Parameters<typeof SuggestInput>[0]> = {}) => {
   const onPick = vi.fn();
   const onChange = vi.fn();
-  render(
-    <SuggestInput
-      value=""
-      onChange={onChange}
-      onPick={onPick}
-      items={items}
-      ariaLabel="Revision"
-      {...over}
-    />,
-  );
+  const props = { value: "", onChange, onPick, items, ariaLabel: "Revision", ...over };
+  const { rerender } = render(<SuggestInput {...props} />);
   return {
     input: screen.getByRole("combobox", { name: over.ariaLabel ?? "Revision" }),
     onPick,
     onChange,
+    rerender: (next: Partial<Parameters<typeof SuggestInput>[0]>) =>
+      rerender(<SuggestInput {...props} {...next} />),
   };
 };
 
@@ -89,6 +83,31 @@ describe("SuggestInput", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(input).not.toHaveAttribute("aria-controls");
     expect(input).not.toHaveAttribute("aria-activedescendant");
+  });
+
+  it("keeps aria-activedescendant on a rendered option when the list shrinks", () => {
+    const three = [
+      { value: "a", hint: "branch" },
+      { value: "b", hint: "branch" },
+      { value: "c", hint: "branch" },
+    ];
+    const { input, rerender } = setup({ items: three });
+    fireEvent.focus(input);
+    // Highlight the last (index 2) option.
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input).toHaveAttribute("aria-activedescendant", screen.getAllByRole("option")[2].id);
+
+    // Shrink to a single item: activedescendant must clamp to a rendered id,
+    // never dangle at the old index-2 id (no post-paint frame gap).
+    rerender({ items: [three[0]] });
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(1);
+    const activedescendant = input.getAttribute("aria-activedescendant");
+    expect(activedescendant).toBe(options[0].id);
+
+    // Enter now picks the surviving (clamped) option rather than nothing.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
   it("closes on Escape and renders nothing without items", () => {
