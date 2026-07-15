@@ -60,11 +60,21 @@ describe("ChangeSummaryCard", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "codex" }));
 
     expect(sendToTerminal).toHaveBeenCalledWith(
-      expect.stringMatching(/as much detail as needed[\s\S]*Do not modify files and do not commit/),
+      expect.stringMatching(
+        /as much detail as needed[\s\S]*Do not create, edit, stage, delete, or otherwise alter any tracked or untracked working-tree file/,
+      ),
       "codex",
     );
-    expect(sendToTerminal.mock.calls[0][0]).not.toContain("two to four sentences");
-    expect(sendToTerminal.mock.calls[0][0]).not.toContain("200 characters");
+    const prompt = sendToTerminal.mock.calls[0][0];
+    // Delivery must be pinned to the Git-metadata mailbox — never a loose
+    // worktree file that would dirty the tree and cancel the poll (review #1).
+    expect(prompt).toContain("only authorized filesystem writes");
+    // One-shot mailbox contract: don't re-read after the rename, end the turn
+    // (review #2).
+    expect(prompt).toContain("do not inspect, read, list, or verify it afterward");
+    expect(prompt).toContain("end the turn immediately");
+    expect(prompt).not.toContain("two to four sentences");
+    expect(prompt).not.toContain("200 characters");
     expect(screen.getByRole("status")).toHaveTextContent("describing these changes");
     expect(await screen.findByText("Updates staging review behavior and its tests.", {}, { timeout: 2_000 })).toBeVisible();
     expect(takeAgentChangeSummary).toHaveBeenCalledTimes(1);
