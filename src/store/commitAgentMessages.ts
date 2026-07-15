@@ -1,5 +1,5 @@
-// Shared cache for the user-editable instructions used by the commit composer's
-// terminal-agent actions. Durability belongs to the Rust app-data config; the
+// Shared cache for the user-editable instructions used by terminal-agent
+// actions. Durability belongs to the Rust app-data config; the
 // defaults here keep the actions usable before the first backend load settles.
 
 import { create } from "zustand";
@@ -9,6 +9,8 @@ export const DEFAULT_COMMIT_AGENT_MESSAGES: CommitAgentMessages = {
   draftInstruction: "Review the staged changes and draft a concise conventional commit message.",
   commitInstruction:
     "Review the staged changes, write a concise conventional-commit message, and commit them.",
+  descriptionInstruction:
+    "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.",
 };
 
 interface CommitAgentMessagesState {
@@ -28,7 +30,8 @@ function isCommitAgentMessages(value: unknown): value is CommitAgentMessages {
   const messages = value as Partial<CommitAgentMessages>;
   return (
     typeof messages.draftInstruction === "string" &&
-    typeof messages.commitInstruction === "string"
+    typeof messages.commitInstruction === "string" &&
+    typeof messages.descriptionInstruction === "string"
   );
 }
 

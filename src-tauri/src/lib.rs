@@ -1487,6 +1487,13 @@ fn take_agent_commit_draft(path: String, token: String) -> Result<Option<String>
     terminal_agents::take_commit_draft(&path, &token)
 }
 
+/// Poll the unique Git-metadata handoff file used when an interactive agent
+/// summarizes the current working changes.
+#[tauri::command]
+fn take_agent_change_summary(path: String, token: String) -> Result<Option<String>, String> {
+    terminal_agents::take_change_summary(&path, &token)
+}
+
 /// Spawn a new in-app terminal PTY running the user's login shell in `path` and
 /// return its `sessionId`; existing sessions keep running. Output streams back as
 /// `pty-data` events tagged with that id; exit fires `pty-exit`.
@@ -1796,6 +1803,7 @@ pub fn run() {
             commit_agent_messages_reset,
             terminal_agent_probe,
             take_agent_commit_draft,
+            take_agent_change_summary,
             pty_spawn,
             pty_write,
             pty_resize,

@@ -75,14 +75,14 @@ describe("TerminalAgentsSettings", () => {
     expect(container.firstElementChild).not.toHaveClass("max-w-[860px]");
   });
 
-  it("saves commit-agent messages independently from the agent list", async () => {
+  it("saves the change-description instruction independently from the agent list", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
 
-    const saveMessages = await screen.findByRole("button", { name: "Save messages" });
+    const saveMessages = await screen.findByRole("button", { name: "Save instructions" });
     expect(saveMessages).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: "Draft / improve instruction" }), {
-      target: { value: "Summarize the staged changes as a conventional commit." },
+    fireEvent.change(screen.getByRole("textbox", { name: "Describe changes instruction" }), {
+      target: { value: "Explain the user-visible behavior and motivation." },
     });
     expect(saveMessages).toBeEnabled();
     fireEvent.click(saveMessages);
@@ -90,13 +90,13 @@ describe("TerminalAgentsSettings", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
         messages: expect.objectContaining({
-          draftInstruction: "Summarize the staged changes as a conventional commit.",
+          descriptionInstruction: "Explain the user-visible behavior and motivation.",
         }),
       }),
     );
     expect(invokeMock).not.toHaveBeenCalledWith("terminal_agents_set", expect.anything());
     expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(
-      "Saved commit agent messages",
+      "Saved agent instructions",
     );
   });
 
@@ -105,6 +105,7 @@ describe("TerminalAgentsSettings", () => {
       if (command === "terminal_agents_get") return Promise.resolve([agent()]);
       if (command === "commit_agent_messages_get")
         return Promise.resolve({
+          ...DEFAULT_COMMIT_AGENT_MESSAGES,
           draftInstruction: "Customized draft",
           commitInstruction: "Customized commit",
         });
@@ -118,15 +119,16 @@ describe("TerminalAgentsSettings", () => {
 
     expect(screen.getByDisplayValue(DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction)).toBeVisible();
     expect(screen.getByDisplayValue("Customized commit")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Save messages" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save instructions" })).toBeEnabled();
     expect(invokeMock).not.toHaveBeenCalledWith("commit_agent_messages_reset");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save messages" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save instructions" }));
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
         messages: {
           draftInstruction: DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction,
           commitInstruction: "Customized commit",
+          descriptionInstruction: DEFAULT_COMMIT_AGENT_MESSAGES.descriptionInstruction,
         },
       }),
     );
@@ -138,6 +140,7 @@ describe("TerminalAgentsSettings", () => {
       if (command === "terminal_agents_get") return Promise.resolve([agent()]);
       if (command === "commit_agent_messages_get")
         return Promise.resolve({
+          ...DEFAULT_COMMIT_AGENT_MESSAGES,
           draftInstruction: "Customized draft",
           commitInstruction: "Customized commit",
         });
@@ -152,13 +155,13 @@ describe("TerminalAgentsSettings", () => {
     expect(screen.getByDisplayValue(DEFAULT_COMMIT_AGENT_MESSAGES.commitInstruction)).toBeVisible();
   });
 
-  it("places the terminal panel preview above the agents and commit-agent messages", async () => {
+  it("places the terminal panel preview above the agents and agent instructions", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
 
     const preview = screen.getByText("TERMINAL PANEL PREVIEW");
     const firstAgent = await screen.findByRole("button", { name: "Edit Claude" });
-    const messages = screen.getByRole("heading", { name: "Commit agent messages" });
+    const messages = screen.getByRole("heading", { name: "Agent instructions" });
     expect(preview.compareDocumentPosition(firstAgent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(preview.compareDocumentPosition(messages) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

@@ -12,11 +12,11 @@ export function CommitAgentMessagesSettings() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">
-            Commit agent messages
+            Agent instructions
           </h3>
           <p className="mt-1 max-w-[580px] text-[12.5px] leading-5 text-neutral-500 dark:text-neutral-400">
-            Customize the instructions used by Draft / Improve and Commit with agent. GitLane
-            always appends selected-file safety and draft-delivery instructions.
+            Customize the instructions used to describe changes, draft messages, and commit with
+            an agent. GitLane always appends the required context, safety, and delivery instructions.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -29,7 +29,7 @@ export function CommitAgentMessagesSettings() {
               focusRing,
             )}
           >
-            {editor.saving ? "Saving…" : "Save messages"}
+            {editor.saving ? "Saving…" : "Save instructions"}
           </button>
         </div>
       </div>
@@ -41,6 +41,31 @@ export function CommitAgentMessagesSettings() {
       )}
 
       <div className="mt-4 grid gap-3">
+        <div className="grid gap-1.5 text-[12px] font-medium text-neutral-600 dark:text-neutral-300">
+          <span className="flex items-center justify-between gap-3">
+            <label htmlFor="change-description-instruction">Describe changes instruction</label>
+            <ResetFieldButton
+              label="Describe changes instruction"
+              disabled={
+                editor.saving ||
+                editor.loading ||
+                editor.draft.descriptionInstruction ===
+                  DEFAULT_COMMIT_AGENT_MESSAGES.descriptionInstruction
+              }
+              onClick={() => editor.resetField("descriptionInstruction")}
+            />
+          </span>
+          <textarea
+            id="change-description-instruction"
+            aria-label="Describe changes instruction"
+            value={editor.draft.descriptionInstruction}
+            onChange={(event) => editor.update("descriptionInstruction", event.target.value)}
+            className={cn(
+              "min-h-20 resize-y rounded-lg border border-black/10 bg-white px-3 py-2.5 text-[12.5px] font-normal leading-5 text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-100",
+              focusRing,
+            )}
+          />
+        </div>
         <div className="grid gap-1.5 text-[12px] font-medium text-neutral-600 dark:text-neutral-300">
           <span className="flex items-center justify-between gap-3">
             <label htmlFor="commit-agent-draft-instruction">Draft / improve instruction</label>

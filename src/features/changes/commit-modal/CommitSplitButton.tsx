@@ -9,7 +9,7 @@ import type { TerminalAgent } from "@/lib/api";
 import { CheckIcon, PushIcon, RefreshIcon, BranchIcon, ChevronDownIcon, SparkleIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUpwardPopover } from "./useUpwardPopover";
+import { useFixedPopover } from "@/features/changes/useFixedPopover";
 
 function MenuItem({
   icon,
@@ -91,7 +91,7 @@ export function CommitSplitButton({
   onToggleAmend: () => void;
   onCommitWithAgent: (agent: TerminalAgent) => void;
 }) {
-  const { ref, open, menuStyle, toggle, close } = useUpwardPopover();
+  const { ref, open, menuStyle, toggle, close } = useFixedPopover();
 
   const label = amend
     ? "Amend last commit"

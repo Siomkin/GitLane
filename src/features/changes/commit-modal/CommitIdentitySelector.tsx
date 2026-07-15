@@ -12,12 +12,12 @@ import { cn } from "@/lib/cn";
 import { profileInitials, signingLabel } from "@/lib/profiles";
 import { focusRing } from "@/lib/ui";
 import { type CommitIdentityModel } from "./useCommitIdentity";
-import { useUpwardPopover } from "./useUpwardPopover";
+import { useFixedPopover } from "@/features/changes/useFixedPopover";
 
 export function CommitIdentitySelector({ identity }: { identity: CommitIdentityModel }) {
   const { loading, applying, error, usable, effective, identityText, sourceLabel, selection, activeManual, manuals, defaultIdentity, apply } =
     identity;
-  const { ref, open, menuStyle, toggle, close } = useUpwardPopover();
+  const { ref, open, menuStyle, toggle, close } = useFixedPopover();
 
   const choose = (target: { kind: "manual"; id: string } | null) => {
     close();
