@@ -166,7 +166,7 @@ export function AgentChangeDescription({
         </p>
       )}
       {description && (
-        <p className="mt-2 select-text whitespace-pre-wrap rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-[13px] leading-5 text-neutral-700 dark:text-neutral-200">
+        <p className="mt-2 select-text whitespace-pre-wrap rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2.5 text-[13px] leading-6 text-neutral-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-200">
           {description}
         </p>
       )}

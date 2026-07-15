@@ -178,20 +178,18 @@ export function StackedReview() {
         </button>
       </div>
 
-      {!loading && files.length > 0 && (
-        <AgentChangeDescription
-          contextKey={surface}
-          instruction={descriptionInstruction}
-        />
-      )}
-
       <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-neutral-800">
         {loading ? (
           <div className="grid h-full place-content-center text-sm text-neutral-400">Loading diffs…</div>
         ) : files.length === 0 ? (
           <div className="grid h-full place-content-center text-sm text-neutral-400">No changes.</div>
         ) : (
-          files.map((file) => {
+          <>
+          <AgentChangeDescription
+            contextKey={surface}
+            instruction={descriptionInstruction}
+          />
+          {files.map((file) => {
             const open = !collapsed[file.path];
             const diff = diffs[diffKeyFor(file.path)];
             const active = selectedFile?.source === "commit" && selectedFile.path === file.path;
@@ -248,7 +246,8 @@ export function StackedReview() {
                 )}
               </section>
             );
-          })
+          })}
+          </>
         )}
       </div>
 
