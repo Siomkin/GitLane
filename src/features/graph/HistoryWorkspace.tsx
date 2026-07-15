@@ -84,6 +84,15 @@ export const HistoryWorkspace = () => {
     [commits, histQuery, histFilter],
   );
   const matchCount = matchedIds?.size ?? 0;
+  // The ordered hits behind the search bar's clickable results panel — only
+  // for a text query (a kind filter alone highlights in place, no list).
+  const queryMatches = useMemo(
+    () =>
+      histQuery.trim() && matchedIds
+        ? commits.filter((commit) => matchedIds.has(commit.id))
+        : null,
+    [commits, histQuery, matchedIds],
+  );
   // The graph is the heavy part of opening a repo; show its skeleton until it
   // lands rather than gating the whole shell on it (GL-20). `graph` may be null
   // briefly between the summary committing and the graph arriving.
@@ -211,7 +220,11 @@ export const HistoryWorkspace = () => {
 
   return (
     <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800">
-      <HistorySearchBar countLabel={countLabel} selectedCount={selectedCommits.length} />
+      <HistorySearchBar
+        countLabel={countLabel}
+        selectedCount={selectedCommits.length}
+        matches={queryMatches}
+      />
 
       <div
         ref={scrollRef}

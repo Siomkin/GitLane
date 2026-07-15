@@ -29,10 +29,23 @@ import { GRAPH_PAGE_SIZE, type RepoGet, type RepoSet, type RepoState } from "./r
 export function createRepoRefreshActions(
   set: RepoSet,
   get: RepoGet,
-): Pick<RepoState, "refresh" | "loadMoreHistory" | "loadReflog"> {
+): Pick<
+  RepoState,
+  "refresh" | "loadMoreHistory" | "loadReflog" | "searchHistory" | "suggestTreePaths"
+> {
   const { wentMissing, handleMissing } = createMissingRepoHandlers(set, get);
 
   return {
+    searchHistory: async (query) => {
+      const repoPath = get().summary?.path;
+      if (!repoPath) return { results: [], truncated: false };
+      return api.searchHistory(repoPath, query);
+    },
+    suggestTreePaths: async (filter) => {
+      const repoPath = get().summary?.path;
+      if (!repoPath) return [];
+      return api.suggestTreePaths(repoPath, filter);
+    },
     refresh: async (opts) => {
       const { summary, graphLimit, loading } = get();
       if (!summary) return;

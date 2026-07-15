@@ -23,6 +23,7 @@ use git::types::{
     CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
     FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
     GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
+    HistorySearchPage, HistorySearchQuery,
     OauthClientStatus, OperationStatus, PrCheck, PrCommit, ProviderOauthResult, ProviderTokenStatus,
     PullRequestDetail, PullRequestSummary,
     RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge,
@@ -82,6 +83,25 @@ async fn commit_graph(path: String, limit: Option<usize>) -> Result<RepoGraph, S
     // revwalk, lane layout, and serialization. Open the non-Send Repository
     // inside the worker closure so none of that blocks the webview thread.
     blocking(move || git::read::commit_graph(&path, limit).map_err(|e| e.to_string())).await
+}
+
+#[tauri::command]
+async fn search_history(
+    path: String,
+    query: HistorySearchQuery,
+) -> Result<HistorySearchPage, String> {
+    blocking(move || git::read::search_history(&path, query)).await
+}
+
+#[tauri::command]
+async fn suggest_tree_paths(
+    path: String,
+    filter: String,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    // The HEAD tree walk is proportional to the repo's file count — keep it
+    // off the webview thread like the other potentially expensive reads.
+    blocking(move || git::read::suggest_tree_paths(&path, &filter, limit)).await
 }
 
 #[tauri::command]
@@ -1633,6 +1653,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_repo,
             commit_graph,
+            search_history,
+            suggest_tree_paths,
             list_branches,
             list_worktrees,
             add_worktree,

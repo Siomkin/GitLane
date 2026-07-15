@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { GithubAccountRef } from "./github";
 import { parse } from "./validate";
-import { fileDiffSchema, repoGraphSchema, workingChangesSchema } from "./schemas";
+import { fileDiffSchema, historySearchPageSchema, repoGraphSchema, workingChangesSchema } from "./schemas";
 
 /** Kind of ref a graph label carries, emitted by the backend. Compare against
  * `RefKind.Tag` rather than a bare `"tag"` literal so a typo fails to compile.
@@ -72,6 +72,33 @@ export interface RepoGraph {
   wipLane?: number | null;
   wipColor?: number | null;
   head: string | null;
+  truncated: boolean;
+}
+
+export interface HistorySearchQuery {
+  messagePattern?: string;
+  author?: string;
+  path?: string;
+  revision?: string;
+  changedPattern?: string;
+  occurrenceText?: string;
+  /** Inclusive committer-date bounds, epoch seconds (git log --since/--until). */
+  sinceTimestamp?: number;
+  untilTimestamp?: number;
+  limit?: number;
+}
+
+export interface HistorySearchResult {
+  id: string;
+  shortId: string;
+  summary: string;
+  authorName: string;
+  authorEmail: string;
+  timestamp: number;
+}
+
+export interface HistorySearchPage {
+  results: HistorySearchResult[];
   truncated: boolean;
 }
 
@@ -602,6 +629,14 @@ export const gitApi = {
 
   commitGraph: async (path: string, limit?: number): Promise<RepoGraph> =>
     parse(repoGraphSchema, await invoke("commit_graph", { path, limit: limit ?? null }), "commit_graph"),
+
+  searchHistory: async (path: string, query: HistorySearchQuery): Promise<HistorySearchPage> =>
+    parse(historySearchPageSchema, await invoke("search_history", { path, query }), "search_history"),
+
+  /** HEAD-tree paths (files + directories) containing `filter`, for the
+   * advanced search's File-path autosuggest. */
+  suggestTreePaths: (path: string, filter: string, limit?: number) =>
+    invoke<string[]>("suggest_tree_paths", { path, filter, limit: limit ?? null }),
 
   listBranches: (path: string) =>
     invoke<BranchInfo[]>("list_branches", { path }),

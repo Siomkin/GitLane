@@ -90,6 +90,47 @@ pub struct RepoGraph {
     pub truncated: bool,
 }
 
+/// Repository-wide commit search filters. Non-empty fields are combined with
+/// AND semantics; message and diff content accept regular expressions while
+/// occurrence_text mirrors `git log -S` with a literal occurrence-count test.
+/// The timestamp bounds are inclusive epoch seconds compared against the
+/// committer date (matching `git log --since/--until`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySearchQuery {
+    pub message_pattern: Option<String>,
+    pub author: Option<String>,
+    pub path: Option<String>,
+    pub revision: Option<String>,
+    pub changed_pattern: Option<String>,
+    pub occurrence_text: Option<String>,
+    pub since_timestamp: Option<i64>,
+    pub until_timestamp: Option<i64>,
+    pub limit: Option<usize>,
+}
+
+/// A commit matched by [`HistorySearchQuery`]. Search results deliberately
+/// carry display metadata but no graph coordinates: layout remains owned by
+/// `commit_graph`, and the frontend pages that graph before revealing a hit.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySearchResult {
+    pub id: String,
+    pub short_id: String,
+    pub summary: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySearchPage {
+    pub results: Vec<HistorySearchResult>,
+    /// True when more matches exist beyond the requested result cap.
+    pub truncated: bool,
+}
+
 /// High-level repository state shown in the title bar / status area.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
