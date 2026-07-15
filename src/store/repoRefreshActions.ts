@@ -306,12 +306,20 @@ export function createRepoRefreshActions(
                   ? graphRequestIsCurrent(get, generation, summary.path)
                   : repoStillDisplayed(get, summary.path)),
             );
-          } else {
+          } else if (
+            // Re-check ownership AFTER the async missing-probe: a newer
+            // same-path refresh/load can begin during that await, and this
+            // stale failure must not clear its spinner or overwrite its error.
+            generation !== null
+              ? graphRequestIsCurrent(get, generation, summary.path)
+              : repoStillDisplayed(get, summary.path)
+          ) {
             // When this refresh owns the graph request (generation !== null), clear
             // graphLoading too: it may have superseded the initial open, whose
             // orphaned load can't clear the skeleton itself (GL-20 review).
+            // A quiet refresh never held `loading`, so it must not clear one.
             set({
-              loading: false,
+              ...(opts?.quiet ? {} : { loading: false }),
               error: errorText(e),
               ...(generation !== null ? { graphLoading: false } : {}),
             });

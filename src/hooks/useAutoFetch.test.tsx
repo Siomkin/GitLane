@@ -95,6 +95,42 @@ describe("useAutoFetch", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("stays off for a malformed persisted enable flag", async () => {
+    const fetch = useRepo.getState().fetch;
+    // Rehydrated storage can hold any JSON; a truthy non-boolean must not
+    // silently enable background networking.
+    useUi.setState({ autoFetchEnabled: "true" as never, autoFetchMinutes: 5 });
+    renderHook(() => useAutoFetch());
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a completion landing after teardown neither counts nor toasts", async () => {
+    const showToast = vi.fn();
+    let resolveFetch!: (ok: boolean) => void;
+    let call = 0;
+    const fetch = vi.fn((): Promise<boolean> => {
+      call += 1;
+      if (call < 3) return Promise.resolve(false);
+      return new Promise<boolean>((res) => (resolveFetch = res));
+    });
+    useUi.setState({ autoFetchEnabled: true, autoFetchMinutes: 5, showToast });
+    useRepo.setState({ fetch });
+    renderHook(() => useAutoFetch());
+
+    // Two quick failures, then a third tick whose fetch is still on the wire.
+    await vi.advanceTimersByTimeAsync(3 * 5 * 60_000);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(showToast).not.toHaveBeenCalled();
+
+    // The user disables auto-fetch while that fetch is in flight; its late
+    // failure must not fire the pause toast for a schedule that's gone.
+    act(() => useUi.setState({ autoFetchEnabled: false }));
+    resolveFetch(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
   it("falls back to the default cadence for an invalid persisted value", async () => {
     const fetch = useRepo.getState().fetch;
     // e.g. the pre-toggle 0 sentinel surviving in localStorage.

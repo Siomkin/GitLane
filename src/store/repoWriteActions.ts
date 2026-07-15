@@ -514,7 +514,7 @@ export function createRepoWriteActions(
         // desired end state.
         if (alsoRemote) {
           const remote = defaultRemote();
-          await api.deleteRemoteTag(summary.path, name, remote, authFor(remote));
+          await trackNet(() => api.deleteRemoteTag(summary.path, name, remote, authFor(remote)));
           try {
             await api.deleteTag(summary.path, name);
           } catch (e) {
@@ -911,7 +911,10 @@ export function createRepoWriteActions(
       // repo switch can't clear the new repo's loading lifecycle or refresh the
       // wrong checkout. Toast plumbing is global UI and stays unguarded.
       const opPath = summary.path;
-      set({ loading: true, error: null });
+      // A quiet (background) fetch must be invisible: it doesn't hold `loading`
+      // (the ActionBar disables on it; `netOps` from trackNet is the overlap
+      // signal the scheduler watches) and must not clear an unrelated `error`.
+      if (!opts?.quiet) set({ loading: true, error: null });
       // Capture how far behind the tracked branch is *before* fetching so the
       // success toast can report how many commits the remote ref gained.
       const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
@@ -937,8 +940,9 @@ export function createRepoWriteActions(
           );
         await trackNet(() => api.fetch(summary.path, remoteAccounts));
       } catch (e) {
-        // Replay any re-sync deferred while this fetch held `loading` (GL-20 review).
-        if (get().summary?.path === opPath) {
+        // Replay any re-sync deferred while this fetch held `loading` (GL-20
+        // review). A quiet fetch held nothing, so it has no state to restore.
+        if (!opts?.quiet && get().summary?.path === opPath) {
           set({ loading: false });
           flushPendingRefresh(get);
         }
@@ -950,28 +954,26 @@ export function createRepoWriteActions(
         }
         return false;
       }
+      if (opts?.quiet) {
+        // The fetch rewrote FETCH_HEAD (and any updated remote refs) under
+        // .git, so the watcher fires its own quiet re-sync — skip the
+        // foreground refresh (and its PR reload) entirely. No `loading` was
+        // held, so there is nothing to clear or flush.
+        return true;
+      }
       if (get().summary?.path !== opPath) {
         // Switched repos mid-fetch: the new repo's load owns `loading` now.
         // The fetch itself succeeded, so resolve the toast — but without a
         // count, which would be read from the wrong repo's branches.
-        if (toastId !== null)
-          notes.update(toastId, {
-            kind: "success",
-            title: only ? `Fetched ${only}` : "Fetched",
-            progress: undefined,
-            duration: 5000,
-          });
+        if (toastId !== null) notes.update(toastId, {
+          kind: "success",
+          title: only ? `Fetched ${only}` : "Fetched",
+          progress: undefined,
+          duration: 5000,
+        });
         return true;
       }
       set({ loading: false });
-      if (opts?.quiet) {
-        // The fetch rewrote FETCH_HEAD (and any updated remote refs) under
-        // .git, so the watcher fires its own quiet re-sync — skip the
-        // foreground refresh (and its PR reload) entirely; just replay
-        // anything deferred while this fetch held `loading`.
-        flushPendingRefresh(get);
-        return true;
-      }
       // Fetch succeeded — refresh (best-effort) so the count reflects new refs,
       // then report. `refresh` never rejects; it reports success as a boolean
       // (false = deferred/superseded/failed), and a refresh failure can't
@@ -1003,6 +1005,9 @@ export function createRepoWriteActions(
     pull: async () => {
       const { summary } = get();
       if (!summary) return;
+      // Same ownership rule as `fetch`: post-await reads/refresh are guarded on
+      // the repo this pull started on.
+      const opPath = summary.path;
       const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const remote = head?.upstreamRemote ?? "origin";
       const branch = head?.name ?? "HEAD";
@@ -1022,6 +1027,19 @@ export function createRepoWriteActions(
       } catch (e) {
         notes.dismiss(toastId);
         useUi.getState().showToast(String(e), "error");
+        return;
+      }
+      if (get().summary?.path !== opPath) {
+        // Switched repos mid-pull: the pull itself succeeded, so resolve the
+        // toast neutrally — the new repo's lifecycle owns refresh/loading, and
+        // a tip read here would come from the wrong repo's branches.
+        notes.update(toastId, {
+          kind: "success",
+          title: "Pulled",
+          body: `from ${upstream}`,
+          progress: undefined,
+          duration: 5000,
+        });
         return;
       }
       // Pull succeeded — refresh (best-effort) to observe the new tip, then
@@ -1095,13 +1113,10 @@ export function createRepoWriteActions(
           ? [{ label: `View on ${forge?.forge ?? "web"}`, onClick: () => openExternalUrl(webUrl) }]
           : undefined,
       });
-      try {
-        await get().refresh();
-      } catch (err) {
-        // The filesystem watcher will re-sync anyway; don't surface a refresh
-        // failure as a push failure.
-        console.warn("push: post-push refresh failed", err);
-      }
+      // Best-effort: `refresh` never rejects (it reports success as a boolean),
+      // and the filesystem watcher re-syncs anyway — the toast above doesn't
+      // depend on it.
+      await get().refresh();
     },
   };
 }

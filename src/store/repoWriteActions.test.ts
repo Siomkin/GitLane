@@ -147,7 +147,9 @@ describe("fetch — per-remote transport auth pairs", () => {
 });
 
 describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
-  it("succeeds with no toasts, skips the foreground refresh, and returns true", async () => {
+  it("succeeds with no toasts, skips the foreground refresh, and preserves unrelated error state", async () => {
+    useRepo.setState({ error: "pre-existing read error" });
+
     const ok = await useRepo.getState().fetch({ quiet: true });
 
     expect(ok).toBe(true);
@@ -156,10 +158,13 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
     // the watcher's own quiet re-sync picks up the fetched refs instead.
     expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
     expect(useRepo.getState().loading).toBe(false);
+    // Quiet mode must not clear an error it didn't cause.
+    expect(useRepo.getState().error).toBe("pre-existing read error");
   });
 
-  it("returns false on failure without surfacing any toast", async () => {
+  it("returns false on failure without surfacing any toast or touching error state", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    useRepo.setState({ error: "pre-existing read error" });
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "fetch" ? Promise.reject("auth failed") : refreshInvoke(cmd),
     );
@@ -169,14 +174,17 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
     expect(ok).toBe(false);
     expect(useNotifications.getState().toasts).toHaveLength(0);
     expect(useRepo.getState().loading).toBe(false);
+    expect(useRepo.getState().error).toBe("pre-existing read error");
     warnSpy.mockRestore();
   });
 
-  it("manual fetch still reports success (returns true) and quiet holds netOps while running", async () => {
+  it("holds netOps — but never `loading` — while the quiet fetch is on the wire", async () => {
     let netOpsDuring = -1;
+    let loadingDuring = true;
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "fetch") {
         netOpsDuring = useRepo.getState().netOps;
+        loadingDuring = useRepo.getState().loading;
         return Promise.resolve(null);
       }
       return refreshInvoke(cmd);
@@ -186,6 +194,8 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
 
     expect(ok).toBe(true);
     expect(netOpsDuring).toBe(1);
+    // The ActionBar disables on `loading`; a background fetch must not flip it.
+    expect(loadingDuring).toBe(false);
     expect(useRepo.getState().netOps).toBe(0);
   });
 });
@@ -368,6 +378,33 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
     // Refresh failed → neutral "Pulled", never a stale "Already up to date".
     expect(toasts[0].title).toBe("Pulled");
   });
+
+  it("a pull that outlives a repo switch resolves neutrally and leaves the new repo alone", async () => {
+    useRepo.setState({
+      branches: [
+        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+      ],
+    });
+    const otherSummary = { ...summary, path: "/other", workdir: "/other" };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "pull") {
+        // A repo switch lands while the pull is on the wire.
+        useRepo.setState({ summary: otherSummary, loading: true });
+        return Promise.resolve(null);
+      }
+      return refreshInvoke(cmd);
+    });
+
+    await useRepo.getState().pull();
+
+    // No refresh against the new checkout, and its loading is untouched.
+    expect(useRepo.getState().loading).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("success");
+    // Neutral title: the tip comparison would read the wrong repo's branches.
+    expect(toast?.title).toBe("Pulled");
+  });
 });
 
 describe("refresh — explicit success result", () => {
@@ -377,6 +414,11 @@ describe("refresh — explicit success result", () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
     );
+    await expect(useRepo.getState().refresh()).resolves.toBe(false);
+  });
+
+  it("resolves false when no repository is open", async () => {
+    useRepo.setState({ summary: null });
     await expect(useRepo.getState().refresh()).resolves.toBe(false);
   });
 });
@@ -471,8 +513,7 @@ describe("push family — the target remote's account, not a repo-wide one", () 
   });
 
   it("keeps the push success toast when the post-push refresh fails", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const realRefresh = useRepo.getState().refresh;
+    // Real refresh, real failure — refresh resolves false, never rejects.
     useRepo.setState({
       branches: [
         branch({
@@ -482,19 +523,17 @@ describe("push family — the target remote's account, not a repo-wide one", () 
           sync: { status: "ahead", upstream: "mirror/main", ahead: 2, behind: 0 },
         }),
       ],
-      refresh: vi.fn().mockRejectedValue(new Error("refresh boom")),
     });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
+    );
 
-    try {
-      await useRepo.getState().push();
-      const toasts = useNotifications.getState().toasts;
-      expect(toasts).toHaveLength(1);
-      expect(toasts[0].kind).toBe("success");
-      expect(toasts[0].title).toBe("Pushed 2 commits");
-    } finally {
-      useRepo.setState({ refresh: realRefresh });
-      warn.mockRestore();
-    }
+    await useRepo.getState().push();
+
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe("success");
+    expect(toasts[0].title).toBe("Pushed 2 commits");
   });
 
   it("pushBranch resolves the named branch's remote (origin fallback)", async () => {
