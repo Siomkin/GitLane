@@ -10,15 +10,24 @@ import {
   CHANGED_MODES,
   EMPTY_FIELDS,
   activeFilterChips,
+  datePlaceholders,
+  formatDateInput,
+  isValidDateInput,
   toQuery,
   type ChangedMode,
   type FormFields,
 } from "./advancedSearchModel";
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children, trailing }: { children: React.ReactNode; trailing?: React.ReactNode }) {
+  // A fixed-height label row keeps every input in the grid on the same line —
+  // the "Changed code" cell packs its match-mode toggle into this row, which
+  // would otherwise make it taller than its neighbours' and push its input down.
   return (
-    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
-      {children}
+    <span className="mb-1 flex h-5 items-center justify-between">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+        {children}
+      </span>
+      {trailing}
     </span>
   );
 }
@@ -57,6 +66,9 @@ export function AdvancedHistorySearch() {
   const commits = useRepo((state) => state.graph?.commits);
   const branches = useRepo((state) => state.branches);
   const [fields, setFields] = useState(EMPTY_FIELDS);
+  // Stable for the mounted panel's lifetime — a re-render at midnight moving
+  // the hint by a day is not worth re-deriving per render.
+  const [dateHints] = useState(() => datePlaceholders());
   const [changedMode, setChangedMode] = useState<ChangedMode>("literal");
   const [page, setPage] = useState<HistorySearchPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,6 +88,15 @@ export function AdvancedHistorySearch() {
 
   const update = (key: keyof FormFields, value: string) =>
     setFields((current) => ({ ...current, [key]: value }));
+  // Tab on an empty date field adopts its ghost placeholder as the value, so
+  // the suggested bound is one keystroke instead of eight digits. Focus still
+  // moves on (no preventDefault); the chip that appears makes the fill visible
+  // and one × undoes it. Shift+Tab (backing out of the form) never fills.
+  const adoptHintOnTab = (key: "since" | "until") => (event: React.KeyboardEvent) => {
+    if (event.key === "Tab" && !event.shiftKey && fields[key] === "") {
+      update(key, dateHints[key]);
+    }
+  };
   const clearAll = () => {
     // Bump both tokens so a search/reveal already in flight can't repopulate the
     // cleared results or clobber a later reveal's busy state (mirrors the
@@ -105,6 +126,16 @@ export function AdvancedHistorySearch() {
   }, [repoPath]);
 
   const chips = useMemo(() => activeFilterChips(fields, changedMode), [fields, changedMode]);
+  // Which date field is being edited right now. Validity gates the search
+  // immediately, but the red flagging waits for the value to settle (blur) —
+  // half-typed input ("22") shouldn't nag on every keystroke.
+  const [editingDate, setEditingDate] = useState<"since" | "until" | null>(null);
+  const sinceInvalid = !isValidDateInput(fields.since);
+  const untilInvalid = !isValidDateInput(fields.until);
+  const datesInvalid = sinceInvalid || untilInvalid;
+  const showSinceInvalid = sinceInvalid && editingDate !== "since";
+  const showUntilInvalid = untilInvalid && editingDate !== "until";
+  const showDatesInvalid = showSinceInvalid || showUntilInvalid;
 
   const authorItems = useMemo(
     () => authorSuggestions(commits ?? [], fields.author),
@@ -140,7 +171,9 @@ export function AdvancedHistorySearch() {
   }, [fields.path, suggestTreePaths]);
 
   const search = async () => {
-    if (!repoPath || loading) return;
+    // Also guarded here (not just the disabled button) so implicit form
+    // submission can't run a query that would silently drop an invalid date.
+    if (!repoPath || loading || datesInvalid) return;
     const gen = (requestGen.current += 1);
     setLoading(true);
     setError(null);
@@ -243,28 +276,31 @@ export function AdvancedHistorySearch() {
             />
           </label>
           <label className="min-w-0">
-            <span className="mb-1 flex items-baseline justify-between">
-              <FieldLabel>Changed code</FieldLabel>
-              <span role="radiogroup" aria-label="Changed code match mode" className="flex gap-0.5">
-                {CHANGED_MODES.map((mode) => (
-                  <button
-                    key={mode.key}
-                    type="button"
-                    role="radio"
-                    aria-checked={changedMode === mode.key}
-                    onClick={() => setChangedMode(mode.key)}
-                    className={cn(
-                      "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
-                      changedMode === mode.key
-                        ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
-                        : "text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5",
-                    )}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </span>
-            </span>
+            <FieldLabel
+              trailing={
+                <span role="radiogroup" aria-label="Changed code match mode" className="flex gap-0.5">
+                  {CHANGED_MODES.map((mode) => (
+                    <button
+                      key={mode.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={changedMode === mode.key}
+                      onClick={() => setChangedMode(mode.key)}
+                      className={cn(
+                        "rounded px-1.5 py-0.5 text-[10px] font-medium leading-none transition-colors",
+                        changedMode === mode.key
+                          ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
+                          : "text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5",
+                      )}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </span>
+              }
+            >
+              Changed code
+            </FieldLabel>
             <input
               value={fields.changed}
               onChange={(event) => update("changed", event.target.value)}
@@ -276,19 +312,35 @@ export function AdvancedHistorySearch() {
             <FieldLabel>Date range</FieldLabel>
             <div className="flex items-center gap-1.5">
               <input
-                type="date"
                 value={fields.since}
-                onChange={(event) => update("since", event.target.value)}
+                onChange={(event) => update("since", formatDateInput(event.target.value))}
+                placeholder={dateHints.since}
+                inputMode="numeric"
                 aria-label="Committed after"
-                className={INPUT_CLASS}
+                aria-invalid={showSinceInvalid || undefined}
+                onKeyDown={adoptHintOnTab("since")}
+                onFocus={() => setEditingDate("since")}
+                onBlur={() => setEditingDate(null)}
+                className={cn(
+                  INPUT_CLASS,
+                  showSinceInvalid && "border-red-400 focus:border-red-400 dark:border-red-500/70",
+                )}
               />
               <span className="text-[10px] text-neutral-400">to</span>
               <input
-                type="date"
                 value={fields.until}
-                onChange={(event) => update("until", event.target.value)}
+                onChange={(event) => update("until", formatDateInput(event.target.value))}
+                placeholder={dateHints.until}
+                inputMode="numeric"
                 aria-label="Committed before"
-                className={INPUT_CLASS}
+                aria-invalid={showUntilInvalid || undefined}
+                onKeyDown={adoptHintOnTab("until")}
+                onFocus={() => setEditingDate("until")}
+                onBlur={() => setEditingDate(null)}
+                className={cn(
+                  INPUT_CLASS,
+                  showUntilInvalid && "border-red-400 focus:border-red-400 dark:border-red-500/70",
+                )}
               />
             </div>
           </div>
@@ -321,10 +373,14 @@ export function AdvancedHistorySearch() {
           </div>
         )}
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] text-neutral-400">Non-empty filters are combined.</span>
+          <span className={cn("text-[10px]", showDatesInvalid ? "text-red-500 dark:text-red-400" : "text-neutral-400")}>
+            {showDatesInvalid
+              ? `Dates must be YYYY-MM-DD, like ${dateHints.since}.`
+              : "Non-empty filters are combined."}
+          </span>
           <button
             type="submit"
-            disabled={!repoPath || loading}
+            disabled={!repoPath || loading || datesInvalid}
             className="h-7 rounded-md bg-[var(--accent)] px-3 text-[11px] font-semibold text-white disabled:opacity-50"
           >
             {loading ? "Searching…" : "Search repository"}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_FIELDS, activeFilterChips, toQuery, type FormFields } from "./advancedSearchModel";
+import { EMPTY_FIELDS, activeFilterChips, datePlaceholders, formatDateInput, isValidDateInput, toQuery, type FormFields } from "./advancedSearchModel";
 
 const fields = (over: Partial<FormFields>): FormFields => ({ ...EMPTY_FIELDS, ...over });
 
@@ -63,5 +63,58 @@ describe("activeFilterChips", () => {
 
   it("ignores whitespace-only filters", () => {
     expect(activeFilterChips(fields({ message: "   " }), "literal")).toEqual([]);
+  });
+});
+
+describe("datePlaceholders", () => {
+  it("hints one year back for since and today for until, as local dates", () => {
+    const hints = datePlaceholders(new Date("2026-07-15T12:00:00"));
+    expect(hints.since).toBe("2025-07-15");
+    expect(hints.until).toBe("2026-07-15");
+  });
+
+  it("pads single-digit months and days", () => {
+    expect(datePlaceholders(new Date("2026-02-03T12:00:00")).since).toBe("2025-02-03");
+  });
+});
+
+describe("isValidDateInput / invalid-date handling", () => {
+  it("accepts empty and real YYYY-MM-DD dates, rejects everything else", () => {
+    expect(isValidDateInput("")).toBe(true);
+    expect(isValidDateInput("2026-07-15")).toBe(true);
+    expect(isValidDateInput("2223213123")).toBe(false);
+    expect(isValidDateInput("07/15/2026")).toBe(false);
+    expect(isValidDateInput("2026-7-15")).toBe(false);
+    expect(isValidDateInput("2026-02-30")).toBe(false);
+  });
+
+  it("keeps invalid dates out of the query and the chips", () => {
+    const bad = fields({ since: "2223213123" });
+    expect(toQuery(bad, "literal").sinceTimestamp).toBeUndefined();
+    expect(activeFilterChips(bad, "literal")).toEqual([]);
+  });
+});
+
+describe("formatDateInput", () => {
+  it("inserts dashes as digits arrive", () => {
+    expect(formatDateInput("2")).toBe("2");
+    expect(formatDateInput("2025")).toBe("2025");
+    expect(formatDateInput("20250")).toBe("2025-0");
+    expect(formatDateInput("202507")).toBe("2025-07");
+    expect(formatDateInput("2025071")).toBe("2025-07-1");
+    expect(formatDateInput("20250715")).toBe("2025-07-15");
+  });
+
+  it("normalizes pasted separators and trims overflow", () => {
+    expect(formatDateInput("2025-07-15")).toBe("2025-07-15");
+    expect(formatDateInput("2025/07/15")).toBe("2025-07-15");
+    expect(formatDateInput("2025.07.15.999")).toBe("2025-07-15");
+    expect(formatDateInput("abc")).toBe("");
+  });
+
+  it("never leaves a trailing dash, so backspace deletes through it", () => {
+    // "2025-0" minus its last char is "2025-", which must settle to "2025".
+    expect(formatDateInput("2025-")).toBe("2025");
+    expect(formatDateInput("2025-07-")).toBe("2025-07");
   });
 });
