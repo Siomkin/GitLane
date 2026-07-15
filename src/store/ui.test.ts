@@ -308,3 +308,12 @@ describe("view-tab transitions", () => {
     expect(useUi.getState().commitMsg).toBe("");
   });
 });
+
+describe("auto-fetch cadence (GL-221)", () => {
+  it("accepts allowed values and sanitizes anything else to the default", () => {
+    useUi.getState().setAutoFetchMinutes(30);
+    expect(useUi.getState().autoFetchMinutes).toBe(30);
+    useUi.getState().setAutoFetchMinutes(7 as never);
+    expect(useUi.getState().autoFetchMinutes).toBe(15);
+  });
+});

@@ -592,7 +592,7 @@ describe("ActionBar network ops — one at a time (GL-182)", () => {
   it("ignores a second network op while the first is still in flight", async () => {
     let resolveFetch!: () => void;
     const fetch = vi.fn(
-      () => new Promise<void>((res) => (resolveFetch = () => res())),
+      () => new Promise<boolean>((res) => (resolveFetch = () => res(true))),
     );
     const pull = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({ fetch, pull });

@@ -23,6 +23,20 @@ export type { AccentColor };
 export type Theme = "dark" | "light" | "system";
 export type Density = "Comfortable" | "Compact";
 export type TerminalView = "hidden" | "collapsed" | "open";
+/** The allowed background-fetch cadences (enable/disable is the separate
+ * `autoFetchEnabled` switch, so toggling off keeps the chosen cadence). The
+ * persisted value is validated against this list (rehydrated storage can hold
+ * anything). */
+export const AUTO_FETCH_MINUTES = [5, 15, 30, 60] as const;
+export type AutoFetchMinutes = (typeof AUTO_FETCH_MINUTES)[number];
+export const DEFAULT_AUTO_FETCH_MINUTES: AutoFetchMinutes = 15;
+/** Clamp a (possibly rehydrated) cadence to the allowed list — persisted
+ * storage can hold anything, including the pre-toggle 0 sentinel. */
+export function sanitizeAutoFetchMinutes(value: number): AutoFetchMinutes {
+  return (AUTO_FETCH_MINUTES as readonly number[]).includes(value)
+    ? (value as AutoFetchMinutes)
+    : DEFAULT_AUTO_FETCH_MINUTES;
+}
 export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "about";
 
 /** A terminal agent draft request collected asynchronously by the composer. It is scoped
@@ -288,6 +302,10 @@ interface UiState {
    * (the About panel's toggle). `lastUpdateCheckAt` is the epoch ms of the last
    * attempt, used to throttle that daily check. Both persist. */
   autoCheckUpdates: boolean;
+  /** Opt-in background fetch switch (off by default) and its cadence in
+   * minutes. Kept separate so disabling preserves the chosen cadence. */
+  autoFetchEnabled: boolean;
+  autoFetchMinutes: AutoFetchMinutes;
   lastUpdateCheckAt: number;
   /** When true, update checks target the beta channel's rolling manifest
    * instead of the stable `/latest/` endpoint (GL-154, the About panel's
@@ -451,6 +469,8 @@ interface UiState {
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
   setAutoCheckUpdates: (on: boolean) => void;
+  setAutoFetchEnabled: (on: boolean) => void;
+  setAutoFetchMinutes: (minutes: AutoFetchMinutes) => void;
   /** Opt into (or out of) beta-channel update checks (GL-154). */
   setBetaUpdates: (on: boolean) => void;
   /** Stamp the last update-check time (called by the updates store on any check). */
@@ -647,6 +667,8 @@ export const useUi = create<UiState>()(
   collapsed: {},
 
   autoCheckUpdates: true,
+  autoFetchEnabled: false,
+  autoFetchMinutes: DEFAULT_AUTO_FETCH_MINUTES,
   lastUpdateCheckAt: 0,
   betaUpdates: true,
 
@@ -748,6 +770,8 @@ export const useUi = create<UiState>()(
   setAccent: (accent) => set({ accent }),
   setDensity: (density) => set({ density }),
   setAutoCheckUpdates: (on) => set({ autoCheckUpdates: on }),
+  setAutoFetchEnabled: (on) => set({ autoFetchEnabled: on }),
+  setAutoFetchMinutes: (minutes) => set({ autoFetchMinutes: sanitizeAutoFetchMinutes(minutes) }),
   setBetaUpdates: (on) => set({ betaUpdates: on }),
   markUpdateChecked: () => set({ lastUpdateCheckAt: Date.now() }),
   setFilter: (filter) => set({ filter }),
@@ -1033,6 +1057,8 @@ export const useUi = create<UiState>()(
         accent: s.accent,
         density: s.density,
         autoCheckUpdates: s.autoCheckUpdates,
+        autoFetchEnabled: s.autoFetchEnabled,
+        autoFetchMinutes: s.autoFetchMinutes,
         betaUpdates: s.betaUpdates,
         lastUpdateCheckAt: s.lastUpdateCheckAt,
         leftWidth: s.leftWidth,

@@ -12,7 +12,7 @@ type RefreshFn = (opts?: {
   prs?: boolean;
   quiet?: boolean;
   scope?: RefreshScope;
-}) => Promise<void> | void;
+}) => Promise<unknown> | void;
 
 /**
  * Keep the open repo in sync with changes made outside the app:

@@ -48,7 +48,7 @@ export function createRepoRefreshActions(
     },
     refresh: async (opts) => {
       const { summary, graphLimit, loading } = get();
-      if (!summary) return;
+      if (!summary) return false;
       // The open-intent baseline for a missing-repo fallback (GL-126): captured
       // before any read below so a repo switch begun mid-refresh — which claims
       // a newer intent before its summary/generation publish — flips the
@@ -62,7 +62,7 @@ export function createRepoRefreshActions(
       // race the in-flight graph fetch and could livelock a slow initial open.
       if (loading) {
         deferRefresh(opts?.scope === "worktree" ? "worktree" : "all");
-        return;
+        return false;
       }
       const generation = opts?.scope === "worktree" ? null : beginGraphRequest();
       if (generation !== null) set({ loadingMoreHistory: false });
@@ -76,7 +76,7 @@ export function createRepoRefreshActions(
             api.workingChanges(summary.path),
             api.operationStatus(summary.path).catch(() => null),
           ]);
-          if (get().summary?.path !== summary.path) return;
+          if (get().summary?.path !== summary.path) return false;
           const selectedFile = get().selectedFile;
           const selectedFileGone =
             selectedFile &&
@@ -125,7 +125,7 @@ export function createRepoRefreshActions(
           // An open file viewer follows the worktree too — re-read it so an
           // external edit is reflected (closes itself if the file vanished).
           if (get().fileView) void get().reloadFileView();
-          return;
+          return true;
         }
 
         // Open first, alone: its classified rejection is what distinguishes a
@@ -152,7 +152,7 @@ export function createRepoRefreshActions(
           // Superseded mid-flight: replay any sync deferred during this refresh's
           // loading window so the coalesced event isn't lost on this bail (GL-20).
           flushPendingRefresh(get);
-          return;
+          return false;
         }
         const currentSelection = get().selectedCommit;
         // Default to the newest real commit, skipping interleaved stash nodes (see
@@ -164,7 +164,7 @@ export function createRepoRefreshActions(
         const commitFiles = selectedCommit ? await api.commitFiles(nextSummary.path, selectedCommit) : [];
         if (!graphRequestIsCurrent(get, generation, summary.path)) {
           flushPendingRefresh(get);
-          return;
+          return false;
         }
         // Trim the multi-selection to ids that still exist after the refresh —
         // e.g. a reset/rebase can drop the selected commits. Anchor stays if it
@@ -280,10 +280,11 @@ export function createRepoRefreshActions(
         if (opts?.prs !== false) void usePulls.getState().loadPullRequests(false, true);
         // A non-quiet refresh held `loading`; replay anything deferred during it.
         flushPendingRefresh(get);
+        return true;
       } catch (e) {
         if (generation !== null && !graphRequestIsCurrent(get, generation, summary.path)) {
           flushPendingRefresh(get);
-          return;
+          return false;
         }
         // A refresh failing because the repo's path vanished (deleted, or its
         // volume unmounted under an open tab) swaps in the missing-repo state
@@ -305,18 +306,27 @@ export function createRepoRefreshActions(
                   ? graphRequestIsCurrent(get, generation, summary.path)
                   : repoStillDisplayed(get, summary.path)),
             );
-          } else {
+          } else if (
+            // Re-check ownership AFTER the async missing-probe: a newer
+            // same-path refresh/load can begin during that await, and this
+            // stale failure must not clear its spinner or overwrite its error.
+            generation !== null
+              ? graphRequestIsCurrent(get, generation, summary.path)
+              : repoStillDisplayed(get, summary.path)
+          ) {
             // When this refresh owns the graph request (generation !== null), clear
             // graphLoading too: it may have superseded the initial open, whose
             // orphaned load can't clear the skeleton itself (GL-20 review).
+            // A quiet refresh never held `loading`, so it must not clear one.
             set({
-              loading: false,
+              ...(opts?.quiet ? {} : { loading: false }),
               error: errorText(e),
               ...(generation !== null ? { graphLoading: false } : {}),
             });
           }
         }
         flushPendingRefresh(get);
+        return false;
       }
     },
 
