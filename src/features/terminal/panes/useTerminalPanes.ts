@@ -157,7 +157,11 @@ export function useTerminalPanes(): TerminalPanes {
     if (!activeTabId) return;
     // The controller surfaces a dead pane or a failed write in the terminal
     // itself (GL-176) — the command must never look accepted when it wasn't.
-    void controller.write(activeTabId, new TextEncoder().encode(`${command}\n`));
+    // Submit with a carriage return, not a bare LF: `\r` is what the Enter key
+    // sends and is required on Windows ConPTY (cmd.exe / PowerShell), where a
+    // lone `\n` types the command but never runs it; Unix PTYs map CR->LF via
+    // the ICRNL line discipline, so `\r` works everywhere.
+    void controller.write(activeTabId, new TextEncoder().encode(`${command}\r`));
     controller.get(activeTabId)?.view.term.focus();
   };
 

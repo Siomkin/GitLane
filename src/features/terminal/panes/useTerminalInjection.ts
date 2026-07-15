@@ -50,7 +50,13 @@ export function useTerminalInjection({
       clearTerminalInject();
     };
     if (terminalInject.command) {
-      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\n`)).then((ok) => {
+      // Submit with a carriage return, not a bare LF: that is what the Enter
+      // key actually sends, and it is required on Windows ConPTY (cmd.exe /
+      // PowerShell) where a lone `\n` does not submit the line — the agent
+      // command would be typed but never executed, then the prompt would paste
+      // onto the same line ("codexReview the staged changes…"). Unix PTYs map
+      // CR->LF via the ICRNL line discipline, so `\r` works there too.
+      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\r`)).then((ok) => {
         if (cancelled) return;
         // The launch write failed (surfaced in the terminal) — keep the
         // injection queued instead of dropping the text on the floor (GL-176).
