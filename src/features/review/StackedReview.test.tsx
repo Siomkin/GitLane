@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useTerminalAgents } from "@/store/terminalAgents";
@@ -75,6 +75,18 @@ beforeAll(() => {
       this.dispatchEvent(new Event("scroll"));
       this.dispatchEvent(new Event("scrollend"));
     },
+  });
+});
+
+// A scroll leaves TanStack's scroll observer holding a ~150ms debounce timer
+// (it uses the fallback timer, not the native scrollend event, and does not
+// cancel it on unmount). If that timer fires after Vitest tears down this
+// file's jsdom environment it throws `window is not defined` from React,
+// failing the run as an unhandled error even though every test passed. Flush it
+// inside act() while the environment still exists so nothing survives teardown.
+afterEach(async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 200));
   });
 });
 
