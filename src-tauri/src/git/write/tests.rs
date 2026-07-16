@@ -727,6 +727,35 @@ fn pinned_push_refspec_uses_the_captured_oid_as_its_source() {
     assert_eq!(refspec, format!("{head}:refs/heads/review"));
 }
 
+#[test]
+fn push_target_honors_push_remote_over_the_fetch_upstream() {
+    let (repo, head) = repo_with_base_commit("push-remote-precedence");
+    repo.git_ok(&["config", "branch.main.remote", "upstream"]);
+    repo.git_ok(&["config", "branch.main.merge", "refs/heads/review"]);
+    repo.git_ok(&["config", "branch.main.pushRemote", "fork"]);
+
+    let (remote, refspec) = push_target_at(repo.path(), "main", &head);
+
+    // Triangular: the push goes to the fork, and the fetch upstream's divergent
+    // branch name must not leak onto it — same-named branch, like git push.
+    assert_eq!(remote, "fork");
+    assert_eq!(refspec, format!("{head}:refs/heads/main"));
+}
+
+#[test]
+fn push_target_honors_push_default_and_lets_push_remote_override_it() {
+    let (repo, head) = repo_with_base_commit("push-default-precedence");
+    repo.git_ok(&["config", "branch.main.remote", "upstream"]);
+    repo.git_ok(&["config", "remote.pushDefault", "fork"]);
+
+    let (remote, _) = push_target_at(repo.path(), "main", &head);
+    assert_eq!(remote, "fork");
+
+    repo.git_ok(&["config", "branch.main.pushRemote", "mirror"]);
+    let (remote, _) = push_target_at(repo.path(), "main", &head);
+    assert_eq!(remote, "mirror");
+}
+
 /// Build `base ─ main work ─ M` on `main` where `M` merges a `feature` branch
 /// that added `feature.txt` (so `M`'s first parent is the mainline commit with
 /// `main.txt`). Returns the repo and the merge commit's sha.

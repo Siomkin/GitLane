@@ -401,6 +401,28 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Fast-forward to feature" })).toBeInTheDocument();
   });
 
+  it("hides tip-derived actions when local and remote refs share a display name", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      branches: [
+        { ...localBranch("main"), target: "1111111", isHead: true },
+        { ...localBranch("origin/feature"), target: "2222222" },
+        { ...remoteBranch("origin/feature"), target: "3333333" },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    // With the ref unresolvable, every action that would act on the wrong
+    // match's tip or kind must vanish — not act on whichever came first.
+    openGroup("Integrate into current");
+    expect(screen.queryByRole("menuitem", { name: "Cherry-pick tip" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Merge origin/feature" })).toBeInTheDocument();
+    // Reset-to-tip and the local/remote delete items are all tip/kind-derived,
+    // so the whole Danger zone group disappears with them.
+    expect(screen.queryByRole("menuitem", { name: "Danger zone" })).not.toBeInTheDocument();
+  });
+
   it("fails closed on the FF probe when local and remote refs share a display name", () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),

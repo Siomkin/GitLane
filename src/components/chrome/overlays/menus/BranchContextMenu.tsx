@@ -97,7 +97,13 @@ export function BranchContextMenu() {
 
   const { isCurrent } = menu;
   const b = menu.branch;
-  const info = branches.find((x) => x.name === b);
+  // Resolve the menu's ref only on a UNIQUE display-name match. The payload
+  // carries no kind, so a local/remote pair sharing the name is unresolvable —
+  // leave `info` unset and every tip/kind-derived action (reset to tip,
+  // cherry-pick tip, tag here, local-only mutations) fails closed with it,
+  // matching the FF probe above and the store's revisionSnapshot.
+  const infoMatches = branches.filter((x) => x.name === b);
+  const info = infoMatches.length === 1 ? infoMatches[0] : undefined;
   const tip = info?.target ?? null;
   const tipShort = tip ? tip.slice(0, 7) : null;
   const upstream = info?.upstream ?? null;

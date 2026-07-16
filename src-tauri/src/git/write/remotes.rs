@@ -390,12 +390,13 @@ pub fn branch_pull_target(repo: &str, branch: &str) -> Result<(String, String), 
     Ok((remote, merge_ref))
 }
 
-/// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
+/// Resolve where `branch` pushes: its remote via git's own push precedence
+/// (`branch.<name>.pushRemote` → `remote.pushDefault` → `branch.<name>.remote`,
 /// with local-tracking `.` treated as unset and falling back to `origin`) and
 /// refspec (honouring a divergent upstream branch name via
 /// `branch.<name>.merge`, else the fully-qualified local branch). Shared by
 /// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
-/// deferring to `push.default`. Both config reads exit non-zero when unset, which
+/// deferring to `push.default`. Config reads exit non-zero when unset, which
 /// `.ok()` turns into the fallback.
 pub(super) fn push_target(repo: &str, branch: &str) -> (String, String) {
     let (remote, destination) = push_destination(repo, branch);
@@ -408,16 +409,31 @@ pub(super) fn push_target_at(repo: &str, branch: &str, expected_oid: &str) -> (S
 }
 
 fn push_destination(repo: &str, branch: &str) -> (String, String) {
-    let remote = run_git(repo, &["config", &format!("branch.{branch}.remote")])
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty() && s != ".")
+    let config = |key: String| {
+        run_git(repo, &["config", &key])
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && s != ".")
+    };
+    let upstream_remote = config(format!("branch.{branch}.remote"));
+    // `git push` resolves its remote as branch.<name>.pushRemote →
+    // remote.pushDefault → branch.<name>.remote → origin; a terminal push and a
+    // GitLane push must land on the same remote (and pick that remote's
+    // credentials) in triangular setups too.
+    let remote = config(format!("branch.{branch}.pushRemote"))
+        .or_else(|| config("remote.pushDefault".to_string()))
+        .or_else(|| upstream_remote.clone())
         .unwrap_or_else(|| "origin".to_string());
-    let destination = run_git(repo, &["config", &format!("branch.{branch}.merge")])
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("refs/heads/{branch}"));
+    // `branch.<name>.merge` names the branch on the *fetch* upstream. It only
+    // describes a push destination when pushing to that same remote; on a
+    // triangular push remote git's push.default=simple uses the same-named
+    // branch instead.
+    let destination = if upstream_remote.as_deref() == Some(remote.as_str()) {
+        config(format!("branch.{branch}.merge"))
+    } else {
+        None
+    }
+    .unwrap_or_else(|| format!("refs/heads/{branch}"));
     (remote, destination)
 }
 
