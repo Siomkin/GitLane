@@ -25,16 +25,42 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
     let remote_ref = format!("refs/remotes/{remote}/{branch}");
     let local_ref = format!("refs/heads/{branch}");
     if ref_exists(repo, &local_ref) {
-        ensure_fast_forwardable(repo, &local_ref, &remote_ref)?;
+        classify_remote_checkout(repo, &local_ref, &remote_ref)?;
         checkout(repo, branch)?;
-        fast_forward(repo, &remote_ref).map_err(|error| {
+        match classify_remote_checkout(repo, &local_ref, &remote_ref).map_err(|error| {
             format!(
-                "{branch} is checked out, but it couldn't be fast-forwarded to {remote_ref}: {error}"
+                "{branch} is checked out, but it couldn't be updated to {remote_ref}: {error}"
             )
-        })
+        })? {
+            RemoteCheckoutUpdate::FastForward => {
+                fast_forward(repo, &remote_ref).map_err(|error| {
+                    format!(
+                        "{branch} is checked out, but it couldn't be fast-forwarded to {remote_ref}: {error}"
+                    )
+                })
+            }
+            RemoteCheckoutUpdate::AlignEquivalentSibling {
+                local_oid,
+                target_oid,
+            } => align_equivalent_sibling(repo, &local_ref, &local_oid, &target_oid).map_err(
+                |error| {
+                    format!(
+                        "{branch} is checked out, but it couldn't be aligned to {remote_ref}: {error}"
+                    )
+                },
+            ),
+        }
     } else {
         run_git(repo, &["checkout", "--track", "-b", branch, &remote_ref])
     }
+}
+
+enum RemoteCheckoutUpdate {
+    FastForward,
+    AlignEquivalentSibling {
+        local_oid: String,
+        target_oid: String,
+    },
 }
 
 /// Disambiguate a bare ref that is *both* a local branch and a tag toward the
@@ -84,14 +110,19 @@ fn resolve_rev(repo: &str, reference: &str) -> Result<String, String> {
     Ok(oid)
 }
 
-/// Refuse a known non-fast-forward before checkout changes HEAD. The later
-/// `merge --ff-only` remains the write-time guard against races; this preflight
-/// defines the ordinary divergence outcome as "no branch switch happened".
-fn ensure_fast_forwardable(repo: &str, local_ref: &str, target: &str) -> Result<(), String> {
+/// Classify the safe updates before checkout changes HEAD. Besides ordinary
+/// ancestry, two sibling commits with the same parents and tree are equivalent:
+/// GitHub squash-merging a one-commit branch commonly rewrites only its commit
+/// message and metadata. All other divergence remains a hard stop.
+fn classify_remote_checkout(
+    repo: &str,
+    local_ref: &str,
+    target: &str,
+) -> Result<RemoteCheckoutUpdate, String> {
     let local_oid = resolve_rev(repo, local_ref)?;
     let target_oid = resolve_rev(repo, target)?;
     if local_oid == target_oid {
-        return Ok(());
+        return Ok(RemoteCheckoutUpdate::FastForward);
     }
     let merge_base = run_git(repo, &["merge-base", local_ref, target])?
         .lines()
@@ -101,14 +132,56 @@ fn ensure_fast_forwardable(repo: &str, local_ref: &str, target: &str) -> Result<
         .to_string();
     // Either ancestry direction is safe for checkout: local-behind moves
     // forward, while local-ahead makes `merge --ff-only` an up-to-date no-op.
-    // Only a merge base distinct from both tips means true divergence.
     if merge_base == local_oid || merge_base == target_oid {
-        Ok(())
-    } else {
-        Err(format!(
-            "Cannot update {local_ref} from {target}: the local and remote branches have diverged."
-        ))
+        return Ok(RemoteCheckoutUpdate::FastForward);
     }
+
+    let local_parents = commit_parents(repo, &local_oid)?;
+    let target_parents = commit_parents(repo, &target_oid)?;
+    let local_tree = resolve_rev(repo, &format!("{local_oid}^{{tree}}"))?;
+    let target_tree = resolve_rev(repo, &format!("{target_oid}^{{tree}}"))?;
+    if local_parents == target_parents && local_tree == target_tree {
+        return Ok(RemoteCheckoutUpdate::AlignEquivalentSibling {
+            local_oid,
+            target_oid,
+        });
+    }
+
+    Err(format!(
+        "Cannot update {local_ref} from {target}: the local and remote branches have diverged."
+    ))
+}
+
+fn commit_parents(repo: &str, oid: &str) -> Result<Vec<String>, String> {
+    let out = run_git(repo, &["rev-list", "--parents", "-n", "1", oid])?;
+    let mut fields = out.lines().next().unwrap_or("").split_whitespace();
+    if fields.next().is_none() {
+        return Err(format!("could not read parents for {oid}"));
+    }
+    Ok(fields.map(str::to_string).collect())
+}
+
+/// Move the checked-out symbolic branch without touching the index or working
+/// tree. The classification proved both commits describe the same snapshot;
+/// the expected-old oid makes the ref update atomic if another process races us.
+fn align_equivalent_sibling(
+    repo: &str,
+    local_ref: &str,
+    local_oid: &str,
+    target_oid: &str,
+) -> Result<String, String> {
+    run_git(
+        repo,
+        &[
+            "update-ref",
+            "-m",
+            "checkout remote branch: align equivalent commit",
+            local_ref,
+            target_oid,
+            local_oid,
+        ],
+    )?;
+    Ok(format!("Aligned {local_ref} to {target_oid}"))
 }
 
 /// Create a branch `name` at `start_point` (defaults to HEAD).
