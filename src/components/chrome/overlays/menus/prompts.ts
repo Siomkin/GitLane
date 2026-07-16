@@ -14,7 +14,9 @@ function defaultWorktreePath(base: string, ref: string): string {
   return `${trimmed}-wt-${safe || "detached"}`;
 }
 
-/** Prompt for a path, then create + open a worktree checked out to `reference`. */
+/** Prompt for a path, then create + open a worktree checked out to `reference`.
+ * `detachedAt` (a short sha) marks a ref that is already checked out somewhere,
+ * so the new worktree opens detached at that tip — disclosed in the message. */
 export function promptCreateWorktree(
   requestPrompt: PromptFn,
   run: RunFn,
@@ -22,10 +24,13 @@ export function promptCreateWorktree(
   reference: string,
   workdir: string,
   label: string,
+  detachedAt?: string,
 ) {
   requestPrompt({
     title: `Create worktree from ${label}`,
-    message: "A new linked worktree is created at this path, then opened.",
+    message: detachedAt
+      ? `${label} is already checked out, so this worktree opens detached at its tip (${detachedAt}). It is created at this path, then opened.`
+      : "A new linked worktree is created at this path, then opened.",
     placeholder: "/path/to/worktree",
     defaultValue: defaultWorktreePath(workdir, label),
     confirmLabel: "Create worktree",

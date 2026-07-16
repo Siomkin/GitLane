@@ -195,21 +195,20 @@ export function BranchContextMenu() {
     }
   }
 
-  // ---- intent groups: Compare / Integrate / Create / Worktree ----
+  // ---- intent groups, most-used first: Create / Integrate / Worktree / Compare ----
   const groups: MenuItem[] = [];
-  if (tip) {
-    const children: MenuItem[] = [];
-    if (upstream) {
+  {
+    const children: MenuItem[] = [
+      { label: "Branch from here…", onClick: () => openCreateBranchFrom(b) },
+    ];
+    if (tip) {
       children.push({
-        label: "Compare with upstream",
-        onClick: () => { close(); void openCompare({ base: upstream, head: b, baseLabel: upstream, headLabel: b, scope: "upstream", title: `Comparing ${b} with ${upstream}` }); },
+        label: "Tag here…",
+        onClick: () => requestPrompt({ title: `Create tag at ${tipShort}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, tip)) }),
       });
+      children.push({ label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b) });
     }
-    children.push({
-      label: "Compare with branch…",
-      onClick: () => promptCompareBranch(requestPrompt, openCompare, branches, b, cur),
-    });
-    groups.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: children });
+    groups.push({ label: "Create", icon: <PlusIcon className="h-4 w-4" />, submenu: children });
   }
   if (!isCurrent && cur) {
     const children: MenuItem[] = [];
@@ -223,49 +222,64 @@ export function BranchContextMenu() {
     groups.push({ label: "Integrate into current", icon: <BranchIcon className="h-4 w-4" />, note: `into ${cur}`, submenu: children });
   }
   {
-    const children: MenuItem[] = [
-      { label: "Branch from here…", onClick: () => openCreateBranchFrom(b) },
-      { label: "Worktree from branch…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b) },
-    ];
-    if (tip) {
-      children.push({
-        label: "Tag here…",
-        onClick: () => requestPrompt({ title: `Create tag at ${tipShort}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, tip)) }),
-      });
-      children.push({ label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b) });
+    // One home for everything worktree: create one when the branch has none,
+    // manage the existing one otherwise ("Open worktree" stays promoted on top
+    // as the everyday one-click, since the branch can't be checked out here —
+    // the in-group copy is labelled differently so assistive tech can tell the
+    // two menu items apart).
+    const newWorktree: MenuItem = {
+      label: "New worktree here…",
+      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, wtCheckedOut && tipShort ? tipShort : undefined),
+    };
+    const children: MenuItem[] = [];
+    if (existingWt) {
+      children.push({ label: "Open this worktree", onClick: () => { close(); void openWorktree(existingWt.path); } });
+      children.push({ label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } });
+      // Only offer the hand-off when a valid destination actually exists (bare /
+      // prunable worktrees are filtered out), so it's never a dead click.
+      if (isLocal && !isCurrent && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
+        children.push({
+          label: "Hand off to…",
+          onClick: () =>
+            startWorktreeHandoff({
+              branch: b,
+              sourcePath: existingWt.path,
+              worktrees,
+              // The branch lives in another worktree, not the open repo, so its
+              // uncommitted state isn't known here — carry conditionally.
+              sourceChanges: null,
+              openHandoff,
+              onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
+            }),
+        });
+      }
+      children.push(newWorktree);
+      if (!existingWtInfo?.isMain) {
+        children.push({
+          label: "Remove worktree",
+          danger: true,
+          sep: true,
+          onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.${existingWtInfo?.locked ? " This worktree is locked; removing it will override the lock." : ""}`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path, existingWtInfo?.locked ?? false)) }),
+        });
+      }
+    } else {
+      children.push(newWorktree);
     }
-    groups.push({ label: "Create", icon: <PlusIcon className="h-4 w-4" />, submenu: children });
+    groups.push({ label: "Worktree", icon: <TreeIcon className={existingWt ? "h-4 w-4 text-[color:var(--accent)]" : "h-4 w-4"} />, note: existingWt?.path, submenu: children });
   }
-  if (existingWt) {
-    const children: MenuItem[] = [
-      { label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } },
-    ];
-    // Only offer the hand-off when a valid destination actually exists (bare /
-    // prunable worktrees are filtered out), so it's never a dead click.
-    if (isLocal && !isCurrent && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
+  if (tip) {
+    const children: MenuItem[] = [];
+    if (upstream) {
       children.push({
-        label: "Hand off to…",
-        onClick: () =>
-          startWorktreeHandoff({
-            branch: b,
-            sourcePath: existingWt.path,
-            worktrees,
-            // The branch lives in another worktree, not the open repo, so its
-            // uncommitted state isn't known here — carry conditionally.
-            sourceChanges: null,
-            openHandoff,
-            onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
-          }),
+        label: "Compare with upstream",
+        onClick: () => { close(); void openCompare({ base: upstream, head: b, baseLabel: upstream, headLabel: b, scope: "upstream", title: `Comparing ${b} with ${upstream}` }); },
       });
     }
-    if (!existingWtInfo?.isMain) {
-      children.push({
-        label: "Remove worktree",
-        danger: true,
-        onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.${existingWtInfo?.locked ? " This worktree is locked; removing it will override the lock." : ""}`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path, existingWtInfo?.locked ?? false)) }),
-      });
-    }
-    groups.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });
+    children.push({
+      label: "Compare with branch…",
+      onClick: () => promptCompareBranch(requestPrompt, openCompare, branches, b, cur),
+    });
+    groups.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: children });
   }
 
   // ---- copy (used constantly, kept in plain sight) ----

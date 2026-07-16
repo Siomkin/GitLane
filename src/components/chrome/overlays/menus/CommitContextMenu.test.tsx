@@ -101,6 +101,19 @@ describe("CommitContextMenu (single commit)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  // Same most-used-first convention as the branch menu (see menus.test.tsx).
+  it("orders the intent groups Create → Integrate → Compare", () => {
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    const rows = ["Create", "Integrate into current", "Compare"].map((name) =>
+      screen.getByRole("menuitem", { name }),
+    );
+    for (let i = 0; i < rows.length - 1; i++) {
+      expect(rows[i].compareDocumentPosition(rows[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
   it("never opens the reset confirm when HEAD moves while the preview is pending (GL-42)", async () => {
     const resetCurrentTo = vi.fn().mockResolvedValue("ok");
     useRepo.setState({ resetCurrentTo });
