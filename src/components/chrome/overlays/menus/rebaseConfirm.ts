@@ -19,7 +19,7 @@ export function confirmRebase(request: RebaseConfirmRequest): void {
   request.requestConfirm({
     title: `Rebase ${request.source} onto ${request.onto}?`,
     message: request.needsCheckout
-      ? `GitLane will check out branch "${request.source}", then replay its commits onto "${request.onto}".`
+      ? `Check out branch "${request.source}", then replay its commits onto "${request.onto}".`
       : `Replay commits from "${request.source}" onto "${request.onto}".`,
     confirmLabel: request.needsCheckout ? "Check out and rebase" : "Rebase",
     onConfirm: request.proceed,

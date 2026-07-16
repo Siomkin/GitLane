@@ -24,9 +24,7 @@ describe("confirmCheckoutPrereq", () => {
     expect(requestConfirm).toHaveBeenCalledOnce();
     const req = requestConfirm.mock.calls[0][0];
     expect(req.title).toBe("Check out feature?");
-    expect(req.message).toBe(
-      'To rebase feature onto main, GitLane must check out branch "feature". Do you want to continue?',
-    );
+    expect(req.message).toBe('Check out branch "feature" to rebase feature onto main?');
     expect(req.confirmLabel).toBe("Check out and rebase");
 
     // The combined flow runs only when the user approves.

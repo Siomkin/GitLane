@@ -33,14 +33,14 @@ export function ActionMenu() {
   const mergeInto = useRepo((s) => s.mergeInto);
   const fastForwardTo = useRepo((s) => s.fastForwardTo);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
-  const checkoutBranch = useRepo((s) => s.checkoutBranch);
-  const resetCurrentTo = useRepo((s) => s.resetCurrentTo);
+  const resetBranchTo = useRepo((s) => s.resetBranchTo);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   // Null when detached — a detached HEAD always makes the checkout a real
   // branch switch, so the prerequisite confirm must show.
   const headBranch = useRepo((s) => (s.summary?.detached ? null : s.summary?.headBranch ?? null));
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const worktrees = useRepo((s) => s.worktrees);
+  const branches = useRepo((s) => s.branches);
   const run = useBranchOp();
   const panelRef = useRef<HTMLDivElement>(null);
   useDismiss(true, close, panelRef);
@@ -53,18 +53,21 @@ export function ActionMenu() {
     setFf({ targetToSource: false, sourceToTarget: false });
     if (!menu || !repoPath) return;
     let alive = true;
-    // The rev the source could move onto: a local/remote ref by name, a commit
-    // by sha.
-    const targetRef = menu.to.kind === GraphTargetKind.Commit ? menu.to.sha : menu.to.name;
+    const branchOid = (name: string, kind: BranchKind) =>
+      branches.find((branch) => branch.name === name && branch.kind === kind)?.target ?? name;
+    const sourceOid = branchOid(menu.from.name, menu.from.kind);
+    const targetOid = menu.to.kind === GraphTargetKind.Commit
+      ? menu.to.sha
+      : branchOid(menu.to.name, menu.to.kind);
     Promise.all([
       // targetToSource (moving the drop target forward) is only ever offered for
       // a remote ref dropped on a local branch — a local source moves the source,
       // so its reverse direction is never read. Skip the probe otherwise.
       menu.to.kind === GraphTargetKind.Local && menu.from.kind === BranchKind.Remote
-        ? api.canFastForward(repoPath, menu.from.name, menu.to.name)
+        ? api.canFastForward(repoPath, sourceOid, targetOid)
         : Promise.resolve(false),
       menu.from.kind === BranchKind.Local
-        ? api.canFastForward(repoPath, targetRef, menu.from.name)
+        ? api.canFastForward(repoPath, targetOid, sourceOid)
         : Promise.resolve(false),
     ])
       .then(([targetToSource, sourceToTarget]) => {
@@ -74,7 +77,7 @@ export function ActionMenu() {
     return () => {
       alive = false;
     };
-  }, [menu, repoPath]);
+  }, [branches, menu, repoPath]);
 
   // Anchor at the drop point, then clamp on-screen once the panel is measured.
   const pos = useFittedMenuPosition(menu?.x ?? 0, menu?.y ?? 0, panelRef, [menu, ff]);
@@ -96,7 +99,7 @@ export function ActionMenu() {
       requestConfirm,
       title: `Reset ${branch} to ${targetLabel}?`,
       message: needsCheckout
-        ? `GitLane must first check out branch "${branch}". Mixed reset — changes are kept in the working tree, unstaged.`
+        ? `Check out branch "${branch}", then reset it to "${targetLabel}". Changes remain unstaged.`
         : "Mixed reset — changes are kept in the working tree, unstaged.",
       confirmLabel: needsCheckout ? "Check out and reset (mixed)" : "Reset (mixed)",
       preview: () =>
@@ -107,8 +110,7 @@ export function ActionMenu() {
           : Promise.reject(new Error("No repository")),
       onConfirm: () =>
         void run(async () => {
-          await checkoutBranch(branch);
-          return resetCurrentTo(target, "mixed");
+          return resetBranchTo(branch, target, "mixed");
         }),
     });
   };
@@ -187,11 +189,11 @@ export function ActionMenu() {
   };
 
   // The branch a checkout-based op must check out before running: merge/rebase/
-  // reset all switch the working tree to the ref they mutate (merge via
-  // `mergeInto`, rebase via its explicit backend source, reset via
-  // `checkoutBranch`). Fast-forward moves a ref in place and never checks out,
-  // so it isn't listed. `to`/`from` are only local in the directions where
-  // these kinds are produced, matching the specs.
+  // reset all switch this working tree to the ref they mutate (merge via
+  // `mergeInto`, rebase/reset via their explicit backend sources). Fast-forward
+  // updates a branch in its owning worktree, or its ref when it has no owner,
+  // so it does not need a checkout prerequisite here. `to`/`from` are only
+  // local in the directions where these kinds are produced, matching the specs.
   const checkoutBranchFor = (kind: GraphActionKind): string | null => {
     switch (kind) {
       case "merge-target":

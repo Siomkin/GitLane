@@ -322,7 +322,11 @@ describe("repo store — advanced write guards", () => {
 
     await useRepo.getState().stash();
 
-    expect(invokeMock).toHaveBeenCalledWith("stash", { path: "/repo" });
+    expect(invokeMock).toHaveBeenCalledWith("stash", {
+      path: "/repo",
+      expectedBranch: "main",
+      expectedOid: null,
+    });
   });
 
   it("blocks stash when a dirty submodule row is present", async () => {
@@ -645,6 +649,16 @@ describe("repo store — mergeInto toast mapping", () => {
     }
   };
 
+  beforeEach(() => {
+    useRepo.setState({
+      summary: { ...summary, headOid: "1111111" },
+      branches: [
+        { name: "main", kind: "local", target: "1111111", isHead: true, upstream: null, remote: null },
+        { name: "feature", kind: "local", target: "2222222", isHead: false, upstream: null, remote: null },
+      ],
+    });
+  });
+
   it("reports the merge when git created a merge commit", async () => {
     invokeMock.mockImplementation(
       invokeWithMergeOutput("Merge made by the 'ort' strategy.\n file.txt | 1 +"),
@@ -654,7 +668,10 @@ describe("repo store — mergeInto toast mapping", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("merge_branch", {
       path: "/repo",
-      branch: "feature",
+      source: "refs/heads/feature",
+      expectedSourceOid: "2222222",
+      destination: "main",
+      expectedDestinationOid: "1111111",
     });
     expect(msg).toBe("Merged feature into main");
   });
@@ -665,6 +682,84 @@ describe("repo store — mergeInto toast mapping", () => {
     const msg = await useRepo.getState().mergeInto("feature", "main");
 
     expect(msg).toBe("main is already up to date with feature");
+  });
+
+  it("merges into a detached HEAD without looking for a local branch named HEAD", async () => {
+    useRepo.setState({
+      summary: { ...summary, headBranch: null, headOid: "1111111", detached: true },
+      branches: [
+        { name: "feature", kind: "local", target: "2222222", isHead: false, upstream: null, remote: null },
+      ],
+    });
+    invokeMock.mockImplementation(
+      invokeWithMergeOutput("Merge made by the 'ort' strategy."),
+    );
+
+    await useRepo.getState().mergeInto("feature", "HEAD");
+
+    expect(invokeMock).toHaveBeenCalledWith("merge_branch", {
+      path: "/repo",
+      source: "refs/heads/feature",
+      expectedSourceOid: "2222222",
+      destination: null,
+      expectedDestinationOid: "1111111",
+    });
+  });
+});
+
+describe("repo store — captured write subjects", () => {
+  beforeEach(() => {
+    useRepo.setState({
+      summary: { ...summary, headOid: "1111111" },
+      branches: [
+        { name: "main", kind: "local", target: "1111111", isHead: true, upstream: null, remote: null },
+        { name: "feature", kind: "local", target: "2222222", isHead: false, upstream: null, remote: null },
+      ],
+    });
+  });
+
+  it("creates a branch at the captured commit instead of implicit HEAD", async () => {
+    await useRepo.getState().createBranchAt("new-branch", "feature");
+
+    expect(invokeMock).toHaveBeenCalledWith("create_branch", {
+      path: "/repo",
+      name: "new-branch",
+      startPoint: "2222222",
+    });
+  });
+
+  it("fails closed when local and remote refs have the same display name", async () => {
+    useRepo.setState({
+      branches: [
+        { name: "origin/main", kind: "local", target: "1111111", isHead: false, upstream: null, remote: null },
+        { name: "origin/main", kind: "remote", target: "2222222", isHead: false, upstream: null, remote: "origin" },
+      ],
+    });
+
+    await expect(useRepo.getState().createBranchAt("new-branch", "origin/main"))
+      .rejects.toThrow("Cannot resolve ambiguous ref origin/main");
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("applies a stash only to the captured HEAD", async () => {
+    await useRepo.getState().applyStash("abcdef1", false);
+
+    expect(invokeMock).toHaveBeenCalledWith("stash_apply", {
+      path: "/repo",
+      expectedBranch: "main",
+      expectedOid: "1111111",
+      oid: "abcdef1",
+    });
+  });
+
+  it("creates an implicit-HEAD tag at the captured oid", async () => {
+    await useRepo.getState().createTagAt("v-next");
+
+    expect(invokeMock).toHaveBeenCalledWith("create_tag", {
+      path: "/repo",
+      name: "v-next",
+      sha: "1111111",
+    });
   });
 });
 
@@ -2244,6 +2339,18 @@ describe("repo store — fastForwardTo", () => {
     });
   }
 
+  beforeEach(() => {
+    useRepo.setState({
+      summary: { ...summary, headOid: "1111111" },
+      branches: [
+        { name: "main", kind: "local", target: "1111111", isHead: true, upstream: null, remote: null },
+        { name: "develop", kind: "local", target: "2222222", isHead: false, upstream: null, remote: null },
+        { name: "origin/main", kind: "remote", target: "3333333", isHead: false, upstream: null, remote: "origin" },
+        { name: "origin/develop", kind: "remote", target: "4444444", isHead: false, upstream: null, remote: "origin" },
+      ],
+    });
+  });
+
   it("moves a non-current branch in place without a checkout", async () => {
     // On `main`, advance `develop` to `origin/develop`: no checkout, ref updated
     // via fast_forward_branch so the working tree stays put.
@@ -2255,7 +2362,8 @@ describe("repo store — fastForwardTo", () => {
     expect(invokeMock).toHaveBeenCalledWith("fast_forward_branch", {
       path: "/repo",
       branch: "develop",
-      target: "origin/develop",
+      expectedBranchOid: "2222222",
+      targetOid: "4444444",
     });
     expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith("fast_forward", expect.anything());
@@ -2268,11 +2376,13 @@ describe("repo store — fastForwardTo", () => {
 
     await useRepo.getState().fastForwardTo("origin/main", "main");
 
-    expect(invokeMock).toHaveBeenCalledWith("fast_forward", {
+    expect(invokeMock).toHaveBeenCalledWith("fast_forward_branch", {
       path: "/repo",
-      target: "origin/main",
+      branch: "main",
+      expectedBranchOid: "1111111",
+      targetOid: "3333333",
     });
-    expect(invokeMock).not.toHaveBeenCalledWith("fast_forward_branch", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("fast_forward", expect.anything());
   });
 });
 

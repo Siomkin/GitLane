@@ -136,6 +136,45 @@ function guardedPathMessage(get: RepoGet, path: string): string | null {
   );
 }
 
+function requireHeadOid(summary: RepoSummary, operation: string): string {
+  if (!summary.headOid) {
+    throw new Error(`Cannot ${operation}: HEAD has no commit.`);
+  }
+  return summary.headOid;
+}
+
+function revisionSnapshot(get: RepoGet, revision: string): { revision: string; oid: string } {
+  if (revision === "HEAD") {
+    const summary = get().summary;
+    if (!summary?.headOid) throw new Error("HEAD has no commit. Refresh and try again.");
+    return { revision, oid: summary.headOid };
+  }
+  const matches = get().branches.filter((candidate) => candidate.name === revision);
+  if (matches.length > 1) {
+    throw new Error(`Cannot resolve ambiguous ref ${revision}. Refresh and choose it again.`);
+  }
+  const [branch] = matches;
+  if (branch?.target) {
+    return {
+      revision: branch.kind === BranchKind.Local
+        ? `refs/heads/${branch.name}`
+        : `refs/remotes/${branch.name}`,
+      oid: branch.target,
+    };
+  }
+  // Commit-menu and graph-row callers already carry an immutable oid.
+  if (/^[0-9a-f]{7,64}$/i.test(revision)) return { revision, oid: revision };
+  throw new Error(`Cannot resolve ${revision}. Refresh and try again.`);
+}
+
+function localBranchOid(get: RepoGet, branch: string): string {
+  const oid = get().branches.find(
+    (candidate) => candidate.kind === BranchKind.Local && candidate.name === branch,
+  )?.target;
+  if (!oid) throw new Error(`Cannot find branch ${branch}. Refresh and try again.`);
+  return oid;
+}
+
 async function findCheckoutWorktree(
   set: RepoSet,
   get: RepoGet,
@@ -173,7 +212,7 @@ export function createRepoWriteActions(
   | "mergeInto"
   | "fastForwardTo"
   | "rebaseOnto"
-  | "resetCurrentTo"
+  | "resetBranchTo"
   | "applyStash"
   | "branchFromStash"
   | "dropStash"
@@ -321,7 +360,10 @@ export function createRepoWriteActions(
     // git error so the caller can toast that instead.
     createBranchAt: (name, startPoint) =>
       runOp(get, async (summary) => {
-        await api.createBranch(summary.path, name, startPoint);
+        const startOid = startPoint
+          ? revisionSnapshot(get, startPoint).oid
+          : requireHeadOid(summary, "create a branch");
+        await api.createBranch(summary.path, name, startOid);
         await api.checkout(summary.path, name);
         return `Created ${name}`;
       }),
@@ -346,7 +388,12 @@ export function createRepoWriteActions(
 
     pushBranch: (branch) =>
       runOp(get, async (summary) => {
-        await trackNet(() => api.pushBranch(summary.path, branch, authFor(pushRemoteOf(branch))));
+        await trackNet(() => api.pushBranch(
+          summary.path,
+          branch,
+          localBranchOid(get, branch),
+          authFor(pushRemoteOf(branch)),
+        ));
         return `Pushed ${branch}`;
       }),
 
@@ -356,7 +403,13 @@ export function createRepoWriteActions(
           upstream,
           get().remotes.map((r) => r.name),
         );
-        await trackNet(() => api.publishBranch(summary.path, branch, upstream, authFor(remote)));
+        await trackNet(() => api.publishBranch(
+          summary.path,
+          branch,
+          localBranchOid(get, branch),
+          upstream,
+          authFor(remote),
+        ));
         return `Published ${branch} to ${upstream}`;
       }),
 
@@ -364,14 +417,19 @@ export function createRepoWriteActions(
       runMaybeConflict(
         get,
         async (summary) => {
-          if (summary.headBranch !== to) {
-            try {
-              await api.checkout(summary.path, to);
-            } catch (e) {
-              throw new Error(`Couldn't check out ${to} to merge into it: ${e}`);
-            }
-          }
-          const output = await api.mergeBranch(summary.path, from);
+          const source = revisionSnapshot(get, from);
+          const detachedDestination = to === "HEAD" && summary.headBranch === null;
+          const destination = detachedDestination ? null : to;
+          const destinationOid = detachedDestination
+            ? requireHeadOid(summary, "merge")
+            : localBranchOid(get, to);
+          const output = await api.mergeBranch(
+            summary.path,
+            source.revision,
+            source.oid,
+            destination,
+            destinationOid,
+          );
           // Even under `--no-ff`, git exits 0 and creates nothing when `from`
           // is already reachable from HEAD (equal tips included) — the toast
           // must not claim a merge happened.
@@ -389,8 +447,8 @@ export function createRepoWriteActions(
     // the branch you're working on.
     fastForwardTo: (from, to) =>
       runOp(get, async (summary) => {
-        if (summary.headBranch === to) await api.fastForward(summary.path, from);
-        else await api.fastForwardBranch(summary.path, to, from);
+        const target = revisionSnapshot(get, from);
+        await api.fastForwardBranch(summary.path, to, localBranchOid(get, to), target.oid);
         return `Fast-forwarded ${to} to ${from}`;
       }),
 
@@ -398,23 +456,37 @@ export function createRepoWriteActions(
       runMaybeConflict(
         get,
         async (summary) => {
-          await api.rebaseOnto(summary.path, source, onto);
+          const sourceSnapshot = source === "HEAD"
+            ? revisionSnapshot(get, source)
+            : { revision: source, oid: localBranchOid(get, source) };
+          const target = revisionSnapshot(get, onto);
+          await api.rebaseOnto(
+            summary.path,
+            sourceSnapshot.revision,
+            sourceSnapshot.oid,
+            target.oid,
+          );
           return `Rebased ${source} onto ${onto}`;
         },
         `Rebasing ${source} onto ${onto}`,
       ),
 
-    resetCurrentTo: (target, mode) =>
+    resetBranchTo: (source, target, mode) =>
       runOp(get, async (summary) => {
-        await api.resetTo(summary.path, target, mode);
-        return `Reset to ${target}`;
+        const sourceOid = source ? localBranchOid(get, source) : summary.headOid;
+        const targetSnapshot = revisionSnapshot(get, target);
+        await api.resetTo(summary.path, source, sourceOid, targetSnapshot.oid, mode);
+        return `Reset ${source ?? "HEAD"} to ${target}`;
       }),
 
     applyStash: (oid, pop, withIndex) =>
       runOp(get, async (summary) => {
-        if (pop) await api.stashPop(summary.path, oid);
-        else if (withIndex) await api.stashApplyIndex(summary.path, oid);
-        else await api.stashApply(summary.path, oid);
+        if (pop) await api.stashPop(summary.path, summary.headBranch, summary.headOid, oid);
+        else if (withIndex) {
+          await api.stashApplyIndex(summary.path, summary.headBranch, summary.headOid, oid);
+        } else {
+          await api.stashApply(summary.path, summary.headBranch, summary.headOid, oid);
+        }
         return pop ? "Popped stash" : "Applied stash";
       }),
 
@@ -434,7 +506,12 @@ export function createRepoWriteActions(
       runMaybeConflict(
         get,
         async (summary) => {
-          await api.cherryPick(summary.path, sha);
+          await api.cherryPick(
+            summary.path,
+            summary.headBranch,
+            requireHeadOid(summary, "cherry-pick"),
+            sha,
+          );
           return `Cherry-picked ${sha.slice(0, 7)}`;
         },
         `Cherry-picking ${sha.slice(0, 7)}`,
@@ -444,7 +521,12 @@ export function createRepoWriteActions(
       runMaybeConflict(
         get,
         async (summary) => {
-          await api.revertCommit(summary.path, sha);
+          await api.revertCommit(
+            summary.path,
+            summary.headBranch,
+            requireHeadOid(summary, "revert"),
+            sha,
+          );
           return `Reverted ${sha.slice(0, 7)}`;
         },
         `Reverting ${sha.slice(0, 7)}`,
@@ -462,7 +544,12 @@ export function createRepoWriteActions(
       const msg = await runMaybeConflict(
         get,
         async (summary) => {
-          await api.cherryPickMany(summary.path, shas);
+          await api.cherryPickMany(
+            summary.path,
+            summary.headBranch,
+            requireHeadOid(summary, "cherry-pick"),
+            shas,
+          );
           return `Cherry-picked ${n} commit${n === 1 ? "" : "s"}`;
         },
         `Cherry-picking ${n} commit${n === 1 ? "" : "s"}`,
@@ -477,7 +564,12 @@ export function createRepoWriteActions(
       const msg = await runMaybeConflict(
         get,
         async (summary) => {
-          await api.revertMany(summary.path, shas);
+          await api.revertMany(
+            summary.path,
+            summary.headBranch,
+            requireHeadOid(summary, "revert"),
+            shas,
+          );
           return `Reverted ${n} commit${n === 1 ? "" : "s"}`;
         },
         `Reverting ${n} commit${n === 1 ? "" : "s"}`,
@@ -488,26 +580,20 @@ export function createRepoWriteActions(
 
     squashSelection: async (shas, message) => {
       const msg = await runOp(get, async (summary) => {
-        // Soft-reset to the parent of the oldest selected commit, then commit the
-        // staged tree as one. `reset --soft` keeps the working tree + index at the
-        // newest commit, so the new commit's content equals the squashed range's.
         const parent = validateSquashRange(get().graph, shas);
-        // The newest selected commit is validated to be HEAD, so this is the tip we
-        // restore to if the replacement commit is rejected below.
-        const originalHead = get().graph?.head ?? null;
-        await api.resetTo(summary.path, parent, "soft");
+        const expectedOid = requireHeadOid(summary, "squash commits");
         const identity = useAccounts.getState().repoIdentity;
         const { summary: subject, description } = splitCommitMessage(message);
-        try {
-          await api.commit(summary.path, subject, description, false, identity?.name, identity?.email);
-        } catch (e) {
-          // The commit was rejected (commit-msg hook, signing failure, …). Undo the
-          // soft reset so the branch keeps its original commits instead of being left
-          // with them gone from HEAD and everything staged. `--soft` leaves the index
-          // and working tree untouched, so this restores the exact pre-squash state.
-          if (originalHead) await api.resetTo(summary.path, originalHead, "soft").catch(() => {});
-          throw e;
-        }
+        await api.squashCommits(
+          summary.path,
+          summary.headBranch,
+          expectedOid,
+          parent,
+          subject,
+          description,
+          identity?.name,
+          identity?.email,
+        );
         return `Squashed ${shas.length} commits`;
       });
       get().clearSelection();
@@ -516,13 +602,18 @@ export function createRepoWriteActions(
 
     createTagAt: (name, sha) =>
       runOp(get, async (summary) => {
-        await api.createTag(summary.path, name, sha);
+        await api.createTag(summary.path, name, sha ?? requireHeadOid(summary, "create a tag"));
         return `Created tag ${name}`;
       }),
 
     createAnnotatedTagAt: (name, message, sha) =>
       runOp(get, async (summary) => {
-        await api.createAnnotatedTag(summary.path, name, message, sha);
+        await api.createAnnotatedTag(
+          summary.path,
+          name,
+          message,
+          sha ?? requireHeadOid(summary, "create a tag"),
+        );
         return `Created tag ${name}`;
       }),
 
@@ -643,7 +734,12 @@ export function createRepoWriteActions(
 
     forcePush: (branch) =>
       runOp(get, async (summary) => {
-        await trackNet(() => api.forcePush(summary.path, branch, authFor(pushRemoteOf(branch))));
+        await trackNet(() => api.forcePush(
+          summary.path,
+          branch,
+          localBranchOid(get, branch),
+          authFor(pushRemoteOf(branch)),
+        ));
         return `Force-pushed ${branch} (with lease)`;
       }),
 
@@ -883,7 +979,16 @@ export function createRepoWriteActions(
       // changes by other tools can never leak into a GitLane commit.
       const identity = useAccounts.getState().repoIdentity;
       try {
-        await api.commit(summary.path, summaryText, description, amend, identity?.name, identity?.email);
+        await api.commit(
+          summary.path,
+          summary.headBranch,
+          summary.headOid,
+          summaryText,
+          description,
+          amend,
+          identity?.name,
+          identity?.email,
+        );
         await get().refresh();
         set({ selectedFile: null, fileDiff: null });
       } catch (e) {
@@ -894,7 +999,16 @@ export function createRepoWriteActions(
     amendHeadMessage: (summaryText, description) =>
       runOp(get, async (summary) => {
         const identity = useAccounts.getState().repoIdentity;
-        await api.commit(summary.path, summaryText, description, true, identity?.name, identity?.email);
+        await api.commit(
+          summary.path,
+          summary.headBranch,
+          summary.headOid,
+          summaryText,
+          description,
+          true,
+          identity?.name,
+          identity?.email,
+        );
         return "Updated commit message";
       }),
 
@@ -908,7 +1022,16 @@ export function createRepoWriteActions(
       const identity = useAccounts.getState().repoIdentity;
       try {
         const { summary: subject, description } = splitCommitMessage(message);
-        await api.commit(summary.path, subject, description, amend, identity?.name, identity?.email);
+        await api.commit(
+          summary.path,
+          summary.headBranch,
+          summary.headOid,
+          subject,
+          description,
+          amend,
+          identity?.name,
+          identity?.email,
+        );
         await get().refresh();
         set({ selectedFile: null, fileDiff: null, wipSelected: false });
         return true;
@@ -923,7 +1046,7 @@ export function createRepoWriteActions(
       if (!summary) return;
       if (toastAdvancedGuard(guardedAdvancedWriteMessage(get().changes))) return;
       try {
-        await api.stash(summary.path);
+        await api.stash(summary.path, summary.headBranch, summary.headOid);
         await get().refresh();
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -1066,7 +1189,15 @@ export function createRepoWriteActions(
       // card for work that did not start.
       let transport: Promise<string>;
       try {
-        transport = trackNet(() => api.pull(summary.path, authFor(head?.upstreamRemote ?? null)));
+        if (!head?.name || !head.target) {
+          throw new Error("Cannot pull: HEAD is not an attached branch with a commit.");
+        }
+        transport = trackNet(() => api.pull(
+          summary.path,
+          head.name,
+          head.target!,
+          authFor(head.upstreamRemote ?? null),
+        ));
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
         return;
@@ -1119,12 +1250,12 @@ export function createRepoWriteActions(
     push: async () => {
       const { summary, forge } = get();
       if (!summary) return;
-      // A bare push targets the checked-out branch's configured remote — send
-      // that remote's account (GL-129). Capture the ahead count *before* the
-      // push so the success toast can report how many commits went out.
+      // Push the captured HEAD branch explicitly to its configured remote and
+      // send that remote's account (GL-129). Capture the ahead count *before*
+      // the push so the success toast can report how many commits went out.
       const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const remote = pushRemoteForBranch(head);
-      // A bare push follows the configured upstream, whose branch name can differ
+      // The explicit push follows the configured upstream, whose name can differ
       // from the local branch — report the *upstream* branch (from `head.upstream`,
       // "remote/branch") for the copy + forge link, falling back to the local name.
       const remoteBranch =
@@ -1138,7 +1269,17 @@ export function createRepoWriteActions(
       // commit-and-push callers get one busy error and no misleading flash.
       let transport: Promise<string>;
       try {
-        transport = trackNet(() => api.push(summary.path, authFor(remote)));
+        if (!head?.name || !head.target) {
+          throw new Error("Cannot push: HEAD is not an attached branch with a commit.");
+        }
+        const headName = head.name;
+        const headTarget = head.target;
+        transport = trackNet(() => api.pushBranch(
+          summary.path,
+          headName,
+          headTarget,
+          authFor(remote),
+        ));
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
         return;

@@ -55,7 +55,7 @@ export function BranchContextMenu() {
   const mergeInto = useRepo((s) => s.mergeInto);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
   const fastForwardTo = useRepo((s) => s.fastForwardTo);
-  const resetCurrentTo = useRepo((s) => s.resetCurrentTo);
+  const resetBranchTo = useRepo((s) => s.resetBranchTo);
   const cherryPickCommit = useRepo((s) => s.cherryPickCommit);
   const revertCommit = useRepo((s) => s.revertCommit);
   const createTagAt = useRepo((s) => s.createTagAt);
@@ -73,15 +73,20 @@ export function BranchContextMenu() {
   useEffect(() => {
     setCanFf(false);
     if (!repoPath || !branch || !cur || branch === cur) return;
+    const targetOid = branches.find((candidate) => candidate.name === branch)?.target;
+    const currentOid = branches.find(
+      (candidate) => candidate.kind === BranchKind.Local && candidate.name === cur,
+    )?.target;
+    if (!targetOid || !currentOid) return;
     let alive = true;
     api
-      .canFastForward(repoPath, branch, cur)
+      .canFastForward(repoPath, targetOid, currentOid)
       .then((ok) => alive && setCanFf(ok))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [repoPath, branch, cur]);
+  }, [repoPath, branch, branches, cur]);
 
   if (!menu) return null;
 
@@ -318,9 +323,9 @@ export function BranchContextMenu() {
   }
   if (tip && cur && !isCurrent) {
     danger.push({ label: `Reset ${cur} to ${b}`, header: true, danger: true, sep: danger.length > 0 });
-    danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "soft")), headPrecondition: resetHeadPrecondition }) });
-    danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
-    danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "hard")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(cur, tip, "soft")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(cur, tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(cur, tip, "hard")), headPrecondition: resetHeadPrecondition }) });
   }
   if (isLocal) {
     // Set upstream is rare — tuck it down at the end, just above Delete.

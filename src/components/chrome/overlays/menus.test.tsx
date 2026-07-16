@@ -28,7 +28,7 @@ const realOpenCompare = useRepo.getState().openCompare;
 const realCheckoutBranch = useRepo.getState().checkoutBranch;
 const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
 const realRebaseOnto = useRepo.getState().rebaseOnto;
-const realResetCurrentTo = useRepo.getState().resetCurrentTo;
+const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realMergeInto = useRepo.getState().mergeInto;
 
 beforeEach(() => {
@@ -56,7 +56,7 @@ beforeEach(() => {
     checkoutBranch: realCheckoutBranch,
     checkoutRemoteBranch: realCheckoutRemoteBranch,
     rebaseOnto: realRebaseOnto,
-    resetCurrentTo: realResetCurrentTo,
+    resetBranchTo: realResetBranchTo,
     mergeInto: realMergeInto,
   });
   useUi.setState({
@@ -834,7 +834,7 @@ describe("ActionMenu", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     expect(confirm!.title).toBe("Rebase feature onto main?");
-    expect(confirm!.message).toContain('check out branch "feature"');
+    expect(confirm!.message).toContain('Check out branch "feature"');
     expect(confirm!.message).toContain('onto "main"');
     expect(confirm!.confirmLabel).toBe("Check out and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
@@ -974,12 +974,12 @@ describe("ActionMenu", () => {
 
   it("reset-source previews then resets the dragged branch to the drop target on confirm", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
-    const resetCurrentTo = vi.fn().mockResolvedValue("Reset to main");
+    const resetBranchTo = vi.fn().mockResolvedValue("Reset feature to main");
     useRepo.setState({
       summary: localSummary,
       branches: [localBranch("feature"), localBranch("main")],
       checkoutBranch,
-      resetCurrentTo,
+      resetBranchTo,
     });
     openActionMenu("feature", "main");
     render(<ActionMenu />);
@@ -994,12 +994,12 @@ describe("ActionMenu", () => {
     );
     // HEAD is main, so the single dialog also covers the checkout prerequisite
     // (GL-217) — no second popup stacks on top of the preview confirm.
-    expect(useUi.getState().confirm!.message).toContain('check out branch "feature"');
+    expect(useUi.getState().confirm!.message).toContain('Check out branch "feature"');
     expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and reset (mixed)");
 
     useUi.getState().confirm!.onConfirm();
-    await waitFor(() => expect(resetCurrentTo).toHaveBeenCalledWith("main", "mixed"));
-    expect(checkoutBranch).toHaveBeenCalledWith("feature");
+    await waitFor(() => expect(resetBranchTo).toHaveBeenCalledWith("feature", "main", "mixed"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   it("moves the local target when a remote ref is dragged onto it (the remote can't move)", async () => {
@@ -1135,18 +1135,21 @@ describe("ActionMenu", () => {
   });
 
   it("keeps fast-forward enabled when the dragged branch lives in another worktree", async () => {
-    // Fast-forward moves a ref in place (no checkout), so it must stay clickable
-    // even when the branch is held elsewhere — unlike rebase/reset.
+    // Fast-forward updates the branch in its owning worktree, so it stays
+    // clickable when the branch is held elsewhere — unlike rebase/reset.
     invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) => {
       if (cmd === "can_fast_forward") {
         // Advancing feature to main (sourceToTarget) is possible → FF is offered.
-        return Promise.resolve(args.from === "main" && args.to === "feature");
+        return Promise.resolve(args.from === "2222222" && args.to === "1111111");
       }
       return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
     });
     useRepo.setState({
       summary: localSummary,
-      branches: [localBranch("feature"), localBranch("main")],
+      branches: [
+        { ...localBranch("feature"), target: "1111111" },
+        { ...localBranch("main"), target: "2222222" },
+      ],
       worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
     });
     openActionMenu("feature", "main");

@@ -162,11 +162,31 @@ pub fn stash_apply(repo: &str, oid: &str) -> Result<String, String> {
     run_git(repo, &["stash", "apply", oid])
 }
 
+pub fn stash_apply_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+    oid: &str,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash_apply(repo, oid)
+}
+
 /// Apply the stash with commit oid `oid` restoring the staged (index) state too
 /// (`--index`). Without `--index` everything lands in the working tree unstaged.
 pub fn stash_apply_index(repo: &str, oid: &str) -> Result<String, String> {
     ensure_operand(oid)?;
     run_git(repo, &["stash", "apply", "--index", oid])
+}
+
+pub fn stash_apply_index_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+    oid: &str,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash_apply_index(repo, oid)
 }
 
 /// Check out `branch` at the stash's original parent commit and apply the stash
@@ -193,6 +213,16 @@ pub fn stash_pop(repo: &str, oid: &str) -> Result<String, String> {
     Ok(applied)
 }
 
+pub fn stash_pop_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+    oid: &str,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash_pop(repo, oid)
+}
+
 /// Drop the stash with commit oid `oid`.
 pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
     let stash_ref = stash_ref_for_oid(repo, oid)?;
@@ -203,4 +233,13 @@ pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
 /// Ignored files stay in place because GitLane does not surface them as changes.
 pub fn stash(repo: &str) -> Result<String, String> {
     run_git(repo, &["stash", "push", "--include-untracked"])
+}
+
+pub fn stash_expected(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash(repo)
 }

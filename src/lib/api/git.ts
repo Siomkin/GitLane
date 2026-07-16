@@ -651,13 +651,13 @@ export const gitApi = {
 
   /** Create a linked worktree at `worktreePath`. With `newBranch`, a fresh
    * branch of that name is created at `reference` (its start point) and checked
-   * out there; otherwise the worktree is checked out to `reference` directly
-   * (branch/tag/commit; defaults to HEAD). */
-  addWorktree: (path: string, worktreePath: string, reference?: string, newBranch?: string) =>
+   * out there; otherwise the worktree is checked out to the explicit
+   * `reference` directly (branch/tag/commit). */
+  addWorktree: (path: string, worktreePath: string, reference: string, newBranch?: string) =>
     invoke<string>("add_worktree", {
       path,
       worktreePath,
-      reference: reference ?? null,
+      reference,
       newBranch: newBranch ?? null,
     }),
 
@@ -693,8 +693,8 @@ export const gitApi = {
   checkoutRemoteBranch: (path: string, remote: string, branch: string) =>
     invoke<string>("checkout_remote_branch", { path, remote, branch }),
 
-  createBranch: (path: string, name: string, startPoint?: string) =>
-    invoke<string>("create_branch", { path, name, startPoint: startPoint ?? null }),
+  createBranch: (path: string, name: string, startPoint: string) =>
+    invoke<string>("create_branch", { path, name, startPoint }),
 
   deleteBranch: (path: string, name: string, force = false) =>
     invoke<string>("delete_branch", { path, name, force }),
@@ -730,43 +730,67 @@ export const gitApi = {
   setUpstream: (path: string, branch: string, upstream: string) =>
     invoke<string>("set_upstream", { path, branch, upstream }),
 
-  mergeBranch: (path: string, branch: string) =>
-    invoke<string>("merge_branch", { path, branch }),
+  mergeBranch: (
+    path: string,
+    source: string,
+    expectedSourceOid: string,
+    destination: string | null,
+    expectedDestinationOid: string,
+  ) => invoke<string>("merge_branch", {
+    path,
+    source,
+    expectedSourceOid,
+    destination,
+    expectedDestinationOid,
+  }),
 
   /** True when `to` can be fast-forwarded to `from` (from is a descendant of to). */
   canFastForward: (path: string, from: string, to: string) =>
     invoke<boolean>("can_fast_forward", { path, from, to }),
 
-  /** Fast-forward the current branch to `target` (fails if not a fast-forward). */
-  fastForward: (path: string, target: string) =>
-    invoke<string>("fast_forward", { path, target }),
-
-  /** Fast-forward a non-checked-out `branch` to `target` in place, without
-   * switching the working tree (fails if not a fast-forward). */
-  fastForwardBranch: (path: string, branch: string, target: string) =>
-    invoke<string>("fast_forward_branch", { path, branch, target }),
+  /** Fast-forward the explicit branch from its expected oid to a captured
+   * target oid. Rust chooses the live checked-out/non-checked-out mechanism. */
+  fastForwardBranch: (
+    path: string,
+    branch: string,
+    expectedBranchOid: string,
+    targetOid: string,
+  ) => invoke<string>("fast_forward_branch", { path, branch, expectedBranchOid, targetOid }),
 
   /** Rebase the explicit `source` branch/revision onto `onto`; the backend
    * carries both operands through one git process instead of trusting HEAD. */
-  rebaseOnto: (path: string, source: string, onto: string) =>
-    invoke<string>("rebase_onto", { path, source, onto }),
+  rebaseOnto: (path: string, source: string, expectedSourceOid: string, ontoOid: string) =>
+    invoke<string>("rebase_onto", { path, source, expectedSourceOid, ontoOid }),
 
-  resetTo: (path: string, target: string, mode: "soft" | "mixed" | "hard") =>
-    invoke<string>("reset_to", { path, target, mode }),
+  resetTo: (
+    path: string,
+    source: string | null,
+    expectedSourceOid: string | null,
+    targetOid: string,
+    mode: "soft" | "mixed" | "hard",
+  ) => invoke<string>("reset_to", { path, source, expectedSourceOid, targetOid, mode }),
 
-  cherryPick: (path: string, commit: string) =>
-    invoke<string>("cherry_pick", { path, commit }),
+  cherryPick: (path: string, expectedBranch: string | null, expectedOid: string, commit: string) =>
+    invoke<string>("cherry_pick", { path, expectedBranch, expectedOid, commit }),
 
   /** Cherry-pick several commits in one atomic `git cherry-pick A B C…`. */
-  cherryPickMany: (path: string, commits: string[]) =>
-    invoke<string>("cherry_pick_many", { path, commits }),
+  cherryPickMany: (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string,
+    commits: string[],
+  ) => invoke<string>("cherry_pick_many", { path, expectedBranch, expectedOid, commits }),
 
-  revertCommit: (path: string, commit: string) =>
-    invoke<string>("revert_commit", { path, commit }),
+  revertCommit: (path: string, expectedBranch: string | null, expectedOid: string, commit: string) =>
+    invoke<string>("revert_commit", { path, expectedBranch, expectedOid, commit }),
 
   /** Revert several commits in one atomic `git revert --no-edit A B…`. */
-  revertMany: (path: string, commits: string[]) =>
-    invoke<string>("revert_many", { path, commits }),
+  revertMany: (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string,
+    commits: string[],
+  ) => invoke<string>("revert_many", { path, expectedBranch, expectedOid, commits }),
 
   // ---- conflict resolution ----
 
@@ -821,13 +845,13 @@ export const gitApi = {
   skipOperation: (path: string, kind: OperationKind) =>
     invoke<string>("skip_operation", { path, kind }),
 
-  /** Create a lightweight tag at `sha` (or HEAD when omitted). */
-  createTag: (path: string, name: string, sha?: string) =>
-    invoke<string>("create_tag", { path, name, sha: sha ?? null }),
+  /** Create a lightweight tag at the captured `sha`. */
+  createTag: (path: string, name: string, sha: string) =>
+    invoke<string>("create_tag", { path, name, sha }),
 
-  /** Create an annotated tag (tagger + `message`) at `sha` (or HEAD). */
-  createAnnotatedTag: (path: string, name: string, message: string, sha?: string) =>
-    invoke<string>("create_annotated_tag", { path, name, message, sha: sha ?? null }),
+  /** Create an annotated tag (tagger + `message`) at the captured `sha`. */
+  createAnnotatedTag: (path: string, name: string, message: string, sha: string) =>
+    invoke<string>("create_annotated_tag", { path, name, message, sha }),
 
   /** Write a `.patch` file for the single commit `sha` into the worktree
    * (`git format-patch -1`); resolves with the created filename. */
@@ -885,8 +909,8 @@ export const gitApi = {
 
   /** Force-push a specific `branch` with `--force-with-lease` (targets only that
    * branch, never the whole push.default set), optionally as the bound auth. */
-  forcePush: (path: string, branch: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("force_push", { path, branch, auth: auth ?? null }),
+  forcePush: (path: string, branch: string, expectedOid: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("force_push", { path, branch, expectedOid, auth: auth ?? null }),
 
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */
@@ -1099,6 +1123,8 @@ export const gitApi = {
    * as both author and committer for this commit (see write.rs::commit). */
   commit: (
     path: string,
+    expectedBranch: string | null,
+    expectedOid: string | null,
     summary: string,
     description: string,
     amend: boolean,
@@ -1107,6 +1133,8 @@ export const gitApi = {
   ) =>
     invoke<string>("commit", {
       path,
+      expectedBranch,
+      expectedOid,
       summary,
       description,
       amend,
@@ -1114,27 +1142,52 @@ export const gitApi = {
       email: authorEmail ?? null,
     }),
 
-  stash: (path: string) => invoke<string>("stash", { path }),
+  /** Squash the current tip range behind one guarded backend contract. */
+  squashCommits: (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string,
+    parentOid: string,
+    summary: string,
+    description: string,
+    authorName?: string | null,
+    authorEmail?: string | null,
+  ) => invoke<string>("squash_commits", {
+    path,
+    expectedBranch,
+    expectedOid,
+    parentOid,
+    summary,
+    description,
+    name: authorName ?? null,
+    email: authorEmail ?? null,
+  }),
+
+  stash: (path: string, expectedBranch: string | null, expectedOid: string | null) =>
+    invoke<string>("stash", { path, expectedBranch, expectedOid }),
 
   listStashes: (path: string) => invoke<StashEntry[]>("list_stashes", { path }),
 
   // Stash ops address the stash by commit oid — `stash@{n}` indices shift
   // whenever any stash is created/dropped (globally, across worktrees), so an
   // index captured at list time can hit the wrong stash (GL-117).
-  stashApply: (path: string, oid: string) => invoke<string>("stash_apply", { path, oid }),
+  stashApply: (path: string, expectedBranch: string | null, expectedOid: string | null, oid: string) =>
+    invoke<string>("stash_apply", { path, expectedBranch, expectedOid, oid }),
 
   /** Apply a stash restoring the staged (index) state too (`git stash apply --index`). */
-  stashApplyIndex: (path: string, oid: string) => invoke<string>("stash_apply_index", { path, oid }),
+  stashApplyIndex: (path: string, expectedBranch: string | null, expectedOid: string | null, oid: string) =>
+    invoke<string>("stash_apply_index", { path, expectedBranch, expectedOid, oid }),
 
   /** Check out `branch` at the stash's parent and apply the stash there. */
   stashBranch: (path: string, branch: string, oid: string) => invoke<string>("stash_branch", { path, branch, oid }),
 
-  stashPop: (path: string, oid: string) => invoke<string>("stash_pop", { path, oid }),
+  stashPop: (path: string, expectedBranch: string | null, expectedOid: string | null, oid: string) =>
+    invoke<string>("stash_pop", { path, expectedBranch, expectedOid, oid }),
 
   stashDrop: (path: string, oid: string) => invoke<string>("stash_drop", { path, oid }),
 
-  pull: (path: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("pull", { path, auth: auth ?? null }),
+  pull: (path: string, branch: string, expectedOid: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("pull", { path, branch, expectedOid, auth: auth ?? null }),
 
   /** Fetch + prune every non-skipped remote, each authenticated as its own
    * bound account (GL-129). `remoteAccounts` carries one `{remote, account}`
@@ -1143,20 +1196,20 @@ export const gitApi = {
   fetch: (path: string, remoteAccounts?: RemoteAccountRef[]) =>
     invoke<string>("fetch", { path, remoteAccounts: remoteAccounts ?? [] }),
 
-  /** Push the checked-out branch, optionally as its target remote's bound auth
-   * (validated against that remote's host server-side). */
-  push: (path: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("push", { path, auth: auth ?? null }),
-
   /** Push a specific (possibly not-checked-out) `branch` to its configured
    * remote (origin fallback), optionally as the target remote's bound auth. */
-  pushBranch: (path: string, branch: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("push_branch", { path, branch, auth: auth ?? null }),
+  pushBranch: (path: string, branch: string, expectedOid: string, auth?: GitTransportAuthRef | null) =>
+    invoke<string>("push_branch", { path, branch, expectedOid, auth: auth ?? null }),
 
   /** First-push flow: create/update `upstream` (`remote/branch`) and set it as
    * `branch`'s upstream in the same git push. */
-  publishBranch: (path: string, branch: string, upstream: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("publish_branch", { path, branch, upstream, auth: auth ?? null }),
+  publishBranch: (
+    path: string,
+    branch: string,
+    expectedOid: string,
+    upstream: string,
+    auth?: GitTransportAuthRef | null,
+  ) => invoke<string>("publish_branch", { path, branch, expectedOid, upstream, auth: auth ?? null }),
   /** Write a commit identity into the repo's local git config. `signing` is
    * optional; when given, its fields apply per-key (empty string unsets). */
   setRepoIdentity: (path: string, name: string, email: string, signing?: RepoSigningConfig) =>

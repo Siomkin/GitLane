@@ -20,11 +20,12 @@ import { useAccounts, type Account } from "./accounts";
 import { useNotifications } from "./notifications";
 import { useRepo } from "./repo";
 
+const HEAD_OID = "1111111";
 const summary: RepoSummary = {
   path: "/repo",
   workdir: "/repo",
   headBranch: "main",
-  headOid: null,
+  headOid: HEAD_OID,
   detached: false,
 };
 const emptyGraph: RepoGraph = { commits: [], edges: [], laneCount: 1, head: null, truncated: false };
@@ -96,7 +97,7 @@ const remote = (name: string, url: string, isDefault = false) => ({
 const branch = (over: Partial<BranchInfo>): BranchInfo => ({
   name: "main",
   kind: "local",
-  target: null,
+  target: HEAD_OID,
   isHead: false,
   upstream: null,
   remote: null,
@@ -250,7 +251,7 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
     unsubscribe();
 
     expect(invokeMock).not.toHaveBeenCalledWith("pull", expect.anything());
-    expect(invokeMock).not.toHaveBeenCalledWith("push", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("push_branch", expect.anything());
     expect(notificationSnapshots.some((kinds) => kinds.includes("progress"))).toBe(false);
     expect(useNotifications.getState().toasts).toHaveLength(2);
     for (const toast of useNotifications.getState().toasts) {
@@ -490,15 +491,25 @@ describe("push family — the target remote's account, not a repo-wide one", () 
   it("pull sends the head branch's upstream remote auth", async () => {
     await useRepo.getState().pull();
 
-    expect(invokeMock).toHaveBeenCalledWith("pull", { path: "/repo", auth: ghAuth(bob) });
+    expect(invokeMock).toHaveBeenCalledWith("pull", {
+      path: "/repo",
+      branch: "main",
+      expectedOid: HEAD_OID,
+      auth: ghAuth(bob),
+    });
   });
 
-  it("bare push sends the head branch's push-remote account", async () => {
+  it("push sends the explicit head branch and its push-remote account", async () => {
     await useRepo.getState().push();
 
     // Head branch `main` pushes to `mirror`, bound to bob — not the default
     // remote's alice.
-    expect(invokeMock).toHaveBeenCalledWith("push", { path: "/repo", auth: ghAuth(bob) });
+    expect(invokeMock).toHaveBeenCalledWith("push_branch", {
+      path: "/repo",
+      branch: "main",
+      expectedOid: HEAD_OID,
+      auth: ghAuth(bob),
+    });
   });
 
   it("resolves the push progress toast into a success card with commit count + View action", async () => {
@@ -533,7 +544,7 @@ describe("push family — the target remote's account, not a repo-wide one", () 
 
   it("drops the progress toast and surfaces an error toast when the push fails", async () => {
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "push" ? Promise.reject("remote rejected") : refreshInvoke(cmd),
+      cmd === "push_branch" ? Promise.reject("remote rejected") : refreshInvoke(cmd),
     );
 
     await useRepo.getState().push();
@@ -605,6 +616,7 @@ describe("push family — the target remote's account, not a repo-wide one", () 
     expect(invokeMock).toHaveBeenCalledWith("push_branch", {
       path: "/repo",
       branch: "feat",
+      expectedOid: HEAD_OID,
       auth: ghAuth(alice),
     });
   });
@@ -616,8 +628,20 @@ describe("push family — the target remote's account, not a repo-wide one", () 
     expect(invokeMock).toHaveBeenCalledWith("publish_branch", {
       path: "/repo",
       branch: "feat",
+      expectedOid: HEAD_OID,
       upstream: "bucket/feat",
       auth: bucketAuth,
+    });
+  });
+
+  it("forcePush pins the named branch to the tip the user saw", async () => {
+    await useRepo.getState().forcePush("feat");
+
+    expect(invokeMock).toHaveBeenCalledWith("force_push", {
+      path: "/repo",
+      branch: "feat",
+      expectedOid: HEAD_OID,
+      auth: ghAuth(alice),
     });
   });
 
