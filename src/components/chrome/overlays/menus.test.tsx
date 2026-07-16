@@ -376,6 +376,55 @@ describe("BranchContextMenu", () => {
     );
   });
 
+  it("offers fast-forward when the probe confirms it", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      branches: [
+        { ...localBranch("main"), target: "1111111", isHead: true },
+        { ...localBranch("feature"), target: "2222222" },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("can_fast_forward", {
+        path: "/work/repo",
+        from: "2222222",
+        to: "1111111",
+      }),
+    );
+    openGroup("Integrate into current");
+    expect(screen.getByRole("menuitem", { name: "Fast-forward to feature" })).toBeInTheDocument();
+  });
+
+  it("fails closed on the FF probe when local and remote refs share a display name", () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      branches: [
+        { ...localBranch("main"), target: "1111111", isHead: true },
+        // A local branch literally named like the remote ref, plus the remote
+        // ref itself — the menu payload has no kind, so the oid is ambiguous.
+        { ...localBranch("origin/feature"), target: "2222222" },
+        { ...remoteBranch("origin/feature"), target: "3333333" },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("can_fast_forward", expect.anything());
+    openGroup("Integrate into current");
+    expect(
+      screen.queryByRole("menuitem", { name: "Fast-forward to origin/feature" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("confirms and preserves the current/target pair for a branch-menu rebase", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const rebaseOnto = vi.fn().mockResolvedValue("Rebased main onto feature");

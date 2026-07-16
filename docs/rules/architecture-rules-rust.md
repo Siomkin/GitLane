@@ -27,6 +27,21 @@ contract that governs every command and are not repeated here.
   `graph.rs`, and `write.rs` are public facades for IPC callers. Put implementation
   details in their focused sibling folders (`read/`, `status/`, `conflicts/`,
   `graph/`, `write/`) and re-export only the command-facing functions from the facade.
+- **History-changing writes carry their subject — no HEAD-implicit mutations.** Frontend
+  state is only a snapshot, so every IPC command that moves a branch tip or rewrites
+  history (merge, rebase, reset, fast-forward, cherry-pick, revert, commit, squash, stash
+  apply/pop, push/pull/publish/force-push) takes the **branch and oid the user acted on**
+  and validates them against live Git state before mutating (`write/head.rs`:
+  `ensure_expected_head` / `ensure_expected_branch_tip` / `ensure_revision_at` /
+  `checkout_expected_branch`). Fail closed with "…changed. Refresh and try again." when
+  they no longer match — never fall back to "whatever HEAD is now" (that caused a rebase
+  onto the previously active branch). Operations that span a slow step re-validate after
+  it (`pull_branch` re-checks HEAD after the network fetch); plain ref moves use git's own
+  compare-and-swap (`update-ref <ref> <new> <old>`) so a concurrent move loses cleanly.
+  The precondition and the mutation are still separate processes — a microsecond
+  external-tool race remains by design; do not present these guards as a lock. **When
+  adding a write command, follow this contract**: explicit subject + expected oid in the
+  signature, guards first, and no new command that mutates an implicit HEAD.
 
 ---
 

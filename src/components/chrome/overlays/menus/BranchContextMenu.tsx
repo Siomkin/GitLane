@@ -73,7 +73,12 @@ export function BranchContextMenu() {
   useEffect(() => {
     setCanFf(false);
     if (!repoPath || !branch || !cur || branch === cur) return;
-    const targetOid = branches.find((candidate) => candidate.name === branch)?.target;
+    // The menu payload carries only the display name, so a local/remote pair
+    // sharing it is unresolvable here — fail closed (no FF offer) like the
+    // store's revisionSnapshot does, instead of probing whichever ref happens
+    // to come first in the list.
+    const targetMatches = branches.filter((candidate) => candidate.name === branch);
+    const targetOid = targetMatches.length === 1 ? targetMatches[0].target : null;
     const currentOid = branches.find(
       (candidate) => candidate.kind === BranchKind.Local && candidate.name === cur,
     )?.target;
