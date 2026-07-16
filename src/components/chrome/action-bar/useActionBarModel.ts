@@ -32,6 +32,8 @@ export interface ActionBarModel {
   loading: boolean;
   /** The in-flight network op (its button shows the spinner), if any. */
   busy: NetOp | null;
+  /** Another repository may still be finishing a fetch after a tab switch. */
+  fetchBlocked: boolean;
   showPulls: boolean;
   workCount: number;
   prCount: number;
@@ -64,6 +66,7 @@ export function useActionBarModel(): ActionBarModel {
   const remotes = useRepo((state) => state.remotes);
   const branches = useRepo((state) => state.branches);
   const loading = useRepo((state) => state.loading);
+  const fetchingPath = useRepo((state) => state.fetchingPath);
   const fetch = useRepo((state) => state.fetch);
   const pull = useRepo((state) => state.pull);
   const push = useRepo((state) => state.push);
@@ -107,7 +110,13 @@ export function useActionBarModel(): ActionBarModel {
   const [busy, setBusy] = useState<NetOp | null>(null);
   const busyRef = useRef(false);
   const run = (key: NetOp, action: () => Promise<unknown>) => async () => {
-    if (busyRef.current) return;
+    // Automatic fetch does not pass through this component-local guard. A
+    // manual Fetch may join the active fetch for the same displayed repo (the
+    // store coalesces it); every other toolbar transport stays blocked.
+    const repo = useRepo.getState();
+    const joinsDisplayedFetch =
+      key === "fetch" && repo.fetchingPath !== null && repo.fetchingPath === repo.summary?.path;
+    if (busyRef.current || (repo.fetchingPath !== null && !joinsDisplayedFetch)) return;
     busyRef.current = true;
     setBusy(key);
     try {
@@ -158,6 +167,7 @@ export function useActionBarModel(): ActionBarModel {
   // path, forge kind, and the PR-API account the loads authenticate as
   // (GL-182; this effect carried the repo's last hook-lint warning).
   const repoPath = summary?.path ?? null;
+  const fetching = repoPath !== null && fetchingPath === repoPath;
   const forgeKind = forge?.kind ?? null;
   // The account identity behind `loadPullRequests` is `prAccountRef()` — the gh
   // binding for GitHub, but glab readiness / native keychain tokens for GitLab
@@ -223,7 +233,8 @@ export function useActionBarModel(): ActionBarModel {
     summary,
     forge,
     loading,
-    busy,
+    busy: busy ?? (fetching ? "fetch" : null),
+    fetchBlocked: fetchingPath !== null && !fetching,
     showPulls: activeTab === "pulls",
     workCount,
     prCount,

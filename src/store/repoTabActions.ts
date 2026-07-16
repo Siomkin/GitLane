@@ -111,6 +111,10 @@ export function createRepoTabActions(
           // Clear the loading flags: closing the tab orphans any in-flight graph
           // request (its summary-path guard now fails), so it can't clear them
           // itself and `loading` would otherwise stick true (GL-20 review).
+          // `fetchingPath` is deliberately different: the transport still owns
+          // live remote-ref work after its tab closes, and only its settle
+          // handler may clear that owner. Clearing it here would let a newly
+          // opened repo start a conflicting transport while git is still busy.
           loading: false,
           graphLoading: false,
           loadingMoreHistory: false,

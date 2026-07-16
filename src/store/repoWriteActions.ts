@@ -216,6 +216,12 @@ export function createRepoWriteActions(
   | "pull"
   | "push"
 > {
+  // Git rejects concurrent fetches when both processes prepare the same
+  // remote-tracking ref update from the same old oid. Coalesce every in-app
+  // fetch for the displayed repo onto one transport promise; the backend also
+  // retries once for the equivalent race with an external git process.
+  let fetchTransport: { path: string; promise: Promise<unknown> } | null = null;
+
   // Per-remote account resolution (GL-129): every push-family call sends the
   // account bound to the remote it actually targets, not one repo-wide pick.
   const authFor = (remote: string | null) =>
@@ -227,16 +233,21 @@ export function createRepoWriteActions(
   // The default push remote (tags land there when no remote is picked).
   const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
   // Every network transport call (fetch/pull/push/publish/…) runs inside this
-  // wrapper so `netOps` reflects in-flight remote work. Pull and push don't hold
-  // `loading`, so this is the only store-visible signal the auto-fetch scheduler
-  // has to avoid overlapping a foreground transport operation.
-  const trackNet = async <T>(work: () => Promise<T>): Promise<T> => {
-    set((s) => ({ netOps: s.netOps + 1 }));
-    try {
-      return await work();
-    } finally {
-      set((s) => ({ netOps: Math.max(0, s.netOps - 1) }));
+  // store-level mutex. Component guards are only UX — context menus, commit-and-
+  // push, and other callers enter through the same actions, so the store must be
+  // the authority that prevents concurrent remote-ref writers. Fetch is the one
+  // joinable operation: its same-repo callers reuse `fetchTransport` below and
+  // never try to acquire the mutex twice.
+  const trackNet = <T>(work: () => Promise<T>): Promise<T> => {
+    if (get().netOps > 0) {
+      throw new Error("Another remote operation is already in progress. Try again when it finishes.");
     }
+    set((s) => ({ netOps: s.netOps + 1 }));
+    // Defer the actual IPC one microtask: fetch publishes `fetchTransport` and
+    // `fetchingPath` synchronously after this returns, before git starts work.
+    return Promise.resolve()
+      .then(work)
+      .finally(() => set((s) => ({ netOps: Math.max(0, s.netOps - 1) })));
   };
 
   return {
@@ -927,9 +938,14 @@ export function createRepoWriteActions(
       // repo switch can't clear the new repo's loading lifecycle or refresh the
       // wrong checkout. Toast plumbing is global UI and stays unguarded.
       const opPath = summary.path;
-      // A quiet (background) fetch must be invisible: it doesn't hold `loading`
-      // (the ActionBar disables on it; `netOps` from trackNet is the overlap
-      // signal the scheduler watches) and must not clear an unrelated `error`.
+      // A fetch can outlive a repo switch. Never start another app fetch while
+      // it is still updating refs (linked worktrees may share those refs). The
+      // ActionBar disables the new repo's network buttons for this short window.
+      if (fetchTransport && fetchTransport.path !== opPath) return false;
+      // A quiet (background) fetch doesn't hold global `loading` or raise
+      // notifications; `fetchingPath` drives the Fetch-button spinner, while
+      // `netOps` remains the scheduler's overlap signal. It also must not clear
+      // an unrelated `error`.
       if (!opts?.quiet) set({ loading: true, error: null });
       // Capture how far behind the tracked branch is *before* fetching so the
       // success toast can report how many commits the remote ref gained.
@@ -954,7 +970,19 @@ export function createRepoWriteActions(
           .filter((pair): pair is { remote: string; auth: NonNullable<typeof pair.auth> } =>
             pair.auth !== null,
           );
-        await trackNet(() => api.fetch(summary.path, remoteAccounts));
+        let transport = fetchTransport?.promise;
+        if (!transport) {
+          transport = trackNet(() => api.fetch(summary.path, remoteAccounts));
+          fetchTransport = { path: opPath, promise: transport };
+          set({ fetchingPath: opPath });
+          const clearTransport = () => {
+            if (fetchTransport?.promise !== transport) return;
+            fetchTransport = null;
+            if (get().fetchingPath === opPath) set({ fetchingPath: null });
+          };
+          void transport.then(clearTransport, clearTransport);
+        }
+        await transport;
       } catch (e) {
         // Replay any re-sync deferred while this fetch held `loading` (GL-20
         // review). A quiet fetch held nothing, so it has no state to restore.
@@ -1032,6 +1060,17 @@ export function createRepoWriteActions(
       // from "already up to date".
       const tipBefore = head?.target ?? null;
       const notes = useNotifications.getState();
+      // Claim the transport before painting progress. A context-menu pull can
+      // bypass the ActionBar's disabled state; if fetch/push already owns the
+      // mutex, surface only the actionable busy error — never flash a progress
+      // card for work that did not start.
+      let transport: Promise<string>;
+      try {
+        transport = trackNet(() => api.pull(summary.path, authFor(head?.upstreamRemote ?? null)));
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+        return;
+      }
       const toastId = notes.notify({
         kind: "progress",
         title: `Pulling ${remote}…`,
@@ -1039,7 +1078,7 @@ export function createRepoWriteActions(
         progress: "indeterminate",
       });
       try {
-        await trackNet(() => api.pull(summary.path, authFor(head?.upstreamRemote ?? null)));
+        await transport;
       } catch (e) {
         notes.dismiss(toastId);
         useUi.getState().showToast(String(e), "error");
@@ -1095,6 +1134,15 @@ export function createRepoWriteActions(
       const aheadBefore = head?.sync?.ahead ?? 0;
       const target = `${remote}/${remoteBranch}`;
       const notes = useNotifications.getState();
+      // As with pull, claim the store mutex before creating progress so direct
+      // commit-and-push callers get one busy error and no misleading flash.
+      let transport: Promise<string>;
+      try {
+        transport = trackNet(() => api.push(summary.path, authFor(remote)));
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+        return;
+      }
       // git push doesn't stream progress through our transport, so the toast is
       // indeterminate ("working") until the invoke resolves, then it morphs into
       // the success card in place.
@@ -1105,7 +1153,7 @@ export function createRepoWriteActions(
         progress: "indeterminate",
       });
       try {
-        await trackNet(() => api.push(summary.path, authFor(remote)));
+        await transport;
       } catch (e) {
         // Drop the in-flight progress toast; the error keeps its own persistent,
         // scrollable toast (via the legacy forwarder → friendlyGitError).

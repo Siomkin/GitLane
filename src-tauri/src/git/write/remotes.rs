@@ -23,8 +23,8 @@ fn run_transport(
 }
 
 /// Like [`run_transport`] but with locale-stable diagnostics (`LC_ALL=C`), for
-/// commands whose output is pattern-matched (fetch tag-clobber, delete-tag
-/// missing-ref tolerance).
+/// commands whose output is pattern-matched (concurrent fetch retry, fetch
+/// tag-clobber, delete-tag missing-ref tolerance).
 fn run_transport_stable(
     repo: &str,
     cred: &TransportCredential,
@@ -407,7 +407,9 @@ pub fn fetch(
 }
 
 /// Fetch one remote: a branch/prune pass, then the explicit tag-refspec pass
-/// with clobber tolerance (see [`fetch`] for the tag semantics).
+/// with clobber tolerance (see [`fetch`] for the tag semantics). If another git
+/// process moves a remote-tracking ref after this fetch reads it but before it
+/// takes the lock, retry the branch pass once from the now-current oid.
 fn fetch_remote(repo: &str, remote: &str, cred: &TransportCredential) -> Result<String, String> {
     let branch_cmd = ["fetch", remote, "--prune", "--no-tags", "--no-prune-tags"];
     let tag_cmd = [
@@ -417,12 +419,30 @@ fn fetch_remote(repo: &str, remote: &str, cred: &TransportCredential) -> Result<
         "--no-prune",
         TAG_FETCH_REFSPEC,
     ];
-    let output = run_transport_stable(repo, cred, &branch_cmd)?;
+    let output = match run_transport_stable(repo, cred, &branch_cmd) {
+        Ok(output) => output,
+        Err(error) if is_concurrent_fetch_ref_update(&error) => {
+            run_transport_stable(repo, cred, &branch_cmd)?
+        }
+        Err(error) => return Err(error),
+    };
     match run_transport_stable(repo, cred, &tag_cmd) {
         Ok(tag_output) => Ok(join_git_outputs(&output, &tag_output)),
         Err(e) if is_tag_clobber_rejection(&e) => Ok(join_git_outputs(&output, &e)),
         Err(e) => Err(e),
     }
+}
+
+/// Git's stable diagnostic when a concurrent process updates a remote-tracking
+/// ref between fetch's read and lock phases. This is safe to retry once; an
+/// ordinary lock-file collision, auth failure, or rejected ref update does not
+/// match and remains visible to the caller.
+pub(super) fn is_concurrent_fetch_ref_update(output: &str) -> bool {
+    output.lines().any(|line| {
+        line.contains("error: cannot lock ref 'refs/remotes/")
+            && line.contains(": is at ")
+            && line.contains(" but expected ")
+    }) && output.contains("(unable to update local ref)")
 }
 
 /// Prefix a remote's fetch output with its name so the combined multi-remote

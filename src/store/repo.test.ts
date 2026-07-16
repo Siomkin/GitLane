@@ -89,6 +89,7 @@ beforeEach(() => {
     selectedCommit: null,
     graphLimit: 2_000,
     loadingMoreHistory: false,
+    fetchingPath: null,
   });
 });
 
@@ -2373,6 +2374,15 @@ describe("repo store — closeRepo clears forge", () => {
     await useRepo.getState().closeRepo("/other");
 
     expect(invokeMock).toHaveBeenCalledWith("unwatch_repo", { path: "/other" });
+  });
+
+  it("preserves a live fetch owner when its last tab closes", async () => {
+    useRepo.setState({ openPaths: ["/repo"], summary, fetchingPath: "/repo" });
+
+    await useRepo.getState().closeRepo("/repo");
+
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().fetchingPath).toBe("/repo");
   });
 });
 
