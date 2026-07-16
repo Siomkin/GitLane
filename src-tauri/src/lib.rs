@@ -207,8 +207,13 @@ async fn checkout_remote_branch(
 }
 
 #[tauri::command]
-async fn create_branch(path: String, name: String, start_point: String) -> Result<String, String> {
-    blocking(move || git::write::create_branch(&path, &name, Some(&start_point))).await
+async fn create_branch(
+    path: String,
+    name: String,
+    start_point: String,
+    expected_oid: String,
+) -> Result<String, String> {
+    blocking(move || git::write::create_branch(&path, &name, &start_point, &expected_oid)).await
 }
 
 #[tauri::command]

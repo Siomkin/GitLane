@@ -718,13 +718,31 @@ describe("repo store — captured write subjects", () => {
     });
   });
 
-  it("creates a branch at the captured commit instead of implicit HEAD", async () => {
+  it("creates a branch at the captured start ref pinned to its oid", async () => {
     await useRepo.getState().createBranchAt("new-branch", "feature");
 
     expect(invokeMock).toHaveBeenCalledWith("create_branch", {
       path: "/repo",
       name: "new-branch",
-      startPoint: "2222222",
+      startPoint: "refs/heads/feature",
+      expectedOid: "2222222",
+    });
+  });
+
+  it("keeps a remote-tracking start point as a ref so upstream setup survives", async () => {
+    useRepo.setState({
+      branches: [
+        { name: "origin/topic", kind: "remote", target: "3333333", isHead: false, upstream: null, remote: "origin" },
+      ],
+    });
+
+    await useRepo.getState().createBranchAt("topic", "origin/topic");
+
+    expect(invokeMock).toHaveBeenCalledWith("create_branch", {
+      path: "/repo",
+      name: "topic",
+      startPoint: "refs/remotes/origin/topic",
+      expectedOid: "3333333",
     });
   });
 

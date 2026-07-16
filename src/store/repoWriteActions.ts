@@ -360,10 +360,13 @@ export function createRepoWriteActions(
     // git error so the caller can toast that instead.
     createBranchAt: (name, startPoint) =>
       runOp(get, async (summary) => {
-        const startOid = startPoint
-          ? revisionSnapshot(get, startPoint).oid
-          : requireHeadOid(summary, "create a branch");
-        await api.createBranch(summary.path, name, startOid);
+        // Send the picked ref (not its oid) as the start point so branching
+        // from a remote-tracking ref keeps git's automatic upstream setup; the
+        // captured oid pins it to the commit the user saw.
+        const start = startPoint
+          ? revisionSnapshot(get, startPoint)
+          : { revision: "HEAD", oid: requireHeadOid(summary, "create a branch") };
+        await api.createBranch(summary.path, name, start.revision, start.oid);
         await api.checkout(summary.path, name);
         return `Created ${name}`;
       }),

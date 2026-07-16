@@ -267,7 +267,9 @@ pub fn publish_branch(
     // A pinned oid source is what prevents a concurrent local branch move from
     // changing the commit we publish. `git push --set-upstream` cannot infer a
     // local branch from an oid source, so persist the equivalent tracking
-    // configuration explicitly after the push succeeds.
+    // configuration explicitly after the push succeeds. Push + config are not
+    // one transaction: dying in between leaves the branch published but
+    // untracked, which a re-publish repairs.
     let pushed = run_transport(repo, cred, &["push", &remote, &refspec])?;
     let configured_remote = run_git(
         repo,

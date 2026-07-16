@@ -10,7 +10,7 @@ use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_pull_target,
     branch_push_remote,
     checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto, clear_repo_identity,
-    commit_expected, continue_operation, create_tag, delete_branch_with_worktree,
+    commit_expected, continue_operation, create_branch, create_tag, delete_branch_with_worktree,
     delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
     fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
     merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
@@ -255,6 +255,69 @@ fn merge_into_uses_explicit_destination_instead_of_active_branch() {
         .status
         .success());
     assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+    // The validated qualified ref must not leak into the generated subject.
+    let subject = repo.git(&["log", "-1", "--format=%s", "main"]);
+    assert!(subject.status.success());
+    assert!(
+        String::from_utf8_lossy(&subject.stdout).starts_with("Merge branch 'feature'"),
+        "unexpected merge subject: {}",
+        String::from_utf8_lossy(&subject.stdout)
+    );
+}
+
+#[test]
+fn merge_into_names_a_remote_tracking_source_by_its_short_name() {
+    let (repo, base) = repo_with_base_commit("merge-remote-source-subject");
+    repo.git_ok(&["checkout", "-q", "-b", "topic"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "topic work"]);
+    let topic_tip = rev_parse(&repo, "topic");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/topic", &topic_tip]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["branch", "-D", "topic"]);
+
+    merge_into(
+        repo.path(),
+        "refs/remotes/origin/topic",
+        &topic_tip,
+        Some("main"),
+        &base,
+    )
+    .expect("merge remote-tracking source");
+
+    let subject = repo.git(&["log", "-1", "--format=%s", "main"]);
+    assert!(subject.status.success());
+    assert!(
+        String::from_utf8_lossy(&subject.stdout)
+            .starts_with("Merge remote-tracking branch 'origin/topic'"),
+        "unexpected merge subject: {}",
+        String::from_utf8_lossy(&subject.stdout)
+    );
+}
+
+#[test]
+fn merge_into_keeps_the_qualified_source_when_a_tag_shadows_the_branch() {
+    let (repo, base) = repo_with_base_commit("merge-tag-shadowed-source");
+    // A tag named `feature` at a *different* commit shadows the branch for
+    // bare-name resolution, so the merge must keep the qualified operand.
+    repo.git_ok(&["tag", "feature", &base]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "feature work"]);
+    let feature_tip = rev_parse(&repo, "refs/heads/feature");
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    merge_into(
+        repo.path(),
+        "refs/heads/feature",
+        &feature_tip,
+        Some("main"),
+        &main_tip,
+    )
+    .expect("merge the shadowed branch");
+
+    // The branch commit — not the tag's — is what got merged.
+    assert_eq!(rev_parse(&repo, "main^2"), feature_tip);
 }
 
 #[test]
@@ -276,6 +339,44 @@ fn merge_into_rejects_a_stale_destination_before_checkout() {
     );
     assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
     assert_eq!(rev_parse(&repo, "main"), moved_main);
+}
+
+#[test]
+fn create_branch_from_a_remote_tracking_ref_keeps_upstream_setup() {
+    let (repo, base) = repo_with_base_commit("create-branch-tracking");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/topic", &base]);
+
+    create_branch(repo.path(), "topic", "refs/remotes/origin/topic", &base)
+        .expect("create branch from a remote-tracking start point");
+
+    assert_eq!(rev_parse(&repo, "refs/heads/topic"), base);
+    // Passing the ref (not its oid) lets `branch.autoSetupMerge` wire tracking.
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.topic.remote"]).stdout).trim(),
+        "origin"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.topic.merge"]).stdout).trim(),
+        "refs/heads/topic"
+    );
+}
+
+#[test]
+fn create_branch_rejects_a_stale_start_point() {
+    let (repo, base) = repo_with_base_commit("create-branch-stale");
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "moved"]);
+
+    assert!(
+        create_branch(repo.path(), "pinned", "refs/heads/main", &base).is_err(),
+        "a moved start point must fail closed"
+    );
+    assert!(
+        repo.git(&["rev-parse", "--verify", "refs/heads/pinned"])
+            .status
+            .code()
+            != Some(0),
+        "no branch may be created from a stale snapshot"
+    );
 }
 
 #[test]

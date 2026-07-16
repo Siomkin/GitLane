@@ -222,14 +222,20 @@ pub(super) fn align_equivalent_sibling(
     Ok(format!("Aligned {local_ref} to {target_oid}"))
 }
 
-/// Create a branch `name` at `start_point` (defaults to HEAD).
-pub fn create_branch(repo: &str, name: &str, start_point: Option<&str>) -> Result<String, String> {
+/// Create a branch `name` at the validated `start_point`, pinned to the
+/// `expected_oid` the user saw. The start point is handed to git as the ref
+/// the user picked rather than its resolved oid, so branching from a
+/// remote-tracking ref keeps git's automatic upstream setup
+/// (`branch.autoSetupMerge`).
+pub fn create_branch(
+    repo: &str,
+    name: &str,
+    start_point: &str,
+    expected_oid: &str,
+) -> Result<String, String> {
     ensure_operand(name)?;
-    ensure_opt(start_point)?;
-    match start_point {
-        Some(sp) => run_git(repo, &["branch", name, sp]),
-        None => run_git(repo, &["branch", name]),
-    }
+    ensure_revision_at(repo, start_point, expected_oid)?;
+    run_git(repo, &["branch", name, start_point])
 }
 
 /// Delete a local branch. `force` maps to `-D` (drops the merged-safety check).
@@ -298,7 +304,33 @@ pub fn merge_into(
         None => ensure_expected_head(repo, None, Some(expected_destination_oid))?,
     }
     ensure_revision_at(repo, source, expected_source_oid)?;
-    merge(repo, source)
+    merge(repo, &merge_source_operand(repo, source))
+}
+
+/// The operand handed to `git merge` for a validated fully-qualified `source`.
+/// Git copies the operand verbatim into the generated merge subject, so the
+/// qualified form would leave "Merge branch 'refs/heads/feature'" in history.
+/// Use the short human name whenever git would resolve it (and any
+/// re-qualification in [`merge`]) to the exact validated commit; every other
+/// case keeps the unambiguous qualified form — an accurate if uglier subject.
+fn merge_source_operand(repo: &str, source: &str) -> String {
+    let Some(short) = source
+        .strip_prefix("refs/heads/")
+        .or_else(|| source.strip_prefix("refs/remotes/"))
+    else {
+        return source.to_string();
+    };
+    let resolves_identically = ensure_operand(short).is_ok()
+        && qualify_branch_if_ambiguous(repo, short) == short
+        && matches!(
+            (resolve_rev(repo, short), resolve_rev(repo, source)),
+            (Ok(via_short), Ok(via_source)) if via_short == via_source
+        );
+    if resolves_identically {
+        short.to_string()
+    } else {
+        source.to_string()
+    }
 }
 
 /// Fast-forward the current HEAD to `target`. Fails (no merge commit) if the

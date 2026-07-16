@@ -693,8 +693,11 @@ export const gitApi = {
   checkoutRemoteBranch: (path: string, remote: string, branch: string) =>
     invoke<string>("checkout_remote_branch", { path, remote, branch }),
 
-  createBranch: (path: string, name: string, startPoint: string) =>
-    invoke<string>("create_branch", { path, name, startPoint }),
+  /** Create a branch at `startPoint` (the ref the user picked, so a
+   * remote-tracking start point keeps git's automatic upstream setup), pinned
+   * to the `expectedOid` the user saw. */
+  createBranch: (path: string, name: string, startPoint: string, expectedOid: string) =>
+    invoke<string>("create_branch", { path, name, startPoint, expectedOid }),
 
   deleteBranch: (path: string, name: string, force = false) =>
     invoke<string>("delete_branch", { path, name, force }),
