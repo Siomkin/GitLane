@@ -128,4 +128,30 @@ describe("WorktreeContextMenu", () => {
     confirm!.onConfirm();
     expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", false);
   });
+
+  it("removal confirm says the branch keeps the commits for a branch-holding worktree", () => {
+    openMenuFor(featWt);
+    render(<WorktreeContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    expect(useUi.getState().confirm?.message).toContain("Its branch and commits are kept.");
+  });
+
+  it("removal confirm warns a detached worktree's commit may become unreachable", () => {
+    // No branch keeps the commit once the worktree's HEAD is gone — the copy
+    // must not promise "branch and commits are kept", and names the short oid.
+    useRepo.setState({
+      worktrees: [
+        mainWt,
+        { ...featWt, branch: null, head: "abc1234def5678900000000000000000000000ff" },
+      ],
+    });
+    openMenuFor(featWt);
+    render(<WorktreeContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    const message = useUi.getState().confirm?.message ?? "";
+    expect(message).toContain("detached");
+    expect(message).toContain("abc1234");
+    expect(message).toContain("may become unreachable");
+    expect(message).not.toContain("kept");
+  });
 });

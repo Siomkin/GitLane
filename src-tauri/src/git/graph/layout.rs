@@ -59,6 +59,25 @@ pub fn build_profiled(
     let _ = walk.push_glob("refs/remotes/*");
     let _ = walk.push_glob("refs/tags/*");
     let _ = walk.push_head();
+    // Linked worktrees' HEADs are seeds too: a *detached* worktree can park on
+    // a commit no ref reaches any more (e.g. its branch was rebased away).
+    // Without this seed that commit never enters the graph, so its worktree
+    // pill can't render and navigating to it from the branch popup pages to the
+    // end of history and gives up. A worktree HEAD on a branch resolves through
+    // the refs/heads glob above; only the raw-oid (detached) form needs an
+    // explicit push. Failures (stale worktree metadata, pruned commits) are
+    // tolerated like the other seeds.
+    if let Ok(names) = repo.worktrees() {
+        for name in names.iter() {
+            let Ok(Some(name)) = name else { continue };
+            let head_path = repo.commondir().join("worktrees").join(name).join("HEAD");
+            if let Ok(contents) = std::fs::read_to_string(head_path) {
+                if let Ok(oid) = Oid::from_str(contents.trim()) {
+                    let _ = walk.push(oid);
+                }
+            }
+        }
+    }
 
     // Collect one extra to detect truncation.
     let mut oids: Vec<Oid> = Vec::new();

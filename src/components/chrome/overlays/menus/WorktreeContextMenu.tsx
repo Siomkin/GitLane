@@ -93,6 +93,14 @@ export function WorktreeContextMenu() {
   // Don't offer removal of the primary worktree (git refuses) or the one
   // currently open in the app (it'd delete the active tab's directory).
   if (!isMain && !isActiveWorktree) {
+    // "Its branch and commits are kept" is only true when a branch holds the
+    // commits. A detached worktree's HEAD is the last thing keeping its commit
+    // reachable — removal can strand it, so warn with the oid instead.
+    const keepNote = wtBranch
+      ? " Its branch and commits are kept."
+      : ` It is detached (no branch) — its commit${
+          wtEntry?.head ? ` ${wtEntry.head.slice(0, 7)}` : ""
+        } may become unreachable unless a branch or tag points to it.`;
     items.push({
       label: "Remove worktree",
       icon: <TrashIcon className="h-4 w-4" />,
@@ -101,7 +109,7 @@ export function WorktreeContextMenu() {
       onClick: () =>
         requestConfirm({
           title: `Remove worktree ${name}?`,
-          message: `The linked worktree at ${path} will be removed. Its branch and commits are kept.${
+          message: `The linked worktree at ${path} will be removed.${keepNote}${
             wtLocked ? " This worktree is locked; removing it will override the lock." : ""
           }`,
           confirmLabel: "Remove worktree",
