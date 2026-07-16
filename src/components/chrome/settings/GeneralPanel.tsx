@@ -1,6 +1,6 @@
-// General settings: appearance (theme), accent colour, graph density, and the
-// background-fetch cadence. All state lives in the UI store; the segmented +
-// swatch controls are one-offs used only here, so they stay co-located.
+// General settings: appearance, graph presentation, and the background-fetch
+// cadence. All state lives in the UI store; the segmented + swatch controls
+// are one-offs used only here, so they stay co-located.
 // (Software update lives in the About panel.)
 
 import { cn } from "@/lib/cn";
@@ -14,7 +14,7 @@ import {
   type Theme,
 } from "@/store/ui";
 import { ACCENTS, type AccentColor } from "@/lib/accent";
-import { SectionLabel } from "./controls";
+import { SectionLabel, SettingsSwitch } from "./controls";
 
 function Segmented<T extends string>({
   value,
@@ -97,6 +97,8 @@ export function GeneralPanel() {
   const setAccent = useUi((s) => s.setAccent);
   const density = useUi((s) => s.density);
   const setDensity = useUi((s) => s.setDensity);
+  const showCommitNodeIcons = useUi((s) => s.showCommitNodeIcons);
+  const setShowCommitNodeIcons = useUi((s) => s.setShowCommitNodeIcons);
   const autoFetchEnabled = useUi((s) => s.autoFetchEnabled);
   const setAutoFetchEnabled = useUi((s) => s.setAutoFetchEnabled);
   const autoFetchMinutes = useUi((s) => sanitizeAutoFetchMinutes(s.autoFetchMinutes));
@@ -128,6 +130,22 @@ export function GeneralPanel() {
           ariaLabel="Graph density"
         />
       </div>
+      <div className="mb-6">
+        <SectionLabel>COMMIT NODES</SectionLabel>
+        <div className="flex max-w-[420px] items-center justify-between gap-4 rounded-xl border border-black/10 p-3 dark:border-white/10">
+          <div>
+            <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">Commit icons</div>
+            <div className="mt-0.5 text-[11.5px] text-neutral-400">
+              Show author avatars, co-author badges, and bundled AI co-worker icons. Turn off for classic coloured dots.
+            </div>
+          </div>
+          <SettingsSwitch
+            checked={showCommitNodeIcons}
+            ariaLabel="Show commit icons"
+            onChange={setShowCommitNodeIcons}
+          />
+        </div>
+      </div>
       <div>
         <SectionLabel>BACKGROUND FETCH</SectionLabel>
         <div className="max-w-[420px] rounded-xl border border-black/10 p-3 dark:border-white/10">
@@ -136,19 +154,11 @@ export function GeneralPanel() {
               <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">Automatically fetch remotes</div>
               <div className="mt-0.5 text-[11.5px] text-neutral-400">Runs only while GitLane is visible, online, and idle.</div>
             </div>
-            <button type="button"
-              role="switch"
-              aria-checked={autoFetchEnabled}
-              aria-label="Automatically fetch remotes"
-              onClick={() => setAutoFetchEnabled(!autoFetchEnabled)}
-              className={cn(
-                "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
-                autoFetchEnabled ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
-                focusRing,
-              )}
-            >
-              <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
-            </button>
+            <SettingsSwitch
+              checked={autoFetchEnabled}
+              ariaLabel="Automatically fetch remotes"
+              onChange={setAutoFetchEnabled}
+            />
           </div>
           <div className="mt-3 flex items-center justify-between gap-4">
             <div className="text-[12.5px] text-neutral-600 dark:text-neutral-300">Fetch interval</div>

@@ -57,6 +57,29 @@ beforeEach(() => {
 });
 
 describe("CommitInspector", () => {
+  it("brands a known agent author with its glyph instead of generic initials", () => {
+    const claude = commit({
+      id: "cc",
+      shortId: "cc",
+      summary: "agent commit",
+      authorName: "Claude",
+      authorEmail: "noreply@anthropic.com",
+    });
+    useRepo.setState({
+      graph: { ...graph, commits: [claude], head: "cc" },
+      stashes: [],
+      selectedCommit: "cc",
+      selectedCommits: ["cc"],
+      commitFiles: [],
+    });
+
+    const { container } = render(<CommitInspector />);
+    // The author block resolves identity the same way as the graph node, so a
+    // known agent shows its bundled glyph (an <img>) rather than "C".
+    expect(container.querySelector("img")).toBeTruthy();
+    expect(screen.getByText("noreply@anthropic.com")).toBeInTheDocument();
+  });
+
   it("renders selected stash metadata and files instead of falling back to the first graph commit", () => {
     render(<CommitInspector />);
 

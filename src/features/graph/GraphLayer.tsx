@@ -1,8 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { GEOMETRY, graphLaneX, laneColor, rowY } from "./palette";
 import { segmentIntersectsViewport } from "./graphViewport";
+import { commitNodeIdentity } from "./commitAgents";
+import { readyCommitAgentImage } from "./commitAgentImages";
+import { drawCommitNode, type CommitNodeBadge } from "./commitNodePainter";
+import { useCommitAgentImages } from "./useCommitAgentImages";
 import type { StashConnector } from "./historyRows";
 
 /** Opacity for de-emphasised graph elements (the lane skeleton + non-matching
@@ -43,6 +48,9 @@ export function GraphLayer({
 }: GraphLayerProps) {
   const graph = useRepo((state) => state.graph);
   const selectedCommits = useRepo((state) => state.selectedCommits);
+  const showCommitNodeIcons = useUi((state) => state.showCommitNodeIcons);
+  const identityColors = useUi((state) => state.identityColors);
+  const commitAgentImageRevision = useCommitAgentImages(showCommitNodeIcons);
   // Subscribe to the theme so a light/dark toggle re-runs the paint: the effect
   // samples theme-dependent colors (--nodeStroke, --headRing, and the section
   // background for merge-donut holes) that would otherwise stay stale until an
@@ -210,6 +218,12 @@ export function GraphLayer({
     // inside the per-commit loop would be O(n*m) for large graphs.
     const selectedSet = new Set(selectedCommits);
 
+    // The avatar is the node, so let it dominate the row. We deliberately fill
+    // more of the compact row than the (taller, airier) design mock does, since
+    // the app keeps rows dense — bounded so the avatar + ring never touches the
+    // row edge.
+    const avatarRadius = rowHeight >= 40 ? 13 : 10;
+
     for (const commit of graph.commits) {
       // Stash nodes render as the amber dashed marker in their HTML row, not a
       // canvas dot — their edge to the base is already drawn dashed above.
@@ -237,45 +251,42 @@ export function GraphLayer({
         !matchedIds || matchedIds.has(commit.id) || isSelected ? 1 : DIM_ALPHA;
       ctx.globalAlpha = nodeAlpha;
 
-      if (isSelected) {
-        ctx.beginPath();
-        ctx.arc(x, y, outerR + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = selectedRing;
-        ctx.globalAlpha = nodeAlpha * 0.4;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.globalAlpha = nodeAlpha;
-      }
-
-      if (isMerge) {
-        // Lane-coloured ring with the workspace surface showing through, so the
-        // centre is a clean cut-out (a donut), not a dot — the main-line merge
-        // treatment, scaled up so the hole is unmistakable.
-        ctx.beginPath();
-        ctx.arc(x, y, outerR, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, outerR - 2.8, 0, Math.PI * 2);
-        ctx.fillStyle = surface;
-        ctx.fill();
-      } else {
-        ctx.beginPath();
-        ctx.arc(x, y, outerR, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = nodeStroke;
-        ctx.stroke();
-      }
-
-      if (commit.id === head) {
-        ctx.beginPath();
-        ctx.arc(x, y, outerR + 2.5, 0, Math.PI * 2);
-        ctx.strokeStyle = headRing;
-        ctx.lineWidth = 1.6;
-        ctx.stroke();
-      }
+      // Resolve metadata only after the viewport gate, and bypass it entirely
+      // for the classic-dots preference. The icon cache contains only the tiny
+      // fixed registry; a loading icon falls back to this exact classic painter,
+      // and a failed icon safely stays there.
+      const identity = showCommitNodeIcons ? commitNodeIdentity(commit, identityColors) : null;
+      const agentImage =
+        identity?.kind === "agent" ? readyCommitAgentImage(identity.agent) : null;
+      const coAuthors = identity && identity.kind !== "fallback" ? identity.coAuthors : [];
+      const badge: CommitNodeBadge | null =
+        coAuthors.length === 0
+          ? null
+          : {
+              count: coAuthors.length,
+              initials: coAuthors[0].initials,
+              color: coAuthors[0].color,
+              image: coAuthors[0].agent ? readyCommitAgentImage(coAuthors[0].agent) : null,
+            };
+      drawCommitNode({
+        ctx,
+        x,
+        y,
+        outerRadius: outerR,
+        avatarRadius,
+        color,
+        surface,
+        nodeStroke,
+        headRing,
+        selectedRing,
+        nodeAlpha,
+        selected: isSelected,
+        merge: isMerge,
+        head: commit.id === head,
+        identity,
+        agentImage,
+        badge,
+      });
     }
   }, [
     graph,
@@ -289,6 +300,9 @@ export function GraphLayer({
     stashConnectors,
     theme,
     matchedIds,
+    showCommitNodeIcons,
+    identityColors,
+    commitAgentImageRevision,
   ]);
 
   return (

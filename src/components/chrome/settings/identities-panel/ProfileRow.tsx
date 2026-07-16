@@ -5,15 +5,22 @@
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
+import { identityColor } from "@/lib/identityColor";
+import { useUi } from "@/store/ui";
 import { profileInitials, type GitProfile } from "@/lib/profiles";
+import { GraphColorPicker } from "./GraphColorPicker";
 
 export function ProfileRow({ profile, onEdit }: { profile: GitProfile; onEdit: () => void }) {
+  const overrides = useUi((s) => s.identityColors);
   const signLabel = profile.gpgFormat === "ssh" ? "SSH signed" : "GPG signed";
+  // The avatar previews the graph colour for this identity (override or hash),
+  // so it matches the node/hover card and the row's own colour picker.
+  const avatarColor = profile.email ? identityColor(profile.email, overrides) : profile.color;
   return (
     <div className="flex items-center gap-3 rounded-xl border border-black/10 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
       <span
         className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] text-[12px] font-bold text-white"
-        style={{ background: profile.color }}
+        style={{ background: avatarColor }}
       >
         {profileInitials(profile.label)}
       </span>
@@ -48,6 +55,7 @@ export function ProfileRow({ profile, onEdit }: { profile: GitProfile; onEdit: (
           {profile.name} · {profile.email}
         </div>
       </div>
+      {profile.email && <GraphColorPicker email={profile.email} />}
       <button type="button"
         onClick={onEdit}
         aria-label={`Edit ${profile.label}`}

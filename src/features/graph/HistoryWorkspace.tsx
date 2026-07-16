@@ -147,6 +147,14 @@ export const HistoryWorkspace = () => {
     // reports its real size (also mirrors the pre-layout state in jsdom).
     initialRect: { width: 0, height: rowHeight },
   });
+  // Density changes `rowHeight`, but the virtualizer keeps its per-item
+  // measurement cache — so rows keep their old height until a remount while the
+  // canvas (which reads rowHeight directly) already repaints at the new size.
+  // Reset the cache on a density change so the rows re-estimate immediately.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [virtualizer, rowHeight]);
+
   const virtualItems = virtualizer.getVirtualItems();
   const firstVirtualItem = virtualItems[0];
   const lastVirtualItem = virtualItems[virtualItems.length - 1];

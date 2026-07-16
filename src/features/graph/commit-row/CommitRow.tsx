@@ -8,6 +8,7 @@ import { selectionForContextMenu } from "@/store/selection";
 import { useUi } from "@/store/ui";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { formatDate } from "@/features/graph/historyRowShared";
+import { NodeHoverCard } from "./NodeHoverCard";
 import { RefCluster } from "./RefCluster";
 
 export const CommitRow = memo(function CommitRow({
@@ -42,6 +43,7 @@ export const CommitRow = memo(function CommitRow({
   const openCommitMenu = useUi((state) => state.openCommitMenu);
   const draggingFrom = useUi((state) => state.draggingFrom);
   const clearDrag = useUi((state) => state.clearDrag);
+  const showCommitNodeIcons = useUi((state) => state.showCommitNodeIcons);
 
   const select = (e: ReactMouseEvent<HTMLDivElement>) =>
     onSelect(commit.id, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
@@ -111,6 +113,9 @@ export const CommitRow = memo(function CommitRow({
         )}
       />
       <div className="shrink-0" style={{ width: graphColW }} />
+      {showCommitNodeIcons && !commit.stash && (
+        <NodeHoverCard commit={commit} graphColW={graphColW} />
+      )}
       <div className="z-10 flex min-w-0 flex-1 items-center gap-1.5 px-3.5">
         <RefCluster refs={commit.refs} currentBranch={currentBranch} commitId={commit.id} />
         <span className="min-w-0 truncate text-[13px] text-neutral-700 dark:text-neutral-200">

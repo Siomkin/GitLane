@@ -295,6 +295,13 @@ interface UiState {
   theme: Theme;
   accent: AccentColor;
   density: Density;
+  /** Paint author initials / bundled agent marks on commit nodes. When false,
+   * GraphLayer bypasses identity resolution and paints the classic dots. */
+  showCommitNodeIcons: boolean;
+  /** User-chosen identity colours, keyed by lower-cased email. Overrides the
+   * deterministic `identityColor` hash wherever a person's avatar is painted
+   * (graph node, hover card, commit People rows, author block). */
+  identityColors: Record<string, string>;
   filter: string;
   collapsed: Record<string, boolean>;
 
@@ -468,6 +475,9 @@ interface UiState {
   toggleTheme: () => void;
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
+  setShowCommitNodeIcons: (show: boolean) => void;
+  /** Set (colour) or clear (null) the custom colour for an email. */
+  setIdentityColor: (email: string, color: string | null) => void;
   setAutoCheckUpdates: (on: boolean) => void;
   setAutoFetchEnabled: (on: boolean) => void;
   setAutoFetchMinutes: (minutes: AutoFetchMinutes) => void;
@@ -663,6 +673,8 @@ export const useUi = create<UiState>()(
   theme: "dark",
   accent: "green",
   density: "Compact",
+  showCommitNodeIcons: true,
+  identityColors: {},
   filter: "",
   collapsed: {},
 
@@ -769,6 +781,16 @@ export const useUi = create<UiState>()(
     })),
   setAccent: (accent) => set({ accent }),
   setDensity: (density) => set({ density }),
+  setShowCommitNodeIcons: (show) => set({ showCommitNodeIcons: show }),
+  setIdentityColor: (email, color) =>
+    set((s) => {
+      const key = email.trim().toLowerCase();
+      if (!key) return {};
+      const next = { ...s.identityColors };
+      if (color) next[key] = color;
+      else delete next[key];
+      return { identityColors: next };
+    }),
   setAutoCheckUpdates: (on) => set({ autoCheckUpdates: on }),
   setAutoFetchEnabled: (on) => set({ autoFetchEnabled: on }),
   setAutoFetchMinutes: (minutes) => set({ autoFetchMinutes: sanitizeAutoFetchMinutes(minutes) }),
@@ -1056,6 +1078,8 @@ export const useUi = create<UiState>()(
         theme: s.theme,
         accent: s.accent,
         density: s.density,
+        showCommitNodeIcons: s.showCommitNodeIcons,
+        identityColors: s.identityColors,
         autoCheckUpdates: s.autoCheckUpdates,
         autoFetchEnabled: s.autoFetchEnabled,
         autoFetchMinutes: s.autoFetchMinutes,
