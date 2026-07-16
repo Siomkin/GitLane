@@ -16,6 +16,7 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
     let mut out = Vec::new();
     let mut path: Option<String> = None;
     let mut branch: Option<String> = None;
+    let mut head: Option<String> = None;
     // Per-entry attribute flags, reset at each `worktree` boundary. `bare`
     // (main is a bare repo) and `prunable` (directory gone) both mean the entry
     // has no usable working tree — a branch can't be checked out into it.
@@ -27,6 +28,7 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
 
     let mut flush = |path: &mut Option<String>,
                      branch: &mut Option<String>,
+                     head: &mut Option<String>,
                      bare: &mut bool,
                      prunable: &mut bool,
                      locked: &mut bool,
@@ -37,6 +39,7 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
                 name,
                 path: p,
                 branch: branch.take(),
+                head: head.take(),
                 is_main: std::mem::replace(first, false),
                 bare: std::mem::replace(bare, false),
                 prunable: std::mem::replace(prunable, false),
@@ -44,6 +47,7 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
             });
         } else {
             *branch = None;
+            *head = None;
             *bare = false;
             *prunable = false;
             *locked = false;
@@ -55,6 +59,7 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
             flush(
                 &mut path,
                 &mut branch,
+                &mut head,
                 &mut bare,
                 &mut prunable,
                 &mut locked,
@@ -63,6 +68,8 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
             path = Some(p.trim().to_string());
         } else if let Some(b) = line.strip_prefix("branch ") {
             branch = Some(b.trim().trim_start_matches("refs/heads/").to_string());
+        } else if let Some(h) = line.strip_prefix("HEAD ") {
+            head = Some(h.trim().to_string());
         } else if line == "bare" {
             bare = true;
         } else if line == "prunable" || line.starts_with("prunable ") {
@@ -74,6 +81,7 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
     flush(
         &mut path,
         &mut branch,
+        &mut head,
         &mut bare,
         &mut prunable,
         &mut locked,

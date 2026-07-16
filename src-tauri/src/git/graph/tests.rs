@@ -114,6 +114,49 @@ fn annotated_tag_only_commit_is_included_in_the_graph() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn detached_worktree_only_commit_is_included_in_the_graph() {
+    // A detached worktree can park on a commit no ref reaches any more (its
+    // branch was rebased away/deleted). That worktree HEAD must seed the walk,
+    // or the commit never enters the graph — no worktree pill, and navigating
+    // to it pages through all of history and gives up.
+    let dir = std::env::temp_dir().join("gitlane-wt-only-commit-test");
+    let wt_dir = std::env::temp_dir().join("gitlane-wt-only-commit-wt");
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&wt_dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+
+    let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+    let stranded = commit_on(&repo, &dir, "refs/heads/temp", "a.txt", "wt\n", &[base], 200);
+
+    // Check the temp branch out in a linked worktree, then detach that
+    // worktree at the commit and drop the branch — the worktree HEAD is now
+    // the only thing keeping `stranded` reachable.
+    let temp_ref = repo.find_reference("refs/heads/temp").unwrap();
+    let mut opts = git2::WorktreeAddOptions::new();
+    opts.reference(Some(&temp_ref));
+    repo.worktree("wt-only", &wt_dir, Some(&opts)).unwrap();
+    fs::write(
+        dir.join(".git/worktrees/wt-only/HEAD"),
+        format!("{stranded}\n"),
+    )
+    .unwrap();
+    repo.find_reference("refs/heads/temp")
+        .unwrap()
+        .delete()
+        .unwrap();
+
+    let graph = build(&repo, 100).unwrap();
+    assert!(
+        graph.commits.iter().any(|c| c.id == stranded.to_string()),
+        "detached worktree HEAD should seed its commit into the graph",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&wt_dir);
+}
+
 /// An in-window stash is injected as a node that reserves its own lane: a
 /// concurrent branch commit rendered between the stash and its base is pushed
 /// off the stash's lane, and the stash carries a dashed edge to the base.

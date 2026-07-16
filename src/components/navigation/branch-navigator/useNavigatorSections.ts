@@ -103,12 +103,16 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     .sort((a, b) => a.name.localeCompare(b.name));
   // Resolve a worktree's tip like a branch row does — prefer the branch's
   // authoritative `target`, fall back to the graph — so a worktree whose branch
-  // tip is outside the loaded window still navigates.
+  // tip is outside the loaded window still navigates. A detached worktree has
+  // no branch, but its HEAD oid still locates it in the graph.
   const worktreeItems = worktrees.map((wt) => ({
     wt,
-    oid: wt.branch
-      ? (branches.find((b) => b.name === wt.branch)?.target ?? oidByName.get(wt.branch))
-      : undefined,
+    oid:
+      (wt.branch
+        ? (branches.find((b) => b.name === wt.branch)?.target ?? oidByName.get(wt.branch))
+        : undefined) ??
+      wt.head ??
+      undefined,
     // Match the path too — it's shown as the row's secondary text now, so a
     // search for a path fragment should surface the worktree.
     match: matches(wt.branch ?? wt.name) || matches(wt.path),
