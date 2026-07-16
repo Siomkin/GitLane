@@ -1,6 +1,6 @@
 //! Branch, tag, patch, sequencer, and reset operations.
 
-use super::cli::{run_git, run_git_env_stable_diagnostics};
+use super::cli::{run_git, run_git_env_stable_diagnostics, run_git_with_input};
 use super::operands::{ensure_operand, ensure_opt};
 
 /// Check out an existing branch, tag, or commit.
@@ -17,14 +17,20 @@ pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
 
 /// Check out the local counterpart of an existing remote-tracking ref. Create
 /// it with tracking when missing; when it already exists, check it out and
-/// fast-forward it to the remote tip. The `--ff-only` merge refuses divergent
-/// histories instead of resetting the local branch or detaching at the remote.
+/// fast-forward it to the remote tip. Patch-equivalent sibling commits (same
+/// parents and tree) are aligned atomically; all other divergence is refused.
+/// Active merge/sequencer operations are rejected before checkout can disturb
+/// their state.
 pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<String, String> {
     ensure_operand(remote)?;
     ensure_operand(branch)?;
+    ensure_no_operation_in_progress(repo)?;
     let remote_ref = format!("refs/remotes/{remote}/{branch}");
     let local_ref = format!("refs/heads/{branch}");
     if ref_exists(repo, &local_ref) {
+        // Keep the first classification as a no-switch preflight: genuine
+        // divergence must not change HEAD. Reclassify after checkout because
+        // either ref may move while the subprocess runs.
         classify_remote_checkout(repo, &local_ref, &remote_ref)?;
         checkout(repo, branch)?;
         match classify_remote_checkout(repo, &local_ref, &remote_ref).map_err(|error| {
@@ -42,17 +48,40 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
             RemoteCheckoutUpdate::AlignEquivalentSibling {
                 local_oid,
                 target_oid,
-            } => align_equivalent_sibling(repo, &local_ref, &local_oid, &target_oid).map_err(
-                |error| {
+            } => align_equivalent_sibling(
+                repo,
+                &local_ref,
+                &remote_ref,
+                &local_oid,
+                &target_oid,
+            )
+            .map_err(|error| {
                     format!(
                         "{branch} is checked out, but it couldn't be aligned to {remote_ref}: {error}"
                     )
-                },
-            ),
+                }),
         }
     } else {
         run_git(repo, &["checkout", "--track", "-b", branch, &remote_ref])
     }
+}
+
+fn ensure_no_operation_in_progress(repo: &str) -> Result<(), String> {
+    let status = crate::git::conflicts::operation_status(repo)
+        .map_err(|error| format!("Cannot inspect the repository operation state: {error}"))?;
+    let active = if status.kind != "none" {
+        Some(status.kind.as_str())
+    } else if !status.advisory.is_empty() {
+        Some(status.advisory.as_str())
+    } else {
+        None
+    };
+    if let Some(kind) = active {
+        return Err(format!(
+            "Cannot check out a remote branch while a {kind} operation is in progress. Finish or abort it first."
+        ));
+    }
+    Ok(())
 }
 
 enum RemoteCheckoutUpdate {
@@ -162,24 +191,27 @@ fn commit_parents(repo: &str, oid: &str) -> Result<Vec<String>, String> {
 }
 
 /// Move the checked-out symbolic branch without touching the index or working
-/// tree. The classification proved both commits describe the same snapshot;
-/// the expected-old oid makes the ref update atomic if another process races us.
-fn align_equivalent_sibling(
+/// tree. The transaction verifies both the local and remote oids under lock, so
+/// a concurrent checkout or fetch cannot align to a stale classification.
+pub(super) fn align_equivalent_sibling(
     repo: &str,
     local_ref: &str,
+    target_ref: &str,
     local_oid: &str,
     target_oid: &str,
 ) -> Result<String, String> {
-    run_git(
+    let transaction = format!(
+        "start\nupdate {local_ref} {target_oid} {local_oid}\nverify {target_ref} {target_oid}\ncommit\n"
+    );
+    run_git_with_input(
         repo,
         &[
             "update-ref",
             "-m",
             "checkout remote branch: align equivalent commit",
-            local_ref,
-            target_oid,
-            local_oid,
+            "--stdin",
         ],
+        &transaction,
     )?;
     Ok(format!("Aligned {local_ref} to {target_oid}"))
 }
