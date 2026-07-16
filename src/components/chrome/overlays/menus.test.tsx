@@ -305,6 +305,77 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Compare with branch…" })).toBeInTheDocument();
   });
 
+  // Most-used first: Create leads, Compare (read-only) trails next to Copy.
+  it("orders the intent groups Create → Integrate → Worktree → Compare", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    const rows = ["Create", "Integrate into current", "Worktree", "Compare"].map((name) =>
+      screen.getByRole("menuitem", { name }),
+    );
+    for (let i = 0; i < rows.length - 1; i++) {
+      expect(rows[i].compareDocumentPosition(rows[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  // The Worktree group is the single home for worktree actions: with no
+  // worktree it offers creation (which used to hide inside Create).
+  it("offers New worktree here… under Worktree (not Create) when the branch has no worktree", async () => {
+    const createWorktreeAt = vi.fn().mockResolvedValue("created");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      createWorktreeAt,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Create");
+    expect(screen.getByRole("menuitem", { name: "Branch from here…" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Worktree from branch…" })).not.toBeInTheDocument();
+
+    openGroup("Worktree");
+    fireEvent.click(screen.getByRole("menuitem", { name: "New worktree here…" }));
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.title).toContain("feature");
+    prompt!.onSubmit("/work/repo-wt-feature");
+    await waitFor(() =>
+      expect(createWorktreeAt).toHaveBeenCalledWith("/work/repo-wt-feature", "feature"),
+    );
+  });
+
+  // wtRef regression guard: git refuses a second checkout of the same branch,
+  // so with the branch held in a linked worktree, "New worktree here…" must
+  // create DETACHED at the tip sha — and the prompt must say so.
+  it("creates a detached worktree at the tip when the branch is checked out elsewhere", async () => {
+    const createWorktreeAt = vi.fn().mockResolvedValue("created");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+      ],
+      createWorktreeAt,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Worktree");
+    fireEvent.click(screen.getByRole("menuitem", { name: "New worktree here…" }));
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.message).toMatch(/detached/i);
+    expect(prompt?.message).toContain("abc1234");
+    prompt!.onSubmit("/work/repo-wt-2");
+    await waitFor(() =>
+      expect(createWorktreeAt).toHaveBeenCalledWith("/work/repo-wt-2", "abc1234"),
+    );
+  });
+
   it("compare-with-branch opens a branch picker (not a free-text field) and compares against the picked branch", async () => {
     const openCompare = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({
@@ -445,8 +516,13 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
     // Checkout stays hidden: offering it would only produce a git worktree error.
     expect(screen.queryByRole("menuitem", { name: "Checkout feature" })).not.toBeInTheDocument();
-    // Worktree group holds the hand-off + remove actions.
+    // Worktree group is the one home for everything worktree: open (also kept
+    // promoted on top, under a distinct label so AT can tell the two apart),
+    // copy path, create another, hand off, remove.
     openGroup("Worktree");
+    expect(screen.getByRole("menuitem", { name: "Open this worktree" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy worktree path" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "New worktree here…" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "Hand off to…" }));
     // The dedicated hand-off dialog opens on the branch's source worktree; its
@@ -562,8 +638,9 @@ describe("BranchContextMenu", () => {
     // Git can't remove the main worktree, so the Worktree group offers no Remove.
     openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
-    // Opening the main worktree is still fine.
+    // Opening the main worktree is still fine (top quick action + in the group).
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open this worktree" })).toBeInTheDocument();
   });
 
   // Remote-tracking refs reach the same menu; local-only mutations like Delete

@@ -146,7 +146,31 @@ export function CommitContextMenu() {
     { label: "Checkout commit", icon: <CheckIcon className="h-4 w-4" />, onClick: () => act(() => checkoutDetached(sha)) },
   ];
 
+  // Same most-used-first group order as the branch menu: Create → Integrate → Compare.
   const groups: MenuItem[] = [
+    {
+      label: "Create",
+      icon: <PlusIcon className="h-4 w-4" />,
+      submenu: [
+        { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
+        { label: "Worktree from commit…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
+        { label: "New branch in worktree…", onClick: () => promptNewBranchWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
+        { label: "Tag here…", onClick: () => requestPrompt({ title: `Create tag at ${shortSha}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, sha)) }) },
+        { label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, sha, shortSha) },
+        { label: "Patch from commit", onClick: () => act(() => createPatchAt(sha)) },
+      ],
+    },
+    {
+      label: "Integrate into current",
+      icon: <BranchIcon className="h-4 w-4" />,
+      note: `into ${cur}`,
+      submenu: [
+        { label: `Merge ${shortSha}`, onClick: () => act(() => mergeInto(sha, cur)) },
+        { label: `Rebase onto ${shortSha}`, onClick: () => act(async () => { if (cur !== "HEAD") await checkoutBranch(cur); return rebaseOnto(sha); }) },
+        { label: "Cherry-pick", onClick: () => act(() => cherryPickCommit(sha)) },
+        { label: "Revert", onClick: () => act(() => revertCommit(sha)) },
+      ],
+    },
     {
       label: "Compare",
       icon: <CompareIcon className="h-4 w-4" />,
@@ -163,29 +187,6 @@ export function CommitContextMenu() {
             }
           },
         },
-      ],
-    },
-    {
-      label: "Integrate into current",
-      icon: <BranchIcon className="h-4 w-4" />,
-      note: `into ${cur}`,
-      submenu: [
-        { label: `Merge ${shortSha}`, onClick: () => act(() => mergeInto(sha, cur)) },
-        { label: `Rebase onto ${shortSha}`, onClick: () => act(async () => { if (cur !== "HEAD") await checkoutBranch(cur); return rebaseOnto(sha); }) },
-        { label: "Cherry-pick", onClick: () => act(() => cherryPickCommit(sha)) },
-        { label: "Revert", onClick: () => act(() => revertCommit(sha)) },
-      ],
-    },
-    {
-      label: "Create",
-      icon: <PlusIcon className="h-4 w-4" />,
-      submenu: [
-        { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
-        { label: "Worktree from commit…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
-        { label: "New branch in worktree…", onClick: () => promptNewBranchWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
-        { label: "Tag here…", onClick: () => requestPrompt({ title: `Create tag at ${shortSha}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, sha)) }) },
-        { label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, sha, shortSha) },
-        { label: "Patch from commit", onClick: () => act(() => createPatchAt(sha)) },
       ],
     },
   ];
