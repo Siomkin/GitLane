@@ -5,8 +5,9 @@ export interface RemoteCheckoutCandidate {
   branch: string;
 }
 
-/** Return the local branch to create for a remote-only tracking ref, or null
- * when checkout should fall back to the existing ref. */
+/** Resolve a remote-tracking ref to the same-name local checkout. The backend
+ * creates the local branch when missing, or safely fast-forwards an existing
+ * local branch before checking it out. */
 export function remoteTrackingCheckoutCandidate(
   branchName: string,
   branches: Pick<BranchInfo, "kind" | "name" | "remote">[],
@@ -16,6 +17,5 @@ export function remoteTrackingCheckoutCandidate(
   if (!remote || !branchName.startsWith(`${remote}/`)) return null;
   const branch = branchName.slice(remote.length + 1);
   if (!branch) return null;
-  const localExists = branches.some((candidate) => candidate.kind === BranchKind.Local && candidate.name === branch);
-  return localExists ? null : { remote, branch };
+  return { remote, branch };
 }

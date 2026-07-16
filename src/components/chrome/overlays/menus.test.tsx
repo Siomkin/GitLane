@@ -595,7 +595,7 @@ describe("BranchContextMenu", () => {
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
-  it("falls back to detached remote checkout when the local branch already exists", async () => {
+  it("checks out and updates the local branch when it already exists", async () => {
     const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
     const checkoutBranch = vi.fn().mockResolvedValue("detached");
     useRepo.setState({
@@ -606,7 +606,25 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Checkout origin/feature (detached)" }));
+    expect(screen.getByRole("menuitem", { name: "Checkout origin/feature detached" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Checkout feature" }));
+
+    await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
+  });
+
+  it("keeps detached inspection available for an existing local branch", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const checkoutBranch = vi.fn().mockResolvedValue("detached");
+    useRepo.setState({
+      branches: [localBranch("feature"), remoteBranch("origin/feature")],
+      checkoutRemoteBranch,
+      checkoutBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Checkout origin/feature detached" }));
 
     await waitFor(() => expect(checkoutBranch).toHaveBeenCalledWith("origin/feature"));
     expect(checkoutRemoteBranch).not.toHaveBeenCalled();

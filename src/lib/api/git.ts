@@ -684,7 +684,8 @@ export const gitApi = {
   checkout: (path: string, target: string) =>
     invoke<string>("checkout", { path, target }),
 
-  /** Create and check out a local branch that tracks `remote/branch`. */
+  /** Check out the local counterpart of `remote/branch`, creating it with
+   * tracking or safely fast-forwarding the existing local branch. */
   checkoutRemoteBranch: (path: string, remote: string, branch: string) =>
     invoke<string>("checkout_remote_branch", { path, remote, branch }),
 

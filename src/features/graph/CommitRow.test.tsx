@@ -114,6 +114,39 @@ describe("CommitRow ref pills", () => {
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
+  it("double-clicks an ahead remote ref into its existing local branch", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const checkoutBranch = vi.fn().mockResolvedValue("detached");
+    useRepo.setState({
+      branches: [
+        {
+          name: "feature",
+          kind: "local",
+          target: "c0",
+          isHead: false,
+          upstream: "origin/feature",
+          remote: null,
+        },
+        {
+          name: "origin/feature",
+          kind: "remote",
+          target: "c1",
+          isHead: false,
+          upstream: null,
+          remote: "origin",
+        },
+      ],
+      checkoutBranch,
+      checkoutRemoteBranch,
+    });
+
+    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "origin/feature", kind: "remote" }] })} />);
+    fireEvent.doubleClick(screen.getByText("origin/feature"));
+
+    await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
+  });
+
   it("opens the branch context menu from a pill without opening the commit menu", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     fireEvent.contextMenu(screen.getByText("feature"));
