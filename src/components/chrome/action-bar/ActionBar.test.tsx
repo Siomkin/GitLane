@@ -637,6 +637,27 @@ describe("ActionBar network ops — one at a time (GL-182)", () => {
     expect(screen.getByTitle("1 commit behind origin/main.")).toBeDisabled();
   });
 
+  it("joins the displayed automatic fetch when the user clicks Fetch", async () => {
+    const fetch = vi.fn().mockResolvedValue(true);
+    useRepo.setState({ fetchingPath: SUMMARY.path, fetch });
+
+    render(<ActionBar />);
+    fireEvent.click(screen.getByTitle("Fetch"));
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+  });
+
+  it("blocks all toolbar transports while another repository owns fetch", () => {
+    useRepo.setState({ fetchingPath: "/other" });
+
+    render(<ActionBar />);
+
+    expect(screen.getByTitle("Fetch")).toBeDisabled();
+    expect(screen.getByTitle("Up to date with origin/main.")).toBeDisabled();
+    expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
+  });
+
   it("ignores a second network op while the first is still in flight", async () => {
     let resolveFetch!: () => void;
     const fetch = vi.fn(

@@ -286,10 +286,9 @@ export interface RepoState {
    * refreshes so loading more history is not undone by the next watcher event. */
   graphLimit: number;
   loading: boolean;
-  /** Count of in-flight network git operations (fetch/pull/push/publish/…).
-   * Pull and push don't hold [`loading`] — they serialize in the ActionBar's
-   * component-local guard — so the auto-fetch scheduler checks this instead to
-   * avoid overlapping a foreground transport operation. */
+  /** Count of in-flight network git operations (fetch/pull/push/publish/…). The
+   * store transport mutex admits at most one; the auto-fetch scheduler checks
+   * this too so a background fetch skips instead of surfacing a busy error. */
   netOps: number;
   /** Repository whose remote refs are currently being fetched, if any. Kept
    * separate from [`loading`] so a quiet automatic fetch can drive the Fetch

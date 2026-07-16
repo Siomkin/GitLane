@@ -110,9 +110,13 @@ export function useActionBarModel(): ActionBarModel {
   const [busy, setBusy] = useState<NetOp | null>(null);
   const busyRef = useRef(false);
   const run = (key: NetOp, action: () => Promise<unknown>) => async () => {
-    // Automatic fetch does not pass through this component-local guard, so
-    // consult the store too before starting a foreground network operation.
-    if (busyRef.current || useRepo.getState().fetchingPath !== null) return;
+    // Automatic fetch does not pass through this component-local guard. A
+    // manual Fetch may join the active fetch for the same displayed repo (the
+    // store coalesces it); every other toolbar transport stays blocked.
+    const repo = useRepo.getState();
+    const joinsDisplayedFetch =
+      key === "fetch" && repo.fetchingPath !== null && repo.fetchingPath === repo.summary?.path;
+    if (busyRef.current || (repo.fetchingPath !== null && !joinsDisplayedFetch)) return;
     busyRef.current = true;
     setBusy(key);
     try {

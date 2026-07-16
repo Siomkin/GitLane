@@ -122,6 +122,7 @@ beforeEach(() => {
       branch({ name: "feat", upstreamRemote: null }),
     ],
     loading: false,
+    netOps: 0,
     fetchingPath: null,
   });
   useAccounts.setState({
@@ -226,6 +227,39 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
     await expect(Promise.all([automatic, manual])).resolves.toEqual([true, true]);
     expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "fetch")).toHaveLength(1);
     expect(useRepo.getState().fetchingPath).toBeNull();
+  });
+
+  it("refuses pull and push from any caller while fetch owns the transport mutex", async () => {
+    let resolveFetch!: () => void;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "fetch"
+        ? new Promise<void>((resolve) => {
+            resolveFetch = resolve;
+          })
+        : refreshInvoke(cmd),
+    );
+
+    const automatic = useRepo.getState().fetch({ quiet: true });
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("fetch", expect.anything()));
+
+    const notificationSnapshots: string[][] = [];
+    const unsubscribe = useNotifications.subscribe((state) => {
+      notificationSnapshots.push(state.toasts.map((toast) => toast.kind));
+    });
+    await Promise.all([useRepo.getState().pull(), useRepo.getState().push()]);
+    unsubscribe();
+
+    expect(invokeMock).not.toHaveBeenCalledWith("pull", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("push", expect.anything());
+    expect(notificationSnapshots.some((kinds) => kinds.includes("progress"))).toBe(false);
+    expect(useNotifications.getState().toasts).toHaveLength(2);
+    for (const toast of useNotifications.getState().toasts) {
+      expect(toast.kind).toBe("error");
+      expect(toast.title).toContain("Another remote operation is already in progress");
+    }
+
+    resolveFetch();
+    await expect(automatic).resolves.toBe(true);
   });
 });
 

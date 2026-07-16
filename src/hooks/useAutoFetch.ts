@@ -31,7 +31,12 @@ export function useAutoFetch() {
     const interval = window.setInterval(() => {
       const state = useRepo.getState();
       if (state.summary?.path !== repoPath) return;
-      if (state.loading || state.netOps > 0 || state.remotes.length === 0) return;
+      if (
+        state.loading ||
+        state.netOps > 0 ||
+        state.fetchingPath !== null ||
+        state.remotes.length === 0
+      ) return;
       if (document.visibilityState !== "visible" || !navigator.onLine) return;
       void state
         .fetch({ quiet: true })

@@ -96,6 +96,27 @@ describe("useAutoFetch", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it("treats another repository's fetch owner as a skipped tick, not a failure", async () => {
+    const fetch = vi.fn(async () => false);
+    const showToast = vi.fn();
+    useUi.setState({ autoFetchEnabled: true, autoFetchMinutes: 5, showToast });
+    useRepo.setState({ fetch, fetchingPath: "/other" });
+    renderHook(() => useAutoFetch());
+
+    await vi.advanceTimersByTimeAsync(4 * 5 * 60_000);
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(showToast).not.toHaveBeenCalled();
+
+    act(() => useRepo.setState({ fetchingPath: null }));
+    await vi.advanceTimersByTimeAsync(3 * 5 * 60_000);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(showToast).toHaveBeenCalledWith(
+      "Automatic fetch paused after repeated failures",
+      "error",
+    );
+  });
+
   it("stays off for a malformed persisted enable flag", async () => {
     const fetch = useRepo.getState().fetch;
     // Rehydrated storage can hold any JSON; a truthy non-boolean must not
