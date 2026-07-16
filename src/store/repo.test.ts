@@ -6,6 +6,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { SESSION_RESTORE_PHASE, useRepo } from "./repo";
+import { initialSessionRestorePhase } from "./repoTypes";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
 import { useUi } from "./ui";
@@ -2833,6 +2834,32 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
         "/dead-wt": { isWorktree: true, mainPath: "/a", branch: "d/lewin" },
       },
     });
+  });
+
+  it("marks open tabs for restoration even when the last-active path is missing", () => {
+    expect(initialSessionRestorePhase(["/a"], null)).toBe(SESSION_RESTORE_PHASE.Pending);
+    expect(initialSessionRestorePhase([], null)).toBe(SESSION_RESTORE_PHASE.Complete);
+  });
+
+  it("still probes and heals open tabs when the last-active path is missing", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "recents_status") {
+        return Promise.resolve([
+          { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+          { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+        ]);
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(invokeMock).toHaveBeenCalledWith("recents_status", {
+      paths: ["/a", "/dead-wt"],
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", expect.anything());
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
   });
 
   it("drops a removed worktree tab and heals the last-active path to a survivor", async () => {

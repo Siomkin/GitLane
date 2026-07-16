@@ -11,7 +11,7 @@ import { createRepoSelectionActions } from "./repoSelectionActions";
 import { createRepoTabActions } from "./repoTabActions";
 import {
   createInitialRepoData,
-  SESSION_RESTORE_PHASE,
+  initialSessionRestorePhase,
   type RepoState,
 } from "./repoTypes";
 import { readLastPath, readOpenPaths, readRecents, readTabInfo } from "./repoSession";
@@ -30,21 +30,26 @@ export type {
 } from "./repoTypes";
 export { GRAPH_PAGE_SIZE, INITIAL_GRAPH_LIMIT, SESSION_RESTORE_PHASE } from "./repoTypes";
 
-export const useRepo = create<RepoState>((set, get) => ({
-  // Tab info restores pruned to the restored tabs so closed paths never linger.
-  ...createInitialRepoData(
-    readOpenPaths(),
-    readRecents(),
-    pruneTabInfo(readTabInfo(), readOpenPaths()),
-    readLastPath() ? SESSION_RESTORE_PHASE.Pending : SESSION_RESTORE_PHASE.Complete,
-  ),
-  ...createRepoLifecycleActions(set, get),
-  ...createRepoTabActions(set, get),
-  ...createRepoRefreshActions(set, get),
-  ...createRepoSelectionActions(set, get),
-  ...createRepoFilesActions(set, get),
-  ...createRepoWriteActions(set, get),
-  ...createRepoRemoteActions(set, get),
-  ...createRepoConflictActions(set, get),
-  clearError: () => set({ error: null }),
-}));
+export const useRepo = create<RepoState>((set, get) => {
+  const openPaths = readOpenPaths();
+  const lastPath = readLastPath();
+
+  return {
+    // Tab info restores pruned to the restored tabs so closed paths never linger.
+    ...createInitialRepoData(
+      openPaths,
+      readRecents(),
+      pruneTabInfo(readTabInfo(), openPaths),
+      initialSessionRestorePhase(openPaths, lastPath),
+    ),
+    ...createRepoLifecycleActions(set, get),
+    ...createRepoTabActions(set, get),
+    ...createRepoRefreshActions(set, get),
+    ...createRepoSelectionActions(set, get),
+    ...createRepoFilesActions(set, get),
+    ...createRepoWriteActions(set, get),
+    ...createRepoRemoteActions(set, get),
+    ...createRepoConflictActions(set, get),
+    clearError: () => set({ error: null }),
+  };
+});

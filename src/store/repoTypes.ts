@@ -38,6 +38,18 @@ export const SESSION_RESTORE_PHASE = {
 export type SessionRestorePhase =
   (typeof SESSION_RESTORE_PHASE)[keyof typeof SESSION_RESTORE_PHASE];
 
+/** Decide whether startup has persisted repository state to reconcile. Open
+ * tabs count even without a last-active path so partial/corrupt storage still
+ * gets its GL-109 tab probe before onboarding is shown. */
+export function initialSessionRestorePhase(
+  openPaths: string[],
+  lastPath: string | null,
+): SessionRestorePhase {
+  return lastPath || openPaths.length > 0
+    ? SESSION_RESTORE_PHASE.Pending
+    : SESSION_RESTORE_PHASE.Complete;
+}
+
 /** A conflict-producing operation key, excluding the "none" idle sentinel. */
 export type ActiveOperationKind = Exclude<OperationKind, "none">;
 

@@ -483,6 +483,7 @@ describe("repo store — missing-repo state (GL-108)", () => {
     const s = useRepo.getState();
     expect(s.missingRepo).toEqual({ path: "/gone", kind: "missing" });
     expect(s.error).toBeNull();
+    expect(s.sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
     // The dead path stays persisted so the next launch lands here again.
     expect(localStorage.getItem("gitlane.lastPath")).toBe("/gone");
   });
