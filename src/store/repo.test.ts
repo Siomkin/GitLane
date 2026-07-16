@@ -1961,6 +1961,60 @@ describe("repo store — loadRepo progressive open", () => {
     expect(useRepo.getState().loading).toBe(false);
   });
 
+  it("fast-forwards a remote branch in its existing worktree before opening it", async () => {
+    const realOpenWorktree = useRepo.getState().openWorktree;
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    const worktreePath = "/repo/.claude/worktrees/feature";
+    useRepo.setState({
+      summary,
+      graph: emptyGraph,
+      loading: false,
+      worktrees: [
+        { name: "repo", path: "/repo", branch: "main", isMain: true },
+        { name: "feature", path: worktreePath, branch: "feature", isMain: false },
+      ],
+      openWorktree,
+    });
+
+    try {
+      await useRepo.getState().checkoutRemoteBranch("origin", "feature");
+
+      expect(invokeMock).toHaveBeenCalledWith("checkout_remote_branch", {
+        path: worktreePath,
+        remote: "origin",
+        branch: "feature",
+      });
+      expect(openWorktree).toHaveBeenCalledWith(worktreePath);
+      expect(useRepo.getState().loading).toBe(false);
+    } finally {
+      useRepo.setState({ openWorktree: realOpenWorktree });
+    }
+  });
+
+  it("refreshes after remote checkout reports a partial failure", async () => {
+    let graphCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "checkout_remote_branch") {
+        return Promise.reject(new Error("feature is checked out, but it couldn't be fast-forwarded"));
+      }
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") {
+        graphCalls += 1;
+        return Promise.resolve(emptyGraph);
+      }
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, graph: emptyGraph, loading: false, worktrees: [] });
+
+    await expect(
+      useRepo.getState().checkoutRemoteBranch("origin", "feature"),
+    ).rejects.toThrow("feature is checked out");
+
+    expect(graphCalls).toBeGreaterThanOrEqual(1);
+    expect(useRepo.getState().loading).toBe(false);
+  });
+
   it("does not drop a deferred watcher sync when a manual refresh is superseded", async () => {
     const slowGraph = deferred<RepoGraph>();
     let graphCallsB = 0;

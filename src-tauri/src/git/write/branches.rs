@@ -15,14 +15,26 @@ pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
     run_git(repo, &["checkout", target])
 }
 
-/// Create a local branch that tracks an existing remote-tracking ref, then
-/// check it out. The UI calls this for remote-only refs so `origin/foo` becomes
-/// a real local `foo` instead of a detached checkout at the remote tip.
+/// Check out the local counterpart of an existing remote-tracking ref. Create
+/// it with tracking when missing; when it already exists, check it out and
+/// fast-forward it to the remote tip. The `--ff-only` merge refuses divergent
+/// histories instead of resetting the local branch or detaching at the remote.
 pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<String, String> {
     ensure_operand(remote)?;
     ensure_operand(branch)?;
     let remote_ref = format!("refs/remotes/{remote}/{branch}");
-    run_git(repo, &["checkout", "--track", "-b", branch, &remote_ref])
+    let local_ref = format!("refs/heads/{branch}");
+    if ref_exists(repo, &local_ref) {
+        ensure_fast_forwardable(repo, &local_ref, &remote_ref)?;
+        checkout(repo, branch)?;
+        fast_forward(repo, &remote_ref).map_err(|error| {
+            format!(
+                "{branch} is checked out, but it couldn't be fast-forwarded to {remote_ref}: {error}"
+            )
+        })
+    } else {
+        run_git(repo, &["checkout", "--track", "-b", branch, &remote_ref])
+    }
 }
 
 /// Disambiguate a bare ref that is *both* a local branch and a tag toward the
@@ -70,6 +82,33 @@ fn resolve_rev(repo: &str, reference: &str) -> Result<String, String> {
         return Err(format!("could not resolve {reference}"));
     }
     Ok(oid)
+}
+
+/// Refuse a known non-fast-forward before checkout changes HEAD. The later
+/// `merge --ff-only` remains the write-time guard against races; this preflight
+/// defines the ordinary divergence outcome as "no branch switch happened".
+fn ensure_fast_forwardable(repo: &str, local_ref: &str, target: &str) -> Result<(), String> {
+    let local_oid = resolve_rev(repo, local_ref)?;
+    let target_oid = resolve_rev(repo, target)?;
+    if local_oid == target_oid {
+        return Ok(());
+    }
+    let merge_base = run_git(repo, &["merge-base", local_ref, target])?
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    // Either ancestry direction is safe for checkout: local-behind moves
+    // forward, while local-ahead makes `merge --ff-only` an up-to-date no-op.
+    // Only a merge base distinct from both tips means true divergence.
+    if merge_base == local_oid || merge_base == target_oid {
+        Ok(())
+    } else {
+        Err(format!(
+            "Cannot update {local_ref} from {target}: the local and remote branches have diverged."
+        ))
+    }
 }
 
 /// Create a branch `name` at `start_point` (defaults to HEAD).

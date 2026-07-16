@@ -272,18 +272,34 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) throw new Error("No repository");
       const existingWorktree = await findCheckoutWorktree(set, get, summary, branch);
-      if (existingWorktree) {
-        await get().openWorktree(existingWorktree.path);
-        return `Opened ${branch} worktree`;
-      }
       set({ loading: true, error: null });
       try {
-        await api.checkoutRemoteBranch(summary.path, remote, branch);
+        // A branch already owned by another worktree must be advanced there:
+        // opening it without running the remote checkout would leave the local
+        // branch behind the remote ref the user explicitly selected.
+        const checkoutPath = existingWorktree?.path ?? summary.path;
+        await api.checkoutRemoteBranch(checkoutPath, remote, branch);
         set({ loading: false });
+        if (existingWorktree) {
+          await get().openWorktree(existingWorktree.path);
+          return `Updated ${branch} and opened its worktree`;
+        }
         await get().refresh();
         return `Checked out ${branch}`;
       } catch (e) {
         set({ loading: false });
+        // Checkout and `merge --ff-only` are separate git commands. The
+        // backend reports when checkout succeeded but dirty changes blocked
+        // the merge; refresh before surfacing that partial outcome so HEAD and
+        // the working tree never wait on the watcher to become truthful.
+        if (get().summary?.path === summary.path) {
+          try {
+            await get().refresh();
+          } catch {
+            // Preserve the operation's actionable error if the recovery read
+            // also fails; the watcher can still retry the refresh later.
+          }
+        }
         flushPendingRefresh(get);
         throw e;
       }

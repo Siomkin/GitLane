@@ -130,6 +130,10 @@ export function BranchContextMenu() {
   const isLocal = info?.kind === BranchKind.Local;
   const isRemote = info?.kind === BranchKind.Remote;
   const remoteCheckout = remoteTrackingCheckoutCandidate(b, branches);
+  const remoteCheckoutHasLocal = remoteCheckout
+    ? branches.some((candidate) =>
+        candidate.kind === BranchKind.Local && candidate.name === remoteCheckout.branch)
+    : false;
   const sync = info?.sync ?? null;
   const aheadBehind = sync && sync.upstream ? `↑${sync.ahead} ↓${sync.behind}` : null;
   // `git worktree add <path> <branch>` errors if <branch> is already checked out
@@ -182,6 +186,13 @@ export function BranchContextMenu() {
         ? () => act(() => checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch))
         : () => act(() => checkoutBranch(b)),
     });
+    if (isRemote && remoteCheckoutHasLocal) {
+      top.push({
+        label: `Checkout ${b} detached`,
+        icon: <HashIcon className="h-4 w-4" />,
+        onClick: () => act(() => checkoutBranch(b)),
+      });
+    }
   }
 
   // ---- intent groups: Compare / Integrate / Create / Worktree ----

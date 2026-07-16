@@ -29,12 +29,12 @@ describe("remoteTrackingCheckoutCandidate", () => {
     ).toEqual({ remote: "team/origin", branch: "feature/a" });
   });
 
-  it("returns null when the local branch already exists", () => {
+  it("returns the local checkout when the local branch already exists", () => {
     expect(
       remoteTrackingCheckoutCandidate("origin/feature", [
         branch({ name: "feature", kind: "local" }),
         branch({ name: "origin/feature", kind: "remote", remote: "origin" }),
       ]),
-    ).toBeNull();
+    ).toEqual({ remote: "origin", branch: "feature" });
   });
 });
