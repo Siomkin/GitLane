@@ -21,19 +21,12 @@ if (typeof window !== "undefined" && !("onscrollend" in window)) {
   });
 }
 
-// jsdom + the Node runtime don't expose a usable `localStorage` here, but the
-// persisted Zustand store (store/ui) writes to it on every setState. Install a
-// minimal in-memory shim so persisted stores work headlessly.
+// The persisted Zustand store (store/ui) writes to localStorage on every
+// setState. Install a deterministic in-memory implementation without first
+// reading `globalThis.localStorage`: recent Node versions expose that name
+// through an experimental getter which warns (and may throw) unless Node was
+// started with `--localstorage-file`.
 (function installLocalStorage() {
-  const existing = (() => {
-    try {
-      return globalThis.localStorage;
-    } catch {
-      return undefined;
-    }
-  })();
-  if (existing && typeof existing.setItem === "function") return;
-
   const store = new Map<string, string>();
   const mem: Storage = {
     get length() {
