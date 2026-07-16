@@ -12,8 +12,8 @@ use super::{
     preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
     reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file, revert,
     revert_many, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
-    skip_operation, stage_file, stage_files, stash_apply, stash_branch, stash_drop, stash_list,
-    stash_pop, unstage_all, unstage_file, unstage_files, worktrees, write_repo_file,
+    skip_operation, stage_file, stage_files, stash, stash_apply, stash_branch, stash_drop,
+    stash_list, stash_pop, unstage_all, unstage_file, unstage_files, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::TransportCredential;
@@ -3594,6 +3594,39 @@ fn stash_seed_repo(tag: &str) -> TempRepo {
     repo.git_ok(&["add", "f.txt"]);
     repo.git_ok(&["commit", "-qm", "base"]);
     repo
+}
+
+#[test]
+fn stash_includes_staged_unstaged_and_untracked_changes() {
+    let repo = stash_seed_repo("stash-all-changes");
+
+    std::fs::write(repo.0.join("staged.txt"), b"staged\n").unwrap();
+    repo.git_ok(&["add", "staged.txt"]);
+    std::fs::write(repo.0.join("f.txt"), b"unstaged\n").unwrap();
+    std::fs::write(repo.0.join("untracked.txt"), b"untracked\n").unwrap();
+
+    stash(repo.path()).expect("stash all visible changes");
+
+    let status = repo.git(&["status", "--porcelain"]);
+    assert!(
+        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "stash should leave no visible changes"
+    );
+
+    let oid = stash_list(repo.path()).expect("list")[0].oid.clone();
+    stash_apply(repo.path(), &oid).expect("restore all visible changes");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("staged.txt")).unwrap(),
+        "staged\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),
+        "unstaged\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("untracked.txt")).unwrap(),
+        "untracked\n"
+    );
 }
 
 #[test]

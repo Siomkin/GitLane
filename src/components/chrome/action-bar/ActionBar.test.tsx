@@ -5,6 +5,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { ForgeKind, type BranchInfo, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
@@ -86,6 +87,27 @@ describe("ActionBar layout order", () => {
     expect(useUi.getState().leftTab).toBe("pulls");
     fireEvent.click(screen.getByRole("button", { name: /Commits/ }));
     expect(useUi.getState().leftTab).toBe("history");
+  });
+
+  it("enables the toolbar Stash action for untracked-only changes", () => {
+    const stash = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      stash,
+      loading: false,
+      changes: {
+        staged: [],
+        unstaged: [{ path: "new.txt", status: "U", add: 1, del: 0, binary: false }],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+
+    render(<ActionBar />);
+    const button = screen.getByTitle("Stash");
+    expect(button).toBeEnabled();
+
+    fireEvent.click(button);
+    expect(stash).toHaveBeenCalledOnce();
   });
 
   it("renders no provider indicator when the repo's forge is unknown", () => {
