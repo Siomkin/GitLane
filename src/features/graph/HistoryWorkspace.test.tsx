@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
@@ -147,6 +147,20 @@ beforeEach(() => {
     commitMenu: null,
     stashMenu: null,
     stackedReview: null,
+  });
+});
+
+describe("HistoryWorkspace — graph density", () => {
+  it("re-measures row heights when density changes without a remount", () => {
+    useUi.setState({ density: "Comfortable" });
+    render(<HistoryWorkspace />);
+    const rowHeight = () => (rowFor("alpha fix") as HTMLElement).style.height;
+    expect(rowHeight()).toBe(`${rowHeightFor("Comfortable")}px`);
+
+    // Without resetting the virtualizer's measurement cache, the rows keep the
+    // Comfortable height until a remount even though `rowHeight` changed.
+    act(() => useUi.setState({ density: "Compact" }));
+    expect(rowHeight()).toBe(`${rowHeightFor("Compact")}px`);
   });
 });
 

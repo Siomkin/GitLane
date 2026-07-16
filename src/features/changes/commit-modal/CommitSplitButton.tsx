@@ -1,12 +1,13 @@
 // Outcome-labelled split commit action (commit panel redesign): the primary
 // button says exactly what will happen ("Commit 2 files → develop"), and the
-// caret opens the variants — commit & push, commit + push + open PR, amend —
-// plus the commit-with-agent list that used to be a separate button.
+// caret opens the push / open-PR variants plus the commit-with-agent list that
+// used to be a separate button. Amend is a visible composer option because it
+// also provides the initial message instead of depending on one already typed.
 
 import type { ReactNode } from "react";
 
 import type { TerminalAgent } from "@/lib/api";
-import { CheckIcon, PushIcon, RefreshIcon, BranchIcon, ChevronDownIcon, SparkleIcon } from "@/components/ui/icons";
+import { CheckIcon, PushIcon, BranchIcon, ChevronDownIcon, SparkleIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useFixedPopover } from "@/features/changes/useFixedPopover";
@@ -53,8 +54,6 @@ export function CommitSplitButton({
   amend,
   canCommit,
   blockedTitle,
-  canAmend,
-  amendTitle,
   pushBlockedTitle,
   showOpenPr,
   agents,
@@ -63,7 +62,6 @@ export function CommitSplitButton({
   onCommit,
   onCommitAndPush,
   onCommitPushOpenPr,
-  onToggleAmend,
   onCommitWithAgent,
 }: {
   stagedCount: number;
@@ -73,9 +71,6 @@ export function CommitSplitButton({
   canCommit: boolean;
   /** Reason the plain commit actions are unavailable (shown as tooltip). */
   blockedTitle: string | null;
-  canAmend: boolean;
-  /** Tooltip for the amend item — the reason when disabled, hint when enabled. */
-  amendTitle: string;
   /** Why the chained push actions are unavailable (e.g. detached HEAD), or
    * null when pushing is possible. Chained items disable on it — a plain
    * commit still works without a branch, but `pushCurrentBranch` cannot. */
@@ -88,7 +83,6 @@ export function CommitSplitButton({
   onCommit: () => void;
   onCommitAndPush: () => void;
   onCommitPushOpenPr: () => void;
-  onToggleAmend: () => void;
   onCommitWithAgent: (agent: TerminalAgent) => void;
 }) {
   const { ref, menuRef, open, menuStyle, toggle, close, portal } = useFixedPopover();
@@ -169,17 +163,6 @@ export function CommitSplitButton({
               Commit, push & open PR…
             </MenuItem>
           )}
-          <MenuItem
-            icon={<RefreshIcon className="h-3.5 w-3.5" />}
-            disabled={!canAmend}
-            title={amendTitle}
-            onPick={pick(onToggleAmend)}
-            trailing={
-              amend ? <CheckIcon className="h-3.5 w-3.5 shrink-0 text-[color:var(--accent)]" /> : undefined
-            }
-          >
-            Amend previous commit
-          </MenuItem>
           {agents.length > 0 && (
             <>
               <div aria-hidden className="mx-2 my-1 h-px bg-black/5 dark:bg-white/10" />

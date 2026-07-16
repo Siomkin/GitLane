@@ -6,11 +6,25 @@
 
 import type { RepoIdentity } from "@/store/accounts";
 import { GitBranchIcon } from "@/components/ui/icons";
+import { identityColor } from "@/lib/identityColor";
+import { useUi } from "@/store/ui";
+import { GraphColorPicker } from "./GraphColorPicker";
 
 export function ThisComputerRow({ identity }: { identity: RepoIdentity | null }) {
+  const overrides = useUi((s) => s.identityColors);
+  // Preview this identity's graph colour once it has an email; with none set,
+  // stay neutral (nothing to colour).
+  const graphColor = identity?.email ? identityColor(identity.email, overrides) : null;
   return (
     <div className="flex items-center gap-3 rounded-xl border border-black/10 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
-      <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] bg-black/[0.06] text-neutral-500 dark:bg-white/[0.08] dark:text-neutral-300">
+      <span
+        className={
+          graphColor
+            ? "grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] text-white"
+            : "grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] bg-black/[0.06] text-neutral-500 dark:bg-white/[0.08] dark:text-neutral-300"
+        }
+        style={graphColor ? { background: graphColor } : undefined}
+      >
         <GitBranchIcon className="h-[18px] w-[18px]" />
       </span>
       <div className="min-w-0 flex-1">
@@ -26,6 +40,7 @@ export function ThisComputerRow({ identity }: { identity: RepoIdentity | null })
             : "No identity set in global git config"}
         </div>
       </div>
+      {identity?.email && <GraphColorPicker email={identity.email} />}
       <span
         className="shrink-0 px-2.5 text-[11.5px] text-neutral-400 dark:text-neutral-500"
         title="This identity comes from your global git config (git config --global user.name / user.email) — edit it there. Repos with nothing pinned commit as this."

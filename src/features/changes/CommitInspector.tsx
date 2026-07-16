@@ -6,9 +6,9 @@ import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
+import { CommitPeople, personVisual } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
-import { initials } from "./commitMeta";
 import { useInspectorCommit } from "./useInspectorCommit";
 
 /** Inspector for a selected commit — metadata, the (collapsible) message,
@@ -140,23 +140,33 @@ function StashMeta({ stash }: { stash: StashEntry }) {
 
 function CommitMeta({ commit }: { commit: CommitNode }) {
   const date = new Date(commit.timestamp * 1000).toLocaleString();
+  const overrides = useUi((state) => state.identityColors);
+  // Same resolver as the graph node / hover card / trailer rows, so a known
+  // agent author shows its branded glyph here too (not generic initials).
+  const author = personVisual({ name: commit.authorName, email: commit.authorEmail }, overrides);
 
   return (
-    <div className="flex items-start gap-3 rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.04]">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white">
-        {initials(commit.authorName)}
-      </div>
-      <div className="min-w-0">
-        <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
-          {commit.authorName}
+    <div className="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.04]">
+      <div className="flex items-start gap-3">
+        <div
+          className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full text-xs font-semibold text-white"
+          style={{ background: author.color }}
+        >
+          {author.iconUrl ? <img src={author.iconUrl} alt="" className="h-5 w-5" /> : author.initials}
         </div>
-        <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">{commit.authorEmail}</div>
-        <div className="mt-0.5 text-xs text-neutral-400">authored {date}</div>
+        <div className="min-w-0">
+          <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
+            {commit.authorName}
+          </div>
+          <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">{commit.authorEmail}</div>
+          <div className="mt-0.5 text-xs text-neutral-400">authored {date}</div>
+        </div>
+        <div className="ml-auto shrink-0 text-right text-[11px] text-neutral-400">
+          <div>parent</div>
+          <div className="font-mono">{commit.parents[0]?.slice(0, 7) ?? "root"}</div>
+        </div>
       </div>
-      <div className="ml-auto shrink-0 text-right text-[11px] text-neutral-400">
-        <div>parent</div>
-        <div className="font-mono">{commit.parents[0]?.slice(0, 7) ?? "root"}</div>
-      </div>
+      <CommitPeople body={commit.body} />
     </div>
   );
 }

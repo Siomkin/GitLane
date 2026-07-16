@@ -283,6 +283,18 @@ describe("view-tab transitions", () => {
     });
   });
 
+  it("sets, normalizes, clears, and persists identity colour overrides", () => {
+    useUi.getState().setIdentityColor(" Jane@Example.com ", "#123456");
+    expect(useUi.getState().identityColors).toEqual({ "jane@example.com": "#123456" });
+
+    const partialize = useUi.persist.getOptions().partialize;
+    const persisted = partialize?.(useUi.getState()) as Partial<ReturnType<typeof useUi.getState>>;
+    expect(persisted.identityColors).toEqual({ "jane@example.com": "#123456" });
+
+    useUi.getState().setIdentityColor("jane@example.com", null);
+    expect(useUi.getState().identityColors).toEqual({});
+  });
+
   it("ignores an agent draft that resolves after a repository switch", async () => {
     vi.useFakeTimers();
     let resolveDraft: (draft: string) => void = () => {};
