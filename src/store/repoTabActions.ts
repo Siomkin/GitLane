@@ -20,6 +20,7 @@ import { useUi } from "./ui";
 import {
   emptyChanges,
   INITIAL_GRAPH_LIMIT,
+  SESSION_RESTORE_PHASE,
   type RepoGet,
   type RepoSet,
   type RepoState,
@@ -207,55 +208,65 @@ export function createRepoTabActions(
     // tabs refresh their identity info (parent repo + branch) for
     // labels/grouping before their first activation (GL-110).
     restoreSession: async () => {
-      let last = readLastPath();
-      const restored = get().openPaths;
-      if (restored.length > 0) {
-        try {
-          const statuses = await api.recentsStatus(restored);
-          const byPath = new Map(statuses.map((s) => [s.path, s]));
-          const prevInfo = get().tabInfoByPath;
-          // Drop only what the probe positively reported gone AND the persisted
-          // info knows was a worktree; a path the probe didn't answer for keeps
-          // its tab (defensive — a short result must not wipe the strip).
-          const openPaths = restored.filter((path) => {
-            const status = byPath.get(path);
-            return !status || status.exists || !prevInfo[path]?.isWorktree;
-          });
-          const tabInfoByPath = Object.fromEntries(
-            openPaths.map((path) => {
+      // React Strict Mode re-runs launch effects in development. Claim the
+      // restore synchronously so the second invocation cannot duplicate the
+      // disk probe/open or finish early and reveal onboarding mid-restore.
+      if (get().sessionRestorePhase !== SESSION_RESTORE_PHASE.Pending) return;
+      set({ sessionRestorePhase: SESSION_RESTORE_PHASE.Restoring });
+
+      try {
+        let last = readLastPath();
+        const restored = get().openPaths;
+        if (restored.length > 0) {
+          try {
+            const statuses = await api.recentsStatus(restored);
+            const byPath = new Map(statuses.map((s) => [s.path, s]));
+            const prevInfo = get().tabInfoByPath;
+            // Drop only what the probe positively reported gone AND the persisted
+            // info knows was a worktree; a path the probe didn't answer for keeps
+            // its tab (defensive — a short result must not wipe the strip).
+            const openPaths = restored.filter((path) => {
               const status = byPath.get(path);
-              // A kept-but-missing repo tab holds on to its last-known info so
-              // its label survives until Retry/Locate resolves it.
-              const info =
-                status?.exists ? tabInfoFromStatus(status) : prevInfo[path];
-              return [path, info ?? { isWorktree: false, mainPath: null, branch: null }];
-            }),
-          );
-          // The last-active path may be among the dropped worktrees — heal to
-          // the first *live* survivor (falling back to a missing repo tab,
-          // which restores into its recovery screen) rather than reopening a
-          // gone directory.
-          if (last && !openPaths.includes(last)) {
-            last =
-              openPaths.find((p) => byPath.get(p)?.exists) ?? openPaths[0] ?? null;
-          }
-          persistSession(openPaths, last);
-          persistTabInfo(tabInfoByPath);
-          set({ openPaths, tabInfoByPath });
-          // Background tabs are never load-ed until activated, so give each
-          // surviving live path its watch now (GL-116) — the active one is
-          // (re-)watched by loadRepo below; re-inserting the key is harmless.
-          for (const path of openPaths) {
-            if (path !== last && byPath.get(path)?.exists) {
-              void watchRepo(path);
+              return !status || status.exists || !prevInfo[path]?.isWorktree;
+            });
+            const tabInfoByPath = Object.fromEntries(
+              openPaths.map((path) => {
+                const status = byPath.get(path);
+                // A kept-but-missing repo tab holds on to its last-known info so
+                // its label survives until Retry/Locate resolves it.
+                const info =
+                  status?.exists ? tabInfoFromStatus(status) : prevInfo[path];
+                return [path, info ?? { isWorktree: false, mainPath: null, branch: null }];
+              }),
+            );
+            // The last-active path may be among the dropped worktrees — heal to
+            // the first *live* survivor (falling back to a missing repo tab,
+            // which restores into its recovery screen) rather than reopening a
+            // gone directory.
+            if (last && !openPaths.includes(last)) {
+              last =
+                openPaths.find((p) => byPath.get(p)?.exists) ?? openPaths[0] ?? null;
             }
+            persistSession(openPaths, last);
+            persistTabInfo(tabInfoByPath);
+            set({ openPaths, tabInfoByPath });
+            // Background tabs are never load-ed until activated, so give each
+            // surviving live path its watch now (GL-116) — the active one is
+            // (re-)watched by loadRepo below; re-inserting the key is harmless.
+            for (const path of openPaths) {
+              if (path !== last && byPath.get(path)?.exists) {
+                void watchRepo(path);
+              }
+            }
+          } catch {
+            // Probe failure: keep the restored tabs — a truly dead last path
+            // still surfaces through loadRepo's classified open below.
           }
-        } catch {
-          // Probe failure: keep the restored tabs — a truly dead last path
-          // still surfaces through loadRepo's classified open below.
         }
+        if (last) await get().loadRepo(last);
+      } finally {
+        set({ sessionRestorePhase: SESSION_RESTORE_PHASE.Complete });
       }
-      if (last) await get().loadRepo(last);
     },
 
     // A background tab's watcher fired: re-probe the path so its tab label

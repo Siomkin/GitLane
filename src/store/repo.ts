@@ -9,8 +9,12 @@ import { createRepoRefreshActions } from "./repoRefreshActions";
 import { createRepoRemoteActions } from "./repoRemoteActions";
 import { createRepoSelectionActions } from "./repoSelectionActions";
 import { createRepoTabActions } from "./repoTabActions";
-import { createInitialRepoData, type RepoState } from "./repoTypes";
-import { readOpenPaths, readRecents, readTabInfo } from "./repoSession";
+import {
+  createInitialRepoData,
+  SESSION_RESTORE_PHASE,
+  type RepoState,
+} from "./repoTypes";
+import { readLastPath, readOpenPaths, readRecents, readTabInfo } from "./repoSession";
 import { pruneTabInfo } from "@/lib/tabs";
 import { createRepoWriteActions } from "./repoWriteActions";
 
@@ -21,9 +25,10 @@ export type {
   OperationFile,
   OperationState,
   RepoState,
+  SessionRestorePhase,
   SelectedFile,
 } from "./repoTypes";
-export { GRAPH_PAGE_SIZE, INITIAL_GRAPH_LIMIT } from "./repoTypes";
+export { GRAPH_PAGE_SIZE, INITIAL_GRAPH_LIMIT, SESSION_RESTORE_PHASE } from "./repoTypes";
 
 export const useRepo = create<RepoState>((set, get) => ({
   // Tab info restores pruned to the restored tabs so closed paths never linger.
@@ -31,6 +36,7 @@ export const useRepo = create<RepoState>((set, get) => ({
     readOpenPaths(),
     readRecents(),
     pruneTabInfo(readTabInfo(), readOpenPaths()),
+    readLastPath() ? SESSION_RESTORE_PHASE.Pending : SESSION_RESTORE_PHASE.Complete,
   ),
   ...createRepoLifecycleActions(set, get),
   ...createRepoTabActions(set, get),

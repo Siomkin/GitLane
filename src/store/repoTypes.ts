@@ -28,6 +28,16 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 
 export type ChangeSource = "unstaged" | "staged" | "commit";
 
+/** Startup restoration has its own phase so the no-repository onboarding is
+ * only shown after the persisted session has genuinely resolved. */
+export const SESSION_RESTORE_PHASE = {
+  Pending: "pending",
+  Restoring: "restoring",
+  Complete: "complete",
+} as const;
+export type SessionRestorePhase =
+  (typeof SESSION_RESTORE_PHASE)[keyof typeof SESSION_RESTORE_PHASE];
+
 /** A conflict-producing operation key, excluding the "none" idle sentinel. */
 export type ActiveOperationKind = Exclude<OperationKind, "none">;
 
@@ -196,6 +206,10 @@ export interface RepoState {
   stashes: StashEntry[];
   /** Paths of all open repositories — the tab strip. */
   openPaths: string[];
+  /** Whether the persisted startup session still needs to be (or is being)
+   * restored. Kept separate from [`loading`], which belongs to an open repo's
+   * graph load and only starts after its summary has resolved. */
+  sessionRestorePhase: SessionRestorePhase;
   /** The active tab whose repository path failed to resolve (GL-108), or null.
    * Mutually exclusive with a live [`summary`] — entering it clears the repo
    * data, and a successful open clears it back. */
@@ -616,6 +630,7 @@ export type RepoDataState = Pick<
   | "worktrees"
   | "stashes"
   | "openPaths"
+  | "sessionRestorePhase"
   | "missingRepo"
   | "initMissingRepoRunning"
   | "tabInfoByPath"
@@ -657,6 +672,7 @@ export function createInitialRepoData(
   openPaths: string[],
   recents: RecentRepo[] = [],
   tabInfoByPath: Record<string, TabInfo> = {},
+  sessionRestorePhase: SessionRestorePhase = SESSION_RESTORE_PHASE.Complete,
 ): RepoDataState {
   return {
     summary: null,
@@ -670,6 +686,7 @@ export function createInitialRepoData(
     worktrees: [],
     stashes: [],
     openPaths,
+    sessionRestorePhase,
     missingRepo: null,
     initMissingRepoRunning: false,
     tabInfoByPath,

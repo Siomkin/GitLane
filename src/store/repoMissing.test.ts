@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: dialogMock }));
 
 import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
-import { createInitialRepoData } from "./repoTypes";
+import { createInitialRepoData, SESSION_RESTORE_PHASE } from "./repoTypes";
 import type { RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 
@@ -470,7 +470,10 @@ describe("repo store — missing-repo state (GL-108)", () => {
 
   it("restores a session whose last repo is missing into the state, not the error bar", async () => {
     localStorage.setItem("gitlane.lastPath", "/gone");
-    useRepo.setState({ openPaths: ["/gone"] });
+    useRepo.setState({
+      openPaths: ["/gone"],
+      sessionRestorePhase: SESSION_RESTORE_PHASE.Pending,
+    });
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "open_repo" ? Promise.reject(missingError("/gone")) : defaultInvoke(cmd),
     );

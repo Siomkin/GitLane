@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { useRepo } from "./repo";
+import { SESSION_RESTORE_PHASE, useRepo } from "./repo";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
 import { useUi } from "./ui";
@@ -2825,6 +2825,7 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     useRepo.setState({
       summary: null,
       openPaths: ["/a", "/dead-wt"],
+      sessionRestorePhase: SESSION_RESTORE_PHASE.Pending,
       // The persisted tab info is what lets restore recognize the dead path as
       // a *worktree* (the gone directory can't answer anymore).
       tabInfoByPath: {
@@ -2859,6 +2860,7 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     // reopened on the surviving repo.
     expect(useRepo.getState().openPaths).toEqual(["/a"]);
     expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
     expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual(["/a"]);
     expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
   });
@@ -2974,6 +2976,40 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     await useRepo.getState().restoreSession();
 
     expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/dead-wt" });
+  });
+
+  it("claims startup restoration once while it is in flight", async () => {
+    localStorage.setItem("gitlane.lastPath", "/a");
+    const statusProbe = deferred<
+      Array<{ path: string; exists: boolean; branch: string; isWorktree: boolean; mainPath: null }>
+    >();
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return statusProbe.promise;
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    const firstRestore = useRepo.getState().restoreSession();
+    const duplicateRestore = useRepo.getState().restoreSession();
+
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Restoring);
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "recents_status")).toHaveLength(1);
+
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/dead-wt", exists: false, branch: "", isWorktree: false, mainPath: null },
+    ]);
+    await Promise.all([firstRestore, duplicateRestore]);
+
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
   });
 });
 
