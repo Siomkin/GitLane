@@ -199,7 +199,8 @@ pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
     run_git(repo, &["stash", "drop", &stash_ref])
 }
 
-/// Stash the working tree and index.
+/// Stash every visible working-tree change: staged, unstaged, and untracked.
+/// Ignored files stay in place because GitLane does not surface them as changes.
 pub fn stash(repo: &str) -> Result<String, String> {
-    run_git(repo, &["stash", "push"])
+    run_git(repo, &["stash", "push", "--include-untracked"])
 }
