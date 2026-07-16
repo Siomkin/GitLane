@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BranchKind, ForgeKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type TerminalAgent } from "@/lib/api";
+import { BranchKind, ForgeKind, RefKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type TerminalAgent } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { ComposerMode } from "@/lib/conventionalCommit";
 import { useAccounts } from "@/store/accounts";
@@ -77,6 +77,11 @@ const amendableGraph = () => ({
   laneCount: 1,
   head: "head-oid",
   truncated: false,
+});
+
+const publishedHeadGraph = () => ({
+  ...amendableGraph(),
+  commits: [commit({ refs: [{ name: "origin/main", kind: RefKind.Remote }] })],
 });
 
 const openCommitMenu = () => {
@@ -427,17 +432,30 @@ describe("CommitComposer", () => {
     expect(screen.queryByRole("menuitem", { name: "Commit, push & open PR…" })).not.toBeInTheDocument();
   });
 
-  it("amends via the commit menu with a prefilled message and visible state", async () => {
-    useRepo.setState({ graph: amendableGraph() });
+  it("shows the published-HEAD warning only after amend is selected", async () => {
+    useRepo.setState({ graph: publishedHeadGraph() });
     renderComposer();
 
-    openCommitMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Amend previous commit" }));
+    const amendOption = screen.getByRole("checkbox", { name: /Amend previous commit/ });
+    expect(amendOption).toBeEnabled();
+    expect(useUi.getState().commitMsg).toBe("");
+    expect(screen.queryByText(/abc1234 is already on a remote/)).not.toBeInTheDocument();
+
+    fireEvent.click(amendOption);
 
     expect(useUi.getState().commitMsg).toBe("previous summary");
-    expect(screen.getByText(/Amending abc1234/)).toBeVisible();
+    expect(amendOption).toBeChecked();
+    expect(screen.getByText(/abc1234 is already on a remote/)).toBeVisible();
+    expect(amendOption.closest("label")).toHaveAttribute(
+      "title",
+      "abc1234 is already on a remote; force-push with lease after amending",
+    );
     const amendButton = screen.getByRole("button", { name: "Amend last commit" });
     await waitFor(() => expect(amendButton).toBeEnabled());
+
+    openCommitMenu();
+    expect(screen.queryByRole("menuitem", { name: "Amend previous commit" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Amend & push" })).toBeDisabled();
 
     fireEvent.click(amendButton);
     expect(useRepo.getState().commitSelected).toHaveBeenCalledWith("previous summary", true);

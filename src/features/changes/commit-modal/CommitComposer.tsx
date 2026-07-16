@@ -2,8 +2,9 @@
 // redesign). The staged list directly above this composer is the source of
 // truth for commit inclusion. One collapsible surface, two message styles —
 // free-form or structured conventional commit — with the agent Draft control
-// folded into the editor row and the commit variants (& push / & open PR /
-// amend / with agent) behind the split button's caret.
+// folded into the editor row. Amend stays visible because selecting it prefills
+// the previous message; push / open-PR / agent variants live behind the split
+// button's caret.
 
 import { useEffect, useRef, useState } from "react";
 import { BranchKind, type TerminalAgent } from "@/lib/api";
@@ -26,6 +27,7 @@ import { useUi } from "@/store/ui";
 import { selectEnabledAgents } from "@/features/terminal/agents";
 import { CommitIdentitySelector } from "./CommitIdentitySelector";
 import { useCommitIdentity } from "./useCommitIdentity";
+import { CommitAmendOption } from "./CommitAmendOption";
 import { CommitMessageEditor } from "./CommitMessageEditor";
 import { CommitSplitButton } from "./CommitSplitButton";
 import { DraftAgentControl } from "./DraftAgentControl";
@@ -80,8 +82,8 @@ export function CommitComposer() {
   const staged = changes.staged;
   const branch = summary?.headBranch ?? "HEAD";
   const headCommit = graph?.commits.find((commit) => commit.id === graph.head && !commit.stash) ?? null;
-  const canAmend =
-    Boolean(summary?.headBranch) && headCommit !== null && !isCommitReachableFromRemote(graph, headCommit.id);
+  const canAmend = Boolean(summary?.headBranch) && headCommit !== null;
+  const headPublished = headCommit !== null && isCommitReachableFromRemote(graph, headCommit.id);
   const agents = selectEnabledAgents(agentsRaw);
   const draftingAgent = agentCommitDraft && agentCommitDraft.repoPath === summary?.path
     ? agentCommitDraft.agentName
@@ -284,6 +286,20 @@ export function CommitComposer() {
           {commitBlocked}
         </div>
       )}
+      <CommitAmendOption
+        checked={amend}
+        disabled={!canAmend}
+        headShortId={headCommit?.shortId ?? null}
+        published={headPublished}
+        disabledReason={
+          headCommit === null
+            ? "Available after the first commit"
+            : !summary?.headBranch
+              ? "Check out a branch to amend its latest commit"
+              : null
+        }
+        onChange={toggleAmend}
+      />
       <CommitMessageEditor
         mode={mode}
         onModeChange={setMode}
@@ -319,16 +335,6 @@ export function CommitComposer() {
           <button type="button" className="font-semibold" onClick={cancelAgentCommitDraft}>Stop waiting</button>
         </div>
       )}
-      {amend && (
-        <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-[12px] leading-5 text-amber-700 dark:text-amber-300">
-          <span className="min-w-0">
-            Amending {headCommit?.shortId} — the staged files join the previous commit
-          </span>
-          <button type="button" className="shrink-0 font-semibold" onClick={toggleAmend}>
-            Cancel
-          </button>
-        </div>
-      )}
       <CommitIdentitySelector identity={identity} />
       <CommitSplitButton
         stagedCount={staged.length}
@@ -336,12 +342,12 @@ export function CommitComposer() {
         amend={amend}
         canCommit={canCommit}
         blockedTitle={commitDisabledTitle}
-        canAmend={canAmend}
-        pushBlockedTitle={summary?.headBranch ? null : "Check out a branch to push"}
-        amendTitle={
-          canAmend
-            ? `Rewrite ${headCommit?.shortId} with the staged changes and message`
-            : "Available when the previous commit has not been pushed"
+        pushBlockedTitle={
+          amend && headPublished
+            ? "Amending a published commit requires Force push with lease from the branch menu"
+            : summary?.headBranch
+              ? null
+              : "Check out a branch to push"
         }
         showOpenPr={isPrForge(forge?.kind)}
         agents={agents}
@@ -354,7 +360,6 @@ export function CommitComposer() {
         onCommit={() => void doCommit()}
         onCommitAndPush={() => void commitAndPush()}
         onCommitPushOpenPr={() => void commitPushOpenPr()}
-        onToggleAmend={toggleAmend}
         onCommitWithAgent={commitWithAgent}
       />
     </div>

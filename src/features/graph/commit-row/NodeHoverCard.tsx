@@ -121,10 +121,14 @@ function HoverCard({
                 iconUrl={coAuthor.agent?.iconUrl ?? null}
                 size="sm"
               />
-              <span className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
-                {coAuthor.agent?.label ?? coAuthor.name}
-              </span>
-              <span className="truncate font-mono text-[11px] text-neutral-400">{coAuthor.email}</span>
+              {/* Name over email, like the author block above — side-by-side
+                  wraps long names onto two lines and truncates the email. */}
+              <div className="min-w-0 leading-tight">
+                <div className="truncate text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
+                  {coAuthor.agent?.label ?? coAuthor.name}
+                </div>
+                <div className="break-all font-mono text-[11px] text-neutral-400">{coAuthor.email}</div>
+              </div>
             </div>
           ))}
         </div>
