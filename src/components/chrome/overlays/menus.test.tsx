@@ -630,8 +630,67 @@ describe("BranchContextMenu", () => {
     });
   });
 
+  // Checkout is impossible while another worktree holds the branch, but the
+  // menu still offers a way to reclaim it: "Check out here…" opens the hand-off
+  // dialog preset to the open worktree (detach there → check out here), so the
+  // user never has to switch into the holding worktree — typically a stale
+  // agent scratch checkout — just to get their branch back.
+  it("offers Check out here… that opens the hand-off preset to the open worktree", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Check out here…" }));
+    expect(useUi.getState().handoff).toEqual({
+      branch: "feature",
+      sourcePath: "/work/repo-feature",
+      sourceChanges: null,
+      destPath: "/work/repo",
+    });
+  });
+
+  // A prunable holder (its directory is gone) can't run the hand-off's detach
+  // step, so no hand-off entry point may be offered from it — neither the
+  // promoted reclaim action nor the Worktree group's generic hand-off.
+  it("hides Check out here… and Hand off to… when the holding worktree is prunable", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: "Check out here…" })).not.toBeInTheDocument();
+    openGroup("Worktree");
+    expect(screen.queryByRole("menuitem", { name: "Hand off to…" })).not.toBeInTheDocument();
+  });
+
+  it("hides the worktree menu's hand-off for a prunable worktree", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      worktrees: [
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true },
+      ],
+    });
+    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo-feature", name: "repo-feature", isMain: false } });
+    render(<WorktreeContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: "Hand off branch to…" })).not.toBeInTheDocument();
+  });
+
   // "Hand off to…" is hidden when no *valid* destination exists — the only other
-  // worktree here is the bare main repo, which can't receive a checkout.
+  // worktree here is the bare main repo, which can't receive a checkout. The
+  // promoted "Check out here…" follows the same rule: a bare open repo can't
+  // receive the branch either.
   it("hides Hand off when the only other worktree is bare", () => {
     useRepo.setState({
       summary: { path: "/work/bare.git", workdir: "/work/bare.git", headBranch: "main", headOid: null, detached: false },
@@ -643,6 +702,7 @@ describe("BranchContextMenu", () => {
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: "Check out here…" })).not.toBeInTheDocument();
     openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Hand off to…" })).not.toBeInTheDocument();
   });

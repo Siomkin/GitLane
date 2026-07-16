@@ -1,4 +1,4 @@
-import { handoffDestinationOptions, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
@@ -61,9 +61,14 @@ export function WorktreeContextMenu() {
     });
   }
   // Hand the worktree's branch (and its uncommitted work) off to another
-  // workspace (GL-74). Only when it has a branch and a *valid* destination exists
-  // (bare / prunable worktrees are filtered out) — never a dead click.
-  if (wtBranch && handoffDestinationOptions(worktrees, path).length > 0) {
+  // workspace (GL-74). Only when it has a branch, can still run the detach step
+  // (not prunable), and a *valid* destination exists (bare / prunable worktrees
+  // are filtered out) — never a dead click.
+  if (
+    wtBranch &&
+    handoffSourceValid(worktrees, path) &&
+    handoffDestinationOptions(worktrees, path).length > 0
+  ) {
     const sourceChanges = isActiveWorktree
       ? changes.staged.length + changes.unstaged.length + changes.conflicted.length
       : null;

@@ -46,8 +46,14 @@ function HandoffMarkIcon({ className }: { className?: string }) {
 export function HandoffDialog() {
   const handoff = useUi((s) => s.handoff);
   if (!handoff) return null;
-  // Keyed so reopening (or a different branch) always starts a fresh flow.
-  return <HandoffDialogBody key={`${handoff.branch}@${handoff.sourcePath}`} req={handoff} />;
+  // Keyed so reopening (a different branch, source, or preset destination)
+  // always starts a fresh flow instead of keeping stale useState picks.
+  return (
+    <HandoffDialogBody
+      key={`${handoff.branch}@${handoff.sourcePath}@${handoff.destPath ?? ""}`}
+      req={handoff}
+    />
+  );
 }
 
 function HandoffDialogBody({ req }: { req: HandoffRequest }) {
@@ -60,8 +66,10 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   // The user's raw pick. A live worktree refresh (FS watcher) can drop it from
   // `options` while the dialog is still on the configure screen, so it is not
   // necessarily a valid destination — read `selectedDest` (below), never this,
-  // for anything that acts on the choice.
-  const [preferredDest, setPreferredDest] = useState(options[0]?.value ?? "");
+  // for anything that acts on the choice. A caller-preselected destination
+  // (`destPath` — e.g. "Check out here" targeting the open worktree) seeds the
+  // pick; `selectedDest` validates it against the live options like any pick.
+  const [preferredDest, setPreferredDest] = useState(req.destPath ?? options[0]?.value ?? "");
   // Derive the in-range value during render rather than snapping the raw state
   // in an effect: the user's explicit pick is preserved, so if the worktree
   // reappears before they submit it is honored again instead of being silently

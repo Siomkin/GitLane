@@ -14,8 +14,9 @@ export interface DetachedWorktreeAt {
  * this commit. A branch checked out elsewhere already surfaces via its branch
  * pill's worktree glyph, but a detached worktree has no ref at all — without
  * this it is invisible in the graph. The *open* worktree is excluded (matching
- * the branch glyphs' other-worktree-only rule): its detached HEAD already
- * surfaces through the graph's own HEAD marker, so a pill would duplicate it.
+ * the branch glyphs' other-worktree-only rule): its detached HEAD is labelled
+ * by the accent DetachedHeadPill (plus the graph's HEAD marker), so a place-
+ * pill here would duplicate it.
  * The selector returns a JSON primitive so a row only re-renders when its own
  * worktree set actually changes. */
 export function useDetachedWorktreesAt(commitId: string): DetachedWorktreeAt[] {

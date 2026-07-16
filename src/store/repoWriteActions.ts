@@ -5,6 +5,7 @@ import { friendlyGitError } from "@/lib/gitError";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { pushRemoteForBranch, remoteNameForUpstream } from "@/lib/remoteAccounts";
+import { isActiveWorktreePath } from "@/lib/worktrees";
 import { branchWebUrl } from "@/lib/forgeUrls";
 import { openExternalUrl } from "@/lib/openExternal";
 import { useAccounts } from "./accounts";
@@ -777,14 +778,25 @@ export function createRepoWriteActions(
         worktreePath,
         opts?.newTab || !currentPath ? undefined : { replaceTab: currentPath },
       );
-      // Switching into a worktree is usually about its in-progress work, but
-      // loadRepo parks the selection on the tip commit. If the freshly loaded
-      // worktree is dirty, surface its working tree (the WIP node) so the
-      // uncommitted files are visible immediately instead of hidden behind a
-      // commit diff. Best-effort and guarded against a repo switch landing
-      // between the load and the select.
+      // Ownership guard: loadRepo absorbs failures and can be superseded by a
+      // newer open, so the post-load work below must only run when the
+      // requested worktree actually became the active repo — never against
+      // whichever repo is still (or newly) on screen.
+      if (!isActiveWorktreePath(get().summary, worktreePath)) return;
       const summary = get().summary;
       if (!summary) return;
+      // A reveal already pending here is a during-load pick (GL-20): the user
+      // navigated somewhere deliberate while the graph skeleton was up, and
+      // loadRepo honored it — the HEAD reveal below must not clobber it. The
+      // selection snapshot catches the same intent expressed as a plain graph
+      // click during the status await (a click sets no revealTarget).
+      const duringLoadPick = get().revealTarget !== null;
+      const parkedSelection = get().selectedCommit;
+      // Switching into a worktree is usually about its in-progress work. If the
+      // freshly loaded worktree is dirty, surface its working tree (the WIP
+      // node, always the top row) so the uncommitted files are visible
+      // immediately instead of hidden behind a commit diff. Best-effort and
+      // guarded against a repo switch landing between the load and the select.
       try {
         const changes = await api.workingChanges(summary.path);
         const dirty =
@@ -794,10 +806,34 @@ export function createRepoWriteActions(
         if (dirty && get().summary?.path === summary.path) {
           set({ changes });
           get().selectWip();
+          return;
         }
       } catch {
-        // A failed status read just leaves loadRepo's default tip selection.
+        // The dirty state is unknown — revealing HEAD could yank a dirty
+        // worktree away from its working tree, so keep loadRepo's default
+        // selection instead.
+        return;
       }
+      // Clean worktree: land the graph on its HEAD row (the branch tip, or the
+      // detached commit). loadRepo clears the selection and leaves the list at
+      // the top, so without this the switch arrives "nowhere" — the commit the
+      // worktree sits on is neither selected nor scrolled into view (it may not
+      // even be inside the initially loaded window). The reveal stays pending
+      // until the graph mounts and pages in more history when the row is deeper.
+      // The graph is interactive during the status await, so every user signal
+      // wins over the automatic reveal: a pending revealTarget (before or after
+      // the await) and any selection change since the snapshot both bail.
+      if (duringLoadPick || get().revealTarget !== null) return;
+      if (get().selectedCommit !== parkedSelection) return;
+      // HEAD is re-read from the live summary: a same-path refresh during the
+      // status read can move it, and the reveal should land on where HEAD is
+      // now, not where it was before the await.
+      const live = get().summary;
+      if (live?.path !== summary.path || !live.headOid) return;
+      // Already parked on the HEAD row (a tip-aligned worktree): re-revealing
+      // would only re-fetch its files and flash a row the user is looking at.
+      if (get().selectedCommit === live.headOid) return;
+      await get().revealCommit(live.headOid);
     },
 
 

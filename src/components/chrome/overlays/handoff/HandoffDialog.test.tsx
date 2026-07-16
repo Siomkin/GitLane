@@ -58,6 +58,36 @@ describe("HandoffDialog", () => {
     expect(screen.getByText(/2 uncommitted changes .* carried/)).toBeInTheDocument();
   });
 
+  // "Check out here…" opens the dialog with the open worktree preset — the
+  // picker stays, so it's a default the user can still change.
+  it("preselects the caller-provided destination", () => {
+    useUi.setState({
+      handoff: {
+        branch: "feature",
+        sourcePath: "/work/repo-feature",
+        sourceChanges: null,
+        destPath: "/work/repo-scratch",
+      },
+    });
+    render(<HandoffDialog />);
+    const select = screen.getByRole("combobox", { name: "Destination workspace" }) as HTMLSelectElement;
+    expect(select.value).toBe("/work/repo-scratch");
+  });
+
+  it("falls back to the first destination when the preselected path is not a valid option", () => {
+    useUi.setState({
+      handoff: {
+        branch: "feature",
+        sourcePath: "/work/repo-feature",
+        sourceChanges: null,
+        destPath: "/gone",
+      },
+    });
+    render(<HandoffDialog />);
+    const select = screen.getByRole("combobox", { name: "Destination workspace" }) as HTMLSelectElement;
+    expect(select.value).toBe("/work/repo");
+  });
+
   it("keeps the selected destination in range as worktrees come and go", () => {
     openDialog();
     render(<HandoffDialog />);

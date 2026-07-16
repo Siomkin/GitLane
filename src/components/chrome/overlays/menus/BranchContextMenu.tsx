@@ -4,7 +4,8 @@ import { defaultPublishTarget } from "@/lib/branchSync";
 import { findOtherBranchWorktree } from "@/lib/graphActions";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { validateBranchName } from "@/lib/refName";
-import { handoffDestinationOptions, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { trimTrailingSlash } from "@/lib/worktrees";
 import {
   BranchIcon,
   CheckIcon,
@@ -194,6 +195,38 @@ export function BranchContextMenu() {
       icon: <FolderIcon className="h-4 w-4 text-[color:var(--accent)]" />,
       onClick: () => { close(); void openWorktree(existingWt.path); },
     });
+    // The escape hatch: git refuses to check out a branch that another worktree
+    // holds, so plain "Checkout" is hidden — but the branch can still be *moved*
+    // here (detach it there, check it out here, carrying any uncommitted work).
+    // That matters most when the holder is a stale agent scratch worktree the
+    // user never wants to open. Runs through the hand-off dialog with the open
+    // worktree preselected, so the multi-step move stays confirmable + visible.
+    const here = handoffDestinationOptions(worktrees, existingWt.path).find(
+      (o) => trimTrailingSlash(o.value) === trimTrailingSlash(workdir),
+    );
+    // A prunable holder (its directory is gone) can't run the hand-off's
+    // detach step — git would fail inside the missing worktree, so don't
+    // offer a dead click.
+    if (isLocal && here && handoffSourceValid(worktrees, existingWt.path)) {
+      top.push({
+        label: "Check out here…",
+        icon: <CheckIcon className="h-4 w-4" />,
+        onClick: () => {
+          close();
+          startWorktreeHandoff({
+            branch: b,
+            sourcePath: existingWt.path,
+            worktrees,
+            // The branch lives in another worktree, not the open repo, so its
+            // uncommitted state isn't known here — carry conditionally.
+            sourceChanges: null,
+            destPath: here.value,
+            openHandoff,
+            onNoDestinations: () => showToast("No worktree to check out into.", "error"),
+          });
+        },
+      });
+    }
   }
   if (!isCurrent && !existingWt) {
     top.push({
@@ -262,9 +295,15 @@ export function BranchContextMenu() {
     if (existingWt) {
       children.push({ label: "Open this worktree", onClick: () => { close(); void openWorktree(existingWt.path); } });
       children.push({ label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } });
-      // Only offer the hand-off when a valid destination actually exists (bare /
-      // prunable worktrees are filtered out), so it's never a dead click.
-      if (isLocal && !isCurrent && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
+      // Only offer the hand-off when the source can still run the detach step
+      // (not prunable) and a valid destination actually exists (bare / prunable
+      // worktrees are filtered out), so it's never a dead click.
+      if (
+        isLocal &&
+        !isCurrent &&
+        handoffSourceValid(worktrees, existingWt.path) &&
+        handoffDestinationOptions(worktrees, existingWt.path).length > 0
+      ) {
         children.push({
           label: "Hand off to…",
           onClick: () =>

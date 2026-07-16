@@ -2643,7 +2643,7 @@ describe("repo store — openWorktree", () => {
     expect(useRepo.getState().selectedCommit).toBeNull();
   });
 
-  it("keeps loadRepo's tip selection when the opened worktree is clean", async () => {
+  it("keeps loadRepo's tip selection when the clean worktree's HEAD is unknown", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       switch (cmd) {
         case "open_repo":
@@ -2661,6 +2661,244 @@ describe("repo store — openWorktree", () => {
 
     expect(useRepo.getState().wipSelected).toBe(false);
     expect(useRepo.getState().selectedCommit).toBe("tip");
+    expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("reveals the worktree's HEAD row when the opened worktree is clean", async () => {
+    // A detached worktree parked below the newest row: loadRepo's default
+    // selection is commits[0] ("tip"), so without the reveal the switch lands
+    // on the wrong commit with no scroll to where the worktree actually sits.
+    const detachedSummary: RepoSummary = {
+      ...wtSummary,
+      headBranch: null,
+      headOid: "old",
+      detached: true,
+    };
+    const graphWithOld: RepoGraph = {
+      ...emptyGraph,
+      head: "old",
+      commits: [node({ id: "tip" }), node({ id: "old" })],
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(detachedSummary);
+        case "commit_graph":
+          return Promise.resolve(graphWithOld);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    expect(useRepo.getState().wipSelected).toBe(false);
+    expect(useRepo.getState().selectedCommit).toBe("old");
+    expect(useRepo.getState().revealTarget).toBe("old");
+  });
+
+  it("does not reveal HEAD when the opened worktree is dirty (WIP wins)", async () => {
+    const detachedSummary: RepoSummary = {
+      ...wtSummary,
+      headBranch: null,
+      headOid: "old",
+      detached: true,
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(detachedSummary);
+        case "commit_graph":
+          return Promise.resolve(graphWithTip);
+        case "working_changes":
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "a.ts", status: "M", add: 1, del: 0, binary: false }],
+            conflicted: [],
+          });
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    // The WIP row is always the top row, so it needs no scroll; revealing HEAD
+    // would yank the view away from the working tree that was just surfaced.
+    expect(useRepo.getState().wipSelected).toBe(true);
+    expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("skips the reveal when the status read fails (dirty state unknown)", async () => {
+    const detachedSummary: RepoSummary = {
+      ...wtSummary,
+      headBranch: null,
+      headOid: "old",
+      detached: true,
+    };
+    const graphWithOld: RepoGraph = {
+      ...emptyGraph,
+      head: "old",
+      commits: [node({ id: "tip" }), node({ id: "old" })],
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(detachedSummary);
+        case "commit_graph":
+          return Promise.resolve(graphWithOld);
+        case "working_changes":
+          return Promise.reject(new Error("status failed"));
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    // The worktree may be dirty for all we know — revealing HEAD could yank it
+    // away from its working tree. Keep loadRepo's default (newest row).
+    expect(useRepo.getState().selectedCommit).toBe("tip");
+    expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("does not clobber a branch picked while the graph was loading (GL-20)", async () => {
+    const detachedSummary: RepoSummary = {
+      ...wtSummary,
+      headBranch: null,
+      headOid: "tip",
+      detached: true,
+    };
+    const graphWithOld: RepoGraph = {
+      ...emptyGraph,
+      head: "tip",
+      commits: [node({ id: "tip" }), node({ id: "old" })],
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(detachedSummary);
+        case "commit_graph": {
+          // Emulate the user picking a branch in the navigator while the graph
+          // skeleton is up: the pick lands after Phase 2 cleared the selection
+          // and before the graph resolves, so loadRepo honors it.
+          useRepo.setState({
+            revealTarget: "old",
+            selectedCommit: "old",
+            selectedCommits: ["old"],
+            selectionAnchor: "old",
+          });
+          return Promise.resolve(graphWithOld);
+        }
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    // The during-load pick survives; the HEAD reveal must not overwrite it.
+    expect(useRepo.getState().revealTarget).toBe("old");
+    expect(useRepo.getState().selectedCommit).toBe("old");
+  });
+
+  it("does not clobber a selection made while the status read is in flight", async () => {
+    const detachedSummary: RepoSummary = {
+      ...wtSummary,
+      headBranch: null,
+      headOid: "old",
+      detached: true,
+    };
+    const graphThreeDeep: RepoGraph = {
+      ...emptyGraph,
+      head: "old",
+      commits: [node({ id: "tip" }), node({ id: "mid" }), node({ id: "old" })],
+    };
+    // Call #1 is loadRepo's fire-and-forget status fan-out; call #2 is
+    // openWorktree's own await'd read. The selection flips during #2 —
+    // after openWorktree snapshotted the parked selection, before its await
+    // resumes — emulating a graph click while the status read is in flight.
+    let statusCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(detachedSummary);
+        case "commit_graph":
+          return Promise.resolve(graphThreeDeep);
+        case "working_changes":
+          statusCalls += 1;
+          if (statusCalls === 2) {
+            useRepo.setState({ selectedCommit: "mid", selectedCommits: ["mid"], selectionAnchor: "mid" });
+          }
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    // The user's click wins over the automatic HEAD reveal.
+    expect(useRepo.getState().selectedCommit).toBe("mid");
+    expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("skips the reveal when loadRepo already parked on the HEAD row", async () => {
+    // A tip-aligned worktree: loadRepo's default selection is the newest row,
+    // which IS the worktree's HEAD — re-revealing would only re-fetch files
+    // and flash the row the user is already looking at.
+    const tipSummary: RepoSummary = { ...wtSummary, headOid: "tip" };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(tipSummary);
+        case "commit_graph":
+          return Promise.resolve(graphWithTip);
+        case "working_changes":
+          return Promise.resolve({ staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState });
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    expect(useRepo.getState().selectedCommit).toBe("tip");
+    expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("does nothing after a failed load (the previous repo stays untouched)", async () => {
+    useRepo.setState({
+      summary: {
+        path: "/repo-main",
+        workdir: "/repo-main",
+        headBranch: "main",
+        headOid: "tip",
+        detached: false,
+      },
+      selectedCommit: "tip",
+      revealTarget: null,
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.reject(new Error("cannot open"));
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    // loadRepo absorbed the failure and left the previous repo active — the
+    // post-load status read and reveal must not run against it.
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("working_changes");
+    expect(useRepo.getState().selectedCommit).toBe("tip");
+    expect(useRepo.getState().revealTarget).toBeNull();
   });
 });
 

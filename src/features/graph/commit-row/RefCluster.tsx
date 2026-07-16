@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import type { RefLabel } from "@/lib/api";
+import { useRepo } from "@/store/repo";
 import { buildClusterItems } from "@/features/graph/refCluster";
 import { CombinedRefPill } from "./CombinedRefPill";
+import { DetachedHeadPill } from "./DetachedHeadPill";
 import { RefPill } from "./RefPill";
 import { useDetachedWorktreesAt } from "./useDetachedWorktrees";
 import { WorktreePill } from "./WorktreePill";
@@ -11,7 +13,9 @@ import { WorktreePill } from "./WorktreePill";
  * width for the common in-sync case); clicking it splits them back into the
  * individual RefPills so a specific ref can be dragged / right-clicked.
  * Detached worktrees parked on the commit trail the refs as worktree pills —
- * they aren't refs, but they're the only way such a checkout shows up here. */
+ * they aren't refs, but they're the only way such a checkout shows up here.
+ * A detached HEAD leads with the HEAD pill: no ref carries the ✓ then, so the
+ * checked-out row would otherwise be unlabelled. */
 export function RefCluster({
   refs,
   currentBranch,
@@ -26,9 +30,13 @@ export function RefCluster({
   const [expandedBase, setExpandedBase] = useState<string | null>(null);
   const items = useMemo(() => buildClusterItems(refs, currentBranch), [refs, currentBranch]);
   const detachedWorktrees = useDetachedWorktreesAt(commitId);
-  if (items.length === 0 && detachedWorktrees.length === 0) return null;
+  const isDetachedHead = useRepo(
+    (s) => (s.summary?.detached ?? false) && s.summary?.headOid === commitId,
+  );
+  if (items.length === 0 && detachedWorktrees.length === 0 && !isDetachedHead) return null;
   return (
     <>
+      {isDetachedHead && <DetachedHeadPill />}
       {items.map((it) =>
         it.type === "group" ? (
           <CombinedRefPill
