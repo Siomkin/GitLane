@@ -3,11 +3,15 @@ import type { RefLabel } from "@/lib/api";
 import { buildClusterItems } from "@/features/graph/refCluster";
 import { CombinedRefPill } from "./CombinedRefPill";
 import { RefPill } from "./RefPill";
+import { useDetachedWorktreesAt } from "./useDetachedWorktrees";
+import { WorktreePill } from "./WorktreePill";
 
 /** A commit's refs rendered inline as pills before the message. A local branch
  * and the remote-tracking ref(s) of the same name collapse into one pill (saved
  * width for the common in-sync case); clicking it splits them back into the
- * individual RefPills so a specific ref can be dragged / right-clicked. */
+ * individual RefPills so a specific ref can be dragged / right-clicked.
+ * Detached worktrees parked on the commit trail the refs as worktree pills —
+ * they aren't refs, but they're the only way such a checkout shows up here. */
 export function RefCluster({
   refs,
   currentBranch,
@@ -21,7 +25,8 @@ export function RefCluster({
 }) {
   const [expandedBase, setExpandedBase] = useState<string | null>(null);
   const items = useMemo(() => buildClusterItems(refs, currentBranch), [refs, currentBranch]);
-  if (items.length === 0) return null;
+  const detachedWorktrees = useDetachedWorktreesAt(commitId);
+  if (items.length === 0 && detachedWorktrees.length === 0) return null;
   return (
     <>
       {items.map((it) =>
@@ -45,6 +50,9 @@ export function RefCluster({
           />
         ),
       )}
+      {detachedWorktrees.map((wt) => (
+        <WorktreePill key={wt.path} wt={wt} />
+      ))}
     </>
   );
 }

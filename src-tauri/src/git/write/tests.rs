@@ -1853,6 +1853,35 @@ fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destinat
 }
 
 #[test]
+fn worktrees_reports_each_entry_head_oid() {
+    // A detached worktree has no branch to resolve through, so the porcelain
+    // `HEAD` oid is the UI's only way to locate it in the graph.
+    let repo = TempRepo::new("wt-head-oid");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("f.txt"), "x\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-head-oid");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+
+    let head = git_at(&repo.0, &["rev-parse", "HEAD"]);
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+
+    let list = worktrees(repo.path()).expect("list worktrees");
+    let detached = list.iter().find(|w| !w.is_main).expect("linked worktree");
+    assert!(detached.branch.is_none(), "worktree should be detached");
+    assert_eq!(detached.head.as_deref(), Some(head.as_str()));
+    // Branch-holding entries carry their HEAD oid too (the default-branch name
+    // depends on the host's init.defaultBranch, so only its presence is checked).
+    let main_entry = list.iter().find(|w| w.is_main).expect("main entry");
+    assert!(main_entry.branch.is_some(), "main should be on a branch");
+    assert_eq!(main_entry.head.as_deref(), Some(head.as_str()));
+}
+
+#[test]
 fn remove_worktree_force_overrides_a_lock() {
     let repo = TempRepo::new("wt-locked");
     repo.git_ok(&["init", "-q"]);

@@ -97,6 +97,20 @@ describe("useNavigatorSections", () => {
     expect(s.worktrees[0].match).toBe(true);
   });
 
+  it("resolves a worktree's oid from its branch tip", () => {
+    const s = render("");
+    expect(s.worktrees[0].oid).toBe("c1");
+  });
+
+  it("resolves a detached worktree's oid from its HEAD commit", () => {
+    // No branch to resolve through — the porcelain HEAD oid is the only anchor.
+    seed({ worktrees: [{ name: "wt", path: "/wt", branch: null, head: "c1", isMain: false }] });
+    const s = render("");
+    expect(s.worktrees[0].oid).toBe("c1");
+    // Detached ⇒ the row label falls back to the directory name.
+    expect(s.worktrees[0].label).toBe("wt");
+  });
+
   it("flags a local branch checked out in a non-active worktree with that worktree's name", () => {
     const s = render("");
     // feature/search is checked out in the linked worktree "wt" (path /wt).

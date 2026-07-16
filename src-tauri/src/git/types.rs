@@ -310,6 +310,9 @@ pub struct WorktreeInfo {
     pub path: String,
     /// Checked-out branch (short name), or None when detached / bare.
     pub branch: Option<String>,
+    /// Commit oid the worktree's HEAD points at (`HEAD` attribute), or None for
+    /// a bare entry. Lets the UI locate a detached worktree in the graph.
+    pub head: Option<String>,
     /// True for the primary (main) worktree.
     pub is_main: bool,
     /// True when this is a bare repository (`git worktree list --porcelain`

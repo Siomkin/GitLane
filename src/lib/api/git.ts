@@ -344,6 +344,10 @@ export interface WorktreeInfo {
   name: string;
   path: string;
   branch: string | null;
+  /** Commit oid the worktree's HEAD points at, or null for a bare entry — how a
+   * detached worktree (no branch) is located in the graph. Optional for
+   * backward-compatible fixtures; the backend always sends it. */
+  head?: string | null;
   isMain: boolean;
   /** Bare repository (no working tree) — can't be a handoff destination. Optional
    * for backward-compatible fixtures; the backend always sends it. */

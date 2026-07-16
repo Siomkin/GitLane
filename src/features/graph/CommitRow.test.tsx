@@ -89,6 +89,46 @@ describe("CommitRow ref pills", () => {
     expect(screen.queryByTitle(/Checked out in worktree/)).not.toBeInTheDocument();
   });
 
+  it("shows a worktree pill for a detached worktree parked on the commit", () => {
+    useRepo.setState({
+      worktrees: [
+        { name: "repo-wt", path: "/work/repo-wt", branch: null, head: "c1", isMain: false },
+      ],
+    });
+    render(<CommitRow {...baseProps} commit={commit()} />);
+    const pill = screen.getByTitle("Worktree (detached): /work/repo-wt");
+    expect(pill).toHaveTextContent("repo-wt");
+  });
+
+  it("shows no worktree pill on other commits or for branch-holding worktrees", () => {
+    useRepo.setState({
+      worktrees: [
+        // Parked elsewhere — not this row's commit.
+        { name: "elsewhere", path: "/work/elsewhere", branch: null, head: "c9", isMain: false },
+        // Has a branch — surfaces through the branch pill's glyph, not this pill.
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", head: "c1", isMain: false },
+      ],
+    });
+    render(<CommitRow {...baseProps} commit={commit()} />);
+    expect(screen.queryByTitle(/Worktree \(detached\)/)).not.toBeInTheDocument();
+  });
+
+  it("right-clicking the detached worktree pill opens the worktree menu, not the commit menu", () => {
+    useRepo.setState({
+      worktrees: [
+        { name: "repo-wt", path: "/work/repo-wt", branch: null, head: "c1", isMain: false },
+      ],
+    });
+    render(<CommitRow {...baseProps} commit={commit()} />);
+    fireEvent.contextMenu(screen.getByTitle("Worktree (detached): /work/repo-wt"));
+    expect(useUi.getState().worktreeMenu).toMatchObject({
+      path: "/work/repo-wt",
+      name: "repo-wt",
+      isMain: false,
+    });
+    expect(useUi.getState().commitMenu).toBeNull();
+  });
+
   it("double-clicks a remote-only ref into a local tracking checkout", async () => {
     const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
     const checkoutBranch = vi.fn().mockResolvedValue("detached");
