@@ -4,6 +4,7 @@ import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { ErrorFallback } from "./components/ui/ErrorFallback";
+import { Loading } from "./components/ui/Loading";
 import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { TitleBar } from "./components/chrome/TitleBar";
 import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
@@ -15,7 +16,7 @@ import { RightPanel } from "./features/changes/RightPanel";
 import { cn } from "./lib/cn";
 import { accentVars } from "./lib/accent";
 import { isMac, isTauri } from "./lib/platform";
-import { useRepo } from "./store/repo";
+import { SESSION_RESTORE_PHASE, useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useResolvedTheme } from "./hooks/useResolvedTheme";
 import { useAutoFetch } from "./hooks/useAutoFetch";
@@ -24,6 +25,9 @@ import "./App.css";
 const App = () => {
   const summary = useRepo((state) => state.summary);
   const missingRepo = useRepo((state) => state.missingRepo);
+  const restoringSession = useRepo(
+    (state) => state.sessionRestorePhase !== SESSION_RESTORE_PHASE.Complete,
+  );
   const operationAdvisory = useRepo((state) => state.operationAdvisory);
   const hasConflictedFiles = useRepo((state) => state.changes.conflicted.length > 0);
   const theme = useResolvedTheme();
@@ -108,6 +112,8 @@ const App = () => {
           // A tab whose path no longer resolves (GL-108): the dedicated recovery
           // state replaces the workspace — never a banner over another repo.
           <MissingRepoScreen />
+        ) : restoringSession ? (
+          <Loading label="Restoring workspace…" className="flex-1" />
         ) : (
           <RepoOnboarding />
         )}
