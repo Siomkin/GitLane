@@ -113,6 +113,29 @@ describe("CommitRow ref pills", () => {
     expect(screen.queryByTitle(/Worktree \(detached\)/)).not.toBeInTheDocument();
   });
 
+  it("shows no worktree pill for the open worktree's own detached HEAD", () => {
+    // The open checkout (summary workdir /work/repo) is itself detached on this
+    // commit — the graph's HEAD marker already says "you are here", so a pill
+    // would duplicate it. Only *other* detached worktrees earn one.
+    useRepo.setState({
+      worktrees: [{ name: "repo", path: "/work/repo", branch: null, head: "c1", isMain: false }],
+    });
+    render(<CommitRow {...baseProps} commit={commit()} />);
+    expect(screen.queryByTitle(/Worktree \(detached\)/)).not.toBeInTheDocument();
+  });
+
+  it("shows one pill per detached worktree parked on the same commit", () => {
+    useRepo.setState({
+      worktrees: [
+        { name: "wt-a", path: "/work/wt-a", branch: null, head: "c1", isMain: false },
+        { name: "wt-b", path: "/work/wt-b", branch: null, head: "c1", isMain: false },
+      ],
+    });
+    render(<CommitRow {...baseProps} commit={commit()} />);
+    expect(screen.getByTitle("Worktree (detached): /work/wt-a")).toBeInTheDocument();
+    expect(screen.getByTitle("Worktree (detached): /work/wt-b")).toBeInTheDocument();
+  });
+
   it("right-clicking the detached worktree pill opens the worktree menu, not the commit menu", () => {
     useRepo.setState({
       worktrees: [
