@@ -1,4 +1,4 @@
-import { type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useUi } from "@/store/ui";
 
 export function Tooltip() {
@@ -19,14 +19,28 @@ export function Tooltip() {
 export function useTruncatedTooltip(text: string) {
   const showTooltip = useUi((s) => s.showTooltip);
   const hideTooltip = useUi((s) => s.hideTooltip);
+  // Clicking a row can unmount it (e.g. the branch navigator closes) before
+  // mouseleave ever fires, which would strand the tooltip on screen — so hide
+  // it on unmount too, but only if this element is the one showing it.
+  const shown = useRef(false);
+  useEffect(
+    () => () => {
+      if (shown.current && useUi.getState().tooltip?.text === text) hideTooltip();
+    },
+    [hideTooltip, text],
+  );
   return {
     onMouseEnter: (e: ReactMouseEvent<HTMLElement>) => {
       const el = e.currentTarget.querySelector<HTMLElement>("[data-truncate]") ?? e.currentTarget;
       if (el.scrollWidth > el.clientWidth + 1) {
         const r = e.currentTarget.getBoundingClientRect();
+        shown.current = true;
         showTooltip(text, r.left + r.width / 2, r.top);
       }
     },
-    onMouseLeave: () => hideTooltip(),
+    onMouseLeave: () => {
+      shown.current = false;
+      hideTooltip();
+    },
   };
 }
