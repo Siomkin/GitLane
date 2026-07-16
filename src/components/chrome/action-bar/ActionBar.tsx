@@ -32,6 +32,7 @@ export const ActionBar = () => {
     forge,
     loading,
     busy,
+    fetchBlocked,
     showPulls,
     workCount,
     prCount,
@@ -161,14 +162,20 @@ export const ActionBar = () => {
             icon={<FetchIcon />}
             onClick={m.runFetch}
             pending={busy === "fetch"}
-            disabled={(loading && busy !== "fetch") || !summary}
+            disabled={(loading && busy !== "fetch") || fetchBlocked || !summary}
           />
           <ToolbarAction
             label="Pull"
             icon={<PullIcon />}
             onClick={m.runPull}
             pending={busy === "pull"}
-            disabled={(loading && busy !== "pull") || !summary || !currentSync.canPull}
+            disabled={
+              (loading && busy !== "pull") ||
+              busy === "fetch" ||
+              fetchBlocked ||
+              !summary ||
+              !currentSync.canPull
+            }
             title={currentSync.canPull ? currentSync.title : `Pull unavailable. ${currentSync.title}`}
           />
           <ToolbarAction
@@ -176,7 +183,13 @@ export const ActionBar = () => {
             icon={<PushIcon />}
             onClick={m.runPush}
             pending={busy === "push"}
-            disabled={(loading && busy !== "push") || !summary || !currentSync.canPush}
+            disabled={
+              (loading && busy !== "push") ||
+              busy === "fetch" ||
+              fetchBlocked ||
+              !summary ||
+              !currentSync.canPush
+            }
             title={currentSync.canPush ? currentSync.title : `Push unavailable. ${currentSync.title}`}
           />
           <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={m.openCreateBranch} disabled={!summary} />

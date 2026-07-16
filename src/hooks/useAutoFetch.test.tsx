@@ -14,6 +14,7 @@ beforeEach(() => {
     remotes: [{ name: "origin", fetchUrl: "https://example.test/repo.git", pushUrl: "https://example.test/repo.git", isDefault: true }],
     loading: false,
     netOps: 0,
+    fetchingPath: null,
     fetch: vi.fn(async () => true),
   });
 });

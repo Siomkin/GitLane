@@ -2,7 +2,9 @@ use super::branches::align_equivalent_sibling;
 use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution, worktree_path};
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;
-use super::remotes::{is_missing_remote_ref, is_tag_clobber_rejection};
+use super::remotes::{
+    is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection,
+};
 use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_push_remote,
@@ -2599,6 +2601,19 @@ fn tag_clobber_detection_does_not_mask_real_fetch_errors() {
     ));
     assert!(!is_tag_clobber_rejection(
         "error: could not fetch origin\n ! [rejected] 0.1.1 -> 0.1.1 (would clobber existing tag)"
+    ));
+}
+
+#[test]
+fn concurrent_fetch_ref_update_detection_is_narrow() {
+    assert!(is_concurrent_fetch_ref_update(
+        "error: cannot lock ref 'refs/remotes/origin/latest': is at ed578d30 but expected 857461bc\n ! 857461bc..ed578d30 latest -> origin/latest (unable to update local ref)"
+    ));
+    assert!(!is_concurrent_fetch_ref_update(
+        "error: cannot lock ref 'refs/remotes/origin/latest': Unable to create '/repo/.git/refs/remotes/origin/latest.lock': File exists."
+    ));
+    assert!(!is_concurrent_fetch_ref_update(
+        "fatal: Authentication failed for 'https://github.com/o/r.git/'"
     ));
 }
 

@@ -291,6 +291,10 @@ export interface RepoState {
    * component-local guard — so the auto-fetch scheduler checks this instead to
    * avoid overlapping a foreground transport operation. */
   netOps: number;
+  /** Repository whose remote refs are currently being fetched, if any. Kept
+   * separate from [`loading`] so a quiet automatic fetch can drive the Fetch
+   * button without blocking the rest of the app shell. */
+  fetchingPath: string | null;
   /** True while the initial commit graph for a freshly opened repo is still in
    * flight. Decoupled from [`loading`] so the app shell + history skeleton can
    * paint as soon as the (cheap) summary lands, without waiting on the heavy
@@ -667,6 +671,7 @@ export type RepoDataState = Pick<
   | "graphLimit"
   | "loading"
   | "netOps"
+  | "fetchingPath"
   | "graphLoading"
   | "loadingMoreHistory"
   | "diffLoading"
@@ -723,6 +728,7 @@ export function createInitialRepoData(
     graphLimit: INITIAL_GRAPH_LIMIT,
     loading: false,
     netOps: 0,
+    fetchingPath: null,
     graphLoading: false,
     loadingMoreHistory: false,
     diffLoading: false,

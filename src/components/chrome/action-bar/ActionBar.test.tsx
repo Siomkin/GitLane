@@ -47,7 +47,15 @@ const precedes = (a: Element, b: Element) =>
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
-  useRepo.setState({ summary: SUMMARY, forge: FORGE, branches: [branch()], worktrees: [], remotes: [] });
+  useRepo.setState({
+    summary: SUMMARY,
+    forge: FORGE,
+    branches: [branch()],
+    worktrees: [],
+    remotes: [],
+    loading: false,
+    fetchingPath: null,
+  });
   useUi.setState({ prompt: null, navOpen: false, leftTab: "history" });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({
@@ -611,6 +619,24 @@ describe("ActionBar PR badge polling (GL-182)", () => {
 });
 
 describe("ActionBar network ops — one at a time (GL-182)", () => {
+  it("shows an automatic fetch on the Fetch button and blocks sibling network actions", () => {
+    useRepo.setState({
+      fetchingPath: SUMMARY.path,
+      branches: [
+        branch({
+          sync: { status: "behind", upstream: "origin/main", ahead: 0, behind: 1 },
+        }),
+      ],
+    });
+
+    render(<ActionBar />);
+
+    const fetchButton = screen.getByTitle("Fetch");
+    expect(fetchButton.querySelector(".animate-spin")).not.toBeNull();
+    expect(fetchButton).toBeEnabled();
+    expect(screen.getByTitle("1 commit behind origin/main.")).toBeDisabled();
+  });
+
   it("ignores a second network op while the first is still in flight", async () => {
     let resolveFetch!: () => void;
     const fetch = vi.fn(

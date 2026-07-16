@@ -216,6 +216,12 @@ export function createRepoWriteActions(
   | "pull"
   | "push"
 > {
+  // Git rejects concurrent fetches when both processes prepare the same
+  // remote-tracking ref update from the same old oid. Coalesce every in-app
+  // fetch for the displayed repo onto one transport promise; the backend also
+  // retries once for the equivalent race with an external git process.
+  let fetchTransport: { path: string; promise: Promise<unknown> } | null = null;
+
   // Per-remote account resolution (GL-129): every push-family call sends the
   // account bound to the remote it actually targets, not one repo-wide pick.
   const authFor = (remote: string | null) =>
@@ -927,9 +933,14 @@ export function createRepoWriteActions(
       // repo switch can't clear the new repo's loading lifecycle or refresh the
       // wrong checkout. Toast plumbing is global UI and stays unguarded.
       const opPath = summary.path;
-      // A quiet (background) fetch must be invisible: it doesn't hold `loading`
-      // (the ActionBar disables on it; `netOps` from trackNet is the overlap
-      // signal the scheduler watches) and must not clear an unrelated `error`.
+      // A fetch can outlive a repo switch. Never start another app fetch while
+      // it is still updating refs (linked worktrees may share those refs). The
+      // ActionBar disables the new repo's network buttons for this short window.
+      if (fetchTransport && fetchTransport.path !== opPath) return false;
+      // A quiet (background) fetch doesn't hold global `loading` or raise
+      // notifications; `fetchingPath` drives the Fetch-button spinner, while
+      // `netOps` remains the scheduler's overlap signal. It also must not clear
+      // an unrelated `error`.
       if (!opts?.quiet) set({ loading: true, error: null });
       // Capture how far behind the tracked branch is *before* fetching so the
       // success toast can report how many commits the remote ref gained.
@@ -954,7 +965,23 @@ export function createRepoWriteActions(
           .filter((pair): pair is { remote: string; auth: NonNullable<typeof pair.auth> } =>
             pair.auth !== null,
           );
-        await trackNet(() => api.fetch(summary.path, remoteAccounts));
+        let transport = fetchTransport?.promise;
+        if (!transport) {
+          // Defer the invoke by one microtask so the single-flight owner and its
+          // visible Fetch-button state are published before transport begins.
+          transport = Promise.resolve().then(() =>
+            trackNet(() => api.fetch(summary.path, remoteAccounts)),
+          );
+          fetchTransport = { path: opPath, promise: transport };
+          set({ fetchingPath: opPath });
+          const clearTransport = () => {
+            if (fetchTransport?.promise !== transport) return;
+            fetchTransport = null;
+            if (get().fetchingPath === opPath) set({ fetchingPath: null });
+          };
+          void transport.then(clearTransport, clearTransport);
+        }
+        await transport;
       } catch (e) {
         // Replay any re-sync deferred while this fetch held `loading` (GL-20
         // review). A quiet fetch held nothing, so it has no state to restore.
