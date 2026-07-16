@@ -13,7 +13,7 @@ use super::{
     fast_forward, fast_forward_branch, fetch, head_push_remote, mark_conflict_resolved, merge,
     move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
-    reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file, revert,
+    rebase, reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file, revert,
     revert_many, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
     skip_operation, stage_file, stage_files, stash, stash_apply, stash_branch, stash_drop,
     stash_list, stash_pop, unstage_all, unstage_file, unstage_files, worktrees, write_repo_file,
@@ -88,6 +88,121 @@ fn rev_parse(repo: &TempRepo, rev: &str) -> String {
     let out = repo.git(&["rev-parse", rev]);
     assert!(out.status.success(), "rev-parse {rev} should resolve");
     String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn rebase_uses_explicit_source_instead_of_previously_active_branch() {
+    let repo = TempRepo::new("rebase-explicit-source");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    repo.git_ok(&["checkout", "-q", "-b", "previously-active"]);
+    std::fs::write(repo.0.join("active.txt"), "active\n").unwrap();
+    repo.git_ok(&["add", "active.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "previously active work"]);
+    let active_tip = rev_parse(&repo, "previously-active");
+
+    rebase(repo.path(), "feature", "main").expect("rebase explicit source onto main");
+
+    let head = repo.git(&["branch", "--show-current"]);
+    assert!(head.status.success());
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feature");
+    assert_eq!(rev_parse(&repo, "feature^"), main_tip);
+    assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+    let active_is_feature_ancestor = repo.git(&[
+        "merge-base",
+        "--is-ancestor",
+        "previously-active",
+        "feature",
+    ]);
+    assert!(
+        !active_is_feature_ancestor.status.success(),
+        "the previously active branch must not become the rebase target"
+    );
+}
+
+#[test]
+fn rebase_keeps_detached_head_support_with_an_explicit_source() {
+    let repo = TempRepo::new("rebase-detached-source");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    let base = rev_parse(&repo, "HEAD");
+
+    repo.git_ok(&["checkout", "-q", "--detach", &base]);
+    std::fs::write(repo.0.join("detached.txt"), "detached\n").unwrap();
+    repo.git_ok(&["add", "detached.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "detached work"]);
+    let detached_tip = rev_parse(&repo, "HEAD");
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+    repo.git_ok(&["checkout", "-q", "--detach", &detached_tip]);
+
+    rebase(repo.path(), "HEAD", "main").expect("rebase detached HEAD onto main");
+
+    let head = repo.git(&["branch", "--show-current"]);
+    assert!(head.status.success());
+    assert!(head.stdout.is_empty(), "HEAD should remain detached");
+    assert_eq!(rev_parse(&repo, "HEAD^"), main_tip);
+    let message = repo.git(&["log", "-1", "--format=%s"]);
+    assert!(message.status.success());
+    assert_eq!(String::from_utf8_lossy(&message.stdout).trim(), "detached work");
+}
+
+#[test]
+fn rebase_explicit_source_prefers_a_local_branch_over_same_named_tag() {
+    let repo = TempRepo::new("rebase-ambiguous-source");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["tag", "feature"]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    rebase(repo.path(), "feature", "main").expect("rebase the branch, not its tag");
+
+    let head = repo.git(&["branch", "--show-current"]);
+    assert!(head.status.success());
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feature");
+    assert_eq!(rev_parse(&repo, "refs/heads/feature^"), main_tip);
 }
 
 /// Build `base ─ main work ─ M` on `main` where `M` merges a `feature` branch

@@ -16,6 +16,7 @@ import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCreateWorktree, promptNewBranchWorktree } from "./prompts";
+import { confirmRebase } from "./rebaseConfirm";
 
 export function CommitContextMenu() {
   const menu = useUi((s) => s.commitMenu);
@@ -29,7 +30,6 @@ export function CommitContextMenu() {
   const selectedCommit = useRepo((s) => s.selectedCommit);
   const summary = useRepo((s) => s.summary);
   const graph = useRepo((s) => s.graph);
-  const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const checkoutDetached = useRepo((s) => s.checkoutDetached);
   const cherryPickCommit = useRepo((s) => s.cherryPickCommit);
   const cherryPickMany = useRepo((s) => s.cherryPickMany);
@@ -166,7 +166,17 @@ export function CommitContextMenu() {
       note: `into ${cur}`,
       submenu: [
         { label: `Merge ${shortSha}`, onClick: () => act(() => mergeInto(sha, cur)) },
-        { label: `Rebase onto ${shortSha}`, onClick: () => act(async () => { if (cur !== "HEAD") await checkoutBranch(cur); return rebaseOnto(sha); }) },
+        {
+          label: `Rebase onto ${shortSha}`,
+          onClick: () =>
+            confirmRebase({
+              source: cur,
+              onto: shortSha,
+              needsCheckout: false,
+              requestConfirm,
+              proceed: () => act(() => rebaseOnto(cur, sha)),
+            }),
+        },
         { label: "Cherry-pick", onClick: () => act(() => cherryPickCommit(sha)) },
         { label: "Revert", onClick: () => act(() => revertCommit(sha)) },
       ],

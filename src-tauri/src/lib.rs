@@ -299,8 +299,8 @@ async fn fast_forward_branch(
 }
 
 #[tauri::command]
-async fn rebase_onto(path: String, onto: String) -> Result<String, String> {
-    blocking(move || git::write::rebase(&path, &onto)).await
+async fn rebase_onto(path: String, source: String, onto: String) -> Result<String, String> {
+    blocking(move || git::write::rebase(&path, &source, &onto)).await
 }
 
 #[tauri::command]

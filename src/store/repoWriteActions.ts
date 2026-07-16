@@ -394,14 +394,14 @@ export function createRepoWriteActions(
         return `Fast-forwarded ${to} to ${from}`;
       }),
 
-    rebaseOnto: (onto) =>
+    rebaseOnto: (source, onto) =>
       runMaybeConflict(
         get,
         async (summary) => {
-          await api.rebaseOnto(summary.path, onto);
-          return `Rebased onto ${onto}`;
+          await api.rebaseOnto(summary.path, source, onto);
+          return `Rebased ${source} onto ${onto}`;
         },
-        `Rebasing onto ${onto}`,
+        `Rebasing ${source} onto ${onto}`,
       ),
 
     resetCurrentTo: (target, mode) =>

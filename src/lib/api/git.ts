@@ -746,8 +746,10 @@ export const gitApi = {
   fastForwardBranch: (path: string, branch: string, target: string) =>
     invoke<string>("fast_forward_branch", { path, branch, target }),
 
-  rebaseOnto: (path: string, onto: string) =>
-    invoke<string>("rebase_onto", { path, onto }),
+  /** Rebase the explicit `source` branch/revision onto `onto`; the backend
+   * carries both operands through one git process instead of trusting HEAD. */
+  rebaseOnto: (path: string, source: string, onto: string) =>
+    invoke<string>("rebase_onto", { path, source, onto }),
 
   resetTo: (path: string, target: string, mode: "soft" | "mixed" | "hard") =>
     invoke<string>("reset_to", { path, target, mode }),

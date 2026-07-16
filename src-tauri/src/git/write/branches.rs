@@ -302,11 +302,17 @@ pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<Str
     run_git(repo, &["fetch", ".", &format!("{target}:{branch}")])
 }
 
-/// Rebase the current HEAD onto `onto`.
-pub fn rebase(repo: &str, onto: &str) -> Result<String, String> {
+/// Rebase `source` onto `onto`.
+///
+/// Passing both operands to one `git rebase <onto> <source>` process is
+/// deliberate: the source branch is part of the write contract instead of
+/// depending on whichever branch happens to be checked out when the command
+/// starts. Git performs the source checkout itself before replaying commits.
+pub fn rebase(repo: &str, source: &str, onto: &str) -> Result<String, String> {
+    ensure_operand(source)?;
     ensure_operand(onto)?;
     let target = qualify_branch_if_ambiguous(repo, onto);
-    run_git(repo, &["rebase", &target])
+    run_git(repo, &["rebase", &target, source])
 }
 
 /// Whether `commit` is a merge commit (more than one parent). Git refuses to

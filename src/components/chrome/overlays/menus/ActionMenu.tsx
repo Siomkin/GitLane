@@ -14,6 +14,7 @@ import { useUi } from "@/store/ui";
 import { Backdrop, useBranchOp, useFittedMenuPosition } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { confirmCheckoutPrereq } from "./checkoutPrereq";
+import { confirmRebase } from "./rebaseConfirm";
 
 /** Glyph + tint for an action kind — state-free. */
 const iconFor = (kind: GraphActionKind) =>
@@ -124,17 +125,13 @@ export function ActionMenu() {
           return () => act(() => fastForwardTo(rev, from.name));
         case "rebase-source":
           return () =>
-            confirmCheckoutPrereq({
-              headBranch,
-              branch: from.name,
-              operation: `rebase ${from.name} onto ${revLabel}`,
-              confirmLabel: "Check out and rebase",
+            confirmRebase({
+              source: from.name,
+              onto: revLabel,
+              needsCheckout: headBranch !== from.name,
               requestConfirm,
               proceed: () =>
-                act(async () => {
-                  await checkoutBranch(from.name);
-                  return rebaseOnto(rev);
-                }),
+                act(() => rebaseOnto(from.name, rev)),
             });
         case "reset-source":
           return () => requestMixedReset(from.name, rev, revLabel);
@@ -162,31 +159,23 @@ export function ActionMenu() {
           });
       case "rebase-target":
         return () =>
-          confirmCheckoutPrereq({
-            headBranch,
-            branch: to.name,
-            operation: `rebase ${to.name} onto ${from.name}`,
-            confirmLabel: "Check out and rebase",
+          confirmRebase({
+            source: to.name,
+            onto: from.name,
+            needsCheckout: headBranch !== to.name,
             requestConfirm,
             proceed: () =>
-              act(async () => {
-                await checkoutBranch(to.name);
-                return rebaseOnto(from.name);
-              }),
+              act(() => rebaseOnto(to.name, from.name)),
           });
       case "rebase-source":
         return () =>
-          confirmCheckoutPrereq({
-            headBranch,
-            branch: from.name,
-            operation: `rebase ${from.name} onto ${to.name}`,
-            confirmLabel: "Check out and rebase",
+          confirmRebase({
+            source: from.name,
+            onto: to.name,
+            needsCheckout: headBranch !== from.name,
             requestConfirm,
             proceed: () =>
-              act(async () => {
-                await checkoutBranch(from.name);
-                return rebaseOnto(to.name);
-              }),
+              act(() => rebaseOnto(from.name, to.name)),
           });
       case "reset-target":
         return () => requestMixedReset(to.name, from.name, from.name);
@@ -199,9 +188,10 @@ export function ActionMenu() {
 
   // The branch a checkout-based op must check out before running: merge/rebase/
   // reset all switch the working tree to the ref they mutate (merge via
-  // `mergeInto`, the others via `checkoutBranch`). Fast-forward moves a ref in
-  // place and never checks out, so it isn't listed. `to`/`from` are only local
-  // in the directions where these kinds are produced, matching the specs.
+  // `mergeInto`, rebase via its explicit backend source, reset via
+  // `checkoutBranch`). Fast-forward moves a ref in place and never checks out,
+  // so it isn't listed. `to`/`from` are only local in the directions where
+  // these kinds are produced, matching the specs.
   const checkoutBranchFor = (kind: GraphActionKind): string | null => {
     switch (kind) {
       case "merge-target":

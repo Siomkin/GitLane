@@ -23,6 +23,7 @@ import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCompareBranch, promptCreateWorktree } from "./prompts";
+import { confirmRebase } from "./rebaseConfirm";
 
 export function BranchContextMenu() {
   const menu = useUi((s) => s.contextMenu);
@@ -214,7 +215,17 @@ export function BranchContextMenu() {
     const children: MenuItem[] = [];
     if (canFf) children.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
     children.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
-    children.push({ label: `Rebase onto ${b}`, onClick: () => act(async () => { await checkoutBranch(cur); return rebaseOnto(b); }) });
+    children.push({
+      label: `Rebase onto ${b}`,
+      onClick: () =>
+        confirmRebase({
+          source: cur,
+          onto: b,
+          needsCheckout: false,
+          requestConfirm,
+          proceed: () => act(() => rebaseOnto(cur, b)),
+        }),
+    });
     if (tip) {
       children.push({ label: "Cherry-pick tip", onClick: () => act(() => cherryPickCommit(tip)) });
       children.push({ label: "Revert tip", onClick: () => act(() => revertCommit(tip)) });
