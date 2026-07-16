@@ -12,6 +12,7 @@ mod branches;
 mod cli;
 mod conflict_resolution;
 mod files;
+mod head;
 mod identity;
 mod lifecycle;
 mod operands;
@@ -24,9 +25,15 @@ mod tests;
 mod worktrees;
 
 pub use branches::{
-    checkout, checkout_remote_branch, cherry_pick, cherry_pick_many, create_annotated_tag,
-    create_branch, create_patch, create_tag, delete_branch, delete_tag, fast_forward,
-    fast_forward_branch, merge, rebase, rename_branch, reset, revert, revert_many, set_upstream,
+    checkout, checkout_remote_branch, cherry_pick_many_onto, cherry_pick_onto,
+    create_annotated_tag, create_branch, create_patch, create_tag, delete_branch, delete_tag,
+    fast_forward_branch_at, merge_into, rebase, rename_branch, reset_branch, revert_many_onto,
+    revert_onto, set_upstream,
+};
+#[cfg(test)]
+pub use branches::{
+    cherry_pick, cherry_pick_many, fast_forward, fast_forward_branch, merge, reset, revert,
+    revert_many,
 };
 pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
@@ -40,16 +47,21 @@ pub use recovery::{
     preview_reset, reflog_entries,
 };
 pub use remotes::{
-    add_remote, branch_push_remote, delete_remote_branch, delete_remote_tag, fetch, force_push,
-    head_pull_remote, head_push_remote, publish_branch, publish_remote, pull, push, push_branch,
-    push_tag, remove_remote, set_remote_url, set_remote_username,
+    add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
+    fetch, force_push, publish_branch, publish_remote, pull_branch, push_branch, push_tag,
+    remove_remote, set_remote_url, set_remote_username,
 };
+#[cfg(test)]
+pub use remotes::{head_push_remote, pull};
 pub use staging::{
-    apply_hunk, apply_line, commit, discard_all, discard_file, stage_all, stage_file, stage_files,
-    unstage_all, unstage_file, unstage_files,
+    apply_hunk, apply_line, commit_expected, discard_all, discard_file, squash_commits, stage_all,
+    stage_file, stage_files, unstage_all, unstage_file, unstage_files,
 };
+#[cfg(test)]
+pub use stashes::{stash, stash_apply, stash_pop};
 pub use stashes::{
-    stash, stash_apply, stash_apply_index, stash_branch, stash_drop, stash_list, stash_pop,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_pop_onto,
 };
 pub use worktrees::{
     add_worktree, delete_branch_with_worktree, move_branch_to_worktree, remove_worktree, worktrees,

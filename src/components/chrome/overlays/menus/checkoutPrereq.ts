@@ -5,8 +5,7 @@ export interface CheckoutPrereqRequest {
   headBranch: string | null;
   /** Local branch the operation must check out before it can run. */
   branch: string;
-  /** The requested operation, phrased for "To <operation>, …" (e.g.
-   * `rebase feature onto main`). */
+  /** The requested operation (e.g. `rebase feature onto main`). */
   operation: string;
   /** Confirm-button label naming the combined action (e.g. "Check out and
    * rebase") — never a generic "Yes". */
@@ -28,7 +27,7 @@ export function confirmCheckoutPrereq(req: CheckoutPrereqRequest): void {
   }
   req.requestConfirm({
     title: `Check out ${req.branch}?`,
-    message: `To ${req.operation}, GitLane must check out branch "${req.branch}". Do you want to continue?`,
+    message: `Check out branch "${req.branch}" to ${req.operation}?`,
     confirmLabel: req.confirmLabel,
     onConfirm: req.proceed,
   });

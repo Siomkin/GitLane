@@ -1,6 +1,10 @@
 //! Branch, tag, patch, sequencer, and reset operations.
 
 use super::cli::{run_git, run_git_env_stable_diagnostics, run_git_with_input};
+use super::head::{
+    checkout_expected_branch, current_branch, ensure_commit_exists, ensure_expected_branch_tip,
+    ensure_expected_head, ensure_revision_at,
+};
 use super::operands::{ensure_operand, ensure_opt};
 
 /// Check out an existing branch, tag, or commit.
@@ -39,7 +43,9 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
             )
         })? {
             RemoteCheckoutUpdate::FastForward => {
-                fast_forward(repo, &remote_ref).map_err(|error| {
+                let local_oid = resolve_rev(repo, &local_ref)?;
+                let target_oid = resolve_rev(repo, &remote_ref)?;
+                fast_forward_branch_at(repo, branch, &local_oid, &target_oid).map_err(|error| {
                     format!(
                         "{branch} is checked out, but it couldn't be fast-forwarded to {remote_ref}: {error}"
                     )
@@ -216,14 +222,20 @@ pub(super) fn align_equivalent_sibling(
     Ok(format!("Aligned {local_ref} to {target_oid}"))
 }
 
-/// Create a branch `name` at `start_point` (defaults to HEAD).
-pub fn create_branch(repo: &str, name: &str, start_point: Option<&str>) -> Result<String, String> {
+/// Create a branch `name` at the validated `start_point`, pinned to the
+/// `expected_oid` the user saw. The start point is handed to git as the ref
+/// the user picked rather than its resolved oid, so branching from a
+/// remote-tracking ref keeps git's automatic upstream setup
+/// (`branch.autoSetupMerge`).
+pub fn create_branch(
+    repo: &str,
+    name: &str,
+    start_point: &str,
+    expected_oid: &str,
+) -> Result<String, String> {
     ensure_operand(name)?;
-    ensure_opt(start_point)?;
-    match start_point {
-        Some(sp) => run_git(repo, &["branch", name, sp]),
-        None => run_git(repo, &["branch", name]),
-    }
+    ensure_revision_at(repo, start_point, expected_oid)?;
+    run_git(repo, &["branch", name, start_point])
 }
 
 /// Delete a local branch. `force` maps to `-D` (drops the merged-safety check).
@@ -276,8 +288,54 @@ pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     run_git_env_stable_diagnostics(repo, &["merge", "--no-ff", "--no-edit", &target], &[])
 }
 
+/// Check out the explicit destination branch at the oid the user saw, verify
+/// the source revision has not moved, then merge. The destination is carried
+/// through one backend call instead of being an implicit frontend checkout.
+pub fn merge_into(
+    repo: &str,
+    source: &str,
+    expected_source_oid: &str,
+    destination: Option<&str>,
+    expected_destination_oid: &str,
+) -> Result<String, String> {
+    ensure_revision_at(repo, source, expected_source_oid)?;
+    match destination {
+        Some(branch) => checkout_expected_branch(repo, branch, expected_destination_oid)?,
+        None => ensure_expected_head(repo, None, Some(expected_destination_oid))?,
+    }
+    ensure_revision_at(repo, source, expected_source_oid)?;
+    merge(repo, &merge_source_operand(repo, source))
+}
+
+/// The operand handed to `git merge` for a validated fully-qualified `source`.
+/// Git copies the operand verbatim into the generated merge subject, so the
+/// qualified form would leave "Merge branch 'refs/heads/feature'" in history.
+/// Use the short human name whenever git would resolve it (and any
+/// re-qualification in [`merge`]) to the exact validated commit; every other
+/// case keeps the unambiguous qualified form — an accurate if uglier subject.
+fn merge_source_operand(repo: &str, source: &str) -> String {
+    let Some(short) = source
+        .strip_prefix("refs/heads/")
+        .or_else(|| source.strip_prefix("refs/remotes/"))
+    else {
+        return source.to_string();
+    };
+    let resolves_identically = ensure_operand(short).is_ok()
+        && qualify_branch_if_ambiguous(repo, short) == short
+        && matches!(
+            (resolve_rev(repo, short), resolve_rev(repo, source)),
+            (Ok(via_short), Ok(via_source)) if via_short == via_source
+        );
+    if resolves_identically {
+        short.to_string()
+    } else {
+        source.to_string()
+    }
+}
+
 /// Fast-forward the current HEAD to `target`. Fails (no merge commit) if the
 /// move isn't a fast-forward — callers should only offer this when it is.
+#[cfg(test)]
 pub fn fast_forward(repo: &str, target: &str) -> Result<String, String> {
     ensure_operand(target)?;
     run_git(repo, &["merge", "--ff-only", target])
@@ -289,6 +347,7 @@ pub fn fast_forward(repo: &str, target: &str) -> Result<String, String> {
 /// move (no `+` prefix), so it keeps the same FF-only safety as `fast_forward`.
 /// Git rejects this on the currently checked-out branch; callers must route the
 /// current branch through `fast_forward` instead.
+#[cfg(test)]
 pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<String, String> {
     // `git fetch . <target>:<branch>` has no `--` end-of-options guard, so a
     // dash-prefixed target/branch (e.g. `--upload-pack=…`) would be parsed as an
@@ -302,11 +361,84 @@ pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<Str
     run_git(repo, &["fetch", ".", &format!("{target}:{branch}")])
 }
 
-/// Rebase the current HEAD onto `onto`.
-pub fn rebase(repo: &str, onto: &str) -> Result<String, String> {
-    ensure_operand(onto)?;
-    let target = qualify_branch_if_ambiguous(repo, onto);
-    run_git(repo, &["rebase", &target])
+/// Fast-forward the explicit local branch from the oid the user saw to a
+/// captured target oid. The backend chooses the checked-out/non-checked-out
+/// mechanism from live Git state, never from a stale frontend HEAD snapshot.
+pub fn fast_forward_branch_at(
+    repo: &str,
+    branch: &str,
+    expected_branch_oid: &str,
+    target_oid: &str,
+) -> Result<String, String> {
+    ensure_expected_branch_tip(repo, branch, expected_branch_oid)?;
+    ensure_commit_exists(repo, target_oid)?;
+    if current_branch(repo).as_deref() == Some(branch) {
+        ensure_expected_head(repo, Some(branch), Some(expected_branch_oid))?;
+        return run_git(repo, &["merge", "--ff-only", target_oid]);
+    }
+
+    // A branch checked out in a linked worktree cannot be moved as a bare ref:
+    // doing so leaves that worktree's index and files at the old commit, which
+    // immediately appears as staged changes. Advance it inside its owning
+    // worktree so Git updates HEAD, index, and files together (and preserves
+    // Git's dirty-worktree refusal).
+    if let Some(owner) = super::worktrees::worktrees(repo)?
+        .into_iter()
+        .find(|worktree| {
+            worktree.branch.as_deref() == Some(branch) && !worktree.bare && !worktree.prunable
+        })
+    {
+        ensure_expected_head(&owner.path, Some(branch), Some(expected_branch_oid))?;
+        return run_git(&owner.path, &["merge", "--ff-only", target_oid]);
+    }
+
+    let destination = format!("refs/heads/{branch}");
+    if resolve_rev(repo, &destination)? == resolve_rev(repo, target_oid)? {
+        return Ok("Already up to date.".to_string());
+    }
+    if run_git(
+        repo,
+        &[
+            "merge-base",
+            "--is-ancestor",
+            expected_branch_oid,
+            target_oid,
+        ],
+    )
+    .is_err()
+    {
+        return Err(format!(
+            "Cannot fast-forward {branch}: the target is not a descendant of its expected tip."
+        ));
+    }
+    // Compare-and-swap the ref so even a branch move between the precondition
+    // check and this write cannot be overwritten.
+    run_git(
+        repo,
+        &["update-ref", &destination, target_oid, expected_branch_oid],
+    )
+}
+
+/// Rebase `source` onto `onto`.
+///
+/// Passing both operands to one `git rebase <onto> <source>` process is
+/// deliberate: the source branch is part of the write contract instead of
+/// depending on whichever branch happens to be checked out when the command
+/// starts. Git performs the source checkout itself before replaying commits.
+pub fn rebase(
+    repo: &str,
+    source: &str,
+    expected_source_oid: &str,
+    onto_oid: &str,
+) -> Result<String, String> {
+    ensure_operand(source)?;
+    ensure_commit_exists(repo, onto_oid)?;
+    if source == "HEAD" {
+        ensure_expected_head(repo, None, Some(expected_source_oid))?;
+    } else {
+        ensure_expected_branch_tip(repo, source, expected_source_oid)?;
+    }
+    run_git(repo, &["rebase", onto_oid, source])
 }
 
 /// Whether `commit` is a merge commit (more than one parent). Git refuses to
@@ -359,6 +491,16 @@ pub fn cherry_pick(repo: &str, commit: &str) -> Result<String, String> {
     }
 }
 
+pub fn cherry_pick_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: &str,
+    commit: &str,
+) -> Result<String, String> {
+    ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    cherry_pick(repo, commit)
+}
+
 /// Cherry-pick several commits onto the current HEAD in order (`git
 /// cherry-pick A B C…`). Unlike a client-side loop, batched invocations apply
 /// them with proper conflict handling — and stop cleanly on the first conflict
@@ -390,6 +532,16 @@ pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String
     Ok(outputs.join("\n"))
 }
 
+pub fn cherry_pick_many_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: &str,
+    commits: &[String],
+) -> Result<String, String> {
+    ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    cherry_pick_many(repo, commits)
+}
+
 /// Revert `commit`, creating a new commit that undoes it. Merge commits get
 /// `-m 1`: the revert undoes what the merge brought in relative to its first
 /// parent — the branch merged *into*, matching the graph's first-parent lane
@@ -401,6 +553,16 @@ pub fn revert(repo: &str, commit: &str) -> Result<String, String> {
     } else {
         run_git(repo, &["revert", "--no-edit", commit])
     }
+}
+
+pub fn revert_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: &str,
+    commit: &str,
+) -> Result<String, String> {
+    ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    revert(repo, commit)
 }
 
 /// Revert several commits in order (`git revert --no-edit A B…`); stops on the
@@ -428,6 +590,16 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
     }
     outputs.retain(|o| !o.is_empty());
     Ok(outputs.join("\n"))
+}
+
+pub fn revert_many_onto(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: &str,
+    commits: &[String],
+) -> Result<String, String> {
+    ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    revert_many(repo, commits)
 }
 
 /// Create a lightweight tag `name` at `sha` (defaults to HEAD). Reads back as a
@@ -488,6 +660,26 @@ pub fn reset(repo: &str, target: &str, mode: &str) -> Result<String, String> {
     };
     let target = qualify_branch_if_ambiguous(repo, target);
     run_git(repo, &["reset", flag, &target])
+}
+
+/// Reset the explicit source branch/HEAD snapshot to a captured target oid.
+/// Named branches are checked out and revalidated inside this backend call.
+pub fn reset_branch(
+    repo: &str,
+    source: Option<&str>,
+    expected_source_oid: Option<&str>,
+    target_oid: &str,
+    mode: &str,
+) -> Result<String, String> {
+    match (source, expected_source_oid) {
+        (Some(branch), Some(oid)) => checkout_expected_branch(repo, branch, oid)?,
+        (None, oid) => ensure_expected_head(repo, None, oid)?,
+        (Some(_), None) => {
+            return Err("The branch has no expected commit. Refresh and try again.".to_string())
+        }
+    }
+    ensure_commit_exists(repo, target_oid)?;
+    reset(repo, target_oid, mode)
 }
 
 /// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally

@@ -28,7 +28,7 @@ const realOpenCompare = useRepo.getState().openCompare;
 const realCheckoutBranch = useRepo.getState().checkoutBranch;
 const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
 const realRebaseOnto = useRepo.getState().rebaseOnto;
-const realResetCurrentTo = useRepo.getState().resetCurrentTo;
+const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realMergeInto = useRepo.getState().mergeInto;
 
 beforeEach(() => {
@@ -56,7 +56,7 @@ beforeEach(() => {
     checkoutBranch: realCheckoutBranch,
     checkoutRemoteBranch: realCheckoutRemoteBranch,
     rebaseOnto: realRebaseOnto,
-    resetCurrentTo: realResetCurrentTo,
+    resetBranchTo: realResetBranchTo,
     mergeInto: realMergeInto,
   });
   useUi.setState({
@@ -374,6 +374,102 @@ describe("BranchContextMenu", () => {
     await waitFor(() =>
       expect(createWorktreeAt).toHaveBeenCalledWith("/work/repo-wt-2", "abc1234"),
     );
+  });
+
+  it("offers fast-forward when the probe confirms it", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      branches: [
+        { ...localBranch("main"), target: "1111111", isHead: true },
+        { ...localBranch("feature"), target: "2222222" },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("can_fast_forward", {
+        path: "/work/repo",
+        from: "2222222",
+        to: "1111111",
+      }),
+    );
+    openGroup("Integrate into current");
+    expect(screen.getByRole("menuitem", { name: "Fast-forward to feature" })).toBeInTheDocument();
+  });
+
+  it("hides tip-derived actions when local and remote refs share a display name", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      branches: [
+        { ...localBranch("main"), target: "1111111", isHead: true },
+        { ...localBranch("origin/feature"), target: "2222222" },
+        { ...remoteBranch("origin/feature"), target: "3333333" },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    // With the ref unresolvable, every action that would act on the wrong
+    // match's tip or kind must vanish — not act on whichever came first.
+    openGroup("Integrate into current");
+    expect(screen.queryByRole("menuitem", { name: "Cherry-pick tip" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Merge origin/feature" })).toBeInTheDocument();
+    // Reset-to-tip and the local/remote delete items are all tip/kind-derived,
+    // so the whole Danger zone group disappears with them.
+    expect(screen.queryByRole("menuitem", { name: "Danger zone" })).not.toBeInTheDocument();
+  });
+
+  it("fails closed on the FF probe when local and remote refs share a display name", () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      branches: [
+        { ...localBranch("main"), target: "1111111", isHead: true },
+        // A local branch literally named like the remote ref, plus the remote
+        // ref itself — the menu payload has no kind, so the oid is ambiguous.
+        { ...localBranch("origin/feature"), target: "2222222" },
+        { ...remoteBranch("origin/feature"), target: "3333333" },
+      ],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    expect(invokeMock).not.toHaveBeenCalledWith("can_fast_forward", expect.anything());
+    openGroup("Integrate into current");
+    expect(
+      screen.queryByRole("menuitem", { name: "Fast-forward to origin/feature" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("confirms and preserves the current/target pair for a branch-menu rebase", async () => {
+    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased main onto feature");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      branches: [localBranch("main"), localBranch("feature")],
+      checkoutBranch,
+      rebaseOnto,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Integrate into current");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rebase onto feature" }));
+
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    expect(confirm!.title).toBe("Rebase main onto feature?");
+    expect(rebaseOnto).not.toHaveBeenCalled();
+    confirm!.onConfirm();
+
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main", "feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   it("compare-with-branch opens a branch picker (not a free-text field) and compares against the picked branch", async () => {
@@ -786,9 +882,10 @@ describe("ActionMenu", () => {
       },
     });
 
-  // GL-217: rebasing the dragged branch first checks it out — a state-changing
-  // prerequisite that must be approved, never performed silently.
-  it("rebase-source asks to approve the checkout prerequisite, then checks out and rebases", async () => {
+  // Rebases always confirm the immutable source/target pair. The backend owns
+  // the source checkout in the same git process, so a previously active branch
+  // cannot become the accidental rebase actor between two IPC calls.
+  it("rebase-source confirms the exact pair and sends both operands atomically", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
     useRepo.setState({
@@ -804,29 +901,22 @@ describe("ActionMenu", () => {
     // `sub` line, so match the label substring rather than anchoring.
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
 
-    // Nothing ran yet — the confirm names the branch, prerequisite, and operation.
+    // Nothing ran yet — the confirm names the branch, prerequisite, and target.
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Check out feature?");
-    expect(confirm!.message).toContain('check out branch "feature"');
-    expect(confirm!.message).toContain("rebase feature onto main");
+    expect(confirm!.title).toBe("Rebase feature onto main?");
+    expect(confirm!.message).toContain('Check out branch "feature"');
+    expect(confirm!.message).toContain('onto "main"');
     expect(confirm!.confirmLabel).toBe("Check out and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
     expect(rebaseOnto).not.toHaveBeenCalled();
 
     confirm!.onConfirm();
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main"));
-    expect(checkoutBranch).toHaveBeenCalledWith("feature");
-    // Checkout strictly precedes the rebase.
-    expect(checkoutBranch.mock.invocationCallOrder[0]).toBeLessThan(
-      rebaseOnto.mock.invocationCallOrder[0],
-    );
-    // The dragged branch moves — the drop target is never checked out or rebased.
-    expect(checkoutBranch).not.toHaveBeenCalledWith("main");
-    expect(rebaseOnto).not.toHaveBeenCalledWith("feature");
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
-  it("cancelling the checkout-prerequisite confirm performs neither checkout nor rebase", () => {
+  it("cancelling the rebase confirmation performs neither checkout nor rebase", () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
     useRepo.setState({
@@ -848,11 +938,11 @@ describe("ActionMenu", () => {
     expect(rebaseOnto).not.toHaveBeenCalled();
   });
 
-  it("skips the prerequisite confirm when the rebased branch is already checked out", async () => {
+  it("still confirms the exact pair when the rebased branch is already checked out", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
     useRepo.setState({
-      // feature is HEAD → no branch switch is needed, so no popup.
+      // feature is HEAD → no branch switch is needed, but rebase still confirms.
       summary: { ...localSummary, headBranch: "feature" },
       branches: [localBranch("feature"), localBranch("main")],
       checkoutBranch,
@@ -862,32 +952,13 @@ describe("ActionMenu", () => {
     render(<ActionMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
-    expect(useUi.getState().confirm).toBeNull();
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main"));
-  });
-
-  it("does not rebase when the approved checkout prerequisite fails", async () => {
-    const checkoutBranch = vi.fn().mockRejectedValue(new Error("checkout failed"));
-    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
-    useRepo.setState({
-      summary: localSummary,
-      branches: [localBranch("feature"), localBranch("main")],
-      checkoutBranch,
-      rebaseOnto,
-    });
-    openActionMenu("feature", "main");
-    render(<ActionMenu />);
-
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
-    useUi.getState().confirm!.onConfirm();
-
-    // The failure surfaces through the existing error toast; the rebase never starts.
-    await waitFor(() =>
-      expect(
-        useNotifications.getState().toasts.some((t) => t.title.includes("checkout failed")),
-      ).toBe(true),
-    );
-    expect(rebaseOnto).not.toHaveBeenCalled();
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    expect(confirm!.title).toBe("Rebase feature onto main?");
+    expect(confirm!.confirmLabel).toBe("Rebase");
+    confirm!.onConfirm();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   it("merge-target asks to approve the implicit checkout of the drop target", async () => {
@@ -974,12 +1045,12 @@ describe("ActionMenu", () => {
 
   it("reset-source previews then resets the dragged branch to the drop target on confirm", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
-    const resetCurrentTo = vi.fn().mockResolvedValue("Reset to main");
+    const resetBranchTo = vi.fn().mockResolvedValue("Reset feature to main");
     useRepo.setState({
       summary: localSummary,
       branches: [localBranch("feature"), localBranch("main")],
       checkoutBranch,
-      resetCurrentTo,
+      resetBranchTo,
     });
     openActionMenu("feature", "main");
     render(<ActionMenu />);
@@ -994,12 +1065,12 @@ describe("ActionMenu", () => {
     );
     // HEAD is main, so the single dialog also covers the checkout prerequisite
     // (GL-217) — no second popup stacks on top of the preview confirm.
-    expect(useUi.getState().confirm!.message).toContain('check out branch "feature"');
+    expect(useUi.getState().confirm!.message).toContain('Check out branch "feature"');
     expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and reset (mixed)");
 
     useUi.getState().confirm!.onConfirm();
-    await waitFor(() => expect(resetCurrentTo).toHaveBeenCalledWith("main", "mixed"));
-    expect(checkoutBranch).toHaveBeenCalledWith("feature");
+    await waitFor(() => expect(resetBranchTo).toHaveBeenCalledWith("feature", "main", "mixed"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   it("moves the local target when a remote ref is dragged onto it (the remote can't move)", async () => {
@@ -1027,10 +1098,14 @@ describe("ActionMenu", () => {
 
     // The only rebase offered moves the local target onto the remote.
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
-    // HEAD is already main, so there is no checkout prerequisite and no popup.
-    expect(useUi.getState().confirm).toBeNull();
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("origin/feature"));
-    expect(checkoutBranch).toHaveBeenCalledWith("main");
+    // HEAD is already main, so the confirmation needs no checkout warning.
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    expect(confirm!.title).toBe("Rebase main onto origin/feature?");
+    expect(confirm!.confirmLabel).toBe("Rebase");
+    confirm!.onConfirm();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main", "origin/feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   it("rebase-target asks to approve the checkout when HEAD is on a different branch", async () => {
@@ -1056,13 +1131,13 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Check out main?");
+    expect(confirm!.title).toBe("Rebase main onto origin/feature?");
     expect(confirm!.confirmLabel).toBe("Check out and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
 
     confirm!.onConfirm();
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("origin/feature"));
-    expect(checkoutBranch).toHaveBeenCalledWith("main");
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main", "origin/feature"));
+    expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
   it("always asks before a checkout-based op when HEAD is detached", () => {
@@ -1079,7 +1154,8 @@ describe("ActionMenu", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     expect(useUi.getState().confirm).not.toBeNull();
-    expect(useUi.getState().confirm!.title).toBe("Check out feature?");
+    expect(useUi.getState().confirm!.title).toBe("Rebase feature onto main?");
+    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
@@ -1130,18 +1206,21 @@ describe("ActionMenu", () => {
   });
 
   it("keeps fast-forward enabled when the dragged branch lives in another worktree", async () => {
-    // Fast-forward moves a ref in place (no checkout), so it must stay clickable
-    // even when the branch is held elsewhere — unlike rebase/reset.
+    // Fast-forward updates the branch in its owning worktree, so it stays
+    // clickable when the branch is held elsewhere — unlike rebase/reset.
     invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) => {
       if (cmd === "can_fast_forward") {
         // Advancing feature to main (sourceToTarget) is possible → FF is offered.
-        return Promise.resolve(args.from === "main" && args.to === "feature");
+        return Promise.resolve(args.from === "2222222" && args.to === "1111111");
       }
       return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
     });
     useRepo.setState({
       summary: localSummary,
-      branches: [localBranch("feature"), localBranch("main")],
+      branches: [
+        { ...localBranch("feature"), target: "1111111" },
+        { ...localBranch("main"), target: "2222222" },
+      ],
       worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
     });
     openActionMenu("feature", "main");

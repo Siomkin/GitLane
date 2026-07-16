@@ -428,8 +428,14 @@ export interface RepoState {
   publishBranch: (branch: string, upstream: string) => Promise<string>;
   mergeInto: (from: string, to: string) => Promise<string>;
   fastForwardTo: (from: string, to: string) => Promise<string>;
-  rebaseOnto: (onto: string) => Promise<string>;
-  resetCurrentTo: (target: string, mode: "soft" | "mixed" | "hard") => Promise<string>;
+  /** Rebase the explicit source branch/revision onto the target. */
+  rebaseOnto: (source: string, onto: string) => Promise<string>;
+  /** Reset the explicit source branch, or detached HEAD when source is null. */
+  resetBranchTo: (
+    source: string | null,
+    target: string,
+    mode: "soft" | "mixed" | "hard",
+  ) => Promise<string>;
   /** Stash actions address the stash by commit oid — `stash@{n}` indices go
    * stale whenever any stash is created/dropped, even in another worktree. */
   applyStash: (oid: string, pop: boolean, withIndex?: boolean) => Promise<string>;

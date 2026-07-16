@@ -17,7 +17,7 @@ const realCherryPickMany = useRepo.getState().cherryPickMany;
 const realRevertMany = useRepo.getState().revertMany;
 const realSquashSelection = useRepo.getState().squashSelection;
 const realAmendHeadMessage = useRepo.getState().amendHeadMessage;
-const realResetCurrentTo = useRepo.getState().resetCurrentTo;
+const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realCheckoutBranch = useRepo.getState().checkoutBranch;
 
 const node = (id: string, row: number, parents: string[], over: Partial<CommitNode> = {}): CommitNode => ({
@@ -77,7 +77,7 @@ beforeEach(() => {
     revertMany: realRevertMany,
     squashSelection: realSquashSelection,
     amendHeadMessage: realAmendHeadMessage,
-    resetCurrentTo: realResetCurrentTo,
+    resetBranchTo: realResetBranchTo,
     checkoutBranch: realCheckoutBranch,
   });
   useUi.setState({ commitMenu: null, confirm: null, prompt: null, stackedReview: null });
@@ -115,8 +115,8 @@ describe("CommitContextMenu (single commit)", () => {
   });
 
   it("never opens the reset confirm when HEAD moves while the preview is pending (GL-42)", async () => {
-    const resetCurrentTo = vi.fn().mockResolvedValue("ok");
-    useRepo.setState({ resetCurrentTo });
+    const resetBranchTo = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({ resetBranchTo });
     let resolvePreview!: (v: { summary: string; details: string[]; warnings: string[] }) => void;
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "preview_reset") {
@@ -142,12 +142,12 @@ describe("CommitContextMenu (single commit)", () => {
       expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("HEAD changed"),
     );
     expect(useUi.getState().confirm).toBeNull();
-    expect(resetCurrentTo).not.toHaveBeenCalled();
+    expect(resetBranchTo).not.toHaveBeenCalled();
   });
 
   it("aborts a reset confirmed after HEAD moved (headPrecondition, GL-42)", async () => {
-    const resetCurrentTo = vi.fn().mockResolvedValue("ok");
-    useRepo.setState({ resetCurrentTo });
+    const resetBranchTo = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({ resetBranchTo });
     openSingle("c2abcdef");
     render(<CommitContextMenu />);
 
@@ -161,15 +161,15 @@ describe("CommitContextMenu (single commit)", () => {
     useRepo.setState({ summary: { ...summary, headOid: "moved000" } });
     useUi.getState().confirm!.onConfirm();
 
-    expect(resetCurrentTo).not.toHaveBeenCalled();
+    expect(resetBranchTo).not.toHaveBeenCalled();
     expect(
       useNotifications.getState().toasts.some((t) => t.title.includes("HEAD changed")),
     ).toBe(true);
   });
 
   it("runs the reset when HEAD still matches the precondition", async () => {
-    const resetCurrentTo = vi.fn().mockResolvedValue("ok");
-    useRepo.setState({ resetCurrentTo });
+    const resetBranchTo = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({ resetBranchTo });
     openSingle("c2abcdef");
     render(<CommitContextMenu />);
 
@@ -178,7 +178,7 @@ describe("CommitContextMenu (single commit)", () => {
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     expect(useUi.getState().confirm?.danger).toBe(true);
     useUi.getState().confirm!.onConfirm();
-    await waitFor(() => expect(resetCurrentTo).toHaveBeenCalledWith("c2abcdef", "hard"));
+    await waitFor(() => expect(resetBranchTo).toHaveBeenCalledWith("main", "c2abcdef", "hard"));
   });
 
   it("offers Edit commit message… only for an unpushed HEAD commit", () => {

@@ -16,6 +16,7 @@ import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCreateWorktree, promptNewBranchWorktree } from "./prompts";
+import { confirmRebase } from "./rebaseConfirm";
 
 export function CommitContextMenu() {
   const menu = useUi((s) => s.commitMenu);
@@ -29,7 +30,6 @@ export function CommitContextMenu() {
   const selectedCommit = useRepo((s) => s.selectedCommit);
   const summary = useRepo((s) => s.summary);
   const graph = useRepo((s) => s.graph);
-  const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const checkoutDetached = useRepo((s) => s.checkoutDetached);
   const cherryPickCommit = useRepo((s) => s.cherryPickCommit);
   const cherryPickMany = useRepo((s) => s.cherryPickMany);
@@ -41,7 +41,7 @@ export function CommitContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const createPatchAt = useRepo((s) => s.createPatchAt);
-  const resetCurrentTo = useRepo((s) => s.resetCurrentTo);
+  const resetBranchTo = useRepo((s) => s.resetBranchTo);
   const mergeInto = useRepo((s) => s.mergeInto);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
   const run = useBranchOp();
@@ -166,7 +166,17 @@ export function CommitContextMenu() {
       note: `into ${cur}`,
       submenu: [
         { label: `Merge ${shortSha}`, onClick: () => act(() => mergeInto(sha, cur)) },
-        { label: `Rebase onto ${shortSha}`, onClick: () => act(async () => { if (cur !== "HEAD") await checkoutBranch(cur); return rebaseOnto(sha); }) },
+        {
+          label: `Rebase onto ${shortSha}`,
+          onClick: () =>
+            confirmRebase({
+              source: cur,
+              onto: shortSha,
+              needsCheckout: false,
+              requestConfirm,
+              proceed: () => act(() => rebaseOnto(cur, sha)),
+            }),
+        },
         { label: "Cherry-pick", onClick: () => act(() => cherryPickCommit(sha)) },
         { label: "Revert", onClick: () => act(() => revertCommit(sha)) },
       ],
@@ -208,9 +218,9 @@ export function CommitContextMenu() {
     danger.push({ label: "Edit commit message…", onClick: () => requestPrompt({ title: "Edit commit message", message: `This commit has not been pushed: ${shortSha}.`, placeholder: "Subject\n\nDescription", defaultValue: fullCommitMessage(subject, body), multiline: true, confirmLabel: "Update message", onSubmit: (msg) => { const next = splitCommitMessage(msg); void run(() => amendHeadMessage(next.summary, next.description)); } }) });
   }
   danger.push({ label: `Reset ${cur} to here`, header: true, danger: true, sep: danger.length > 0 });
-  danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, sha, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "soft")), headPrecondition: resetHeadPrecondition }) });
-  danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, sha, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "mixed")), headPrecondition: resetHeadPrecondition }) });
-  danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, sha, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(sha, "hard")), headPrecondition: resetHeadPrecondition }) });
+  danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, sha, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(summary?.headBranch ?? null, sha, "soft")), headPrecondition: resetHeadPrecondition }) });
+  danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, sha, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(summary?.headBranch ?? null, sha, "mixed")), headPrecondition: resetHeadPrecondition }) });
+  danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${shortSha}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, sha, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(summary?.headBranch ?? null, sha, "hard")), headPrecondition: resetHeadPrecondition }) });
 
   const items: MenuItem[] = [...top];
   groups[0] = { ...groups[0], sep: true };

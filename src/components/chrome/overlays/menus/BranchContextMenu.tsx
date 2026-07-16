@@ -23,6 +23,7 @@ import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCompareBranch, promptCreateWorktree } from "./prompts";
+import { confirmRebase } from "./rebaseConfirm";
 
 export function BranchContextMenu() {
   const menu = useUi((s) => s.contextMenu);
@@ -54,7 +55,7 @@ export function BranchContextMenu() {
   const mergeInto = useRepo((s) => s.mergeInto);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
   const fastForwardTo = useRepo((s) => s.fastForwardTo);
-  const resetCurrentTo = useRepo((s) => s.resetCurrentTo);
+  const resetBranchTo = useRepo((s) => s.resetBranchTo);
   const cherryPickCommit = useRepo((s) => s.cherryPickCommit);
   const revertCommit = useRepo((s) => s.revertCommit);
   const createTagAt = useRepo((s) => s.createTagAt);
@@ -72,21 +73,37 @@ export function BranchContextMenu() {
   useEffect(() => {
     setCanFf(false);
     if (!repoPath || !branch || !cur || branch === cur) return;
+    // The menu payload carries only the display name, so a local/remote pair
+    // sharing it is unresolvable here — fail closed (no FF offer) like the
+    // store's revisionSnapshot does, instead of probing whichever ref happens
+    // to come first in the list.
+    const targetMatches = branches.filter((candidate) => candidate.name === branch);
+    const targetOid = targetMatches.length === 1 ? targetMatches[0].target : null;
+    const currentOid = branches.find(
+      (candidate) => candidate.kind === BranchKind.Local && candidate.name === cur,
+    )?.target;
+    if (!targetOid || !currentOid) return;
     let alive = true;
     api
-      .canFastForward(repoPath, branch, cur)
+      .canFastForward(repoPath, targetOid, currentOid)
       .then((ok) => alive && setCanFf(ok))
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [repoPath, branch, cur]);
+  }, [repoPath, branch, branches, cur]);
 
   if (!menu) return null;
 
   const { isCurrent } = menu;
   const b = menu.branch;
-  const info = branches.find((x) => x.name === b);
+  // Resolve the menu's ref only on a UNIQUE display-name match. The payload
+  // carries no kind, so a local/remote pair sharing the name is unresolvable —
+  // leave `info` unset and every tip/kind-derived action (reset to tip,
+  // cherry-pick tip, tag here, local-only mutations) fails closed with it,
+  // matching the FF probe above and the store's revisionSnapshot.
+  const infoMatches = branches.filter((x) => x.name === b);
+  const info = infoMatches.length === 1 ? infoMatches[0] : undefined;
   const tip = info?.target ?? null;
   const tipShort = tip ? tip.slice(0, 7) : null;
   const upstream = info?.upstream ?? null;
@@ -214,7 +231,17 @@ export function BranchContextMenu() {
     const children: MenuItem[] = [];
     if (canFf) children.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
     children.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
-    children.push({ label: `Rebase onto ${b}`, onClick: () => act(async () => { await checkoutBranch(cur); return rebaseOnto(b); }) });
+    children.push({
+      label: `Rebase onto ${b}`,
+      onClick: () =>
+        confirmRebase({
+          source: cur,
+          onto: b,
+          needsCheckout: false,
+          requestConfirm,
+          proceed: () => act(() => rebaseOnto(cur, b)),
+        }),
+    });
     if (tip) {
       children.push({ label: "Cherry-pick tip", onClick: () => act(() => cherryPickCommit(tip)) });
       children.push({ label: "Revert tip", onClick: () => act(() => revertCommit(tip)) });
@@ -307,9 +334,9 @@ export function BranchContextMenu() {
   }
   if (tip && cur && !isCurrent) {
     danger.push({ label: `Reset ${cur} to ${b}`, header: true, danger: true, sep: danger.length > 0 });
-    danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "soft")), headPrecondition: resetHeadPrecondition }) });
-    danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
-    danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetCurrentTo(tip, "hard")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(cur, tip, "soft")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(cur, tip, "mixed")), headPrecondition: resetHeadPrecondition }) });
+    danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => resetBranchTo(cur, tip, "hard")), headPrecondition: resetHeadPrecondition }) });
   }
   if (isLocal) {
     // Set upstream is rare — tuck it down at the end, just above Delete.

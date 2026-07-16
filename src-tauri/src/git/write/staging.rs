@@ -586,6 +586,51 @@ pub fn commit(
     run_git(repo, &arg_refs)
 }
 
+/// Commit only while HEAD still matches the branch/oid snapshot the composer
+/// was opened against. This applies to ordinary commits and amend alike.
+pub fn commit_expected(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+    summary: &str,
+    description: &str,
+    amend: bool,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    commit(repo, summary, description, amend, name, email)
+}
+
+/// Replace the current tip range with one commit behind a single guarded IPC
+/// contract. The rollback is attempted only while the same branch still owns
+/// the soft-reset state, so an external checkout cannot make recovery reset a
+/// different branch.
+pub fn squash_commits(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: &str,
+    parent_oid: &str,
+    summary: &str,
+    description: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    super::head::ensure_commit_exists(repo, parent_oid)?;
+    super::branches::reset(repo, parent_oid, "soft")?;
+    super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))?;
+    match commit(repo, summary, description, false, name, email) {
+        Ok(output) => Ok(output),
+        Err(error) => {
+            if super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid)).is_ok() {
+                let _ = super::branches::reset(repo, expected_oid, "soft");
+            }
+            Err(error)
+        }
+    }
+}
+
 fn bytes_to_os_string(bytes: &[u8]) -> Result<OsString, String> {
     #[cfg(unix)]
     {

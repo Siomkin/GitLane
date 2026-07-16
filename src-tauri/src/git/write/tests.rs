@@ -3,20 +3,24 @@ use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolutio
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;
 use super::remotes::{
-    is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection,
+    is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection, push_target_at,
 };
 use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_push_remote,
-    checkout_remote_branch, cherry_pick, cherry_pick_many, clear_repo_identity, continue_operation,
-    create_tag, delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file,
-    fast_forward, fast_forward_branch, fetch, head_push_remote, mark_conflict_resolved, merge,
-    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
+    abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_pull_target,
+    branch_push_remote,
+    checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto, clear_repo_identity,
+    commit_expected, continue_operation, create_branch, create_tag, delete_branch_with_worktree,
+    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
+    fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
+    merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
-    reconflict_file, reflog_entries, remove_worktree, reset, resolve_conflict_file, revert,
-    revert_many, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
-    skip_operation, stage_file, stage_files, stash, stash_apply, stash_branch, stash_drop,
-    stash_list, stash_pop, unstage_all, unstage_file, unstage_files, worktrees, write_repo_file,
+    pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
+    reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
+    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
+    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
+    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
+    unstage_file, unstage_files, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::TransportCredential;
@@ -88,6 +92,668 @@ fn rev_parse(repo: &TempRepo, rev: &str) -> String {
     let out = repo.git(&["rev-parse", rev]);
     assert!(out.status.success(), "rev-parse {rev} should resolve");
     String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn rebase_uses_explicit_source_instead_of_previously_active_branch() {
+    let repo = TempRepo::new("rebase-explicit-source");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    repo.git_ok(&["checkout", "-q", "-b", "previously-active"]);
+    std::fs::write(repo.0.join("active.txt"), "active\n").unwrap();
+    repo.git_ok(&["add", "active.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "previously active work"]);
+    let active_tip = rev_parse(&repo, "previously-active");
+
+    let feature_tip = rev_parse(&repo, "feature");
+    rebase(repo.path(), "feature", &feature_tip, &main_tip)
+        .expect("rebase explicit source onto main");
+
+    let head = repo.git(&["branch", "--show-current"]);
+    assert!(head.status.success());
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feature");
+    assert_eq!(rev_parse(&repo, "feature^"), main_tip);
+    assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+    let active_is_feature_ancestor = repo.git(&[
+        "merge-base",
+        "--is-ancestor",
+        "previously-active",
+        "feature",
+    ]);
+    assert!(
+        !active_is_feature_ancestor.status.success(),
+        "the previously active branch must not become the rebase target"
+    );
+}
+
+#[test]
+fn rebase_keeps_detached_head_support_with_an_explicit_source() {
+    let repo = TempRepo::new("rebase-detached-source");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    let base = rev_parse(&repo, "HEAD");
+
+    repo.git_ok(&["checkout", "-q", "--detach", &base]);
+    std::fs::write(repo.0.join("detached.txt"), "detached\n").unwrap();
+    repo.git_ok(&["add", "detached.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "detached work"]);
+    let detached_tip = rev_parse(&repo, "HEAD");
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+    repo.git_ok(&["checkout", "-q", "--detach", &detached_tip]);
+
+    rebase(repo.path(), "HEAD", &detached_tip, &main_tip).expect("rebase detached HEAD onto main");
+
+    let head = repo.git(&["branch", "--show-current"]);
+    assert!(head.status.success());
+    assert!(head.stdout.is_empty(), "HEAD should remain detached");
+    assert_eq!(rev_parse(&repo, "HEAD^"), main_tip);
+    let message = repo.git(&["log", "-1", "--format=%s"]);
+    assert!(message.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&message.stdout).trim(),
+        "detached work"
+    );
+}
+
+#[test]
+fn rebase_explicit_source_prefers_a_local_branch_over_same_named_tag() {
+    let repo = TempRepo::new("rebase-ambiguous-source");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+
+    std::fs::write(repo.0.join("base.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "base.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["tag", "feature"]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature work"]);
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    let feature_tip = rev_parse(&repo, "refs/heads/feature");
+    rebase(repo.path(), "feature", &feature_tip, &main_tip)
+        .expect("rebase the branch, not its tag");
+
+    let head = repo.git(&["branch", "--show-current"]);
+    assert!(head.status.success());
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feature");
+    assert_eq!(rev_parse(&repo, "refs/heads/feature^"), main_tip);
+}
+
+#[test]
+fn merge_into_uses_explicit_destination_instead_of_active_branch() {
+    let (repo, base) = repo_with_base_commit("merge-explicit-destination");
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature"]);
+    let feature_tip = rev_parse(&repo, "feature");
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("main.txt"), "main\n").unwrap();
+    repo.git_ok(&["add", "main.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    repo.git_ok(&["checkout", "-q", "-b", "previously-active", &base]);
+    std::fs::write(repo.0.join("active.txt"), "active\n").unwrap();
+    repo.git_ok(&["add", "active.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "active"]);
+    let active_tip = rev_parse(&repo, "previously-active");
+
+    merge_into(
+        repo.path(),
+        "refs/heads/feature",
+        &feature_tip,
+        Some("main"),
+        &main_tip,
+    )
+    .expect("merge explicit source into explicit destination");
+
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
+        "main"
+    );
+    assert!(repo
+        .git(&["merge-base", "--is-ancestor", "feature", "main"])
+        .status
+        .success());
+    assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+    // The validated qualified ref must not leak into the generated subject.
+    let subject = repo.git(&["log", "-1", "--format=%s", "main"]);
+    assert!(subject.status.success());
+    assert!(
+        String::from_utf8_lossy(&subject.stdout).starts_with("Merge branch 'feature'"),
+        "unexpected merge subject: {}",
+        String::from_utf8_lossy(&subject.stdout)
+    );
+}
+
+#[test]
+fn merge_into_names_a_remote_tracking_source_by_its_short_name() {
+    let (repo, base) = repo_with_base_commit("merge-remote-source-subject");
+    repo.git_ok(&["checkout", "-q", "-b", "topic"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "topic work"]);
+    let topic_tip = rev_parse(&repo, "topic");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/topic", &topic_tip]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["branch", "-D", "topic"]);
+
+    merge_into(
+        repo.path(),
+        "refs/remotes/origin/topic",
+        &topic_tip,
+        Some("main"),
+        &base,
+    )
+    .expect("merge remote-tracking source");
+
+    let subject = repo.git(&["log", "-1", "--format=%s", "main"]);
+    assert!(subject.status.success());
+    assert!(
+        String::from_utf8_lossy(&subject.stdout)
+            .starts_with("Merge remote-tracking branch 'origin/topic'"),
+        "unexpected merge subject: {}",
+        String::from_utf8_lossy(&subject.stdout)
+    );
+}
+
+#[test]
+fn merge_into_keeps_the_qualified_source_when_a_tag_shadows_the_branch() {
+    let (repo, base) = repo_with_base_commit("merge-tag-shadowed-source");
+    // A tag named `feature` at a *different* commit shadows the branch for
+    // bare-name resolution, so the merge must keep the qualified operand.
+    repo.git_ok(&["tag", "feature", &base]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "feature work"]);
+    let feature_tip = rev_parse(&repo, "refs/heads/feature");
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "main work"]);
+    let main_tip = rev_parse(&repo, "main");
+
+    merge_into(
+        repo.path(),
+        "refs/heads/feature",
+        &feature_tip,
+        Some("main"),
+        &main_tip,
+    )
+    .expect("merge the shadowed branch");
+
+    // The branch commit — not the tag's — is what got merged.
+    assert_eq!(rev_parse(&repo, "main^2"), feature_tip);
+}
+
+#[test]
+fn merge_into_rejects_a_stale_destination_before_checkout() {
+    let (repo, base) = repo_with_base_commit("merge-stale-destination");
+    repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["checkout", "-q", "-b", "previously-active"]);
+    let active_tip = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "main moved"]);
+    let moved_main = rev_parse(&repo, "main");
+    repo.git_ok(&["checkout", "-q", "previously-active"]);
+
+    let result = merge_into(repo.path(), "feature", &base, Some("main"), &base);
+    assert!(result.is_err(), "stale destination must fail closed");
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
+        "previously-active"
+    );
+    assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+    assert_eq!(rev_parse(&repo, "main"), moved_main);
+}
+
+#[test]
+fn create_branch_from_a_remote_tracking_ref_keeps_upstream_setup() {
+    let (repo, base) = repo_with_base_commit("create-branch-tracking");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/topic", &base]);
+
+    create_branch(repo.path(), "topic", "refs/remotes/origin/topic", &base)
+        .expect("create branch from a remote-tracking start point");
+
+    assert_eq!(rev_parse(&repo, "refs/heads/topic"), base);
+    // Passing the ref (not its oid) lets `branch.autoSetupMerge` wire tracking.
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.topic.remote"]).stdout).trim(),
+        "origin"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.topic.merge"]).stdout).trim(),
+        "refs/heads/topic"
+    );
+}
+
+#[test]
+fn create_branch_rejects_a_stale_start_point() {
+    let (repo, base) = repo_with_base_commit("create-branch-stale");
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "moved"]);
+
+    assert!(
+        create_branch(repo.path(), "pinned", "refs/heads/main", &base).is_err(),
+        "a moved start point must fail closed"
+    );
+    assert!(
+        repo.git(&["rev-parse", "--verify", "refs/heads/pinned"])
+            .status
+            .code()
+            != Some(0),
+        "no branch may be created from a stale snapshot"
+    );
+}
+
+#[test]
+fn fast_forward_and_reset_mutate_only_the_explicit_branch() {
+    let (repo, base) = repo_with_base_commit("explicit-fast-forward-reset");
+    repo.git_ok(&["branch", "moving"]);
+    repo.git_ok(&["checkout", "-q", "-b", "target"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "target"]);
+    let target_tip = rev_parse(&repo, "target");
+    repo.git_ok(&["checkout", "-q", "-b", "previously-active", &base]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "active"]);
+    let active_tip = rev_parse(&repo, "previously-active");
+
+    fast_forward_branch_at(repo.path(), "moving", &base, &target_tip)
+        .expect("fast-forward explicit branch");
+    assert_eq!(rev_parse(&repo, "moving"), target_tip);
+    assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+    assert!(
+        fast_forward_branch_at(repo.path(), "moving", &base, &target_tip).is_err(),
+        "a stale expected tip must not overwrite the moved branch"
+    );
+
+    reset_branch(
+        repo.path(),
+        Some("moving"),
+        Some(&target_tip),
+        &base,
+        "hard",
+    )
+    .expect("reset explicit branch");
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
+        "moving"
+    );
+    assert_eq!(rev_parse(&repo, "moving"), base);
+    assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
+}
+
+#[test]
+fn fast_forward_updates_a_linked_worktree_instead_of_only_its_ref() {
+    let (repo, base) = repo_with_base_commit("fast-forward-linked-worktree");
+    repo.git_ok(&["branch", "moving"]);
+    repo.git_ok(&["checkout", "-q", "-b", "target"]);
+    std::fs::write(repo.0.join("target.txt"), "target\n").unwrap();
+    repo.git_ok(&["add", "target.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "target"]);
+    let target_tip = rev_parse(&repo, "target");
+    repo.git_ok(&["checkout", "-q", "main"]);
+
+    let linked = TempRepo::new("fast-forward-linked-owner");
+    repo.git_ok(&["worktree", "add", "-q", linked.path(), "moving"]);
+
+    fast_forward_branch_at(repo.path(), "moving", &base, &target_tip)
+        .expect("fast-forward in owning worktree");
+
+    assert_eq!(rev_parse(&repo, "moving"), target_tip);
+    assert_eq!(rev_parse(&linked, "HEAD"), target_tip);
+    assert!(linked.0.join("target.txt").is_file());
+    assert!(
+        linked.git(&["status", "--porcelain"]).stdout.is_empty(),
+        "the owning worktree must stay clean after its branch advances"
+    );
+}
+
+#[test]
+fn fast_forward_refuses_dirty_changes_in_the_owning_worktree() {
+    let (repo, base) = repo_with_base_commit("fast-forward-dirty-linked-worktree");
+    repo.git_ok(&["branch", "moving"]);
+    repo.git_ok(&["checkout", "-q", "-b", "target"]);
+    std::fs::write(repo.0.join("f.txt"), "target\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-a", "-m", "target"]);
+    let target_tip = rev_parse(&repo, "target");
+    repo.git_ok(&["checkout", "-q", "main"]);
+
+    let linked = TempRepo::new("fast-forward-dirty-linked-owner");
+    repo.git_ok(&["worktree", "add", "-q", linked.path(), "moving"]);
+    std::fs::write(linked.0.join("f.txt"), "dirty\n").unwrap();
+
+    fast_forward_branch_at(repo.path(), "moving", &base, &target_tip)
+        .expect_err("dirty owning worktree must block fast-forward");
+
+    assert_eq!(rev_parse(&repo, "moving"), base);
+    assert_eq!(rev_parse(&linked, "HEAD"), base);
+    assert_eq!(std::fs::read_to_string(linked.0.join("f.txt")).unwrap(), "dirty\n");
+    assert_eq!(
+        String::from_utf8_lossy(&linked.git(&["status", "--porcelain"]).stdout).trim_end(),
+        " M f.txt"
+    );
+}
+
+#[test]
+fn merge_into_preserves_detached_head_support() {
+    let (repo, base) = repo_with_base_commit("merge-detached-destination");
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "feature"]);
+    let feature_tip = rev_parse(&repo, "feature");
+    repo.git_ok(&["checkout", "-q", "--detach", &base]);
+
+    merge_into(repo.path(), "feature", &feature_tip, None, &base)
+        .expect("merge into detached HEAD");
+
+    assert!(repo.git(&["branch", "--show-current"]).stdout.is_empty());
+    assert!(repo
+        .git(&["merge-base", "--is-ancestor", "feature", "HEAD"])
+        .status
+        .success());
+}
+
+#[test]
+fn head_guarded_writes_reject_a_different_active_branch() {
+    let (repo, base) = repo_with_base_commit("guarded-head-writes");
+    repo.git_ok(&["checkout", "-q", "-b", "pick-source"]);
+    std::fs::write(repo.0.join("picked.txt"), "picked\n").unwrap();
+    repo.git_ok(&["add", "picked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "picked"]);
+    let picked = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["checkout", "-q", "-b", "unexpected"]);
+    let unexpected_tip = rev_parse(&repo, "HEAD");
+    std::fs::write(repo.0.join("staged.txt"), "staged\n").unwrap();
+    repo.git_ok(&["add", "staged.txt"]);
+
+    assert!(cherry_pick_onto(repo.path(), Some("main"), &base, &picked).is_err());
+    assert!(revert_onto(repo.path(), Some("main"), &base, &picked).is_err());
+    assert!(commit_expected(
+        repo.path(),
+        Some("main"),
+        Some(&base),
+        "must not commit",
+        "",
+        false,
+        None,
+        None,
+    )
+    .is_err());
+    assert_eq!(rev_parse(&repo, "unexpected"), unexpected_tip);
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
+        "unexpected"
+    );
+}
+
+#[test]
+fn head_guarded_stash_writes_reject_a_different_active_branch() {
+    let (repo, base) = repo_with_base_commit("guarded-stash-writes");
+    std::fs::write(repo.0.join("stashed.txt"), "stashed\n").unwrap();
+    repo.git_ok(&["add", "stashed.txt"]);
+    stash_expected(repo.path(), Some("main"), Some(&base)).expect("create guarded stash");
+    let stash_oid = rev_parse(&repo, "stash@{0}");
+    repo.git_ok(&["checkout", "-q", "-b", "unexpected"]);
+
+    for result in [
+        stash_apply_onto(repo.path(), Some("main"), Some(&base), &stash_oid),
+        stash_apply_index_onto(repo.path(), Some("main"), Some(&base), &stash_oid),
+        stash_pop_onto(repo.path(), Some("main"), Some(&base), &stash_oid),
+    ] {
+        let error = result.expect_err("wrong active branch must fail closed");
+        assert!(error.contains("HEAD changed"), "unexpected error: {error}");
+    }
+    assert!(!repo.0.join("stashed.txt").exists());
+    assert_eq!(rev_parse(&repo, "stash@{0}"), stash_oid);
+}
+
+#[test]
+fn squash_rolls_back_the_soft_reset_when_commit_fails() {
+    let (repo, base) = repo_with_base_commit("guarded-squash-rollback");
+    std::fs::write(repo.0.join("f.txt"), "one\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-a", "-m", "one"]);
+    std::fs::write(repo.0.join("f.txt"), "two\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-a", "-m", "two"]);
+    let original_head = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["config", "commit.gpgsign", "true"]);
+    repo.git_ok(&["config", "gpg.format", "ssh"]);
+    repo.git_ok(&[
+        "config",
+        "user.signingkey",
+        "/definitely/missing/gitlane-test-signing-key",
+    ]);
+
+    let result = squash_commits(
+        repo.path(),
+        Some("main"),
+        &original_head,
+        &base,
+        "replacement",
+        "",
+        None,
+        None,
+    );
+    assert!(
+        result.is_err(),
+        "missing signing key should reject the commit"
+    );
+    assert_eq!(rev_parse(&repo, "HEAD"), original_head);
+}
+
+#[test]
+fn network_branch_writes_reject_a_stale_local_tip_before_transport() {
+    let (repo, base) = repo_with_base_commit("guarded-network-writes");
+    repo.git_ok(&["config", "branch.main.remote", "origin"]);
+    repo.git_ok(&["config", "branch.main.merge", "refs/heads/main"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "moved"]);
+
+    assert!(pull_branch(
+        repo.path(),
+        "main",
+        &base,
+        "origin",
+        "refs/heads/main",
+        &TransportCredential::None,
+    )
+    .is_err());
+    assert!(push_branch(repo.path(), "main", &base, &TransportCredential::None).is_err());
+    assert!(publish_branch(
+        repo.path(),
+        "main",
+        &base,
+        "origin/main",
+        &TransportCredential::None,
+    )
+    .is_err());
+    assert!(force_push(repo.path(), "main", &base, &TransportCredential::None).is_err());
+}
+
+#[test]
+fn pull_branch_supports_a_local_tracking_upstream() {
+    let (repo, base) = repo_with_base_commit("pull-local-upstream");
+    repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "main ahead"]);
+    let main_tip = rev_parse(&repo, "main");
+    repo.git_ok(&["checkout", "-q", "feature"]);
+    repo.git_ok(&["config", "branch.feature.remote", "."]);
+    repo.git_ok(&["config", "branch.feature.merge", "refs/heads/main"]);
+
+    pull_branch(
+        repo.path(),
+        "feature",
+        &base,
+        ".",
+        "refs/heads/main",
+        &TransportCredential::None,
+    )
+        .expect("pull from local upstream");
+
+    assert_eq!(rev_parse(&repo, "feature"), main_tip);
+}
+
+#[test]
+fn pull_target_reports_a_friendly_error_when_upstream_is_unset() {
+    let (repo, _) = repo_with_base_commit("pull-no-upstream");
+
+    let error = branch_pull_target(repo.path(), "main").expect_err("upstream must be required");
+
+    assert_eq!(
+        error,
+        "Branch 'main' has no remote-tracking upstream. Publish it or set an upstream first."
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn pull_branch_rejects_a_checkout_that_lands_during_fetch() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let remote = TempRepo::new("pull-race-remote");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    let seed = TempRepo::new("pull-race-seed");
+    seed.git_ok(&["init", "-q", "-b", "main"]);
+    seed.git_ok(&["config", "user.name", "GitLane Test"]);
+    seed.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    seed.git_ok(&["config", "commit.gpgsign", "false"]);
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "base"]);
+    seed.git_ok(&["remote", "add", "origin", remote.path()]);
+    seed.git_ok(&["push", "-q", "-u", "origin", "main"]);
+
+    let client = TempRepo::new("pull-race-client");
+    let clone = Command::new("git")
+        .args(["clone", "-q", "-b", "main", remote.path(), client.path()])
+        .output()
+        .expect("git clone launches");
+    assert!(
+        clone.status.success(),
+        "clone failed: {}",
+        String::from_utf8_lossy(&clone.stderr)
+    );
+    client.git_ok(&["branch", "wrong"]);
+    let original = rev_parse(&client, "main");
+
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "remote ahead"]);
+    seed.git_ok(&["push", "-q", "origin", "main"]);
+
+    let marker = remote.0.join("fetch-started");
+    let helper = remote.0.join("slow-upload-pack.sh");
+    std::fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\ntouch '{}'\nsleep 1\nexec git-upload-pack \"$1\"\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    client.git_ok(&[
+        "config",
+        "remote.origin.uploadpack",
+        helper.to_str().unwrap(),
+    ]);
+
+    let path = client.path().to_string();
+    let expected = original.clone();
+    let pull = std::thread::spawn(move || {
+        pull_branch(
+            &path,
+            "main",
+            &expected,
+            "origin",
+            "refs/heads/main",
+            &TransportCredential::None,
+        )
+    });
+    for _ in 0..100 {
+        if marker.exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(marker.exists(), "the delayed fetch did not start");
+    client.git_ok(&["checkout", "-q", "wrong"]);
+
+    let error = pull
+        .join()
+        .expect("pull thread joins")
+        .expect_err("checkout must abort pull");
+    assert!(error.contains("HEAD changed"), "unexpected error: {error}");
+    assert_eq!(rev_parse(&client, "main"), original);
+    assert_eq!(rev_parse(&client, "wrong"), original);
+}
+
+#[test]
+fn pinned_push_refspec_uses_the_captured_oid_as_its_source() {
+    let (repo, head) = repo_with_base_commit("pinned-push-refspec");
+    repo.git_ok(&["config", "branch.main.remote", "mirror"]);
+    repo.git_ok(&["config", "branch.main.merge", "refs/heads/review"]);
+
+    let (remote, refspec) = push_target_at(repo.path(), "main", &head);
+
+    assert_eq!(remote, "mirror");
+    assert_eq!(refspec, format!("{head}:refs/heads/review"));
+}
+
+#[test]
+fn push_target_honors_push_remote_over_the_fetch_upstream() {
+    let (repo, head) = repo_with_base_commit("push-remote-precedence");
+    repo.git_ok(&["config", "branch.main.remote", "upstream"]);
+    repo.git_ok(&["config", "branch.main.merge", "refs/heads/review"]);
+    repo.git_ok(&["config", "branch.main.pushRemote", "fork"]);
+
+    let (remote, refspec) = push_target_at(repo.path(), "main", &head);
+
+    // Triangular: the push goes to the fork, and the fetch upstream's divergent
+    // branch name must not leak onto it — same-named branch, like git push.
+    assert_eq!(remote, "fork");
+    assert_eq!(refspec, format!("{head}:refs/heads/main"));
+}
+
+#[test]
+fn push_target_honors_push_default_and_lets_push_remote_override_it() {
+    let (repo, head) = repo_with_base_commit("push-default-precedence");
+    repo.git_ok(&["config", "branch.main.remote", "upstream"]);
+    repo.git_ok(&["config", "remote.pushDefault", "fork"]);
+
+    let (remote, _) = push_target_at(repo.path(), "main", &head);
+    assert_eq!(remote, "fork");
+
+    repo.git_ok(&["config", "branch.main.pushRemote", "mirror"]);
+    let (remote, _) = push_target_at(repo.path(), "main", &head);
+    assert_eq!(remote, "mirror");
 }
 
 /// Build `base ─ main work ─ M` on `main` where `M` merges a `feature` branch
@@ -571,8 +1237,14 @@ fn checkout_remote_branch_reports_switch_when_dirty_changes_block_fast_forward()
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
         .expect_err("dirty change must block the fast-forward merge");
 
-    assert!(error.contains("feature is checked out"), "unexpected: {error}");
-    assert!(error.contains("couldn't be fast-forwarded"), "unexpected: {error}");
+    assert!(
+        error.contains("feature is checked out"),
+        "unexpected: {error}"
+    );
+    assert!(
+        error.contains("couldn't be fast-forwarded"),
+        "unexpected: {error}"
+    );
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), base);
     let head = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]);
     assert!(head.status.success());
@@ -3172,13 +3844,14 @@ fn set_upstream_rejects_option_like_operands() {
 
 #[test]
 fn publish_branch_validates_upstream_format_before_pushing() {
-    let (repo, _) = repo_with_base_commit("publish-validate");
+    let (repo, head) = repo_with_base_commit("publish-validate");
     // All of these fail format/operand validation before any network push, so
     // the offline origin is never contacted.
     assert!(
         publish_branch(
             repo.path(),
             "main",
+            &head,
             "originmain",
             &TransportCredential::None
         )
@@ -3186,22 +3859,64 @@ fn publish_branch_validates_upstream_format_before_pushing() {
         "missing slash must be rejected"
     );
     assert!(
-        publish_branch(repo.path(), "main", "/main", &TransportCredential::None).is_err(),
+        publish_branch(
+            repo.path(),
+            "main",
+            &head,
+            "/main",
+            &TransportCredential::None
+        )
+        .is_err(),
         "empty remote half must be rejected"
     );
     assert!(
-        publish_branch(repo.path(), "main", "origin/", &TransportCredential::None).is_err(),
+        publish_branch(
+            repo.path(),
+            "main",
+            &head,
+            "origin/",
+            &TransportCredential::None
+        )
+        .is_err(),
         "empty branch half must be rejected"
     );
     assert!(
         publish_branch(
             repo.path(),
             "--upload-pack=x",
+            &head,
             "origin/main",
             &TransportCredential::None
         )
         .is_err(),
         "option-like branch operand must be rejected"
+    );
+}
+
+#[test]
+fn publish_branch_pushes_the_captured_oid_and_sets_tracking_config() {
+    let remote = TempRepo::new("publish-pinned-remote");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    let (repo, head) = repo_with_base_commit("publish-pinned-local");
+    repo.git_ok(&["remote", "set-url", "origin", remote.path()]);
+
+    publish_branch(
+        repo.path(),
+        "main",
+        &head,
+        "origin/review",
+        &TransportCredential::None,
+    )
+    .expect("publish captured commit");
+
+    assert_eq!(rev_parse(&remote, "refs/heads/review"), head);
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.main.remote"]).stdout).trim(),
+        "origin"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.main.merge"]).stdout).trim(),
+        "refs/heads/review"
     );
 }
 

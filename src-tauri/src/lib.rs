@@ -118,14 +118,14 @@ async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
 async fn add_worktree(
     path: String,
     worktree_path: String,
-    reference: Option<String>,
+    reference: String,
     new_branch: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::add_worktree(
             &path,
             &worktree_path,
-            reference.as_deref(),
+            Some(&reference),
             new_branch.as_deref(),
         )
     })
@@ -210,9 +210,10 @@ async fn checkout_remote_branch(
 async fn create_branch(
     path: String,
     name: String,
-    start_point: Option<String>,
+    start_point: String,
+    expected_oid: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::create_branch(&path, &name, start_point.as_deref())).await
+    blocking(move || git::write::create_branch(&path, &name, &start_point, &expected_oid)).await
 }
 
 #[tauri::command]
@@ -275,8 +276,23 @@ async fn set_upstream(path: String, branch: String, upstream: String) -> Result<
 }
 
 #[tauri::command]
-async fn merge_branch(path: String, branch: String) -> Result<String, String> {
-    blocking(move || git::write::merge(&path, &branch)).await
+async fn merge_branch(
+    path: String,
+    source: String,
+    expected_source_oid: String,
+    destination: Option<String>,
+    expected_destination_oid: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::merge_into(
+            &path,
+            &source,
+            &expected_source_oid,
+            destination.as_deref(),
+            &expected_destination_oid,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -285,47 +301,103 @@ fn can_fast_forward(path: String, from: String, to: String) -> Result<bool, Stri
 }
 
 #[tauri::command]
-async fn fast_forward(path: String, target: String) -> Result<String, String> {
-    blocking(move || git::write::fast_forward(&path, &target)).await
-}
-
-#[tauri::command]
 async fn fast_forward_branch(
     path: String,
     branch: String,
-    target: String,
+    expected_branch_oid: String,
+    target_oid: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::fast_forward_branch(&path, &branch, &target)).await
+    blocking(move || {
+        git::write::fast_forward_branch_at(&path, &branch, &expected_branch_oid, &target_oid)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn rebase_onto(path: String, onto: String) -> Result<String, String> {
-    blocking(move || git::write::rebase(&path, &onto)).await
+async fn rebase_onto(
+    path: String,
+    source: String,
+    expected_source_oid: String,
+    onto_oid: String,
+) -> Result<String, String> {
+    blocking(move || git::write::rebase(&path, &source, &expected_source_oid, &onto_oid)).await
 }
 
 #[tauri::command]
-async fn reset_to(path: String, target: String, mode: String) -> Result<String, String> {
-    blocking(move || git::write::reset(&path, &target, &mode)).await
+async fn reset_to(
+    path: String,
+    source: Option<String>,
+    expected_source_oid: Option<String>,
+    target_oid: String,
+    mode: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::reset_branch(
+            &path,
+            source.as_deref(),
+            expected_source_oid.as_deref(),
+            &target_oid,
+            &mode,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-async fn cherry_pick(path: String, commit: String) -> Result<String, String> {
-    blocking(move || git::write::cherry_pick(&path, &commit)).await
+async fn cherry_pick(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: String,
+    commit: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::cherry_pick_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn cherry_pick_many(path: String, commits: Vec<String>) -> Result<String, String> {
-    blocking(move || git::write::cherry_pick_many(&path, &commits)).await
+async fn cherry_pick_many(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: String,
+    commits: Vec<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::cherry_pick_many_onto(
+            &path,
+            expected_branch.as_deref(),
+            &expected_oid,
+            &commits,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-async fn revert_commit(path: String, commit: String) -> Result<String, String> {
-    blocking(move || git::write::revert(&path, &commit)).await
+async fn revert_commit(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: String,
+    commit: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::revert_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
+    })
+    .await
 }
 
 #[tauri::command]
-async fn revert_many(path: String, commits: Vec<String>) -> Result<String, String> {
-    blocking(move || git::write::revert_many(&path, &commits)).await
+async fn revert_many(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: String,
+    commits: Vec<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::revert_many_onto(&path, expected_branch.as_deref(), &expected_oid, &commits)
+    })
+    .await
 }
 
 // ---- Conflict resolution ----
@@ -388,8 +460,8 @@ async fn skip_operation(path: String, kind: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn create_tag(path: String, name: String, sha: Option<String>) -> Result<String, String> {
-    blocking(move || git::write::create_tag(&path, &name, sha.as_deref())).await
+async fn create_tag(path: String, name: String, sha: String) -> Result<String, String> {
+    blocking(move || git::write::create_tag(&path, &name, Some(&sha))).await
 }
 
 #[tauri::command]
@@ -397,9 +469,9 @@ async fn create_annotated_tag(
     path: String,
     name: String,
     message: String,
-    sha: Option<String>,
+    sha: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::create_annotated_tag(&path, &name, &message, sha.as_deref())).await
+    blocking(move || git::write::create_annotated_tag(&path, &name, &message, Some(&sha))).await
 }
 
 #[tauri::command]
@@ -414,8 +486,7 @@ async fn delete_tag(path: String, name: String) -> Result<String, String> {
 
 /// Push a tag to `remote` (the default push remote when not given), optionally
 /// pinned to that remote's bound GitHub account. The token is resolved
-/// server-side via the provider, never passed in from the frontend (same as
-/// [`push`]).
+/// server-side via the provider, never passed in from the frontend.
 #[tauri::command]
 async fn push_tag(
     path: String,
@@ -434,8 +505,8 @@ async fn push_tag(
 }
 
 /// Delete a tag on `remote` (the default push remote when not given),
-/// optionally pinned to that remote's bound GitHub account. Token resolved
-/// server-side, like [`push`]. Local deletion is the separate [`delete_tag`] —
+/// optionally pinned to that remote's bound GitHub account. Token is resolved
+/// server-side. Local deletion is the separate [`delete_tag`] —
 /// without the remote delete, fetch's `refs/tags/*` import resurrects a locally
 /// deleted tag that still exists upstream.
 #[tauri::command]
@@ -465,7 +536,7 @@ async fn remove_worktree(
 }
 
 /// Delete `branch` on `remote`, optionally pinned to that remote's bound
-/// GitHub account. Token resolved server-side, like [`push`].
+/// GitHub account. Token is resolved server-side.
 #[tauri::command]
 async fn delete_remote_branch(
     path: String,
@@ -483,17 +554,18 @@ async fn delete_remote_branch(
 /// Force-push a specific `branch` with `--force-with-lease`, optionally pinned
 /// to the target remote's bound GitHub account. The account is validated
 /// against the branch's push remote, so a stale binding fails loudly instead of
-/// pushing with the wrong token. Token resolved server-side, like [`push`].
+/// pushing with the wrong token. Token is resolved server-side.
 #[tauri::command]
 async fn force_push(
     path: String,
     branch: String,
+    expected_oid: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
         let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::force_push(&path, &branch, &cred)
+        git::write::force_push(&path, &branch, &expected_oid, &cred)
     })
     .await
 }
@@ -787,6 +859,8 @@ async fn unstage_all(path: String) -> Result<String, String> {
 #[tauri::command]
 async fn commit(
     path: String,
+    expected_branch: Option<String>,
+    expected_oid: Option<String>,
     summary: String,
     description: String,
     amend: bool,
@@ -794,8 +868,10 @@ async fn commit(
     email: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::commit(
+        git::write::commit_expected(
             &path,
+            expected_branch.as_deref(),
+            expected_oid.as_deref(),
             &summary,
             &description,
             amend,
@@ -807,8 +883,41 @@ async fn commit(
 }
 
 #[tauri::command]
-async fn stash(path: String) -> Result<String, String> {
-    blocking(move || git::write::stash(&path)).await
+async fn squash_commits(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: String,
+    parent_oid: String,
+    summary: String,
+    description: String,
+    name: Option<String>,
+    email: Option<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::squash_commits(
+            &path,
+            expected_branch.as_deref(),
+            &expected_oid,
+            &parent_oid,
+            &summary,
+            &description,
+            name.as_deref(),
+            email.as_deref(),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+async fn stash(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: Option<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::stash_expected(&path, expected_branch.as_deref(), expected_oid.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -820,13 +929,39 @@ async fn list_stashes(path: String) -> Result<Vec<StashEntry>, String> {
 // reflog-relative and global across worktrees, so one captured at list time can
 // point at a different stash by the time the user acts (GL-117).
 #[tauri::command]
-async fn stash_apply(path: String, oid: String) -> Result<String, String> {
-    blocking(move || git::write::stash_apply(&path, &oid)).await
+async fn stash_apply(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: Option<String>,
+    oid: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::stash_apply_onto(
+            &path,
+            expected_branch.as_deref(),
+            expected_oid.as_deref(),
+            &oid,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
-async fn stash_apply_index(path: String, oid: String) -> Result<String, String> {
-    blocking(move || git::write::stash_apply_index(&path, &oid)).await
+async fn stash_apply_index(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: Option<String>,
+    oid: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::stash_apply_index_onto(
+            &path,
+            expected_branch.as_deref(),
+            expected_oid.as_deref(),
+            &oid,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -835,8 +970,21 @@ async fn stash_branch(path: String, branch: String, oid: String) -> Result<Strin
 }
 
 #[tauri::command]
-async fn stash_pop(path: String, oid: String) -> Result<String, String> {
-    blocking(move || git::write::stash_pop(&path, &oid)).await
+async fn stash_pop(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: Option<String>,
+    oid: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::stash_pop_onto(
+            &path,
+            expected_branch.as_deref(),
+            expected_oid.as_deref(),
+            &oid,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -845,15 +993,20 @@ async fn stash_drop(path: String, oid: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn pull(path: String, auth: Option<GitTransportAuthRef>) -> Result<String, String> {
+async fn pull(
+    path: String,
+    branch: String,
+    expected_oid: String,
+    auth: Option<GitTransportAuthRef>,
+) -> Result<String, String> {
     blocking(move || {
-        let cred = match git::write::head_pull_remote(&path) {
-            Some(remote) => {
-                git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?
-            }
-            None => git::transport_auth::TransportCredential::None,
+        let (remote, merge_ref) = git::write::branch_pull_target(&path, &branch)?;
+        let cred = if remote == "." {
+            git::transport_auth::TransportCredential::None
+        } else {
+            git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?
         };
-        git::write::pull(&path, &cred)
+        git::write::pull_branch(&path, &branch, &expected_oid, &remote, &merge_ref, &cred)
     })
     .await
 }
@@ -887,51 +1040,39 @@ async fn fetch(
     .await
 }
 
-/// Push the checked-out branch, optionally pinned to its target remote's bound
-/// GitHub account. The account is validated against the branch's push remote.
-/// The token is resolved server-side via the provider, never passed in from
-/// the frontend.
-#[tauri::command]
-async fn push(path: String, auth: Option<GitTransportAuthRef>) -> Result<String, String> {
-    blocking(move || {
-        let remote = git::write::head_push_remote(&path);
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::push(&path, &cred)
-    })
-    .await
-}
-
 /// Push a specific `branch` (used when it isn't the checked-out branch) to its
-/// configured remote, falling back to origin. Token resolved server-side from
-/// the target remote's bound `account`, like [`push`].
+/// configured remote, falling back to origin. Token is resolved server-side
+/// from the target remote's bound `account`.
 #[tauri::command]
 async fn push_branch(
     path: String,
     branch: String,
+    expected_oid: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
         let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::push_branch(&path, &branch, &cred)
+        git::write::push_branch(&path, &branch, &expected_oid, &cred)
     })
     .await
 }
 
 /// Publish a local branch to `upstream` (`remote/branch`) and set upstream in
-/// one push. Token resolved server-side from the target remote's bound
-/// `account`, like [`push`].
+/// one push. Token is resolved server-side from the target remote's bound
+/// `account`.
 #[tauri::command]
 async fn publish_branch(
     path: String,
     branch: String,
+    expected_oid: String,
     upstream: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::publish_remote(&path, &upstream)?;
         let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
-        git::write::publish_branch(&path, &branch, &upstream, &cred)
+        git::write::publish_branch(&path, &branch, &expected_oid, &upstream, &cred)
     })
     .await
 }
@@ -1681,7 +1822,6 @@ pub fn run() {
             set_upstream,
             merge_branch,
             can_fast_forward,
-            fast_forward,
             fast_forward_branch,
             rebase_onto,
             reset_to,
@@ -1735,6 +1875,7 @@ pub fn run() {
             stage_all,
             unstage_all,
             commit,
+            squash_commits,
             stash,
             list_stashes,
             stash_apply,
@@ -1744,7 +1885,6 @@ pub fn run() {
             stash_drop,
             pull,
             fetch,
-            push,
             push_branch,
             publish_branch,
             github_accounts,

@@ -205,20 +205,28 @@ pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
 /// precedence over `pull.rebase=true`, but older versions rebased on divergence
 /// instead of failing — passing `--no-rebase` makes the ff-only behaviour
 /// identical everywhere rather than depending on the git version and config.
+#[cfg(test)]
 pub fn pull(repo: &str, cred: &TransportCredential) -> Result<String, String> {
     run_transport(repo, cred, &["pull", "--no-rebase", "--ff-only"])
 }
 
-/// Push to the upstream remote (shells out — libgit2 has no network here).
-///
-/// `cred` selects how credentials are supplied for this invocation: `Gh` wires
-/// in `gh auth git-credential` inline (the URL username picks the account, and
-/// gh returns that account's token per gitcredentials(7)); `ProviderToken` feeds
-/// a GitLane-owned keychain token via the `GIT_ASKPASS` bridge; `None` leaves the
-/// user's own credential helper / SSH untouched. No token ever crosses our
-/// process boundary in any case.
-pub fn push(repo: &str, cred: &TransportCredential) -> Result<String, String> {
-    run_transport(repo, cred, &["push"])
+/// Fetch the configured upstream, then revalidate the explicit checked-out
+/// branch before integrating it. A checkout that lands while the network fetch
+/// is running therefore aborts before any local branch is moved.
+pub fn pull_branch(
+    repo: &str,
+    branch: &str,
+    expected_oid: &str,
+    remote: &str,
+    merge_ref: &str,
+    cred: &TransportCredential,
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, Some(branch), Some(expected_oid))?;
+    ensure_operand(remote)?;
+    ensure_operand(merge_ref)?;
+    run_transport(repo, cred, &["fetch", remote, merge_ref])?;
+    super::head::ensure_expected_head(repo, Some(branch), Some(expected_oid))?;
+    run_git(repo, &["merge", "--ff-only", "FETCH_HEAD"])
 }
 
 /// Push a specific `branch` without checking it out first (shells out — libgit2
@@ -226,13 +234,18 @@ pub fn push(repo: &str, cred: &TransportCredential) -> Result<String, String> {
 /// (`branch.<name>.remote`), falling back to `origin` when none is set, and
 /// honours a divergent upstream branch name (`branch.<name>.merge`) so a local
 /// branch tracking a differently-named remote branch still lands on the right
-/// ref. Does **not** set upstream — use [`set_upstream`] for that. `cred` is
-/// applied exactly as [`push`] does.
-pub fn push_branch(repo: &str, branch: &str, cred: &TransportCredential) -> Result<String, String> {
+/// ref. Does **not** set upstream — use [`set_upstream`] for that. `cred` selects
+/// the inline transport credentials; no token crosses the frontend boundary.
+pub fn push_branch(
+    repo: &str,
+    branch: &str,
+    expected_oid: &str,
+    cred: &TransportCredential,
+) -> Result<String, String> {
     // `branch` becomes a positional refspec in `git push <remote> <refspec>`, so
     // guard it against option injection (e.g. --receive-pack=…) like the others.
-    ensure_operand(branch)?;
-    let (remote, refspec) = push_target(repo, branch);
+    super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
+    let (remote, refspec) = push_target_at(repo, branch, expected_oid);
     run_transport(repo, cred, &["push", &remote, &refspec])
 }
 
@@ -242,15 +255,38 @@ pub fn push_branch(repo: &str, branch: &str, cred: &TransportCredential) -> Resu
 pub fn publish_branch(
     repo: &str,
     branch: &str,
+    expected_oid: &str,
     upstream: &str,
     cred: &TransportCredential,
 ) -> Result<String, String> {
-    ensure_operand(branch)?;
+    super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
     let (remote, remote_branch) = split_remote_ref(repo, upstream)?;
     ensure_operand(&remote)?;
     ensure_operand(&remote_branch)?;
-    let refspec = format!("refs/heads/{branch}:refs/heads/{remote_branch}");
-    run_transport(repo, cred, &["push", "--set-upstream", &remote, &refspec])
+    let refspec = format!("{expected_oid}:refs/heads/{remote_branch}");
+    // A pinned oid source is what prevents a concurrent local branch move from
+    // changing the commit we publish. `git push --set-upstream` cannot infer a
+    // local branch from an oid source, so persist the equivalent tracking
+    // configuration explicitly after the push succeeds. Push + config are not
+    // one transaction: dying in between leaves the branch published but
+    // untracked, which a re-publish repairs.
+    let pushed = run_transport(repo, cred, &["push", &remote, &refspec])?;
+    let configured_remote = run_git(
+        repo,
+        &["config", &format!("branch.{branch}.remote"), &remote],
+    )?;
+    let configured_merge = run_git(
+        repo,
+        &[
+            "config",
+            &format!("branch.{branch}.merge"),
+            &format!("refs/heads/{remote_branch}"),
+        ],
+    )?;
+    Ok(join_git_outputs(
+        &join_git_outputs(&pushed, &configured_remote),
+        &configured_merge,
+    ))
 }
 
 /// Split an `upstream` string like `origin/main` into its `(remote, branch)`
@@ -305,6 +341,7 @@ pub fn branch_push_remote(repo: &str, branch: &str) -> String {
 /// The remote a bare `git push` from the checked-out branch targets — that
 /// branch's [`push_target`] remote, falling back to `origin` on a detached or
 /// unborn HEAD (where the push itself will fail with git's own message anyway).
+#[cfg(test)]
 pub fn head_push_remote(repo: &str) -> String {
     run_git(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
         .ok()
@@ -314,43 +351,90 @@ pub fn head_push_remote(repo: &str) -> String {
         .unwrap_or_else(|| "origin".to_string())
 }
 
-/// The remote a bare `git pull` from the checked-out branch targets: the
-/// branch's configured upstream remote. No origin fallback here — unlike push,
-/// pull without an upstream should let git surface its own "no tracking
-/// information" message.
-pub fn head_pull_remote(repo: &str) -> Option<String> {
-    run_git(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .and_then(|branch| {
-            run_git(repo, &["config", &format!("branch.{branch}.remote")])
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty() && s != ".")
-        })
+pub fn branch_pull_target(repo: &str, branch: &str) -> Result<(String, String), String> {
+    ensure_operand(branch)?;
+    // `--default` makes an unset key a successful empty read while preserving
+    // real config failures, so users get the actionable no-upstream message
+    // without masking malformed or unreadable configuration.
+    let remote = run_git(
+        repo,
+        &[
+            "config",
+            "--get",
+            "--default",
+            "",
+            &format!("branch.{branch}.remote"),
+        ],
+    )?
+    .trim()
+    .to_string();
+    let merge_ref = run_git(
+        repo,
+        &[
+            "config",
+            "--get",
+            "--default",
+            "",
+            &format!("branch.{branch}.merge"),
+        ],
+    )?
+    .trim()
+    .to_string();
+    if remote.is_empty() || merge_ref.is_empty() {
+        return Err(format!(
+            "Branch '{branch}' has no remote-tracking upstream. Publish it or set an upstream first."
+        ));
+    }
+    ensure_operand(&remote)?;
+    ensure_operand(&merge_ref)?;
+    Ok((remote, merge_ref))
 }
 
-/// Resolve where `branch` pushes: its configured remote (`branch.<name>.remote`,
+/// Resolve where `branch` pushes: its remote via git's own push precedence
+/// (`branch.<name>.pushRemote` → `remote.pushDefault` → `branch.<name>.remote`,
 /// with local-tracking `.` treated as unset and falling back to `origin`) and
 /// refspec (honouring a divergent upstream branch name via
-/// `branch.<name>.merge`, else a plain `<branch>`). Shared by
+/// `branch.<name>.merge`, else the fully-qualified local branch). Shared by
 /// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
-/// deferring to `push.default`. Both config reads exit non-zero when unset, which
+/// deferring to `push.default`. Config reads exit non-zero when unset, which
 /// `.ok()` turns into the fallback.
 pub(super) fn push_target(repo: &str, branch: &str) -> (String, String) {
-    let remote = run_git(repo, &["config", &format!("branch.{branch}.remote")])
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty() && s != ".")
+    let (remote, destination) = push_destination(repo, branch);
+    (remote, format!("refs/heads/{branch}:{destination}"))
+}
+
+pub(super) fn push_target_at(repo: &str, branch: &str, expected_oid: &str) -> (String, String) {
+    let (remote, destination) = push_destination(repo, branch);
+    (remote, format!("{expected_oid}:{destination}"))
+}
+
+fn push_destination(repo: &str, branch: &str) -> (String, String) {
+    let config = |key: String| {
+        run_git(repo, &["config", &key])
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && s != ".")
+    };
+    let upstream_remote = config(format!("branch.{branch}.remote"));
+    // `git push` resolves its remote as branch.<name>.pushRemote →
+    // remote.pushDefault → branch.<name>.remote → origin; a terminal push and a
+    // GitLane push must land on the same remote (and pick that remote's
+    // credentials) in triangular setups too.
+    let remote = config(format!("branch.{branch}.pushRemote"))
+        .or_else(|| config("remote.pushDefault".to_string()))
+        .or_else(|| upstream_remote.clone())
         .unwrap_or_else(|| "origin".to_string());
-    let refspec = run_git(repo, &["config", &format!("branch.{branch}.merge")])
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .map(|merge| format!("{branch}:{merge}"))
-        .unwrap_or_else(|| branch.to_string());
-    (remote, refspec)
+    // `branch.<name>.merge` names the branch on the *fetch* upstream. It only
+    // describes a push destination when pushing to that same remote; on a
+    // triangular push remote git's push.default=simple uses the same-named
+    // branch instead.
+    let destination = if upstream_remote.as_deref() == Some(remote.as_str()) {
+        config(format!("branch.{branch}.merge"))
+    } else {
+        None
+    }
+    .unwrap_or_else(|| format!("refs/heads/{branch}"));
+    (remote, destination)
 }
 
 /// Fetch every non-skipped remote, prune deleted upstream refs, and import
@@ -497,8 +581,8 @@ pub(super) fn is_tag_clobber_rejection(output: &str) -> bool {
 }
 
 /// Push a tag to `remote` (`git push <remote> refs/tags/<name>`). The explicit
-/// `refs/tags/` refspec avoids any ambiguity with a same-named branch. `cred` is
-/// applied exactly as [`push`] does.
+/// `refs/tags/` refspec avoids any ambiguity with a same-named branch. `cred`
+/// selects the inline transport credentials.
 pub fn push_tag(
     repo: &str,
     name: &str,
@@ -515,8 +599,7 @@ pub fn push_tag(
 /// The fully-qualified `refs/tags/` refspec guarantees a same-named branch on
 /// the remote is never deleted. Local deletion is separate ([`super::delete_tag`]);
 /// without this, a tag deleted locally but still on the remote is re-imported by
-/// the next Fetch's explicit `refs/tags/*` refspec. `cred` selects the account
-/// like [`push`].
+/// the next Fetch's explicit `refs/tags/*` refspec. `cred` selects the account.
 ///
 /// A tag that was never pushed is not an error: absence upstream is the desired
 /// end state, so "remote ref does not exist" maps to `Ok` and a combined
@@ -546,7 +629,7 @@ pub(super) fn is_missing_remote_ref(output: &str) -> bool {
 
 /// Delete a branch on `remote` (`git push <remote> --delete <branch>`). `branch`
 /// is the short name on the remote (e.g. `feature/x`, not `origin/feature/x`).
-/// `cred` selects the account like [`push`].
+/// `cred` selects the account.
 pub fn delete_remote_branch(
     repo: &str,
     remote: &str,
@@ -566,11 +649,16 @@ pub fn delete_remote_branch(
 /// An explicit `<remote> <refspec>` is always supplied (via [`push_target`]) so
 /// the force applies to **only** the selected branch. A bare `git push
 /// --force-with-lease` would defer to `push.default`/configured refspecs and
-/// could rewrite several remote branches at once. `cred` is applied as
-/// [`push`] does.
-pub fn force_push(repo: &str, branch: &str, cred: &TransportCredential) -> Result<String, String> {
-    ensure_operand(branch)?;
-    let (remote, refspec) = push_target(repo, branch);
+/// could rewrite several remote branches at once. `cred` selects the inline
+/// transport credentials.
+pub fn force_push(
+    repo: &str,
+    branch: &str,
+    expected_oid: &str,
+    cred: &TransportCredential,
+) -> Result<String, String> {
+    super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
+    let (remote, refspec) = push_target_at(repo, branch, expected_oid);
     run_transport(
         repo,
         cred,
