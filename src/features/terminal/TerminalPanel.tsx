@@ -22,6 +22,7 @@ import { useUi } from "@/store/ui";
 import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
 import { TerminalResizeHandles } from "./TerminalResizeHandles";
+import { TERMINAL_EDGE_MARGIN } from "./terminalPanelGeometry";
 import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./terminalIcons";
 
 /**
@@ -32,9 +33,11 @@ import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./t
 export function TerminalLayer() {
   const terminalView = useUi((s) => s.terminalView);
   const terminalHeight = useUi((s) => s.terminalHeight);
+  const terminalBottomInset = useUi((s) => s.terminalBottomInset);
   const terminalHorizontalLayout = useUi((s) => s.terminalHorizontalLayout);
   const terminalExpanded = useUi((s) => s.terminalExpanded);
   const adjustTerminalHeight = useUi((s) => s.adjustTerminalHeight);
+  const setTerminalVertical = useUi((s) => s.setTerminalVertical);
   const setTerminalHorizontalInsets = useUi((s) => s.setTerminalHorizontalInsets);
   const collapseTerminal = useUi((s) => s.collapseTerminal);
   const expandTerminal = useUi((s) => s.expandTerminal);
@@ -51,8 +54,73 @@ export function TerminalLayer() {
   // display:none) so panes are never disposed.
   const visible = terminalView !== "hidden" && !!terminalPath;
 
+  // A bottom corner only needs the backdrop's square treatment when it sits at
+  // the workspace edge — that's where it lands exactly on a workspace block's
+  // corner and the block's border/shadow arc shows in the rounded notch. An
+  // interior corner (a side away from the edge, or the panel lifted off the
+  // floor) floats over block content, where a square grey corner would itself
+  // be the artifact. So both the side AND the bottom must be edge-aligned.
+  const bottomAtEdge = terminalExpanded || terminalBottomInset <= TERMINAL_EDGE_MARGIN;
+  const leftAtEdge =
+    bottomAtEdge &&
+    (terminalExpanded ||
+      Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout?.leftInset ?? TERMINAL_EDGE_MARGIN) ===
+        TERMINAL_EDGE_MARGIN);
+  const rightAtEdge =
+    bottomAtEdge &&
+    (terminalExpanded ||
+      (terminalHorizontalLayout
+        ? Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout.rightInset) ===
+          TERMINAL_EDGE_MARGIN
+        : false));
+
+  // Shared by the drawer and its backdrop so the two always coincide.
+  const frameStyle = {
+    height: terminalExpanded
+      ? `calc(100% - ${TERMINAL_EDGE_MARGIN * 2}px)`
+      : terminalHeight,
+    bottom: terminalExpanded
+      ? TERMINAL_EDGE_MARGIN
+      : Math.max(TERMINAL_EDGE_MARGIN, terminalBottomInset),
+    left: terminalExpanded
+      ? TERMINAL_EDGE_MARGIN
+      : Math.max(
+          TERMINAL_EDGE_MARGIN,
+          terminalHorizontalLayout?.leftInset ?? TERMINAL_EDGE_MARGIN,
+        ),
+    right:
+      terminalExpanded
+        ? TERMINAL_EDGE_MARGIN
+        : terminalHorizontalLayout
+          ? Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout.rightInset)
+          : `calc(50% - ${TERMINAL_EDGE_MARGIN}px)`,
+  };
+
   return (
     <>
+      {/* App-background backdrop. Where a bottom corner sits at the workspace
+          edge it stays square, filling the drawer's rounded-corner notch with
+          the gap colour so the workspace block's border/shadow arc underneath
+          can't show as a dark hairline. Everywhere else (top corners, interior
+          bottom corners) it matches the drawer's radius and stays invisible. */}
+      <div
+        aria-hidden
+        className={cn(
+          // Mirrors the drawer's collapse transition so the two fade/slide as
+          // one — an instant show/hide here would flash a gap-coloured slab on
+          // expand and let the hairline reappear mid-collapse.
+          // The colours duplicate gp-root's shell background (App.tsx); keep
+          // them in sync if the app background ever changes.
+          "pointer-events-none absolute z-[44] rounded-t-xl bg-neutral-100 transition-[opacity,transform] duration-150 dark:bg-neutral-900",
+          leftAtEdge ? "rounded-bl-none" : "rounded-bl-xl",
+          rightAtEdge ? "rounded-br-none" : "rounded-br-xl",
+          !visible && "hidden",
+          visible &&
+            terminalView === "collapsed" &&
+            "translate-y-3 scale-[0.98] opacity-0",
+        )}
+        style={frameStyle}
+      />
       {/* Open drawer. Kept mounted (just hidden) while collapsed/hidden/no-repo so
           the xterm instances + PTYs survive the whole app session. */}
       <div
@@ -60,7 +128,7 @@ export function TerminalLayer() {
         aria-hidden={!visible || terminalView !== "open"}
         inert={!visible || terminalView !== "open"}
         className={cn(
-          "absolute z-[45] min-w-0 overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_-12px_44px_-12px_rgba(0,0,0,0.35)] transition-[opacity,transform] duration-150 dark:border-white/10 dark:bg-neutral-900",
+          "absolute z-[45] min-w-0 overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm transition-[opacity,transform] duration-150 dark:border-white/5 dark:bg-neutral-900",
           // Mutually exclusive display: `hidden` (display:none, panes persist)
           // vs. the drawer's flex column — never both, so display:none can't lose
           // to `flex` on class ordering.
@@ -69,24 +137,13 @@ export function TerminalLayer() {
             terminalView === "collapsed" &&
             "pointer-events-none translate-y-3 scale-[0.98] opacity-0",
         )}
-        style={{
-          height: terminalExpanded ? "calc(100% - 16px)" : terminalHeight,
-          bottom: 8,
-          left: terminalExpanded
-            ? 8
-            : Math.max(8, terminalHorizontalLayout?.leftInset ?? 8),
-          right:
-            terminalExpanded
-              ? 8
-              : terminalHorizontalLayout
-                ? Math.max(8, terminalHorizontalLayout.rightInset)
-                : "calc(50% - 8px)",
-        }}
+        style={frameStyle}
       >
         {!terminalExpanded && (
           <TerminalResizeHandles
             panelRef={panelRef}
             adjustHeight={adjustTerminalHeight}
+            setVertical={setTerminalVertical}
             setInsets={setTerminalHorizontalInsets}
           />
         )}
@@ -168,7 +225,7 @@ export function TerminalLayer() {
           onClick={expandTerminal}
           title="Expand terminal"
           aria-label={alive ? "Terminal running" : "Terminal idle"}
-          className="absolute bottom-2 left-2 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+          className="absolute bottom-2.5 left-2.5 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
         >
           <svg
             viewBox="0 0 24 24"

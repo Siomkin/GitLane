@@ -24,6 +24,17 @@ export const primaryControl =
 export const eyebrow =
   "text-[11px] font-semibold uppercase tracking-wider text-neutral-400";
 
+/** Gap between the floating terminal and the window/workspace edges. Matches the
+ * workspace shell's `px-2.5 pb-2.5` (10px) so the terminal's edges line up with
+ * the workspace blocks. Lives here (not in the terminal feature) because the ui
+ * store's inset clamp needs the same floor without importing from features. */
+export const TERMINAL_EDGE_MARGIN = 10;
+
+/** Floating-terminal height clamps — shared by the ui store's setters and the
+ * terminal feature's drag geometry so they can't drift apart. */
+export const TERMINAL_MIN_HEIGHT = 160;
+export const TERMINAL_MAX_HEIGHT = 860;
+
 export const panelHeading = "text-[16px] font-semibold leading-tight text-neutral-800 dark:text-neutral-100";
 
 /** 1–2 letter avatar initials from an author's display name. Splits on any

@@ -261,7 +261,8 @@ describe("view-tab transitions", () => {
   it("normalizes user-selected terminal edge positions", () => {
     useUi.getState().setTerminalHorizontalInsets(-20, 1280.4);
     expect(useUi.getState()).toMatchObject({
-      terminalHorizontalLayout: { leftInset: 8, rightInset: 1280 },
+      // Floored at TERMINAL_EDGE_MARGIN so stored insets match what renders.
+      terminalHorizontalLayout: { leftInset: 10, rightInset: 1280 },
     });
 
     useUi.getState().setTerminalHorizontalInsets(9000, 20);
@@ -272,14 +273,36 @@ describe("view-tab transitions", () => {
 
   it("persists the user-selected terminal size and position", () => {
     useUi.getState().adjustTerminalHeight(-120);
+    useUi.getState().setTerminalVertical(120, 300);
     useUi.getState().setTerminalHorizontalInsets(180, 340);
 
     const partialize = useUi.persist.getOptions().partialize;
     const persisted = partialize?.(useUi.getState()) as Partial<ReturnType<typeof useUi.getState>>;
 
     expect(persisted).toMatchObject({
-      terminalHeight: 360,
+      terminalHeight: 300,
+      terminalBottomInset: 120,
       terminalHorizontalLayout: { leftInset: 180, rightInset: 340 },
+    });
+  });
+
+  it("caps terminal height growth to the container-derived maximum", () => {
+    useUi.setState({ terminalHeight: 400 });
+    // Without a cap, +600 would clamp only at the 860 ceiling.
+    useUi.getState().adjustTerminalHeight(600);
+    expect(useUi.getState().terminalHeight).toBe(860);
+
+    // With a caller-supplied cap (room above a lifted floor), it stops there.
+    useUi.setState({ terminalHeight: 400 });
+    useUi.getState().adjustTerminalHeight(600, 500);
+    expect(useUi.getState().terminalHeight).toBe(500);
+  });
+
+  it("normalizes the bottom inset and height set together", () => {
+    useUi.getState().setTerminalVertical(-40, 9000);
+    expect(useUi.getState()).toMatchObject({
+      terminalBottomInset: 10,
+      terminalHeight: 860,
     });
   });
 
