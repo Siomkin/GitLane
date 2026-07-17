@@ -60,7 +60,7 @@ export function TerminalLayer() {
         aria-hidden={!visible || terminalView !== "open"}
         inert={!visible || terminalView !== "open"}
         className={cn(
-          "absolute z-[45] min-w-0 overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_-12px_44px_-12px_rgba(0,0,0,0.35)] transition-[opacity,transform] duration-150 dark:border-white/10 dark:bg-neutral-900",
+          "absolute z-[45] min-w-0 overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm transition-[opacity,transform] duration-150 dark:border-white/5 dark:bg-neutral-900",
           // Mutually exclusive display: `hidden` (display:none, panes persist)
           // vs. the drawer's flex column — never both, so display:none can't lose
           // to `flex` on class ordering.

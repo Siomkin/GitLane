@@ -39,6 +39,27 @@ export function TerminalResizeHandles({
     });
   };
 
+  // Top corners: one drag drives both axes — height (incremental, like the top
+  // edge) and the matching side's inset (absolute from the drag start).
+  const beginCornerDrag = (side: TerminalResizeSide, event: ReactMouseEvent) => {
+    event.preventDefault();
+    const geometry = panelGeometry(panelRef.current);
+    if (!geometry) return;
+    const startX = event.clientX;
+    let lastY = event.clientY;
+    beginDrag(side === "left" ? "nwse-resize" : "nesw-resize", (moveEvent) => {
+      adjustHeight(lastY - moveEvent.clientY);
+      lastY = moveEvent.clientY;
+      const next = resizeTerminalInsets({
+        side,
+        start: geometry.insets,
+        deltaX: moveEvent.clientX - startX,
+        containerWidth: geometry.containerWidth,
+      });
+      setInsets(next.left, next.right);
+    });
+  };
+
   const resizeWidthWithKeyboard = (side: TerminalResizeSide, event: KeyboardEvent) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
@@ -87,6 +108,28 @@ export function TerminalResizeHandles({
           className={`absolute inset-y-0 z-10 w-2 cursor-ew-resize outline-none focus-visible:bg-[color:var(--accent)]/40 ${side === "left" ? "left-0" : "right-0"}`}
         />
       ))}
+      {/* Corner handles sit above the edge strips (z-20) so the overlap wins. */}
+      {(["left", "right"] as const).map((side) => (
+        <div
+          key={`corner-${side}`}
+          role="separator"
+          aria-label={`Resize terminal from top ${side} corner`}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+              event.preventDefault();
+              adjustHeight((event.key === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 48 : 16));
+              return;
+            }
+            resizeWidthWithKeyboard(side, event);
+          }}
+          onMouseDown={(event) => beginCornerDrag(side, event)}
+          title="Drag to resize"
+          className={`absolute top-0 z-20 h-3 w-3 outline-none focus-visible:bg-[color:var(--accent)]/40 ${
+            side === "left" ? "left-0 cursor-nwse-resize" : "right-0 cursor-nesw-resize"
+          }`}
+        />
+      ))}
     </>
   );
 }
@@ -109,7 +152,10 @@ function panelGeometry(panel: HTMLDivElement | null): {
   };
 }
 
-function beginDrag(cursor: "ns-resize" | "ew-resize", onMove: (event: MouseEvent) => void) {
+function beginDrag(
+  cursor: "ns-resize" | "ew-resize" | "nwse-resize" | "nesw-resize",
+  onMove: (event: MouseEvent) => void,
+) {
   const end = () => {
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", end);
