@@ -5,11 +5,11 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 
-/** Right-click menu on a navigator worktree row. The row's left-click is the
- * primary "switch to this worktree" action now (GL-22); this menu carries the
- * secondary actions — "Open worktree" (same switch, for discoverability), copy
- * path, and remove. The active worktree only offers "Copy path" (it's already
- * open; nothing to open/remove). */
+/** Right-click menu on a navigator worktree row. The row's left-click reveals
+ * the worktree's tip in the graph (consistent with the branch/tag rows); this
+ * menu is where *switching* to the worktree lives — "Open worktree" / "Open in
+ * new tab" — alongside copy path and remove. The active worktree only offers
+ * "Copy path" (it's already open; nothing to open/remove). */
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);

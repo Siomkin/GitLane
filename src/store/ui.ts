@@ -11,7 +11,7 @@ import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
 import { useTerminals } from "./terminals";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "@/lib/gitError";
-import type { ForgeAuthProvider } from "@/lib/api";
+import type { ForgeAuthProvider, WorktreeInfo } from "@/lib/api";
 import {
   TERMINAL_EDGE_MARGIN,
   TERMINAL_MAX_HEIGHT,
@@ -253,6 +253,18 @@ export interface DeleteWorktreeRequest {
   worktreePath: string;
 }
 
+/** A pending bulk removal of the detached worktrees, rendered by
+ * RemoveDetachedDialog: destructive preview/confirm → live per-worktree
+ * checklist → summary. The sweep loop is frontend-driven (one removal per
+ * target), so each target is its own checklist row that ticks (or fails) as the
+ * loop reaches it. The full target list crosses the store — captured at open so
+ * a mid-run worktree refresh can't rewrite the checklist. */
+export interface RemoveDetachedRequest {
+  /** The detached worktrees to remove, already filtered to the removable set
+   * (never the main worktree or the one backing the open tab). */
+  targets: WorktreeInfo[];
+}
+
 export interface PromptRequest {
   title: string;
   /** Optional helper line under the title. */
@@ -481,6 +493,11 @@ interface UiState {
    * (the dialog's own `inFlight` ref dies when it closes mid-run), so a reopened
    * dialog can't start a second delete racing the first on shared git state. */
   deleteWorktreeRunning: boolean;
+  /** Pending bulk remove-detached-worktrees modal, null = none open. */
+  removeDetached: RemoveDetachedRequest | null;
+  /** True while the remove-detached sweep is in flight — a store-level latch so a
+   * reopened dialog can't start a second sweep racing the first. */
+  removeDetachedRunning: boolean;
 
   /** Floating tooltip (e.g. full branch name on hover of a truncated pill). */
   tooltip: { text: string; x: number; y: number } | null;
@@ -660,6 +677,12 @@ interface UiState {
   /** Flag a delete-branch-and-worktree op as in flight (set by the dialog's run hook). */
   setDeleteWorktreeRunning: (running: boolean) => void;
 
+  /** Open the bulk remove-detached-worktrees modal. */
+  openRemoveDetached: (req: RemoveDetachedRequest) => void;
+  closeRemoveDetached: () => void;
+  /** Flag the remove-detached sweep as in flight (set by the dialog's run hook). */
+  setRemoveDetachedRunning: (running: boolean) => void;
+
   /** Legacy one-line toast. Thin forwarder into the notifications store
    *  (see store/notifications.ts) — "ok" → a success toast, "error" → a
    *  persistent, scrollable error toast with `friendlyGitError` applied. New
@@ -779,6 +802,8 @@ export const useUi = create<UiState>()(
   handoffRunning: false,
   deleteWorktree: null,
   deleteWorktreeRunning: false,
+  removeDetached: null,
+  removeDetachedRunning: false,
 
   tooltip: null,
 
@@ -1077,6 +1102,15 @@ export const useUi = create<UiState>()(
     set((s) => (s.deleteWorktree === null ? s : { deleteWorktree: null })),
   setDeleteWorktreeRunning: (running) =>
     set((s) => (s.deleteWorktreeRunning === running ? s : { deleteWorktreeRunning: running })),
+
+  openRemoveDetached: (req) => set({ ...noMenus, removeDetached: req }),
+  // Like the other worktree flows, dismissing mid-run leaves the sweep running
+  // (its result lands as a toast); `removeDetachedRunning` must hold until it
+  // settles so a reopened dialog can't start a second, racing sweep.
+  closeRemoveDetached: () =>
+    set((s) => (s.removeDetached === null ? s : { removeDetached: null })),
+  setRemoveDetachedRunning: (running) =>
+    set((s) => (s.removeDetachedRunning === running ? s : { removeDetachedRunning: running })),
 
   showToast: (message, tone = "ok") =>
     // Errors — especially multi-line hook output — persist until dismissed and

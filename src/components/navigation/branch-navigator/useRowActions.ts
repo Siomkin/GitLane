@@ -1,3 +1,4 @@
+import type { WorktreeInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 
@@ -12,20 +13,18 @@ export function useRevealNavigate() {
   };
 }
 
-/** Switch the app to a linked worktree and close the navigator. This is a
- * worktree row's primary left-click action — distinct from "reveal tip", which
- * only scrolls the current graph. The switch moves the current tab in place
- * (one repository, one tab — GL-110); `newTab` (cmd/ctrl-click, or the menu's
- * explicit "Open in new tab") opens it side-by-side instead. Errors (e.g. a
- * removed directory) surface as a toast rather than throwing into the click
- * handler, matching the worktree context menu. */
-export function useOpenWorktree() {
-  const openWorktree = useRepo((s) => s.openWorktree);
+/** Bulk-remove every removable detached worktree — the Worktrees section-header
+ * sweep. Opens the dedicated RemoveDetachedDialog (destructive confirm → live
+ * per-worktree checklist → summary) rather than a fire-and-forget toast, so the
+ * removal shows progress like the hand-off / delete-worktree flows. Closes the
+ * navigator first — the dialog is a full-screen modal that outlives the popup. */
+export function useRemoveDetachedWorktrees(targets: WorktreeInfo[]) {
+  const openRemoveDetached = useUi((s) => s.openRemoveDetached);
   const closeNav = useUi((s) => s.closeNav);
-  const showToast = useUi((s) => s.showToast);
-  return (worktreePath: string, newTab = false) => {
+  return () => {
+    if (targets.length === 0) return;
     closeNav();
-    void openWorktree(worktreePath, { newTab }).catch((e) => showToast(String(e), "error"));
+    openRemoveDetached({ targets });
   };
 }
 

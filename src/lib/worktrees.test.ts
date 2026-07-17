@@ -3,6 +3,8 @@ import type { RepoSummary, WorktreeInfo } from "@/lib/api";
 import {
   activeWorktree,
   isActiveWorktreePath,
+  isDetachedWorktree,
+  removableDetachedWorktrees,
   worktreeIndicatorView,
   worktreeLabel,
   worktreeName,
@@ -81,6 +83,37 @@ describe("worktreeLabel", () => {
   });
   it("uses the disambiguated name for a detached codex worktree", () => {
     expect(worktreeLabel(codexA, [codexMain, codexA, codexB])).toBe("1e75/GitLane");
+  });
+});
+
+describe("isDetachedWorktree", () => {
+  it("is true only for a branch-less entry with a real working tree", () => {
+    expect(isDetachedWorktree(detachedLinked)).toBe(true);
+    expect(isDetachedWorktree(linked)).toBe(false);
+  });
+  it("excludes bare and prunable entries (neither has a usable checkout)", () => {
+    expect(isDetachedWorktree(wt({ branch: null, bare: true }))).toBe(false);
+    expect(isDetachedWorktree(wt({ branch: null, prunable: true }))).toBe(false);
+  });
+});
+
+describe("removableDetachedWorktrees", () => {
+  it("keeps detached linked worktrees and drops branched ones", () => {
+    expect(removableDetachedWorktrees([main, linked, detachedLinked], summary())).toEqual([detachedLinked]);
+  });
+  it("never offers the main worktree, even when its HEAD is detached", () => {
+    const detachedMain = wt({ branch: null });
+    expect(removableDetachedWorktrees([detachedMain, linked], summary())).toEqual([]);
+  });
+  it("never offers the worktree backing the open tab", () => {
+    const s = summary({ workdir: "/repo-wt-detached", path: "/repo-wt-detached" });
+    expect(removableDetachedWorktrees([main, detachedLinked], s)).toEqual([]);
+  });
+  it("never offers a locked worktree (a bulk force would override git's dirty check)", () => {
+    const lockedDetached = wt({ name: "locked", path: "/locked", branch: null, isMain: false, locked: true });
+    expect(removableDetachedWorktrees([main, lockedDetached, detachedLinked], summary())).toEqual([
+      detachedLinked,
+    ]);
   });
 });
 

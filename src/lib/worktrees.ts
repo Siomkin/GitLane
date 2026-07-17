@@ -74,6 +74,33 @@ export function worktreeLabel(wt: WorktreeInfo, worktrees: WorktreeInfo[]): stri
   return wt.branch ?? worktreeName(wt, worktrees);
 }
 
+/** Detached = no branch checked out but a real working tree. Bare entries have
+ * no checkout at all, and prunable ones have lost their directory (cleaning
+ * those is `git worktree prune`, not remove) — neither counts as detached. */
+export function isDetachedWorktree(wt: WorktreeInfo): boolean {
+  return wt.branch == null && !wt.bare && !wt.prunable;
+}
+
+/** The detached worktrees the bulk "Remove detached" sweep may delete: never
+ * the main worktree (git refuses to remove it), never the one backing the open
+ * tab (removal would pull the directory out from under the app), and never a
+ * locked one. Removing a locked worktree needs a force that also overrides git's
+ * dirty-worktree protection — too blunt for a silent bulk sweep, so locked
+ * worktrees are removed only via the per-row menu, which warns about the lock
+ * override first. */
+export function removableDetachedWorktrees(
+  worktrees: WorktreeInfo[],
+  summary: RepoSummary | null,
+): WorktreeInfo[] {
+  return worktrees.filter(
+    (wt) =>
+      isDetachedWorktree(wt) &&
+      !wt.isMain &&
+      !wt.locked &&
+      !isActiveWorktreePath(summary, wt.path),
+  );
+}
+
 /** What the toolbar's worktree indicator should show.
  * - `active`: the open repo is itself a linked worktree → name it + its path.
  *   This is the only state worth a permanent toolbar chip — it's the "you are

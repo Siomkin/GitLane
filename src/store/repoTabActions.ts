@@ -137,6 +137,7 @@ export function createRepoTabActions(
         useUi.getState().closePrompt();
         useUi.getState().closeHandoff();
         useUi.getState().closeDeleteWorktree();
+        useUi.getState().closeRemoveDetached();
         return;
       }
       const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0];

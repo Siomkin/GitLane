@@ -4,7 +4,7 @@
 // own event→row mapping (`STEP_EVENTS`) and labels; this module only derives a
 // row's status from how far the backend has progressed.
 
-export type StepStatus = "pending" | "active" | "done";
+export type StepStatus = "pending" | "active" | "done" | "failed";
 
 /** Row index a backend step id belongs to, or -1 for an unknown id (a newer
  * backend emitting a step this build doesn't know must not break the list). */
