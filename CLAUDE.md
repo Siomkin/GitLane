@@ -33,8 +33,11 @@ non-secret capability baseline before GitHub operations: `gh version`,
 `gh auth status --json hosts`, `gh auth token --hostname <host> --user <login>`,
 `gh pr diff --patch --color never`, and `gh api graphql`.
 
-The frontend test harness is **vitest + Testing Library** (jsdom). Tests live next to the
-code as `*.test.ts`/`*.test.tsx`; `src/test/setup.ts` wires jest-dom matchers + RTL cleanup,
+The frontend test harness is **vitest + Testing Library**, split into two Vitest projects:
+`node` for pure-logic `*.test.ts` files and `jsdom` for `*.test.tsx` plus an allowlist of
+DOM-needing `.test.ts` files (see [`src/test/README.md`](src/test/README.md)). Tests live
+next to the code as `*.test.ts`/`*.test.tsx`; `src/test/setup.ts` wires jest-dom matchers +
+RTL cleanup for the jsdom project (`setup.node.ts` covers node),
 and the IPC boundary (`@tauri-apps/api/core`'s `invoke`) is mocked **inline per test file**
 with the canonical `vi.hoisted` + `vi.mock` pattern — see [`src/test/README.md`](src/test/README.md).
 Coverage is still partial — typechecks remain the primary safety net.

@@ -1,4 +1,4 @@
-// Vitest setup — runs before each test file.
+// Vitest setup for the `jsdom` project — runs before each DOM test file.
 //
 // 1. Registers jest-dom matchers on Vitest's `expect` (the `/vitest` entry also
 //    augments the type, so `toBeInTheDocument()` etc. typecheck without globals).
@@ -7,6 +7,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { installLocalStorage } from "./local-storage";
 
 // TanStack Virtual uses a debounced timer fallback when native `scrollend`
 // support is absent. jsdom tears down `window` after each test file, so a
@@ -21,29 +22,8 @@ if (typeof window !== "undefined" && !("onscrollend" in window)) {
   });
 }
 
-// The persisted Zustand store (store/ui) writes to localStorage on every
-// setState. Install a deterministic in-memory implementation without first
-// reading `globalThis.localStorage`: recent Node versions expose that name
-// through an experimental getter which warns (and may throw) unless Node was
-// started with `--localstorage-file`.
-(function installLocalStorage() {
-  const store = new Map<string, string>();
-  const mem: Storage = {
-    get length() {
-      return store.size;
-    },
-    clear: () => store.clear(),
-    getItem: (k) => (store.has(k) ? store.get(k)! : null),
-    setItem: (k, v) => void store.set(k, String(v)),
-    removeItem: (k) => void store.delete(k),
-    key: (i) => [...store.keys()][i] ?? null,
-  };
-  Object.defineProperty(globalThis, "localStorage", {
-    value: mem,
-    configurable: true,
-    writable: true,
-  });
-})();
+// In-memory localStorage for the persisted Zustand store — see local-storage.ts.
+installLocalStorage();
 
 afterEach(() => {
   cleanup();
