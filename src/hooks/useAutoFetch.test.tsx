@@ -80,12 +80,16 @@ describe("useAutoFetch", () => {
     useUi.setState({ autoFetchEnabled: true, autoFetchMinutes: 5 });
     renderHook(() => useAutoFetch());
 
-    const visibility = vi
-      .spyOn(Document.prototype, "visibilityState", "get")
-      .mockReturnValue("hidden");
+    // Shadow the prototype getter with an own property — spying on
+    // `Document.prototype`'s accessor doesn't intercept `document.visibilityState`
+    // under happy-dom, but an own data/accessor property always wins.
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(fetch).not.toHaveBeenCalled();
-    visibility.mockRestore();
+    delete (document as { visibilityState?: unknown }).visibilityState;
 
     useRepo.setState({ netOps: 1 });
     await vi.advanceTimersByTimeAsync(5 * 60_000);

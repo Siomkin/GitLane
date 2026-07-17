@@ -21,7 +21,7 @@ bun run dev                 # vite dev server alone — Rust invoke() commands W
 bunx tsc --noEmit           # typecheck frontend
 (cd src-tauri && cargo check)   # fast Rust verify
 (cd src-tauri && cargo build)   # build the Rust binary
-bun run test                # frontend unit/render tests (vitest, jsdom)
+bun run test                # frontend unit/render tests (vitest; node + happy-dom projects)
 bun run test:watch          # vitest in watch mode
 ```
 
@@ -34,10 +34,12 @@ non-secret capability baseline before GitHub operations: `gh version`,
 `gh pr diff --patch --color never`, and `gh api graphql`.
 
 The frontend test harness is **vitest + Testing Library**, split into two Vitest projects:
-`node` for pure-logic `*.test.ts` files and `jsdom` for `*.test.tsx` plus an allowlist of
-DOM-needing `.test.ts` files (see [`src/test/README.md`](src/test/README.md)). Tests live
+`node` for pure-logic `*.test.ts` files and `dom` (running **happy-dom**, ≈4× cheaper than
+jsdom) for `*.test.tsx` plus an allowlist of DOM-needing `.test.ts` files (see
+[`src/test/README.md`](src/test/README.md); a file needing jsdom fidelity opts out with a
+`// @vitest-environment jsdom` docblock). Tests live
 next to the code as `*.test.ts`/`*.test.tsx`; `src/test/setup.ts` wires jest-dom matchers +
-RTL cleanup for the jsdom project (`setup.node.ts` covers node),
+RTL cleanup for the dom project (`setup.node.ts` covers node),
 and the IPC boundary (`@tauri-apps/api/core`'s `invoke`) is mocked **inline per test file**
 with the canonical `vi.hoisted` + `vi.mock` pattern — see [`src/test/README.md`](src/test/README.md).
 Coverage is still partial — typechecks remain the primary safety net.
