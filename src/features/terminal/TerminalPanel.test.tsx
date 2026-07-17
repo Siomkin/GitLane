@@ -28,6 +28,32 @@ beforeEach(() => {
   });
 });
 
+/** Pin the panel (100..1100 in a 1200-wide container) so inset math is exact. */
+function mockPanelRects(panel: HTMLDivElement) {
+  vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+    width: 1000,
+    height: 480,
+    x: 100,
+    y: 0,
+    top: 0,
+    right: 1100,
+    bottom: 480,
+    left: 100,
+    toJSON: () => ({}),
+  });
+  vi.spyOn(panel.parentElement as HTMLElement, "getBoundingClientRect").mockReturnValue({
+    width: 1200,
+    height: 800,
+    x: 0,
+    y: 0,
+    top: 0,
+    right: 1200,
+    bottom: 800,
+    left: 0,
+    toJSON: () => ({}),
+  });
+}
+
 describe("TerminalLayer", () => {
   it("uses a left-aligned 50% width until the user resizes it", () => {
     render(<TerminalLayer />);
@@ -81,6 +107,44 @@ describe("TerminalLayer", () => {
     expect(panel).toHaveStyle({ left: "100px", right: "300px" });
   });
 
+  it("resizes both axes at once from a top-corner drag", () => {
+    render(<TerminalLayer />);
+    const corner = screen.getByRole("button", {
+      name: "Resize terminal height and width from top right",
+    });
+    mockPanelRects(corner.parentElement as HTMLDivElement);
+
+    // Up-left: grows the height (+120) and pulls the right edge in (-200).
+    fireEvent.mouseDown(corner, { clientX: 1100, clientY: 320 });
+    fireEvent.mouseMove(window, { clientX: 900, clientY: 200 });
+    fireEvent.mouseUp(window);
+
+    expect(useUi.getState().terminalHeight).toBe(600);
+    expect(useUi.getState()).toMatchObject({
+      terminalHorizontalLayout: { leftInset: 100, rightInset: 300 },
+    });
+  });
+
+  it("resizes one axis per arrow key on a corner handle", () => {
+    render(<TerminalLayer />);
+    const corner = screen.getByRole("button", {
+      name: "Resize terminal height and width from top right",
+    });
+    mockPanelRects(corner.parentElement as HTMLDivElement);
+
+    fireEvent.keyDown(corner, { key: "ArrowUp" });
+    expect(useUi.getState().terminalHeight).toBe(496);
+
+    fireEvent.keyDown(corner, { key: "ArrowDown", shiftKey: true });
+    expect(useUi.getState().terminalHeight).toBe(448);
+
+    // Right corner: ArrowLeft pulls the right edge in (inset grows, panel narrows).
+    fireEvent.keyDown(corner, { key: "ArrowLeft" });
+    expect(useUi.getState()).toMatchObject({
+      terminalHorizontalLayout: { leftInset: 100, rightInset: 132 },
+    });
+  });
+
   it("collapses to a running-status launcher and restores on click", () => {
     render(<TerminalLayer />);
 
@@ -107,6 +171,9 @@ describe("TerminalLayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Maximize terminal" }));
     expect(panel).toHaveStyle({ bottom: "8px", left: "8px", right: "8px" });
     expect(screen.queryByRole("separator", { name: /Resize terminal width/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Resize terminal height and width/ }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Restore terminal size" }));
     expect(panel).toHaveStyle({ left: "120px", right: "260px" });

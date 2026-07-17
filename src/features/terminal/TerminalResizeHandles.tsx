@@ -108,12 +108,15 @@ export function TerminalResizeHandles({
           className={`absolute inset-y-0 z-10 w-2 cursor-ew-resize outline-none focus-visible:bg-[color:var(--accent)]/40 ${side === "left" ? "left-0" : "right-0"}`}
         />
       ))}
-      {/* Corner handles sit above the edge strips (z-20) so the overlap wins. */}
+      {/* Corner handles sit above the edge strips (z-20) so the overlap wins.
+          Not `role="separator"` — that implies a single axis (and defaults to
+          horizontal); a corner is a 2D grip, so it's a plain button whose label
+          names both axes. Arrow keys move one axis per press. */}
       {(["left", "right"] as const).map((side) => (
         <div
           key={`corner-${side}`}
-          role="separator"
-          aria-label={`Resize terminal from top ${side} corner`}
+          role="button"
+          aria-label={`Resize terminal height and width from top ${side}`}
           tabIndex={0}
           onKeyDown={(event) => {
             if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -125,7 +128,7 @@ export function TerminalResizeHandles({
           }}
           onMouseDown={(event) => beginCornerDrag(side, event)}
           title="Drag to resize"
-          className={`absolute top-0 z-20 h-3 w-3 outline-none focus-visible:bg-[color:var(--accent)]/40 ${
+          className={`absolute top-0 z-20 h-4 w-4 outline-none focus-visible:bg-[color:var(--accent)]/40 ${
             side === "left" ? "left-0 cursor-nwse-resize" : "right-0 cursor-nesw-resize"
           }`}
         />
