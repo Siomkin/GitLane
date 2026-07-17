@@ -2,9 +2,17 @@ import type { KeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "re
 import {
   resizeTerminalFromBottom,
   resizeTerminalInsets,
+  terminalMaxHeight,
   type TerminalHorizontalInsets,
   type TerminalResizeSide,
 } from "./terminalPanelGeometry";
+
+interface PanelGeometry {
+  insets: TerminalHorizontalInsets;
+  vertical: { bottom: number; height: number };
+  containerWidth: number;
+  containerHeight: number;
+}
 
 export function TerminalResizeHandles({
   panelRef,
@@ -13,17 +21,33 @@ export function TerminalResizeHandles({
   setInsets,
 }: {
   panelRef: RefObject<HTMLDivElement | null>;
-  adjustHeight: (delta: number) => void;
+  adjustHeight: (delta: number, maxHeight?: number) => void;
   setVertical: (bottomInset: number, height: number) => void;
   setInsets: (left: number, right: number) => void;
 }) {
+  // Top-edge/corner growth must not push the top past the container: cap the
+  // height to the room above the current floor (bottom gap fixed during a top
+  // drag, so this is constant for the gesture).
+  const heightCap = (geometry: PanelGeometry) =>
+    terminalMaxHeight(geometry.containerHeight, geometry.vertical.bottom);
+
   const beginHeightDrag = (event: ReactMouseEvent) => {
     event.preventDefault();
+    const geometry = panelGeometry(panelRef.current);
+    const maxHeight = geometry ? heightCap(geometry) : undefined;
     let lastY = event.clientY;
     beginDrag("ns-resize", (moveEvent) => {
-      adjustHeight(lastY - moveEvent.clientY);
+      adjustHeight(lastY - moveEvent.clientY, maxHeight);
       lastY = moveEvent.clientY;
     });
+  };
+
+  const resizeHeightWithKeyboard = (event: KeyboardEvent) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const geometry = panelGeometry(panelRef.current);
+    const step = event.shiftKey ? 48 : 16;
+    adjustHeight(event.key === "ArrowUp" ? step : -step, geometry ? heightCap(geometry) : undefined);
   };
 
   const beginWidthDrag = (side: TerminalResizeSide, event: ReactMouseEvent) => {
@@ -52,6 +76,7 @@ export function TerminalResizeHandles({
       const next = resizeTerminalFromBottom({
         start: geometry.vertical,
         deltaY: moveEvent.clientY - startY,
+        containerHeight: geometry.containerHeight,
       });
       setVertical(next.bottom, next.height);
     });
@@ -63,10 +88,11 @@ export function TerminalResizeHandles({
     event.preventDefault();
     const geometry = panelGeometry(panelRef.current);
     if (!geometry) return;
+    const maxHeight = heightCap(geometry);
     const startX = event.clientX;
     let lastY = event.clientY;
     beginDrag(side === "left" ? "nwse-resize" : "nesw-resize", (moveEvent) => {
-      adjustHeight(lastY - moveEvent.clientY);
+      adjustHeight(lastY - moveEvent.clientY, maxHeight);
       lastY = moveEvent.clientY;
       const next = resizeTerminalInsets({
         side,
@@ -90,6 +116,7 @@ export function TerminalResizeHandles({
       const vertical = resizeTerminalFromBottom({
         start: geometry.vertical,
         deltaY: moveEvent.clientY - startY,
+        containerHeight: geometry.containerHeight,
       });
       setVertical(vertical.bottom, vertical.height);
       const horizontal = resizeTerminalInsets({
@@ -113,6 +140,7 @@ export function TerminalResizeHandles({
     const next = resizeTerminalFromBottom({
       start: geometry.vertical,
       deltaY: event.key === "ArrowDown" ? step : -step,
+      containerHeight: geometry.containerHeight,
     });
     setVertical(next.bottom, next.height);
   };
@@ -138,16 +166,7 @@ export function TerminalResizeHandles({
         aria-orientation="horizontal"
         aria-label="Resize terminal height"
         tabIndex={0}
-        onKeyDown={(event) => {
-          const step = event.shiftKey ? 48 : 16;
-          if (event.key === "ArrowUp") {
-            event.preventDefault();
-            adjustHeight(step);
-          } else if (event.key === "ArrowDown") {
-            event.preventDefault();
-            adjustHeight(-step);
-          }
-        }}
+        onKeyDown={resizeHeightWithKeyboard}
         onMouseDown={beginHeightDrag}
         title="Drag to resize height"
         className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize outline-none focus-visible:bg-[color:var(--accent)]/40"
@@ -187,8 +206,7 @@ export function TerminalResizeHandles({
           tabIndex={0}
           onKeyDown={(event) => {
             if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-              event.preventDefault();
-              adjustHeight((event.key === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 48 : 16));
+              resizeHeightWithKeyboard(event);
               return;
             }
             resizeWidthWithKeyboard(side, event);
@@ -224,11 +242,7 @@ export function TerminalResizeHandles({
   );
 }
 
-function panelGeometry(panel: HTMLDivElement | null): {
-  insets: TerminalHorizontalInsets;
-  vertical: { bottom: number; height: number };
-  containerWidth: number;
-} | null {
+function panelGeometry(panel: HTMLDivElement | null): PanelGeometry | null {
   const container = panel?.parentElement;
   if (!panel || !container) return null;
   const panelRect = panel.getBoundingClientRect();
@@ -244,6 +258,7 @@ function panelGeometry(panel: HTMLDivElement | null): {
       height: panelRect.height,
     },
     containerWidth: containerRect.width,
+    containerHeight: containerRect.height,
   };
 }
 

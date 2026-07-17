@@ -12,19 +12,37 @@ export interface TerminalVertical {
   height: number;
 }
 
+/** The tallest a panel may be without its top edge escaping the container: it
+ * leaves the edge margin above the panel and below the current bottom gap.
+ * Never below the min height, so a short window overflows rather than collapsing
+ * the panel to nothing (the pre-existing tiny-window limitation). */
+export function terminalMaxHeight(containerHeight: number, bottom: number): number {
+  return Math.max(
+    TERMINAL_MIN_HEIGHT,
+    Math.min(TERMINAL_MAX_HEIGHT, containerHeight - TERMINAL_EDGE_MARGIN - bottom),
+  );
+}
+
 /** Move the popup's BOTTOM edge while keeping its top edge fixed. The top's
- * position is `bottom + height`, so that sum is held constant: dragging the
- * bottom edge down (`deltaY > 0`) lowers the bottom gap and grows the height,
- * both clamped so the height stays within [min, max] and the bottom never dips
- * below the edge margin. */
+ * position is `bottom + height`, so that sum ("topAnchor") is held constant:
+ * dragging the bottom edge down (`deltaY > 0`) lowers the bottom gap and grows
+ * the height, both clamped so the height stays within [min, max] and the bottom
+ * never dips below the edge margin. `containerHeight` caps the topAnchor so a
+ * panel whose stored geometry no longer fits (persisted from a taller window)
+ * is pulled back into view on the next drag instead of preserving the overflow. */
 export function resizeTerminalFromBottom({
   start,
   deltaY,
+  containerHeight,
 }: {
   start: TerminalVertical;
   deltaY: number;
+  containerHeight: number;
 }): TerminalVertical {
-  const topAnchor = start.bottom + start.height;
+  const topAnchor = Math.min(
+    start.bottom + start.height,
+    containerHeight - TERMINAL_EDGE_MARGIN,
+  );
   // bottom range that keeps height in [min, max] AND bottom >= margin.
   const minBottom = Math.max(TERMINAL_EDGE_MARGIN, topAnchor - TERMINAL_MAX_HEIGHT);
   const maxBottom = topAnchor - TERMINAL_MIN_HEIGHT;

@@ -541,7 +541,10 @@ interface UiState {
   hideTerminal: () => void;
   forgetTerminalView: (repoPath: string) => void;
   toggleTerminalExpanded: () => void;
-  adjustTerminalHeight: (dy: number) => void;
+  /** Grow/shrink the popup's height (top-edge/corner drag; bottom gap fixed).
+   * `maxHeight` caps it to the space above the current floor so the top edge
+   * can't escape the container — the caller derives it from the live geometry. */
+  adjustTerminalHeight: (dy: number, maxHeight?: number) => void;
   /** Set the popup's bottom gap and height together (bottom-edge/corner drags
    * keep the top edge fixed by moving both). */
   setTerminalVertical: (bottomInset: number, height: number) => void;
@@ -878,11 +881,11 @@ export const useUi = create<UiState>()(
     }),
   toggleTerminalExpanded: () => set((s) => ({ terminalExpanded: !s.terminalExpanded })),
   // Down = taller. Clamp so the compact panel stays usable without eating the whole window.
-  adjustTerminalHeight: (dy) =>
+  adjustTerminalHeight: (dy, maxHeight = TERMINAL_MAX_HEIGHT) =>
     set((s) => ({
       terminalHeight: Math.max(
         TERMINAL_MIN_HEIGHT,
-        Math.min(TERMINAL_MAX_HEIGHT, s.terminalHeight + dy),
+        Math.min(TERMINAL_MAX_HEIGHT, maxHeight, s.terminalHeight + dy),
       ),
     })),
   setTerminalVertical: (bottomInset, height) =>

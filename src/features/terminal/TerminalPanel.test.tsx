@@ -29,16 +29,18 @@ beforeEach(() => {
   });
 });
 
-/** Pin the panel (100..1100 in a 1200-wide container) so inset math is exact. */
+/** Pin the panel (x 100..1100 in a 1200-wide container; y 280..760 in an
+ * 800-tall one, so a 40px bottom gap leaves ample room above for the height
+ * cap) so both inset and vertical math are exact. */
 function mockPanelRects(panel: HTMLDivElement) {
   vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
     width: 1000,
     height: 480,
     x: 100,
-    y: 0,
-    top: 0,
+    y: 280,
+    top: 280,
     right: 1100,
-    bottom: 480,
+    bottom: 760,
     left: 100,
     toJSON: () => ({}),
   });
@@ -171,6 +173,33 @@ describe("TerminalLayer", () => {
     expect(useUi.getState().terminalBottomInset).toBe(160);
     expect(useUi.getState().terminalHeight).toBe(380);
     expect(panel).toHaveStyle({ bottom: "160px" });
+  });
+
+  it("caps a top-edge drag so a lifted panel's top stays inside the container", () => {
+    // Floor already lifted 500px off the bottom, short panel above it.
+    useUi.setState({ terminalBottomInset: 500, terminalHeight: 200 });
+    render(<TerminalLayer />);
+    const topHandle = screen.getByRole("separator", { name: "Resize terminal height" });
+    const panel = topHandle.parentElement as HTMLDivElement;
+    // Container 800 tall; panel bottom at 300 (→ 500 gap), 200 tall (top at 100).
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+      width: 1000, height: 200, x: 100, y: 100, top: 100, right: 1100,
+      bottom: 300, left: 100, toJSON: () => ({}),
+    });
+    vi.spyOn(panel.parentElement as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      width: 1200, height: 800, x: 0, y: 0, top: 0, right: 1200,
+      bottom: 800, left: 0, toJSON: () => ({}),
+    });
+
+    // Drag the top edge up 400px: unbounded that wants height 600 (top at -100,
+    // under the ActionBar). Capped to 800 - 10 margin - 500 floor = 290.
+    fireEvent.mouseDown(topHandle, { clientY: 100 });
+    fireEvent.mouseMove(window, { clientY: -300 });
+    fireEvent.mouseUp(window);
+
+    expect(useUi.getState().terminalHeight).toBe(290);
+    // Top edge = 800 - 500 - 290 = 10, exactly the edge margin — still visible.
+    expect(useUi.getState().terminalBottomInset + useUi.getState().terminalHeight).toBe(790);
   });
 
   it("squares the gap backdrop only on edge-aligned bottom corners", () => {
