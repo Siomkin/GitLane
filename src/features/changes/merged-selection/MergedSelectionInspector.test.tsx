@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { FileListView } from "@/lib/ui";
 import { MergedSelectionInspector } from "./MergedSelectionInspector";
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({
@@ -43,7 +44,7 @@ const file = (path: string, status: FileChange["status"]): FileChange => ({
 
 beforeEach(() => {
   useRepo.setState({ graph, selectedFile: null });
-  useUi.setState({ fileMenu: null, stackedReview: null });
+  useUi.setState({ fileMenu: null, stackedReview: null, fileListView: FileListView.Path });
 });
 
 describe("MergedSelectionInspector", () => {

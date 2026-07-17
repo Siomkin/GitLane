@@ -95,3 +95,19 @@ export function buildRows(
   walk(root, 0, "");
   return rows;
 }
+
+/** The `files` reordered to match how the Tree view lays them out: grouped by
+ * directory (dirs before files, both alphabetical), depth-first. Used to keep
+ * the stacked "review all" section order in step with the Tree file list so
+ * navigating between the two lands on the same neighbours. Path (flat) order is
+ * just the input order, so callers only need this for Tree mode.
+ *
+ * This is the *fully expanded* tree order — every file, in tree order. It is
+ * deliberately independent of the inspector's local collapse state: "review
+ * all" always covers every file, so a folder collapsed in the side list only
+ * hides rows there, it never drops a section here. */
+export function treeOrderedFiles(files: FileChange[]): FileChange[] {
+  return buildRows(files, {}, () => true).flatMap((row) =>
+    row.kind === "file" ? [row.file] : [],
+  );
+}

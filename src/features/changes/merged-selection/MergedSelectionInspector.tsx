@@ -1,9 +1,9 @@
-import { useState, type MouseEvent } from "react";
+import { type MouseEvent } from "react";
 import { summarizeFiles } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
-import { ChangedFileList, FileViewToggle, type FileListView } from "@/features/changes/file-list";
+import { ChangedFileList, FileViewToggle } from "@/features/changes/file-list";
 import { SelectionCommitList } from "./SelectionCommitList";
 import { mergedCommitRows, selectionCountLabel } from "./mergedSelection";
 
@@ -19,7 +19,8 @@ export function MergedSelectionInspector() {
   const selectFile = useRepo((s) => s.selectFile);
   const openSelectionReview = useUi((s) => s.openSelectionReview);
   const openFileMenu = useUi((s) => s.openFileMenu);
-  const [view, setView] = useState<FileListView>("path");
+  const view = useUi((s) => s.fileListView);
+  const setView = useUi((s) => s.setFileListView);
 
   const count = selectedCommits.length;
   const rows = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits);
@@ -37,6 +38,10 @@ export function MergedSelectionInspector() {
   const onContextMenu = (path: string, e: MouseEvent) => {
     e.preventDefault();
     openFileMenu({ x: e.clientX, y: e.clientY, path });
+  };
+  const onDirContextMenu = (dirPath: string, e: MouseEvent) => {
+    e.preventDefault();
+    openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true });
   };
 
   return (
@@ -91,6 +96,7 @@ export function MergedSelectionInspector() {
           activePath={activePath}
           onSelect={(path) => selectFile(path, "commit")}
           onContextMenu={onContextMenu}
+          onDirContextMenu={onDirContextMenu}
         />
       )}
     </div>

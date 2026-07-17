@@ -9,6 +9,7 @@ import type { DestructivePreview, FileChange } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { FileListView } from "@/lib/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { FileContextMenu } from "@/components/chrome/overlays";
 import { WorkingInspector } from "./WorkingInspector";
@@ -18,7 +19,9 @@ const staged = (path: string): FileChange => ({ path, status: "M", add: 1, del: 
 beforeEach(() => {
   // Reset the git-domain slice this component reads to a clean, empty tree.
   useRepo.setState({ changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState }, selectedFile: null });
-  useUi.setState({ fileMenu: null });
+  // The changed-files view is now shared ui state (persists across the app), so
+  // reset it per test — otherwise a prior test's Tree toggle leaks in.
+  useUi.setState({ fileMenu: null, fileListView: FileListView.Path });
   // The embedded commit composer reads the terminal-agents store on render.
   // Stub it so the mocked `invoke` can't leave `agents` unset (its loader would
   // otherwise resolve to a non-array and crash `selectEnabledAgents`).

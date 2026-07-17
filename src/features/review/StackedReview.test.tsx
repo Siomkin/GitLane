@@ -10,6 +10,7 @@ import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
+import { FileListView } from "@/lib/ui";
 import { MAX_CACHED_STACKED_DIFFS, StackedReview } from "./StackedReview";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -187,6 +188,7 @@ beforeEach(() => {
   useUi.setState({
     stackedReview: { oid: "c1", range: undefined, title: "Reviewing c1" },
     reviewNotes: [],
+    fileListView: FileListView.Path,
   });
 });
 
@@ -561,5 +563,40 @@ describe("StackedReview — back to graph", () => {
     // Both must be cleared so the dispatcher falls through to the graph.
     expect(useUi.getState().stackedReview).toBeNull();
     expect(useRepo.getState().selectedFile).toBeNull();
+  });
+});
+
+describe("StackedReview — Path/Tree section order", () => {
+  // Backend (diff) order deliberately interleaves directories so Path and Tree
+  // order visibly differ.
+  const backendOrder = ["z.ts", "src/b.ts", "a/y.ts", "src/a.ts"];
+  const headerOrder = (container: HTMLElement) =>
+    [...container.querySelectorAll("[data-file-path]")].map((el) =>
+      el.getAttribute("data-file-path"),
+    );
+
+  beforeEach(() => {
+    invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
+      if (command === "commit_files") {
+        return Promise.resolve(backendOrder.map((path) => file(path, 1, 0)));
+      }
+      if (command === "commit_file_diff") return Promise.resolve(diffFor(args.file as string));
+      return Promise.resolve([]);
+    });
+  });
+
+  it("keeps the backend/diff order in Path mode", async () => {
+    useUi.setState({ fileListView: FileListView.Path });
+    const { container } = render(<StackedReview />);
+    await screen.findByText("z.ts");
+    expect(headerOrder(container)).toEqual(backendOrder);
+  });
+
+  it("groups sections by directory in Tree mode, matching the tree file list", async () => {
+    useUi.setState({ fileListView: FileListView.Tree });
+    const { container } = render(<StackedReview />);
+    await screen.findByText("y.ts");
+    // dirs before files, both alphabetical, depth-first — same as treeOrderedFiles.
+    expect(headerOrder(container)).toEqual(["a/y.ts", "src/a.ts", "src/b.ts", "z.ts"]);
   });
 });

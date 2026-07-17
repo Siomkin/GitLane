@@ -16,6 +16,7 @@ import {
   TERMINAL_EDGE_MARGIN,
   TERMINAL_MAX_HEIGHT,
   TERMINAL_MIN_HEIGHT,
+  FileListView,
   type LeftTab,
   type RightTab,
 } from "@/lib/ui";
@@ -156,8 +157,12 @@ export interface WorktreeMenu {
 export interface FileMenu {
   x: number;
   y: number;
-  /** Repo-relative path of the file. */
+  /** Repo-relative path of the file, or — when `dir` is set — of the directory. */
   path: string;
+  /** Set when the menu targets a Tree-view directory header rather than a file:
+   * a copy-only menu (folder name / relative / full path), with none of the
+   * file-specific actions (open, history, discard). */
+  dir?: boolean;
   /** Working-tree discard target. Present for working-changes rows (drives the
    * "Discard"/"Unstage & discard" item); omitted for committed files, whose
    * changes can't be discarded — they get a copy-only menu. */
@@ -434,6 +439,13 @@ interface UiState {
    * `leftTab` — every repo starts on details. */
   rightTab: RightTab;
 
+  /** How every changed-files list lays out — flat **Path** or grouped **Tree**.
+   * Shared across the commit / working / merged-selection inspectors and the
+   * stacked "review all" ordering so switching in one place is reflected
+   * everywhere (and the "review all" section order matches the tree). A view
+   * preference, so it persists. */
+  fileListView: FileListView;
+
   prFilter: PrFilter;
   prSelected: number | null;
   prTab: "info" | "diff" | "checks" | "commits";
@@ -513,6 +525,7 @@ interface UiState {
   toggleTheme: () => void;
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
+  setFileListView: (view: FileListView) => void;
   setShowCommitNodeIcons: (show: boolean) => void;
   /** Set (colour) or clear (null) the custom colour for an email. */
   setIdentityColor: (email: string, color: string | null) => void;
@@ -773,6 +786,7 @@ export const useUi = create<UiState>()(
 
   leftTab: "history",
   rightTab: "details",
+  fileListView: FileListView.Path,
 
   prFilter: "open",
   prSelected: null,
@@ -834,6 +848,7 @@ export const useUi = create<UiState>()(
     })),
   setAccent: (accent) => set({ accent }),
   setDensity: (density) => set({ density }),
+  setFileListView: (view) => set((s) => (s.fileListView === view ? s : { fileListView: view })),
   setShowCommitNodeIcons: (show) => set({ showCommitNodeIcons: show }),
   setIdentityColor: (email, color) =>
     set((s) => {
@@ -1173,6 +1188,7 @@ export const useUi = create<UiState>()(
         collapsed: s.collapsed,
         commitComposerMode: s.commitComposerMode,
         commitDraftAgent: s.commitDraftAgent,
+        fileListView: s.fileListView,
       }),
     },
   ),

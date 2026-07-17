@@ -16,7 +16,7 @@ export function FileContextMenu() {
   const changes = useRepo((s) => s.changes);
   if (!menu) return null;
 
-  const { path, discard } = menu;
+  const { path, dir, discard } = menu;
   const fileName = basename(path);
   const fileGuard = fileWriteGuard(
     [...changes.unstaged, ...changes.staged].find((file) => file.path === path),
@@ -31,6 +31,18 @@ export function FileContextMenu() {
     close();
     void navigator.clipboard?.writeText(text);
   };
+
+  // A directory header (Tree view) has no file to open, no history, and nothing
+  // to discard — only its path is useful, so it gets a copy-only menu.
+  if (dir) {
+    const dirItems: MenuItem[] = [
+      { label: "Copy", header: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
+      { label: "Folder name", onClick: () => copy(fileName) },
+      { label: "Relative path", onClick: () => copy(path) },
+      { label: "Full path", onClick: () => copy(fullPath) },
+    ];
+    return <MenuPanel left={menu.x} top={menu.y} items={dirItems} onClose={close} width={220} />;
+  }
 
   // Copy is the most-used action here, so it leads — a "Copy" header labels the
   // cluster so the rows don't each repeat the word + icon. The history views are

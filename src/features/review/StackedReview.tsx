@@ -9,7 +9,9 @@ import { summarizeFiles } from "@/lib/changeSummary";
 import { useLazyDiffs } from "@/hooks/useLazyDiffs";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { FileListView } from "@/lib/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
+import { treeOrderedFiles } from "@/features/changes/commitTree";
 import { HandToAgentBar } from "./comments";
 import { StackedReviewList } from "./StackedReviewList";
 import {
@@ -38,6 +40,10 @@ function startsCollapsed(file: FileChange): boolean {
 export function StackedReview() {
   const review = useUi((s) => s.stackedReview);
   const closeStackedReview = useUi((s) => s.closeStackedReview);
+  // The changed-files list view (shared with the inspectors). In Tree mode the
+  // stacked sections follow the tree's grouped order, so navigating from the
+  // Tree file list lands on the same neighbours here (GL — review-all reorder).
+  const fileListView = useUi((s) => s.fileListView);
   const summary = useRepo((s) => s.summary);
   const selectedFile = useRepo((s) => s.selectedFile);
   const fileSelectionRequestId = useRepo((s) => s.fileSelectionRequestId);
@@ -117,10 +123,14 @@ export function StackedReview() {
   const requestVisibleFiles = useCallback(
     (visiblePaths: string[], measureFileBody?: (filePath: string) => number | null) => {
       if (!path || !oid) return;
-      const visible = new Set(visiblePaths);
-      const visibleFiles = files.filter(
-        (file) => visible.has(file.path) && !collapsed[file.path],
-      );
+      // Keep `visiblePaths`' viewport order (top-to-bottom) — the FIFO fetch
+      // queue then loads sections in the order they're read. In Tree mode that
+      // order differs from the backend `files` order, so map through it rather
+      // than `files.filter`, which would re-impose the backend order.
+      const byPath = new Map(files.map((file) => [file.path, file]));
+      const visibleFiles = visiblePaths
+        .map((filePath) => byPath.get(filePath))
+        .filter((file): file is FileChange => !!file && !collapsed[file.path]);
       const visibleKeys = new Set(
         visibleFiles.map((file) => stackedDiffKey(file.path, fullFiles)),
       );
@@ -200,9 +210,16 @@ export function StackedReview() {
     setCollapsed((c) => (c[target] ? { ...c, [target]: false } : c));
   }, [selectedFile?.path, selectedFile?.source, files]);
 
+  // Order the sections to match the active file-list view: Path keeps the
+  // backend (diff) order; Tree groups by directory exactly like the Tree file
+  // list, so scrolling and file-to-file navigation stay in step across both.
+  const orderedFiles = useMemo(
+    () => (fileListView === FileListView.Tree ? treeOrderedFiles(files) : files),
+    [fileListView, files],
+  );
   const model = useMemo(
-    () => buildStackedReviewModel(files, collapsed, diffs, fullFiles, placeholderSizes),
-    [collapsed, diffs, files, fullFiles, placeholderSizes],
+    () => buildStackedReviewModel(orderedFiles, collapsed, diffs, fullFiles, placeholderSizes),
+    [collapsed, diffs, orderedFiles, fullFiles, placeholderSizes],
   );
   const toggleFile = useCallback(
     (filePath: string) =>

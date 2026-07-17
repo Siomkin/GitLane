@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { CommitNode, StashEntry } from "@/lib/api";
 import { StashIcon } from "@/components/ui/icons";
 import { summarizeFiles } from "@/lib/changeSummary";
@@ -8,7 +7,7 @@ import { useUi } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
 import { CommitPeople, personVisual } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
-import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
+import { ChangedFileList, FileViewToggle } from "./file-list";
 import { useInspectorCommit } from "./useInspectorCommit";
 
 /** Inspector for a selected commit — metadata, the (collapsible) message,
@@ -23,7 +22,8 @@ export function CommitInspector() {
   const requestPrompt = useUi((state) => state.requestPrompt);
   const fileMenu = useUi((state) => state.fileMenu);
   const showToast = useUi((state) => state.showToast);
-  const [view, setView] = useState<FileListView>("path");
+  const view = useUi((state) => state.fileListView);
+  const setView = useUi((state) => state.setFileListView);
   // The selected commit/stash identity is shared with the header's identity +
   // Checkout bar (`CommitCheckoutBar`), which renders the SHA pill and Checkout.
   const { selected, selectedStash, selectedOid, selectedShortLabel, selectedTitle, selectedBody, canEditMessage } =
@@ -109,6 +109,10 @@ export function CommitInspector() {
             // Committed files: copy-only menu (no working-tree discard).
             e.preventDefault();
             openFileMenu({ x: e.clientX, y: e.clientY, path });
+          }}
+          onDirContextMenu={(dirPath, e) => {
+            e.preventDefault();
+            openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true });
           }}
         />
       )}

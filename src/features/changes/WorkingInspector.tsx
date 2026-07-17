@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, type MouseEvent } from "react";
 import type { FileChange, WorkingChanges } from "@/lib/api";
 import {
   advancedNotices,
@@ -29,7 +29,8 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const stageAll = useRepo((state) => state.stageAll);
   const unstageAll = useRepo((state) => state.unstageAll);
   const summary = useRepo((state) => state.summary);
-  const [view, setView] = useState<FileListView>("path");
+  const view = useUi((state) => state.fileListView);
+  const setView = useUi((state) => state.setFileListView);
   const openFileMenu = useUi((state) => state.openFileMenu);
   const fileMenu = useUi((state) => state.fileMenu);
   const total = changes.staged.length + changes.unstaged.length;
@@ -57,6 +58,10 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
     // copy-only menu (no discard) rather than half-undo the rename.
     const discard = file.status === "R" ? undefined : { staged };
     openFileMenu({ x: e.clientX, y: e.clientY, path: file.path, discard });
+  };
+  const openDirMenu = (dirPath: string, e: MouseEvent) => {
+    e.preventDefault();
+    openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true });
   };
 
   // The open menu's target path, but only for the matching section — so a file
@@ -178,6 +183,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           onDirAction={stagePaths}
           onSelect={(p) => openFile(p, "unstaged")}
           onContextMenu={(f, e) => openMenu(f, false, e)}
+          onDirContextMenu={openDirMenu}
           menuPath={menuPathFor(false)}
         />
         <FileSection
@@ -194,6 +200,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           onDirAction={unstagePaths}
           onSelect={(p) => openFile(p, "staged")}
           onContextMenu={(f, e) => openMenu(f, true, e)}
+          onDirContextMenu={openDirMenu}
           menuPath={menuPathFor(true)}
         />
       </div>
@@ -220,6 +227,7 @@ function FileSection({
   onDirAction,
   onSelect,
   onContextMenu,
+  onDirContextMenu,
   menuPath,
 }: {
   title: string;
@@ -236,6 +244,8 @@ function FileSection({
   onDirAction: (paths: string[]) => void;
   onSelect: (path: string) => void;
   onContextMenu: (file: FileChange, e: MouseEvent) => void;
+  /** Right-click on a Tree-view directory header (copy the folder's path). */
+  onDirContextMenu: (dirPath: string, e: MouseEvent) => void;
   /** Path of the row whose context menu is open (highlighted), or null. */
   menuPath: string | null;
 }) {
@@ -276,6 +286,7 @@ function FileSection({
             const file = files.find((f) => f.path === path);
             if (file) onContextMenu(file, e);
           }}
+          onDirContextMenu={onDirContextMenu}
           rowAction={(file) => ({
             tone,
             onAction: () => onAction(file.path),

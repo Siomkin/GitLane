@@ -41,4 +41,38 @@ describe("FileContextMenu", () => {
     expect(requestOpenRepoFile).toHaveBeenCalledWith("src/App.tsx");
     expect(useUi.getState().fileMenu).toBeNull();
   });
+
+  it("shows a copy-only menu for a directory — no open/history/discard", () => {
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/features/changes", dir: true } });
+    render(<FileContextMenu />);
+
+    // Copy the folder's own path; the file-only actions are absent.
+    expect(screen.getByRole("menuitem", { name: "Folder name" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Relative path" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Open file" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "File history" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
+  });
+
+  it("copies the directory's relative path and closes the menu", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/features/changes", dir: true } });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Relative path" }));
+    expect(writeText).toHaveBeenCalledWith("src/features/changes");
+    expect(useUi.getState().fileMenu).toBeNull();
+  });
+
+  it("copies the directory's full path (repo root + relative)", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/features/changes", dir: true } });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Full path" }));
+    expect(writeText).toHaveBeenCalledWith("/r/src/features/changes");
+  });
 });

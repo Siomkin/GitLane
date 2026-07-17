@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { FileChange } from "@/lib/api";
-import { buildRows, type Row } from "./commitTree";
+import { buildRows, treeOrderedFiles, type Row } from "./commitTree";
 
 const fc = (path: string): FileChange => ({ path, status: "M", add: 0, del: 0, binary: false });
 const all = () => true;
@@ -74,6 +74,28 @@ describe("buildRows", () => {
     expect(expanded.filter((r) => r.kind === "file").map((r) => r.key)).toEqual([
       "d/a.ts",
       "d/b.ts",
+    ]);
+  });
+});
+
+describe("treeOrderedFiles", () => {
+  it("reorders a flat list into the Tree layout: dirs before files, depth-first", () => {
+    // Backend (Path) order is arbitrary; the Tree view groups by directory.
+    const files = [fc("z.ts"), fc("src/b.ts"), fc("a/y.ts"), fc("src/a.ts")];
+    expect(treeOrderedFiles(files).map((f) => f.path)).toEqual([
+      "a/y.ts",
+      "src/a.ts",
+      "src/b.ts",
+      "z.ts",
+    ]);
+  });
+
+  it("preserves every file exactly once", () => {
+    const files = [fc("b.ts"), fc("nested/deep/c.ts"), fc("a.ts")];
+    expect([...treeOrderedFiles(files)].map((f) => f.path).sort()).toEqual([
+      "a.ts",
+      "b.ts",
+      "nested/deep/c.ts",
     ]);
   });
 });
