@@ -4,14 +4,14 @@ import react from "@vitejs/plugin-react";
 
 // *.test.ts files that genuinely need a DOM (dispatch real events, drive
 // hooks through renderHook, read window/document) and therefore run in the
-// jsdom project alongside every *.test.tsx. All other *.test.ts files are
+// `dom` project alongside every *.test.tsx. All other *.test.ts files are
 // pure logic and run in the much cheaper `node` environment — creating a
-// jsdom world per file was the single largest cost of the suite.
+// DOM world per file was the single largest cost of the suite.
 //
 // A node-project test that starts needing the DOM fails loudly
 // ("document is not defined"): add it here, or rename it .test.tsx if it
 // gained a render.
-const JSDOM_TEST_TS = [
+const DOM_TEST_TS = [
   "src/components/navigation/branch-navigator/useNavigatorSections.test.ts",
   "src/features/conflicts/useConflictResolver.test.ts",
   "src/features/terminal/panes/paneController.test.ts",
@@ -62,16 +62,20 @@ export default defineConfig({
           environment: "node",
           setupFiles: ["./src/test/setup.node.ts"],
           include: ["src/**/*.{test,spec}.ts"],
-          exclude: [...configDefaults.exclude, ...JSDOM_TEST_TS],
+          exclude: [...configDefaults.exclude, ...DOM_TEST_TS],
         },
       },
       {
         extends: true,
         test: {
-          name: "jsdom",
-          environment: "jsdom",
+          // Runs happy-dom (≈4× cheaper env creation than jsdom). A file that
+          // needs jsdom-level fidelity opts out with a `// @vitest-environment
+          // jsdom` docblock (see StackedReview.test.tsx); jsdom stays installed
+          // for those.
+          name: "dom",
+          environment: "happy-dom",
           setupFiles: ["./src/test/setup.ts"],
-          include: ["src/**/*.{test,spec}.tsx", ...JSDOM_TEST_TS],
+          include: ["src/**/*.{test,spec}.tsx", ...DOM_TEST_TS],
         },
       },
     ],

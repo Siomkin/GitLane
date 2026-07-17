@@ -1,4 +1,4 @@
-// Vitest setup for the `jsdom` project — runs before each DOM test file.
+// Vitest setup for the `dom` project (happy-dom) — runs before each DOM test file.
 //
 // 1. Registers jest-dom matchers on Vitest's `expect` (the `/vitest` entry also
 //    augments the type, so `toBeInTheDocument()` etc. typecheck without globals).
@@ -10,8 +10,8 @@ import { cleanup } from "@testing-library/react";
 import { installLocalStorage } from "./local-storage";
 
 // TanStack Virtual uses a debounced timer fallback when native `scrollend`
-// support is absent. jsdom tears down `window` after each test file, so a
-// pending fallback can fire after cleanup and surface as an unrelated
+// support is absent. The DOM environment tears down `window` after each test
+// file, so a pending fallback can fire after cleanup and surface as an unrelated
 // `window is not defined` unhandled error. Mark the event as supported so
 // virtualized tests follow the event-driven path instead.
 if (typeof window !== "undefined" && !("onscrollend" in window)) {
@@ -24,6 +24,17 @@ if (typeof window !== "undefined" && !("onscrollend" in window)) {
 
 // In-memory localStorage for the persisted Zustand store — see local-storage.ts.
 installLocalStorage();
+
+// happy-dom exposes `navigator.clipboard` as a getter-only accessor, so tests
+// that swap in a mock via `Object.assign(navigator, { clipboard })` throw
+// ("Cannot set property clipboard … which has only a getter"). Redefine it as a
+// writable, configurable data property so both the `Object.assign` and
+// `Object.defineProperty` mock patterns work (jsdom left it plainly assignable).
+Object.defineProperty(navigator, "clipboard", {
+  value: navigator.clipboard,
+  writable: true,
+  configurable: true,
+});
 
 afterEach(() => {
   cleanup();

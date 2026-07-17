@@ -55,7 +55,11 @@ beforeEach(() => {
   });
 });
 
-// jsdom has no DataTransfer; fireEvent needs a stub for drag events.
+// fireEvent needs a dataTransfer for drag events. happy-dom synthesizes its own
+// real DataTransfer and merges this stub's members onto it, so `setData` (a
+// function ref) is observable here but `effectAllowed` (a value) is written to
+// the real object, not this stub — assert the move-cursor payload in
+// useBranchRefDrag.test.ts, which drives the handler directly.
 const dataTransfer = () => ({ setData: vi.fn(), effectAllowed: "" });
 
 describe("CommitRow ref pills", () => {
@@ -273,9 +277,9 @@ describe("CommitRow ref pills", () => {
     fireEvent.dragStart(screen.getByText("feature"), { dataTransfer: dt });
 
     expect(useUi.getState().draggingFrom).toEqual({ name: "feature", kind: "local" });
-    // The drag payload is part of the contract: plain-text ref name, move cursor.
+    // The plain-text ref name is part of the drag payload contract; the move
+    // cursor (effectAllowed) is asserted in useBranchRefDrag.test.ts.
     expect(dt.setData).toHaveBeenCalledWith("text/plain", "feature");
-    expect(dt.effectAllowed).toBe("move");
   });
 
   it("double-clicks a local branch pill straight into checkout", async () => {

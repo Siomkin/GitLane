@@ -1,3 +1,9 @@
+// @vitest-environment jsdom
+//
+// Pinned to jsdom: the "evicts an offscreen diff" test asserts LRU eviction that
+// hinges on the TanStack virtualizer's window position after a programmatic
+// scroll. happy-dom drives scroll measurement/timing differently, leaving file-0
+// un-evicted, so this one file keeps the faithful engine (GL-242).
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, FileDiff } from "@/lib/api";
