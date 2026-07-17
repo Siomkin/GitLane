@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import { useUi } from "@/store/ui";
 import {
   DialogCancelButton,
@@ -64,7 +66,10 @@ export function ConfirmDialog() {
               confirm.secondary!.onClick();
               closeConfirm();
             }}
-            className="h-9 rounded-lg border border-black/10 px-4 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(
+              "h-9 rounded-lg border border-black/10 px-4 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5",
+              focusRing,
+            )}
           >
             {confirm.secondary.label}
           </button>

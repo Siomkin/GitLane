@@ -8,6 +8,7 @@ import {
   type GraphActionKind,
 } from "@/lib/graphActions";
 import { focusRing } from "@/lib/ui";
+import { worktreeName } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -214,9 +215,15 @@ export function ActionMenu() {
     // front with the owning worktree named, mirroring BranchContextMenu. GL-103.
     const guarded = checkoutBranchFor(spec.kind);
     const heldElsewhere = guarded ? findOtherBranchWorktree(worktrees, guarded, workdir) : null;
-    const heldBy = heldElsewhere
-      ? worktrees.find((w) => w.path === heldElsewhere.path)?.name ?? heldElsewhere.path
+    // Disambiguated name (parent/leaf on collisions) — matches the pill
+    // tooltips and the navigator, where the raw leaf can name every agent
+    // worktree identically.
+    const heldByInfo = heldElsewhere
+      ? worktrees.find((w) => w.path === heldElsewhere.path)
       : null;
+    const heldBy = heldByInfo
+      ? worktreeName(heldByInfo, worktrees)
+      : heldElsewhere?.path ?? null;
     return {
       ...spec,
       ...iconFor(spec.kind),

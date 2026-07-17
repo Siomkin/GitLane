@@ -245,6 +245,18 @@ describe("ConfirmDialog", () => {
     expect(screen.getAllByRole("button")).toHaveLength(2); // Cancel + Confirm
   });
 
+  it("Escape fires neither the confirm nor the secondary action", () => {
+    const onSecondary = vi.fn();
+    const onConfirm = openConfirm({
+      secondary: { label: "Open that worktree", onClick: onSecondary },
+    });
+    render(<ConfirmDialog />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onSecondary).not.toHaveBeenCalled();
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
   it("stacks at z-[80], above the create-branch dialog", () => {
     openConfirm();
     const { container } = render(<ConfirmDialog />);

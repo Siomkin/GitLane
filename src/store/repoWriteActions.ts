@@ -5,7 +5,7 @@ import { friendlyGitError } from "@/lib/gitError";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { pushRemoteForBranch, remoteNameForUpstream } from "@/lib/remoteAccounts";
-import { isActiveWorktreePath, worktreeName } from "@/lib/worktrees";
+import { isActiveWorktreePath, trimTrailingSlash, worktreeName } from "@/lib/worktrees";
 import {
   handoffDestinationHere,
   handoffSourceValid,
@@ -304,6 +304,12 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) throw new Error("No repository");
       const existingWorktree = await findCheckoutWorktree(set, get, summary, name);
+      // findCheckoutWorktree guards its own probe path, but the cached path
+      // resolves without that check — re-verify ownership after the await so a
+      // concurrent tab switch can't pair this repo's dialog with another's state.
+      if (get().summary?.path !== summary.path) {
+        throw new Error("Repository changed while checking worktrees. Try again.");
+      }
       if (existingWorktree) {
         // Git refuses to check a branch out in two worktrees, so this checkout
         // can't proceed as-is. Don't silently switch the tab into the holding
@@ -313,7 +319,9 @@ export function createRepoWriteActions(
         // back to the plain open when the reclaim isn't possible (the holder is
         // prunable, or the open worktree isn't a valid destination).
         const worktrees = get().worktrees;
-        const holder = worktrees.find((wt) => wt.path === existingWorktree.path);
+        const holder = worktrees.find(
+          (wt) => trimTrailingSlash(wt.path) === trimTrailingSlash(existingWorktree.path),
+        );
         const here = handoffDestinationHere(
           worktrees,
           existingWorktree.path,
@@ -326,18 +334,49 @@ export function createRepoWriteActions(
             message: `Git allows a branch to be checked out in only one worktree at a time, and ${name} is currently checked out in "${worktreeName(holder, worktrees)}".`,
             details: [holder.path],
             confirmLabel: "Check out here",
-            onConfirm: () =>
+            onConfirm: () => {
+              // The confirm can sit open while a watcher refresh prunes the
+              // holder, moves the branch, or invalidates the destination — the
+              // snapshot above is only what the dialog was opened FROM. Re-gate
+              // against the live list before starting the multi-step move (the
+              // backend also fails closed, but this keeps the error immediate
+              // and readable instead of a mid-handoff failure).
+              const liveWorktrees = get().worktrees;
+              const liveSummary = get().summary;
+              const liveHolder = liveWorktrees.find(
+                (wt) => trimTrailingSlash(wt.path) === trimTrailingSlash(holder.path),
+              );
+              const liveHere =
+                liveSummary &&
+                handoffDestinationHere(
+                  liveWorktrees,
+                  holder.path,
+                  liveSummary.workdir ?? liveSummary.path,
+                );
+              if (
+                liveSummary?.path !== summary.path ||
+                liveHolder?.branch !== name ||
+                !liveHere ||
+                !handoffSourceValid(liveWorktrees, liveHolder.path)
+              ) {
+                useUi
+                  .getState()
+                  .showToast(`${name} moved while the dialog was open. Try again.`, "error");
+                return;
+              }
               startWorktreeHandoff({
                 branch: name,
-                sourcePath: holder.path,
-                worktrees,
+                sourcePath: liveHolder.path,
+                worktrees: liveWorktrees,
                 // The holder isn't the open repo, so its dirtiness is unknown
                 // here — the dialog phrases the carry conditionally.
                 sourceChanges: null,
-                destPath: here.value,
-                openHandoff: ui.openHandoff,
-                onNoDestinations: () => ui.showToast("No worktree to check out into.", "error"),
-              }),
+                destPath: liveHere.value,
+                openHandoff: useUi.getState().openHandoff,
+                onNoDestinations: () =>
+                  useUi.getState().showToast("No worktree to check out into.", "error"),
+              });
+            },
             secondary: {
               label: "Open that worktree",
               onClick: () =>
@@ -854,7 +893,16 @@ export function createRepoWriteActions(
           changes.conflicted.length > 0;
         if (dirty && get().summary?.path === summary.path) {
           set({ changes });
-          get().selectWip();
+          // The same user-signal rule as the clean HEAD reveal below: a
+          // during-load pick or a selection made while the status read was in
+          // flight is deliberate navigation — don't yank it to the WIP node.
+          if (
+            !duringLoadPick &&
+            get().revealTarget === null &&
+            get().selectedCommit === parkedSelection
+          ) {
+            get().selectWip();
+          }
           return;
         }
       } catch {

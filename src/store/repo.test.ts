@@ -2049,6 +2049,47 @@ describe("repo store — loadRepo progressive open", () => {
     }
   });
 
+  it("re-validates live state when the reclaim confirm is accepted after a worktree change", async () => {
+    const realOpenWorktree = useRepo.getState().openWorktree;
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      summary: { ...summary, headBranch: null, detached: true },
+      worktrees: [
+        { name: "repo", path: "/repo", branch: null, isMain: true },
+        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+      ],
+      openWorktree,
+    });
+
+    try {
+      await useRepo.getState().checkoutBranch("develop");
+      const confirm = useUi.getState().confirm;
+      expect(confirm?.title).toBe("develop is in another worktree");
+
+      // The confirm sits open while a watcher refresh moves the branch out of
+      // the holder — accepting must NOT start a handoff from the stale snapshot.
+      useRepo.setState({
+        worktrees: [
+          { name: "repo", path: "/repo", branch: null, isMain: true },
+          { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: null, isMain: false },
+        ],
+      });
+      confirm?.onConfirm();
+
+      expect(useUi.getState().handoff).toBeNull();
+      expect(showToast).toHaveBeenCalledWith(
+        "develop moved while the dialog was open. Try again.",
+        "error",
+      );
+    } finally {
+      useRepo.setState({ openWorktree: realOpenWorktree });
+      useUi.setState({ confirm: null, handoff: null, showToast: originalShowToast });
+    }
+  });
+
   it("falls back to opening the holding worktree when the open repo can't take the branch", async () => {
     const realOpenWorktree = useRepo.getState().openWorktree;
     const openWorktree = vi.fn().mockResolvedValue(undefined);
@@ -2897,6 +2938,49 @@ describe("repo store — openWorktree", () => {
     // The user's click wins over the automatic HEAD reveal.
     expect(useRepo.getState().selectedCommit).toBe("mid");
     expect(useRepo.getState().revealTarget).toBeNull();
+  });
+
+  it("does not yank an in-flight selection to WIP when the worktree is dirty", async () => {
+    const detachedSummary: RepoSummary = {
+      ...wtSummary,
+      headBranch: null,
+      headOid: "old",
+      detached: true,
+    };
+    const graphThreeDeep: RepoGraph = {
+      ...emptyGraph,
+      head: "old",
+      commits: [node({ id: "tip" }), node({ id: "mid" }), node({ id: "old" })],
+    };
+    // Same shape as the clean-path race above, but the status read comes back
+    // dirty: the user's click during the await must win over the automatic
+    // selectWip() too — deliberate navigation beats the WIP auto-landing.
+    let statusCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          return Promise.resolve(detachedSummary);
+        case "commit_graph":
+          return Promise.resolve(graphThreeDeep);
+        case "working_changes":
+          statusCalls += 1;
+          if (statusCalls === 2) {
+            useRepo.setState({ selectedCommit: "mid", selectedCommits: ["mid"], selectionAnchor: "mid" });
+          }
+          return Promise.resolve({
+            staged: [],
+            unstaged: [{ path: "a.ts", status: "M", add: 1, del: 0, binary: false }],
+            conflicted: [],
+          });
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().openWorktree("/repo-wt");
+
+    expect(useRepo.getState().selectedCommit).toBe("mid");
+    expect(useRepo.getState().wipSelected).toBe(false);
   });
 
   it("skips the reveal when loadRepo already parked on the HEAD row", async () => {
