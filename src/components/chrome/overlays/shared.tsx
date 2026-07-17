@@ -50,13 +50,15 @@ export function useFittedMenuPosition(
   return pos;
 }
 
-/** Run a branch operation, surfacing its result (or git error) as a toast. */
+/** Run a branch operation, surfacing its result (or git error) as a toast. An
+ * empty result means the operation handed off to its own surface (e.g. a
+ * blocked checkout raising the reclaim dialog) — nothing to toast. */
 export function useBranchOp() {
   const showToast = useUi((s) => s.showToast);
   return async (op: () => Promise<string>) => {
     try {
       const message = await op();
-      showToast(message);
+      if (message) showToast(message);
     } catch (e) {
       showToast(String(e instanceof Error ? e.message : e), "error");
     }

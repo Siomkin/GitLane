@@ -67,6 +67,19 @@ describe("CommitRow ref pills", () => {
     expect(screen.getByTitle("Checked out in worktree: repo-feature")).toBeInTheDocument();
   });
 
+  it("disambiguates a colliding worktree leaf with its parent directory", () => {
+    // Agent tools nest every worktree under `<id>/<repo>`, so the raw leaf
+    // ("GitLane") names nothing — the tooltip must carry the parent segment.
+    useRepo.setState({
+      worktrees: [
+        { name: "GitLane", path: "/u/.codex/worktrees/8867/GitLane", branch: "feature", isMain: false },
+        { name: "GitLane", path: "/u/.codex/worktrees/52c5/GitLane", branch: null, isMain: false },
+      ],
+    });
+    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
+    expect(screen.getByTitle("Checked out in worktree: 8867/GitLane")).toBeInTheDocument();
+  });
+
   it("shows no worktree marker for an ordinary branch", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     expect(screen.queryByTitle(/Checked out in worktree/)).not.toBeInTheDocument();
@@ -134,6 +147,33 @@ describe("CommitRow ref pills", () => {
     render(<CommitRow {...baseProps} commit={commit()} />);
     expect(screen.getByTitle("Worktree (detached): /work/wt-a")).toBeInTheDocument();
     expect(screen.getByTitle("Worktree (detached): /work/wt-b")).toBeInTheDocument();
+  });
+
+  it("labels the checked-out commit with a HEAD pill while detached", () => {
+    // No branch ref carries the ✓ when HEAD is detached, and the open
+    // worktree's own pill is excluded above — without this the commit the user
+    // is sitting on would be completely unlabelled.
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: null, headOid: "c1", detached: true },
+    });
+    render(<CommitRow {...baseProps} currentBranch={null} commit={commit()} />);
+    expect(screen.getByTitle("Detached HEAD — no branch checked out")).toHaveTextContent("detached HEAD");
+  });
+
+  it("shows no HEAD pill on other commits while detached", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: null, headOid: "c9", detached: true },
+    });
+    render(<CommitRow {...baseProps} currentBranch={null} commit={commit()} />);
+    expect(screen.queryByTitle(/Detached HEAD/)).not.toBeInTheDocument();
+  });
+
+  it("shows no HEAD pill when HEAD is on a branch (the branch pill carries the ✓)", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "c1", detached: false },
+    });
+    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "main", kind: "branch" }] })} />);
+    expect(screen.queryByTitle(/Detached HEAD/)).not.toBeInTheDocument();
   });
 
   it("right-clicking the detached worktree pill opens the worktree menu, not the commit menu", () => {

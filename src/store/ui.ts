@@ -175,6 +175,10 @@ export interface ConfirmRequest {
   danger?: boolean;
   /** Run when the user confirms. */
   onConfirm: () => void;
+  /** Optional alternative action rendered between Cancel and the confirm
+   * button (e.g. blocked checkout: "Check out here" vs "Open that worktree").
+   * Choosing it closes the dialog like a confirm. */
+  secondary?: { label: string; onClick: () => void };
 }
 
 /** A pending text-input prompt (rename branch, tag name, squash message, …).
@@ -203,6 +207,13 @@ export interface HandoffRequest {
   /** Count of the source's uncommitted files, or null when unknown (the flow
    * was started from a menu whose worktree isn't the open repo). */
   sourceChanges: number | null;
+  /** Preselected destination worktree path — set by flows that already know
+   * where the branch should land (e.g. "Check out here", which targets the
+   * open worktree). Must be an exact destination-option value (a `wt.path`
+   * from the worktree list — the dialog matches it verbatim). It only seeds
+   * the picker: the run always uses the picker's final, validated value, and
+   * an invalid/vanished path falls back to the first option. */
+  destPath?: string;
 }
 
 /** A pending in-app GitHub sign-in (GL-106), rendered by GithubSigninDialog. Only

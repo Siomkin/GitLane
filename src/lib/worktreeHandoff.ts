@@ -38,6 +38,34 @@ export function handoffDestinationOptions(
     }));
 }
 
+/** The destination option that targets the *open* worktree (`herePath`), when
+ * handing `branch` off from `sourcePath` — i.e. the "check this branch out
+ * here" move. Null when the open worktree isn't a valid destination (bare,
+ * prunable, or it IS the source). The returned option's `value` is the exact
+ * worktree-list path the HandoffDialog preselects verbatim (`destPath`). */
+export function handoffDestinationHere(
+  worktrees: WorktreeInfo[],
+  sourcePath: string,
+  herePath: string,
+): PromptOption | null {
+  const here = trimTrailingSlash(herePath);
+  return (
+    handoffDestinationOptions(worktrees, sourcePath).find(
+      (option) => trimTrailingSlash(option.value) === here,
+    ) ?? null
+  );
+}
+
+/** Can `sourcePath` run the hand-off's detach step? A prunable worktree's
+ * directory is gone — git cannot detach inside it, so every hand-off entry
+ * point (branch menu, worktree menu, "Check out here…") hides behind this one
+ * predicate instead of each gating differently. */
+export function handoffSourceValid(worktrees: WorktreeInfo[], sourcePath: string): boolean {
+  const source = trimTrailingSlash(sourcePath);
+  const wt = worktrees.find((candidate) => trimTrailingSlash(candidate.path) === source);
+  return wt != null && !wt.prunable;
+}
+
 /** Leaf directory name of a path, for naming a worktree in the dialog. */
 export function worktreeLeaf(path: string): string {
   return trimTrailingSlash(path).split("/").filter(Boolean).pop() ?? path;
@@ -63,6 +91,9 @@ export interface HandoffStartArgs {
   worktrees: WorktreeInfo[];
   /** Count of the source's uncommitted files, or null when unknown. */
   sourceChanges: number | null;
+  /** Preselect this destination worktree in the dialog (see
+   * {@link HandoffRequest.destPath}). */
+  destPath?: string;
   /** Raises the HandoffDialog (`useUi().openHandoff`). */
   openHandoff: (req: HandoffRequest) => void;
   /** Surfaced when there's nowhere to hand the branch off to. */
@@ -77,6 +108,7 @@ export function startWorktreeHandoff({
   sourcePath,
   worktrees,
   sourceChanges,
+  destPath,
   openHandoff,
   onNoDestinations,
 }: HandoffStartArgs): void {
@@ -84,5 +116,5 @@ export function startWorktreeHandoff({
     onNoDestinations?.();
     return;
   }
-  openHandoff({ branch, sourcePath, sourceChanges });
+  openHandoff({ branch, sourcePath, sourceChanges, destPath });
 }

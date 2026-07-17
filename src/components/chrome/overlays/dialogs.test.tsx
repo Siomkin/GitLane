@@ -226,6 +226,37 @@ describe("ConfirmDialog", () => {
     expect(screen.getByText("Unpushed commits will be lost")).toBeInTheDocument();
   });
 
+  it("renders a secondary action that runs and closes like a confirm", () => {
+    const onSecondary = vi.fn();
+    const onConfirm = openConfirm({
+      confirmLabel: "Check out here",
+      secondary: { label: "Open that worktree", onClick: onSecondary },
+    });
+    render(<ConfirmDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Open that worktree" }));
+    expect(onSecondary).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
+  it("omits the secondary button when the request has none", () => {
+    openConfirm();
+    render(<ConfirmDialog />);
+    expect(screen.getAllByRole("button")).toHaveLength(2); // Cancel + Confirm
+  });
+
+  it("Escape fires neither the confirm nor the secondary action", () => {
+    const onSecondary = vi.fn();
+    const onConfirm = openConfirm({
+      secondary: { label: "Open that worktree", onClick: onSecondary },
+    });
+    render(<ConfirmDialog />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onSecondary).not.toHaveBeenCalled();
+    expect(useUi.getState().confirm).toBeNull();
+  });
+
   it("stacks at z-[80], above the create-branch dialog", () => {
     openConfirm();
     const { container } = render(<ConfirmDialog />);
