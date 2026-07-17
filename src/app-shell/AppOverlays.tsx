@@ -15,6 +15,7 @@ import {
   WorktreeContextMenu,
 } from "@/components/chrome/overlays";
 import { DeleteWorktreeDialog } from "@/components/chrome/overlays/delete-worktree";
+import { RemoveDetachedDialog } from "@/components/chrome/overlays/remove-detached";
 import { GithubSigninDialog } from "@/components/chrome/overlays/github-signin";
 import { ProviderOauthDialog } from "@/components/chrome/overlays/provider-oauth";
 import { RepoSettingsModal } from "@/components/chrome/repo-settings";
@@ -50,6 +51,7 @@ export const AppOverlays = () => (
     <GithubSigninDialog />
     <ProviderOauthDialog />
     <DeleteWorktreeDialog />
+    <RemoveDetachedDialog />
     <Toasts />
     <Tooltip />
   </>

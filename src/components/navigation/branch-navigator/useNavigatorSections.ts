@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { BranchKind, type BranchSyncState, type StashEntry, type WorktreeInfo } from "@/lib/api";
-import { isActiveWorktreePath, worktreeLabel, worktreeName } from "@/lib/worktrees";
+import {
+  isActiveWorktreePath,
+  removableDetachedWorktrees,
+  worktreeLabel,
+  worktreeName,
+} from "@/lib/worktrees";
 import { useRepo } from "@/store/repo";
 import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
 
@@ -45,6 +50,9 @@ export interface NavigatorSections {
   remotes: NavRefItem[];
   tags: NavRefItem[];
   worktrees: WorktreeItem[];
+  /** Detached worktrees the bulk "Remove detached" header action may delete
+   * (never main, never the one backing the open tab). */
+  detachedRemovable: WorktreeInfo[];
   stashes: StashItem[];
   head: string | null;
   /** A search term is present (so non-matches should be dimmed). */
@@ -124,6 +132,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     label: worktreeLabel(wt, worktrees),
   }));
   const stashItems = stashes.map((s) => ({ stash: s, match: matches(s.message) }));
+  const detachedRemovable = removableDetachedWorktrees(worktrees, summary);
 
   const visible = <T extends { match: boolean }>(items: T[]) =>
     filtering ? items.filter((item) => item.match) : items;
@@ -144,6 +153,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     remotes: visibleRemotes,
     tags: visibleTags,
     worktrees: visibleWorktrees,
+    detachedRemovable,
     stashes: visibleStashes,
     head,
     filtering,

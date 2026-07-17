@@ -2,6 +2,7 @@ import { useUi } from "@/store/ui";
 import { CloseIcon, SearchIcon } from "@/components/ui/icons";
 import { RowKind } from "./refs";
 import { useNavigatorSections } from "./useNavigatorSections";
+import { useRemoveDetachedWorktrees } from "./useRowActions";
 import { BranchRow, Section, StashRow, WorktreeRow } from "./rows";
 
 // The branch / worktree / stash navigator: a narrow single-column dropdown (per
@@ -13,8 +14,9 @@ import { BranchRow, Section, StashRow, WorktreeRow } from "./rows";
 export function BranchNavigator() {
   const filter = useUi((s) => s.filter);
   const setFilter = useUi((s) => s.setFilter);
-  const { locals, remotes, tags, worktrees, stashes, head, filtering, isEmpty, hasMatches } =
+  const { locals, remotes, tags, worktrees, detachedRemovable, stashes, head, filtering, isEmpty, hasMatches } =
     useNavigatorSections(filter);
+  const removeDetached = useRemoveDetachedWorktrees(detachedRemovable);
 
   return (
     <div className="flex flex-col">
@@ -93,7 +95,28 @@ export function BranchNavigator() {
           </Section>
         )}
         {worktrees.length > 0 && (
-          <Section label="Worktrees">
+          <Section
+            label="Worktrees"
+            action={
+              // Hidden while searching: `detachedRemovable` counts the whole
+              // worktree list, so a filter that hides some rows would make the
+              // "(N)" read higher than what's visible and sweep unshown rows.
+              !filtering && detachedRemovable.length > 0 ? (
+                // Sweep every removable detached worktree at once (confirmed
+                // with the target list) — one-by-one removal via each row's
+                // menu gets tedious once agent tools pile them up.
+                <button
+                  type="button"
+                  title={`Remove ${detachedRemovable.length} detached worktree${detachedRemovable.length === 1 ? "" : "s"}`}
+                  aria-label="Remove all detached worktrees"
+                  className="shrink-0 text-[10px] font-medium text-neutral-400 transition-colors hover:text-red-600 dark:hover:text-red-400"
+                  onClick={removeDetached}
+                >
+                  Remove detached ({detachedRemovable.length})
+                </button>
+              ) : undefined
+            }
+          >
             {worktrees.map((w) => (
               <WorktreeRow key={w.wt.path} wt={w.wt} oid={w.oid} isActive={w.isActive} label={w.label} dimmed={filtering && !w.match} query={filter} />
             ))}

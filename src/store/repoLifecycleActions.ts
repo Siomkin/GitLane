@@ -212,6 +212,11 @@ export function createRepoLifecycleActions(
       // reports via toast (deleteWorktreeRunning stays set until it settles, which
       // also blocks a second delete from a reopened dialog). GL-107.
       useUi.getState().closeDeleteWorktree();
+      // The remove-detached sweep is repo-bound the same way (its targets are the
+      // old repo's) and never switches repos itself, so a genuine switch always
+      // invalidates it; close it unconditionally. An in-flight sweep keeps running
+      // and reports via toast (removeDetachedRunning stays set until it settles).
+      useUi.getState().closeRemoveDetached();
 
       // Reset PR state and resolve the new repo's account binding the moment the
       // summary is published — before awaiting the graph — so the ActionBar can't

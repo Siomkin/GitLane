@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { BranchInfo, CommitNode, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -117,7 +117,7 @@ describe("BranchNavigator", () => {
     expect(screen.queryByText("feature/search")).not.toBeInTheDocument();
   });
 
-  it("shows worktrees with their path, flags the open one, and switches to a linked one on click", () => {
+  it("shows worktrees with their path, flags the open one, and reveals a linked one's tip on click", () => {
     const openWorktree = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({
       worktrees: [
@@ -133,10 +133,12 @@ describe("BranchNavigator", () => {
     expect(screen.getByText("/work/r-wt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
 
-    // Left-click on a non-active worktree switches the app to it (in place —
-    // no new tab) and closes the nav.
-    fireEvent.click(screen.getByRole("button", { name: "Open worktree feature/search" }));
-    expect(openWorktree).toHaveBeenCalledWith("/work/r-wt", { newTab: false });
+    // Left-click reveals the worktree's tip in the graph and closes the nav —
+    // the same navigate-and-highlight behaviour as branch rows. It does NOT
+    // switch the app to the worktree (that lives on the kebab menu now).
+    fireEvent.click(screen.getByRole("button", { name: "Reveal worktree feature/search" }));
+    expect(useRepo.getState().revealTarget).toBe("c1");
+    expect(openWorktree).not.toHaveBeenCalled();
     expect(useUi.getState().navOpen).toBe(false);
   });
 
@@ -152,18 +154,16 @@ describe("BranchNavigator", () => {
 
     // The detached codex worktree's leaf is "GitLane" (the repo name), so the row
     // falls back to "<parent>/<leaf>" to stay distinguishable; the main keeps its branch.
-    expect(screen.getByRole("button", { name: "Open worktree 1e75/GitLane" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reveal worktree 1e75/GitLane" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Current worktree main" })).toBeInTheDocument();
   });
 
-  it("opens the worktree menu from the visible kebab without switching to the worktree", () => {
-    const openWorktree = vi.fn().mockResolvedValue(undefined);
+  it("opens the worktree menu from the visible kebab without revealing the row", () => {
     useRepo.setState({
       worktrees: [
         { name: "r", path: "/r", branch: "main", isMain: true },
         { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
       ],
-      openWorktree,
     });
     render(<BranchNavigator />);
 
@@ -171,32 +171,76 @@ describe("BranchNavigator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Worktree actions for feature/search" }));
 
     // It opens the menu with the row's payload and does NOT also trigger the
-    // row's switch-to-worktree click.
+    // row's reveal click.
     expect(useUi.getState().worktreeMenu).toMatchObject({
       path: "/work/r-wt",
       name: "feature/search",
       isMain: false,
     });
-    expect(openWorktree).not.toHaveBeenCalled();
+    expect(useRepo.getState().revealTarget).toBeNull();
+    expect(useUi.getState().navOpen).toBe(true);
   });
 
-  it("surfaces a failed worktree switch as an error toast", async () => {
-    const openWorktree = vi.fn().mockRejectedValue(new Error("worktree gone"));
+  it("flags a detached worktree with a badge and no badge on branched ones", () => {
+    useRepo.setState({
+      worktrees: [
+        { name: "r", path: "/r", branch: "main", isMain: true },
+        { name: "r-detached", path: "/work/r-detached", branch: null, head: "abc1234", isMain: false },
+      ],
+    });
+    render(<BranchNavigator />);
+
+    const badges = screen.getAllByTitle("Detached HEAD — no branch checked out");
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveTextContent("detached");
+    expect(rowFor("r-detached")).toContainElement(badges[0]);
+  });
+
+  it("offers the 'Remove detached' sweep only when a removable detached worktree exists", () => {
     useRepo.setState({
       worktrees: [
         { name: "r", path: "/r", branch: "main", isMain: true },
         { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
       ],
-      openWorktree,
+    });
+    const { unmount } = render(<BranchNavigator />);
+    expect(screen.queryByRole("button", { name: "Remove all detached worktrees" })).not.toBeInTheDocument();
+    unmount();
+
+    useRepo.setState({
+      worktrees: [
+        { name: "r", path: "/r", branch: "main", isMain: true },
+        { name: "a", path: "/work/a", branch: null, isMain: false },
+        { name: "b", path: "/work/b", branch: null, isMain: false },
+      ],
+    });
+    render(<BranchNavigator />);
+    expect(screen.getByRole("button", { name: "Remove all detached worktrees" })).toHaveTextContent(
+      "Remove detached (2)",
+    );
+  });
+
+  it("opens the remove-detached dialog with the removable targets and closes the nav", () => {
+    useRepo.setState({
+      worktrees: [
+        { name: "r", path: "/r", branch: "main", isMain: true },
+        { name: "a", path: "/work/a", branch: null, isMain: false },
+        { name: "c", path: "/work/c", branch: null, isMain: false },
+        // A locked detached entry is NOT a bulk target (a force would override
+        // git's dirty check) — it's removable one-by-one via the row menu.
+        { name: "b", path: "/work/b", branch: null, isMain: false, locked: true },
+        // A prunable detached entry is NOT a removable target (git prune, not remove).
+        { name: "gone", path: "/work/gone", branch: null, isMain: false, prunable: true },
+      ],
     });
     render(<BranchNavigator />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Open worktree feature/search" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove all detached worktrees" }));
 
-    await waitFor(() =>
-      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("worktree gone"),
-    );
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.kind).toBe("error");
+    // The sweep hands off to the dedicated progress dialog (no fire-and-forget
+    // toast); it carries only the removable targets, and the popup closes under it.
+    expect(useUi.getState().removeDetached?.targets.map((t) => t.path)).toEqual(["/work/a", "/work/c"]);
+    expect(useUi.getState().navOpen).toBe(false);
   });
 
   it("clicking a stash reveals it in history without opening its file review", () => {

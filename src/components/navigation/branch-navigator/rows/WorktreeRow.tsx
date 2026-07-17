@@ -1,21 +1,23 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
+import { isDetachedWorktree } from "@/lib/worktrees";
 import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
-import { FolderIcon, MoreVerticalIcon, TreeIcon } from "@/components/ui/icons";
+import { MoreVerticalIcon, TreeIcon } from "@/components/ui/icons";
 import type { WorktreeItem } from "@/components/navigation/branch-navigator/useNavigatorSections";
-import { useOpenWorktree, useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
+import { useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
 import { DIM_CLASS } from "./rowStyles";
 
 /** A worktree row — two lines so sibling worktrees are distinguishable: the
  * checked-out branch (or directory name when detached) over its absolute path.
- * Left-click is the primary action: switch the app to that worktree (it loads as
- * the open repo). The already-open ("current") worktree can't be switched to, so
- * its click just scrolls the graph to its tip. The trailing kebab (⋮) — and the
- * equivalent right-click — open the worktree menu (open / copy path / remove), so
- * removal isn't hidden behind a right-click only (GL-61). The leading badges
- * separate current / main / linked. */
+ * Left-click reveals the worktree's tip in the graph and highlights the row —
+ * the same navigate-and-highlight behaviour as the branch / remote / tag rows,
+ * so the whole navigator is consistent. Actually *switching* the app to the
+ * worktree lives on the kebab (⋮) / right-click menu ("Open worktree" / "Open in
+ * new tab"), alongside copy-path and remove (so removal isn't hidden behind a
+ * right-click only — GL-61). The leading badges separate current / main /
+ * detached. */
 export function WorktreeRow({
   wt,
   oid,
@@ -25,13 +27,8 @@ export function WorktreeRow({
   query = "",
 }: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
   const reveal = useRevealNavigate();
-  const open = useOpenWorktree();
   const openWorktreeMenu = useUi((s) => s.openWorktreeMenu);
   const tip = useTruncatedTooltip(label);
-  // Primary action: switch to the worktree — in place by default; cmd/ctrl
-  // opens it in a new tab (GL-110). The already-open one can't be switched to,
-  // so it just scrolls the graph to its tip.
-  const activate = (newTab = false) => (isActive ? reveal(oid) : open(wt.path, newTab));
   // The kebab and right-click share one entry point — same menu, same payload.
   const openMenu = (x: number, y: number) =>
     openWorktreeMenu({ x, y, path: wt.path, name: label, isMain: wt.isMain });
@@ -40,7 +37,7 @@ export function WorktreeRow({
       {...tip}
       role="button"
       tabIndex={0}
-      aria-label={isActive ? `Current worktree ${label}` : `Open worktree ${label}`}
+      aria-label={isActive ? `Current worktree ${label}` : `Reveal worktree ${label}`}
       className={cn(
         "group flex min-h-[2.75rem] cursor-pointer flex-col justify-center gap-0.5 rounded-lg px-2 py-1 text-[13px] transition-opacity",
         isActive
@@ -48,11 +45,11 @@ export function WorktreeRow({
           : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
         dimmed && DIM_CLASS,
       )}
-      onClick={(e) => activate(e.metaKey || e.ctrlKey)}
+      onClick={() => reveal(oid)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          activate(e.metaKey || e.ctrlKey);
+          reveal(oid);
         }
       }}
       onContextMenu={(e) => {
@@ -67,17 +64,19 @@ export function WorktreeRow({
         </span>
         {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
         {wt.isMain && <span className="shrink-0 text-[10px] font-medium text-neutral-400">main</span>}
-        {!isActive && (
-          // Make the left-click action explicit: a faint open glyph that lights
-          // up on hover/focus signals the row switches to the worktree.
-          <FolderIcon
-            aria-hidden
-            className="h-3.5 w-3.5 shrink-0 text-neutral-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
-          />
+        {isDetachedWorktree(wt) && (
+          // No branch is checked out here — flag it, since the label falls back
+          // to a directory name and otherwise reads like any other worktree.
+          <span
+            title="Detached HEAD — no branch checked out"
+            className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+          >
+            detached
+          </span>
         )}
         {/* Visible affordance for the worktree menu (open / copy path / remove)
             so those actions aren't reachable by right-click alone. Stops the
-            row's activate (switch-to-worktree) click/keys from also firing. */}
+            row's reveal click/keys from also firing. */}
         <button
           type="button"
           aria-haspopup="menu"

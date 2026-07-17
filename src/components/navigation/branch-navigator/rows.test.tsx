@@ -140,64 +140,51 @@ describe("WorktreeRow", () => {
   const wt = { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false };
   const props = { wt, oid: "abc123", isActive: false, label: "feature" };
 
-  it("switches to the worktree on click (in place) and closes the navigator", () => {
-    const openWorktree = vi.fn().mockResolvedValue(undefined);
-    useRepo.setState({ openWorktree });
-
-    render(<WorktreeRow {...props} />);
-    fireEvent.click(screen.getByText("feature"));
-
-    expect(openWorktree).toHaveBeenCalledWith("/work/repo-feature", { newTab: false });
-    expect(useUi.getState().navOpen).toBe(false);
-  });
-
-  it("opens the worktree in a new tab on cmd/ctrl-click and keyboard Enter+meta", () => {
-    const openWorktree = vi.fn().mockResolvedValue(undefined);
-    useRepo.setState({ openWorktree });
-
-    render(<WorktreeRow {...props} />);
-    fireEvent.click(screen.getByText("feature"), { metaKey: true });
-    expect(openWorktree).toHaveBeenLastCalledWith("/work/repo-feature", { newTab: true });
-
-    fireEvent.keyDown(screen.getByRole("button", { name: "Open worktree feature" }), {
-      key: "Enter",
-      ctrlKey: true,
-    });
-    expect(openWorktree).toHaveBeenLastCalledWith("/work/repo-feature", { newTab: true });
-  });
-
-  it("activates from the keyboard with Enter and Space, preventing the default", () => {
-    const openWorktree = vi.fn().mockResolvedValue(undefined);
-    useRepo.setState({ openWorktree });
-
-    render(<WorktreeRow {...props} />);
-    const row = screen.getByRole("button", { name: "Open worktree feature" });
-
-    // fireEvent returns false when preventDefault was called — Space must not
-    // scroll and Enter must not double-fire through native activation.
-    expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
-    expect(openWorktree).toHaveBeenCalledTimes(1);
-    expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
-    expect(openWorktree).toHaveBeenCalledTimes(2);
-  });
-
-  it("only reveals the tip for the already-open worktree instead of switching", () => {
+  it("reveals the worktree's tip on click and closes the navigator (no app switch)", () => {
     const openWorktree = vi.fn();
     const revealCommit = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({ openWorktree, revealCommit });
 
-    render(<WorktreeRow {...props} isActive />);
+    render(<WorktreeRow {...props} />);
     fireEvent.click(screen.getByText("feature"));
 
-    expect(openWorktree).not.toHaveBeenCalled();
+    // Same navigate-and-highlight behaviour as the branch rows — switching the
+    // app to the worktree lives on the kebab menu now, not the row click.
     expect(revealCommit).toHaveBeenCalledWith("abc123");
-    // Revealing is still an activation — the navigator closes.
+    expect(openWorktree).not.toHaveBeenCalled();
     expect(useUi.getState().navOpen).toBe(false);
   });
 
-  it("opens the worktree menu from the kebab WITHOUT activating the row", () => {
-    const openWorktree = vi.fn();
-    useRepo.setState({ openWorktree });
+  it("reveals from the keyboard with Enter and Space, preventing the default", () => {
+    const revealCommit = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ revealCommit });
+
+    render(<WorktreeRow {...props} />);
+    const row = screen.getByRole("button", { name: "Reveal worktree feature" });
+
+    // fireEvent returns false when preventDefault was called — Space must not
+    // scroll and Enter must not double-fire through native activation.
+    expect(fireEvent.keyDown(row, { key: "Enter" })).toBe(false);
+    expect(revealCommit).toHaveBeenCalledTimes(1);
+    expect(fireEvent.keyDown(row, { key: " " })).toBe(false);
+    expect(revealCommit).toHaveBeenCalledTimes(2);
+  });
+
+  it("labels the already-open worktree as current and still reveals its tip on click", () => {
+    const revealCommit = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ revealCommit });
+
+    render(<WorktreeRow {...props} isActive />);
+    expect(screen.getByRole("button", { name: "Current worktree feature" })).toBeInTheDocument();
+    fireEvent.click(screen.getByText("feature"));
+
+    expect(revealCommit).toHaveBeenCalledWith("abc123");
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("opens the worktree menu from the kebab WITHOUT revealing the row", () => {
+    const revealCommit = vi.fn();
+    useRepo.setState({ revealCommit });
 
     render(<WorktreeRow {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Worktree actions for feature" }));
@@ -207,20 +194,20 @@ describe("WorktreeRow", () => {
       name: "feature",
       isMain: false,
     });
-    expect(openWorktree).not.toHaveBeenCalled();
-    // The kebab's menu does not close the navigator; only activation does.
+    expect(revealCommit).not.toHaveBeenCalled();
+    // The kebab's menu does not close the navigator; only revealing does.
     expect(useUi.getState().navOpen).toBe(true);
   });
 
-  it("stops kebab keyboard events from activating the row", () => {
-    const openWorktree = vi.fn();
-    useRepo.setState({ openWorktree });
+  it("stops kebab keyboard events from revealing the row", () => {
+    const revealCommit = vi.fn();
+    useRepo.setState({ revealCommit });
 
     render(<WorktreeRow {...props} />);
     fireEvent.keyDown(screen.getByRole("button", { name: "Worktree actions for feature" }), {
       key: "Enter",
     });
-    expect(openWorktree).not.toHaveBeenCalled();
+    expect(revealCommit).not.toHaveBeenCalled();
   });
 
   it("opens the same worktree menu on right-click", () => {

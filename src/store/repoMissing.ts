@@ -292,6 +292,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // worktree must not linger on the welcome screen (GL-42).
     useUi.getState().closeHandoff();
     useUi.getState().closeDeleteWorktree();
+    useUi.getState().closeRemoveDetached();
   };
 
   // Route a vanished path (GL-108 + GL-126). A removed linked worktree falls
