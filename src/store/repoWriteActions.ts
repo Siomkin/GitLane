@@ -5,7 +5,12 @@ import { friendlyGitError } from "@/lib/gitError";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { pushRemoteForBranch, remoteNameForUpstream } from "@/lib/remoteAccounts";
-import { isActiveWorktreePath } from "@/lib/worktrees";
+import { isActiveWorktreePath, worktreeName } from "@/lib/worktrees";
+import {
+  handoffDestinationHere,
+  handoffSourceValid,
+  startWorktreeHandoff,
+} from "@/lib/worktreeHandoff";
 import { branchWebUrl } from "@/lib/forgeUrls";
 import { openExternalUrl } from "@/lib/openExternal";
 import { useAccounts } from "./accounts";
@@ -300,6 +305,50 @@ export function createRepoWriteActions(
       if (!summary) throw new Error("No repository");
       const existingWorktree = await findCheckoutWorktree(set, get, summary, name);
       if (existingWorktree) {
+        // Git refuses to check a branch out in two worktrees, so this checkout
+        // can't proceed as-is. Don't silently switch the tab into the holding
+        // worktree (it may be a foreign agent scratch checkout the user never
+        // wants to enter) — name that worktree and ask: reclaim the branch here
+        // (the hand-off flow, destination preselected) or open it there. Falls
+        // back to the plain open when the reclaim isn't possible (the holder is
+        // prunable, or the open worktree isn't a valid destination).
+        const worktrees = get().worktrees;
+        const holder = worktrees.find((wt) => wt.path === existingWorktree.path);
+        const here = handoffDestinationHere(
+          worktrees,
+          existingWorktree.path,
+          summary.workdir ?? summary.path,
+        );
+        if (holder && here && handoffSourceValid(worktrees, holder.path)) {
+          const ui = useUi.getState();
+          ui.requestConfirm({
+            title: `${name} is in another worktree`,
+            message: `Git allows a branch to be checked out in only one worktree at a time, and ${name} is currently checked out in "${worktreeName(holder, worktrees)}".`,
+            details: [holder.path],
+            confirmLabel: "Check out here",
+            onConfirm: () =>
+              startWorktreeHandoff({
+                branch: name,
+                sourcePath: holder.path,
+                worktrees,
+                // The holder isn't the open repo, so its dirtiness is unknown
+                // here — the dialog phrases the carry conditionally.
+                sourceChanges: null,
+                destPath: here.value,
+                openHandoff: ui.openHandoff,
+                onNoDestinations: () => ui.showToast("No worktree to check out into.", "error"),
+              }),
+            secondary: {
+              label: "Open that worktree",
+              onClick: () =>
+                void get()
+                  .openWorktree(holder.path)
+                  .catch((e) => useUi.getState().showToast(String(e), "error")),
+            },
+          });
+          // The dialog owns what happens next — nothing to toast.
+          return "";
+        }
         await get().openWorktree(existingWorktree.path);
         return `Opened ${name} worktree`;
       }

@@ -38,6 +38,24 @@ export function handoffDestinationOptions(
     }));
 }
 
+/** The destination option that targets the *open* worktree (`herePath`), when
+ * handing `branch` off from `sourcePath` — i.e. the "check this branch out
+ * here" move. Null when the open worktree isn't a valid destination (bare,
+ * prunable, or it IS the source). The returned option's `value` is the exact
+ * worktree-list path the HandoffDialog preselects verbatim (`destPath`). */
+export function handoffDestinationHere(
+  worktrees: WorktreeInfo[],
+  sourcePath: string,
+  herePath: string,
+): PromptOption | null {
+  const here = trimTrailingSlash(herePath);
+  return (
+    handoffDestinationOptions(worktrees, sourcePath).find(
+      (option) => trimTrailingSlash(option.value) === here,
+    ) ?? null
+  );
+}
+
 /** Can `sourcePath` run the hand-off's detach step? A prunable worktree's
  * directory is gone — git cannot detach inside it, so every hand-off entry
  * point (branch menu, worktree menu, "Check out here…") hides behind this one

@@ -4,8 +4,12 @@ import { defaultPublishTarget } from "@/lib/branchSync";
 import { findOtherBranchWorktree } from "@/lib/graphActions";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { validateBranchName } from "@/lib/refName";
-import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
-import { trimTrailingSlash } from "@/lib/worktrees";
+import {
+  handoffDestinationHere,
+  handoffDestinationOptions,
+  handoffSourceValid,
+  startWorktreeHandoff,
+} from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -201,9 +205,7 @@ export function BranchContextMenu() {
     // That matters most when the holder is a stale agent scratch worktree the
     // user never wants to open. Runs through the hand-off dialog with the open
     // worktree preselected, so the multi-step move stays confirmable + visible.
-    const here = handoffDestinationOptions(worktrees, existingWt.path).find(
-      (o) => trimTrailingSlash(o.value) === trimTrailingSlash(workdir),
-    );
+    const here = handoffDestinationHere(worktrees, existingWt.path, workdir);
     // A prunable holder (its directory is gone) can't run the hand-off's
     // detach step — git would fail inside the missing worktree, so don't
     // offer a dead click.

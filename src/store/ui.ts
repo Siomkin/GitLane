@@ -175,6 +175,10 @@ export interface ConfirmRequest {
   danger?: boolean;
   /** Run when the user confirms. */
   onConfirm: () => void;
+  /** Optional alternative action rendered between Cancel and the confirm
+   * button (e.g. blocked checkout: "Check out here" vs "Open that worktree").
+   * Choosing it closes the dialog like a confirm. */
+  secondary?: { label: string; onClick: () => void };
 }
 
 /** A pending text-input prompt (rename branch, tag name, squash message, …).

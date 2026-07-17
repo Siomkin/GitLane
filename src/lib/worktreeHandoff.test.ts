@@ -1,7 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import type { WorktreeInfo } from "@/lib/api";
 import type { HandoffRequest } from "@/store/ui";
-import { carriedLine, handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "./worktreeHandoff";
+import {
+  carriedLine,
+  handoffDestinationHere,
+  handoffDestinationOptions,
+  handoffSourceValid,
+  startWorktreeHandoff,
+} from "./worktreeHandoff";
 
 const wt = (over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
   name: "repo",
@@ -40,6 +46,23 @@ describe("handoffDestinationOptions", () => {
     const opts = handoffDestinationOptions([bare, main, feature, missing], feature.path);
     // Only the valid main checkout survives — bare + prunable are filtered out.
     expect(opts.map((o) => o.value)).toEqual(["/work/repo"]);
+  });
+});
+
+describe("handoffDestinationHere", () => {
+  it("finds the open worktree among the destinations (trailing slash tolerant)", () => {
+    const here = handoffDestinationHere([main, feature, scratch], feature.path, "/work/repo/");
+    expect(here).toMatchObject({ value: "/work/repo" });
+  });
+
+  it("returns null when the open worktree is the source or not a valid destination", () => {
+    // The source itself is never a destination.
+    expect(handoffDestinationHere([main, feature], feature.path, feature.path)).toBeNull();
+    // A bare open checkout has no working tree to take the branch.
+    const bare = wt({ path: "/work/bare.git", branch: null, bare: true });
+    expect(handoffDestinationHere([bare, feature], feature.path, bare.path)).toBeNull();
+    // An unregistered path finds nothing.
+    expect(handoffDestinationHere([main, feature], feature.path, "/work/elsewhere")).toBeNull();
   });
 });
 

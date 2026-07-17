@@ -57,6 +57,18 @@ export function ConfirmDialog() {
       )}
       <DialogFooter>
         <DialogCancelButton onClick={closeConfirm} />
+        {confirm.secondary && (
+          <button
+            type="button"
+            onClick={() => {
+              confirm.secondary!.onClick();
+              closeConfirm();
+            }}
+            className="h-9 rounded-lg border border-black/10 px-4 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+          >
+            {confirm.secondary.label}
+          </button>
+        )}
         <DialogPrimaryButton autoFocus onClick={accept} danger={confirm.danger}>
           {confirm.confirmLabel ?? "Confirm"}
         </DialogPrimaryButton>

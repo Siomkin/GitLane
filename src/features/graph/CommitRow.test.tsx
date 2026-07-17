@@ -67,6 +67,19 @@ describe("CommitRow ref pills", () => {
     expect(screen.getByTitle("Checked out in worktree: repo-feature")).toBeInTheDocument();
   });
 
+  it("disambiguates a colliding worktree leaf with its parent directory", () => {
+    // Agent tools nest every worktree under `<id>/<repo>`, so the raw leaf
+    // ("GitLane") names nothing — the tooltip must carry the parent segment.
+    useRepo.setState({
+      worktrees: [
+        { name: "GitLane", path: "/u/.codex/worktrees/8867/GitLane", branch: "feature", isMain: false },
+        { name: "GitLane", path: "/u/.codex/worktrees/52c5/GitLane", branch: null, isMain: false },
+      ],
+    });
+    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
+    expect(screen.getByTitle("Checked out in worktree: 8867/GitLane")).toBeInTheDocument();
+  });
+
   it("shows no worktree marker for an ordinary branch", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     expect(screen.queryByTitle(/Checked out in worktree/)).not.toBeInTheDocument();

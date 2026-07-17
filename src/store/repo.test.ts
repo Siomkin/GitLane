@@ -2004,7 +2004,7 @@ describe("repo store — loadRepo progressive open", () => {
     expect(graphCalls).toBeGreaterThanOrEqual(1);
   });
 
-  it("opens the existing worktree instead of checking out a branch held elsewhere", async () => {
+  it("asks (reclaim here vs open) instead of silently entering the worktree holding the branch", async () => {
     const realOpenWorktree = useRepo.getState().openWorktree;
     const openWorktree = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({
@@ -2017,9 +2017,58 @@ describe("repo store — loadRepo progressive open", () => {
     });
 
     try {
-      await useRepo.getState().checkoutBranch("develop");
+      const message = await useRepo.getState().checkoutBranch("develop");
 
+      // The dialog owns what happens next — no checkout, no tab switch, no toast.
+      expect(message).toBe("");
+      expect(openWorktree).not.toHaveBeenCalled();
+      expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
+      const confirm = useUi.getState().confirm;
+      expect(confirm?.title).toBe("develop is in another worktree");
+      // The holding worktree is named with its full path — the user must be
+      // able to SEE what blocks the checkout.
+      expect(confirm?.details).toEqual(["/repo/.claude/worktrees/zen-chaum-e0e8aa"]);
+
+      // Primary: reclaim the branch here — the hand-off dialog opens with the
+      // open worktree preselected as the destination.
+      confirm?.onConfirm();
+      expect(useUi.getState().handoff).toEqual({
+        branch: "develop",
+        sourcePath: "/repo/.claude/worktrees/zen-chaum-e0e8aa",
+        sourceChanges: null,
+        destPath: "/repo",
+      });
+
+      // Secondary: open the holding worktree (the old reroute, now opt-in).
+      confirm?.secondary?.onClick();
+      expect(confirm?.secondary?.label).toBe("Open that worktree");
       expect(openWorktree).toHaveBeenCalledWith("/repo/.claude/worktrees/zen-chaum-e0e8aa");
+    } finally {
+      useRepo.setState({ openWorktree: realOpenWorktree });
+      useUi.setState({ confirm: null, handoff: null });
+    }
+  });
+
+  it("falls back to opening the holding worktree when the open repo can't take the branch", async () => {
+    const realOpenWorktree = useRepo.getState().openWorktree;
+    const openWorktree = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      summary: { ...summary, headBranch: null, detached: true },
+      worktrees: [
+        // A bare main checkout is not a valid hand-off destination, so the
+        // reclaim dialog can't be offered — keep the old open-reroute.
+        { name: "repo", path: "/repo", branch: null, isMain: true, bare: true },
+        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+      ],
+      openWorktree,
+    });
+
+    try {
+      const message = await useRepo.getState().checkoutBranch("develop");
+
+      expect(message).toBe("Opened develop worktree");
+      expect(openWorktree).toHaveBeenCalledWith("/repo/.claude/worktrees/zen-chaum-e0e8aa");
+      expect(useUi.getState().confirm).toBeNull();
       expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
     } finally {
       useRepo.setState({ openWorktree: realOpenWorktree });
@@ -2049,10 +2098,13 @@ describe("repo store — loadRepo progressive open", () => {
 
       expect(invokeMock).toHaveBeenCalledWith("list_worktrees", { path: "/repo" });
       expect(useRepo.getState().worktrees).toHaveLength(2);
-      expect(openWorktree).toHaveBeenCalledWith("/repo/.claude/worktrees/zen-chaum-e0e8aa");
+      // The freshly-discovered holder raises the same reclaim dialog.
+      expect(openWorktree).not.toHaveBeenCalled();
+      expect(useUi.getState().confirm?.title).toBe("develop is in another worktree");
       expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
     } finally {
       useRepo.setState({ openWorktree: realOpenWorktree });
+      useUi.setState({ confirm: null });
     }
   });
 

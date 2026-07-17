@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { BranchKind, type BranchSyncState, type StashEntry, type WorktreeInfo } from "@/lib/api";
-import { isActiveWorktreePath, worktreeLabel } from "@/lib/worktrees";
+import { isActiveWorktreePath, worktreeLabel, worktreeName } from "@/lib/worktrees";
 import { useRepo } from "@/store/repo";
 import { collectTags, makeRefOidResolver, type RefItem } from "./refs";
 
@@ -81,7 +81,11 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   // deleted here while another worktree holds it.
   const branchWorktree = new Map<string, string>();
   for (const wt of worktrees) {
-    if (wt.branch && !isActiveWorktreePath(summary, wt.path)) branchWorktree.set(wt.branch, wt.name);
+    if (wt.branch && !isActiveWorktreePath(summary, wt.path)) {
+      // Disambiguated name (parent/leaf on collisions) — agent tools nest every
+      // worktree under `<id>/<repo>`, so the raw leaf names nothing.
+      branchWorktree.set(wt.branch, worktreeName(wt, worktrees));
+    }
   }
 
   const locals = branches
