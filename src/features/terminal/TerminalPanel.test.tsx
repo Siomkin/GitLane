@@ -62,9 +62,9 @@ describe("TerminalLayer", () => {
     }).parentElement as HTMLDivElement;
 
     expect(panel).toHaveStyle({
-      bottom: "8px",
-      left: "8px",
-      right: "calc(50% - 8px)",
+      bottom: "10px",
+      left: "10px",
+      right: "calc(50% - 10px)",
     });
   });
 
@@ -169,7 +169,7 @@ describe("TerminalLayer", () => {
 
     expect(panel).toHaveStyle({ left: "120px", right: "260px" });
     fireEvent.click(screen.getByRole("button", { name: "Maximize terminal" }));
-    expect(panel).toHaveStyle({ bottom: "8px", left: "8px", right: "8px" });
+    expect(panel).toHaveStyle({ bottom: "10px", left: "10px", right: "10px" });
     expect(screen.queryByRole("separator", { name: /Resize terminal width/ })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /Resize terminal height and width/ }),

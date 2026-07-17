@@ -22,6 +22,7 @@ import { useUi } from "@/store/ui";
 import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
 import { TerminalResizeHandles } from "./TerminalResizeHandles";
+import { TERMINAL_EDGE_MARGIN } from "./terminalPanelGeometry";
 import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./terminalIcons";
 
 /**
@@ -51,8 +52,59 @@ export function TerminalLayer() {
   // display:none) so panes are never disposed.
   const visible = terminalView !== "hidden" && !!terminalPath;
 
+  // A bottom corner only needs the backdrop's square treatment when it sits at
+  // the workspace edge — that's where it lands exactly on a workspace block's
+  // corner and the block's border/shadow arc shows in the rounded notch. An
+  // interior corner floats over block content, where a square grey corner would
+  // itself be the artifact.
+  const leftAtEdge =
+    terminalExpanded ||
+    Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout?.leftInset ?? TERMINAL_EDGE_MARGIN) ===
+      TERMINAL_EDGE_MARGIN;
+  const rightAtEdge =
+    terminalExpanded ||
+    (terminalHorizontalLayout
+      ? Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout.rightInset) ===
+        TERMINAL_EDGE_MARGIN
+      : false);
+
+  // Shared by the drawer and its backdrop so the two always coincide.
+  const frameStyle = {
+    height: terminalExpanded
+      ? `calc(100% - ${TERMINAL_EDGE_MARGIN * 2}px)`
+      : terminalHeight,
+    bottom: TERMINAL_EDGE_MARGIN,
+    left: terminalExpanded
+      ? TERMINAL_EDGE_MARGIN
+      : Math.max(
+          TERMINAL_EDGE_MARGIN,
+          terminalHorizontalLayout?.leftInset ?? TERMINAL_EDGE_MARGIN,
+        ),
+    right:
+      terminalExpanded
+        ? TERMINAL_EDGE_MARGIN
+        : terminalHorizontalLayout
+          ? Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout.rightInset)
+          : `calc(50% - ${TERMINAL_EDGE_MARGIN}px)`,
+  };
+
   return (
     <>
+      {/* App-background backdrop. Where a bottom corner sits at the workspace
+          edge it stays square, filling the drawer's rounded-corner notch with
+          the gap colour so the workspace block's border/shadow arc underneath
+          can't show as a dark hairline. Everywhere else (top corners, interior
+          bottom corners) it matches the drawer's radius and stays invisible. */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute z-[44] rounded-t-xl bg-neutral-100 dark:bg-neutral-900",
+          leftAtEdge ? "rounded-bl-none" : "rounded-bl-xl",
+          rightAtEdge ? "rounded-br-none" : "rounded-br-xl",
+          (!visible || terminalView !== "open") && "hidden",
+        )}
+        style={frameStyle}
+      />
       {/* Open drawer. Kept mounted (just hidden) while collapsed/hidden/no-repo so
           the xterm instances + PTYs survive the whole app session. */}
       <div
@@ -69,19 +121,7 @@ export function TerminalLayer() {
             terminalView === "collapsed" &&
             "pointer-events-none translate-y-3 scale-[0.98] opacity-0",
         )}
-        style={{
-          height: terminalExpanded ? "calc(100% - 16px)" : terminalHeight,
-          bottom: 8,
-          left: terminalExpanded
-            ? 8
-            : Math.max(8, terminalHorizontalLayout?.leftInset ?? 8),
-          right:
-            terminalExpanded
-              ? 8
-              : terminalHorizontalLayout
-                ? Math.max(8, terminalHorizontalLayout.rightInset)
-                : "calc(50% - 8px)",
-        }}
+        style={frameStyle}
       >
         {!terminalExpanded && (
           <TerminalResizeHandles
@@ -168,7 +208,7 @@ export function TerminalLayer() {
           onClick={expandTerminal}
           title="Expand terminal"
           aria-label={alive ? "Terminal running" : "Terminal idle"}
-          className="absolute bottom-2 left-2 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
+          className="absolute bottom-2.5 left-2.5 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
         >
           <svg
             viewBox="0 0 24 24"

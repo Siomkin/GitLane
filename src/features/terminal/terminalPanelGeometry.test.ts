@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resizeTerminalInsets } from "./terminalPanelGeometry";
+import { resizeTerminalInsets, TERMINAL_EDGE_MARGIN } from "./terminalPanelGeometry";
 
 describe("resizeTerminalInsets", () => {
   it("moves the left edge and keeps the right edge fixed", () => {
@@ -25,21 +25,23 @@ describe("resizeTerminalInsets", () => {
   });
 
   it("preserves the minimum edge margin and terminal width", () => {
+    const m = TERMINAL_EDGE_MARGIN;
     expect(
       resizeTerminalInsets({
         side: "left",
-        start: { left: 8, right: 8 },
+        start: { left: m, right: m },
         deltaX: -100,
         containerWidth: 1000,
       }),
-    ).toEqual({ left: 8, right: 8 });
+    ).toEqual({ left: m, right: m });
     expect(
       resizeTerminalInsets({
         side: "right",
-        start: { left: 8, right: 8 },
+        start: { left: m, right: m },
         deltaX: -900,
         containerWidth: 1000,
       }),
-    ).toEqual({ left: 8, right: 472 });
+      // Right edge stops where the panel would dip under MIN_TERMINAL_WIDTH.
+    ).toEqual({ left: m, right: 1000 - m - 520 });
   });
 });

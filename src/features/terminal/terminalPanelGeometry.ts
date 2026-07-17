@@ -1,4 +1,6 @@
-export const TERMINAL_EDGE_MARGIN = 8;
+/** Matches the workspace shell's `px-2.5 pb-2.5` (10px) so the floating
+ * terminal's edges line up with the workspace blocks above it. */
+export const TERMINAL_EDGE_MARGIN = 10;
 export const MIN_TERMINAL_WIDTH = 520;
 
 export type TerminalResizeSide = "left" | "right";
