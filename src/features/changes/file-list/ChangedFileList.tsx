@@ -5,10 +5,11 @@ import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
 import { buildRows } from "@/features/changes/commitTree";
 import { FileRow } from "@/features/changes/FileRow";
-import { FileIcon } from "@/components/ui/icons";
+import { ChevronRightIcon, FileIcon, FolderIcon } from "@/components/ui/icons";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import type { FileListView, FileRowAction } from "./types";
+import { FileListView } from "./types";
+import type { FileRowAction } from "./types";
 
 /** A changed-files list in either flat **Path** mode (the shared `FileRow`) or
  * grouped **Tree** mode (directory headers via the shared `buildRows`). Shared by
@@ -25,6 +26,7 @@ export function ChangedFileList({
   menuActivePath = null,
   onSelect,
   onContextMenu,
+  onDirContextMenu,
   compact = true,
   rowAction,
   dirAction,
@@ -36,8 +38,12 @@ export function ChangedFileList({
   menuActivePath?: string | null;
   onSelect: (path: string) => void;
   onContextMenu?: (path: string, e: MouseEvent) => void;
-  /** Row height: `true` for the compact commit/selection lists, `false` for the
-   * taller working-changes rows that also carry a stage/unstage action. */
+  /** Right-click on a Tree-view directory header, with the folder's repo-relative
+   * path. Omitted → folders have no context menu. */
+  onDirContextMenu?: (dirPath: string, e: MouseEvent) => void;
+  /** Row height for **Path** mode: `true` for the compact commit/selection lists,
+   * `false` for the taller working-changes rows that also carry a stage/unstage
+   * action. Tree mode always uses the compact Files-tab row height regardless. */
   compact?: boolean;
   /** Per-file stage/unstage affordance (working changes). Omitted → read-only. */
   rowAction?: (file: FileChange) => FileRowAction | undefined;
@@ -47,7 +53,7 @@ export function ChangedFileList({
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-  if (view === "path") {
+  if (view === FileListView.Path) {
     return (
       <div className="space-y-0.5">
         {files.map((file) => (
@@ -70,7 +76,7 @@ export function ChangedFileList({
   // Stage/Unstage buttons, not checkboxes), so pass a constant include predicate.
   const rows = buildRows(files, collapsed, () => true);
   return (
-    <div className="space-y-0.5">
+    <div>
       {rows.map((row) =>
         row.kind === "dir" ? (
           <DirRow
@@ -79,7 +85,9 @@ export function ChangedFileList({
             depth={row.depth}
             count={row.count}
             collapsed={row.collapsed}
+            menuActive={menuActivePath === row.key}
             onToggle={() => setCollapsed((c) => ({ ...c, [row.key]: !c[row.key] }))}
+            onContextMenu={onDirContextMenu ? (e) => onDirContextMenu(row.key, e) : undefined}
             action={dirAction?.(row.paths)}
           />
         ) : (
@@ -99,47 +107,55 @@ export function ChangedFileList({
   );
 }
 
+/** Indent per tree depth level, in px — matches the repository Files tab
+ * (`repo-files/rows.tsx`) so the two trees read identically. */
+const INDENT = 14;
+
 function DirRow({
   label,
   depth,
   count,
   collapsed,
+  menuActive,
   onToggle,
+  onContextMenu,
   action,
 }: {
   label: string;
   depth: number;
   count: number;
   collapsed: boolean;
+  menuActive: boolean;
   onToggle: () => void;
+  onContextMenu?: (e: MouseEvent) => void;
   action?: FileRowAction;
 }) {
   return (
-    <div className="group relative">
+    <div className="group relative select-none" onContextMenu={onContextMenu}>
       <button
         type="button"
+        aria-expanded={!collapsed}
         onClick={onToggle}
-        style={{ paddingLeft: 6 + depth * 14 }}
-        className="flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
+        style={{ paddingLeft: 8 + depth * INDENT }}
+        className={cn(
+          "flex h-[26px] w-full items-center gap-1.5 rounded-md pr-2 text-left text-[12.5px] text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05]",
+          menuActive && "bg-[var(--accent-soft)] ring-1 ring-inset ring-[color:var(--accent)]",
+        )}
       >
-        {/* Disclosure chevron + folder read as one unit, so they hug at gap-0.5
-            while the row's gap-1.5 still spaces the folder from the label. */}
-        <span className="flex shrink-0 items-center gap-0.5">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            className={cn("h-3 w-3 text-neutral-400 transition-transform", collapsed && "-rotate-90")}
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-4 w-4 text-neutral-400">
-            <path d="M3 7v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-8l-2-2H4a1 1 0 0 0-1 1z" />
-          </svg>
-        </span>
-        <span className="truncate text-[12.5px] font-medium text-neutral-600 dark:text-neutral-300">{label}</span>
-        <span className={cn("ml-auto shrink-0 pl-2 text-[11px] text-neutral-400", action && "group-hover:opacity-0")}>
+        <ChevronRightIcon
+          className={cn(
+            "h-3 w-3 shrink-0 text-neutral-400 transition-transform",
+            !collapsed && "rotate-90",
+          )}
+        />
+        <FolderIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+        <span className="min-w-0 truncate">{label}</span>
+        <span
+          className={cn(
+            "ml-auto shrink-0 pl-2 text-[11px] text-neutral-400",
+            action && "group-hover:opacity-0 group-focus-within:opacity-0",
+          )}
+        >
           {count}
         </span>
       </button>
@@ -166,22 +182,36 @@ function TreeFileRow({
   action?: FileRowAction;
 }) {
   return (
-    <div className="group relative" onContextMenu={onContextMenu}>
+    <div className="group relative select-none" onContextMenu={onContextMenu}>
       <button
         type="button"
+        aria-current={active || undefined}
         onClick={onSelect}
-        style={{ paddingLeft: 6 + depth * 14 }}
+        // Tree rows show only the basename, so the full repo-relative path lives
+        // in the tooltip (parity with the Files tab) to disambiguate same-named
+        // files in different folders.
+        title={file.path}
+        // Files sit one chevron-width in from their parent folder's label, the
+        // same offset the Files tab uses so the two trees align.
+        style={{ paddingLeft: 8 + depth * INDENT + 18 }}
         className={cn(
-          "flex h-9 w-full items-center gap-2 rounded-md pr-2 text-left",
-          active ? "bg-[var(--accent-soft)]" : "hover:bg-black/5 dark:hover:bg-white/5",
+          "flex h-[26px] w-full items-center gap-1.5 rounded-md pr-2 text-left text-[12.5px]",
+          active
+            ? "bg-[var(--accent-soft)] font-medium text-neutral-800 dark:text-neutral-100"
+            : "text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05]",
           menuActive && "bg-[var(--accent-soft)] ring-1 ring-inset ring-[color:var(--accent)]",
         )}
       >
-        <FileIcon path={file.path} size={16} />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-neutral-800 dark:text-neutral-100">
-          {basename(file.path)}
-        </span>
-        <span className={cn("flex shrink-0 items-center gap-2", action && "group-hover:opacity-0")}>
+        <FileIcon path={file.path} size={15} />
+        <span className="min-w-0 flex-1 truncate">{basename(file.path)}</span>
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-2",
+            // Fade the counts/badge for both hover and keyboard focus, so the
+            // action overlay (revealed on either) never overlaps them.
+            action && "group-hover:opacity-0 group-focus-within:opacity-0",
+          )}
+        >
           <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-[11px]" />
           <StatusBadge status={file.status} />
         </span>

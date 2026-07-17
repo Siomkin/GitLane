@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import type { FileListView } from "./types";
+import { FileListView } from "./types";
 
 const btn = (active: boolean) =>
   cn(
@@ -27,17 +27,17 @@ export function FileViewToggle({
     >
       <button
         type="button"
-        aria-pressed={view === "path"}
-        className={btn(view === "path")}
-        onClick={() => onChange("path")}
+        aria-pressed={view === FileListView.Path}
+        className={btn(view === FileListView.Path)}
+        onClick={() => onChange(FileListView.Path)}
       >
         Path
       </button>
       <button
         type="button"
-        aria-pressed={view === "tree"}
-        className={btn(view === "tree")}
-        onClick={() => onChange("tree")}
+        aria-pressed={view === FileListView.Tree}
+        className={btn(view === FileListView.Tree)}
+        onClick={() => onChange(FileListView.Tree)}
       >
         Tree
       </button>

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { FileListView } from "@/lib/ui";
 import { CommitInspector } from "./CommitInspector";
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({
@@ -53,7 +54,7 @@ beforeEach(() => {
     fileDiff: null,
     wipSelected: false,
   });
-  useUi.setState({ fileMenu: null, stackedReview: null });
+  useUi.setState({ fileMenu: null, stackedReview: null, fileListView: FileListView.Path });
 });
 
 describe("CommitInspector", () => {

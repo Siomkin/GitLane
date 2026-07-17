@@ -3,6 +3,20 @@ export type LeftTab = "history" | "changes" | "pulls";
 /** Right inspector panel tabs: contextual details vs the repository Files browser. */
 export type RightTab = "details" | "files";
 
+/** How a changed-files list is laid out: a flat repo-relative **Path** list, or
+ * a collapsible directory **Tree**. A view preference shared across the changed-
+ * files inspectors and the stacked "review all" ordering, so it lives here (not
+ * in a feature) where the ui store can own it without importing from features.
+ *
+ * Single source of truth for the two values — reference `FileListView.Path` /
+ * `FileListView.Tree` rather than bare `"path"` / `"tree"` literals so a typo
+ * fails to compile and a rename is one edit. */
+export const FileListView = {
+  Path: "path",
+  Tree: "tree",
+} as const;
+export type FileListView = (typeof FileListView)[keyof typeof FileListView];
+
 /** Shared monospace stack for diffs and the terminal. Lists a preferred face per
  *  platform so each OS renders its native programming font before the generic
  *  fallback: SF Mono/Menlo (macOS), Cascadia Code/Segoe UI Mono/Consolas

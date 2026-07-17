@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { FileChange } from "@/lib/api";
 import { ChangedFileList } from "./ChangedFileList";
+import { FileListView } from "./types";
 
 const file = (path: string, over: Partial<FileChange> = {}): FileChange => ({
   path,
@@ -24,7 +25,7 @@ describe("ChangedFileList", () => {
   it("path mode lists every file and fires onSelect with the path", async () => {
     const onSelect = vi.fn();
     const user = userEvent.setup();
-    render(<ChangedFileList files={files} view="path" activePath={null} onSelect={onSelect} />);
+    render(<ChangedFileList files={files} view={FileListView.Path} activePath={null} onSelect={onSelect} />);
     expect(screen.getByText("app.ts")).toBeInTheDocument();
     expect(screen.getByText("Foo.tsx")).toBeInTheDocument();
     expect(screen.getByText("README.md")).toBeInTheDocument();
@@ -35,7 +36,7 @@ describe("ChangedFileList", () => {
   it("tree mode groups files under directory headers and still selects a leaf", async () => {
     const onSelect = vi.fn();
     const user = userEvent.setup();
-    render(<ChangedFileList files={files} view="tree" activePath={null} onSelect={onSelect} />);
+    render(<ChangedFileList files={files} view={FileListView.Tree} activePath={null} onSelect={onSelect} />);
     // `src` holds a direct file (app.ts) so it stays its own header, and `ui`
     // nests one level deeper.
     expect(screen.getByText("src")).toBeInTheDocument();
@@ -47,10 +48,27 @@ describe("ChangedFileList", () => {
 
   it("collapses a directory's files when its header is clicked", async () => {
     const user = userEvent.setup();
-    render(<ChangedFileList files={files} view="tree" activePath={null} onSelect={() => {}} />);
+    render(<ChangedFileList files={files} view={FileListView.Tree} activePath={null} onSelect={() => {}} />);
     expect(screen.getByText("Foo.tsx")).toBeInTheDocument();
     await user.click(screen.getByText("ui"));
     expect(screen.queryByText("Foo.tsx")).not.toBeInTheDocument();
+  });
+
+  it("fires onDirContextMenu with the folder's full path on right-click", () => {
+    const onDirContextMenu = vi.fn();
+    render(
+      <ChangedFileList
+        files={files}
+        view={FileListView.Tree}
+        activePath={null}
+        onSelect={() => {}}
+        onDirContextMenu={onDirContextMenu}
+      />,
+    );
+    // `ui` nests under `src`, so its header carries the full repo-relative path.
+    fireEvent.contextMenu(screen.getByText("ui"));
+    expect(onDirContextMenu).toHaveBeenCalledTimes(1);
+    expect(onDirContextMenu.mock.calls[0][0]).toBe("src/ui");
   });
 
   it("renders a per-file stage action in tree mode and fires it without selecting", async () => {
@@ -60,7 +78,7 @@ describe("ChangedFileList", () => {
     render(
       <ChangedFileList
         files={[file("src/app.ts")]}
-        view="tree"
+        view={FileListView.Tree}
         activePath={null}
         compact={false}
         onSelect={onSelect}
@@ -78,7 +96,7 @@ describe("ChangedFileList", () => {
     render(
       <ChangedFileList
         files={[file("src/ui/Bar.tsx"), file("src/ui/Foo.tsx")]}
-        view="tree"
+        view={FileListView.Tree}
         activePath={null}
         compact={false}
         onSelect={() => {}}
