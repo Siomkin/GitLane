@@ -33,9 +33,11 @@ import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./t
 export function TerminalLayer() {
   const terminalView = useUi((s) => s.terminalView);
   const terminalHeight = useUi((s) => s.terminalHeight);
+  const terminalBottomInset = useUi((s) => s.terminalBottomInset);
   const terminalHorizontalLayout = useUi((s) => s.terminalHorizontalLayout);
   const terminalExpanded = useUi((s) => s.terminalExpanded);
   const adjustTerminalHeight = useUi((s) => s.adjustTerminalHeight);
+  const setTerminalVertical = useUi((s) => s.setTerminalVertical);
   const setTerminalHorizontalInsets = useUi((s) => s.setTerminalHorizontalInsets);
   const collapseTerminal = useUi((s) => s.collapseTerminal);
   const expandTerminal = useUi((s) => s.expandTerminal);
@@ -55,25 +57,31 @@ export function TerminalLayer() {
   // A bottom corner only needs the backdrop's square treatment when it sits at
   // the workspace edge — that's where it lands exactly on a workspace block's
   // corner and the block's border/shadow arc shows in the rounded notch. An
-  // interior corner floats over block content, where a square grey corner would
-  // itself be the artifact.
+  // interior corner (a side away from the edge, or the panel lifted off the
+  // floor) floats over block content, where a square grey corner would itself
+  // be the artifact. So both the side AND the bottom must be edge-aligned.
+  const bottomAtEdge = terminalExpanded || terminalBottomInset <= TERMINAL_EDGE_MARGIN;
   const leftAtEdge =
-    terminalExpanded ||
-    Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout?.leftInset ?? TERMINAL_EDGE_MARGIN) ===
-      TERMINAL_EDGE_MARGIN;
+    bottomAtEdge &&
+    (terminalExpanded ||
+      Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout?.leftInset ?? TERMINAL_EDGE_MARGIN) ===
+        TERMINAL_EDGE_MARGIN);
   const rightAtEdge =
-    terminalExpanded ||
-    (terminalHorizontalLayout
-      ? Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout.rightInset) ===
-        TERMINAL_EDGE_MARGIN
-      : false);
+    bottomAtEdge &&
+    (terminalExpanded ||
+      (terminalHorizontalLayout
+        ? Math.max(TERMINAL_EDGE_MARGIN, terminalHorizontalLayout.rightInset) ===
+          TERMINAL_EDGE_MARGIN
+        : false));
 
   // Shared by the drawer and its backdrop so the two always coincide.
   const frameStyle = {
     height: terminalExpanded
       ? `calc(100% - ${TERMINAL_EDGE_MARGIN * 2}px)`
       : terminalHeight,
-    bottom: TERMINAL_EDGE_MARGIN,
+    bottom: terminalExpanded
+      ? TERMINAL_EDGE_MARGIN
+      : Math.max(TERMINAL_EDGE_MARGIN, terminalBottomInset),
     left: terminalExpanded
       ? TERMINAL_EDGE_MARGIN
       : Math.max(
@@ -98,10 +106,18 @@ export function TerminalLayer() {
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute z-[44] rounded-t-xl bg-neutral-100 dark:bg-neutral-900",
+          // Mirrors the drawer's collapse transition so the two fade/slide as
+          // one — an instant show/hide here would flash a gap-coloured slab on
+          // expand and let the hairline reappear mid-collapse.
+          // The colours duplicate gp-root's shell background (App.tsx); keep
+          // them in sync if the app background ever changes.
+          "pointer-events-none absolute z-[44] rounded-t-xl bg-neutral-100 transition-[opacity,transform] duration-150 dark:bg-neutral-900",
           leftAtEdge ? "rounded-bl-none" : "rounded-bl-xl",
           rightAtEdge ? "rounded-br-none" : "rounded-br-xl",
-          (!visible || terminalView !== "open") && "hidden",
+          !visible && "hidden",
+          visible &&
+            terminalView === "collapsed" &&
+            "translate-y-3 scale-[0.98] opacity-0",
         )}
         style={frameStyle}
       />
@@ -127,6 +143,7 @@ export function TerminalLayer() {
           <TerminalResizeHandles
             panelRef={panelRef}
             adjustHeight={adjustTerminalHeight}
+            setVertical={setTerminalVertical}
             setInsets={setTerminalHorizontalInsets}
           />
         )}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUi } from "@/store/ui";
 import { TerminalLayer } from "./TerminalPanel";
@@ -23,6 +23,7 @@ beforeEach(() => {
     terminalView: "open",
     terminalViewByRepo: {},
     terminalHeight: 480,
+    terminalBottomInset: 10,
     terminalHorizontalLayout: null,
     terminalExpanded: false,
   });
@@ -143,6 +144,79 @@ describe("TerminalLayer", () => {
     expect(useUi.getState()).toMatchObject({
       terminalHorizontalLayout: { leftInset: 100, rightInset: 132 },
     });
+  });
+
+  it("lifts the panel floor from a bottom-edge drag, keeping the top fixed", () => {
+    render(<TerminalLayer />);
+    const bottomHandle = screen.getByRole("separator", {
+      name: "Resize terminal from bottom",
+    });
+    const panel = bottomHandle.parentElement as HTMLDivElement;
+    // Panel: 480 tall, bottom gap 60 (container 800 → panel bottom at 740).
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue({
+      width: 1000, height: 480, x: 100, y: 260, top: 260, right: 1100,
+      bottom: 740, left: 100, toJSON: () => ({}),
+    });
+    vi.spyOn(panel.parentElement as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      width: 1200, height: 800, x: 0, y: 0, top: 0, right: 1200,
+      bottom: 800, left: 0, toJSON: () => ({}),
+    });
+
+    // Drag the bottom edge up 100px: floor rises (60 → 160), height shrinks
+    // (480 → 380), top edge (bottom + height = 540) is unchanged.
+    fireEvent.mouseDown(bottomHandle, { clientY: 740 });
+    fireEvent.mouseMove(window, { clientY: 640 });
+    fireEvent.mouseUp(window);
+
+    expect(useUi.getState().terminalBottomInset).toBe(160);
+    expect(useUi.getState().terminalHeight).toBe(380);
+    expect(panel).toHaveStyle({ bottom: "160px" });
+  });
+
+  it("squares the gap backdrop only on edge-aligned bottom corners", () => {
+    render(<TerminalLayer />);
+    const panel = screen.getByRole("separator", {
+      name: "Resize terminal width from right",
+    }).parentElement as HTMLDivElement;
+    const backdrop = panel.previousElementSibling as HTMLDivElement;
+
+    // Default layout: left edge at the margin (squared), right edge interior.
+    expect(backdrop).toHaveClass("rounded-bl-none", "rounded-br-xl");
+    expect(backdrop).toHaveStyle({ bottom: "10px", left: "10px" });
+
+    // Lifted off the floor: no bottom corner touches a block corner, so both
+    // stay rounded even though the left side is still edge-aligned.
+    act(() => useUi.setState({ terminalBottomInset: 120 }));
+    expect(backdrop).toHaveClass("rounded-bl-xl", "rounded-br-xl");
+    act(() => useUi.setState({ terminalBottomInset: 10 }));
+
+    // Interior on both sides: fully rounded, hidden behind the drawer.
+    act(() => useUi.setState({ terminalHorizontalLayout: { leftInset: 120, rightInset: 260 } }));
+    expect(backdrop).toHaveClass("rounded-bl-xl", "rounded-br-xl");
+
+    // Maximized: both edges at the margin, both corners squared.
+    fireEvent.click(screen.getByRole("button", { name: "Maximize terminal" }));
+    expect(backdrop).toHaveClass("rounded-bl-none", "rounded-br-none");
+  });
+
+  it("fades the backdrop with the drawer instead of hiding it instantly", () => {
+    render(<TerminalLayer />);
+    const panel = screen.getByRole("separator", {
+      name: "Resize terminal width from right",
+    }).parentElement as HTMLDivElement;
+    const backdrop = panel.previousElementSibling as HTMLDivElement;
+    expect(backdrop).not.toHaveClass("hidden");
+    expect(backdrop).not.toHaveClass("opacity-0");
+
+    // Collapsed: stays mounted and runs the drawer's fade so the pair animate
+    // as one (instant display:none would flash the corner hairline back).
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(backdrop).toHaveClass("opacity-0");
+    expect(backdrop).not.toHaveClass("hidden");
+
+    // Fully hidden view: display none, same as the drawer.
+    act(() => useUi.setState({ terminalView: "hidden" }));
+    expect(backdrop).toHaveClass("hidden");
   });
 
   it("collapses to a running-status launcher and restores on click", () => {

@@ -261,7 +261,8 @@ describe("view-tab transitions", () => {
   it("normalizes user-selected terminal edge positions", () => {
     useUi.getState().setTerminalHorizontalInsets(-20, 1280.4);
     expect(useUi.getState()).toMatchObject({
-      terminalHorizontalLayout: { leftInset: 8, rightInset: 1280 },
+      // Floored at TERMINAL_EDGE_MARGIN so stored insets match what renders.
+      terminalHorizontalLayout: { leftInset: 10, rightInset: 1280 },
     });
 
     useUi.getState().setTerminalHorizontalInsets(9000, 20);

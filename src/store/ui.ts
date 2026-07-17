@@ -12,7 +12,13 @@ import { useNotifications } from "./notifications";
 import { useTerminals } from "./terminals";
 import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "@/lib/gitError";
 import type { ForgeAuthProvider } from "@/lib/api";
-import type { LeftTab, RightTab } from "@/lib/ui";
+import {
+  TERMINAL_EDGE_MARGIN,
+  TERMINAL_MAX_HEIGHT,
+  TERMINAL_MIN_HEIGHT,
+  type LeftTab,
+  type RightTab,
+} from "@/lib/ui";
 import type { PrFilter } from "@/lib/prs";
 import type { AccentColor } from "@/lib/accent";
 import { ComposerMode } from "@/lib/conventionalCommit";
@@ -363,6 +369,10 @@ interface UiState {
    * terminal was visible. */
   terminalViewByRepo: Record<string, TerminalView>;
   terminalHeight: number;
+  /** Gap from the window's bottom edge to the popup's bottom, in px. Defaults to
+   * the edge margin (flush with the workspace); the bottom drag handles raise it
+   * to lift the panel off the floor while the top edge stays put. */
+  terminalBottomInset: number;
   /** Saved user-selected popup edges. `null` uses the left-aligned 50% default. */
   terminalHorizontalLayout: { leftInset: number; rightInset: number } | null;
   terminalExpanded: boolean;
@@ -532,6 +542,9 @@ interface UiState {
   forgetTerminalView: (repoPath: string) => void;
   toggleTerminalExpanded: () => void;
   adjustTerminalHeight: (dy: number) => void;
+  /** Set the popup's bottom gap and height together (bottom-edge/corner drags
+   * keep the top edge fixed by moving both). */
+  setTerminalVertical: (bottomInset: number, height: number) => void;
   setTerminalHorizontalInsets: (left: number, right: number) => void;
   /** Open the terminal and queue `text` to be pasted into it. When `command`
    * is provided, launch that terminal agent before pasting the text. The
@@ -713,6 +726,7 @@ export const useUi = create<UiState>()(
   terminalView: "hidden",
   terminalViewByRepo: {},
   terminalHeight: 480,
+  terminalBottomInset: TERMINAL_EDGE_MARGIN,
   terminalHorizontalLayout: null,
   terminalExpanded: false,
   terminalInject: null,
@@ -865,12 +879,25 @@ export const useUi = create<UiState>()(
   toggleTerminalExpanded: () => set((s) => ({ terminalExpanded: !s.terminalExpanded })),
   // Down = taller. Clamp so the compact panel stays usable without eating the whole window.
   adjustTerminalHeight: (dy) =>
-    set((s) => ({ terminalHeight: Math.max(160, Math.min(860, s.terminalHeight + dy)) })),
+    set((s) => ({
+      terminalHeight: Math.max(
+        TERMINAL_MIN_HEIGHT,
+        Math.min(TERMINAL_MAX_HEIGHT, s.terminalHeight + dy),
+      ),
+    })),
+  setTerminalVertical: (bottomInset, height) =>
+    set({
+      terminalBottomInset: Math.max(TERMINAL_EDGE_MARGIN, Math.min(8192, Math.round(bottomInset))),
+      terminalHeight: Math.max(
+        TERMINAL_MIN_HEIGHT,
+        Math.min(TERMINAL_MAX_HEIGHT, Math.round(height)),
+      ),
+    }),
   setTerminalHorizontalInsets: (left, right) =>
     set({
       terminalHorizontalLayout: {
-        leftInset: Math.max(8, Math.min(8192, Math.round(left))),
-        rightInset: Math.max(8, Math.min(8192, Math.round(right))),
+        leftInset: Math.max(TERMINAL_EDGE_MARGIN, Math.min(8192, Math.round(left))),
+        rightInset: Math.max(TERMINAL_EDGE_MARGIN, Math.min(8192, Math.round(right))),
       },
     }),
   // Open the terminal and stash the message; the TerminalLayer pastes it once the
@@ -1091,6 +1118,7 @@ export const useUi = create<UiState>()(
         graphWidthsByRepo: s.graphWidthsByRepo,
         whenWidth: s.whenWidth,
         terminalHeight: s.terminalHeight,
+        terminalBottomInset: s.terminalBottomInset,
         terminalHorizontalLayout: s.terminalHorizontalLayout,
         terminalExpanded: s.terminalExpanded,
         prFilter: s.prFilter,
