@@ -23,7 +23,7 @@
 use base64::Engine as _;
 use serde::Deserialize;
 
-use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport};
+use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
 use super::super::domain::GithubError;
 
@@ -128,7 +128,11 @@ impl BitbucketApi for RestClient<'_> {
             ("Authorization", auth.as_str()),
             ("Accept", "application/json"),
         ];
-        self.finish(operation, self.http.get(&self.url(path), &headers))
+        self.finish(
+            operation,
+            self.http
+                .get_with_limit(&self.url(path), &headers, PROVIDER_JSON_RESPONSE_LIMIT),
+        )
     }
 
     fn get_text(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
@@ -217,7 +221,25 @@ fn bitbucket_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::oauth::http::testing::MockTransport;
+    use crate::git::oauth::http::{testing::MockTransport, DEFAULT_RESPONSE_LIMIT};
+
+    #[test]
+    fn ordinary_json_can_exceed_the_oauth_response_limit() {
+        let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
+        let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
+        let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+
+        assert_eq!(
+            client
+                .get("detail", "repositories/a/b/pullrequests/1")
+                .unwrap(),
+            body
+        );
+        assert_eq!(
+            http.requests.lock().unwrap()[0].max_bytes,
+            PROVIDER_JSON_RESPONSE_LIMIT
+        );
+    }
 
     fn auth_header_for(username: &str) -> String {
         let http = MockTransport::new(vec![MockTransport::ok(200, "{}")]);

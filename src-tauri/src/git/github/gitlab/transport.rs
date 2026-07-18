@@ -14,13 +14,13 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport};
+use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
 use super::super::domain::GithubError;
 
 /// GitLab's MR `/diffs` endpoint can return up to 100 full file patches per
-/// page. Keep ordinary JSON responses on the shared 64 KiB default, but give
-/// this endpoint the same explicit bounded allowance as Bitbucket diffs.
+/// page. Ordinary provider JSON has its own bounded allowance, but raw patch
+/// bodies still need the larger explicit ceiling shared with Bitbucket diffs.
 pub(super) const DIFF_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 
 /// The write verbs the operations need beyond GET.
@@ -231,7 +231,11 @@ impl GitlabApi for RestClient<'_> {
             ("Authorization", auth.as_str()),
             ("Accept", "application/json"),
         ];
-        self.finish(operation, self.http.get(&self.url(path), &headers))
+        self.finish(
+            operation,
+            self.http
+                .get_with_limit(&self.url(path), &headers, PROVIDER_JSON_RESPONSE_LIMIT),
+        )
     }
 
     fn get_with_limit(
@@ -316,6 +320,23 @@ fn gitlab_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::oauth::http::{testing::MockTransport, DEFAULT_RESPONSE_LIMIT};
+
+    #[test]
+    fn ordinary_json_can_exceed_the_oauth_response_limit() {
+        let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
+        let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+
+        assert_eq!(
+            client.get("detail", "projects/1/merge_requests/1").unwrap(),
+            body
+        );
+        assert_eq!(
+            http.requests.lock().unwrap()[0].max_bytes,
+            PROVIDER_JSON_RESPONSE_LIMIT
+        );
+    }
 
     #[test]
     fn extracts_gitlab_error_message() {

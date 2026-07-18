@@ -20,6 +20,12 @@ use std::time::Duration;
 /// that legitimately return more data must opt into their own bounded limit.
 pub const DEFAULT_RESPONSE_LIMIT: usize = 64 * 1024;
 
+/// Provider PR list/detail/commit pages can legitimately exceed the OAuth-sized
+/// default (descriptions, reviewers, and batched commit metadata add up), while
+/// still being far smaller than raw patch responses. Provider REST clients opt
+/// into this streaming ceiling; OAuth identity/token calls stay at 64 KiB.
+pub const PROVIDER_JSON_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
+
 /// A transport failure distinct from an HTTP status response. In particular,
 /// an oversized body is typed so provider adapters can fail closed instead of
 /// parsing a prefix as if it were the complete response.
@@ -231,8 +237,8 @@ pub mod testing {
         /// content negotiation — the Bitbucket `/diff` GET must ask for text, not
         /// JSON (GL-141).
         pub headers: Vec<(String, String)>,
-        /// Body ceiling selected by the caller. Provider diff endpoints opt
-        /// into a larger bounded allowance without widening JSON APIs.
+        /// Body ceiling selected by the caller. Provider JSON and raw diff
+        /// endpoints opt into separate bounded allowances above OAuth's limit.
         pub max_bytes: usize,
     }
 
