@@ -8,7 +8,7 @@
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -19,7 +19,9 @@ const MAX_REQUEST_BYTES: usize = 8 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
+const SERVER_IO_TIMEOUT: Duration = Duration::from_millis(500);
 const ACCEPT_POLL: Duration = Duration::from_millis(10);
+const MAX_IN_FLIGHT: usize = 8;
 
 /// Keeps one command-scoped broker alive. This type is deliberately not
 /// cloneable: one [`super::GitInvocation`] owns one broker lifetime.
@@ -140,43 +142,66 @@ fn serve(
     nonce: &str,
     cancel: &AtomicBool,
 ) {
-    while !cancel.load(Ordering::Acquire) {
-        let (mut stream, peer) = match listener.accept() {
-            Ok(connection) => connection,
-            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(ACCEPT_POLL);
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    std::thread::scope(|scope| {
+        while !cancel.load(Ordering::Acquire) {
+            let (stream, peer) = match listener.accept() {
+                Ok(connection) => connection,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(ACCEPT_POLL);
+                    continue;
+                }
+                Err(_) => return,
+            };
+            if !peer.ip().is_loopback() {
                 continue;
             }
-            Err(_) => return,
-        };
-        if !peer.ip().is_loopback() {
-            continue;
+            if in_flight.fetch_add(1, Ordering::AcqRel) >= MAX_IN_FLIGHT {
+                in_flight.fetch_sub(1, Ordering::AcqRel);
+                continue;
+            }
+            let counter = in_flight.clone();
+            scope.spawn(move || {
+                let _slot = InFlightSlot(counter);
+                serve_connection(stream, expected_host, token, nonce);
+            });
         }
-        let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-        let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
-        let Some(bytes) = read_bounded(&mut stream, MAX_REQUEST_BYTES) else {
-            continue;
-        };
-        let Ok(request) = serde_json::from_slice::<Request>(&bytes) else {
-            continue;
-        };
-        // Wrong capabilities receive no response at all, avoiding a useful
-        // token-oracle signal and leaving the real invocation unaffected.
-        if !constant_time_eq(request.nonce.as_bytes(), nonce.as_bytes()) {
-            continue;
-        }
+    });
+}
 
-        let answer = match super::askpass_field(&request.prompt) {
-            Some(super::AskpassField::Password) => match super::prompt_host(&request.prompt) {
-                Some(host) if super::hosts_match(&host, expected_host) => Some(token.to_string()),
-                _ => None,
-            },
+struct InFlightSlot(Arc<AtomicUsize>);
+
+impl Drop for InFlightSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+fn serve_connection(mut stream: TcpStream, expected_host: &str, token: &str, nonce: &str) {
+    let _ = stream.set_read_timeout(Some(SERVER_IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(SERVER_IO_TIMEOUT));
+    let Some(bytes) = read_bounded(&mut stream, MAX_REQUEST_BYTES) else {
+        return;
+    };
+    let Ok(request) = serde_json::from_slice::<Request>(&bytes) else {
+        return;
+    };
+    // Wrong capabilities receive no response at all, avoiding a useful
+    // token-oracle signal and leaving the real invocation unaffected.
+    if !constant_time_eq(request.nonce.as_bytes(), nonce.as_bytes()) {
+        return;
+    }
+
+    let answer = match super::askpass_field(&request.prompt) {
+        Some(super::AskpassField::Password) => match super::prompt_host(&request.prompt) {
+            Some(host) if super::hosts_match(&host, expected_host) => Some(token.to_string()),
             _ => None,
-        };
-        if let Ok(encoded) = serde_json::to_vec(&Response { answer }) {
-            let _ = stream.write_all(&encoded);
-            let _ = stream.flush();
-        }
+        },
+        _ => None,
+    };
+    if let Ok(encoded) = serde_json::to_vec(&Response { answer }) {
+        let _ = stream.write_all(&encoded);
+        let _ = stream.flush();
     }
 }
 
@@ -252,5 +277,24 @@ mod tests {
     #[test]
     fn forged_non_loopback_endpoint_is_rejected() {
         assert_eq!(request("192.0.2.1:1234", "nonce", PASSWORD_PROMPT), None);
+    }
+
+    #[test]
+    fn stalled_loopback_client_does_not_serialize_real_askpass() {
+        let lease = start("gitlab.com".to_string(), "glpat-secret".to_string()).unwrap();
+        let address: SocketAddr = lease.endpoint().parse().unwrap();
+        let _stalled = TcpStream::connect(address).unwrap();
+        // Let the accept loop hand the idle socket to its scoped worker.
+        std::thread::sleep(ACCEPT_POLL * 3);
+
+        let started = std::time::Instant::now();
+        let answer = request(lease.endpoint(), lease.nonce(), PASSWORD_PROMPT);
+
+        assert_eq!(answer.as_deref(), Some("glpat-secret"));
+        assert!(
+            started.elapsed() < SERVER_IO_TIMEOUT,
+            "real askpass waited behind the stalled client: {:?}",
+            started.elapsed()
+        );
     }
 }
