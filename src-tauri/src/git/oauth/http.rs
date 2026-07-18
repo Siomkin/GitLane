@@ -231,6 +231,9 @@ pub mod testing {
         /// content negotiation — the Bitbucket `/diff` GET must ask for text, not
         /// JSON (GL-141).
         pub headers: Vec<(String, String)>,
+        /// Body ceiling selected by the caller. Provider diff endpoints opt
+        /// into a larger bounded allowance without widening JSON APIs.
+        pub max_bytes: usize,
     }
 
     #[derive(Default)]
@@ -279,6 +282,7 @@ pub mod testing {
                     .iter()
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect(),
+                max_bytes,
             });
             let response = self
                 .responses

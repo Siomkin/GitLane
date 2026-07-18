@@ -10,7 +10,7 @@
 use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
-use super::transport::{GitlabApi, Method};
+use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
 use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummary};
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×
@@ -72,7 +72,7 @@ pub fn pr_diff(
         let path = format!(
             "projects/{project_id}/merge_requests/{number}/diffs?per_page={DIFF_PER_PAGE}&page={page}"
         );
-        let raw = api.get("merge request diff", &path)?;
+        let raw = api.get_with_limit("merge request diff", &path, DIFF_RESPONSE_LIMIT)?;
         let batch: Vec<GitlabDiff> = parse(&raw, "merge request diff")?;
         let full_page = batch.len() == DIFF_PER_PAGE;
         diffs.extend(batch);
@@ -391,6 +391,8 @@ mod tests {
             files[2].binary,
             "empty diff on a non-rename reads as binary"
         );
+        let requests = http.requests.lock().unwrap();
+        assert_eq!(requests[0].max_bytes, DIFF_RESPONSE_LIMIT);
     }
 
     #[test]

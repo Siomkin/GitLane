@@ -18,6 +18,11 @@ use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport};
 
 use super::super::domain::GithubError;
 
+/// GitLab's MR `/diffs` endpoint can return up to 100 full file patches per
+/// page. Keep ordinary JSON responses on the shared 64 KiB default, but give
+/// this endpoint the same explicit bounded allowance as Bitbucket diffs.
+pub(super) const DIFF_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
+
 /// The write verbs the operations need beyond GET.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Method {
@@ -40,6 +45,21 @@ impl Method {
 /// reads MR parameters from the form body.
 pub trait GitlabApi {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError>;
+    fn get_with_limit(
+        &self,
+        operation: &'static str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        let body = self.get(operation, path)?;
+        if body.len() > max_bytes {
+            Err(GithubError::InvalidResponse(format!(
+                "GitLab {operation} exceeded the {max_bytes}-byte response limit; the partial response was discarded."
+            )))
+        } else {
+            Ok(body)
+        }
+    }
     fn send(
         &self,
         operation: &'static str,
@@ -212,6 +232,24 @@ impl GitlabApi for RestClient<'_> {
             ("Accept", "application/json"),
         ];
         self.finish(operation, self.http.get(&self.url(path), &headers))
+    }
+
+    fn get_with_limit(
+        &self,
+        operation: &'static str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        let auth = self.auth_header();
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ];
+        self.finish(
+            operation,
+            self.http
+                .get_with_limit(&self.url(path), &headers, max_bytes),
+        )
     }
 
     fn send(
