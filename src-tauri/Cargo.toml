@@ -47,6 +47,11 @@ portable-pty = "0.9"
 # Tokenizes a user-configured agent command (honoring quotes) so the executable
 # can be extracted and PATH-probed without shell interpolation. See terminal_agents.rs.
 shell-words = "1"
+# Capability-based worktree access. File viewer/editor IPC paths are opened
+# relative to directory handles, with every component and final target refusing
+# symlinks, so a repository cannot redirect reads or writes outside its root.
+cap-std = "4.0.2"
+cap-fs-ext = "4.0.2"
 
 # Native provider OAuth sign-in for GitLab/Bitbucket (GL-139) — the backend's
 # first outbound-HTTP dependency, confined to `git/oauth/http.rs` behind an

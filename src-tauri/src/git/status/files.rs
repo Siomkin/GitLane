@@ -11,8 +11,9 @@ use std::io::Read;
 
 use git2::Status;
 
-use crate::git::read::{open, worktree_join};
+use crate::git::read::open;
 use crate::git::types::RepoFileContent;
+use crate::git::worktree_fs::open_regular_worktree_file;
 
 /// Hard cap on bytes returned as viewer text. Beyond this the content is cut
 /// at the cap (`truncated: true`) — a multi-megabyte string would stall the
@@ -71,25 +72,16 @@ pub fn repo_file_text(
     let workdir = repo
         .workdir()
         .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?;
-    // Same guards as `read_binary_blob`: `file` is frontend-supplied, so reject
-    // traversal, then refuse to follow a symlink or read a non-regular entry.
-    let full = worktree_join(workdir, file)?;
-    let meta = std::fs::symlink_metadata(&full)
-        .map_err(|e| git2::Error::from_str(&format!("stat {file}: {e}")))?;
-    if !meta.file_type().is_file() {
-        return Err(git2::Error::from_str(&format!(
-            "refusing to read non-regular file: {file:?}"
-        )));
-    }
+    let mut opened = open_regular_worktree_file(workdir, file)
+        .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
 
     let cap = max_bytes.map_or(MAX_TEXT_BYTES, |m| m.min(MAX_TEXT_BYTES));
-    let size = meta.len();
+    let size = opened.len();
     let truncated = size > cap;
 
-    let handle = std::fs::File::open(&full)
-        .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
     let mut bytes = Vec::with_capacity(size.min(cap) as usize);
-    handle
+    opened
+        .reader()
         .take(cap)
         .read_to_end(&mut bytes)
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;

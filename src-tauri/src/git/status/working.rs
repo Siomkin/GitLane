@@ -2,8 +2,9 @@
 
 use git2::{DiffOptions, Repository, Status};
 
-use crate::git::read::{open, worktree_join};
+use crate::git::read::open;
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
+use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
 use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
@@ -229,9 +230,9 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                     // line count; files past the cap are counted approximately.
                     use std::io::Read;
                     const MAX_PROBE: u64 = 1 << 20; // 1 MiB
-                    if let Ok(file) = std::fs::File::open(wd.join(&p)) {
+                    if let Ok(mut file) = open_regular_worktree_file(wd, &p) {
                         let mut buf = Vec::new();
-                        if file.take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
+                        if file.reader().take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
                             if buf.contains(&0) {
                                 binary = true;
                             } else {
@@ -331,14 +332,9 @@ pub fn file_diff(
 /// produce hunks for untracked content (see [`file_diff`]).
 fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<FileDiff> {
     let workdir = repo.workdir()?;
-    // `file` is IPC-supplied (the `file_diff` command), so reject traversal and
-    // never follow a symlink / read a non-regular entry — same guard as
-    // `read_binary_blob` / `conflict_file`.
-    let full = worktree_join(workdir, file).ok()?;
-    if !std::fs::symlink_metadata(&full).ok()?.file_type().is_file() {
-        return None;
-    }
-    let bytes = std::fs::read(&full).ok()?;
+    let mut opened = open_regular_worktree_file(workdir, file).ok()?;
+    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
+    std::io::Read::read_to_end(opened.reader(), &mut bytes).ok()?;
 
     if bytes.contains(&0) {
         return Some(FileDiff {

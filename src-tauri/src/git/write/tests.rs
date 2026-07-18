@@ -1,5 +1,5 @@
 use super::branches::align_equivalent_sibling;
-use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution, worktree_path};
+use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution};
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;
 use super::remotes::{
@@ -3863,16 +3863,6 @@ fn empty_after_resolution_matches_only_the_empty_phrase() {
     assert!(!is_empty_after_resolution("hook rejected the commit"));
 }
 
-#[test]
-fn worktree_path_rejects_escapes_and_accepts_relative() {
-    let root = "/tmp/repo";
-    assert!(worktree_path(root, "src/a.ts").is_ok());
-    assert!(worktree_path(root, "nested/dir/file.txt").is_ok());
-    assert!(worktree_path(root, "../escape.txt").is_err());
-    assert!(worktree_path(root, "a/../../escape.txt").is_err());
-    assert!(worktree_path(root, "/etc/passwd").is_err());
-}
-
 /// A repo with one commit on `main` and a configured (but offline) origin.
 /// `git config` here keeps commits unsigned so CI without a signing key works.
 fn repo_with_base_commit(tag: &str) -> (TempRepo, String) {
@@ -4120,6 +4110,34 @@ fn continue_operation_completes_a_resolved_merge() {
         3,
         "expected a merge commit: {line:?}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn resolve_conflict_file_refuses_a_final_symlink_and_preserves_its_target() {
+    use std::os::unix::fs::symlink;
+
+    let repo = merge_conflict_repo("resolve-final-symlink");
+    let outside = repo.0.with_extension("outside-target");
+    let _ = std::fs::remove_file(&outside);
+    std::fs::write(&outside, "outside must survive\n").unwrap();
+    std::fs::remove_file(repo.0.join("f.txt")).unwrap();
+    symlink(&outside, repo.0.join("f.txt")).unwrap();
+
+    let result = resolve_conflict_file(repo.path(), "f.txt", "attacker content\n");
+
+    assert!(result.is_err(), "final symlink must be refused: {result:?}");
+    assert_eq!(
+        std::fs::read_to_string(&outside).unwrap(),
+        "outside must survive\n"
+    );
+    let unmerged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+    assert!(
+        !String::from_utf8_lossy(&unmerged.stdout).trim().is_empty(),
+        "a refused write must not stage the conflict"
+    );
+
+    let _ = std::fs::remove_file(&outside);
 }
 
 #[test]
@@ -5541,8 +5559,28 @@ fn write_repo_file_rejects_traversal_and_symlink() {
 
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink("a.txt", repo.0.join("link.txt")).unwrap();
+        use std::os::unix::fs::symlink;
+
+        symlink("a.txt", repo.0.join("link.txt")).unwrap();
         // A symlink is not a regular file — refuse rather than follow it.
         assert!(write_repo_file(repo.path(), "link.txt", "x", None).is_err());
+
+        let outside = repo.0.with_extension("editor-outside");
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("target.txt"), "outside\n").unwrap();
+        symlink(&outside, repo.0.join("ancestor-link")).unwrap();
+        assert!(write_repo_file(
+            repo.path(),
+            "ancestor-link/target.txt",
+            "changed\n",
+            Some(8)
+        )
+        .is_err());
+        assert_eq!(
+            std::fs::read_to_string(outside.join("target.txt")).unwrap(),
+            "outside\n"
+        );
+        let _ = std::fs::remove_dir_all(&outside);
     }
 }

@@ -157,7 +157,8 @@ fn blob_text_at(
         let workdir = repo
             .workdir()
             .ok_or_else(|| git2::Error::from_str("repository has no working tree"))?;
-        std::fs::read(workdir.join(file)).map_err(|e| git2::Error::from_str(&e.to_string()))?
+        crate::git::worktree_fs::read_regular_worktree_file(workdir, file)
+            .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
     };
     let text =
         String::from_utf8(bytes).map_err(|_| git2::Error::from_str("file is not UTF-8 text"))?;

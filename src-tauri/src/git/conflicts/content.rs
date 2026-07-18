@@ -1,7 +1,10 @@
 //! Worktree content reads for conflicted text files.
 
-use crate::git::read::{open, worktree_join};
+use std::io::Read;
+
+use crate::git::read::open;
 use crate::git::types::ConflictFileContent;
+use crate::git::worktree_fs::open_worktree_file;
 
 /// The worktree copy of a conflicted text file, including git's merge markers,
 /// for the in-app editor to parse. Binary files come back with empty content and
@@ -11,10 +14,6 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
     let workdir = repo
         .workdir()
         .ok_or_else(|| git2::Error::from_str("bare repository has no worktree"))?;
-    // `file` crosses the IPC boundary; reject absolute paths and `..`/prefix
-    // traversal so a read can never escape the worktree (conflicted paths come
-    // from git's index, which already forbids these — validated defensively).
-    let full = worktree_join(workdir, file)?;
     // Only a genuine unmerged path may be read here — not any safe relative file.
     let conflicted = repo.index()?.conflicts()?.flatten().any(|c| {
         c.our
@@ -35,17 +34,20 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
     // repo (e.g. `link -> /etc/passwd`), and `fs::read` would follow it past the
     // traversal guard above. Report it as binary — the whole-file picker, which
     // never round-trips the worktree bytes — instead of reading the target.
-    if let Ok(meta) = std::fs::symlink_metadata(&full) {
-        if !meta.file_type().is_file() {
-            return Ok(ConflictFileContent {
-                path: file.to_string(),
-                content: String::new(),
-                binary: true,
-            });
-        }
-    }
-    let bytes =
-        std::fs::read(&full).map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
+    let Some(mut opened) = open_worktree_file(workdir, file)
+        .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?
+    else {
+        return Ok(ConflictFileContent {
+            path: file.to_string(),
+            content: String::new(),
+            binary: true,
+        });
+    };
+    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
+    opened
+        .reader()
+        .read_to_end(&mut bytes)
+        .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
     // Treat NUL-containing or non-UTF-8 files as binary. Lossy-decoding invalid
     // UTF-8 would replace bytes with U+FFFD and silently corrupt the file when
     // the resolved text is written back; a binary classification routes to the

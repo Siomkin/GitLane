@@ -265,6 +265,33 @@ fn file_blame_returns_line_attribution() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[cfg(unix)]
+#[test]
+fn working_tree_blame_refuses_an_ancestor_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = std::env::temp_dir().join("gitlane-file-blame-symlink-test");
+    let outside = dir.with_extension("outside");
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&outside);
+    fs::create_dir_all(dir.join("nested")).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "nested/blame.txt", "inside\n");
+    fs::write(outside.join("blame.txt"), "outside secret\n").unwrap();
+    fs::rename(dir.join("nested"), dir.join("nested-original")).unwrap();
+    symlink(&outside, dir.join("nested")).unwrap();
+
+    let result = file_blame(dir.to_str().unwrap(), "nested/blame.txt", None, Some(10));
+
+    assert!(
+        result.is_err(),
+        "working-tree blame must not follow {result:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&outside);
+}
+
 #[test]
 fn file_history_reports_line_stats() {
     let dir = std::env::temp_dir().join("gitlane-file-history-stats-test");
@@ -1473,8 +1500,19 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
     assert!(super::repo_file_text(path, "../outside.txt", None).is_err());
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(dir.join("plain.txt"), dir.join("link.txt")).unwrap();
+        use std::os::unix::fs::symlink;
+
+        symlink(dir.join("plain.txt"), dir.join("link.txt")).unwrap();
         assert!(super::repo_file_text(path, "link.txt", None).is_err());
+
+        let outside = dir.with_extension("viewer-outside");
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "outside secret\n").unwrap();
+        symlink(&outside, dir.join("ancestor-link")).unwrap();
+        assert!(super::repo_file_text(path, "ancestor-link/secret.txt", None).is_err());
+        assert!(read_binary_blob(path, None, Some("ancestor-link/secret.txt"), None).is_err());
+        let _ = fs::remove_dir_all(&outside);
     }
 
     let _ = fs::remove_dir_all(&dir);

@@ -28,11 +28,11 @@
 //! followed. The replacement is a fresh inode, so only the file mode is carried
 //! over — ownership / ACLs / xattrs / hard links are not preserved.
 
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Component, Path};
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::git::read::{open, worktree_join};
+use crate::git::read::open;
+use crate::git::worktree_fs::open_regular_worktree_file;
 
 /// Same NUL-sniff window as the reader's binary detection (used only for the
 /// on-disk classification; incoming content is scanned in full).
@@ -56,8 +56,6 @@ pub fn write_repo_file(
     let workdir = repository
         .workdir()
         .ok_or_else(|| "repository has no working directory".to_string())?;
-    // `file` is frontend-supplied: reject traversal before touching the disk.
-    let full = worktree_join(workdir, file).map_err(|e| e.to_string())?;
     // Never let the raw IPC path address repository metadata.
     if Path::new(file)
         .components()
@@ -66,26 +64,24 @@ pub fn write_repo_file(
         return Err(format!("refusing to write inside .git: {file:?}"));
     }
 
-    let meta = std::fs::symlink_metadata(&full).map_err(|e| format!("stat {file}: {e}"))?;
-    if !meta.file_type().is_file() {
-        return Err(format!("refusing to write non-regular file: {file:?}"));
-    }
+    let mut target =
+        open_regular_worktree_file(workdir, file).map_err(|e| format!("open {file}: {e}"))?;
     // A file past the read cap can only have been loaded as a prefix — saving it
     // would destroy everything past the cap. Refuse regardless of the frontend.
-    if meta.len() > MAX_EDITABLE_BYTES {
+    if target.len() > MAX_EDITABLE_BYTES {
         return Err(format!(
             "file is too large to edit in place ({} bytes; cap {MAX_EDITABLE_BYTES})",
-            meta.len()
+            target.len()
         ));
     }
 
     // The remainder of a truncated read isn't in `content`; a mismatched size
     // also catches a concurrent external edit. Both would lose data on write.
     if let Some(expected) = expected_size {
-        if meta.len() != expected {
+        if target.len() != expected {
             return Err(format!(
                 "file changed on disk since it was opened ({} bytes now, expected {expected}); reload before saving",
-                meta.len()
+                target.len()
             ));
         }
     }
@@ -106,75 +102,22 @@ pub fn write_repo_file(
     if bytes.contains(&0) {
         return Err("refusing to write binary content".to_string());
     }
-    if on_disk_is_binary(&full)? {
+    if on_disk_is_binary(target.reader())? {
         return Err(format!("refusing to overwrite binary file: {file:?}"));
     }
 
-    write_atomic(&full, bytes, &meta).map_err(|e| format!("write {file}: {e}"))?;
+    target
+        .replace_atomic(bytes)
+        .map_err(|e| format!("write {file}: {e}"))?;
     Ok(bytes.len() as u64)
 }
 
 /// NUL-sniff the first bytes of the existing file (same heuristic as the reader).
-fn on_disk_is_binary(full: &Path) -> Result<bool, String> {
-    let handle = std::fs::File::open(full).map_err(|e| format!("open {full:?}: {e}"))?;
+fn on_disk_is_binary(handle: &mut impl Read) -> Result<bool, String> {
     let mut head = Vec::new();
     handle
         .take(BINARY_SNIFF_BYTES as u64)
         .read_to_end(&mut head)
-        .map_err(|e| format!("read {full:?}: {e}"))?;
+        .map_err(|e| format!("read worktree file: {e}"))?;
     Ok(head.contains(&0))
-}
-
-/// Write `bytes` to a fresh sibling temp file, copy the original's permissions
-/// onto it, flush to disk, then atomically rename it over `full`. The temp file
-/// is created with `create_new` (`O_CREAT|O_EXCL`), so it never follows or
-/// truncates a pre-existing entry (including a planted symlink) at the temp path,
-/// retrying a fresh name on the rare collision. The rename then replaces whatever
-/// is at the target (including a symlink swapped in after the earlier
-/// regular-file check) without following it, and leaves the original intact if
-/// the write fails partway.
-fn write_atomic(full: &Path, bytes: &[u8], original: &std::fs::Metadata) -> std::io::Result<()> {
-    let dir = full
-        .parent()
-        .ok_or_else(|| std::io::Error::other("target has no parent directory"))?;
-    let name = full
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| std::io::Error::other("target has no file name"))?;
-
-    // A per-process counter keeps concurrent saves in the same directory from
-    // colliding without needing a clock; `create_new` is what actually makes the
-    // temp creation safe, the counter just avoids needless retries.
-    static SEQ: AtomicU64 = AtomicU64::new(0);
-    let pid = std::process::id();
-
-    let mut file = None;
-    let mut tmp = dir.join(String::new());
-    for _ in 0..8 {
-        tmp = dir.join(format!(".{name}.gitlane-tmp-{pid}-{}", SEQ.fetch_add(1, Ordering::Relaxed)));
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
-            Ok(f) => {
-                file = Some(f);
-                break;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(e),
-        }
-    }
-    let mut f = file.ok_or_else(|| std::io::Error::other("could not create a unique temp file"))?;
-
-    // Apply the target permissions before writing so the content is never briefly
-    // exposed under the more-permissive default umask.
-    let written = (|| -> std::io::Result<()> {
-        std::fs::set_permissions(&tmp, original.permissions())?;
-        f.write_all(bytes)?;
-        f.sync_all()
-    })();
-    drop(f); // close before renaming
-    let result = written.and_then(|()| std::fs::rename(&tmp, full));
-
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
 }

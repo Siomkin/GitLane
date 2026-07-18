@@ -198,22 +198,6 @@ fn can_fast_forward_treats_equal_tips_as_up_to_date() {
 }
 
 #[test]
-fn worktree_join_rejects_escapes_and_accepts_safe_paths() {
-    use super::worktree_join;
-    let wd = Path::new("/work/repo");
-    // Safe relative paths join under the worktree.
-    assert_eq!(worktree_join(wd, "a/b.png").unwrap(), wd.join("a/b.png"));
-    assert_eq!(
-        worktree_join(wd, "deep/nested/x.bin").unwrap(),
-        wd.join("deep/nested/x.bin")
-    );
-    // Traversal / absolute / drive-prefix paths are rejected.
-    assert!(worktree_join(wd, "../escape").is_err());
-    assert!(worktree_join(wd, "a/../../escape").is_err());
-    assert!(worktree_join(wd, "/etc/hosts").is_err());
-}
-
-#[test]
 fn summary_flags_an_unborn_head_then_clears_it_after_the_first_commit() {
     use super::repo::summary;
     use git2::RepositoryInitOptions;

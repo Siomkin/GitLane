@@ -1,6 +1,7 @@
 //! Conflict-resolution writes and sequencer controls.
 
 use crate::git::handoff;
+use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics, run_git_literal_paths};
 use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
@@ -97,40 +98,21 @@ fn can_reconflict(repo: &str, file: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve a repo-relative `file` to an absolute path under the worktree `root`,
-/// rejecting absolute paths and `..`/prefix components so a caller-supplied path
-/// can never escape the repository. Conflicted paths come from git's index
-/// (which already forbids these), but this write crosses the IPC boundary, so we
-/// validate defensively before touching the filesystem.
-pub(super) fn worktree_path(root: &str, file: &str) -> Result<std::path::PathBuf, String> {
-    let rel = std::path::Path::new(file);
-    if rel.is_absolute()
-        || rel.components().any(|c| {
-            matches!(
-                c,
-                std::path::Component::ParentDir | std::path::Component::Prefix(_)
-            )
-        })
-    {
-        return Err(format!(
-            "refusing unsafe path outside the worktree: {file:?}"
-        ));
-    }
-    Ok(std::path::Path::new(root.trim()).join(rel))
-}
-
 /// Write the merged `content` to a conflicted file and stage it — backs the
 /// in-app hunk editor, which reconstructs the resolved text from the user's
 /// per-hunk choices. The path is resolved against the worktree root (and checked
 /// to stay inside it) so it is correct for linked worktrees and never escapes.
 pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<String, String> {
-    // `file` is staged after `--` in literal mode and resolved through
-    // `worktree_path` (which rejects traversal), so no `ensure_operand`
-    // dash-guard is needed — and it would wrongly block `-foo`.
+    // `file` is staged after `--` in literal mode and resolved through held
+    // no-follow directory handles, so no `ensure_operand` dash-guard is needed
+    // — and it would wrongly block `-foo`.
     ensure_conflicted(repo, file)?;
     let root = run_git(repo, &["rev-parse", "--show-toplevel"])?;
-    let full = worktree_path(&root, file)?;
-    std::fs::write(&full, content).map_err(|e| format!("write {file}: {e}"))?;
+    let target = open_regular_worktree_file(std::path::Path::new(root.trim()), file)
+        .map_err(|e| format!("open {file}: {e}"))?;
+    target
+        .replace_atomic(content.as_bytes())
+        .map_err(|e| format!("write {file}: {e}"))?;
     run_git_literal_paths(repo, &["add", "--", file])?;
     Ok(format!("Resolved {file}"))
 }
