@@ -149,9 +149,43 @@ jobs:
       # now pure release-specific validation (tag shape, version match,
       # on-latest, signing secrets); the matrix legs do the real artifact build.
 
+  prepare-release:
+    name: Prepare private release draft
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create or validate the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          if IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [[ "$IS_DRAFT" != "true" ]]; then
+              echo "Release $TAG is already public; refusing to mutate it from a matrix rerun."
+              exit 1
+            fi
+            echo "Resuming existing draft release $TAG."
+            exit 0
+          fi
+
+          PRERELEASE_ARGS=()
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE_ARGS+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            --draft \
+            "${PRERELEASE_ARGS[@]}" \
+            --title "GitLane $TAG" \
+            --notes "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)." \
+            --generate-notes
+
   release-app:
     name: Release app (${{ matrix.name }})
-    needs: preflight
+    needs: [preflight, prepare-release]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -298,7 +332,10 @@ jobs:
           # Keep the install-guide link: the asset list alone gives no guidance on
           # which file to pick (Linux ships three formats — GL-83).
           releaseBody: "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)."
-          releaseDraft: false
+          # Every matrix leg uploads into the same private draft. Publishing from
+          # a leg would expose an incomplete release when another platform fails;
+          # publish-release flips the draft only after the whole matrix succeeds.
+          releaseDraft: true
           # Pre-release tags publish a GitHub pre-release, so the `/latest/` alias
           # (the stable updater endpoint) keeps ignoring them; the beta channel is
           # served separately by the publish-beta-manifest job below.
@@ -313,6 +350,26 @@ jobs:
           # releaseAssetNamePattern, not assetNamePattern).
           releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
 
+  publish-release:
+    name: Publish complete release
+    needs: [preflight, release-app]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the completed draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          IS_PRERELEASE=false
+          if [[ "$TAG" == *-* ]]; then
+            IS_PRERELEASE=true
+          fi
+          gh release edit "$TAG" --draft=false --prerelease="$IS_PRERELEASE"
+
   # Roll the beta channel's manifest after every release. GitHub's `/latest/`
   # alias can't serve a pre-release, so the beta channel is a fixed `beta` release
   # holding a rolling latest.json at a stable URL
@@ -325,7 +382,7 @@ jobs:
   # release rolls it forward. See docs/release-channels.md. (GL-76)
   publish-beta-manifest:
     name: Roll the beta channel manifest
-    needs: [preflight, release-app]
+    needs: [preflight, publish-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
