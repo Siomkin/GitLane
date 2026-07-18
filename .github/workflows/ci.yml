@@ -75,6 +75,7 @@ jobs:
               - '.github/workflows/ci.yml'
             rust:
               - 'src-tauri/**'
+              - 'rust-toolchain*'
               - '.github/actions/setup-rust/**'
               - '.github/workflows/ci.yml'
             security:
