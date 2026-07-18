@@ -265,6 +265,24 @@ fn file_blame_returns_line_attribution() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn file_blame_does_not_treat_a_utf8_named_read_failure_as_binary() {
+    let dir = std::env::temp_dir().join("gitlane-file-blame-utf8-path-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "missing-UTF-8.txt", "text\n");
+    fs::remove_file(dir.join("missing-UTF-8.txt")).unwrap();
+
+    let result = file_blame(dir.to_str().unwrap(), "missing-UTF-8.txt", None, Some(10));
+
+    assert!(
+        result.is_err(),
+        "a real read failure must propagate: {result:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[cfg(unix)]
 #[test]
 fn working_tree_blame_refuses_an_ancestor_symlink() {

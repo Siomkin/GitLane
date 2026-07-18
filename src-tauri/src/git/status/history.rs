@@ -14,6 +14,7 @@ const MAX_HISTORY_LIMIT: usize = 500;
 const HISTORY_SCAN_CAP: usize = 5_000;
 const DEFAULT_BLAME_LIMIT: usize = 2_000;
 const MAX_BLAME_LIMIT: usize = 10_000;
+const NON_UTF8_TEXT_ERROR: &str = "file is not UTF-8 text";
 
 fn path_string(path: Option<&Path>) -> Option<String> {
     path.map(|p| p.to_string_lossy().into_owned())
@@ -160,8 +161,7 @@ fn blob_text_at(
         crate::git::worktree_fs::read_regular_worktree_file(workdir, file)
             .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
     };
-    let text =
-        String::from_utf8(bytes).map_err(|_| git2::Error::from_str("file is not UTF-8 text"))?;
+    let text = String::from_utf8(bytes).map_err(|_| git2::Error::from_str(NON_UTF8_TEXT_ERROR))?;
     Ok(text.lines().map(|line| line.to_string()).collect())
 }
 
@@ -186,7 +186,7 @@ pub fn file_blame(
     let blame = repo.blame_file(Path::new(file), Some(&mut opts))?;
     let content = match blob_text_at(&repo, revision.as_deref(), file) {
         Ok(lines) => lines,
-        Err(err) if err.message().contains("UTF-8") => {
+        Err(err) if err.message() == NON_UTF8_TEXT_ERROR => {
             return Ok(FileBlame {
                 path: file.to_string(),
                 revision,
