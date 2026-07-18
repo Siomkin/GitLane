@@ -9,6 +9,11 @@ on:
         description: "Release tag to publish, e.g. v0.1.0. Defaults to the app version."
         required: false
         type: string
+      manifest_only:
+        description: "Only repoint the rolling beta manifest to an existing public release."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release
@@ -29,6 +34,7 @@ env:
 jobs:
   preflight:
     name: Release preflight
+    if: github.event_name != 'workflow_dispatch' || !inputs.manifest_only
     # Run preflight on the self-hosted Mac mini so a release fails before the
     # matrix if the macOS runner is unavailable or not started from the GUI
     # session needed for DMG packaging. (GL-78)
@@ -487,6 +493,61 @@ jobs:
           # versioned release; its asset URLs point back at that release, so the
           # copy on `beta` keeps resolving to the right artifacts.
           gh release download "$TAG" --pattern latest.json --clobber
+          if ! gh release view beta >/dev/null 2>&1; then
+            gh release create beta \
+              --prerelease \
+              --title "GitLane beta channel" \
+              --notes "Rolling updater manifest for the beta channel. Artifacts live on the versioned releases — do not download from here."
+          fi
+          gh release upload beta latest.json --clobber
+
+  rollback-beta-manifest:
+    name: Restore the beta channel manifest
+    if: github.event_name == 'workflow_dispatch' && inputs.manifest_only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Validate and copy an existing release manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+            echo "Manifest-only rollback requires an explicit version tag."
+            exit 1
+          fi
+          IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
+          if [[ "$IS_DRAFT" != "false" ]]; then
+            echo "Manifest-only rollback requires an already-public release."
+            exit 1
+          fi
+
+          rm -f latest.json
+          gh release download "$TAG" --pattern latest.json
+          MANIFEST_VERSION="${TAG#v}"
+          jq -e --arg version "$MANIFEST_VERSION" '.version == $version' latest.json >/dev/null
+          for PLATFORM in \
+            darwin-aarch64 \
+            darwin-x86_64 \
+            linux-x86_64 \
+            windows-x86_64
+          do
+            if ! jq -e --arg platform "$PLATFORM" '
+              .platforms[$platform] as $entry
+              | ($entry | type) == "object"
+                and ($entry.url | type) == "string"
+                and ($entry.url | length) > 0
+                and ($entry.signature | type) == "string"
+                and ($entry.signature | length) > 0
+            ' latest.json >/dev/null; then
+              echo "latest.json is missing a complete $PLATFORM updater entry."
+              exit 1
+            fi
+          done
+
           if ! gh release view beta >/dev/null 2>&1; then
             gh release create beta \
               --prerelease \
