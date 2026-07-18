@@ -63,6 +63,10 @@ cap-fs-ext = "4.0.2"
 ureq = { version = "2", default-features = false, features = ["tls"] }
 sha2 = "0.11"
 getrandom = "0.4"
+# Atomic no-replace rename for publishing a completed clone without overwriting
+# a destination created concurrently. Windows' std rename already fails when the
+# destination exists; Unix needs renameat2/renamex_np flags.
+rustix = { version = "1.1", default-features = false, features = ["fs"] }
 
 # OS-native secret storage for GitLane-owned provider transport tokens (GL-132).
 # Secrets live only in the platform keychain — never in IPC, localStorage, repo

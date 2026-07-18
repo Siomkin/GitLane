@@ -8,6 +8,7 @@
 //! UI can paint a real determinate bar and cancel an in-flight clone (GL-38).
 
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 
@@ -62,11 +63,12 @@ pub fn clone(
         return Err("Choose a valid destination folder.".to_string());
     }
 
-    // Whether a failed/canceled clone may remove `dest`: when it doesn't exist
-    // yet (we create it) or it's an empty directory the user pointed us at (so a
-    // partial clone would be the only thing in it). A pre-existing *non-empty*
-    // dir is never removed — git refuses to clone into one anyway.
-    let cleanup_eligible = clone_cleanup_eligible(std::path::Path::new(dest));
+    // An absent destination is cloned into a random sibling that only this
+    // operation owns, then atomically published after Git succeeds. If another
+    // process creates `dest` meanwhile, publishing fails without touching it.
+    // Existing directories are cloned in place and are never recursively removed
+    // on failure because their contents may change concurrently.
+    let mut clone_target = CloneTarget::prepare(Path::new(dest))?;
 
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
     // is an absolute path the UI built, so it can never be one. `LC_ALL=C` keeps
@@ -76,7 +78,7 @@ pub fn clone(
     // prefix (gh helper or GIT_ASKPASS clear) and any env (the ephemeral askpass
     // broker capability).
     let inv = crate::git::credential_bridge::git_invocation(cred)?;
-    let args = clone_args(&inv.config, url, dest);
+    let args = clone_args(&inv.config, url, clone_target.work_arg()?);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut cmd = super::cli::git_command_bare(&arg_refs);
     cmd.env("LC_ALL", "C")
@@ -162,6 +164,7 @@ pub fn clone(
     };
 
     if success {
+        clone_target.publish()?;
         // Snap the bar to 100% before the UI swaps to the success screen.
         let _ = app.emit(
             "clone-progress",
@@ -172,15 +175,120 @@ pub fn clone(
         );
         Ok(dest.to_string())
     } else {
-        // A failed or canceled clone can leave a partial `.git` / checkout. If we
-        // created the destination for this clone, remove it so the path is clean
-        // (matching the canceled-state copy) and a retry doesn't hit "already
-        // exists". Best-effort: a removal failure must not mask the real error.
-        if cleanup_eligible {
-            let _ = std::fs::remove_dir_all(dest);
-        }
+        // Dropping a private CloneTarget removes only its unpredictable staging
+        // sibling. A pre-existing destination is deliberately left untouched.
         Err(extract_error(&transcript))
     }
+}
+
+/// Owns the filesystem target for one clone. Absent requested paths use a
+/// private sibling so rollback never races with files created at the public path.
+struct CloneTarget {
+    requested: PathBuf,
+    work: PathBuf,
+    owns_work: bool,
+}
+
+impl CloneTarget {
+    fn prepare(requested: &Path) -> Result<Self, String> {
+        match std::fs::symlink_metadata(requested) {
+            Ok(_) => Ok(Self {
+                requested: requested.to_path_buf(),
+                work: requested.to_path_buf(),
+                owns_work: false,
+            }),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                let parent = requested.parent().ok_or_else(|| {
+                    "Choose a clone destination with a parent folder.".to_string()
+                })?;
+                for _ in 0..16 {
+                    let work = parent.join(format!(".gitlane-clone-{}", random_clone_nonce()?));
+                    match std::fs::create_dir(&work) {
+                        Ok(()) => {
+                            return Ok(Self {
+                                requested: requested.to_path_buf(),
+                                work,
+                                owns_work: true,
+                            })
+                        }
+                        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                        Err(err) => {
+                            return Err(format!("Couldn't prepare the clone destination: {err}"))
+                        }
+                    }
+                }
+                Err("Couldn't allocate a private clone destination.".to_string())
+            }
+            Err(err) => Err(format!("Couldn't inspect the clone destination: {err}")),
+        }
+    }
+
+    fn work_arg(&self) -> Result<&str, String> {
+        self.work
+            .to_str()
+            .ok_or_else(|| "The clone destination is not valid UTF-8.".to_string())
+    }
+
+    fn publish(&mut self) -> Result<(), String> {
+        if !self.owns_work {
+            return Ok(());
+        }
+        rename_no_replace(&self.work, &self.requested).map_err(|err| {
+            format!("The clone finished, but the destination became unavailable: {err}")
+        })?;
+        self.owns_work = false;
+        Ok(())
+    }
+}
+
+/// Publish without replacing any destination that appeared during the clone.
+/// Linux/Android and Apple expose explicit no-replace flags; Windows' rename
+/// already fails when the destination exists. Other targets fail closed rather
+/// than falling back to Unix rename semantics that may replace an empty folder.
+#[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple"))]
+fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use rustix::fs::{renameat_with, RenameFlags, CWD};
+
+    renameat_with(CWD, from, CWD, to, RenameFlags::NOREPLACE).map_err(Into::into)
+}
+
+#[cfg(target_os = "windows")]
+fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "windows",
+    target_vendor = "apple"
+)))]
+fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    let _ = (from, to);
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic no-replace rename is unsupported on this platform",
+    ))
+}
+
+impl Drop for CloneTarget {
+    fn drop(&mut self) {
+        if self.owns_work {
+            let _ = std::fs::remove_dir_all(&self.work);
+        }
+    }
+}
+
+fn random_clone_nonce() -> Result<String, String> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes)
+        .map_err(|err| format!("Couldn't secure the clone destination: {err}"))?;
+    let mut nonce = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(nonce, "{byte:02x}");
+    }
+    Ok(nonce)
 }
 
 fn clone_args(config_prefix: &[String], url: &str, dest: &str) -> Vec<String> {
@@ -316,17 +424,6 @@ fn parse_percent(line: &str) -> Option<u32> {
         return None;
     }
     line[start..percent].parse::<u32>().ok().map(|p| p.min(100))
-}
-
-/// Whether a failed/canceled clone may remove `dest`: it doesn't exist yet (we
-/// create it) or it's an empty directory the user pointed us at. A pre-existing
-/// non-empty dir is never eligible — git won't clone into one anyway, and we must
-/// not delete the user's files.
-fn clone_cleanup_eligible(dest: &std::path::Path) -> bool {
-    !dest.exists()
-        || std::fs::read_dir(dest)
-            .map(|mut entries| entries.next().is_none())
-            .unwrap_or(false)
 }
 
 /// Kill the in-flight clone child, if any. Idempotent: a no-op once the clone has
@@ -571,21 +668,91 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_eligibility_covers_absent_and_empty_dirs_only() {
-        let base = std::env::temp_dir().join(format!("gitlane-clone-elig-{}", std::process::id()));
+    fn private_clone_target_preserves_a_concurrent_destination_on_publish_failure() {
+        let base = std::env::temp_dir().join(format!("gitlane-clone-race-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        let absent = base.join("absent");
-        let empty = base.join("empty");
-        let nonempty = base.join("nonempty");
-        std::fs::create_dir_all(&empty).unwrap();
-        std::fs::create_dir_all(&nonempty).unwrap();
-        std::fs::write(nonempty.join("file.txt"), "x").unwrap();
+        std::fs::create_dir_all(&base).unwrap();
+        let requested = base.join("repo");
+        let mut target = CloneTarget::prepare(&requested).unwrap();
+        let work = target.work.clone();
+        std::fs::write(work.join("clone-owned.txt"), "clone").unwrap();
 
-        assert!(clone_cleanup_eligible(&absent), "absent dir is eligible");
-        assert!(clone_cleanup_eligible(&empty), "empty dir is eligible");
-        assert!(
-            !clone_cleanup_eligible(&nonempty),
-            "non-empty dir is not eligible"
+        // Another process wins the public destination while clone is running.
+        std::fs::create_dir(&requested).unwrap();
+        std::fs::write(requested.join("concurrent.txt"), "keep").unwrap();
+        assert!(target.publish().is_err());
+        drop(target);
+
+        assert_eq!(
+            std::fs::read_to_string(requested.join("concurrent.txt")).unwrap(),
+            "keep"
+        );
+        assert!(!work.exists(), "only private clone staging is rolled back");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn private_clone_target_publishes_atomically() {
+        let base =
+            std::env::temp_dir().join(format!("gitlane-clone-publish-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let requested = base.join("repo");
+        let mut target = CloneTarget::prepare(&requested).unwrap();
+        let work = target.work.clone();
+        std::fs::write(work.join("README.md"), "done").unwrap();
+
+        target.publish().unwrap();
+
+        assert!(!work.exists());
+        assert_eq!(
+            std::fs::read_to_string(requested.join("README.md")).unwrap(),
+            "done"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn private_clone_target_does_not_replace_a_concurrent_empty_directory() {
+        let base =
+            std::env::temp_dir().join(format!("gitlane-clone-empty-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let requested = base.join("repo");
+        let mut target = CloneTarget::prepare(&requested).unwrap();
+        let work = target.work.clone();
+        std::fs::write(work.join("clone-owned.txt"), "clone").unwrap();
+        std::fs::create_dir(&requested).unwrap();
+
+        assert!(target.publish().is_err());
+        assert!(requested.is_dir());
+        assert!(std::fs::read_dir(&requested).unwrap().next().is_none());
+        drop(target);
+        assert!(!work.exists());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn existing_clone_target_is_never_removed_on_drop() {
+        let base =
+            std::env::temp_dir().join(format!("gitlane-clone-existing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let requested = base.join("repo");
+        std::fs::create_dir(&requested).unwrap();
+        let target = CloneTarget::prepare(&requested).unwrap();
+        assert_eq!(target.work, requested);
+        assert!(!target.owns_work);
+        std::fs::write(requested.join("concurrent.txt"), "keep").unwrap();
+
+        drop(target);
+
+        assert_eq!(
+            std::fs::read_to_string(requested.join("concurrent.txt")).unwrap(),
+            "keep"
         );
 
         let _ = std::fs::remove_dir_all(&base);
