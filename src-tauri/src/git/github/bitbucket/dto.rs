@@ -21,6 +21,49 @@ pub struct BitbucketPage<T> {
     pub values: Vec<T>,
 }
 
+/// One `/diffstat` row. The stat endpoint remains paginated when the raw patch
+/// hits Bitbucket's rendering limits, so it is the completeness oracle for the
+/// patch and supplies exact totals for any elided file body.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BitbucketDiffStat {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub lines_added: u64,
+    #[serde(default)]
+    pub lines_removed: u64,
+    #[serde(default)]
+    pub old: Option<BitbucketDiffPath>,
+    #[serde(default)]
+    pub new: Option<BitbucketDiffPath>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BitbucketDiffPath {
+    #[serde(default)]
+    pub path: String,
+}
+
+impl BitbucketDiffStat {
+    pub fn path(&self) -> &str {
+        self.new
+            .as_ref()
+            .filter(|side| !side.path.is_empty())
+            .or(self.old.as_ref())
+            .map(|side| side.path.as_str())
+            .unwrap_or_default()
+    }
+
+    pub fn file_status(&self) -> &str {
+        match self.status.as_str() {
+            "added" => "A",
+            "removed" => "D",
+            "renamed" => "R",
+            _ => "M",
+        }
+    }
+}
+
 /// A Bitbucket user reference (`author`, `reviewers[]`, commit `author.user`).
 /// Bitbucket dropped the legacy `username`; identity comes from `nickname` /
 /// `account_id` / `display_name`.

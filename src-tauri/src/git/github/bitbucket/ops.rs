@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
-use super::dto::{BitbucketCommit, BitbucketPage, BitbucketPr};
+use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
 use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummary};
 
@@ -51,7 +51,7 @@ pub fn pr_detail(
     let pr: BitbucketPr = parse(&raw, "pull request detail")?;
 
     // The PR object carries no diff stats, so derive the file list and aggregate
-    // additions/deletions from the parsed `/diff` (one read).
+    // additions/deletions from the reconciled `/diff` + `/diffstat` reads.
     let diffs = pr_diff(api, repo, number)?;
     let files: Vec<String> = diffs.iter().map(|d| d.path.clone()).collect();
     let additions: u64 = diffs.iter().map(|d| d.add as u64).sum();
@@ -61,8 +61,9 @@ pub fn pr_detail(
 }
 
 /// Full diff of a pull request, parsed into per-file [`FileDiff`] so the shared
-/// diff viewer renders it unchanged. Bitbucket's `/diff` returns a complete git
-/// patch, so it goes straight to [`parse_unified_diff`].
+/// diff viewer renders it unchanged. The paginated `/diffstat` is reconciled
+/// with the raw patch because Bitbucket can elide patch bodies at its own
+/// per-file, total-line, and file-count limits below our transport byte cap.
 pub fn pr_diff(
     api: &dyn BitbucketApi,
     repo: &str,
@@ -72,7 +73,57 @@ pub fn pr_diff(
     // The `/diff` endpoint returns a raw git patch, not JSON — request text/plain
     // so Bitbucket does not answer 406 (see `BitbucketApi::get_text`).
     let patch = api.get_text("pull request diff", &path)?;
-    Ok(parse_unified_diff(&patch))
+    let mut files = parse_unified_diff(&patch);
+    let stats = diff_stats(api, repo, number)?;
+    for stat in stats {
+        let path = stat.path();
+        if path.is_empty() {
+            continue;
+        }
+        let add = usize::try_from(stat.lines_added).unwrap_or(usize::MAX);
+        let del = usize::try_from(stat.lines_removed).unwrap_or(usize::MAX);
+        if let Some(file) = files.iter_mut().find(|file| file.path == path) {
+            if file.add < add || file.del < del {
+                file.truncated = true;
+            }
+            // Diffstat totals stay truthful even when the patch body is elided.
+            file.add = add;
+            file.del = del;
+        } else {
+            files.push(FileDiff {
+                path: path.to_string(),
+                status: stat.file_status().to_string(),
+                add,
+                del,
+                truncated: true,
+                ..Default::default()
+            });
+        }
+    }
+    Ok(files)
+}
+
+fn diff_stats(
+    api: &dyn BitbucketApi,
+    repo: &str,
+    number: u64,
+) -> Result<Vec<BitbucketDiffStat>, GithubError> {
+    let mut stats = Vec::new();
+    for page in 1..=MAX_PAGES {
+        let path = format!(
+            "{repo}/pullrequests/{number}/diffstat?pagelen={PER_PAGE}&page={page}&fields=values.status,values.lines_added,values.lines_removed,values.old.path,values.new.path"
+        );
+        let raw = api.get("pull request diff stats", &path)?;
+        let batch: BitbucketPage<BitbucketDiffStat> = parse(&raw, "pull request diff stats")?;
+        let full_page = batch.values.len() == PER_PAGE;
+        stats.extend(batch.values);
+        if !full_page {
+            return Ok(stats);
+        }
+    }
+    Err(GithubError::InvalidResponse(format!(
+        "Bitbucket pull request diff stats exceeded the {MAX_PAGES}-page safety limit."
+    )))
 }
 
 /// The pull request's commit list (`/commits`), paginated so a large PR keeps
@@ -283,7 +334,11 @@ mod tests {
         // A full git patch: one modified file (+1/-1) and one new file (+1).
         let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n\
                      diff --git a/b.txt b/b.txt\nnew file mode 100644\n--- /dev/null\n+++ b/b.txt\n@@ -0,0 +1 @@\n+hello\n";
-        let http = MockTransport::new(vec![ok(pr), ok(patch)]);
+        let stat = r#"{"values":[
+            {"status":"modified","lines_added":1,"lines_removed":1,"new":{"path":"a.txt"}},
+            {"status":"added","lines_added":1,"lines_removed":0,"new":{"path":"b.txt"}}
+        ]}"#;
+        let http = MockTransport::new(vec![ok(pr), ok(patch), ok(stat)]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let detail = pr_detail(&client, REPO, 5).expect("detail");
         assert_eq!(detail.number, 5);
@@ -298,7 +353,8 @@ mod tests {
     fn pr_diff_parses_the_git_patch_directly() {
         let patch =
             "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
-        let http = MockTransport::new(vec![ok(patch)]);
+        let stat = r#"{"values":[{"status":"modified","lines_added":1,"lines_removed":1,"new":{"path":"a.txt"}}]}"#;
+        let http = MockTransport::new(vec![ok(patch), ok(stat)]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let files = pr_diff(&client, REPO, 5).expect("diff");
         assert_eq!(files.len(), 1);
@@ -314,6 +370,7 @@ mod tests {
             .find(|(k, _)| k.eq_ignore_ascii_case("accept"))
             .map(|(_, v)| v.as_str());
         assert_eq!(accept, Some("text/plain"));
+        assert!(reqs[1].url.contains("/pullrequests/5/diffstat?"));
     }
 
     #[test]
@@ -323,7 +380,11 @@ mod tests {
             "diff --git a/large.txt b/large.txt\nnew file mode 100644\n--- /dev/null\n+++ b/large.txt\n@@ -0,0 +1 @@\n+{long_line}\n\
              diff --git a/tail.txt b/tail.txt\nnew file mode 100644\n--- /dev/null\n+++ b/tail.txt\n@@ -0,0 +1 @@\n+tail\n"
         );
-        let http = MockTransport::new(vec![ok(&patch)]);
+        let stat = r#"{"values":[
+                {"status":"added","lines_added":1,"lines_removed":0,"new":{"path":"large.txt"}},
+                {"status":"added","lines_added":1,"lines_removed":0,"new":{"path":"tail.txt"}}
+            ]}"#;
+        let http = MockTransport::new(vec![ok(&patch), ok(stat)]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
 
         let files = pr_diff(&client, REPO, 6).expect("large diff");
@@ -335,6 +396,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["large.txt", "tail.txt"]
         );
+    }
+
+    #[test]
+    fn pr_diff_marks_elided_and_partial_files_from_diffstat() {
+        let patch =
+            "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+        let stat = r#"{"values":[
+            {"status":"modified","lines_added":4,"lines_removed":3,"new":{"path":"a.txt"}},
+            {"status":"added","lines_added":8,"lines_removed":0,"new":{"path":"missing.txt"}}
+        ]}"#;
+        let http = MockTransport::new(vec![ok(patch), ok(stat)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let files = pr_diff(&client, REPO, 7).expect("reconciled diff");
+
+        assert_eq!(files.len(), 2);
+        assert_eq!((files[0].add, files[0].del), (4, 3));
+        assert!(files[0].truncated);
+        assert_eq!(files[1].path, "missing.txt");
+        assert_eq!((files[1].add, files[1].del), (8, 0));
+        assert!(files[1].truncated);
     }
 
     #[test]

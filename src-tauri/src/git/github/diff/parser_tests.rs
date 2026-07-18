@@ -489,3 +489,21 @@ diff --git a/b.txt b/b.txt
     assert!(files[0].truncated);
     assert!(files[1].truncated);
 }
+
+#[test]
+fn eof_before_hunk_counts_are_satisfied_marks_the_file_truncated() {
+    let patch = "\
+diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1,3 +1,3 @@
+-old
++new
+ context
+";
+
+    let files = parse_unified_diff(patch);
+
+    assert_eq!(files.len(), 1);
+    assert!(files[0].truncated);
+}

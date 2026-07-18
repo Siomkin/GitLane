@@ -175,6 +175,15 @@ pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec
         }
     }
 
+    // A provider may stop a response below our byte ceiling. If EOF arrives
+    // while the current hunk still owes old/new lines, the body is incomplete
+    // even though the transport itself returned success.
+    if old_left > 0 || new_left > 0 {
+        if let Some(file) = files.last_mut() {
+            file.truncated = true;
+        }
+    }
+
     files
 }
 
