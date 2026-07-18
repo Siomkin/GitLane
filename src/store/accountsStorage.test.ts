@@ -106,6 +106,46 @@ describe("localStorage maps", () => {
     expect(Object.keys(readForgeCredentials())).toEqual(["gitlab"]);
   });
 
+  it("keeps known binding and identity fields across newer-schema rollbacks", () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        "/repo": {
+          version: 2,
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "alice",
+          futureBindingMode: "team",
+        },
+      }),
+    );
+    localStorage.setItem(
+      "gitlane.repoIdentity",
+      JSON.stringify({
+        "/repo": {
+          name: "Alice",
+          email: "alice@example.com",
+          gpgSign: true,
+          futureSigningPolicy: "required",
+        },
+      }),
+    );
+
+    expect(readBindings()).toEqual({
+      "/repo": {
+        version: 2,
+        provider: "gh",
+        host: "github.com",
+        accountId: "1",
+        login: "alice",
+      },
+    });
+    expect(readIdentities()).toEqual({
+      "/repo": { name: "Alice", email: "alice@example.com", gpgSign: true },
+    });
+  });
+
   it("rejects provider-token rows with secret fields or mismatched lookup keys", () => {
     const valid = token();
     const validKey = providerTokenKey(valid.credentialHost, valid.login);

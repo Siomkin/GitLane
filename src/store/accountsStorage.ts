@@ -72,21 +72,25 @@ const githubAccountRefShape = {
   accountId: nonEmptyString,
   login: nonEmptyString,
 };
-const githubAccountRefSchema: z.ZodType<GithubAccountRef> = z.strictObject(
+// Bindings and identities are non-secret, forward-compatible metadata. Strip
+// fields written by a newer app so a beta -> stable rollback keeps the known
+// row instead of erasing it on the next read/modify/write. Credential and token
+// schemas below stay strict because unexpected fields there may be secret data.
+const githubAccountRefSchema: z.ZodType<GithubAccountRef> = z.object(
   githubAccountRefShape,
 );
-const unboundSchema = z.strictObject({ unbound: z.literal(true) });
+const unboundSchema = z.object({ unbound: z.literal(true) });
 const remoteBindingSchema = z.union([githubAccountRefSchema, unboundSchema, nonEmptyString]);
 const storedRepoAccountEntrySchema: z.ZodType<StoredRepoAccountEntry> = z.union([
-  z.strictObject({ version: z.literal(2), unbound: z.literal(true) }),
-  z.strictObject({ ...githubAccountRefShape, version: z.literal(2) }),
-  z.strictObject({
+  z.object({ version: z.literal(2), unbound: z.literal(true) }),
+  z.object({ ...githubAccountRefShape, version: z.literal(2) }),
+  z.object({
     version: z.literal(3),
     remotes: z.record(z.string(), remoteBindingSchema),
   }),
   nonEmptyString,
 ]);
-const repoIdentitySchema: z.ZodType<RepoIdentity> = z.strictObject({
+const repoIdentitySchema: z.ZodType<RepoIdentity> = z.object({
   name: z.string(),
   email: z.string(),
   signingKey: z.string().optional(),
