@@ -158,7 +158,12 @@ impl BitbucketApi for RestClient<'_> {
         ];
         self.finish(
             operation,
-            self.http.post_json(&self.url(path), body, &headers),
+            self.http.post_json_with_limit(
+                &self.url(path),
+                body,
+                &headers,
+                PROVIDER_JSON_RESPONSE_LIMIT,
+            ),
         )
     }
 }
@@ -239,6 +244,32 @@ mod tests {
             http.requests.lock().unwrap()[0].max_bytes,
             PROVIDER_JSON_RESPONSE_LIMIT
         );
+    }
+
+    #[test]
+    fn mutation_json_uses_the_provider_response_limit() {
+        let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
+        let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
+        let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+
+        assert_eq!(
+            client
+                .post_json("create", "repositories/a/b/pullrequests", "{}")
+                .unwrap(),
+            body
+        );
+        assert_eq!(
+            http.requests.lock().unwrap()[0].max_bytes,
+            PROVIDER_JSON_RESPONSE_LIMIT
+        );
+
+        let oversized = "x".repeat(PROVIDER_JSON_RESPONSE_LIMIT + 1);
+        let http = MockTransport::new(vec![MockTransport::ok(200, &oversized)]);
+        let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+        assert!(matches!(
+            client.post_json("merge", "repositories/a/b/pullrequests/1/merge", "{}"),
+            Err(GithubError::InvalidResponse(_))
+        ));
     }
 
     fn auth_header_for(username: &str) -> String {

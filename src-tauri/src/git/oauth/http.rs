@@ -77,6 +77,20 @@ pub trait HttpTransport: Send + Sync {
     /// request headers (e.g. `Accept: application/json`).
     fn post_form(&self, url: &str, form: &[(&str, &str)], headers: &[(&str, &str)]) -> HttpResult;
 
+    /// POST a form with an endpoint-specific response cap. Provider REST
+    /// mutations can echo full PR bodies, while OAuth token calls must retain
+    /// the smaller default limit.
+    fn post_form_with_limit(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+    ) -> HttpResult {
+        let response = self.post_form(url, form, headers)?;
+        enforce_response_limit(response, max_bytes)
+    }
+
     /// PUT an `application/x-www-form-urlencoded` body. Used by the GitLab REST
     /// client (GL-140) for `PUT …/merge`; the OAuth flows never call it, so it
     /// carries a default `Method not allowed` impl the mock/ureq clients override.
@@ -85,6 +99,17 @@ pub trait HttpTransport: Send + Sync {
         Err(HttpError::Transport(
             "PUT is not supported by this transport.".to_string(),
         ))
+    }
+
+    fn put_form_with_limit(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+    ) -> HttpResult {
+        let response = self.put_form(url, form, headers)?;
+        enforce_response_limit(response, max_bytes)
     }
 
     /// POST an `application/json` body. Used by the Bitbucket REST client (GL-141),
@@ -97,6 +122,17 @@ pub trait HttpTransport: Send + Sync {
         Err(HttpError::Transport(
             "JSON POST is not supported by this transport.".to_string(),
         ))
+    }
+
+    fn post_json_with_limit(
+        &self,
+        url: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+    ) -> HttpResult {
+        let response = self.post_json(url, body, headers)?;
+        enforce_response_limit(response, max_bytes)
     }
 
     /// GET a resource (used for the post-token identity whoami).
@@ -142,27 +178,57 @@ impl UreqTransport {
 
 impl HttpTransport for UreqTransport {
     fn post_form(&self, url: &str, form: &[(&str, &str)], headers: &[(&str, &str)]) -> HttpResult {
+        self.post_form_with_limit(url, form, headers, DEFAULT_RESPONSE_LIMIT)
+    }
+
+    fn post_form_with_limit(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+    ) -> HttpResult {
         let mut req = self.agent.post(url);
         for (k, v) in headers {
             req = req.set(k, v);
         }
-        to_response(req.send_form(form), DEFAULT_RESPONSE_LIMIT)
+        to_response(req.send_form(form), max_bytes)
     }
 
     fn put_form(&self, url: &str, form: &[(&str, &str)], headers: &[(&str, &str)]) -> HttpResult {
+        self.put_form_with_limit(url, form, headers, DEFAULT_RESPONSE_LIMIT)
+    }
+
+    fn put_form_with_limit(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+    ) -> HttpResult {
         let mut req = self.agent.put(url);
         for (k, v) in headers {
             req = req.set(k, v);
         }
-        to_response(req.send_form(form), DEFAULT_RESPONSE_LIMIT)
+        to_response(req.send_form(form), max_bytes)
     }
 
     fn post_json(&self, url: &str, body: &str, headers: &[(&str, &str)]) -> HttpResult {
+        self.post_json_with_limit(url, body, headers, DEFAULT_RESPONSE_LIMIT)
+    }
+
+    fn post_json_with_limit(
+        &self,
+        url: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+        max_bytes: usize,
+    ) -> HttpResult {
         let mut req = self.agent.post(url).set("Content-Type", "application/json");
         for (k, v) in headers {
             req = req.set(k, v);
         }
-        to_response(req.send_string(body), DEFAULT_RESPONSE_LIMIT)
+        to_response(req.send_string(body), max_bytes)
     }
 
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> HttpResult {
@@ -175,6 +241,14 @@ impl HttpTransport for UreqTransport {
             req = req.set(k, v);
         }
         to_response(req.call(), max_bytes)
+    }
+}
+
+fn enforce_response_limit(response: HttpResponse, max_bytes: usize) -> HttpResult {
+    if response.body.len() > max_bytes {
+        Err(HttpError::ResponseTooLarge { limit: max_bytes })
+    } else {
+        Ok(response)
     }
 }
 
@@ -318,6 +392,16 @@ pub mod testing {
             self.next("POST", url, form, None, headers, DEFAULT_RESPONSE_LIMIT)
         }
 
+        fn post_form_with_limit(
+            &self,
+            url: &str,
+            form: &[(&str, &str)],
+            headers: &[(&str, &str)],
+            max_bytes: usize,
+        ) -> HttpResult {
+            self.next("POST", url, form, None, headers, max_bytes)
+        }
+
         fn put_form(
             &self,
             url: &str,
@@ -325,6 +409,16 @@ pub mod testing {
             headers: &[(&str, &str)],
         ) -> HttpResult {
             self.next("PUT", url, form, None, headers, DEFAULT_RESPONSE_LIMIT)
+        }
+
+        fn put_form_with_limit(
+            &self,
+            url: &str,
+            form: &[(&str, &str)],
+            headers: &[(&str, &str)],
+            max_bytes: usize,
+        ) -> HttpResult {
+            self.next("PUT", url, form, None, headers, max_bytes)
         }
 
         fn post_json(&self, url: &str, body: &str, headers: &[(&str, &str)]) -> HttpResult {
@@ -336,6 +430,16 @@ pub mod testing {
                 headers,
                 DEFAULT_RESPONSE_LIMIT,
             )
+        }
+
+        fn post_json_with_limit(
+            &self,
+            url: &str,
+            body: &str,
+            headers: &[(&str, &str)],
+            max_bytes: usize,
+        ) -> HttpResult {
+            self.next("POST", url, &[], Some(body), headers, max_bytes)
         }
 
         fn get(&self, url: &str, headers: &[(&str, &str)]) -> HttpResult {
