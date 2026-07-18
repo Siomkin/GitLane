@@ -24,7 +24,10 @@ export function useTerminalInjection({
   repoKey,
 }: TerminalInjectionInputs): void {
   const terminalInject = useUi((s) => s.terminalInject);
+  const agentCommitDraft = useUi((s) => s.agentCommitDraft);
   const clearTerminalInject = useUi((s) => s.clearTerminalInject);
+  const cancelAgentCommitDraft = useUi((s) => s.cancelAgentCommitDraft);
+  const showToast = useUi((s) => s.showToast);
   useEffect(() => {
     if (!terminalInject) return;
     // An injection belongs to the repo whose flow queued it: if another repo is
@@ -88,11 +91,29 @@ export function useTerminalInjection({
           // Ignore pre-launch timestamps: an idle shell's last prompt must not
           // count as "already quiet" before the agent has produced any output.
           const quiet = Date.now() - Math.max(pane.lastOutputAt, startedAt) >= QUIET_MS;
-          // Paste once the agent asked for bracketed paste AND its startup
-          // rendering has gone quiet; the bounded fallback still guarantees
-          // the text is never dropped for agents without either signal.
-          if ((sawBracketedOff && bracketed && quiet) || Date.now() - startedAt > 8000) {
+          // Only deliver after the foreground program explicitly asks for
+          // bracketed paste. Falling back to a raw multiline paste is unsafe:
+          // if the agent exited, the repository-derived prompt would land in
+          // the shell and its newline-delimited lines could execute as commands.
+          if (sawBracketedOff && bracketed && quiet) {
             paste();
+            return;
+          }
+          if (Date.now() - startedAt > 8000) {
+            view.term.writeln(
+              "\x1b[33m[agent prompt not detected — queued text was not pasted]\x1b[0m",
+            );
+            if (
+              terminalInject.draftToken &&
+              agentCommitDraft?.token === terminalInject.draftToken
+            ) {
+              cancelAgentCommitDraft();
+            }
+            clearTerminalInject();
+            showToast(
+              "GitLane did not paste the queued text because the agent prompt could not be verified.",
+              "error",
+            );
             return;
           }
           timer = window.setTimeout(waitForPrompt, 100);
@@ -106,5 +127,15 @@ export function useTerminalInjection({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [terminalInject, alive, activeTabId, clearTerminalInject, controller, repoKey]);
+  }, [
+    terminalInject,
+    agentCommitDraft,
+    alive,
+    activeTabId,
+    cancelAgentCommitDraft,
+    clearTerminalInject,
+    controller,
+    repoKey,
+    showToast,
+  ]);
 }

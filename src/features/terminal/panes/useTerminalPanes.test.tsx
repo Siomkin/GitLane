@@ -98,6 +98,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useTerminals } from "@/store/terminals";
 import { useTerminalAgents } from "@/store/terminalAgents";
+import { useNotifications } from "@/store/notifications";
 
 const summaryFor = (path: string) => ({
   path,
@@ -147,6 +148,7 @@ beforeEach(() => {
   useRepo.setState({ summary: summaryFor("/current") });
   useTerminals.setState({ byRepo: {} });
   useTerminalAgents.setState({ loadAgents: vi.fn() });
+  useNotifications.setState({ toasts: [] });
   useUi.setState({
     terminalView: "hidden",
     terminalViewByRepo: {},
@@ -556,6 +558,43 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     expect(useUi.getState().terminalInject).toBeNull();
   });
 
+  it("fails closed instead of pasting multiline text when agent readiness is never observed", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        {
+          token: "unsafe-fallback",
+          agentName: "codex",
+          repoPath: "/repoA",
+          startedAt: Date.now(),
+        },
+        "review the diff\n$(touch should-not-run)\nfinish",
+        "codex",
+      );
+    });
+    await flush();
+
+    // Model an agent that exits back to a plain shell without ever enabling
+    // bracketed paste. The old eight-second fallback pasted these lines raw.
+    await act(async () => {
+      vi.advanceTimersByTime(8_100);
+    });
+
+    expect(xterm.instances[1].pasted).toHaveLength(0);
+    expect(xterm.instances[1].lines.some((line) => line.includes("queued text was not pasted")))
+      .toBe(true);
+    expect(useUi.getState().terminalInject).toBeNull();
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain(
+      "agent prompt could not be verified",
+    );
+  });
+
   it("cancels a pending agent-launch injection on unmount — no late paste", async () => {
     vi.useFakeTimers();
     useRepo.setState({ summary: summaryFor("/repoA") });
@@ -575,7 +614,7 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     unmount();
     await act(async () => {
-      vi.advanceTimersByTime(10_000); // past the poll interval AND the 8s fallback
+      vi.advanceTimersByTime(10_000); // past the poll interval AND the 8s timeout
     });
 
     // The cancelled wait must neither paste nor consume the injection.

@@ -514,6 +514,7 @@ describe("CommitComposer", () => {
         'improve this existing conventional commit message: "fix: initial message"',
       ),
       "codex",
+      expect.any(String),
     );
   });
 

@@ -411,7 +411,13 @@ interface UiState {
    * the consumer discards the injection if another repo is active by the time
    * it could deliver, so queued text never pastes into a different repo's
    * shell (GL-176 review). */
-  terminalInject: { text: string; command?: string; repoKey: string | null } | null;
+  terminalInject: {
+    text: string;
+    command?: string;
+    repoKey: string | null;
+    /** Correlates a failed terminal delivery with the draft poll it must stop. */
+    draftToken?: string;
+  } | null;
   createBranchOpen: boolean;
   createBranchStart: string | null;
   /** When set, the center pane shows a stacked all-files review for this oid
@@ -593,7 +599,7 @@ interface UiState {
   /** Open the terminal and queue `text` to be pasted into it. When `command`
    * is provided, launch that terminal agent before pasting the text. The
    * injection is stamped with the active repo and delivers only there. */
-  sendToTerminal: (text: string, command?: string) => void;
+  sendToTerminal: (text: string, command?: string, draftToken?: string) => void;
   clearTerminalInject: () => void;
   closeOverlays: () => void;
   setCreateBranchOpen: (open: boolean) => void;
@@ -958,7 +964,7 @@ export const useUi = create<UiState>()(
   // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
   // repo whose flow queued it (one-shot cross-store read) so it can never
   // deliver into another repo's shell (GL-176 review).
-  sendToTerminal: (text, command) => {
+  sendToTerminal: (text, command, draftToken) => {
     const repoKey = useRepo.getState().summary?.path ?? null;
     // A live PTY does not reveal whether its foreground program is the shell,
     // this agent, another agent, or an unrelated TUI. Every agent launch gets
@@ -966,7 +972,9 @@ export const useUi = create<UiState>()(
     if (command && repoKey) useTerminals.getState().openTab(repoKey);
     set((s) => ({
       ...terminalViewPatch(s, "open"),
-      terminalInject: command ? { text, command, repoKey } : { text, repoKey },
+      terminalInject: command
+        ? { text, command, repoKey, ...(draftToken ? { draftToken } : {}) }
+        : { text, repoKey },
     }));
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
@@ -1031,7 +1039,7 @@ export const useUi = create<UiState>()(
 
   openCommit: () => set({ leftTab: "changes", changesAll: false, rightTab: "details" }),
   startAgentCommitDraft: (request, instruction, command) => {
-    get().sendToTerminal(instruction, command);
+    get().sendToTerminal(instruction, command, request.token);
     set({ agentCommitDraft: request });
 
     const poll = async () => {
