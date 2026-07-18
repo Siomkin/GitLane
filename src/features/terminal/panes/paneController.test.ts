@@ -139,6 +139,52 @@ describe("PaneController — spawn/dispose identity", () => {
     expect(onAliveChange).toHaveBeenCalledTimes(2);
   });
 
+  it("replays data emitted before the spawn response identifies its session", async () => {
+    const spawn = deferred<{ sessionId: number }>();
+    const { controller, views } = setup({ spawn: () => spawn.promise });
+    controller.create("tab1", "/repo");
+    controller.routeData(7, [104, 105]);
+
+    spawn.resolve({ sessionId: 7 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(views[0].written).toHaveLength(1);
+    expect([...views[0].written[0]]).toEqual([104, 105]);
+    expect(controller.get("tab1")?.alive).toBe(true);
+  });
+
+  it("replays an early exit without reviving the fast-exiting shell", async () => {
+    const spawn = deferred<{ sessionId: number }>();
+    const { controller, views, onAliveChange } = setup({ spawn: () => spawn.promise });
+    controller.create("tab1", "/repo");
+    controller.routeData(7, [98, 121, 101]);
+    controller.routeExit(7);
+
+    spawn.resolve({ sessionId: 7 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(views[0].written).toHaveLength(1);
+    expect(controller.get("tab1")?.sessionId).toBeNull();
+    expect(controller.get("tab1")?.alive).toBe(false);
+    expect(views[0].lines.some((line) => line.includes("[shell exited]"))).toBe(true);
+    expect(onAliveChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds output buffered before session adoption", async () => {
+    const spawn = deferred<{ sessionId: number }>();
+    const { controller, views } = setup({ spawn: () => spawn.promise });
+    controller.create("tab1", "/repo");
+    controller.routeData(7, new Uint8Array(70 * 1024));
+
+    spawn.resolve({ sessionId: 7 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(views[0].written[0]).toHaveLength(64 * 1024);
+  });
+
   it("kills a session whose spawn resolves after the pane was disposed", async () => {
     const spawn = deferred<{ sessionId: number }>();
     const { controller, killed } = setup({ spawn: () => spawn.promise });
