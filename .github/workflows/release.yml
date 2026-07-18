@@ -43,8 +43,28 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
           fetch-depth: 0
 
-      - name: Install Rust stable
-        uses: ./.github/actions/setup-rust
+      # Keep setup logic in the workflow definition rather than a repository-local
+      # action from the checked-out build tree: historical release tags predate
+      # `.github/actions/setup-rust`. Those tags originally built on `stable`, while
+      # newer trees declare an exact channel in rust-toolchain.toml.
+      - name: Resolve release Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: |
+          CHANNEL=stable
+          if [[ -f rust-toolchain.toml ]]; then
+            CHANNEL=$(awk -F'"' '/^channel =/ { print $2; exit }' rust-toolchain.toml)
+          fi
+          if [[ ! "$CHANNEL" =~ ^[0-9A-Za-z._+-]+$ ]]; then
+            echo "Invalid Rust channel in release tree."
+            exit 1
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust ${{ steps.rust-toolchain.outputs.channel }}
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
 
       # No Rust cache here: preflight compiles nothing (see the note at the end of
       # this job), so restoring a target-dir archive was pure wasted minutes.
@@ -259,9 +279,24 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.release_commit }}
 
-      - name: Install Rust stable
-        uses: ./.github/actions/setup-rust
+      - name: Resolve release Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: |
+          CHANNEL=stable
+          if [[ -f rust-toolchain.toml ]]; then
+            CHANNEL=$(awk -F'"' '/^channel =/ { print $2; exit }' rust-toolchain.toml)
+          fi
+          if [[ ! "$CHANNEL" =~ ^[0-9A-Za-z._+-]+$ ]]; then
+            echo "Invalid Rust channel in release tree."
+            exit 1
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust ${{ steps.rust-toolchain.outputs.channel }}
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       # Self-hosted legs (linux + both macOS triples): compile into a persistent
