@@ -367,6 +367,29 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.preflight.outputs.release_tag }}
         run: |
+          rm -f latest.json
+          gh release download "$TAG" --pattern latest.json
+          MANIFEST_VERSION="${TAG#v}"
+          jq -e --arg version "$MANIFEST_VERSION" '.version == $version' latest.json >/dev/null
+          for PLATFORM in \
+            darwin-aarch64 \
+            darwin-x86_64 \
+            linux-x86_64 \
+            windows-x86_64
+          do
+            if ! jq -e --arg platform "$PLATFORM" '
+              .platforms[$platform] as $entry
+              | ($entry | type) == "object"
+                and ($entry.url | type) == "string"
+                and ($entry.url | length) > 0
+                and ($entry.signature | type) == "string"
+                and ($entry.signature | length) > 0
+            ' latest.json >/dev/null; then
+              echo "latest.json is missing a complete $PLATFORM updater entry."
+              exit 1
+            fi
+          done
+
           IS_PRERELEASE=false
           if [[ "$TAG" == *-* ]]; then
             IS_PRERELEASE=true
