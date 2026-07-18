@@ -356,6 +356,10 @@ mod tests {
         let (mut server, _) = listener.accept().unwrap();
         let timeout = Duration::from_millis(75);
         let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        // The drip feeder never sends a valid handshake, so this nonce is only
+        // ever the mismatch side of the comparison; generate it the same way the
+        // broker does rather than pinning a constant crypto value.
+        let nonce = random_nonce().unwrap();
 
         let server_thread = std::thread::spawn(move || {
             let started = Instant::now();
@@ -363,7 +367,7 @@ mod tests {
                 &mut server,
                 "gitlab.com",
                 "glpat-secret",
-                "nonce",
+                &nonce,
                 timeout,
             );
             finished_tx.send(started.elapsed()).unwrap();
