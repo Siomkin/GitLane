@@ -233,12 +233,139 @@ impl CloneTarget {
         if !self.owns_work {
             return Ok(());
         }
-        rename_no_replace(&self.work, &self.requested).map_err(|err| {
-            format!("The clone finished, but the destination became unavailable: {err}")
-        })?;
-        self.owns_work = false;
-        Ok(())
+        match rename_no_replace(&self.work, &self.requested) {
+            Ok(()) => {
+                self.owns_work = false;
+                Ok(())
+            }
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput
+                ) =>
+            {
+                // exFAT/SMB/NFS commonly support ordinary rename but not the
+                // platform's no-replace flag. Claim the public directory
+                // exclusively, then populate it without ever replacing a leaf.
+                // Once claimed, preserve both trees on a partial failure: Drop
+                // must not erase the completed clone remainder.
+                std::fs::create_dir(&self.requested).map_err(|claim_err| {
+                    format!(
+                        "The clone finished, but the destination became unavailable: {claim_err}"
+                    )
+                })?;
+                self.owns_work = false;
+                publish_directory_fallback(&self.work, &self.requested).map_err(|move_err| {
+                    format!(
+                        "The clone finished, but publishing it failed. The partial destination and private clone staging were preserved: {move_err}"
+                    )
+                })
+            }
+            Err(err) => Err(format!(
+                "The clone finished, but the destination became unavailable: {err}"
+            )),
+        }
     }
+}
+
+/// Populate an exclusively-created destination without replacing any leaf.
+/// Regular files use hard links (same sibling filesystem) and fall back to an
+/// exclusive copy when links are unsupported. Directories and symlinks are
+/// likewise created with no-replace primitives. Source entries are removed only
+/// after their destination is complete, so a failure leaves recoverable data.
+fn publish_directory_fallback(from: &Path, to: &Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let source = entry.path();
+        let destination = to.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            let permissions = entry.metadata()?.permissions();
+            std::fs::create_dir(&destination)?;
+            publish_directory_fallback(&source, &destination)?;
+            std::fs::set_permissions(&destination, permissions)?;
+        } else if file_type.is_file() {
+            move_regular_file_no_replace(&source, &destination, &entry.metadata()?)?;
+        } else if file_type.is_symlink() {
+            move_symlink_no_replace(&source, &destination)?;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                format!("unsupported clone entry type at {}", source.display()),
+            ));
+        }
+    }
+    std::fs::remove_dir(from)
+}
+
+fn move_regular_file_no_replace(
+    from: &Path,
+    to: &Path,
+    metadata: &std::fs::Metadata,
+) -> std::io::Result<()> {
+    match std::fs::hard_link(from, to) {
+        Ok(()) => std::fs::remove_file(from),
+        Err(err)
+            if matches!(
+                err.kind(),
+                std::io::ErrorKind::Unsupported | std::io::ErrorKind::PermissionDenied
+            ) =>
+        {
+            let mut source = std::fs::File::open(from)?;
+            // Open separately so cleanup below runs only after *our* exclusive
+            // create succeeded; an AlreadyExists error may belong to a
+            // concurrent writer and must never remove that writer's file.
+            let mut destination = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(to)?;
+            let copied = (|| -> std::io::Result<()> {
+                std::io::copy(&mut source, &mut destination)?;
+                destination.set_permissions(metadata.permissions())?;
+                destination.sync_all()
+            })();
+            if let Err(copy_err) = copied {
+                let _ = std::fs::remove_file(to);
+                return Err(copy_err);
+            }
+            std::fs::remove_file(from)
+        }
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(unix)]
+fn move_symlink_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(std::fs::read_link(from)?, to)?;
+    std::fs::remove_file(from)
+}
+
+#[cfg(windows)]
+fn move_symlink_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::fs::{symlink_dir, symlink_file, FileTypeExt};
+
+    let target = std::fs::read_link(from)?;
+    let kind = std::fs::symlink_metadata(from)?.file_type();
+    if kind.is_symlink_dir() {
+        symlink_dir(target, to)?;
+    } else if kind.is_symlink_file() {
+        symlink_file(target, to)?;
+    } else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "unknown Windows symlink type in clone staging",
+        ));
+    }
+    std::fs::remove_file(from)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn move_symlink_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
+    let _ = (from, to);
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "publishing symlinks is unsupported on this platform",
+    ))
 }
 
 /// Publish without replacing any destination that appeared during the clone.
@@ -731,6 +858,60 @@ mod tests {
         drop(target);
         assert!(!work.exists());
 
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn fallback_publish_moves_a_complete_tree_without_replacing_entries() {
+        let base = std::env::temp_dir().join(format!(
+            "gitlane-clone-fallback-publish-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let work = base.join("work");
+        let requested = base.join("repo");
+        std::fs::create_dir_all(work.join("nested")).unwrap();
+        std::fs::create_dir(&requested).unwrap();
+        std::fs::write(work.join("README.md"), "done").unwrap();
+        std::fs::write(work.join("nested/file.txt"), "nested").unwrap();
+
+        publish_directory_fallback(&work, &requested).unwrap();
+
+        assert!(!work.exists());
+        assert_eq!(
+            std::fs::read_to_string(requested.join("README.md")).unwrap(),
+            "done"
+        );
+        assert_eq!(
+            std::fs::read_to_string(requested.join("nested/file.txt")).unwrap(),
+            "nested"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn fallback_publish_preserves_source_when_a_destination_leaf_appears() {
+        let base = std::env::temp_dir().join(format!(
+            "gitlane-clone-fallback-collision-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let work = base.join("work");
+        let requested = base.join("repo");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::create_dir(&requested).unwrap();
+        std::fs::write(work.join("same.txt"), "clone").unwrap();
+        std::fs::write(requested.join("same.txt"), "concurrent").unwrap();
+
+        assert!(publish_directory_fallback(&work, &requested).is_err());
+        assert_eq!(
+            std::fs::read_to_string(work.join("same.txt")).unwrap(),
+            "clone"
+        );
+        assert_eq!(
+            std::fs::read_to_string(requested.join("same.txt")).unwrap(),
+            "concurrent"
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
