@@ -632,6 +632,40 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     );
   });
 
+  it("does not relaunch the agent when draft collection is cancelled mid-wait", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        {
+          token: "cancel-mid-wait",
+          agentName: "codex",
+          repoPath: "/repoA",
+          startedAt: Date.now(),
+        },
+        "review the staged changes",
+        "codex",
+      );
+    });
+    await flush();
+    await flush();
+
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(1);
+
+    await act(async () => {
+      useUi.getState().cancelAgentCommitDraft();
+    });
+    await flush();
+
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(1);
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+    expect(useUi.getState().terminalInject).not.toBeNull();
+  });
+
   it("cancels a pending agent-launch injection on unmount — no late paste", async () => {
     vi.useFakeTimers();
     useRepo.setState({ summary: summaryFor("/repoA") });

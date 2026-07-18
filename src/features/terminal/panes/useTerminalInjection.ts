@@ -24,7 +24,6 @@ export function useTerminalInjection({
   repoKey,
 }: TerminalInjectionInputs): void {
   const terminalInject = useUi((s) => s.terminalInject);
-  const agentCommitDraft = useUi((s) => s.agentCommitDraft);
   const clearTerminalInject = useUi((s) => s.clearTerminalInject);
   const cancelAgentCommitDraft = useUi((s) => s.cancelAgentCommitDraft);
   const showToast = useUi((s) => s.showToast);
@@ -105,7 +104,7 @@ export function useTerminalInjection({
             );
             if (
               terminalInject.draftToken &&
-              agentCommitDraft?.token === terminalInject.draftToken
+              useUi.getState().agentCommitDraft?.token === terminalInject.draftToken
             ) {
               cancelAgentCommitDraft();
             }
@@ -129,7 +128,6 @@ export function useTerminalInjection({
     };
   }, [
     terminalInject,
-    agentCommitDraft,
     alive,
     activeTabId,
     cancelAgentCommitDraft,
