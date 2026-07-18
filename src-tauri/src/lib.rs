@@ -1704,8 +1704,12 @@ async fn watch_repo(
 
 /// Stop the filesystem watch for `path` (its tab closed).
 #[tauri::command]
-fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(), String> {
-    watcher::unwatch(&state, &path)
+async fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(), String> {
+    // Recursive watch setup briefly holds the shared registry while installing
+    // a replacement. Keep tab-close teardown off the webview thread so it
+    // cannot freeze the UI while waiting for that lock.
+    let state = state.inner().clone();
+    blocking(move || watcher::unwatch(&state, &path)).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
