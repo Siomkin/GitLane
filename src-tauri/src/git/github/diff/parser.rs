@@ -8,6 +8,9 @@ use crate::git::types::{DiffHunk, DiffLine, FileDiff};
 /// exhausted so file metadata and add/delete totals remain truthful; only the
 /// serialized hunk bodies are bounded.
 const MAX_PR_DIFF_LINES: usize = 20_000;
+/// Per-file share of the body budget. A generated lockfile can still show a
+/// useful slice, but cannot consume the entire PR allowance before later files.
+const MAX_PR_DIFF_LINES_PER_FILE: usize = 4_000;
 
 /// Parse a git patch into [`FileDiff`]s, mirroring the shape libgit2 produces
 /// in `status.rs` so the frontend painter is shared. Status is the
@@ -20,12 +23,22 @@ const MAX_PR_DIFF_LINES: usize = 20_000;
 /// - hunk bodies are bounded by their `@@` header counts, so trailing lines
 ///   (format-patch's `-- ` signature, stray text) never extend a hunk.
 pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
-    parse_unified_diff_with_limit(raw, MAX_PR_DIFF_LINES)
+    parse_unified_diff_with_limits(raw, MAX_PR_DIFF_LINES, MAX_PR_DIFF_LINES_PER_FILE)
 }
 
+#[cfg(test)]
 pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec<FileDiff> {
+    parse_unified_diff_with_limits(raw, line_limit, line_limit)
+}
+
+pub(super) fn parse_unified_diff_with_limits(
+    raw: &str,
+    line_limit: usize,
+    per_file_limit: usize,
+) -> Vec<FileDiff> {
     let mut files: Vec<FileDiff> = Vec::new();
     let mut stored_lines = 0usize;
+    let mut file_stored_lines = 0usize;
     let mut old_no = 0u32;
     let mut new_no = 0u32;
     // Body lines the current hunk still expects on each side, per its `@@`
@@ -62,6 +75,7 @@ pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec
             in_preamble = false;
             old_left = 0;
             new_left = 0;
+            file_stored_lines = 0;
             files.push(FileDiff {
                 path,
                 status: "M".to_string(),
@@ -115,7 +129,7 @@ pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec
                 old_left = 0;
                 new_left = 0;
             }
-            if stored_lines < line_limit {
+            if stored_lines < line_limit && file_stored_lines < per_file_limit {
                 file.hunks.push(DiffHunk {
                     header: line.to_string(),
                     lines: Vec::new(),
@@ -159,7 +173,7 @@ pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec
                     (Some(o), Some(n))
                 }
             };
-            if stored_lines < line_limit {
+            if stored_lines < line_limit && file_stored_lines < per_file_limit {
                 if let Some(hunk) = file.hunks.last_mut() {
                     hunk.lines.push(DiffLine {
                         kind: kind.to_string(),
@@ -168,6 +182,7 @@ pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec
                         content: content.to_string(),
                     });
                     stored_lines += 1;
+                    file_stored_lines += 1;
                 }
             } else {
                 file.truncated = true;
