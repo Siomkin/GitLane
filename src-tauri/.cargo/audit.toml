@@ -1,7 +1,7 @@
-# cargo-audit treats informational advisories as warnings by default. Make new
-# unsoundness reports fail CI, with the one reviewed transitive exception below.
+# Keep cargo-audit's complete default informational set explicit, then make new
+# unsoundness reports fail CI with the one reviewed transitive exception below.
 [advisories]
-informational_warnings = ["unsound"]
+informational_warnings = ["unmaintained", "unsound", "notice"]
 ignore = [
   # glib 0.18.5: VariantStrIter's Iterator implementations are unsound
   # (RUSTSEC-2024-0429). This is in Tauri's Linux-only GTK3/WebKit dependency
