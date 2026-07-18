@@ -241,6 +241,13 @@ export function buildHistoryRows({
   // Resolve connectors + marker lanes once the full row layout is known: a
   // stash's base commit can sit far below it, so its row index (and the lanes
   // occupied around the stash) are only final after the walk completes.
+  // Build the graph-lane occupancy once. The previous helper rescanned every
+  // commit and edge for every stash, making this phase O(stashes × graph).
+  const maxOccupiedLaneByRow = buildLaneOccupancy(
+    graph,
+    visualRowByGraphRow,
+    rows.length,
+  );
   let maxMarkerLane = (graph?.laneCount ?? 1) - 1;
   for (const entry of placed) {
     if (entry.anchorId == null) continue;
@@ -253,13 +260,12 @@ export function buildHistoryRows({
     // — measuring that would shove the marker past every branch the connector
     // passes (e.g. a dependabot fan), keeping it tucked beside the
     // mainline with the dashed line simply running through.
-    const occupied = occupiedLanesInSpan(
-      graph,
-      visualRowByGraphRow,
+    const occupiedLane = maxLaneInSpan(
+      maxOccupiedLaneByRow,
       entry.stashRow,
       entry.stashRow + entry.contextRows,
     );
-    const lane = Math.max(anchorCommit.lane, ...occupied) + 1;
+    const lane = Math.max(anchorCommit.lane, occupiedLane) + 1;
     maxMarkerLane = Math.max(maxMarkerLane, lane);
     for (let rowIndex = entry.stashRow; rowIndex <= entry.stashRow + entry.contextRows; rowIndex++) {
       const row = rows[rowIndex];
@@ -279,8 +285,7 @@ export function buildHistoryRows({
 
   let fallbackMarkerLane = 0;
   if (unanchoredStashes.length > 0) {
-    const occupied = occupiedLanesInSpan(graph, visualRowByGraphRow, 0, 0);
-    fallbackMarkerLane = Math.max(0, ...occupied) + 1;
+    fallbackMarkerLane = Math.max(0, maxLaneInSpan(maxOccupiedLaneByRow, 0, 0)) + 1;
     maxMarkerLane = Math.max(maxMarkerLane, fallbackMarkerLane);
     const fallbackRow = rows.length;
     rows.push({ kind: "stash-fallback", key: "stash-fallback", stashes: unanchoredStashes });
@@ -309,32 +314,77 @@ export function buildHistoryRows({
   };
 }
 
-function occupiedLanesInSpan(
+/** Maximum graph lane crossing each visual row. Edge intervals are applied to
+ * a range-chmax tree in O(edges log rows), then materialized once. Stash queries
+ * scan only their bounded context span instead of the whole graph. */
+function buildLaneOccupancy(
   graph: RepoGraph | null,
   visualRowByGraphRow: number[],
-  rowA: number,
-  rowB: number,
-) {
-  const occupied = new Set<number>();
-  if (!graph) return occupied;
-  const minRow = Math.min(rowA, rowB);
-  const maxRow = Math.max(rowA, rowB);
+  rowCount: number,
+): number[] {
+  if (!graph || rowCount === 0) return new Array(rowCount).fill(-1);
+  const tree = new Int32Array(rowCount * 4);
+  tree.fill(-1);
+
+  const update = (
+    node: number,
+    left: number,
+    right: number,
+    from: number,
+    to: number,
+    lane: number,
+  ) => {
+    if (from <= left && right <= to) {
+      tree[node] = Math.max(tree[node], lane);
+      return;
+    }
+    const middle = Math.floor((left + right) / 2);
+    if (from <= middle) update(node * 2, left, middle, from, to, lane);
+    if (to > middle) update(node * 2 + 1, middle + 1, right, from, to, lane);
+  };
+
+  const addRange = (from: number, to: number, lane: number) => {
+    const start = Math.max(0, Math.min(from, to));
+    const end = Math.min(rowCount - 1, Math.max(from, to));
+    if (start <= end) update(1, 0, rowCount - 1, start, end, lane);
+  };
 
   for (const commit of graph.commits) {
     const row = visualRowByGraphRow[commit.row];
-    if (row !== undefined && row >= minRow && row <= maxRow) {
-      occupied.add(commit.lane);
-    }
+    if (row !== undefined) addRange(row, row, commit.lane);
   }
 
   for (const edge of graph.edges) {
     const fromRow = visualRowByGraphRow[edge.fromRow];
     const toRow = visualRowByGraphRow[edge.toRow];
     if (fromRow === undefined || toRow === undefined) continue;
-    if (Math.max(fromRow, toRow) < minRow || Math.min(fromRow, toRow) > maxRow) continue;
-    occupied.add(edge.fromLane);
-    occupied.add(edge.toLane);
+    addRange(fromRow, toRow, Math.max(edge.fromLane, edge.toLane));
   }
 
-  return occupied;
+  const maxByRow = new Array<number>(rowCount).fill(-1);
+  const materialize = (
+    node: number,
+    left: number,
+    right: number,
+    inherited: number,
+  ) => {
+    const lane = Math.max(inherited, tree[node]);
+    if (left === right) {
+      maxByRow[left] = lane;
+      return;
+    }
+    const middle = Math.floor((left + right) / 2);
+    materialize(node * 2, left, middle, lane);
+    materialize(node * 2 + 1, middle + 1, right, lane);
+  };
+  materialize(1, 0, rowCount - 1, -1);
+  return maxByRow;
+}
+
+function maxLaneInSpan(maxByRow: number[], rowA: number, rowB: number): number {
+  const from = Math.max(0, Math.min(rowA, rowB));
+  const to = Math.min(maxByRow.length - 1, Math.max(rowA, rowB));
+  let max = -1;
+  for (let row = from; row <= to; row += 1) max = Math.max(max, maxByRow[row] ?? -1);
+  return max;
 }
