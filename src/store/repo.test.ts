@@ -1396,6 +1396,53 @@ describe("repo store — large history", () => {
       expect(invokeMock).toHaveBeenCalledWith("file_diff", expect.objectContaining({ staged: false }));
       expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "unstaged" });
     });
+
+    it("publishes only the latest staged or unstaged selection for the same path", async () => {
+      const slowUnstaged = deferred<ReturnType<typeof diff>>();
+      const staged = diff({ add: 7 });
+      let calls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "file_diff") {
+          return ++calls === 1 ? slowUnstaged.promise : Promise.resolve(staged);
+        }
+        return defaultInvoke(cmd);
+      });
+
+      const oldSelection = useRepo.getState().selectFile("src/a.ts", "unstaged");
+      await useRepo.getState().selectFile("src/a.ts", "staged");
+      slowUnstaged.resolve(diff({ add: 99 }));
+      await oldSelection;
+
+      expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
+      expect(useRepo.getState().fileDiff).toEqual(staged);
+      expect(useRepo.getState().diffLoading).toBe(false);
+    });
+
+    it("publishes only the latest full diff when the same path changes bucket", async () => {
+      const slowUnstaged = deferred<ReturnType<typeof diff>>();
+      const staged = diff({ add: 8 });
+      useRepo.setState({
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff({ truncated: true }),
+      });
+      let calls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "file_diff") {
+          return ++calls === 1 ? slowUnstaged.promise : Promise.resolve(staged);
+        }
+        return defaultInvoke(cmd);
+      });
+
+      const oldFull = useRepo.getState().loadFullFileDiff();
+      useRepo.setState({ selectedFile: { path: "src/a.ts", source: "staged" } });
+      await useRepo.getState().loadFullFileDiff();
+      slowUnstaged.resolve(diff({ add: 99 }));
+      await oldFull;
+
+      expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
+      expect(useRepo.getState().fileDiff).toEqual(staged);
+      expect(useRepo.getState().diffLoading).toBe(false);
+    });
   });
 
   it("ignores a stale load-more result after a newer full refresh", async () => {
