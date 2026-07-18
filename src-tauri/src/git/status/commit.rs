@@ -5,7 +5,7 @@ use git2::{DiffOptions, Oid, Repository};
 use crate::git::read::open;
 use crate::git::types::{FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
 
 /// Resolve a commit's tree and its first parent's tree (or `None` for a root
 /// commit) so a diff can be computed.
@@ -42,8 +42,7 @@ pub fn commit_file_diff(
     let (tree, parent) = commit_trees(&repo, oid)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
 
-    let mut opts = DiffOptions::new();
-    opts.pathspec(file).context_lines(3);
+    let mut opts = literal_file_options(file);
     let diff = repo.diff_tree_to_tree(parent.as_ref(), Some(&tree), Some(&mut opts))?;
 
     let mut files = diffs_to_files(&diff, limit)?;

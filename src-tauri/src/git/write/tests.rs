@@ -2632,6 +2632,7 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
         patch_diff_args(false, "file.txt"),
         vec![
+            "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
             "--no-color",
@@ -2648,6 +2649,7 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
         patch_diff_args(true, "file.txt"),
         vec![
+            "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
             "--no-color",
@@ -2802,6 +2804,76 @@ fn stage_files_with_no_paths_is_a_noop() {
     assert_eq!(stage_files(repo.path(), &[]).unwrap(), "");
     let staged = repo.git(&["diff", "--cached", "--name-only"]);
     assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn exact_file_staging_treats_pathspec_magic_as_a_literal_filename() {
+    let repo = repo_with_file("stage-pathspec-magic", "tracked.txt", b"base\n");
+    let magic = ":(glob)z*";
+    std::fs::write(repo.0.join(magic), "base\n").unwrap();
+    std::fs::write(repo.0.join("z-victim.txt"), "base\n").unwrap();
+
+    stage_file(repo.path(), magic).expect("stage literal magic filename");
+
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout).trim(), magic);
+    let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
+    let status = String::from_utf8_lossy(&status.stdout);
+    assert!(status.contains("?? z-victim.txt"), "{status}");
+
+    unstage_file(repo.path(), magic).expect("unstage literal magic filename");
+    stage_files(repo.path(), &[magic.to_string()]).expect("bulk-stage literal magic filename");
+    stage_file(repo.path(), "z-victim.txt").expect("stage unrelated file");
+    unstage_files(repo.path(), &[magic.to_string()]).expect("bulk-unstage literal magic filename");
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(
+        String::from_utf8_lossy(&staged.stdout).trim(),
+        "z-victim.txt"
+    );
+
+    stage_file(repo.path(), magic).expect("re-stage literal magic filename");
+    unstage_file(repo.path(), magic).expect("single-unstage literal magic filename");
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(
+        String::from_utf8_lossy(&staged.stdout).trim(),
+        "z-victim.txt"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn hunk_staging_uses_the_literal_file_not_a_pathspec_match() {
+    let magic = ":(glob)z*";
+    let repo = TempRepo::new("hunk-pathspec-magic");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join(magic), "base\n").unwrap();
+    std::fs::write(repo.0.join("z-victim.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(repo.0.join(magic), "changed\n").unwrap();
+    std::fs::write(repo.0.join("z-victim.txt"), "changed\n").unwrap();
+
+    apply_hunk(
+        repo.path(),
+        magic,
+        false,
+        0,
+        "@@ -1 +1 @@",
+        "-base\n+changed",
+    )
+    .expect("stage hunk in literal magic filename");
+
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout).trim(), magic);
+    let unstaged = repo.git(&["diff", "--name-only"]);
+    assert_eq!(
+        String::from_utf8_lossy(&unstaged.stdout).trim(),
+        "z-victim.txt"
+    );
 }
 
 #[test]
@@ -4136,6 +4208,47 @@ fn resolves_a_dash_prefixed_conflicted_path() {
     assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
 }
 
+#[cfg(not(windows))]
+#[test]
+fn resolving_a_pathspec_magic_filename_leaves_other_conflicts_unmerged() {
+    let repo = TempRepo::new("literal-conflict-path");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "t@t.t"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    let magic = ":(glob)*";
+    std::fs::write(repo.0.join(magic), "base\n").unwrap();
+    std::fs::write(repo.0.join("victim.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "other"]);
+    std::fs::write(repo.0.join(magic), "theirs\n").unwrap();
+    std::fs::write(repo.0.join("victim.txt"), "theirs\n").unwrap();
+    repo.git_ok(&["commit", "-qam", "theirs"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join(magic), "ours\n").unwrap();
+    std::fs::write(repo.0.join("victim.txt"), "ours\n").unwrap();
+    repo.git_ok(&["commit", "-qam", "ours"]);
+    let merge = repo.git(&["merge", "other"]);
+    assert!(
+        !merge.status.success(),
+        "merge should stop on both conflicts"
+    );
+
+    mark_conflict_resolved(repo.path(), magic).expect("stage only the literal conflict path");
+
+    let unmerged = repo.git(&["ls-files", "-u"]);
+    let unmerged = String::from_utf8_lossy(&unmerged.stdout);
+    assert!(
+        !unmerged.contains(magic),
+        "magic filename should be resolved: {unmerged}"
+    );
+    assert!(
+        unmerged.contains("victim.txt"),
+        "unrelated conflict must remain unresolved: {unmerged}"
+    );
+}
+
 #[test]
 fn reconflict_file_refuses_unrelated_path_and_keeps_edits() {
     // Mid-merge, re-conflicting a tracked file that was never part of the
@@ -4891,6 +5004,40 @@ fn discard_file_preserves_empty_directory_shells() {
 
     assert!(!repo.0.join("untracked/file.txt").exists());
     assert!(repo.0.join("untracked/empty-nested").is_dir());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn discard_file_does_not_expand_an_untracked_pathspec_magic_filename() {
+    let repo = TempRepo::new("discard-file-pathspec-magic");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("tracked-a.txt"), "a\n").unwrap();
+    std::fs::write(repo.0.join("tracked-b.txt"), "b\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    let magic = ":(glob)*";
+    std::fs::write(repo.0.join(magic), "untracked\n").unwrap();
+
+    discard_file(repo.path(), magic, false).expect("discard literal magic filename");
+
+    assert!(!repo.0.join(magic).exists());
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked-a.txt")).unwrap(),
+        "a\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked-b.txt")).unwrap(),
+        "b\n"
+    );
+    let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(
+        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "tracked files must not be removed or staged: {}",
+        String::from_utf8_lossy(&status.stdout)
+    );
 }
 
 #[test]

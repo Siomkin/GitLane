@@ -2,7 +2,7 @@
 
 use crate::git::handoff;
 
-use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics};
+use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics, run_git_literal_paths};
 use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 
 // ---- Conflict resolution (merge / rebase / cherry-pick / revert) ----
@@ -20,18 +20,17 @@ use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 /// add/add conflicts with one path.
 pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String, String> {
     // No `ensure_operand` on `file`: every git call below passes it after `--`
-    // (pathspec), so a legitimately conflicted file named e.g. `-foo` is safe and
-    // must not be rejected. `ensure_conflicted` already gates it to the index
-    // conflict set.
+    // in literal-pathspec mode, so `-foo` is safe and `:(glob)*` cannot expand.
+    // `ensure_conflicted` additionally gates it to the index conflict set.
     ensure_conflicted(repo, file)?;
     let (flag, stage) = match side {
         "ours" => ("--ours", "2"),
         "theirs" => ("--theirs", "3"),
         _ => return Err(format!("unknown conflict side {side:?}")),
     };
-    match run_git(repo, &["checkout", flag, "--", file]) {
+    match run_git_literal_paths(repo, &["checkout", flag, "--", file]) {
         Ok(_) => {
-            run_git(repo, &["add", "-A", "--", file])?;
+            run_git_literal_paths(repo, &["add", "-A", "--", file])?;
         }
         // A failed checkout means "accept the deletion" ONLY when the chosen side
         // genuinely has no staged version — a modify/delete conflict. For any
@@ -39,7 +38,7 @@ pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String
         // surface the error rather than force-deleting the user's file.
         Err(e) => {
             if conflict_stage_absent(repo, file, stage) {
-                run_git(repo, &["rm", "-f", "--", file])?;
+                run_git_literal_paths(repo, &["rm", "-f", "--", file])?;
             } else {
                 return Err(e);
             }
@@ -53,7 +52,7 @@ pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String
 /// (`<mode> <oid> <stage>\t<path>`). A read failure returns false so we never
 /// delete on an indeterminate state.
 pub(super) fn conflict_stage_absent(repo: &str, file: &str, stage: &str) -> bool {
-    match run_git(repo, &["ls-files", "-u", "--", file]) {
+    match run_git_literal_paths(repo, &["ls-files", "-u", "--", file]) {
         Ok(out) => !out.lines().any(|line| {
             line.split('\t')
                 .next()
@@ -69,7 +68,7 @@ pub(super) fn conflict_stage_absent(repo: &str, file: &str, stage: &str) -> bool
 /// require this so a renderer-supplied path can only touch files genuinely in the
 /// conflict set, not an arbitrary (even repo-relative) file.
 fn is_unmerged(repo: &str, file: &str) -> bool {
-    run_git(repo, &["ls-files", "-u", "--", file])
+    run_git_literal_paths(repo, &["ls-files", "-u", "--", file])
         .map(|out| !out.trim().is_empty())
         .unwrap_or(false)
 }
@@ -93,7 +92,7 @@ fn can_reconflict(repo: &str, file: &str) -> bool {
     if is_unmerged(repo, file) {
         return true;
     }
-    run_git(repo, &["ls-files", "--resolve-undo", "--", file])
+    run_git_literal_paths(repo, &["ls-files", "--resolve-undo", "--", file])
         .map(|out| !out.trim().is_empty())
         .unwrap_or(false)
 }
@@ -125,24 +124,25 @@ pub(super) fn worktree_path(root: &str, file: &str) -> Result<std::path::PathBuf
 /// per-hunk choices. The path is resolved against the worktree root (and checked
 /// to stay inside it) so it is correct for linked worktrees and never escapes.
 pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<String, String> {
-    // `file` is staged after `--` and resolved through `worktree_path` (which
-    // rejects traversal), so no `ensure_operand` dash-guard is needed — and it
-    // would wrongly block a conflicted file named `-foo`.
+    // `file` is staged after `--` in literal mode and resolved through
+    // `worktree_path` (which rejects traversal), so no `ensure_operand`
+    // dash-guard is needed — and it would wrongly block `-foo`.
     ensure_conflicted(repo, file)?;
     let root = run_git(repo, &["rev-parse", "--show-toplevel"])?;
     let full = worktree_path(&root, file)?;
     std::fs::write(&full, content).map_err(|e| format!("write {file}: {e}"))?;
-    run_git(repo, &["add", "--", file])?;
+    run_git_literal_paths(repo, &["add", "--", file])?;
     Ok(format!("Resolved {file}"))
 }
 
 /// Mark a conflicted file resolved by staging it as it currently sits on disk
 /// (after the user edited it in their own editor). `-A` also stages a deletion.
 pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> {
-    // `file` passed after `--`; gated by `ensure_conflicted`. No dash-guard (see
-    // `accept_conflict_side`) so a conflicted `-foo` can be staged.
+    // `file` passes after `--` in literal mode and is gated by
+    // `ensure_conflicted`. No dash-guard (see `accept_conflict_side`) so a
+    // conflicted `-foo` can be staged.
     ensure_conflicted(repo, file)?;
-    run_git(repo, &["add", "-A", "--", file])?;
+    run_git_literal_paths(repo, &["add", "-A", "--", file])?;
     Ok(format!("Staged {file}"))
 }
 
@@ -150,8 +150,8 @@ pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> 
 /// it can be re-resolved (`git checkout --merge`) — the inverse of staging a
 /// resolution, exposed as the per-file "Unstage" affordance.
 pub fn reconflict_file(repo: &str, file: &str) -> Result<String, String> {
-    // `file` is passed after `--`, so no dash-guard is needed (it would block a
-    // conflicted `-foo`).
+    // `file` is passed after `--` in literal mode, so no dash-guard is needed
+    // (it would block a conflicted `-foo`).
     // Guard against clobbering: `git checkout --merge` on a path git can't
     // re-conflict (an unrelated tracked file) silently overwrites the worktree
     // with the index copy, discarding unstaged edits. Only allow it for paths
@@ -162,7 +162,7 @@ pub fn reconflict_file(repo: &str, file: &str) -> Result<String, String> {
             "cannot restore the conflict in {file:?} — it is not an unresolved or just-resolved conflict path"
         ));
     }
-    run_git(repo, &["checkout", "--merge", "--", file])?;
+    run_git_literal_paths(repo, &["checkout", "--merge", "--", file])?;
     Ok(format!("Restored conflict in {file}"))
 }
 

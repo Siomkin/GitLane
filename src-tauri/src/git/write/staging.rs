@@ -6,11 +6,13 @@ use std::path::Path;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 
-use super::cli::{run_git, run_git_os_paths, run_git_stdout_raw, run_git_with_input};
+use super::cli::{
+    run_git, run_git_literal_paths, run_git_os_paths, run_git_stdout_raw, run_git_with_input,
+};
 
-/// Stage a single file (also stages deletions).
+/// Stage one literal repository path (also stages deletions).
 pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
-    run_git(repo, &["add", "-A", "--", file])
+    run_git_literal_paths(repo, &["add", "-A", "--", file])
 }
 
 /// True when HEAD resolves to a commit. False on an unborn HEAD (fresh
@@ -28,9 +30,9 @@ fn has_head(repo: &str) -> bool {
 /// the worktree copy has moved on.
 pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
     if has_head(repo) {
-        run_git(repo, &["restore", "--staged", "--", file])
+        run_git_literal_paths(repo, &["restore", "--staged", "--", file])
     } else {
-        run_git(repo, &["rm", "--cached", "-f", "-q", "--", file])
+        run_git_literal_paths(repo, &["rm", "--cached", "-f", "-q", "--", file])
     }
 }
 
@@ -103,12 +105,15 @@ pub fn apply_line(
 /// - `--src-prefix=a/ --dst-prefix=b/` keeps the standard prefixes the extracted
 ///   patch is re-applied with via `git apply` (overrides `diff.noprefix` /
 ///   `diff.mnemonicPrefix`).
+/// - `--literal-pathspecs` prevents a real filename containing glob/pathspec
+///   syntax from selecting a different file's patch.
 ///
 /// `extract_single_hunk_patch`/`extract_single_line_patch` additionally validate
 /// the expected hunk range + body / line content before applying, so any residual
 /// divergence fails safe ("refresh and try again") instead of staging the wrong hunk.
 pub(super) fn patch_diff_args<'a>(staged: bool, file: &'a str) -> Vec<&'a str> {
     let mut args = vec![
+        "--literal-pathspecs",
         "diff",
         "--no-ext-diff",
         "--no-color",
@@ -455,22 +460,22 @@ fn previous_new_no(lines: &[PatchLine], start: usize) -> Option<u32> {
     lines[..start].iter().rev().find_map(|line| line.new_no)
 }
 
-/// Stage several files in one atomic invocation (`git add -A -- A B…`, also staging
-/// deletions) so a folder roll-up can't leave some of the set unstaged. Paths
-/// follow `--`, so a dash-prefixed path cannot be parsed as a flag.
+/// Stage several literal files in one atomic invocation (`git add -A -- A B…`,
+/// also staging deletions) so a folder roll-up can't leave some of the set
+/// unstaged. `--` blocks option parsing; literal mode also blocks pathspec magic.
 pub fn stage_files(repo: &str, files: &[String]) -> Result<String, String> {
     if files.is_empty() {
         return Ok(String::new());
     }
     let mut args: Vec<&str> = vec!["add", "-A", "--"];
     args.extend(files.iter().map(String::as_str));
-    run_git(repo, &args)
+    run_git_literal_paths(repo, &args)
 }
 
-/// Unstage several files in one atomic invocation (`git restore --staged -- A B…`)
-/// so a partial failure can't leave some of the set staged. Paths follow `--`, so
-/// a dash-prefixed path cannot be parsed as a flag. Unborn HEAD falls back to
-/// dropping the entries from the index, as in [`unstage_file`].
+/// Unstage several literal files in one atomic invocation (`git restore --staged
+/// -- A B…`) so a partial failure can't leave some of the set staged. `--`
+/// blocks options and literal mode blocks pathspec expansion. Unborn HEAD falls
+/// back to dropping the entries from the index, as in [`unstage_file`].
 pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
     if files.is_empty() {
         return Ok(String::new());
@@ -481,7 +486,7 @@ pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
         vec!["rm", "--cached", "-f", "-q", "--"]
     };
     args.extend(files.iter().map(String::as_str));
-    run_git(repo, &args)
+    run_git_literal_paths(repo, &args)
 }
 
 /// Discard a single file's working-tree changes, reverting it to its HEAD/index
@@ -508,18 +513,18 @@ pub fn discard_file(repo: &str, file: &str, staged: bool) -> Result<String, Stri
 
     if in_head {
         if staged {
-            run_git(repo, &["restore", "--staged", "--", file])?;
+            run_git_literal_paths(repo, &["restore", "--staged", "--", file])?;
         }
-        run_git(repo, &["restore", "--worktree", "--", file])?;
+        run_git_literal_paths(repo, &["restore", "--worktree", "--", file])?;
         Ok(format!("Discarded changes in {file}"))
-    } else if run_git(repo, &["ls-files", "--error-unmatch", "--", file]).is_ok() {
+    } else if run_git_literal_paths(repo, &["ls-files", "--error-unmatch", "--", file]).is_ok() {
         // Staged-new file: drop it from index and worktree in one step.
-        run_git(repo, &["rm", "-f", "-q", "--", file])?;
+        run_git_literal_paths(repo, &["rm", "-f", "-q", "--", file])?;
         Ok(format!("Discarded {file}"))
     } else {
-        // An explicit pathspec makes `-d` irrelevant; omit it so this path
+        // An explicit literal file path makes `-d` irrelevant; omit it so this
         // matches the file-only cleanup contract used by `discard_all`.
-        run_git(repo, &["clean", "-f", "--", file])?;
+        run_git_literal_paths(repo, &["clean", "-f", "--", file])?;
         Ok(format!("Discarded {file}"))
     }
 }

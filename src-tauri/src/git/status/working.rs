@@ -6,7 +6,7 @@ use crate::git::read::{open, worktree_join};
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
 
 use super::advanced::{advanced_state, annotate_advanced_files};
-use super::diff::{diffs_to_changes, diffs_to_files, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
 
 /// Resolve the HEAD commit's tree, if any (a fresh repo with no commits has
 /// none).
@@ -282,8 +282,7 @@ pub fn file_diff(
     let repo = open(path)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
 
-    let mut opts = DiffOptions::new();
-    opts.pathspec(file).context_lines(3);
+    let mut opts = literal_file_options(file);
 
     let diff = if staged {
         let head = head_tree(&repo);
@@ -296,9 +295,8 @@ pub fn file_diff(
     };
 
     let mut files = diffs_to_files(&diff, limit)?;
-    // The pathspec can match more than one delta (e.g. a path that prefixes
-    // others); pick the delta whose path matches `file` rather than blindly
-    // taking the last, falling back to the last only when nothing matches.
+    // Keep the exact-path selection defensive even though literal pathspec mode
+    // should yield at most one delta.
     let result = files
         .iter()
         .position(|f| f.path == file)

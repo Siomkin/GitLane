@@ -1,7 +1,8 @@
 use super::diff::DIFF_LINE_LIMIT;
 use super::{
-    commit_file_diff, commit_files, compare_file_diff, compare_refs, file_blame, file_diff,
-    file_history, read_binary_blob, selection_diff, selection_diff_file, working_changes,
+    commit_file_diff, commit_files, compare_file_diff, compare_refs, diff_range_file, file_blame,
+    file_diff, file_history, read_binary_blob, selection_diff, selection_diff_file,
+    working_changes,
 };
 use git2::{Repository, Signature};
 use std::fs;
@@ -126,6 +127,66 @@ fn diff_skips_no_newline_eofnl_markers() {
         lines.iter().map(|l| &l.content).collect::<Vec<_>>()
     );
 
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(not(windows))]
+#[test]
+fn per_file_diff_reads_treat_glob_characters_as_a_literal_filename() {
+    let dir = std::env::temp_dir().join(format!(
+        "gitlane-literal-file-diff-test-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let magic = "*.txt";
+    fs::write(dir.join(magic), "literal base\n").unwrap();
+    fs::write(dir.join("victim.txt"), "victim base\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(magic)).unwrap();
+        index.add_path(Path::new("victim.txt")).unwrap();
+        index.write().unwrap();
+    }
+    let base = commit_index(&repo, "base").to_string();
+
+    fs::write(dir.join(magic), "literal committed\n").unwrap();
+    fs::write(dir.join("victim.txt"), "victim committed\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(magic)).unwrap();
+        index.add_path(Path::new("victim.txt")).unwrap();
+        index.write().unwrap();
+    }
+    let head = commit_index(&repo, "both changed").to_string();
+    let path = dir.to_str().unwrap();
+
+    let commit_diff = commit_file_diff(path, &head, magic, false).unwrap();
+    let range_diff = diff_range_file(path, &base, &head, magic, false).unwrap();
+    let compare_diff = compare_file_diff(path, &base, Some(&head), magic, false).unwrap();
+    for diff in [&commit_diff, &range_diff, &compare_diff] {
+        assert_eq!(diff.path, magic);
+        assert!(
+            diff.hunks
+                .iter()
+                .flat_map(|hunk| &hunk.lines)
+                .any(|line| line.content == "literal committed"),
+            "literal file content missing from {diff:?}"
+        );
+    }
+
+    fs::write(dir.join(magic), "literal working\n").unwrap();
+    fs::write(dir.join("victim.txt"), "victim working\n").unwrap();
+    let working_diff = file_diff(path, magic, false, false).unwrap();
+    assert_eq!(working_diff.path, magic);
+    assert!(working_diff
+        .hunks
+        .iter()
+        .flat_map(|hunk| &hunk.lines)
+        .any(|line| line.content == "literal working"));
+
+    drop(repo);
     let _ = fs::remove_dir_all(&dir);
 }
 
