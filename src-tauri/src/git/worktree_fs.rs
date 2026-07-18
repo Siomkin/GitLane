@@ -12,6 +12,8 @@ use std::path::{Component, Path};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
+#[cfg(unix)]
+use cap_std::fs::OpenOptionsExt;
 use cap_std::fs::{Dir, File, Metadata, OpenOptions};
 
 /// An existing regular worktree file plus the held parent directory capability
@@ -91,9 +93,7 @@ pub(crate) fn open_worktree_file(workdir: &Path, file: &str) -> io::Result<Optio
         return Ok(None);
     }
 
-    let mut options = OpenOptions::new();
-    options.read(true).follow(FollowSymlinks::No);
-    let opened = parent.open_with(&name, &options)?;
+    let opened = open_leaf_nofollow(&parent, &name)?;
     let metadata = opened.metadata()?;
     if !metadata.is_file() {
         return Ok(None);
@@ -104,6 +104,14 @@ pub(crate) fn open_worktree_file(workdir: &Path, file: &str) -> io::Result<Optio
         file: opened,
         metadata,
     }))
+}
+
+fn open_leaf_nofollow(parent: &Dir, name: &OsString) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    #[cfg(unix)]
+    options.custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32);
+    parent.open_with(name, &options)
 }
 
 pub(crate) fn open_regular_worktree_file(workdir: &Path, file: &str) -> io::Result<WorktreeFile> {
@@ -156,7 +164,9 @@ fn unsafe_path(file: &str) -> io::Error {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{open_regular_worktree_file, read_regular_worktree_file};
+    use super::{open_leaf_nofollow, open_regular_worktree_file, read_regular_worktree_file};
+    use cap_std::fs::Dir;
+    use std::ffi::OsString;
     use std::os::unix::fs::symlink;
 
     #[test]
@@ -185,5 +195,24 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn leaf_open_does_not_block_when_a_fifo_wins_the_race() {
+        let root =
+            std::env::temp_dir().join(format!("gitlane-worktree-fifo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let status = std::process::Command::new("mkfifo")
+            .arg(root.join("leaf"))
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let parent = Dir::open_ambient_dir(&root, cap_std::ambient_authority()).unwrap();
+        let opened = open_leaf_nofollow(&parent, &OsString::from("leaf")).unwrap();
+
+        assert!(!opened.metadata().unwrap().is_file());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
