@@ -168,4 +168,44 @@ describe("PR Diff tab", () => {
     render(<PrDiffTab pr={makePr()} />);
     expect(screen.getByText("No file changes in this PR.")).toBeInTheDocument();
   });
+
+  it("bounds mounted DOM rows for a 50k-line PR patch", () => {
+    const diffs = Array.from({ length: 200 }, (_, fileIndex) =>
+      fileDiff({
+        path: `src/file-${fileIndex}.ts`,
+        add: 250,
+        hunks: [
+          {
+            header: `@@ -0,0 +1,250 @@ file ${fileIndex}`,
+            lines: Array.from({ length: 250 }, (_, lineIndex) => ({
+              kind: "add" as const,
+              oldNo: null,
+              newNo: lineIndex + 1,
+              content: `file ${fileIndex} line ${lineIndex + 1}`,
+            })),
+          },
+        ],
+      }),
+    );
+    usePulls.setState({ prDiffs: { 42: diffs } });
+
+    const { container } = render(<PrDiffTab pr={makePr()} />);
+
+    expect(screen.getByText("file-0.ts")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-index]").length).toBeLessThan(100);
+    expect(screen.queryByText("file-199.ts")).not.toBeInTheDocument();
+  });
+
+  it("explains provider-side PR diff truncation without an unavailable full-load action", () => {
+    usePulls.setState({
+      prDiffs: { 42: [fileDiff({ truncated: true })] },
+    });
+
+    render(<PrDiffTab pr={makePr()} />);
+
+    expect(
+      screen.getByText("Large PR diff capped for performance — remaining lines are not shown."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show full diff" })).not.toBeInTheDocument();
+  });
 });

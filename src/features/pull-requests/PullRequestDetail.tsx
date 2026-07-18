@@ -123,7 +123,10 @@ function Body({
     );
   }
   return (
-    <div key={pr.num} className="min-h-0 flex-1 overflow-auto px-6 pb-7 pt-5">
+    <div
+      key={pr.num}
+      className={`min-h-0 flex-1 px-6 pb-7 pt-5 ${prTab === "diff" ? "flex flex-col overflow-hidden" : "overflow-auto"}`}
+    >
       {prTab === "info" && <PrInfoTab pr={pr} />}
       {prTab === "diff" && <PrDiffTab pr={pr} />}
       {prTab === "checks" && <PrChecksTab pr={pr} />}

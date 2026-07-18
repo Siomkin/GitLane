@@ -74,11 +74,18 @@ const norm = (r: Range): Range => ({
 export function useMultiFileLineComments(
   surface: string,
   linesByFile: ReadonlyMap<string, LineMeta[]>,
-  opts?: { confineDragToSide?: boolean },
+  opts?: {
+    confineDragToSide?: boolean;
+    /** Resolve an internal controller key to the real persisted note path.
+     * Multi-occurrence views use this to isolate duplicate path sections while
+     * keeping ReviewNote.file stable and human-readable. */
+    noteFileForKey?: (key: string) => string;
+  },
 ): { controllerFor: (file: string) => LineCommentsController } {
   // Split view confines a drag to the side it started on (left/old vs right/new),
   // so dragging across columns doesn't select the interleaved opposite side.
   const confineDragToSide = !!opts?.confineDragToSide;
+  const noteFileForKey = opts?.noteFileForKey;
   const allNotes = useUi((s) => s.reviewNotes);
   const addReviewNote = useUi((s) => s.addReviewNote);
   const removeReviewNote = useUi((s) => s.removeReviewNote);
@@ -93,10 +100,11 @@ export function useMultiFileLineComments(
   const contexts = useMemo(() => {
     const result = new Map<string, FileContext>();
     for (const [file, lines] of linesByFile) {
+      const noteFile = noteFileForKey?.(file) ?? file;
       const refToSeq = refIndex(lines);
       const placed: Placed[] = [];
       for (const note of allNotes) {
-        if (note.surface !== surface || note.file !== file) continue;
+        if (note.surface !== surface || note.file !== noteFile) continue;
         const a = refToSeq.get(note.fromRef);
         const b = refToSeq.get(note.toRef);
         if (a == null || b == null) continue;
@@ -112,7 +120,7 @@ export function useMultiFileLineComments(
       result.set(file, { lines, placed, anchorBySeq });
     }
     return result;
-  }, [allNotes, surface, linesByFile]);
+  }, [allNotes, surface, linesByFile, noteFileForKey]);
 
   // Release anywhere ends a drag and opens the editor over the selected range —
   // a click (no movement) yields a single-line range.
@@ -134,12 +142,19 @@ export function useMultiFileLineComments(
     const lines = editRange ? contexts.get(editRange.file)?.lines : undefined;
     if (editRange && lines && body) {
       addReviewNote(
-        buildNote(surface, editRange.file, lines, editRange.fromSeq, editRange.toSeq, body),
+        buildNote(
+          surface,
+          noteFileForKey?.(editRange.file) ?? editRange.file,
+          lines,
+          editRange.fromSeq,
+          editRange.toSeq,
+          body,
+        ),
       );
     }
     setEditRange(null);
     setDraft("");
-  }, [addReviewNote, contexts, draft, editRange, surface]);
+  }, [addReviewNote, contexts, draft, editRange, noteFileForKey, surface]);
 
   const cancel = useCallback(() => {
     setEditRange(null);

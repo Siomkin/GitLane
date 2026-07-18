@@ -3,6 +3,12 @@
 use super::path::diff_git_b_path;
 use crate::git::types::{DiffHunk, DiffLine, FileDiff};
 
+/// Maximum number of text-diff body lines retained across one PR/MR patch.
+/// The parser still scans the complete provider response after this budget is
+/// exhausted so file metadata and add/delete totals remain truthful; only the
+/// serialized hunk bodies are bounded.
+const MAX_PR_DIFF_LINES: usize = 20_000;
+
 /// Parse a git patch into [`FileDiff`]s, mirroring the shape libgit2 produces
 /// in `status.rs` so the frontend painter is shared. Status is the
 /// single-letter code the UI's `FileStatus` union expects (A/D/R/M).
@@ -14,7 +20,12 @@ use crate::git::types::{DiffHunk, DiffLine, FileDiff};
 /// - hunk bodies are bounded by their `@@` header counts, so trailing lines
 ///   (format-patch's `-- ` signature, stray text) never extend a hunk.
 pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
+    parse_unified_diff_with_limit(raw, MAX_PR_DIFF_LINES)
+}
+
+pub(super) fn parse_unified_diff_with_limit(raw: &str, line_limit: usize) -> Vec<FileDiff> {
     let mut files: Vec<FileDiff> = Vec::new();
+    let mut stored_lines = 0usize;
     let mut old_no = 0u32;
     let mut new_no = 0u32;
     // Body lines the current hunk still expects on each side, per its `@@`
@@ -56,9 +67,8 @@ pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
                 status: "M".to_string(),
                 commit_oid: commit_oid.clone(),
                 commit_subject: commit_subject.clone(),
-                // GitHub patches arrive already bounded by gh's own diff
-                // limits; byte sizes aren't carried in a unified patch, so the
-                // binary size fields stay `None`.
+                // Unified patches don't carry byte sizes, so the binary size
+                // fields stay `None`.
                 ..Default::default()
             });
             continue;
@@ -105,19 +115,20 @@ pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
                 old_left = 0;
                 new_left = 0;
             }
-            file.hunks.push(DiffHunk {
-                header: line.to_string(),
-                lines: Vec::new(),
-            });
+            if stored_lines < line_limit {
+                file.hunks.push(DiffHunk {
+                    header: line.to_string(),
+                    lines: Vec::new(),
+                });
+            } else {
+                file.truncated = true;
+            }
         } else if old_left > 0 || new_left > 0 {
             // Body lines only count while the current hunk still owes lines.
             // (`\ No newline` markers don't consume a count on either side.)
             if line.starts_with("\\ No newline") {
                 continue;
             }
-            let Some(hunk) = file.hunks.last_mut() else {
-                continue;
-            };
             let (kind, content) = match line.as_bytes().first() {
                 Some(b'+') => ("add", &line[1..]),
                 Some(b'-') => ("del", &line[1..]),
@@ -148,12 +159,19 @@ pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
                     (Some(o), Some(n))
                 }
             };
-            hunk.lines.push(DiffLine {
-                kind: kind.to_string(),
-                old_no: o,
-                new_no: n,
-                content: content.to_string(),
-            });
+            if stored_lines < line_limit {
+                if let Some(hunk) = file.hunks.last_mut() {
+                    hunk.lines.push(DiffLine {
+                        kind: kind.to_string(),
+                        old_no: o,
+                        new_no: n,
+                        content: content.to_string(),
+                    });
+                    stored_lines += 1;
+                }
+            } else {
+                file.truncated = true;
+            }
         }
     }
 

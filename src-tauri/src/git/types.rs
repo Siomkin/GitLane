@@ -562,8 +562,9 @@ pub struct FileDiff {
     pub del: usize,
     pub binary: bool,
     pub hunks: Vec<DiffHunk>,
-    /// True when the diff was capped at the line limit and `hunks` holds only
-    /// the first portion of the change (the frontend offers "show full diff").
+    /// True when the diff was capped at a line limit and `hunks` holds only the
+    /// first portion of the change. Callers may offer an uncapped reload when
+    /// their endpoint supports one.
     pub truncated: bool,
     /// Byte size of the file on the old / new side of a **binary** change, so the
     /// UI can show "old → new (±delta)" in place of a meaningless "+0 −0". `None`
