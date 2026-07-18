@@ -179,7 +179,7 @@ export function useTerminalPanes(): TerminalPanes {
     if (activeTabId) controller.get(activeTabId)?.view.clear();
   };
 
-  useTerminalInjection({ controller, activeTabId, alive, repoKey });
+  useTerminalInjection({ controller, repoKey });
 
   return { hostRef, alive, agents, terminalPath: repoKey, runAgent, clearTerminal };
 }

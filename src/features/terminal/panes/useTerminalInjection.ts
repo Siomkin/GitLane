@@ -10,23 +10,20 @@ import type { PaneController } from "./paneController";
 
 export interface TerminalInjectionInputs {
   controller: PaneController;
-  activeTabId: string | null;
-  /** Whether the active tab's PTY is running (injections wait for it). */
-  alive: boolean;
   /** The active repo's identity path — injection ownership is checked first. */
   repoKey: string | null;
 }
 
 export function useTerminalInjection({
   controller,
-  activeTabId,
-  alive,
   repoKey,
 }: TerminalInjectionInputs): void {
   const terminalInject = useUi((s) => s.terminalInject);
   const clearTerminalInject = useUi((s) => s.clearTerminalInject);
   const cancelAgentCommitDraft = useUi((s) => s.cancelAgentCommitDraft);
   const showToast = useUi((s) => s.showToast);
+  const targetTabId = terminalInject?.tabId ?? null;
+  const targetAlive = targetTabId ? (controller.get(targetTabId)?.alive ?? false) : false;
   useEffect(() => {
     if (!terminalInject) return;
     // An injection belongs to the repo whose flow queued it: if another repo is
@@ -38,8 +35,8 @@ export function useTerminalInjection({
       clearTerminalInject();
       return;
     }
-    if (!alive || !activeTabId) return;
-    const pane = controller.get(activeTabId);
+    if (!targetAlive || !targetTabId) return;
+    const pane = controller.get(targetTabId);
     if (!pane || pane.sessionId == null) return;
     const { view } = pane;
     let cancelled = false;
@@ -58,7 +55,7 @@ export function useTerminalInjection({
       // command would be typed but never executed, then the prompt would paste
       // onto the same line ("codexReview the staged changes…"). Unix PTYs map
       // CR->LF via the ICRNL line discipline, so `\r` works there too.
-      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\r`)).then((ok) => {
+      void controller.write(targetTabId, new TextEncoder().encode(`${terminalInject.command}\r`)).then((ok) => {
         if (cancelled) return;
         // The launch write failed (surfaced in the terminal) — keep the
         // injection queued instead of dropping the text on the floor (GL-176).
@@ -128,8 +125,8 @@ export function useTerminalInjection({
     };
   }, [
     terminalInject,
-    alive,
-    activeTabId,
+    targetAlive,
+    targetTabId,
     cancelAgentCommitDraft,
     clearTerminalInject,
     controller,

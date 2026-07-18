@@ -479,7 +479,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush();
@@ -517,7 +522,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush(); // launch write resolved; the prompt-wait timer is armed
@@ -557,7 +567,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush();
@@ -588,7 +603,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "codex", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "codex",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush();
@@ -687,6 +707,57 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     expect(useUi.getState().terminalInject).not.toBeNull();
   });
 
+  it("keeps an agent injection pinned when another tab becomes active", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({
+      summary: summaryFor("/repoA"),
+      takeAgentCommitDraft: vi.fn().mockResolvedValue(null),
+    });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        {
+          token: "tab-owned-injection",
+          agentName: "codex",
+          repoPath: "/repoA",
+          startedAt: Date.now(),
+        },
+        "review the staged changes",
+        "codex",
+      );
+    });
+    await flush();
+    await flush();
+
+    const targetTabId = useUi.getState().terminalInject?.tabId;
+    expect(targetTabId).toBe(useTerminals.getState().byRepo["/repoA"].activeId);
+    let otherTabId = "";
+    await act(async () => {
+      otherTabId = useTerminals.getState().openTab("/repoA");
+    });
+    await flush();
+    await flush();
+    expect(useTerminals.getState().byRepo["/repoA"].activeId).toBe(otherTabId);
+
+    xterm.instances[1].modes.bracketedPasteMode = true;
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(xterm.instances[1].pasted).toEqual(["review the staged changes"]);
+    expect(xterm.instances[2].pasted).toHaveLength(0);
+    const writes = invokeMock.mock.calls.filter((call) => call[0] === "pty_write");
+    expect(writes).toContainEqual([
+      "pty_write",
+      expect.objectContaining({ sessionId: 2 }),
+    ]);
+    expect(writes.some((call) => call[1]?.sessionId === 3)).toBe(false);
+    useUi.getState().cancelAgentCommitDraft();
+  });
+
   it("cancels a pending agent-launch injection on unmount — no late paste", async () => {
     vi.useFakeTimers();
     useRepo.setState({ summary: summaryFor("/repoA") });
@@ -699,7 +770,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     // succeeds, then the hook polls for the agent prompt before pasting.
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush(); // launch write resolved; the prompt-wait timer is armed
@@ -723,7 +799,12 @@ describe("terminal injection ownership (GL-176 review)", () => {
     // switched repos — the stale injection must die, not follow the switch.
     act(() => {
       useUi.setState({
-        terminalInject: { text: "secret prompt", command: "claude", repoKey: "/original" },
+        terminalInject: {
+          text: "secret prompt",
+          command: "claude",
+          repoKey: "/original",
+          tabId: "original-tab",
+        },
       });
     });
 
@@ -736,7 +817,12 @@ describe("terminal injection ownership (GL-176 review)", () => {
 
     act(() => {
       useUi.setState({
-        terminalInject: { text: "prompt", command: "claude", repoKey: "/current" },
+        terminalInject: {
+          text: "prompt",
+          command: "claude",
+          repoKey: "/current",
+          tabId: null,
+        },
       });
     });
 
@@ -745,12 +831,13 @@ describe("terminal injection ownership (GL-176 review)", () => {
     expect(useUi.getState().terminalInject).not.toBeNull();
   });
 
-  it("sendToTerminal stamps the injection with the active repo", () => {
+  it("sendToTerminal stamps the injection with the active repo and tab", () => {
     useUi.getState().sendToTerminal("the text", "claude");
     expect(useUi.getState().terminalInject).toMatchObject({
       text: "the text",
       command: "claude",
       repoKey: "/current",
+      tabId: useTerminals.getState().byRepo["/current"].activeId,
     });
     expect(useTerminals.getState().byRepo["/current"].tabs).toHaveLength(1);
   });

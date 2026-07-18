@@ -407,14 +407,14 @@ interface UiState {
   /** Pending text queued to be pasted into the terminal PTY (bracketed paste).
    * Consumed by the TerminalLayer once the PTY is alive, then cleared. When
    * `command` is set, the terminal launches that agent first, then pastes
-   * `text` into the agent prompt. `repoKey` is the repo whose flow queued it —
-   * the consumer discards the injection if another repo is active by the time
-   * it could deliver, so queued text never pastes into a different repo's
-   * shell (GL-176 review). */
+   * `text` into the agent prompt. `repoKey` and `tabId` identify the exact pane
+   * whose flow queued it, so switching repos or tabs cannot retarget queued
+   * text into a different shell. */
   terminalInject: {
     text: string;
     command?: string;
     repoKey: string | null;
+    tabId: string | null;
     /** Correlates a failed terminal delivery with the draft poll it must stop. */
     draftToken?: string;
   } | null;
@@ -962,19 +962,23 @@ export const useUi = create<UiState>()(
     }),
   // Open the terminal and stash the message; the TerminalLayer pastes it once the
   // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
-  // repo whose flow queued it (one-shot cross-store read) so it can never
-  // deliver into another repo's shell (GL-176 review).
+  // repo + tab whose flow queued it (one-shot cross-store read) so it can never
+  // deliver into another shell (GL-281).
   sendToTerminal: (text, command, draftToken) => {
     const repoKey = useRepo.getState().summary?.path ?? null;
+    let tabId: string | null = null;
     // A live PTY does not reveal whether its foreground program is the shell,
     // this agent, another agent, or an unrelated TUI. Every agent launch gets
     // a fresh tab so its command can never be typed into an unknown prompt.
-    if (command && repoKey) useTerminals.getState().openTab(repoKey);
+    if (repoKey) {
+      const terminals = useTerminals.getState();
+      tabId = command ? terminals.openTab(repoKey) : terminals.ensureTab(repoKey);
+    }
     set((s) => ({
       ...terminalViewPatch(s, "open"),
       terminalInject: command
-        ? { text, command, repoKey, ...(draftToken ? { draftToken } : {}) }
-        : { text, repoKey },
+        ? { text, command, repoKey, tabId, ...(draftToken ? { draftToken } : {}) }
+        : { text, repoKey, tabId },
     }));
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
