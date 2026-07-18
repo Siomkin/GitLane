@@ -122,6 +122,8 @@ jobs:
       - name: Audit JavaScript dependencies
         run: bun audit
 
+      - uses: ./.github/actions/setup-rust
+
       # Run the CLI from the Rust project root so src-tauri/.cargo/audit.toml
       # controls both advisory exceptions and the process exit status. The
       # direct command needs no Checks/Issues API writes, so the same read-only
