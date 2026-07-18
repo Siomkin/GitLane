@@ -1,0 +1,19 @@
+# cargo-audit treats informational advisories as warnings by default. Make new
+# unsoundness reports fail CI, with the one reviewed transitive exception below.
+[advisories]
+informational_warnings = ["unsound"]
+ignore = [
+  # glib 0.18.5: VariantStrIter's Iterator implementations are unsound
+  # (RUSTSEC-2024-0429). This is in Tauri's Linux-only GTK3/WebKit dependency
+  # chain; GitLane does not call VariantStrIter. There is no patched GTK3 line,
+  # so removal depends on Tauri moving its Linux runtime off this chain. Recheck
+  # on every Tauri upgrade and remove this exception as soon as the crate leaves
+  # Cargo.lock.
+  "RUSTSEC-2024-0429",
+]
+
+[output]
+deny = ["unsound"]
+format = "terminal"
+quiet = false
+show_tree = true
