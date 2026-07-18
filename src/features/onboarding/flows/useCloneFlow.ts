@@ -326,9 +326,17 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
 
   const cancelClone = useCallback(() => {
     cancelingRef.current = true;
-    void api.cancelClone().catch(() => {});
-    setError(canceledCloneCopy());
-    setScreen("error");
+    void api
+      .cancelClone()
+      .then(() => {
+        setError(canceledCloneCopy());
+        setScreen("error");
+      })
+      .catch(() => {
+        // Publication already won the backend race. Let the in-flight clone
+        // resolve normally instead of claiming a committed clone was canceled.
+        cancelingRef.current = false;
+      });
   }, [setScreen]);
 
   const retry = useCallback(() => {

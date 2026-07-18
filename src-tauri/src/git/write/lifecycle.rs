@@ -29,9 +29,25 @@ pub struct CloneProgress {
     pub pct: u8,
 }
 
-/// Shared slot holding the in-flight clone child so `cancel_clone` can kill it
-/// from another command while the clone thread streams progress.
-pub type CloneSlot = Arc<Mutex<Option<Child>>>;
+/// Shared clone lifecycle. Cancellation stays sticky after the child is
+/// reclaimed so it can still win the final race against publishing staging.
+pub type CloneSlot = Arc<Mutex<CloneOperation>>;
+
+#[derive(Default)]
+pub struct CloneOperation {
+    child: Option<Child>,
+    phase: ClonePhase,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum ClonePhase {
+    #[default]
+    Idle,
+    Running,
+    Cancelled,
+    Publishing,
+    Committed,
+}
 
 /// Clone `url` into `dest`, streaming progress to the frontend.
 ///
@@ -95,7 +111,7 @@ pub fn clone(
     // process and make `cancel_clone` target the wrong one.
     let mut stderr = {
         let mut guard = slot.lock().map_err(|e| e.to_string())?;
-        if guard.is_some() {
+        if guard.phase != ClonePhase::Idle {
             return Err("A clone is already in progress.".to_string());
         }
         let mut child = cmd
@@ -110,7 +126,8 @@ pub fn clone(
                 return Err("failed to capture git output".to_string());
             }
         };
-        *guard = Some(child);
+        guard.child = Some(child);
+        guard.phase = ClonePhase::Running;
         stderr
     };
 
@@ -153,17 +170,31 @@ pub fn clone(
     // Reclaim the child and wait for the real exit status. If `cancel_clone`
     // killed it, the wait returns the (failed) signal status; the UI already
     // shows the canceled state, so the returned error is harmless there.
-    let reclaimed = slot.lock().ok().and_then(|mut g| g.take());
+    let reclaimed = slot.lock().ok().and_then(|mut g| g.child.take());
     let success = match reclaimed {
-        Some(mut c) => c
-            .wait()
-            .map_err(|e| format!("git clone failed: {e}"))?
-            .success(),
+        Some(mut c) => match c.wait() {
+            Ok(status) => status.success(),
+            Err(err) => {
+                reset_clone_operation(&slot);
+                return Err(format!("git clone failed: {err}"));
+            }
+        },
         None => false,
     };
 
     if success {
-        clone_target.publish()?;
+        if !claim_clone_publication(&slot)? {
+            return Err("Clone canceled.".to_string());
+        }
+        let published = clone_target.publish();
+        if let Ok(mut guard) = slot.lock() {
+            guard.phase = if published.is_ok() {
+                ClonePhase::Committed
+            } else {
+                ClonePhase::Idle
+            };
+        }
+        published?;
         // Snap the bar to 100% before the UI swaps to the success screen.
         let _ = app.emit(
             "clone-progress",
@@ -172,11 +203,35 @@ pub fn clone(
                 pct: 100,
             },
         );
+        reset_clone_operation(&slot);
         Ok(dest.to_string())
     } else {
+        reset_clone_operation(&slot);
         // Dropping a private CloneTarget removes only its unpredictable staging
         // sibling. A pre-existing destination is deliberately left untouched.
         Err(extract_error(&transcript))
+    }
+}
+
+fn claim_clone_publication(slot: &CloneSlot) -> Result<bool, String> {
+    let mut guard = slot.lock().map_err(|err| err.to_string())?;
+    match guard.phase {
+        ClonePhase::Running => {
+            guard.phase = ClonePhase::Publishing;
+            Ok(true)
+        }
+        ClonePhase::Cancelled => {
+            guard.phase = ClonePhase::Idle;
+            Ok(false)
+        }
+        _ => Err("Clone lifecycle changed before publication.".to_string()),
+    }
+}
+
+fn reset_clone_operation(slot: &CloneSlot) {
+    if let Ok(mut guard) = slot.lock() {
+        guard.child = None;
+        guard.phase = ClonePhase::Idle;
     }
 }
 
@@ -576,12 +631,21 @@ fn parse_percent(line: &str) -> Option<u32> {
 /// Kill the in-flight clone child, if any. Idempotent: a no-op once the clone has
 /// finished and reclaimed its handle.
 pub fn cancel_clone(slot: &CloneSlot) -> Result<(), String> {
-    if let Ok(mut guard) = slot.lock() {
-        if let Some(child) = guard.as_mut() {
-            let _ = child.kill();
+    let mut guard = slot.lock().map_err(|err| err.to_string())?;
+    match guard.phase {
+        ClonePhase::Running => {
+            guard.phase = ClonePhase::Cancelled;
+            if let Some(child) = guard.child.as_mut() {
+                let _ = child.kill();
+            }
+            Ok(())
         }
+        ClonePhase::Cancelled => Ok(()),
+        ClonePhase::Publishing | ClonePhase::Committed => {
+            Err("The clone has already finished and is being published.".to_string())
+        }
+        ClonePhase::Idle => Err("No clone is in progress.".to_string()),
     }
-    Ok(())
 }
 
 /// Initialize a new repository at `parent`/`name` on initial branch `branch`,
@@ -837,6 +901,28 @@ mod tests {
         assert!(!work.exists(), "only private clone staging is rolled back");
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn cancellation_wins_after_child_reclaim_but_before_publication() {
+        let slot = CloneSlot::default();
+        slot.lock().unwrap().phase = ClonePhase::Running;
+
+        cancel_clone(&slot).expect("cancel before publication");
+
+        assert!(!claim_clone_publication(&slot).expect("publication decision"));
+        assert_eq!(slot.lock().unwrap().phase, ClonePhase::Idle);
+    }
+
+    #[test]
+    fn publication_wins_atomically_against_a_late_cancel() {
+        let slot = CloneSlot::default();
+        slot.lock().unwrap().phase = ClonePhase::Running;
+
+        assert!(claim_clone_publication(&slot).expect("claim publication"));
+
+        assert!(cancel_clone(&slot).is_err());
+        assert_eq!(slot.lock().unwrap().phase, ClonePhase::Publishing);
     }
 
     #[test]

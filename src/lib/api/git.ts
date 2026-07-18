@@ -1253,7 +1253,8 @@ export const gitApi = {
   cloneRepo: (url: string, dest: string, auth?: GitTransportAuthRef | null) =>
     invoke<string>("clone_repo", { url, dest, auth: auth ?? null }),
 
-  /** Cancel an in-flight {@link cloneRepo} (kills the `git clone` child). */
+  /** Cancel an in-flight {@link cloneRepo}. Rejects once publication has won
+   * the atomic backend race, so callers must keep the success path active. */
   cancelClone: () => invoke<void>("cancel_clone"),
 
   /** Initialize a new repo at `parent`/`name` on `branch`, optionally seeding a
