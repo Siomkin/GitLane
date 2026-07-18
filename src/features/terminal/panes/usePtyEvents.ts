@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { PtyDataEvent, PtyExitEvent } from "@/lib/api";
+import { useUi } from "@/store/ui";
 import type { PaneController } from "./paneController";
 
 export function usePtyEvents(controller: PaneController): boolean {
@@ -26,10 +27,15 @@ export function usePtyEvents(controller: PaneController): boolean {
       .then(() => {
         if (active) setReadyController(controller);
       })
-      .catch(() => {
+      .catch((error) => {
         // A missing listener keeps readiness false, so no PTY can start with
-        // only half of its event transport installed. Tauri reports the
-        // registration failure through its own invoke diagnostics.
+        // only half of its event transport installed. Surface the otherwise
+        // permanently blank terminal state through the app notification UI.
+        if (active) {
+          useUi
+            .getState()
+            .showToast(`Terminal event transport could not start: ${String(error)}`, "error");
+        }
       });
     return () => {
       active = false;

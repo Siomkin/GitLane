@@ -27,9 +27,13 @@ const ptyEvents = vi.hoisted(() => ({
   handlers: new Map<string, (event: { payload: unknown }) => void>(),
   deferRegistration: false,
   completeRegistration: new Map<string, () => void>(),
+  rejectRegistration: new Set<string>(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, cb: (event: { payload: unknown }) => void) => {
+    if (ptyEvents.rejectRegistration.has(name)) {
+      return Promise.reject(new Error(`could not listen for ${name}`));
+    }
     const install = () => {
       ptyEvents.handlers.set(name, cb);
       return () => {
@@ -155,6 +159,7 @@ beforeEach(() => {
   ptyEvents.handlers.clear();
   ptyEvents.deferRegistration = false;
   ptyEvents.completeRegistration.clear();
+  ptyEvents.rejectRegistration.clear();
   useRepo.setState({ summary: summaryFor("/current") });
   useTerminals.setState({ byRepo: {} });
   useTerminalAgents.setState({ loadAgents: vi.fn() });
@@ -197,6 +202,22 @@ describe("pane lifecycle across repo/tab switches (GL-177)", () => {
       ptyEvents.handlers.get("pty-data")?.({ payload: { sessionId: 1, data: [104, 105] } });
     });
     expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps readiness closed and surfaces listener registration failures", async () => {
+    ptyEvents.rejectRegistration.add("pty-exit");
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+
+    renderPanes();
+    await flush();
+    await flush();
+
+    expect(spawnCalls()).toHaveLength(0);
+    expect(useNotifications.getState().toasts.slice(-1)[0]).toMatchObject({
+      kind: "error",
+      title: expect.stringContaining("Terminal event transport could not start"),
+    });
   });
 
   it("hides a terminal in a new repo and restores the original repo's live pane", async () => {
