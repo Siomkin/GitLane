@@ -13,12 +13,15 @@ use serde::Deserialize;
 
 use crate::git::types::{PrAuthor, PrCommit, PullRequestDetail, PullRequestSummary};
 
-/// A Bitbucket paginated collection: `{ "values": [...], "next": "url" }`. Only
-/// `values` is consumed here; the caller paginates via the `page` query param.
+/// A Bitbucket paginated collection. `next` is an opaque server-provided URL;
+/// callers that need every page validate and follow it instead of inferring
+/// completion from page length.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BitbucketPage<T> {
     #[serde(default = "Vec::new")]
     pub values: Vec<T>,
+    #[serde(default)]
+    pub next: Option<String>,
 }
 
 /// One `/diffstat` row. The stat endpoint remains paginated when the raw patch

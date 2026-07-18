@@ -109,21 +109,38 @@ fn diff_stats(
     number: u64,
 ) -> Result<Vec<BitbucketDiffStat>, GithubError> {
     let mut stats = Vec::new();
-    for page in 1..=MAX_PAGES {
-        let path = format!(
-            "{repo}/pullrequests/{number}/diffstat?pagelen={PER_PAGE}&page={page}&fields=values.status,values.lines_added,values.lines_removed,values.old.path,values.new.path"
-        );
+    let resource = format!("{repo}/pullrequests/{number}/diffstat");
+    let mut path = format!(
+        "{resource}?pagelen={PER_PAGE}&fields=values.status,values.lines_added,values.lines_removed,values.old.path,values.new.path,next"
+    );
+    for _ in 0..MAX_PAGES {
         let raw = api.get("pull request diff stats", &path)?;
         let batch: BitbucketPage<BitbucketDiffStat> = parse(&raw, "pull request diff stats")?;
-        let full_page = batch.values.len() == PER_PAGE;
         stats.extend(batch.values);
-        if !full_page {
-            return Ok(stats);
+        match batch.next {
+            Some(next) => path = validated_next_path(&next, &resource)?,
+            None => return Ok(stats),
         }
     }
     Err(GithubError::InvalidResponse(format!(
         "Bitbucket pull request diff stats exceeded the {MAX_PAGES}-page safety limit."
     )))
+}
+
+fn validated_next_path(next: &str, expected_resource: &str) -> Result<String, GithubError> {
+    const API_PREFIX: &str = "https://api.bitbucket.org/2.0/";
+    let path = next.strip_prefix(API_PREFIX).ok_or_else(|| {
+        GithubError::InvalidResponse(
+            "Bitbucket pagination returned a continuation outside api.bitbucket.org.".to_string(),
+        )
+    })?;
+    let resource = path.split_once('?').map_or(path, |(resource, _)| resource);
+    if resource != expected_resource {
+        return Err(GithubError::InvalidResponse(
+            "Bitbucket pagination returned a continuation for a different resource.".to_string(),
+        ));
+    }
+    Ok(path.to_string())
 }
 
 /// The pull request's commit list (`/commits`), paginated so a large PR keeps
@@ -417,6 +434,49 @@ mod tests {
         assert_eq!(files[1].path, "missing.txt");
         assert_eq!((files[1].add, files[1].del), (8, 0));
         assert!(files[1].truncated);
+    }
+
+    #[test]
+    fn diffstat_follows_an_opaque_next_even_after_a_short_page() {
+        let patch = "";
+        let first = format!(
+            r#"{{"values":[{{"status":"added","lines_added":1,"new":{{"path":"first.txt"}}}}],"next":"https://api.bitbucket.org/2.0/{REPO}/pullrequests/8/diffstat?cursor=opaque%2Btoken"}}"#
+        );
+        let second =
+            r#"{"values":[{"status":"added","lines_added":2,"new":{"path":"second.txt"}}]}"#;
+        let http = MockTransport::new(vec![ok(patch), ok(&first), ok(second)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let files = pr_diff(&client, REPO, 8).expect("cursor pages");
+
+        assert_eq!(
+            files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first.txt", "second.txt"]
+        );
+        let requests = http.requests.lock().unwrap();
+        assert!(requests[1].url.contains("fields="));
+        assert!(requests[2].url.ends_with("?cursor=opaque%2Btoken"));
+    }
+
+    #[test]
+    fn diffstat_rejects_a_next_cursor_outside_the_expected_resource() {
+        let patch = "";
+        let foreign = r#"{"values":[],"next":"https://example.com/steal"}"#;
+        let http = MockTransport::new(vec![ok(patch), ok(foreign)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        assert!(matches!(
+            pr_diff(&client, REPO, 9),
+            Err(GithubError::InvalidResponse(_))
+        ));
+        assert_eq!(
+            http.request_count(),
+            2,
+            "foreign cursor was never requested"
+        );
     }
 
     #[test]
