@@ -288,11 +288,13 @@ fn run_pkce(
 /// Signal the in-flight sign-in to stop. Instant (a lock + a flag), so the IPC
 /// command stays synchronous and never queues behind the blocking pool.
 pub fn cancel_sign_in(slot: &SignInSlot) -> Result<(), String> {
-    if let Ok(mut g) = slot.lock() {
-        if !g.committing {
-            g.canceled = true;
-        }
+    let mut g = slot
+        .lock()
+        .map_err(|_| "Could not access the provider sign-in state.".to_string())?;
+    if g.committing {
+        return Err("Sign-in has already completed and can no longer be canceled.".to_string());
     }
+    g.canceled = true;
     Ok(())
 }
 
@@ -443,9 +445,10 @@ mod tests {
         }));
 
         begin_credential_commit(&slot).unwrap();
-        cancel_sign_in(&slot).unwrap();
+        let error = cancel_sign_in(&slot).unwrap_err();
 
         let g = slot.lock().unwrap();
+        assert!(error.contains("can no longer be canceled"));
         assert!(g.committing);
         assert!(!g.canceled, "cancel is too late once storage has committed");
     }

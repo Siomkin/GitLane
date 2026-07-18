@@ -135,7 +135,9 @@ describe("ProviderOauthDialog", () => {
     await waitFor(() => expect(progressListeners.length).toBe(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+    );
     expect(invokeMock).toHaveBeenCalledWith("cancel_provider_oauth_sign_in");
     // The eventual rejection stays a cancel, not an error screen.
     await act(async () => signin.reject(new Error("killed")));
@@ -152,6 +154,9 @@ describe("ProviderOauthDialog", () => {
     // Cancel while in-flight, then the backend flow actually completes and has
     // already persisted a token — the late success must be rolled back.
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+    );
     await act(async () => signin.resolve(result()));
 
     await waitFor(() =>
@@ -182,6 +187,9 @@ describe("ProviderOauthDialog", () => {
     await waitFor(() => expect(progressListeners.length).toBe(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+    );
     await act(async () => resolveSignin(result()));
 
     // The delete failed, so the account stays recorded and manageable.
@@ -225,6 +233,9 @@ describe("ProviderOauthDialog", () => {
     await waitFor(() => expect(progressListeners.length).toBe(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+    );
     await act(async () => resolveSignin(result()));
 
     // The flow pinned the sentinel, then the cancel restored @alice.
@@ -236,6 +247,36 @@ describe("ProviderOauthDialog", () => {
       accountId: "42",
     });
     await waitFor(() => expect(useAccounts.getState().providerTokens).toEqual({}));
+  });
+
+  it("keeps running when cancellation loses to the credential commit", async () => {
+    let resolveSignin!: (r: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "provider_oauth_sign_in") return new Promise((r) => (resolveSignin = r));
+      if (cmd === "cancel_provider_oauth_sign_in") {
+        return Promise.reject(
+          new Error("Sign-in has already completed and can no longer be canceled."),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+    openDialog();
+    render(<ProviderOauthDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain(
+        "can no longer be canceled",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+
+    await act(async () => resolveSignin(result()));
+    await waitFor(() => expect(screen.getByText("Signed in as @ada")).toBeInTheDocument());
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
   });
 
   it("Bitbucket uses the PKCE checklist (no code box) and opens the authorize page", async () => {
