@@ -10,8 +10,8 @@
 //!
 //! Resolution yields a [`TransportCredential`] — the *strategy* for one git
 //! network invocation. It still carries no secret: the `ProviderToken` variant
-//! holds only a non-secret keychain locator, which the bridge exchanges for the
-//! token inside a child process.
+//! holds only a non-secret keychain locator. The parent resolves that locator,
+//! then exposes the token to its askpass child through a command-scoped broker.
 
 use crate::git::types::GitTransportAuthRef;
 
@@ -29,8 +29,9 @@ pub enum TransportCredential {
     /// git's credential prompt from its own token store. Mirrors `Gh` for GitLab
     /// remotes so a glab sign-in provides transport with zero config (GL-139).
     Glab { host: String },
-    /// A GitLane-owned provider token, fed to git from the OS keychain via the
-    /// `GIT_ASKPASS` bridge. Fields are all non-secret locators.
+    /// A GitLane-owned provider token, fed to git through the parent-owned
+    /// `GIT_ASKPASS` bridge after it is read from the OS keychain. Fields are
+    /// all non-secret locators.
     ProviderToken(ProviderTokenBridge),
 }
 

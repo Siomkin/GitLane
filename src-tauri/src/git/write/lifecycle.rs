@@ -73,7 +73,8 @@ pub fn clone(
     // the progress text English and byte-stable for the parser regardless of the
     // user's locale. git Command construction (incl. PATH) is centralized in
     // cli::git_command_bare. The credential bridge contributes the `-c` config
-    // prefix (gh helper or GIT_ASKPASS clear) and any env (the askpass locator).
+    // prefix (gh helper or GIT_ASKPASS clear) and any env (the ephemeral askpass
+    // broker capability).
     let inv = crate::git::credential_bridge::git_invocation(cred)?;
     let args = clone_args(&inv.config, url, dest);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();

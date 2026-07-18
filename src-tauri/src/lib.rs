@@ -1698,10 +1698,10 @@ fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // If git spawned this binary as its GIT_ASKPASS helper (provider-token
-    // transport auth), answer the credential prompt from the OS keychain and
-    // exit before Tauri initialises — the helper process opens no window and
-    // touches no IPC. Must stay first so a normal launch is never mistaken for
-    // it (the marker env var is set only on the git child we spawn).
+    // transport auth), answer the credential prompt through the command-scoped
+    // parent broker and exit before Tauri initialises — the helper process opens
+    // no window, keychain, or IPC. Must stay first so a normal launch is never
+    // mistaken for it (the marker env var is set only on the git child we spawn).
     if git::credential_bridge::is_askpass_invocation() {
         git::credential_bridge::respond_to_askpass();
         return;
