@@ -36,6 +36,7 @@ jobs:
     timeout-minutes: 35
     outputs:
       release_tag: ${{ steps.release-tag.outputs.release_tag }}
+      release_commit: ${{ steps.release-commit.outputs.release_commit }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
@@ -102,20 +103,27 @@ jobs:
             exit 1
           fi
 
-      - name: Validate release tag is on latest
+      - name: Resolve and validate release commit
+        id: release-commit
         run: |
           git fetch --no-tags origin latest:refs/remotes/origin/latest
           if git rev-parse -q --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null; then
             RELEASE_COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
           else
-            RELEASE_COMMIT="$GITHUB_SHA"
+            RELEASE_COMMIT=$(git rev-parse HEAD)
             echo "Tag $RELEASE_TAG does not exist locally; validating checked-out commit $RELEASE_COMMIT."
+          fi
+          CHECKED_OUT_COMMIT=$(git rev-parse HEAD)
+          if [[ "$CHECKED_OUT_COMMIT" != "$RELEASE_COMMIT" ]]; then
+            echo "Checked-out commit $CHECKED_OUT_COMMIT does not match release commit $RELEASE_COMMIT."
+            exit 1
           fi
           if ! git merge-base --is-ancestor "$RELEASE_COMMIT" origin/latest; then
             echo "Release tag $RELEASE_TAG must publish a commit reachable from origin/latest."
             echo "Merge the release commit to latest before tagging or re-running this workflow."
             exit 1
           fi
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
 
       # Fail fast with a clear message instead of letting the bundle step die
       # opaquely: createUpdaterArtifacts is always on, so a missing/empty signing
@@ -157,13 +165,39 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Create or validate the draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.preflight.outputs.release_tag }}
+          COMMIT: ${{ needs.preflight.outputs.release_commit }}
         run: |
+          # A release always refers to a tag. Fetch that one tag when it exists,
+          # then prove it resolves to the same commit preflight validated.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+          TAG_ARGS=()
+          if git rev-parse -q --verify "refs/tags/$TAG^{commit}" >/dev/null; then
+            TAG_COMMIT=$(git rev-list -n 1 "$TAG")
+            if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
+              echo "Tag $TAG resolves to $TAG_COMMIT, not validated release commit $COMMIT."
+              exit 1
+            fi
+            TAG_ARGS+=(--verify-tag)
+          else
+            TAG_ARGS+=(--target "$COMMIT")
+          fi
+
           if IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [[ "${TAG_ARGS[0]}" != "--verify-tag" ]]; then
+              echo "Release $TAG exists but its tag could not be verified."
+              exit 1
+            fi
             if [[ "$IS_DRAFT" != "true" ]]; then
               echo "Release $TAG is already public; refusing to mutate it from a matrix rerun."
               exit 1
@@ -178,6 +212,7 @@ jobs:
           fi
           gh release create "$TAG" \
             --draft \
+            "${TAG_ARGS[@]}" \
             "${PRERELEASE_ARGS[@]}" \
             --title "GitLane $TAG" \
             --notes "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)." \
@@ -222,7 +257,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
+          ref: ${{ needs.preflight.outputs.release_commit }}
 
       - name: Install Rust stable
         uses: ./.github/actions/setup-rust
