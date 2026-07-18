@@ -11,7 +11,7 @@ use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,7 @@ const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
 const SERVER_IO_TIMEOUT: Duration = Duration::from_millis(500);
+const SERVER_CONNECTION_TIMEOUT: Duration = Duration::from_secs(2);
 const ACCEPT_POLL: Duration = Duration::from_millis(10);
 const MAX_IN_FLIGHT: usize = 8;
 
@@ -178,9 +179,26 @@ impl Drop for InFlightSlot {
 }
 
 fn serve_connection(mut stream: TcpStream, expected_host: &str, token: &str, nonce: &str) {
-    let _ = stream.set_read_timeout(Some(SERVER_IO_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(SERVER_IO_TIMEOUT));
-    let Some(bytes) = read_bounded(&mut stream, MAX_REQUEST_BYTES) else {
+    serve_connection_with_timeout(
+        &mut stream,
+        expected_host,
+        token,
+        nonce,
+        SERVER_CONNECTION_TIMEOUT,
+    );
+}
+
+fn serve_connection_with_timeout(
+    stream: &mut TcpStream,
+    expected_host: &str,
+    token: &str,
+    nonce: &str,
+    timeout: Duration,
+) {
+    let Some(deadline) = Instant::now().checked_add(timeout) else {
+        return;
+    };
+    let Some(bytes) = read_bounded_until(stream, MAX_REQUEST_BYTES, deadline) else {
         return;
     };
     let Ok(request) = serde_json::from_slice::<Request>(&bytes) else {
@@ -200,8 +218,40 @@ fn serve_connection(mut stream: TcpStream, expected_host: &str, token: &str, non
         _ => None,
     };
     if let Ok(encoded) = serde_json::to_vec(&Response { answer }) {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return;
+        };
+        let _ = stream.set_write_timeout(Some(remaining.min(SERVER_IO_TIMEOUT)));
         let _ = stream.write_all(&encoded);
         let _ = stream.flush();
+    }
+}
+
+fn read_bounded_until(
+    stream: &mut TcpStream,
+    max_bytes: usize,
+    deadline: Instant,
+) -> Option<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(max_bytes.min(4096));
+    let mut buffer = [0u8; 4096];
+    loop {
+        let remaining = deadline.checked_duration_since(Instant::now())?;
+        stream
+            .set_read_timeout(Some(remaining.min(SERVER_IO_TIMEOUT)))
+            .ok()?;
+        let allowed = max_bytes.saturating_add(1).saturating_sub(bytes.len());
+        if allowed == 0 {
+            return None;
+        }
+        let chunk_len = buffer.len().min(allowed);
+        let read = stream.read(&mut buffer[..chunk_len]).ok()?;
+        if read == 0 {
+            return Some(bytes);
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+        if bytes.len() > max_bytes {
+            return None;
+        }
     }
 }
 
@@ -296,5 +346,47 @@ mod tests {
             "real askpass waited behind the stalled client: {:?}",
             started.elapsed()
         );
+    }
+
+    #[test]
+    fn drip_feed_cannot_extend_the_connection_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut client = TcpStream::connect(address).unwrap();
+        let (mut server, _) = listener.accept().unwrap();
+        let timeout = Duration::from_millis(75);
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+
+        let server_thread = std::thread::spawn(move || {
+            let started = Instant::now();
+            serve_connection_with_timeout(
+                &mut server,
+                "gitlab.com",
+                "glpat-secret",
+                "nonce",
+                timeout,
+            );
+            finished_tx.send(started.elapsed()).unwrap();
+        });
+        let feeder = std::thread::spawn(move || loop {
+            if client.write_all(b"{").is_err() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        });
+
+        let elapsed = finished_rx
+            .recv_timeout(Duration::from_millis(250))
+            .expect("drip feed held the broker past its hard deadline");
+        assert!(
+            elapsed >= Duration::from_millis(50),
+            "connection did not exercise the drip-feed window: {elapsed:?}"
+        );
+        assert!(
+            elapsed < Duration::from_millis(200),
+            "connection exceeded its deadline: {elapsed:?}"
+        );
+        server_thread.join().unwrap();
+        feeder.join().unwrap();
     }
 }
