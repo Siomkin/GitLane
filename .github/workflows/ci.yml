@@ -75,6 +75,7 @@ jobs:
               - '.github/workflows/ci.yml'
             rust:
               - 'src-tauri/**'
+              - '.github/actions/setup-rust/**'
               - '.github/workflows/ci.yml'
             security:
               - 'package.json'
@@ -85,6 +86,7 @@ jobs:
               - 'rust-toolchain*'
               - 'SECURITY.md'
               - '.github/dependabot.yml'
+              - '.github/actions/setup-rust/**'
               - '.github/workflows/**'
 
   security:
@@ -207,9 +209,8 @@ jobs:
           }
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        uses: ./.github/actions/setup-rust
         with:
-          toolchain: 1.97.1
           components: rustfmt, clippy
 
       # Self-hosted: compile into a persistent target dir on the box instead of the
