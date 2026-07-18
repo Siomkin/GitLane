@@ -249,6 +249,7 @@ fn file_change(
         add,
         del,
         binary,
+        line_count_truncated: false,
         // The multi-commit union diff is keyed by a single path (renames are
         // resolved into the net add/delete), so there is no distinct old side.
         previous_path: None,
@@ -383,6 +384,7 @@ fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::
         add,
         del,
         binary: false,
+        line_count_truncated: false,
         previous_path: None,
         advanced: None,
     })

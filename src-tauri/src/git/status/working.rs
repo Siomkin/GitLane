@@ -111,6 +111,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add: 0,
                 del: 0,
                 binary: false,
+                line_count_truncated: false,
                 previous_path: None,
                 advanced: None,
             });
@@ -166,6 +167,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add,
                 del,
                 binary,
+                line_count_truncated: false,
                 previous_path,
                 advanced: None,
             });
@@ -216,6 +218,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 .flatten();
             let (mut add, del, mut binary) =
                 unstaged_counts.get(&p).copied().unwrap_or((0, 0, false));
+            let mut line_count_truncated = false;
             // Untracked files don't appear in the index-to-workdir diff stats
             // above unless include_untracked content was diffed; ensure a
             // sensible count by reading the file when needed. The same probe
@@ -231,12 +234,14 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                     use std::io::Read;
                     const MAX_PROBE: u64 = 1 << 20; // 1 MiB
                     if let Ok(mut file) = open_regular_worktree_file(wd, &p) {
+                        let exceeds_probe = file.len() > MAX_PROBE;
                         let mut buf = Vec::new();
                         if file.reader().take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
                             if buf.contains(&0) {
                                 binary = true;
                             } else {
                                 add = String::from_utf8_lossy(&buf).lines().count();
+                                line_count_truncated = exceeds_probe;
                             }
                         }
                     }
@@ -248,6 +253,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add,
                 del,
                 binary,
+                line_count_truncated,
                 previous_path,
                 advanced: None,
             });

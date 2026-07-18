@@ -452,6 +452,11 @@ pub struct FileChange {
     /// True when git treats this delta as binary (no line stats / text hunks).
     /// Lets file lists mark it as binary instead of showing a misleading "+0 −0".
     pub binary: bool,
+    /// True when `add` is only a lower bound because the backend deliberately
+    /// capped a large worktree-file probe. Omitted when false so ordinary diff
+    /// payloads stay compact.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub line_count_truncated: bool,
     /// For a rename ("R") — or copy ("C") — the delta's old-side path (the
     /// rename/copy source). For a rename it is carried so staging/unstaging can
     /// act on both the old and new path atomically: a bare `git add <new>` stages

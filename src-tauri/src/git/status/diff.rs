@@ -242,6 +242,7 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             add,
             del,
             binary,
+            line_count_truncated: false,
             previous_path,
             advanced: None,
         });

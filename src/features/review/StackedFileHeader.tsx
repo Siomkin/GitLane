@@ -42,6 +42,7 @@ export function StackedFileHeader({
         add={file.add}
         del={file.del}
         binary={file.binary}
+        addAtLeast={file.lineCountTruncated}
         className="text-[11px]"
       />
     </button>

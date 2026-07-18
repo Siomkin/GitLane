@@ -125,6 +125,7 @@ const fileChangeSchema = z.object({
   add: z.number(),
   del: z.number(),
   binary: z.boolean(),
+  lineCountTruncated: z.boolean().optional(),
   previousPath: z.string().optional(),
   advanced: fileAdvancedStateSchema.optional(),
 });

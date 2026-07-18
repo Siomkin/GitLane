@@ -16,4 +16,12 @@ describe("ChangeCounts", () => {
     expect(screen.queryByText("+0")).not.toBeInTheDocument();
     expect(screen.queryByText("−0")).not.toBeInTheDocument();
   });
+
+  it("marks a bounded addition count as a lower bound", () => {
+    render(<ChangeCounts add={512} del={0} addAtLeast />);
+    expect(screen.getByText("+≥512")).toHaveAttribute(
+      "title",
+      "At least 512 added lines; the large-file count was capped",
+    );
+  });
 });

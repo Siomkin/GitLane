@@ -716,6 +716,32 @@ fn untracked_binary_file_is_flagged_in_working_changes() {
 }
 
 #[test]
+fn large_untracked_text_count_is_marked_as_a_lower_bound() {
+    let dir = std::env::temp_dir().join("gitlane-large-untracked-count-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+
+    // Cross the 1 MiB working-status probe without embedding a NUL byte. The
+    // returned count covers only that prefix and must never look exact.
+    let line = "0123456789abcdef\n";
+    fs::write(dir.join("large.txt"), line.repeat(70_000)).unwrap();
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "large.txt")
+        .unwrap();
+    assert!(!entry.binary);
+    assert!(entry.add > 0);
+    assert!(entry.line_count_truncated);
+    assert!(entry.add < 70_000);
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn untracked_image_is_flagged_binary_and_previewable() {
     let dir = std::env::temp_dir().join("gitlane-binary-image-test");
     let _ = fs::remove_dir_all(&dir);

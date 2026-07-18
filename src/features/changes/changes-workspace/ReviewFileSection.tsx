@@ -63,7 +63,13 @@ export function ReviewFileSection({
           <strong className="font-semibold text-neutral-800 dark:text-neutral-100">{basename(file.path)}</strong>
         </span>
         <StatusPill status={file.status} />
-        <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-[11px]" />
+        <ChangeCounts
+          add={file.add}
+          del={file.del}
+          binary={file.binary}
+          addAtLeast={file.lineCountTruncated}
+          className="text-[11px]"
+        />
         {file.advanced && (
           <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-700 dark:text-amber-300">
             {file.advanced.message}
