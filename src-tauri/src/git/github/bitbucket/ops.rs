@@ -75,39 +75,68 @@ pub fn pr_diff(
     let patch = api.get_text("pull request diff", &path)?;
     let mut files = parse_unified_diff(&patch);
     let stats = diff_stats(api, repo, number)?;
-    for stat in stats {
+    for stat in stats.values {
         let path = stat.path();
         if path.is_empty() {
             continue;
         }
-        let add = usize::try_from(stat.lines_added).unwrap_or(usize::MAX);
-        let del = usize::try_from(stat.lines_removed).unwrap_or(usize::MAX);
         if let Some(file) = files.iter_mut().find(|file| file.path == path) {
-            if file.add < add || file.del < del {
-                file.truncated = true;
+            if let Some(add) = stat
+                .lines_added
+                .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+            {
+                if file.add != add {
+                    file.truncated = true;
+                }
+                file.add = file.add.max(add);
             }
-            // Diffstat totals stay truthful even when the patch body is elided.
-            file.add = add;
-            file.del = del;
+            if let Some(del) = stat
+                .lines_removed
+                .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+            {
+                if file.del != del {
+                    file.truncated = true;
+                }
+                file.del = file.del.max(del);
+            }
         } else {
             files.push(FileDiff {
                 path: path.to_string(),
                 status: stat.file_status().to_string(),
-                add,
-                del,
+                add: stat
+                    .lines_added
+                    .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+                    .unwrap_or(0),
+                del: stat
+                    .lines_removed
+                    .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+                    .unwrap_or(0),
                 truncated: true,
                 ..Default::default()
             });
         }
     }
+    if stats.capped {
+        eprintln!(
+            "gitlane: Bitbucket PR #{number} diff stats hit the {MAX_PAGES}-page cap; the bounded diff is marked incomplete"
+        );
+        for file in &mut files {
+            file.truncated = true;
+        }
+    }
     Ok(files)
+}
+
+struct DiffStatsResult {
+    values: Vec<BitbucketDiffStat>,
+    capped: bool,
 }
 
 fn diff_stats(
     api: &dyn BitbucketApi,
     repo: &str,
     number: u64,
-) -> Result<Vec<BitbucketDiffStat>, GithubError> {
+) -> Result<DiffStatsResult, GithubError> {
     let mut stats = Vec::new();
     let resource = format!("{repo}/pullrequests/{number}/diffstat");
     let mut path = format!(
@@ -119,12 +148,18 @@ fn diff_stats(
         stats.extend(batch.values);
         match batch.next {
             Some(next) => path = validated_next_path(&next, &resource)?,
-            None => return Ok(stats),
+            None => {
+                return Ok(DiffStatsResult {
+                    values: stats,
+                    capped: false,
+                })
+            }
         }
     }
-    Err(GithubError::InvalidResponse(format!(
-        "Bitbucket pull request diff stats exceeded the {MAX_PAGES}-page safety limit."
-    )))
+    Ok(DiffStatsResult {
+        values: stats,
+        capped: true,
+    })
 }
 
 fn validated_next_path(next: &str, expected_resource: &str) -> Result<String, GithubError> {
@@ -437,6 +472,22 @@ mod tests {
     }
 
     #[test]
+    fn pr_diff_preserves_parsed_counts_when_diffstat_omits_a_side() {
+        let patch =
+            "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+        let stat = r#"{"values":[
+            {"status":"modified","lines_removed":2,"new":{"path":"a.txt"}}
+        ]}"#;
+        let http = MockTransport::new(vec![ok(patch), ok(stat)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let files = pr_diff(&client, REPO, 7).expect("partially supplied diffstat");
+
+        assert_eq!((files[0].add, files[0].del), (1, 2));
+        assert!(files[0].truncated);
+    }
+
+    #[test]
     fn diffstat_follows_an_opaque_next_even_after_a_short_page() {
         let patch = "";
         let first = format!(
@@ -477,6 +528,33 @@ mod tests {
             2,
             "foreign cursor was never requested"
         );
+    }
+
+    #[test]
+    fn diffstat_page_cap_returns_a_bounded_incomplete_diff() {
+        let patch =
+            "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+        let mut responses = vec![ok(patch)];
+        for page in 0..MAX_PAGES {
+            let values = if page == 0 {
+                r#"[{"status":"modified","lines_added":1,"lines_removed":1,"new":{"path":"a.txt"}}]"#
+            } else {
+                "[]"
+            };
+            let body = format!(
+                r#"{{"values":{values},"next":"https://api.bitbucket.org/2.0/{REPO}/pullrequests/10/diffstat?cursor={page}"}}"#
+            );
+            responses.push(ok(&body));
+        }
+        let http = MockTransport::new(responses);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let files = pr_diff(&client, REPO, 10).expect("bounded diffstat");
+
+        assert_eq!(files.len(), 1);
+        assert_eq!((files[0].add, files[0].del), (1, 1));
+        assert!(files[0].truncated);
+        assert_eq!(http.request_count(), MAX_PAGES + 1);
     }
 
     #[test]

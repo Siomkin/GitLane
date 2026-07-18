@@ -32,9 +32,9 @@ pub struct BitbucketDiffStat {
     #[serde(default)]
     pub status: String,
     #[serde(default)]
-    pub lines_added: u64,
+    pub lines_added: Option<u64>,
     #[serde(default)]
-    pub lines_removed: u64,
+    pub lines_removed: Option<u64>,
     #[serde(default)]
     pub old: Option<BitbucketDiffPath>,
     #[serde(default)]
