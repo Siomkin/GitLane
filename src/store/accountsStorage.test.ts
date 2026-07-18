@@ -54,6 +54,28 @@ describe("localStorage maps", () => {
     expect(readProviderTokens()).toEqual({});
   });
 
+  it("keeps legacy bare-string and v3 per-remote bindings for migration", () => {
+    const persisted = {
+      "/legacy": "alice",
+      "/v3": {
+        version: 3,
+        remotes: {
+          origin: {
+            provider: "gh",
+            host: "github.com",
+            accountId: "1",
+            login: "alice",
+          },
+          fork: { unbound: true },
+          mirror: "legacy-account-id",
+        },
+      },
+    };
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify(persisted));
+
+    expect(readBindings()).toEqual(persisted);
+  });
+
   it("keeps the provider-token metadata under its keyed map", () => {
     const t = token();
     writeProviderTokens({ [providerTokenKey(t.credentialHost, t.login)]: t });
