@@ -1,3 +1,4 @@
+use super::advanced::MAX_GITATTRIBUTES_BYTES;
 use super::diff::DIFF_LINE_LIMIT;
 use super::{
     commit_file_diff, commit_files, compare_file_diff, compare_refs, diff_range_file, file_blame,
@@ -463,6 +464,47 @@ fn working_changes_reports_lfs_state() {
         .iter()
         .any(|issue| issue.contains("asset.bin")));
 
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn working_changes_does_not_follow_a_gitattributes_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = std::env::temp_dir().join("gitlane-lfs-attributes-symlink-test");
+    let outside = dir.with_extension("outside-attributes");
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_file(&outside);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    fs::write(&outside, "*.bin filter=lfs diff=lfs merge=lfs -text\n").unwrap();
+    symlink(&outside, dir.join(".gitattributes")).unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+
+    assert!(changes.advanced.lfs.patterns.is_empty());
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_file(&outside);
+}
+
+#[test]
+fn working_changes_ignores_oversized_gitattributes() {
+    let dir = std::env::temp_dir().join("gitlane-lfs-attributes-size-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    fs::write(
+        dir.join(".gitattributes"),
+        vec![b'x'; MAX_GITATTRIBUTES_BYTES + 1],
+    )
+    .unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+
+    assert!(changes.advanced.lfs.patterns.is_empty());
     let _ = fs::remove_dir_all(&dir);
 }
 

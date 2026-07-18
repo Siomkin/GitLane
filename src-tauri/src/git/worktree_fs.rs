@@ -130,6 +130,37 @@ pub(crate) fn read_regular_worktree_file(workdir: &Path, file: &str) -> io::Resu
     Ok(bytes)
 }
 
+/// Read a regular worktree file through the capability boundary with a hard
+/// byte ceiling. Check both the opened metadata and a one-byte streaming probe:
+/// a repository-controlled file can grow after `metadata()` but must never make
+/// a best-effort status read allocate without bound.
+pub(crate) fn read_regular_worktree_file_bounded(
+    workdir: &Path,
+    file: &str,
+    max_bytes: usize,
+) -> io::Result<Vec<u8>> {
+    let mut opened = open_regular_worktree_file(workdir, file)?;
+    if opened.len() > max_bytes as u64 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("worktree file exceeds the {max_bytes}-byte limit: {file:?}"),
+        ));
+    }
+    let probe_limit = max_bytes.saturating_add(1);
+    let mut bytes = Vec::with_capacity(probe_limit.min(1024 * 1024));
+    opened
+        .reader()
+        .take(probe_limit as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("worktree file exceeds the {max_bytes}-byte limit: {file:?}"),
+        ));
+    }
+    Ok(bytes)
+}
+
 fn open_parent(workdir: &Path, file: &str) -> io::Result<(Dir, OsString)> {
     let rel = Path::new(file);
     if rel.is_absolute() {

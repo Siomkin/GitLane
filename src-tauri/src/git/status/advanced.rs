@@ -9,6 +9,8 @@ use crate::git::types::{
     AdvancedRepoState, FileAdvancedState, FileChange, LfsState, SparseCheckoutState, SubmoduleState,
 };
 
+pub(super) const MAX_GITATTRIBUTES_BYTES: usize = 256 * 1024;
+
 pub(super) fn advanced_state(repo: &Repository, changed_paths: &[String]) -> AdvancedRepoState {
     let submodules = submodule_states(repo);
     let lfs = lfs_state(repo, changed_paths);
@@ -165,9 +167,7 @@ fn summarize_submodule_status(status: SubmoduleStatus) -> (String, Vec<String>, 
 
 fn lfs_state(repo: &Repository, changed_paths: &[String]) -> LfsState {
     let workdir = repo.workdir();
-    let patterns = workdir
-        .map(|dir| lfs_patterns(&dir.join(".gitattributes")))
-        .unwrap_or_default();
+    let patterns = workdir.map(lfs_patterns).unwrap_or_default();
 
     let config_detected = repo
         .config()
@@ -228,10 +228,17 @@ fn lfs_state(repo: &Repository, changed_paths: &[String]) -> LfsState {
     }
 }
 
-fn lfs_patterns(attributes: &Path) -> Vec<String> {
+fn lfs_patterns(workdir: &Path) -> Vec<String> {
     // Best-effort only: this intentionally reads the root attributes file.
     // Nested .gitattributes support would need a git attribute query per path.
-    let Ok(contents) = std::fs::read_to_string(attributes) else {
+    let Ok(bytes) = crate::git::worktree_fs::read_regular_worktree_file_bounded(
+        workdir,
+        ".gitattributes",
+        MAX_GITATTRIBUTES_BYTES,
+    ) else {
+        return Vec::new();
+    };
+    let Ok(contents) = String::from_utf8(bytes) else {
         return Vec::new();
     };
 
