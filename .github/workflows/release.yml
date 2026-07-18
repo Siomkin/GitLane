@@ -456,6 +456,13 @@ jobs:
               exit 1
             fi
           done
+          gh release view "$TAG" --json assets --jq '[.assets[] | .apiUrl, .url]' > release-asset-urls.json
+          if ! jq -e --slurpfile assets release-asset-urls.json '
+            all(.platforms[].url; . as $url | ($assets[0] | index($url)) != null)
+          ' latest.json >/dev/null; then
+            echo "latest.json references an updater asset that is not attached to $TAG."
+            exit 1
+          fi
 
           IS_PRERELEASE=false
           if [[ "$TAG" == *-* ]]; then
@@ -547,6 +554,13 @@ jobs:
               exit 1
             fi
           done
+          gh release view "$TAG" --json assets --jq '[.assets[] | .apiUrl, .url]' > release-asset-urls.json
+          if ! jq -e --slurpfile assets release-asset-urls.json '
+            all(.platforms[].url; . as $url | ($assets[0] | index($url)) != null)
+          ' latest.json >/dev/null; then
+            echo "latest.json references an updater asset that is not attached to $TAG."
+            exit 1
+          fi
 
           if ! gh release view beta >/dev/null 2>&1; then
             gh release create beta \
