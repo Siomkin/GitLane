@@ -27,6 +27,8 @@
 - [ ] `bunx tsc --noEmit`
 - [ ] `bun run test`
 - [ ] `(cd src-tauri && cargo check)`
+- [ ] `(cd src-tauri && cargo fmt --all -- --check)`
+- [ ] `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)`
 - [ ] `(cd src-tauri && cargo test)`
 - [ ] `bun run tauri dev` smoke test
 

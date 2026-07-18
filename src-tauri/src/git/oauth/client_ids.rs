@@ -100,10 +100,7 @@ fn normalize_host(host: &str) -> String {
 }
 
 fn is_valid_client_id(id: &str) -> bool {
-    id.len() <= 256
-        && id
-            .chars()
-            .all(|c| !c.is_control() && !c.is_whitespace())
+    id.len() <= 256 && id.chars().all(|c| !c.is_control() && !c.is_whitespace())
 }
 
 #[cfg(test)]

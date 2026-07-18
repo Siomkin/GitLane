@@ -202,7 +202,10 @@ jobs:
           }
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
 
       # Self-hosted: compile into a persistent target dir on the box instead of the
       # GitHub cache API. actions/checkout wipes the workspace (git clean -ffdx)
@@ -228,6 +231,10 @@ jobs:
           # so keep them restore-only.
           save-if: ${{ github.event_name != 'pull_request_target' }}
 
+      - name: Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
       - name: Install Linux Tauri dependencies
         # Skipped on the self-hosted runner (sudo-less user; deps preinstalled on the
         # host). runner.environment keeps this working if a job ever runs hosted.
@@ -239,3 +246,7 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+      - name: Rust Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings

@@ -61,6 +61,7 @@ pub fn apply_hunk(
 /// from the staged diff when `staged` is true. The frontend identifies the
 /// displayed line; Rust regenerates the current patch and rejects stale line
 /// state before applying anything.
+#[allow(clippy::too_many_arguments)] // Each value guards one displayed line field.
 pub fn apply_line(
     repo: &str,
     file: &str,
@@ -111,7 +112,7 @@ pub fn apply_line(
 /// `extract_single_hunk_patch`/`extract_single_line_patch` additionally validate
 /// the expected hunk range + body / line content before applying, so any residual
 /// divergence fails safe ("refresh and try again") instead of staging the wrong hunk.
-pub(super) fn patch_diff_args<'a>(staged: bool, file: &'a str) -> Vec<&'a str> {
+pub(super) fn patch_diff_args(staged: bool, file: &str) -> Vec<&str> {
     let mut args = vec![
         "--literal-pathspecs",
         "diff",
@@ -593,6 +594,7 @@ pub fn commit(
 
 /// Commit only while HEAD still matches the branch/oid snapshot the composer
 /// was opened against. This applies to ordinary commits and amend alike.
+#[allow(clippy::too_many_arguments)] // Mirrors the guarded commit IPC contract.
 pub fn commit_expected(
     repo: &str,
     expected_branch: Option<&str>,
@@ -611,6 +613,7 @@ pub fn commit_expected(
 /// contract. The rollback is attempted only while the same branch still owns
 /// the soft-reset state, so an external checkout cannot make recovery reset a
 /// different branch.
+#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
 pub fn squash_commits(
     repo: &str,
     expected_branch: Option<&str>,

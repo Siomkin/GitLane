@@ -1465,7 +1465,10 @@ fn list_repo_files_skips_gitlink_submodule_entries() {
 
     let files = super::list_repo_files(dir.to_str().unwrap()).unwrap();
     assert!(files.contains(&"real.txt".to_string()), "{files:?}");
-    assert!(!files.contains(&"vendor/sub".to_string()), "gitlink listed: {files:?}");
+    assert!(
+        !files.contains(&"vendor/sub".to_string()),
+        "gitlink listed: {files:?}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1531,14 +1534,19 @@ fn repo_file_head_text_returns_committed_baseline() {
     // divergence is exactly what the change gutter visualizes.
     fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
     assert_eq!(
-        super::repo_file_head_text(path, "a.txt").unwrap().as_deref(),
+        super::repo_file_head_text(path, "a.txt")
+            .unwrap()
+            .as_deref(),
         Some("one\ntwo\n"),
     );
 
     // Untracked / not-in-HEAD → no baseline.
     fs::write(dir.join("new.txt"), "fresh\n").unwrap();
     assert_eq!(super::repo_file_head_text(path, "new.txt").unwrap(), None);
-    assert_eq!(super::repo_file_head_text(path, "missing.txt").unwrap(), None);
+    assert_eq!(
+        super::repo_file_head_text(path, "missing.txt").unwrap(),
+        None
+    );
 
     // A binary blob at HEAD has no line baseline.
     commit_bytes(&repo, &dir, "blob.bin", &[0u8, 1, 2, 3]);

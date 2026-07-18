@@ -32,7 +32,10 @@ pub fn resolve_account(
     let auth = format!("Bearer {access_token}");
     let resp = http.get(
         user_api_url,
-        &[("Authorization", auth.as_str()), ("Accept", "application/json")],
+        &[
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ],
     )?;
     if !resp.is_success() {
         return Err("Signed in, but couldn't read your account from the provider.".into());
@@ -135,11 +138,9 @@ mod tests {
     #[test]
     fn resolve_account_uses_the_token_and_parses_the_body() {
         use crate::git::oauth::http::testing::MockTransport;
-        let http = MockTransport::new(vec![MockTransport::ok(
-            200,
-            r#"{"id":7,"username":"neo"}"#,
-        )]);
-        let acc = resolve_account(&http, "gitlab", "https://gitlab.com/api/v4/user", "tok").unwrap();
+        let http = MockTransport::new(vec![MockTransport::ok(200, r#"{"id":7,"username":"neo"}"#)]);
+        let acc =
+            resolve_account(&http, "gitlab", "https://gitlab.com/api/v4/user", "tok").unwrap();
         assert_eq!(acc.login, "neo");
         // The Authorization header carried the token (get records no form body,
         // but the request was made against the user endpoint).

@@ -374,8 +374,7 @@ fn extract_error(transcript: &str) -> String {
             transcript
                 .lines()
                 .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .last()
+                .rfind(|l| !l.is_empty())
                 .map(str::to_string)
                 .unwrap_or_else(|| transcript.trim().to_string())
         }

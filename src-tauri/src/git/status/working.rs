@@ -308,11 +308,11 @@ pub fn file_diff(
     // files, so the list can report additions while this diff comes back empty.
     // When that happens for a brand-new file, synthesize the diff from disk.
     if !staged {
-        let empty = result.as_ref().map_or(true, |f| f.hunks.is_empty());
+        let empty = result.as_ref().is_none_or(|f| f.hunks.is_empty());
         if empty
             && repo
                 .status_file(std::path::Path::new(file))
-                .map_or(false, |s| s.contains(Status::WT_NEW))
+                .is_ok_and(|s| s.contains(Status::WT_NEW))
         {
             if let Some(synth) = untracked_file_diff(&repo, file, limit) {
                 return Ok(synth);

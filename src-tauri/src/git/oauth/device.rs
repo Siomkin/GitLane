@@ -216,9 +216,7 @@ pub fn poll_for_token(
                     })?
             }
             PollStep::Denied => return Err("Authorization was denied.".into()),
-            PollStep::Expired => {
-                return Err("The sign-in code expired. Please try again.".into())
-            }
+            PollStep::Expired => return Err("The sign-in code expired. Please try again.".into()),
             PollStep::Disabled => {
                 return Err("This host has the OAuth device flow disabled.".into())
             }
@@ -411,8 +409,13 @@ mod tests {
             200,
             r#"{"device_code":"dc","user_code":"WXYZ-1234","verification_uri":"https://gitlab.com/device"}"#,
         )]);
-        let dc = request_device_code(&http, "https://gitlab.com/oauth/authorize_device", "cid", "read_repository")
-            .unwrap();
+        let dc = request_device_code(
+            &http,
+            "https://gitlab.com/oauth/authorize_device",
+            "cid",
+            "read_repository",
+        )
+        .unwrap();
         assert_eq!(dc.user_code, "WXYZ-1234");
         assert_eq!(dc.interval, 5); // defaulted
         assert_eq!(dc.open_uri(), "https://gitlab.com/device");
@@ -471,7 +474,10 @@ mod tests {
             expires_in: 900,
             interval: 5,
         };
-        assert_eq!(dc.open_uri(), "https://gitlab.com/device?user_code=AAAA-1111");
+        assert_eq!(
+            dc.open_uri(),
+            "https://gitlab.com/device?user_code=AAAA-1111"
+        );
     }
 
     #[test]
@@ -503,11 +509,20 @@ mod tests {
         assert_eq!(http.request_count(), 3);
         // Every poll hit the token endpoint with the device-code grant + code.
         let reqs = http.requests.lock().unwrap();
-        assert!(reqs.iter().all(|r| r.url == "https://gitlab.com/oauth/token"));
+        assert!(reqs
+            .iter()
+            .all(|r| r.url == "https://gitlab.com/oauth/token"));
         let last = reqs.last().unwrap();
-        assert!(last.form.iter().any(|(k, v)| k == "grant_type"
-            && v == "urn:ietf:params:oauth:grant-type:device_code"));
-        assert!(last.form.iter().any(|(k, v)| k == "device_code" && v == "dc"));
+        assert!(
+            last.form
+                .iter()
+                .any(|(k, v)| k == "grant_type"
+                    && v == "urn:ietf:params:oauth:grant-type:device_code")
+        );
+        assert!(last
+            .form
+            .iter()
+            .any(|(k, v)| k == "device_code" && v == "dc"));
     }
 
     #[test]
@@ -525,8 +540,15 @@ mod tests {
             interval: 5,
         };
         let clock = TestClock::new();
-        poll_for_token(&http, "https://gitlab.com/oauth/token", "cid", &device, &clock, &NeverCancel)
-            .unwrap();
+        poll_for_token(
+            &http,
+            "https://gitlab.com/oauth/token",
+            "cid",
+            &device,
+            &clock,
+            &NeverCancel,
+        )
+        .unwrap();
         let sleeps = clock.sleeps.lock().unwrap().clone();
         assert!(sleeps.iter().all(|millis| *millis <= 100));
         assert_eq!(sleeps.iter().sum::<u64>(), 15_000);

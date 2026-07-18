@@ -20,10 +20,15 @@ bun run build               # frontend only: tsc --noEmit + vite build
 bun run dev                 # vite dev server alone — Rust invoke() commands WON'T work here
 bunx tsc --noEmit           # typecheck frontend
 (cd src-tauri && cargo check)   # fast Rust verify
+(cd src-tauri && cargo fmt --all -- --check) # verify Rust formatting
+(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
 (cd src-tauri && cargo build)   # build the Rust binary
 bun run test                # frontend unit/render tests (vitest; node + happy-dom projects)
 bun run test:watch          # vitest in watch mode
 ```
+
+The repository pins Rust (including `rustfmt` and Clippy) in
+`rust-toolchain.toml`; local Cargo commands and CI must use that toolchain.
 
 Releases are tag-driven — push `vX.Y.Z` for a stable release or `vX.Y.Z-beta.N`
 for the beta channel; see [`docs/release-channels.md`](docs/release-channels.md).

@@ -207,7 +207,10 @@ impl<'a> RestClient<'a> {
 impl GitlabApi for RestClient<'_> {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
         let auth = self.auth_header();
-        let headers = [("Authorization", auth.as_str()), ("Accept", "application/json")];
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ];
         self.finish(operation, self.http.get(&self.url(path), &headers))
     }
 
@@ -219,7 +222,10 @@ impl GitlabApi for RestClient<'_> {
         form: &[(&str, &str)],
     ) -> Result<String, GithubError> {
         let auth = self.auth_header();
-        let headers = [("Authorization", auth.as_str()), ("Accept", "application/json")];
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ];
         let url = self.url(path);
         let result = match method {
             Method::Post => self.http.post_form(&url, form, &headers),
@@ -307,7 +313,12 @@ mod tests {
             GithubError::RateLimited { .. }
         ));
         // A 404 surfaces GitLab's own message when present.
-        match map_http_error("detail", "gitlab.com", 404, r#"{"message":"404 Not found"}"#) {
+        match map_http_error(
+            "detail",
+            "gitlab.com",
+            404,
+            r#"{"message":"404 Not found"}"#,
+        ) {
             GithubError::CommandFailed(msg) => assert!(msg.contains("Not found")),
             other => panic!("expected CommandFailed, got {other:?}"),
         }

@@ -375,8 +375,8 @@ mod tests {
 
     #[test]
     fn gitlab_glab_rejects_host_mismatch() {
-        let err = credential_for_credential_host("gitlab.com", &glab_auth("gitlab.other"))
-            .unwrap_err();
+        let err =
+            credential_for_credential_host("gitlab.com", &glab_auth("gitlab.other")).unwrap_err();
         assert!(err.contains("selected account"), "{err}");
     }
 

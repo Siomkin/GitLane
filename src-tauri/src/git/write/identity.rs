@@ -43,7 +43,7 @@ fn bool_arg(value: Option<bool>) -> Option<&'static str> {
 fn apply_optional(repo: &str, key: &str, value: Option<&str>) -> Result<(), String> {
     match value {
         None => {}
-        Some(v) if v.is_empty() => {
+        Some("") => {
             let _ = run_git(repo, &["config", "--local", "--unset", key]);
         }
         Some(v) => {

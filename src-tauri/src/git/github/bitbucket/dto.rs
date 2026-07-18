@@ -133,11 +133,17 @@ impl BitbucketPr {
     }
 
     fn head_ref(&self) -> String {
-        self.source.as_ref().map(BitbucketEndpoint::branch_name).unwrap_or_default()
+        self.source
+            .as_ref()
+            .map(BitbucketEndpoint::branch_name)
+            .unwrap_or_default()
     }
 
     fn base_ref(&self) -> String {
-        self.destination.as_ref().map(BitbucketEndpoint::branch_name).unwrap_or_default()
+        self.destination
+            .as_ref()
+            .map(BitbucketEndpoint::branch_name)
+            .unwrap_or_default()
     }
 
     fn web_url(&self) -> String {
@@ -346,7 +352,10 @@ mod tests {
         assert_eq!(summary.author.login, "ada");
         assert_eq!(summary.author.name, "Ada L.");
         assert!(!summary.is_draft);
-        assert_eq!(summary.url, "https://bitbucket.org/team/app/pull-requests/7");
+        assert_eq!(
+            summary.url,
+            "https://bitbucket.org/team/app/pull-requests/7"
+        );
     }
 
     #[test]

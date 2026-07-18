@@ -23,11 +23,9 @@ use git::types::{
     CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
     FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
     GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
-    HistorySearchPage, HistorySearchQuery,
-    OauthClientStatus, OperationStatus, PrCheck, PrCommit, ProviderOauthResult, ProviderTokenStatus,
-    PullRequestDetail, PullRequestSummary,
-    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge,
-    RepoGraph, RepoIdentity,
+    HistorySearchPage, HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommit,
+    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
+    ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge, RepoGraph, RepoIdentity,
     RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
@@ -594,8 +592,10 @@ async fn repo_file_text(
     file: String,
     max_bytes: Option<u64>,
 ) -> Result<RepoFileContent, String> {
-    blocking(move || git::status::repo_file_text(&path, &file, max_bytes).map_err(|e| e.to_string()))
-        .await
+    blocking(move || {
+        git::status::repo_file_text(&path, &file, max_bytes).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// The committed (HEAD) text of one file — the baseline for the viewer/editor's
@@ -604,7 +604,8 @@ async fn repo_file_text(
 /// so it runs on the blocking pool like the worktree read.
 #[tauri::command]
 async fn repo_file_head_text(path: String, file: String) -> Result<Option<String>, String> {
-    blocking(move || git::status::repo_file_head_text(&path, &file).map_err(|e| e.to_string())).await
+    blocking(move || git::status::repo_file_head_text(&path, &file).map_err(|e| e.to_string()))
+        .await
 }
 
 /// Save an edited worktree file back to disk for the in-app file editor. A
@@ -804,6 +805,7 @@ async fn apply_hunk(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri exposes the line guard fields individually.
 async fn apply_line(
     path: String,
     file: String,
@@ -857,6 +859,7 @@ async fn unstage_all(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 async fn commit(
     path: String,
     expected_branch: Option<String>,
@@ -883,6 +886,7 @@ async fn commit(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 async fn squash_commits(
     path: String,
     expected_branch: Option<String>,

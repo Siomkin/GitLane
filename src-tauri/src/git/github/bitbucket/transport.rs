@@ -97,8 +97,8 @@ impl<'a> RestClient<'a> {
         if user.is_empty() || user == OAUTH_USERNAME {
             format!("Bearer {}", self.token)
         } else {
-            let creds = base64::engine::general_purpose::STANDARD
-                .encode(format!("{user}:{}", self.token));
+            let creds =
+                base64::engine::general_purpose::STANDARD.encode(format!("{user}:{}", self.token));
             format!("Basic {creds}")
         }
     }
@@ -152,7 +152,10 @@ impl BitbucketApi for RestClient<'_> {
             ("Authorization", auth.as_str()),
             ("Accept", "application/json"),
         ];
-        self.finish(operation, self.http.post_json(&self.url(path), body, &headers))
+        self.finish(
+            operation,
+            self.http.post_json(&self.url(path), body, &headers),
+        )
     }
 }
 

@@ -44,6 +44,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.97.1
 
       # No Rust cache here: preflight compiles nothing (see the note at the end of
       # this job), so restoring a target-dir archive was pure wasted minutes.
@@ -227,6 +229,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: 1.97.1
           targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       # Self-hosted legs (linux + both macOS triples): compile into a persistent

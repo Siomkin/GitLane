@@ -139,12 +139,12 @@ fn run_sign_in_inner(
 
     let http = UreqTransport::new();
     let token = match cfg.flow {
-        OauthFlow::Device => {
-            run_device(app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel)?
-        }
-        OauthFlow::Pkce => {
-            run_pkce(app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel)?
-        }
+        OauthFlow::Device => run_device(
+            app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel,
+        )?,
+        OauthFlow::Pkce => run_pkce(
+            app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel,
+        )?,
     };
 
     emit(app, provider, "authorized", None, None, None);
@@ -274,7 +274,11 @@ pub fn cancel_sign_in(slot: &SignInSlot) -> Result<(), String> {
 
 /// Resolve the effective public client id for `provider`/`host`: a per-host
 /// Settings override wins over the compile-time built-in.
-fn resolve_client_id(app: &AppHandle, provider: &str, host: &str) -> Option<(String, &'static str)> {
+fn resolve_client_id(
+    app: &AppHandle,
+    provider: &str,
+    host: &str,
+) -> Option<(String, &'static str)> {
     if let Some(id) = client_ids::get(app, provider, host) {
         return Some((id, "override"));
     }
@@ -303,7 +307,12 @@ pub fn client_status(app: &AppHandle, provider: &str, host: &str) -> OauthClient
 }
 
 /// Set (or clear, when empty) the per-host client-id override.
-pub fn set_client_id(app: &AppHandle, provider: &str, host: &str, client_id: &str) -> Result<(), String> {
+pub fn set_client_id(
+    app: &AppHandle,
+    provider: &str,
+    host: &str,
+    client_id: &str,
+) -> Result<(), String> {
     client_ids::set(app, provider, host, client_id)
 }
 
@@ -380,6 +389,8 @@ mod tests {
             in_progress: true,
             canceled: false,
         }));
-        assert!(claim_slot(&slot).unwrap_err().contains("already in progress"));
+        assert!(claim_slot(&slot)
+            .unwrap_err()
+            .contains("already in progress"));
     }
 }

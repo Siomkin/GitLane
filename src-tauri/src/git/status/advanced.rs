@@ -255,7 +255,7 @@ fn lfs_path_matches(path: &str, patterns: &[String]) -> bool {
         if let Some(ext) = pattern.strip_prefix("*.") {
             return path
                 .rsplit_once('.')
-                .map_or(false, |(_, path_ext)| path_ext == ext);
+                .is_some_and(|(_, path_ext)| path_ext == ext);
         }
         if let Some(prefix) = pattern.strip_suffix("/**") {
             return path.starts_with(prefix);

@@ -435,7 +435,11 @@ mod tests {
         );
         assert_eq!(
             parse_gh_version("gh version v2.96.1+deb1 (2026-07-02)"),
-            Some(GhVersion { major: 2, minor: 96, patch: 1 })
+            Some(GhVersion {
+                major: 2,
+                minor: 96,
+                patch: 1
+            })
         );
     }
 

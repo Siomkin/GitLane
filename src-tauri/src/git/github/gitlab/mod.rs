@@ -260,7 +260,10 @@ mod tests {
         let msg = no_gitlab_auth("gitlab.example.com").to_ipc_string();
         assert!(msg.contains("glab auth login"), "{msg}");
         assert!(msg.contains("GCM/helper or SSH"), "{msg}");
-        assert!(!msg.contains("token"), "hidden token path should not be advertised: {msg}");
+        assert!(
+            !msg.contains("token"),
+            "hidden token path should not be advertised: {msg}"
+        );
         assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
         assert!(msg.contains("gitlab.example.com"), "{msg}");
     }

@@ -153,8 +153,16 @@ mod tests {
         // The Bitbucket grant must include PR scopes, else PR calls 403 despite a
         // "connected" grant (GL-141). GitLab authorises PRs via its repo scopes.
         assert!(bb.scopes.contains("pullrequest"), "read PRs: {}", bb.scopes);
-        assert!(bb.scopes.contains("pullrequest:write"), "write PRs: {}", bb.scopes);
-        assert!(bb.scopes.contains("account"), "identity whoami: {}", bb.scopes);
+        assert!(
+            bb.scopes.contains("pullrequest:write"),
+            "write PRs: {}",
+            bb.scopes
+        );
+        assert!(
+            bb.scopes.contains("account"),
+            "identity whoami: {}",
+            bb.scopes
+        );
         assert!(provider_config("github").is_none());
         assert!(provider_config("gitea").is_none());
     }

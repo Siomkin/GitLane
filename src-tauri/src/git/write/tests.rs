@@ -8,19 +8,19 @@ use super::remotes::{
 use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_pull_target,
-    branch_push_remote,
-    checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto, clear_repo_identity,
-    commit_expected, continue_operation, create_branch, create_tag, delete_branch_with_worktree,
-    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
-    fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
-    merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
-    preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
-    pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
-    reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
-    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
-    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
-    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
-    unstage_file, unstage_files, worktrees, write_repo_file,
+    branch_push_remote, checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto,
+    clear_repo_identity, commit_expected, continue_operation, create_branch, create_tag,
+    delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
+    fast_forward_branch, fast_forward_branch_at, fetch, force_push, head_push_remote,
+    mark_conflict_resolved, merge, merge_into, move_branch_to_worktree, preview_delete_branch,
+    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset,
+    publish_branch, publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file,
+    reflog_entries, remove_worktree, reset, reset_branch, resolve_conflict_file, revert,
+    revert_many, revert_onto, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
+    skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktrees,
+    write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::TransportCredential;
@@ -460,7 +460,10 @@ fn fast_forward_refuses_dirty_changes_in_the_owning_worktree() {
 
     assert_eq!(rev_parse(&repo, "moving"), base);
     assert_eq!(rev_parse(&linked, "HEAD"), base);
-    assert_eq!(std::fs::read_to_string(linked.0.join("f.txt")).unwrap(), "dirty\n");
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("f.txt")).unwrap(),
+        "dirty\n"
+    );
     assert_eq!(
         String::from_utf8_lossy(&linked.git(&["status", "--porcelain"]).stdout).trim_end(),
         " M f.txt"
@@ -619,7 +622,7 @@ fn pull_branch_supports_a_local_tracking_upstream() {
         "refs/heads/main",
         &TransportCredential::None,
     )
-        .expect("pull from local upstream");
+    .expect("pull from local upstream");
 
     assert_eq!(rev_parse(&repo, "feature"), main_tip);
 }
@@ -1743,7 +1746,10 @@ fn discard_all_preserves_leading_whitespace_in_untracked_paths() {
 
     discard_all(repo.path()).expect("discard_all");
 
-    assert!(!path.exists(), "the exact leading-space path should be cleaned");
+    assert!(
+        !path.exists(),
+        "the exact leading-space path should be cleaned"
+    );
 }
 
 #[cfg(not(windows))]
@@ -1755,7 +1761,10 @@ fn discard_all_treats_pathspec_magic_as_a_literal_filename() {
 
     discard_all(repo.path()).expect("discard_all");
 
-    assert!(!path.exists(), "the pathspec-like filename should be cleaned");
+    assert!(
+        !path.exists(),
+        "the pathspec-like filename should be cleaned"
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -5392,7 +5401,10 @@ fn init_in_place_repairs_a_broken_or_partial_git_directory() {
     let result = init_in_place(dir.path()).expect("a broken .git must be repairable");
 
     assert!(same_path(&result, dir.path()));
-    assert!(dir.0.join(".git/HEAD").is_file(), "init must have run for real");
+    assert!(
+        dir.0.join(".git/HEAD").is_file(),
+        "init must have run for real"
+    );
     assert!(dir.0.join("existing.txt").exists());
 }
 
@@ -5409,7 +5421,10 @@ fn init_in_place_repairs_a_dangling_git_worktree_pointer_file() {
     let result = init_in_place(dir.path()).expect("a dangling .git file must be repairable");
 
     assert!(same_path(&result, dir.path()));
-    assert!(dir.0.join(".git").is_dir(), "the stale .git file must be replaced with a real gitdir");
+    assert!(
+        dir.0.join(".git").is_dir(),
+        "the stale .git file must be replaced with a real gitdir"
+    );
     assert!(dir.0.join("existing.txt").exists());
 }
 
@@ -5445,7 +5460,10 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
     let result = init_in_place(&path).expect("init must target the exact path");
 
     assert!(same_path(&result, &path));
-    assert!(dir_with_space.join(".git").is_dir(), "the spaced directory must be initialized");
+    assert!(
+        dir_with_space.join(".git").is_dir(),
+        "the spaced directory must be initialized"
+    );
     assert!(
         !trimmed_sibling.join(".git").exists(),
         "the trimmed sibling must not be touched"
@@ -5473,7 +5491,10 @@ fn write_repo_file_overwrites_and_reports_new_size() {
     let repo = repo_with_file("wrf-ok", "a.txt", b"old\n");
     let size = write_repo_file(repo.path(), "a.txt", "new content\n", Some(4)).expect("write ok");
     assert_eq!(size, "new content\n".len() as u64);
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "new content\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "new content\n"
+    );
 }
 
 #[test]
@@ -5483,7 +5504,10 @@ fn write_repo_file_rejects_size_mismatch() {
     // >2 MiB prefix) must be refused before the unseen remainder is destroyed.
     let err = write_repo_file(repo.path(), "a.txt", "x", Some(999)).unwrap_err();
     assert!(err.contains("changed on disk"), "unexpected: {err}");
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
 }
 
 #[test]
@@ -5501,7 +5525,10 @@ fn write_repo_file_refuses_binary_content_and_binary_target() {
     assert!(write_repo_file(repo.path(), "a.txt", "a\0b", Some(4)).is_err());
     let late_nul = format!("{}\0", "x".repeat(9000));
     assert!(write_repo_file(repo.path(), "a.txt", &late_nul, Some(4)).is_err());
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
 
     // NUL already on disk — an editor should never have offered it as text.
     let bin = repo_with_file("wrf-bin2", "b.bin", b"\0\0\0\0");
@@ -5522,7 +5549,10 @@ fn write_repo_file_refuses_oversized_and_dotgit_paths() {
     let huge = "x".repeat(2 * 1024 * 1024 + 1);
     let err = write_repo_file(repo.path(), "a.txt", &huge, Some(4)).unwrap_err();
     assert!(err.contains("too large"), "unexpected: {err}");
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
 
     // The raw IPC surface must not be pointed at repository metadata.
     assert!(write_repo_file(repo.path(), ".git/config", "x", None).is_err());
@@ -5535,13 +5565,28 @@ fn write_repo_file_leaves_original_intact_and_preserves_mode() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(repo.0.join("a.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
-        let before = std::fs::metadata(repo.0.join("a.sh")).unwrap().permissions().mode() & 0o777;
+        std::fs::set_permissions(repo.0.join("a.sh"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        let before = std::fs::metadata(repo.0.join("a.sh"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
         write_repo_file(repo.path(), "a.sh", "#!/bin/sh\necho bye\n", Some(18)).expect("write ok");
-        let after = std::fs::metadata(repo.0.join("a.sh")).unwrap().permissions().mode() & 0o777;
-        assert_eq!(before, after, "executable bit must survive the atomic replace");
+        let after = std::fs::metadata(repo.0.join("a.sh"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            before, after,
+            "executable bit must survive the atomic replace"
+        );
     }
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.sh")).unwrap(), "#!/bin/sh\necho bye\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.sh")).unwrap(),
+        "#!/bin/sh\necho bye\n"
+    );
     // No temp files should be left behind in the worktree.
     let leftovers: Vec<_> = std::fs::read_dir(&repo.0)
         .unwrap()

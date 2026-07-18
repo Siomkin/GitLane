@@ -33,7 +33,11 @@ pub fn list_prs(
     );
     let raw = api.get("list pull requests", &path)?;
     let page: BitbucketPage<BitbucketPr> = parse(&raw, "pull request list")?;
-    Ok(page.values.into_iter().map(BitbucketPr::into_summary).collect())
+    Ok(page
+        .values
+        .into_iter()
+        .map(BitbucketPr::into_summary)
+        .collect())
 }
 
 /// Fetch one pull request's detail plus its changed-file list and diff stats.
@@ -147,11 +151,9 @@ pub fn merge_pr(
     let strategy = match method {
         "squash" => "squash",
         "merge" | "" => "merge_commit",
-        "rebase" => {
-            return Err(unsupported(
-                "Rebase-and-merge isn't supported for Bitbucket pull requests. Use Merge or Squash.",
-            ))
-        }
+        "rebase" => return Err(unsupported(
+            "Rebase-and-merge isn't supported for Bitbucket pull requests. Use Merge or Squash.",
+        )),
         other => {
             return Err(GithubError::CommandFailed(format!(
                 "Unknown merge method '{other}' for Bitbucket."
@@ -266,7 +268,9 @@ mod tests {
         assert_eq!(prs[0].state, "MERGED");
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "GET");
-        assert!(reqs[0].url.contains("/2.0/repositories/team/app/pullrequests?state=OPEN"));
+        assert!(reqs[0]
+            .url
+            .contains("/2.0/repositories/team/app/pullrequests?state=OPEN"));
         assert!(reqs[0].url.contains("state=DECLINED"));
         assert!(reqs[0].url.contains("sort=-created_on"));
     }
@@ -292,7 +296,8 @@ mod tests {
 
     #[test]
     fn pr_diff_parses_the_git_patch_directly() {
-        let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+        let patch =
+            "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
         let http = MockTransport::new(vec![ok(patch)]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         let files = pr_diff(&client, REPO, 5).expect("diff");
@@ -366,7 +371,11 @@ mod tests {
         let http = MockTransport::new(vec![]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
         assert!(merge_pr(&client, REPO, 7, "rebase", false).is_err());
-        assert_eq!(http.request_count(), 0, "no request on an unsupported method");
+        assert_eq!(
+            http.request_count(),
+            0,
+            "no request on an unsupported method"
+        );
     }
 
     #[test]

@@ -327,11 +327,13 @@ fn merge_text(ancestor: &[u8], ours: &[u8], theirs: &[u8], path: &str) -> Option
 /// Returns `None` (caller falls back to the blob-range) when the chain isn't
 /// pure text — an add/delete side or a binary blob — or a compose step
 /// conflicts, since those can't be composed at the blob level.
+type TextComposition = Option<(Vec<u8>, Vec<u8>)>;
+
 fn compose_text(
     repo: &Repository,
     ordered: &[Commit],
     file: &str,
-) -> Result<Option<(Vec<u8>, Vec<u8>)>, git2::Error> {
+) -> Result<TextComposition, git2::Error> {
     let mut base: Option<Vec<u8>> = None;
     let mut acc: Vec<u8> = Vec::new();
     for commit in ordered {

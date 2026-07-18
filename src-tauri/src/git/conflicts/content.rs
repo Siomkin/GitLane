@@ -20,9 +20,7 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
             .as_ref()
             .or(c.their.as_ref())
             .or(c.ancestor.as_ref())
-            .map_or(false, |entry| {
-                &*String::from_utf8_lossy(&entry.path) == file
-            })
+            .is_some_and(|entry| &*String::from_utf8_lossy(&entry.path) == file)
     });
     if !conflicted {
         return Err(git2::Error::from_str(&format!(

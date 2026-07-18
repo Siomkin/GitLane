@@ -210,7 +210,12 @@ Other:
 bun run build          # tsc + vite production build
 bun run test           # frontend tests (vitest)
 (cd src-tauri && cargo check)
+(cd src-tauri && cargo fmt --all -- --check)
+(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
 ```
+
+Rust, rustfmt, and Clippy are pinned by `rust-toolchain.toml` and selected
+automatically by rustup.
 
 GitLane currently validates `gh` 2.95.0 as the minimum supported GitHub CLI baseline:
 

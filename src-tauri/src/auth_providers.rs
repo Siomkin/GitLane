@@ -255,7 +255,11 @@ fn sign_out_per_host(spec: &ProviderSpec, cli: &str, base_args: &[&str]) -> Resu
 }
 
 fn join_hosts(hosts: &[&String]) -> String {
-    hosts.iter().map(|h| h.as_str()).collect::<Vec<_>>().join(", ")
+    hosts
+        .iter()
+        .map(|h| h.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The hosts a CLI reports as signed in, parsed from its `status` output. glab
@@ -304,12 +308,12 @@ fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     match provider {
         "gitlab" => {
             let out = run_bounded("glab", &["api", "user"])?;
-            out.status.success().then(|| ())?;
+            out.status.success().then_some(())?;
             parse_gitlab_user(&String::from_utf8_lossy(&out.stdout))
         }
         "azure-devops" => {
             let out = run_bounded("az", &["account", "show", "--output", "json"])?;
-            out.status.success().then(|| ())?;
+            out.status.success().then_some(())?;
             parse_azure_account(&String::from_utf8_lossy(&out.stdout))
         }
         // Gitea/Forgejo (`tea`) have no whoami that exposes the username without
@@ -499,7 +503,10 @@ mod tests {
         let out = "gitlab.com\n  ✓ Logged in to gitlab.com as siomkin (…)\n  ✓ Token found: ***\ngitlab.example.com:8443\n  ✓ Logged in as ada\n";
         assert_eq!(
             parse_status_hosts(out),
-            vec!["gitlab.com".to_string(), "gitlab.example.com:8443".to_string()]
+            vec![
+                "gitlab.com".to_string(),
+                "gitlab.example.com:8443".to_string()
+            ]
         );
     }
 

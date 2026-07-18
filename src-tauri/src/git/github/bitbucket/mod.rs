@@ -48,10 +48,7 @@ impl BitbucketProvider {
     /// fallback, so a GitLane-owned token is required for any PR operation.
     /// Returns the token and the account's git HTTPS username (which selects the
     /// auth scheme — see [`transport::RestClient`]).
-    fn credential<'a>(
-        &self,
-        ctx: &'a GithubContext,
-    ) -> Result<(String, &'a str), GithubError> {
+    fn credential<'a>(&self, ctx: &'a GithubContext) -> Result<(String, &'a str), GithubError> {
         let account = ctx
             .account
             .as_ref()
@@ -257,7 +254,10 @@ mod tests {
         assert!(msg.contains("no CLI"), "{msg}");
         assert!(msg.contains("GCM/helper or SSH"), "{msg}");
         assert!(msg.contains("keychain token"), "{msg}");
-        assert!(!msg.contains("API token"), "hidden token setup should not be advertised: {msg}");
+        assert!(
+            !msg.contains("API token"),
+            "hidden token setup should not be advertised: {msg}"
+        );
         assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
         assert!(msg.contains("bitbucket.org"), "{msg}");
     }

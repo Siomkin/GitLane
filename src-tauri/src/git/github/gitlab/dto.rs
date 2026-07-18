@@ -10,9 +10,7 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{
-    PrAuthor, PrCommit, PrLabel, PullRequestDetail, PullRequestSummary,
-};
+use crate::git::types::{PrAuthor, PrCommit, PrLabel, PullRequestDetail, PullRequestSummary};
 
 /// A GitLab user reference (`author`, `assignees[]`, `reviewers[]`).
 #[derive(Debug, Clone, Deserialize)]
@@ -135,7 +133,10 @@ impl GitlabMr {
         PullRequestSummary {
             number: self.iid,
             state: map_state(&self.state),
-            mergeable: map_mergeable(self.detailed_merge_status.as_deref(), self.merge_status.as_deref()),
+            mergeable: map_mergeable(
+                self.detailed_merge_status.as_deref(),
+                self.merge_status.as_deref(),
+            ),
             head_ref: self.source_branch.clone(),
             base_ref: self.target_branch.clone(),
             author: self.author_or_default(),
@@ -163,7 +164,10 @@ impl GitlabMr {
         PullRequestDetail {
             number: self.iid,
             state: map_state(&self.state),
-            mergeable: map_mergeable(self.detailed_merge_status.as_deref(), self.merge_status.as_deref()),
+            mergeable: map_mergeable(
+                self.detailed_merge_status.as_deref(),
+                self.merge_status.as_deref(),
+            ),
             head_ref: self.source_branch.clone(),
             base_ref: self.target_branch.clone(),
             author: self.author_or_default(),
@@ -179,11 +183,23 @@ impl GitlabMr {
             // Discussion comments and inline review threads are out of scope for
             // GL-140, so the lists stay empty (the count above is informational).
             comment_list: Vec::new(),
-            reviewers: self.reviewers.into_iter().map(GitlabUser::into_author).collect(),
+            reviewers: self
+                .reviewers
+                .into_iter()
+                .map(GitlabUser::into_author)
+                .collect(),
             // Submitted-review verdicts (approvals) are not mapped in v1.
             reviews: Vec::new(),
-            assignees: self.assignees.into_iter().map(GitlabUser::into_author).collect(),
-            labels: self.labels.into_iter().map(GitlabLabel::into_label).collect(),
+            assignees: self
+                .assignees
+                .into_iter()
+                .map(GitlabUser::into_author)
+                .collect(),
+            labels: self
+                .labels
+                .into_iter()
+                .map(GitlabLabel::into_label)
+                .collect(),
             milestone: self
                 .milestone
                 .map(|m| m.title)
@@ -304,12 +320,18 @@ mod tests {
 
     #[test]
     fn maps_mergeability_preferring_detailed_status() {
-        assert_eq!(map_mergeable(Some("mergeable"), Some("cannot_be_merged")), "MERGEABLE");
+        assert_eq!(
+            map_mergeable(Some("mergeable"), Some("cannot_be_merged")),
+            "MERGEABLE"
+        );
         assert_eq!(map_mergeable(Some("conflict"), None), "CONFLICTING");
         assert_eq!(map_mergeable(Some("ci_still_running"), None), "UNKNOWN");
         // Falls back to the legacy field when detailed is absent/empty.
         assert_eq!(map_mergeable(None, Some("can_be_merged")), "MERGEABLE");
-        assert_eq!(map_mergeable(Some(""), Some("cannot_be_merged")), "CONFLICTING");
+        assert_eq!(
+            map_mergeable(Some(""), Some("cannot_be_merged")),
+            "CONFLICTING"
+        );
         assert_eq!(map_mergeable(None, None), "");
     }
 
@@ -338,7 +360,10 @@ mod tests {
         assert_eq!(summary.author.name, "Ada L.");
         assert_eq!(summary.mergeable, "MERGEABLE");
         assert!(!summary.is_draft);
-        assert_eq!(summary.url, "https://gitlab.com/group/repo/-/merge_requests/7");
+        assert_eq!(
+            summary.url,
+            "https://gitlab.com/group/repo/-/merge_requests/7"
+        );
     }
 
     #[test]
