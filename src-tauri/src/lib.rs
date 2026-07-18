@@ -1643,14 +1643,18 @@ fn take_agent_change_summary(path: String, token: String) -> Result<Option<Strin
 /// return its `sessionId`; existing sessions keep running. Output streams back as
 /// `pty-data` events tagged with that id; exit fires `pty-exit`.
 #[tauri::command]
-fn pty_spawn(
+async fn pty_spawn(
     app: tauri::AppHandle,
     state: tauri::State<'_, TerminalState>,
     path: String,
     cols: u16,
     rows: u16,
 ) -> Result<terminal::PtySpawnResponse, String> {
-    terminal::spawn(&state, &app, &path, cols, rows)
+    // Opening a PTY and spawning the login shell can block on OS/process setup.
+    // Clone the Arc-backed state out of Tauri's non-'static State wrapper so
+    // the established blocking pool owns the whole operation.
+    let state = state.inner().clone();
+    blocking(move || terminal::spawn(&state, &app, &path, cols, rows)).await
 }
 
 /// Forward user keystrokes (from xterm.js) to session `session_id`'s stdin.
@@ -1685,12 +1689,17 @@ fn pty_kill(state: tauri::State<'_, TerminalState>, session_id: u64) -> Result<(
 /// tab keeps its own watch; linked worktrees also cover their private gitdir
 /// and shared common dir.
 #[tauri::command]
-fn watch_repo(
+async fn watch_repo(
     app: tauri::AppHandle,
     state: tauri::State<'_, WatcherState>,
     path: String,
 ) -> Result<(), String> {
-    watcher::watch(&app, &state, &path)
+    // Repository discovery plus recursive notify registration touches the
+    // filesystem and may be slow on network/large worktrees. WatcherState is
+    // Arc-backed so setup can run off the webview thread while callbacks retain
+    // the same registry ownership.
+    let state = state.inner().clone();
+    blocking(move || watcher::watch(&app, &state, &path)).await
 }
 
 /// Stop the filesystem watch for `path` (its tab closed).

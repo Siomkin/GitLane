@@ -92,8 +92,8 @@ struct Watchers {
 /// private watch and unsubscribes, tearing the shared watch down once its last
 /// subscriber leaves. Background tabs keep their watches so their events keep
 /// flowing.
-#[derive(Default)]
-pub struct WatcherState(Mutex<Watchers>);
+#[derive(Clone, Default)]
+pub struct WatcherState(Arc<Mutex<Watchers>>);
 
 /// Minimum gap between emitted events, to collapse the burst of fs events a
 /// single git operation produces.
