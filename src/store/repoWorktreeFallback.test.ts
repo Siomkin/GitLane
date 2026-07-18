@@ -104,6 +104,9 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     expect(s.summary?.path).toBe("/main");
     expect(s.openPaths).toEqual(["/main"]);
     expect(s.error).toBeNull();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(invokeMock).toHaveBeenCalledWith("unwatch_repo", { path: "/wt" });
     // The removed worktree isn't persisted as the active selection (AC #4).
     expect(localStorage.getItem("gitlane.lastPath")).toBe("/main");
   });
