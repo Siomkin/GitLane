@@ -318,12 +318,9 @@ impl CloneTarget {
                 // exclusively, then populate it without ever replacing a leaf.
                 // Once claimed, preserve both trees on a partial failure: Drop
                 // must not erase the completed clone remainder.
-                std::fs::create_dir(&self.requested).map_err(|claim_err| {
-                    format!(
-                        "The clone finished, but the destination became unavailable: {claim_err}"
-                    )
+                self.claim_fallback_destination(removed_existing, |path| {
+                    std::fs::create_dir(path)
                 })?;
-                self.owns_work = false;
                 publish_directory_fallback(&self.work, &self.requested).map_err(|move_err| {
                     format!(
                         "The clone finished, but publishing it failed. The partial destination and private clone staging were preserved: {move_err}"
@@ -341,6 +338,36 @@ impl CloneTarget {
                 ))
             }
         }
+    }
+
+    fn claim_fallback_destination(
+        &mut self,
+        removed_existing: bool,
+        claim: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<(), String> {
+        if let Err(claim_err) = claim(&self.requested) {
+            // The clone itself is complete. A destination claim failure must
+            // never turn Drop back into destructive rollback; leave staging
+            // recoverable and restore the user's original empty directory on
+            // best effort when publish() removed it above.
+            self.owns_work = false;
+            let restore_note = if removed_existing {
+                match std::fs::create_dir(&self.requested) {
+                    Ok(()) => " The original empty destination was restored.".to_string(),
+                    Err(restore_err) => format!(
+                        " The original empty destination could not be restored: {restore_err}."
+                    ),
+                }
+            } else {
+                String::new()
+            };
+            return Err(format!(
+                "The clone finished, but the destination became unavailable: {claim_err}. The completed private clone staging was preserved at {}.{restore_note}",
+                self.work.display()
+            ));
+        }
+        self.owns_work = false;
+        Ok(())
     }
 }
 
@@ -1019,6 +1046,41 @@ mod tests {
             std::fs::read_to_string(requested.join("same.txt")).unwrap(),
             "concurrent"
         );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn fallback_claim_failure_restores_empty_destination_and_preserves_clone() {
+        let base = std::env::temp_dir().join(format!(
+            "gitlane-clone-fallback-claim-failure-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let requested = base.join("repo");
+        std::fs::create_dir(&requested).unwrap();
+        let mut target = CloneTarget::prepare(&requested).unwrap();
+        let work = target.work.clone();
+        std::fs::write(work.join("README.md"), "done").unwrap();
+
+        // Model publish() after it removed the user's still-empty directory
+        // and no-replace rename reported Unsupported. Inject the following
+        // exclusive-claim failure so the recovery branch is deterministic.
+        std::fs::remove_dir(&requested).unwrap();
+        let error = target
+            .claim_fallback_destination(true, |_| Err(std::io::Error::other("claim failed")))
+            .unwrap_err();
+
+        assert!(error.contains("private clone staging was preserved"));
+        assert!(error.contains("empty destination was restored"));
+        assert!(!target.owns_work);
+        assert!(requested.is_dir());
+        drop(target);
+        assert_eq!(
+            std::fs::read_to_string(work.join("README.md")).unwrap(),
+            "done"
+        );
+
         let _ = std::fs::remove_dir_all(&base);
     }
 
