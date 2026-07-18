@@ -26,6 +26,7 @@ export function createRepoSelectionActions(
   | "selectCommitMulti"
   | "clearSelection"
   | "selectWip"
+  | "ensureWorkingFileSelection"
   | "selectFile"
   | "loadFullFileDiff"
   | "clearSelectedFile"
@@ -157,6 +158,32 @@ export function createRepoSelectionActions(
         fileDiff: null,
         commitFiles: [],
       }),
+
+    ensureWorkingFileSelection: () => {
+      const { changes, selectedFile } = get();
+      const workingSelection = selectedFile?.source === "commit" ? null : selectedFile;
+      if (workingSelection) {
+        const currentBucket =
+          workingSelection.source === "unstaged" ? changes.unstaged : changes.staged;
+        if (currentBucket.some((file) => file.path === workingSelection.path)) return;
+
+        // Staging/unstaging can move the selected path between buckets. Keep the
+        // path but update its source so the next diff reads the correct index.
+        const otherSource = workingSelection.source === "unstaged" ? "staged" : "unstaged";
+        const otherBucket = otherSource === "unstaged" ? changes.unstaged : changes.staged;
+        if (otherBucket.some((file) => file.path === workingSelection.path)) {
+          void get().selectFile(workingSelection.path, otherSource);
+          return;
+        }
+      }
+
+      const first = changes.unstaged[0] ?? changes.staged[0];
+      if (first) {
+        void get().selectFile(first.path, changes.unstaged[0] ? "unstaged" : "staged");
+      } else if (workingSelection) {
+        get().clearSelectedFile();
+      }
+    },
 
     selectFile: async (path, source) => {
       const { summary, selectedCommit, selectionDiff } = get();

@@ -21,6 +21,7 @@ import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list"
 export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: boolean) => void }) {
   const changes = useRepo((state) => state.changes);
   const selectedFile = useRepo((state) => state.selectedFile);
+  const ensureWorkingFileSelection = useRepo((state) => state.ensureWorkingFileSelection);
   const selectFile = useRepo((state) => state.selectFile);
   const stageFile = useRepo((state) => state.stageFile);
   const unstageFile = useRepo((state) => state.unstageFile);
@@ -69,17 +70,11 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const menuPathFor = (staged: boolean) =>
     fileMenu?.discard?.staged === staged ? fileMenu.path : null;
 
-  // Keep a working file selected so the center pane shows its single-file review.
+  // Selection fallback and staged/unstaged bucket ownership are git-domain
+  // rules, so the store reconciles them when this inspector becomes active.
   useEffect(() => {
-    const all = [...changes.unstaged, ...changes.staged];
-    if (all.length === 0) return;
-    const stillValid =
-      selectedFile?.source !== "commit" && all.some((f) => f.path === selectedFile?.path);
-    if (!stillValid) {
-      const first = changes.unstaged[0] ?? changes.staged[0];
-      void selectFile(first.path, changes.unstaged[0] ? "unstaged" : "staged");
-    }
-  }, [changes, selectedFile?.path, selectedFile?.source, selectFile]);
+    ensureWorkingFileSelection();
+  }, [changes, ensureWorkingFileSelection, selectedFile?.path, selectedFile?.source]);
 
   const openFile = (path: string, source: "unstaged" | "staged") => {
     void selectFile(path, source);

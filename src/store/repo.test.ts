@@ -93,6 +93,90 @@ beforeEach(() => {
   });
 });
 
+describe("repo store — ensureWorkingFileSelection", () => {
+  const change = (path: string) => ({
+    path,
+    status: "M" as const,
+    add: 1,
+    del: 0,
+    binary: false,
+  });
+  const diff = (path: string) => ({
+    ...change(path),
+    hunks: [],
+    truncated: false,
+  });
+
+  it("selects the first live working file when no working selection exists", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [change("staged.ts")],
+        unstaged: [change("unstaged.ts")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diff("unstaged.ts")) : defaultInvoke(cmd),
+    );
+
+    useRepo.getState().ensureWorkingFileSelection();
+
+    await vi.waitFor(() =>
+      expect(useRepo.getState().selectedFile).toEqual({ path: "unstaged.ts", source: "unstaged" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("file_diff", {
+      path: "/repo",
+      file: "unstaged.ts",
+      staged: false,
+      full: null,
+    });
+  });
+
+  it("keeps the path but changes source when staging moves the selected file", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [change("src/a.ts")],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diff("src/a.ts")) : defaultInvoke(cmd),
+    );
+
+    useRepo.getState().ensureWorkingFileSelection();
+
+    await vi.waitFor(() =>
+      expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("file_diff", {
+      path: "/repo",
+      file: "src/a.ts",
+      staged: true,
+      full: null,
+    });
+  });
+
+  it("does not reload a selection that is still in its owning bucket", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [change("src/a.ts")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+
+    useRepo.getState().ensureWorkingFileSelection();
+
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("repo store — discardFile", () => {
   it("re-points the diff at the surviving bucket for a partially-staged file", async () => {
     // The file is staged *and* unstaged; after discarding its unstaged changes
