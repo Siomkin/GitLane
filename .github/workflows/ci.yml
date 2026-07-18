@@ -16,8 +16,10 @@ on:
     branches: [latest]
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Weekly audits are their own non-canceling lane: a docs-only push to latest
+  # must neither share their group nor terminate the only run that scans deps.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled-audit' || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 # Untrusted fork-PR code executes in this workflow (the PR merge ref is checked
 # out and built/tested) under pull_request_target, with no approval gate — that
