@@ -134,6 +134,7 @@ export class PaneController {
         // cross-wire its output — so kill it instead.
         if (this.panes.get(tabId) !== pane) {
           this.pendingSessionEvents.delete(sessionId);
+          this.clearPendingIfNoSpawns();
           void this.io.kill(sessionId).catch(() => {});
           return;
         }
@@ -142,6 +143,7 @@ export class PaneController {
         this.bySession.set(sessionId, tabId);
         const pending = this.pendingSessionEvents.get(sessionId);
         this.pendingSessionEvents.delete(sessionId);
+        this.clearPendingIfNoSpawns();
         if (pending) {
           for (const chunk of pending.chunks) this.routeData(sessionId, chunk);
           if (pending.exited) {
@@ -155,8 +157,12 @@ export class PaneController {
       .catch((e) => {
         // The pane may have been disposed while the spawn was failing — never
         // write into a disposed terminal.
-        if (this.panes.get(tabId) !== pane) return;
+        if (this.panes.get(tabId) !== pane) {
+          this.clearPendingIfNoSpawns();
+          return;
+        }
         pane.spawning = false;
+        this.clearPendingIfNoSpawns();
         view.term.writeln(
           "\x1b[31mFailed to start terminal: " +
             String(e instanceof Error ? e.message : e) +
@@ -177,6 +183,7 @@ export class PaneController {
     pane.view.term.dispose();
     pane.view.el.remove();
     this.panes.delete(tabId);
+    this.clearPendingIfNoSpawns();
   }
 
   disposeAll(): void {
@@ -247,6 +254,12 @@ export class PaneController {
     const created: PendingSessionEvents = { chunks: [], bytes: 0, exited: false };
     this.pendingSessionEvents.set(sessionId, created);
     return created;
+  }
+
+  private clearPendingIfNoSpawns(): void {
+    if (![...this.panes.values()].some((pane) => pane.spawning)) {
+      this.pendingSessionEvents.clear();
+    }
   }
 
   private bufferPendingData(sessionId: number, data: ArrayLike<number>): void {

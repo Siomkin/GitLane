@@ -185,6 +185,29 @@ describe("PaneController — spawn/dispose identity", () => {
     expect(views[0].written[0]).toHaveLength(64 * 1024);
   });
 
+  it("drops unadopted events when the last pending spawn settles", async () => {
+    const first = deferred<{ sessionId: number }>();
+    const second = deferred<{ sessionId: number }>();
+    let call = 0;
+    const { controller, views } = setup({
+      spawn: () => (call++ === 0 ? first.promise : second.promise),
+    });
+    controller.create("tab1", "/repo");
+    controller.routeData(99, [115, 116, 97, 108, 101]);
+
+    first.resolve({ sessionId: 7 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    controller.create("tab2", "/repo");
+    second.resolve({ sessionId: 99 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(views[1].written).toHaveLength(0);
+    expect(controller.get("tab2")?.alive).toBe(true);
+  });
+
   it("kills a session whose spawn resolves after the pane was disposed", async () => {
     const spawn = deferred<{ sessionId: number }>();
     const { controller, killed } = setup({ spawn: () => spawn.promise });
