@@ -142,7 +142,7 @@ export function useTerminalPanes(): TerminalPanes {
   const activePane = activeTabId ? (controller.get(activeTabId) ?? null) : null;
   const alive = activePane?.alive ?? false;
 
-  usePtyEvents(controller);
+  const ptyEventsReady = usePtyEvents(controller);
   usePaneReconciler({
     controller,
     hostRef,
@@ -153,6 +153,7 @@ export function useTerminalPanes(): TerminalPanes {
     terminalView,
     terminalExpanded,
     theme,
+    ptyEventsReady,
     ensureTab,
   });
 

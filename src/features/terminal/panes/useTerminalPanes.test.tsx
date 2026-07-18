@@ -25,12 +25,20 @@ vi.mock("@/lib/platform", async (importOriginal) => ({
 // track unlisten so cleanup is observable.
 const ptyEvents = vi.hoisted(() => ({
   handlers: new Map<string, (event: { payload: unknown }) => void>(),
+  deferRegistration: false,
+  completeRegistration: new Map<string, () => void>(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, cb: (event: { payload: unknown }) => void) => {
-    ptyEvents.handlers.set(name, cb);
-    return Promise.resolve(() => {
-      ptyEvents.handlers.delete(name);
+    const install = () => {
+      ptyEvents.handlers.set(name, cb);
+      return () => {
+        ptyEvents.handlers.delete(name);
+      };
+    };
+    if (!ptyEvents.deferRegistration) return Promise.resolve(install());
+    return new Promise<() => void>((resolve) => {
+      ptyEvents.completeRegistration.set(name, () => resolve(install()));
     });
   },
 }));
@@ -145,6 +153,8 @@ beforeEach(() => {
   );
   xterm.instances.length = 0;
   ptyEvents.handlers.clear();
+  ptyEvents.deferRegistration = false;
+  ptyEvents.completeRegistration.clear();
   useRepo.setState({ summary: summaryFor("/current") });
   useTerminals.setState({ byRepo: {} });
   useTerminalAgents.setState({ loadAgents: vi.fn() });
@@ -162,6 +172,33 @@ afterEach(() => {
 });
 
 describe("pane lifecycle across repo/tab switches (GL-177)", () => {
+  it("does not spawn a PTY until both output listeners are registered", async () => {
+    ptyEvents.deferRegistration = true;
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+
+    expect(spawnCalls()).toHaveLength(0);
+    expect(ptyEvents.handlers.size).toBe(0);
+
+    await act(async () => {
+      ptyEvents.completeRegistration.get("pty-data")?.();
+    });
+    expect(spawnCalls()).toHaveLength(0);
+
+    await act(async () => {
+      ptyEvents.completeRegistration.get("pty-exit")?.();
+    });
+    await waitFor(() => expect(spawnCalls()).toHaveLength(1));
+    expect(ptyEvents.handlers.size).toBe(2);
+
+    const write = vi.spyOn(xterm.instances[0], "write");
+    await act(async () => {
+      ptyEvents.handlers.get("pty-data")?.({ payload: { sessionId: 1, data: [104, 105] } });
+    });
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
   it("hides a terminal in a new repo and restores the original repo's live pane", async () => {
     useRepo.setState({ summary: summaryFor("/repoA") });
     useUi.getState().expandTerminal();
