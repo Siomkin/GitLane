@@ -127,12 +127,14 @@ jobs:
         id: release-commit
         run: |
           git fetch --no-tags origin latest:refs/remotes/origin/latest
-          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null; then
-            RELEASE_COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
-          else
-            RELEASE_COMMIT=$(git rev-parse HEAD)
-            echo "Tag $RELEASE_TAG does not exist locally; validating checked-out commit $RELEASE_COMMIT."
+          if ! git fetch --no-tags origin \
+            "refs/tags/$RELEASE_TAG:refs/gitlane-release/$RELEASE_TAG"
+          then
+            echo "Release tag $RELEASE_TAG must already exist on origin."
+            echo "Create it from a commit on latest; the workflow never creates release tags."
+            exit 1
           fi
+          RELEASE_COMMIT=$(git rev-parse "refs/gitlane-release/$RELEASE_TAG^{commit}")
           CHECKED_OUT_COMMIT=$(git rev-parse HEAD)
           if [[ "$CHECKED_OUT_COMMIT" != "$RELEASE_COMMIT" ]]; then
             echo "Checked-out commit $CHECKED_OUT_COMMIT does not match release commit $RELEASE_COMMIT."
@@ -198,26 +200,18 @@ jobs:
           TAG: ${{ needs.preflight.outputs.release_tag }}
           COMMIT: ${{ needs.preflight.outputs.release_commit }}
         run: |
-          # A release always refers to a tag. Fetch that one tag when it exists,
-          # then prove it resolves to the same commit preflight validated.
-          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
-          TAG_ARGS=()
-          if git rev-parse -q --verify "refs/tags/$TAG^{commit}" >/dev/null; then
-            TAG_COMMIT=$(git rev-list -n 1 "$TAG")
-            if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
-              echo "Tag $TAG resolves to $TAG_COMMIT, not validated release commit $COMMIT."
-              exit 1
-            fi
-            TAG_ARGS+=(--verify-tag)
-          else
-            TAG_ARGS+=(--target "$COMMIT")
+          # Version tags are protected from update/deletion by the repository's
+          # active tag ruleset. Re-read the remote ref immediately before release
+          # creation and prove its peeled commit still matches every build leg.
+          git fetch --no-tags --force origin \
+            "refs/tags/$TAG:refs/gitlane-release/$TAG"
+          TAG_COMMIT=$(git rev-parse "refs/gitlane-release/$TAG^{commit}")
+          if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
+            echo "Remote tag $TAG resolves to $TAG_COMMIT, not validated release commit $COMMIT."
+            exit 1
           fi
 
           if IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
-            if [[ "${TAG_ARGS[0]}" != "--verify-tag" ]]; then
-              echo "Release $TAG exists but its tag could not be verified."
-              exit 1
-            fi
             if [[ "$IS_DRAFT" != "true" ]]; then
               echo "Release $TAG is already public; refusing to mutate it from a matrix rerun."
               exit 1
@@ -232,7 +226,7 @@ jobs:
           fi
           gh release create "$TAG" \
             --draft \
-            "${TAG_ARGS[@]}" \
+            --verify-tag \
             "${PRERELEASE_ARGS[@]}" \
             --title "GitLane $TAG" \
             --notes "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)." \

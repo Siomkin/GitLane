@@ -30,6 +30,10 @@ preflight fails the release otherwise. Release tags must be created from commits
 that are already reachable from `latest`; `develop` and `staging` are not
 release sources. What the release ships per platform, and which install channels
 exist or are planned, is recorded in [`distribution.md`](distribution.md).
+Release tags must exist on `origin` before the workflow starts. The active
+repository tag ruleset allows new `v*` tags but blocks updating or deleting them;
+the workflow revalidates the remote tag against the pinned build commit and never
+creates a tag itself.
 
 - **Stable:** bump the three files to `X.Y.Z`, tag `vX.Y.Z`. Published as a
   normal release; becomes the `/latest/` target.
