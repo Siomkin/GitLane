@@ -3,7 +3,8 @@
 // read/write wrappers, and the lookups over them. No Zustand, no IPC — the
 // store composes these; nothing here ever holds token material.
 
-import type { ForgeAuthProvider, RepoIdentity } from "@/lib/api";
+import { z } from "zod";
+import type { ForgeAuthProvider, GithubAccountRef, RepoIdentity } from "@/lib/api";
 import type { StoredRepoAccountEntry } from "./accountBindings";
 
 // Per-repo PR-account bindings. Per-remote auth moved to git config (URL
@@ -57,12 +58,82 @@ export type StoredProviderToken = {
 export const providerTokenKey = (credentialHost: string, login: string) =>
   `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
 
-function readJsonMap<T>(key: string): Record<string, T> {
+const nonEmptyString = z.string().trim().min(1);
+const forgeAuthProviderSchema = z.enum([
+  "gitlab",
+  "bitbucket",
+  "azure-devops",
+  "gitea",
+  "forgejo",
+]);
+const githubAccountRefShape = {
+  provider: z.enum(["gh", "native"]),
+  host: nonEmptyString,
+  accountId: nonEmptyString,
+  login: nonEmptyString,
+};
+// Bindings and identities are non-secret, forward-compatible metadata. Strip
+// fields written by a newer app so a beta -> stable rollback keeps the known
+// row instead of erasing it on the next read/modify/write. Credential and token
+// schemas below stay strict because unexpected fields there may be secret data.
+const githubAccountRefSchema: z.ZodType<GithubAccountRef> = z.object(
+  githubAccountRefShape,
+);
+const unboundSchema = z.object({ unbound: z.literal(true) });
+const remoteBindingSchema = z.union([githubAccountRefSchema, unboundSchema, nonEmptyString]);
+const storedRepoAccountEntrySchema: z.ZodType<StoredRepoAccountEntry> = z.union([
+  z.object({ version: z.literal(2), unbound: z.literal(true) }),
+  z.object({ ...githubAccountRefShape, version: z.literal(2) }),
+  z.object({
+    version: z.literal(3),
+    remotes: z.record(z.string(), remoteBindingSchema),
+  }),
+  nonEmptyString,
+]);
+const repoIdentitySchema: z.ZodType<RepoIdentity> = z.object({
+  name: z.string(),
+  email: z.string(),
+  signingKey: z.string().optional(),
+  gpgFormat: z.string().optional(),
+  gpgSign: z.boolean().optional(),
+  tagGpgSign: z.boolean().optional(),
+});
+const storedForgeCredentialSchema: z.ZodType<StoredForgeCredential> = z.strictObject({
+  provider: forgeAuthProviderSchema,
+  credentialHost: nonEmptyString,
+  path: z.string().nullable(),
+  username: nonEmptyString,
+  helper: z.string(),
+  savedAt: z.number().finite(),
+});
+const storedProviderTokenSchema: z.ZodType<StoredProviderToken> = z.strictObject({
+  provider: forgeAuthProviderSchema,
+  credentialHost: nonEmptyString,
+  accountId: nonEmptyString,
+  login: nonEmptyString,
+  transportUsername: nonEmptyString.optional(),
+  savedAt: z.number().finite(),
+});
+
+type EntryGuard<T> = (mapKey: string, value: T) => boolean;
+
+/** Parse persisted metadata as untrusted input. Keep independently valid rows
+ * so one corrupt entry cannot discard every account, but never let an invalid
+ * shape (or an unexpected field such as token material) enter store state. */
+function readJsonMap<T>(key: string, schema: z.ZodType<T>, guard?: EntryGuard<T>): Record<string, T> {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, T>) : {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const valid: Array<[string, T]> = [];
+    for (const [mapKey, candidate] of Object.entries(parsed)) {
+      const result = schema.safeParse(candidate);
+      if (result.success && (!guard || guard(mapKey, result.data))) {
+        valid.push([mapKey, result.data]);
+      }
+    }
+    return Object.fromEntries(valid);
   } catch {
     return {};
   }
@@ -76,16 +147,27 @@ function writeJsonMap<T>(key: string, map: Record<string, T>) {
   }
 }
 
-export const readBindings = () => readJsonMap<StoredRepoAccountEntry>(LS_REPO_ACCOUNTS);
+export const readBindings = () =>
+  readJsonMap(LS_REPO_ACCOUNTS, storedRepoAccountEntrySchema, (key) => key.trim() !== "");
 export const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
   writeJsonMap(LS_REPO_ACCOUNTS, map);
-export const readIdentities = () => readJsonMap<RepoIdentity>(LS_REPO_IDENTITY);
+export const readIdentities = () =>
+  readJsonMap(LS_REPO_IDENTITY, repoIdentitySchema, (key) => key.trim() !== "");
 export const writeIdentities = (map: Record<string, RepoIdentity>) =>
   writeJsonMap(LS_REPO_IDENTITY, map);
-export const readForgeCredentials = () => readJsonMap<StoredForgeCredential>(LS_FORGE_CREDENTIALS);
+export const readForgeCredentials = () =>
+  readJsonMap(
+    LS_FORGE_CREDENTIALS,
+    storedForgeCredentialSchema,
+    (key, credential) => key === credential.provider,
+  );
 export const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
   writeJsonMap(LS_FORGE_CREDENTIALS, map);
-export const readProviderTokens = () => readJsonMap<StoredProviderToken>(LS_PROVIDER_TOKENS);
+export const readProviderTokens = () =>
+  readJsonMap(LS_PROVIDER_TOKENS, storedProviderTokenSchema, (key, token) => {
+    const transportLogin = token.transportUsername ?? token.login;
+    return key === providerTokenKey(token.credentialHost, transportLogin);
+  });
 export const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
   writeJsonMap(LS_PROVIDER_TOKENS, map);
 

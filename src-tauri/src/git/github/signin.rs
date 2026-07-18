@@ -229,19 +229,17 @@ fn wait_for_child(slot: &SignInSlot, shared: &Arc<Mutex<ReaderShared>>) -> Optio
         std::thread::sleep(Duration::from_millis(60));
         {
             let mut guard = slot.lock().ok()?;
-            match guard.child.as_mut() {
-                Some(child) => match child.try_wait() {
-                    Ok(Some(status)) => {
-                        guard.child = None;
-                        return Some(status);
-                    }
-                    Ok(None) => {} // still running — fall through to the grace check
-                    Err(_) => {
-                        guard.child = None;
-                        return None;
-                    }
-                },
-                None => return None, // taken / cancelled
+            let child = guard.child.as_mut()?; // taken / cancelled
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    guard.child = None;
+                    return Some(status);
+                }
+                Ok(None) => {} // still running — fall through to the grace check
+                Err(_) => {
+                    guard.child = None;
+                    return None;
+                }
             }
         }
         let authorized = shared.lock().map(|g| g.authorized).unwrap_or(false);
@@ -504,11 +502,10 @@ fn extract_signin_error(transcript: &str) -> String {
     transcript
         .lines()
         .map(str::trim)
-        .filter(|l| {
+        .rfind(|l| {
             let low = l.to_lowercase();
             low.contains("error") || low.contains("failed") || low.contains("could not")
         })
-        .last()
         .map(|l| {
             l.trim_start_matches(['x', '✗', '!', '-', ' '])
                 .trim()
@@ -640,7 +637,10 @@ mod tests {
         let mut out: Vec<u8> = Vec::new();
         probes.answer("\u{1b}]11;?\u{1b}\\\u{1b}[6n", &mut out);
         let replies = String::from_utf8(out).unwrap();
-        assert!(replies.contains("\u{1b}]11;rgb:"), "background query unanswered");
+        assert!(
+            replies.contains("\u{1b}]11;rgb:"),
+            "background query unanswered"
+        );
         assert!(replies.ends_with("\u{1b}[1;1R"), "cursor report unanswered");
     }
 
@@ -672,7 +672,10 @@ mod tests {
     fn ordinary_styling_is_never_mistaken_for_a_probe() {
         let mut probes = TerminalProbes::default();
         let mut out: Vec<u8> = Vec::new();
-        probes.answer("\u{1b}[0;1;92m? \u{1b}[0mAuthenticate\u{1b}[0m\r\n", &mut out);
+        probes.answer(
+            "\u{1b}[0;1;92m? \u{1b}[0mAuthenticate\u{1b}[0m\r\n",
+            &mut out,
+        );
         assert!(out.is_empty(), "replied to plain SGR styling");
         assert!(probes.carry.is_empty(), "retained non-probe bytes");
     }

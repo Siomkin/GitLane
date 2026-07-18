@@ -1,4 +1,7 @@
-use super::parser::{parse_unified_diff, strip_patch_prefix};
+use super::parser::{
+    parse_unified_diff, parse_unified_diff_with_limit, parse_unified_diff_with_limits,
+    strip_patch_prefix,
+};
 
 const SAMPLE: &str = "\
 diff --git a/src/foo.rs b/src/foo.rs
@@ -454,4 +457,83 @@ fn boundary_without_subject_keeps_oid_and_no_subject() {
     );
     assert_eq!(files[0].commit_subject, None);
     assert_eq!((files[0].add, files[0].del), (1, 0));
+}
+
+#[test]
+fn global_line_budget_bounds_payload_but_keeps_complete_totals_and_files() {
+    let patch = "\
+diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1,2 +1,2 @@
+-old one
++new one
+ context
+diff --git a/b.txt b/b.txt
+--- a/b.txt
++++ b/b.txt
+@@ -0,0 +1,2 @@
++later one
++later two
+";
+
+    let files = parse_unified_diff_with_limit(patch, 2);
+    assert_eq!(files.len(), 2);
+    assert_eq!((files[0].add, files[0].del), (1, 1));
+    assert_eq!((files[1].add, files[1].del), (2, 0));
+    assert_eq!(
+        files
+            .iter()
+            .flat_map(|file| &file.hunks)
+            .map(|hunk| hunk.lines.len())
+            .sum::<usize>(),
+        2
+    );
+    assert!(files[0].truncated);
+    assert!(files[1].truncated);
+}
+
+#[test]
+fn eof_before_hunk_counts_are_satisfied_marks_the_file_truncated() {
+    let patch = "\
+diff --git a/a.txt b/a.txt
+--- a/a.txt
++++ b/a.txt
+@@ -1,3 +1,3 @@
+-old
++new
+ context
+";
+
+    let files = parse_unified_diff(patch);
+
+    assert_eq!(files.len(), 1);
+    assert!(files[0].truncated);
+}
+
+#[test]
+fn per_file_budget_keeps_a_leading_large_file_from_starving_later_files() {
+    let patch = "\
+diff --git a/lock.txt b/lock.txt
+--- a/lock.txt
++++ b/lock.txt
+@@ -0,0 +1,3 @@
++one
++two
++three
+diff --git a/src.rs b/src.rs
+--- a/src.rs
++++ b/src.rs
+@@ -0,0 +1,2 @@
++later one
++later two
+";
+
+    let files = parse_unified_diff_with_limits(patch, 4, 2);
+
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].hunks[0].lines.len(), 2);
+    assert!(files[0].truncated);
+    assert_eq!(files[1].hunks[0].lines.len(), 2);
+    assert!(!files[1].truncated);
 }

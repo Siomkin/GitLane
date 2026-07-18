@@ -40,6 +40,17 @@ pub(super) fn run_git(repo: &str, args: &[&str]) -> Result<String, String> {
     run_git_env(repo, args, &[])
 }
 
+/// Run a command whose trailing operands are repository paths, forcing Git to
+/// treat every pathspec byte literally. `--` only ends option parsing; without
+/// this global mode a real filename such as `:(glob)*` can still expand to
+/// unrelated files.
+pub(super) fn run_git_literal_paths(repo: &str, args: &[&str]) -> Result<String, String> {
+    let mut literal_args = Vec::with_capacity(args.len() + 1);
+    literal_args.push("--literal-pathspecs");
+    literal_args.extend_from_slice(args);
+    run_git(repo, &literal_args)
+}
+
 /// Like [`run_git`], but trailing path arguments are passed as [`OsString`] so
 /// NUL-delimited machine output can be forwarded byte-for-byte on Unix.
 pub(super) fn run_git_os_paths(

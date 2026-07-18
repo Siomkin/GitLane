@@ -21,5 +21,5 @@ pub use identity::{default_identity, repo_identity};
 pub use paths::suggest_tree_paths;
 pub use recents::recents_status;
 pub use remotes::list_remotes;
-pub use repo::{commit_graph, open, summary_classified, worktree_join};
+pub use repo::{commit_graph, open, summary_classified};
 pub use search::search_history;

@@ -1,7 +1,9 @@
+use super::advanced::MAX_GITATTRIBUTES_BYTES;
 use super::diff::DIFF_LINE_LIMIT;
 use super::{
-    commit_file_diff, commit_files, compare_file_diff, compare_refs, file_blame, file_diff,
-    file_history, read_binary_blob, selection_diff, selection_diff_file, working_changes,
+    commit_file_diff, commit_files, compare_file_diff, compare_refs, diff_range_file, file_blame,
+    file_diff, file_history, read_binary_blob, selection_diff, selection_diff_file,
+    working_changes,
 };
 use git2::{Repository, Signature};
 use std::fs;
@@ -129,6 +131,66 @@ fn diff_skips_no_newline_eofnl_markers() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[cfg(not(windows))]
+#[test]
+fn per_file_diff_reads_treat_glob_characters_as_a_literal_filename() {
+    let dir = std::env::temp_dir().join(format!(
+        "gitlane-literal-file-diff-test-{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let magic = "*.txt";
+    fs::write(dir.join(magic), "literal base\n").unwrap();
+    fs::write(dir.join("victim.txt"), "victim base\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(magic)).unwrap();
+        index.add_path(Path::new("victim.txt")).unwrap();
+        index.write().unwrap();
+    }
+    let base = commit_index(&repo, "base").to_string();
+
+    fs::write(dir.join(magic), "literal committed\n").unwrap();
+    fs::write(dir.join("victim.txt"), "victim committed\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(Path::new(magic)).unwrap();
+        index.add_path(Path::new("victim.txt")).unwrap();
+        index.write().unwrap();
+    }
+    let head = commit_index(&repo, "both changed").to_string();
+    let path = dir.to_str().unwrap();
+
+    let commit_diff = commit_file_diff(path, &head, magic, false).unwrap();
+    let range_diff = diff_range_file(path, &base, &head, magic, false).unwrap();
+    let compare_diff = compare_file_diff(path, &base, Some(&head), magic, false).unwrap();
+    for diff in [&commit_diff, &range_diff, &compare_diff] {
+        assert_eq!(diff.path, magic);
+        assert!(
+            diff.hunks
+                .iter()
+                .flat_map(|hunk| &hunk.lines)
+                .any(|line| line.content == "literal committed"),
+            "literal file content missing from {diff:?}"
+        );
+    }
+
+    fs::write(dir.join(magic), "literal working\n").unwrap();
+    fs::write(dir.join("victim.txt"), "victim working\n").unwrap();
+    let working_diff = file_diff(path, magic, false, false).unwrap();
+    assert_eq!(working_diff.path, magic);
+    assert!(working_diff
+        .hunks
+        .iter()
+        .flat_map(|hunk| &hunk.lines)
+        .any(|line| line.content == "literal working"));
+
+    drop(repo);
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn file_history_lists_changes_newest_first_and_paginates() {
     let dir = std::env::temp_dir().join("gitlane-file-history-test");
@@ -202,6 +264,51 @@ fn file_blame_returns_line_attribution() {
     assert_eq!(blame.lines[1].author_name, "Bench");
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_blame_does_not_treat_a_utf8_named_read_failure_as_binary() {
+    let dir = std::env::temp_dir().join("gitlane-file-blame-utf8-path-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "missing-UTF-8.txt", "text\n");
+    fs::remove_file(dir.join("missing-UTF-8.txt")).unwrap();
+
+    let result = file_blame(dir.to_str().unwrap(), "missing-UTF-8.txt", None, Some(10));
+
+    assert!(
+        result.is_err(),
+        "a real read failure must propagate: {result:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn working_tree_blame_refuses_an_ancestor_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = std::env::temp_dir().join("gitlane-file-blame-symlink-test");
+    let outside = dir.with_extension("outside");
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&outside);
+    fs::create_dir_all(dir.join("nested")).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "nested/blame.txt", "inside\n");
+    fs::write(outside.join("blame.txt"), "outside secret\n").unwrap();
+    fs::rename(dir.join("nested"), dir.join("nested-original")).unwrap();
+    symlink(&outside, dir.join("nested")).unwrap();
+
+    let result = file_blame(dir.to_str().unwrap(), "nested/blame.txt", None, Some(10));
+
+    assert!(
+        result.is_err(),
+        "working-tree blame must not follow {result:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&outside);
 }
 
 #[test]
@@ -357,6 +464,47 @@ fn working_changes_reports_lfs_state() {
         .iter()
         .any(|issue| issue.contains("asset.bin")));
 
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn working_changes_does_not_follow_a_gitattributes_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let dir = std::env::temp_dir().join("gitlane-lfs-attributes-symlink-test");
+    let outside = dir.with_extension("outside-attributes");
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_file(&outside);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    fs::write(&outside, "*.bin filter=lfs diff=lfs merge=lfs -text\n").unwrap();
+    symlink(&outside, dir.join(".gitattributes")).unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+
+    assert!(changes.advanced.lfs.patterns.is_empty());
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_file(&outside);
+}
+
+#[test]
+fn working_changes_ignores_oversized_gitattributes() {
+    let dir = std::env::temp_dir().join("gitlane-lfs-attributes-size-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "tracked.txt", "one\n");
+    fs::write(
+        dir.join(".gitattributes"),
+        vec![b'x'; MAX_GITATTRIBUTES_BYTES + 1],
+    )
+    .unwrap();
+
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+
+    assert!(changes.advanced.lfs.patterns.is_empty());
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -623,6 +771,32 @@ fn untracked_binary_file_is_flagged_in_working_changes() {
     let blob = read_binary_blob(dir.to_str().unwrap(), None, Some("blob.bin"), None).unwrap();
     assert_eq!(blob.size, 5);
     assert!(blob.base64.is_some());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn large_untracked_text_count_is_marked_as_a_lower_bound() {
+    let dir = std::env::temp_dir().join("gitlane-large-untracked-count-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+
+    // Cross the 1 MiB working-status probe without embedding a NUL byte. The
+    // returned count covers only that prefix and must never look exact.
+    let line = "0123456789abcdef\n";
+    fs::write(dir.join("large.txt"), line.repeat(70_000)).unwrap();
+    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    let entry = changes
+        .unstaged
+        .iter()
+        .find(|f| f.path == "large.txt")
+        .unwrap();
+    assert!(!entry.binary);
+    assert!(entry.add > 0);
+    assert!(entry.line_count_truncated);
+    assert!(entry.add < 70_000);
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1377,7 +1551,10 @@ fn list_repo_files_skips_gitlink_submodule_entries() {
 
     let files = super::list_repo_files(dir.to_str().unwrap()).unwrap();
     assert!(files.contains(&"real.txt".to_string()), "{files:?}");
-    assert!(!files.contains(&"vendor/sub".to_string()), "gitlink listed: {files:?}");
+    assert!(
+        !files.contains(&"vendor/sub".to_string()),
+        "gitlink listed: {files:?}"
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1412,8 +1589,19 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
     assert!(super::repo_file_text(path, "../outside.txt", None).is_err());
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(dir.join("plain.txt"), dir.join("link.txt")).unwrap();
+        use std::os::unix::fs::symlink;
+
+        symlink(dir.join("plain.txt"), dir.join("link.txt")).unwrap();
         assert!(super::repo_file_text(path, "link.txt", None).is_err());
+
+        let outside = dir.with_extension("viewer-outside");
+        let _ = fs::remove_dir_all(&outside);
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "outside secret\n").unwrap();
+        symlink(&outside, dir.join("ancestor-link")).unwrap();
+        assert!(super::repo_file_text(path, "ancestor-link/secret.txt", None).is_err());
+        assert!(read_binary_blob(path, None, Some("ancestor-link/secret.txt"), None).is_err());
+        let _ = fs::remove_dir_all(&outside);
     }
 
     let _ = fs::remove_dir_all(&dir);
@@ -1432,14 +1620,19 @@ fn repo_file_head_text_returns_committed_baseline() {
     // divergence is exactly what the change gutter visualizes.
     fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
     assert_eq!(
-        super::repo_file_head_text(path, "a.txt").unwrap().as_deref(),
+        super::repo_file_head_text(path, "a.txt")
+            .unwrap()
+            .as_deref(),
         Some("one\ntwo\n"),
     );
 
     // Untracked / not-in-HEAD → no baseline.
     fs::write(dir.join("new.txt"), "fresh\n").unwrap();
     assert_eq!(super::repo_file_head_text(path, "new.txt").unwrap(), None);
-    assert_eq!(super::repo_file_head_text(path, "missing.txt").unwrap(), None);
+    assert_eq!(
+        super::repo_file_head_text(path, "missing.txt").unwrap(),
+        None
+    );
 
     // A binary blob at HEAD has no line baseline.
     commit_bytes(&repo, &dir, "blob.bin", &[0u8, 1, 2, 3]);

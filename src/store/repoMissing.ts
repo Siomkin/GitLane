@@ -14,6 +14,7 @@ import {
   openIntentIsCurrent,
 } from "./repoRequests";
 import { repoStillDisplayed } from "./repoGuards";
+import { unwatchRepo } from "./repoWatchQueue";
 import {
   persistRecents,
   persistSession,
@@ -158,7 +159,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     isCurrent: () => boolean,
   ) => {
     // The dead worktree stops being watched whichever branch handles its tab.
-    void api.unwatchRepo(path).catch(() => {});
+    void unwatchRepo(path);
 
     // Not the repo on screen (e.g. clicking a dead worktree tab while another
     // repo is displayed): just retire its tab and leave the active repo as is.

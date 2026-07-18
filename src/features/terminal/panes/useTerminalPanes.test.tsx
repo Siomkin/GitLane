@@ -25,12 +25,24 @@ vi.mock("@/lib/platform", async (importOriginal) => ({
 // track unlisten so cleanup is observable.
 const ptyEvents = vi.hoisted(() => ({
   handlers: new Map<string, (event: { payload: unknown }) => void>(),
+  deferRegistration: false,
+  completeRegistration: new Map<string, () => void>(),
+  rejectRegistration: new Set<string>(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, cb: (event: { payload: unknown }) => void) => {
-    ptyEvents.handlers.set(name, cb);
-    return Promise.resolve(() => {
-      ptyEvents.handlers.delete(name);
+    if (ptyEvents.rejectRegistration.has(name)) {
+      return Promise.reject(new Error(`could not listen for ${name}`));
+    }
+    const install = () => {
+      ptyEvents.handlers.set(name, cb);
+      return () => {
+        ptyEvents.handlers.delete(name);
+      };
+    };
+    if (!ptyEvents.deferRegistration) return Promise.resolve(install());
+    return new Promise<() => void>((resolve) => {
+      ptyEvents.completeRegistration.set(name, () => resolve(install()));
     });
   },
 }));
@@ -98,6 +110,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useTerminals } from "@/store/terminals";
 import { useTerminalAgents } from "@/store/terminalAgents";
+import { useNotifications } from "@/store/notifications";
 
 const summaryFor = (path: string) => ({
   path,
@@ -144,9 +157,13 @@ beforeEach(() => {
   );
   xterm.instances.length = 0;
   ptyEvents.handlers.clear();
+  ptyEvents.deferRegistration = false;
+  ptyEvents.completeRegistration.clear();
+  ptyEvents.rejectRegistration.clear();
   useRepo.setState({ summary: summaryFor("/current") });
   useTerminals.setState({ byRepo: {} });
   useTerminalAgents.setState({ loadAgents: vi.fn() });
+  useNotifications.setState({ toasts: [] });
   useUi.setState({
     terminalView: "hidden",
     terminalViewByRepo: {},
@@ -160,6 +177,49 @@ afterEach(() => {
 });
 
 describe("pane lifecycle across repo/tab switches (GL-177)", () => {
+  it("does not spawn a PTY until both output listeners are registered", async () => {
+    ptyEvents.deferRegistration = true;
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+
+    expect(spawnCalls()).toHaveLength(0);
+    expect(ptyEvents.handlers.size).toBe(0);
+
+    await act(async () => {
+      ptyEvents.completeRegistration.get("pty-data")?.();
+    });
+    expect(spawnCalls()).toHaveLength(0);
+
+    await act(async () => {
+      ptyEvents.completeRegistration.get("pty-exit")?.();
+    });
+    await waitFor(() => expect(spawnCalls()).toHaveLength(1));
+    expect(ptyEvents.handlers.size).toBe(2);
+
+    const write = vi.spyOn(xterm.instances[0], "write");
+    await act(async () => {
+      ptyEvents.handlers.get("pty-data")?.({ payload: { sessionId: 1, data: [104, 105] } });
+    });
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps readiness closed and surfaces listener registration failures", async () => {
+    ptyEvents.rejectRegistration.add("pty-exit");
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+
+    renderPanes();
+    await flush();
+    await flush();
+
+    expect(spawnCalls()).toHaveLength(0);
+    expect(useNotifications.getState().toasts.slice(-1)[0]).toMatchObject({
+      kind: "error",
+      title: expect.stringContaining("Terminal event transport could not start"),
+    });
+  });
+
   it("hides a terminal in a new repo and restores the original repo's live pane", async () => {
     useRepo.setState({ summary: summaryFor("/repoA") });
     useUi.getState().expandTerminal();
@@ -419,7 +479,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush();
@@ -457,7 +522,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush(); // launch write resolved; the prompt-wait timer is armed
@@ -497,7 +567,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
 
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush();
@@ -528,7 +603,12 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     xterm.instances[0].modes.bracketedPasteMode = true;
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "codex", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "codex",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush();
@@ -556,6 +636,128 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     expect(useUi.getState().terminalInject).toBeNull();
   });
 
+  it("fails closed instead of pasting multiline text when agent readiness is never observed", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        {
+          token: "unsafe-fallback",
+          agentName: "codex",
+          repoPath: "/repoA",
+          startedAt: Date.now(),
+        },
+        "review the diff\n$(touch should-not-run)\nfinish",
+        "codex",
+      );
+    });
+    await flush();
+
+    // Model an agent that exits back to a plain shell without ever enabling
+    // bracketed paste. The old eight-second fallback pasted these lines raw.
+    await act(async () => {
+      vi.advanceTimersByTime(8_100);
+    });
+
+    expect(xterm.instances[1].pasted).toHaveLength(0);
+    expect(xterm.instances[1].lines.some((line) => line.includes("queued text was not pasted")))
+      .toBe(true);
+    expect(useUi.getState().terminalInject).toBeNull();
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain(
+      "agent prompt could not be verified",
+    );
+  });
+
+  it("does not relaunch the agent when draft collection is cancelled mid-wait", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        {
+          token: "cancel-mid-wait",
+          agentName: "codex",
+          repoPath: "/repoA",
+          startedAt: Date.now(),
+        },
+        "review the staged changes",
+        "codex",
+      );
+    });
+    await flush();
+    await flush();
+
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(1);
+
+    await act(async () => {
+      useUi.getState().cancelAgentCommitDraft();
+    });
+    await flush();
+
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(1);
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+    expect(useUi.getState().terminalInject).not.toBeNull();
+  });
+
+  it("keeps an agent injection pinned when another tab becomes active", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({
+      summary: summaryFor("/repoA"),
+      takeAgentCommitDraft: vi.fn().mockResolvedValue(null),
+    });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.getState().startAgentCommitDraft(
+        {
+          token: "tab-owned-injection",
+          agentName: "codex",
+          repoPath: "/repoA",
+          startedAt: Date.now(),
+        },
+        "review the staged changes",
+        "codex",
+      );
+    });
+    await flush();
+    await flush();
+
+    const targetTabId = useUi.getState().terminalInject?.tabId;
+    expect(targetTabId).toBe(useTerminals.getState().byRepo["/repoA"].activeId);
+    let otherTabId = "";
+    await act(async () => {
+      otherTabId = useTerminals.getState().openTab("/repoA");
+    });
+    await flush();
+    await flush();
+    expect(useTerminals.getState().byRepo["/repoA"].activeId).toBe(otherTabId);
+
+    xterm.instances[1].modes.bracketedPasteMode = true;
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
+
+    expect(xterm.instances[1].pasted).toEqual(["review the staged changes"]);
+    expect(xterm.instances[2].pasted).toHaveLength(0);
+    const writes = invokeMock.mock.calls.filter((call) => call[0] === "pty_write");
+    expect(writes).toContainEqual([
+      "pty_write",
+      expect.objectContaining({ sessionId: 2 }),
+    ]);
+    expect(writes.some((call) => call[1]?.sessionId === 3)).toBe(false);
+    useUi.getState().cancelAgentCommitDraft();
+  });
+
   it("cancels a pending agent-launch injection on unmount — no late paste", async () => {
     vi.useFakeTimers();
     useRepo.setState({ summary: summaryFor("/repoA") });
@@ -568,14 +770,19 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     // succeeds, then the hook polls for the agent prompt before pasting.
     await act(async () => {
       useUi.setState({
-        terminalInject: { text: "the prompt", command: "claude", repoKey: "/repoA" },
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
       });
     });
     await flush(); // launch write resolved; the prompt-wait timer is armed
 
     unmount();
     await act(async () => {
-      vi.advanceTimersByTime(10_000); // past the poll interval AND the 8s fallback
+      vi.advanceTimersByTime(10_000); // past the poll interval AND the 8s timeout
     });
 
     // The cancelled wait must neither paste nor consume the injection.
@@ -592,7 +799,12 @@ describe("terminal injection ownership (GL-176 review)", () => {
     // switched repos — the stale injection must die, not follow the switch.
     act(() => {
       useUi.setState({
-        terminalInject: { text: "secret prompt", command: "claude", repoKey: "/original" },
+        terminalInject: {
+          text: "secret prompt",
+          command: "claude",
+          repoKey: "/original",
+          tabId: "original-tab",
+        },
       });
     });
 
@@ -605,7 +817,12 @@ describe("terminal injection ownership (GL-176 review)", () => {
 
     act(() => {
       useUi.setState({
-        terminalInject: { text: "prompt", command: "claude", repoKey: "/current" },
+        terminalInject: {
+          text: "prompt",
+          command: "claude",
+          repoKey: "/current",
+          tabId: null,
+        },
       });
     });
 
@@ -614,12 +831,13 @@ describe("terminal injection ownership (GL-176 review)", () => {
     expect(useUi.getState().terminalInject).not.toBeNull();
   });
 
-  it("sendToTerminal stamps the injection with the active repo", () => {
+  it("sendToTerminal stamps the injection with the active repo and tab", () => {
     useUi.getState().sendToTerminal("the text", "claude");
     expect(useUi.getState().terminalInject).toMatchObject({
       text: "the text",
       command: "claude",
       repoKey: "/current",
+      tabId: useTerminals.getState().byRepo["/current"].activeId,
     });
     expect(useTerminals.getState().byRepo["/current"].tabs).toHaveLength(1);
   });

@@ -9,6 +9,8 @@ use crate::git::types::{
     AdvancedRepoState, FileAdvancedState, FileChange, LfsState, SparseCheckoutState, SubmoduleState,
 };
 
+pub(super) const MAX_GITATTRIBUTES_BYTES: usize = 256 * 1024;
+
 pub(super) fn advanced_state(repo: &Repository, changed_paths: &[String]) -> AdvancedRepoState {
     let submodules = submodule_states(repo);
     let lfs = lfs_state(repo, changed_paths);
@@ -165,9 +167,7 @@ fn summarize_submodule_status(status: SubmoduleStatus) -> (String, Vec<String>, 
 
 fn lfs_state(repo: &Repository, changed_paths: &[String]) -> LfsState {
     let workdir = repo.workdir();
-    let patterns = workdir
-        .map(|dir| lfs_patterns(&dir.join(".gitattributes")))
-        .unwrap_or_default();
+    let patterns = workdir.map(lfs_patterns).unwrap_or_default();
 
     let config_detected = repo
         .config()
@@ -228,10 +228,17 @@ fn lfs_state(repo: &Repository, changed_paths: &[String]) -> LfsState {
     }
 }
 
-fn lfs_patterns(attributes: &Path) -> Vec<String> {
+fn lfs_patterns(workdir: &Path) -> Vec<String> {
     // Best-effort only: this intentionally reads the root attributes file.
     // Nested .gitattributes support would need a git attribute query per path.
-    let Ok(contents) = std::fs::read_to_string(attributes) else {
+    let Ok(bytes) = crate::git::worktree_fs::read_regular_worktree_file_bounded(
+        workdir,
+        ".gitattributes",
+        MAX_GITATTRIBUTES_BYTES,
+    ) else {
+        return Vec::new();
+    };
+    let Ok(contents) = String::from_utf8(bytes) else {
         return Vec::new();
     };
 
@@ -255,7 +262,7 @@ fn lfs_path_matches(path: &str, patterns: &[String]) -> bool {
         if let Some(ext) = pattern.strip_prefix("*.") {
             return path
                 .rsplit_once('.')
-                .map_or(false, |(_, path_ext)| path_ext == ext);
+                .is_some_and(|(_, path_ext)| path_ext == ext);
         }
         if let Some(prefix) = pattern.strip_suffix("/**") {
             return path.starts_with(prefix);
@@ -277,25 +284,28 @@ fn missing_lfs_objects(workdir: &Path, paths: &[&str]) -> Vec<String> {
         if out.len() >= 4 {
             break;
         }
-        let absolute = workdir.join(path);
-        if looks_like_lfs_pointer(&absolute) {
+        if looks_like_lfs_pointer(workdir, path) {
             out.push((*path).to_string());
         }
     }
     out
 }
 
-fn looks_like_lfs_pointer(path: &Path) -> bool {
+fn looks_like_lfs_pointer(workdir: &Path, path: &str) -> bool {
+    use std::io::Read;
+
     const MAX_POINTER_BYTES: u64 = 512;
-    let Ok(metadata) = std::fs::metadata(path) else {
+    let Ok(mut opened) = crate::git::worktree_fs::open_regular_worktree_file(workdir, path) else {
         return false;
     };
-    if metadata.len() > MAX_POINTER_BYTES {
+    if opened.len() > MAX_POINTER_BYTES {
         return false;
     }
-    let Ok(contents) = std::fs::read_to_string(path) else {
+    let mut bytes = Vec::with_capacity(opened.len() as usize);
+    if opened.reader().read_to_end(&mut bytes).is_err() {
         return false;
-    };
+    }
+    let contents = String::from_utf8_lossy(&bytes);
     contents.starts_with("version https://git-lfs.github.com/spec/v1\n")
         && contents.contains("\noid sha256:")
         && contents.contains("\nsize ")

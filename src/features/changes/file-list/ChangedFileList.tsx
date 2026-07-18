@@ -212,7 +212,13 @@ function TreeFileRow({
             action && "group-hover:opacity-0 group-focus-within:opacity-0",
           )}
         >
-          <ChangeCounts add={file.add} del={file.del} binary={file.binary} className="text-[11px]" />
+          <ChangeCounts
+            add={file.add}
+            del={file.del}
+            binary={file.binary}
+            addAtLeast={file.lineCountTruncated}
+            className="text-[11px]"
+          />
           <StatusBadge status={file.status} />
         </span>
       </button>

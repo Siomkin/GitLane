@@ -398,6 +398,9 @@ export interface FileChange {
   /** True when git treats the change as binary (no line stats); lets file lists
    * mark it as binary instead of showing a misleading "+0 −0". */
   binary: boolean;
+  /** `add` is a lower bound because a large untracked text file was counted
+   * only through the backend's bounded probe. Absent means the count is exact. */
+  lineCountTruncated?: boolean;
   /** For a rename ("R") or copy ("C"), the file's previous (old-side) path — the
    * rename/copy source. For a rename it is the *staging* counterpart: a worktree
    * rename shows as one "R" naming only the new path, so staging/unstaging it must
@@ -1250,7 +1253,8 @@ export const gitApi = {
   cloneRepo: (url: string, dest: string, auth?: GitTransportAuthRef | null) =>
     invoke<string>("clone_repo", { url, dest, auth: auth ?? null }),
 
-  /** Cancel an in-flight {@link cloneRepo} (kills the `git clone` child). */
+  /** Cancel an in-flight {@link cloneRepo}. Rejects once publication has won
+   * the atomic backend race, so callers must keep the success path active. */
   cancelClone: () => invoke<void>("cancel_clone"),
 
   /** Initialize a new repo at `parent`/`name` on `branch`, optionally seeding a

@@ -23,11 +23,9 @@ use git::types::{
     CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
     FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
     GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
-    HistorySearchPage, HistorySearchQuery,
-    OauthClientStatus, OperationStatus, PrCheck, PrCommit, ProviderOauthResult, ProviderTokenStatus,
-    PullRequestDetail, PullRequestSummary,
-    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge,
-    RepoGraph, RepoIdentity,
+    HistorySearchPage, HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommit,
+    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
+    ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge, RepoGraph, RepoIdentity,
     RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
@@ -594,8 +592,10 @@ async fn repo_file_text(
     file: String,
     max_bytes: Option<u64>,
 ) -> Result<RepoFileContent, String> {
-    blocking(move || git::status::repo_file_text(&path, &file, max_bytes).map_err(|e| e.to_string()))
-        .await
+    blocking(move || {
+        git::status::repo_file_text(&path, &file, max_bytes).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// The committed (HEAD) text of one file — the baseline for the viewer/editor's
@@ -604,7 +604,8 @@ async fn repo_file_text(
 /// so it runs on the blocking pool like the worktree read.
 #[tauri::command]
 async fn repo_file_head_text(path: String, file: String) -> Result<Option<String>, String> {
-    blocking(move || git::status::repo_file_head_text(&path, &file).map_err(|e| e.to_string())).await
+    blocking(move || git::status::repo_file_head_text(&path, &file).map_err(|e| e.to_string()))
+        .await
 }
 
 /// Save an edited worktree file back to disk for the in-app file editor. A
@@ -804,6 +805,7 @@ async fn apply_hunk(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri exposes the line guard fields individually.
 async fn apply_line(
     path: String,
     file: String,
@@ -857,6 +859,7 @@ async fn unstage_all(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 async fn commit(
     path: String,
     expected_branch: Option<String>,
@@ -883,6 +886,7 @@ async fn commit(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 async fn squash_commits(
     path: String,
     expected_branch: Option<String>,
@@ -1639,14 +1643,18 @@ fn take_agent_change_summary(path: String, token: String) -> Result<Option<Strin
 /// return its `sessionId`; existing sessions keep running. Output streams back as
 /// `pty-data` events tagged with that id; exit fires `pty-exit`.
 #[tauri::command]
-fn pty_spawn(
+async fn pty_spawn(
     app: tauri::AppHandle,
     state: tauri::State<'_, TerminalState>,
     path: String,
     cols: u16,
     rows: u16,
 ) -> Result<terminal::PtySpawnResponse, String> {
-    terminal::spawn(&state, &app, &path, cols, rows)
+    // Opening a PTY and spawning the login shell can block on OS/process setup.
+    // Clone the Arc-backed state out of Tauri's non-'static State wrapper so
+    // the established blocking pool owns the whole operation.
+    let state = state.inner().clone();
+    blocking(move || terminal::spawn(&state, &app, &path, cols, rows)).await
 }
 
 /// Forward user keystrokes (from xterm.js) to session `session_id`'s stdin.
@@ -1681,27 +1689,36 @@ fn pty_kill(state: tauri::State<'_, TerminalState>, session_id: u64) -> Result<(
 /// tab keeps its own watch; linked worktrees also cover their private gitdir
 /// and shared common dir.
 #[tauri::command]
-fn watch_repo(
+async fn watch_repo(
     app: tauri::AppHandle,
     state: tauri::State<'_, WatcherState>,
     path: String,
 ) -> Result<(), String> {
-    watcher::watch(&app, &state, &path)
+    // Repository discovery plus recursive notify registration touches the
+    // filesystem and may be slow on network/large worktrees. WatcherState is
+    // Arc-backed so setup can run off the webview thread while callbacks retain
+    // the same registry ownership.
+    let state = state.inner().clone();
+    blocking(move || watcher::watch(&app, &state, &path)).await
 }
 
 /// Stop the filesystem watch for `path` (its tab closed).
 #[tauri::command]
-fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(), String> {
-    watcher::unwatch(&state, &path)
+async fn unwatch_repo(state: tauri::State<'_, WatcherState>, path: String) -> Result<(), String> {
+    // Recursive watch setup briefly holds the shared registry while installing
+    // a replacement. Keep tab-close teardown off the webview thread so it
+    // cannot freeze the UI while waiting for that lock.
+    let state = state.inner().clone();
+    blocking(move || watcher::unwatch(&state, &path)).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // If git spawned this binary as its GIT_ASKPASS helper (provider-token
-    // transport auth), answer the credential prompt from the OS keychain and
-    // exit before Tauri initialises — the helper process opens no window and
-    // touches no IPC. Must stay first so a normal launch is never mistaken for
-    // it (the marker env var is set only on the git child we spawn).
+    // transport auth), answer the credential prompt through the command-scoped
+    // parent broker and exit before Tauri initialises — the helper process opens
+    // no window, keychain, or IPC. Must stay first so a normal launch is never
+    // mistaken for it (the marker env var is set only on the git child we spawn).
     if git::credential_bridge::is_askpass_invocation() {
         git::credential_bridge::respond_to_askpass();
         return;

@@ -10,21 +10,20 @@ import type { PaneController } from "./paneController";
 
 export interface TerminalInjectionInputs {
   controller: PaneController;
-  activeTabId: string | null;
-  /** Whether the active tab's PTY is running (injections wait for it). */
-  alive: boolean;
   /** The active repo's identity path — injection ownership is checked first. */
   repoKey: string | null;
 }
 
 export function useTerminalInjection({
   controller,
-  activeTabId,
-  alive,
   repoKey,
 }: TerminalInjectionInputs): void {
   const terminalInject = useUi((s) => s.terminalInject);
   const clearTerminalInject = useUi((s) => s.clearTerminalInject);
+  const cancelAgentCommitDraft = useUi((s) => s.cancelAgentCommitDraft);
+  const showToast = useUi((s) => s.showToast);
+  const targetTabId = terminalInject?.tabId ?? null;
+  const targetAlive = targetTabId ? (controller.get(targetTabId)?.alive ?? false) : false;
   useEffect(() => {
     if (!terminalInject) return;
     // An injection belongs to the repo whose flow queued it: if another repo is
@@ -36,8 +35,8 @@ export function useTerminalInjection({
       clearTerminalInject();
       return;
     }
-    if (!alive || !activeTabId) return;
-    const pane = controller.get(activeTabId);
+    if (!targetAlive || !targetTabId) return;
+    const pane = controller.get(targetTabId);
     if (!pane || pane.sessionId == null) return;
     const { view } = pane;
     let cancelled = false;
@@ -56,7 +55,7 @@ export function useTerminalInjection({
       // command would be typed but never executed, then the prompt would paste
       // onto the same line ("codexReview the staged changes…"). Unix PTYs map
       // CR->LF via the ICRNL line discipline, so `\r` works there too.
-      void controller.write(activeTabId, new TextEncoder().encode(`${terminalInject.command}\r`)).then((ok) => {
+      void controller.write(targetTabId, new TextEncoder().encode(`${terminalInject.command}\r`)).then((ok) => {
         if (cancelled) return;
         // The launch write failed (surfaced in the terminal) — keep the
         // injection queued instead of dropping the text on the floor (GL-176).
@@ -88,11 +87,29 @@ export function useTerminalInjection({
           // Ignore pre-launch timestamps: an idle shell's last prompt must not
           // count as "already quiet" before the agent has produced any output.
           const quiet = Date.now() - Math.max(pane.lastOutputAt, startedAt) >= QUIET_MS;
-          // Paste once the agent asked for bracketed paste AND its startup
-          // rendering has gone quiet; the bounded fallback still guarantees
-          // the text is never dropped for agents without either signal.
-          if ((sawBracketedOff && bracketed && quiet) || Date.now() - startedAt > 8000) {
+          // Only deliver after the foreground program explicitly asks for
+          // bracketed paste. Falling back to a raw multiline paste is unsafe:
+          // if the agent exited, the repository-derived prompt would land in
+          // the shell and its newline-delimited lines could execute as commands.
+          if (sawBracketedOff && bracketed && quiet) {
             paste();
+            return;
+          }
+          if (Date.now() - startedAt > 8000) {
+            view.term.writeln(
+              "\x1b[33m[agent prompt not detected — queued text was not pasted]\x1b[0m",
+            );
+            if (
+              terminalInject.draftToken &&
+              useUi.getState().agentCommitDraft?.token === terminalInject.draftToken
+            ) {
+              cancelAgentCommitDraft();
+            }
+            clearTerminalInject();
+            showToast(
+              "GitLane did not paste the queued text because the agent prompt could not be verified.",
+              "error",
+            );
             return;
           }
           timer = window.setTimeout(waitForPrompt, 100);
@@ -106,5 +123,14 @@ export function useTerminalInjection({
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [terminalInject, alive, activeTabId, clearTerminalInject, controller, repoKey]);
+  }, [
+    terminalInject,
+    targetAlive,
+    targetTabId,
+    cancelAgentCommitDraft,
+    clearTerminalInject,
+    controller,
+    repoKey,
+    showToast,
+  ]);
 }

@@ -8,8 +8,9 @@
 use base64::Engine;
 use git2::Oid;
 
-use crate::git::read::{open, worktree_join};
+use crate::git::read::open;
 use crate::git::types::BinaryBlob;
+use crate::git::worktree_fs::open_regular_worktree_file;
 
 /// Hard cap on bytes returned inline as base64 for a preview. Beyond this the
 /// command returns the size only (`truncated: true`) and the UI shows a size
@@ -55,26 +56,19 @@ pub fn read_binary_blob(
             let workdir = repo
                 .workdir()
                 .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?;
-            // Reject traversal (absolute / `..` / prefix) — `file` is frontend-
-            // supplied — then refuse to follow a symlink or read a non-regular
-            // entry, so a worktree symlink can't escape the repo (mirrors
-            // `conflict_file`).
-            let full = worktree_join(workdir, file)?;
-            let meta = std::fs::symlink_metadata(&full)
-                .map_err(|e| git2::Error::from_str(&format!("stat {file}: {e}")))?;
-            if !meta.file_type().is_file() {
-                return Err(git2::Error::from_str(&format!(
-                    "refusing to read non-regular file: {file:?}"
-                )));
-            }
-            if meta.len() > cap {
+            let mut opened = open_regular_worktree_file(workdir, file)
+                .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
+            if opened.len() > cap {
                 return Ok(BinaryBlob {
                     base64: None,
-                    size: meta.len(),
+                    size: opened.len(),
                     truncated: true,
                 });
             }
-            std::fs::read(&full).map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
+            let mut bytes = Vec::with_capacity(opened.len() as usize);
+            std::io::Read::read_to_end(opened.reader(), &mut bytes)
+                .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
+            bytes
         }
     };
 

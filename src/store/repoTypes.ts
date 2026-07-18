@@ -405,6 +405,9 @@ export interface RepoState {
   clearSelection: () => void;
   /** Select the uncommitted WIP node (inspect working changes in the panel). */
   selectWip: () => void;
+  /** Keep the working-tree inspector on a live staged/unstaged row. The store
+   * owns fallback and bucket changes so components never infer domain state. */
+  ensureWorkingFileSelection: () => void;
   selectFile: (path: string, source: ChangeSource) => Promise<void>;
   /** Re-fetch the currently selected file's diff uncapped (the "show full diff"
    * action when a large diff was truncated by the backend line limit). */

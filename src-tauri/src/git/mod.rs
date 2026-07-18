@@ -24,4 +24,5 @@ pub mod read;
 pub mod status;
 pub mod transport_auth;
 pub mod types;
+mod worktree_fs;
 pub mod write;

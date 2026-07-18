@@ -13,12 +13,58 @@ use serde::Deserialize;
 
 use crate::git::types::{PrAuthor, PrCommit, PullRequestDetail, PullRequestSummary};
 
-/// A Bitbucket paginated collection: `{ "values": [...], "next": "url" }`. Only
-/// `values` is consumed here; the caller paginates via the `page` query param.
+/// A Bitbucket paginated collection. `next` is an opaque server-provided URL;
+/// callers that need every page validate and follow it instead of inferring
+/// completion from page length.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BitbucketPage<T> {
     #[serde(default = "Vec::new")]
     pub values: Vec<T>,
+    #[serde(default)]
+    pub next: Option<String>,
+}
+
+/// One `/diffstat` row. The stat endpoint remains paginated when the raw patch
+/// hits Bitbucket's rendering limits, so it is the completeness oracle for the
+/// patch and supplies exact totals for any elided file body.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BitbucketDiffStat {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub lines_added: Option<u64>,
+    #[serde(default)]
+    pub lines_removed: Option<u64>,
+    #[serde(default)]
+    pub old: Option<BitbucketDiffPath>,
+    #[serde(default)]
+    pub new: Option<BitbucketDiffPath>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BitbucketDiffPath {
+    #[serde(default)]
+    pub path: String,
+}
+
+impl BitbucketDiffStat {
+    pub fn path(&self) -> &str {
+        self.new
+            .as_ref()
+            .filter(|side| !side.path.is_empty())
+            .or(self.old.as_ref())
+            .map(|side| side.path.as_str())
+            .unwrap_or_default()
+    }
+
+    pub fn file_status(&self) -> &str {
+        match self.status.as_str() {
+            "added" => "A",
+            "removed" => "D",
+            "renamed" => "R",
+            _ => "M",
+        }
+    }
 }
 
 /// A Bitbucket user reference (`author`, `reviewers[]`, commit `author.user`).
@@ -133,11 +179,17 @@ impl BitbucketPr {
     }
 
     fn head_ref(&self) -> String {
-        self.source.as_ref().map(BitbucketEndpoint::branch_name).unwrap_or_default()
+        self.source
+            .as_ref()
+            .map(BitbucketEndpoint::branch_name)
+            .unwrap_or_default()
     }
 
     fn base_ref(&self) -> String {
-        self.destination.as_ref().map(BitbucketEndpoint::branch_name).unwrap_or_default()
+        self.destination
+            .as_ref()
+            .map(BitbucketEndpoint::branch_name)
+            .unwrap_or_default()
     }
 
     fn web_url(&self) -> String {
@@ -346,7 +398,10 @@ mod tests {
         assert_eq!(summary.author.login, "ada");
         assert_eq!(summary.author.name, "Ada L.");
         assert!(!summary.is_draft);
-        assert_eq!(summary.url, "https://bitbucket.org/team/app/pull-requests/7");
+        assert_eq!(
+            summary.url,
+            "https://bitbucket.org/team/app/pull-requests/7"
+        );
     }
 
     #[test]

@@ -18,6 +18,12 @@ use serde::Deserialize;
 use super::http::{HttpResponse, HttpTransport};
 use super::CancelFlag;
 
+/// Provider values are untrusted. Keep one flow within a 15-minute window and
+/// never let an advertised interval make Cancel appear hung for minutes or hours.
+const MAX_DEVICE_LIFETIME_SECS: u64 = 15 * 60;
+const MAX_POLL_INTERVAL_SECS: u64 = 60;
+const CANCEL_CHECK_INTERVAL: Duration = Duration::from_millis(100);
+
 /// Injectable clock so the poll loop's interval waits are instant under test.
 pub trait Clock: Send + Sync {
     fn now(&self) -> Instant;
@@ -101,9 +107,22 @@ pub fn request_device_code(
         user_code: dto.user_code,
         verification_uri: dto.verification_uri,
         verification_uri_complete: dto.verification_uri_complete.filter(|s| !s.is_empty()),
-        expires_in: dto.expires_in.max(1),
-        interval: dto.interval.max(1),
+        expires_in: bounded_lifetime(dto.expires_in),
+        interval: accepted_interval(dto.interval)?,
     })
+}
+
+fn bounded_lifetime(seconds: u64) -> u64 {
+    seconds.clamp(1, MAX_DEVICE_LIFETIME_SECS)
+}
+
+fn accepted_interval(seconds: u64) -> Result<u64, String> {
+    let seconds = seconds.max(1);
+    if seconds > MAX_POLL_INTERVAL_SECS {
+        Err("The provider returned an unsupported device polling interval.".to_string())
+    } else {
+        Ok(seconds)
+    }
 }
 
 /// One classified outcome of a single token-poll request.
@@ -158,18 +177,14 @@ pub fn poll_for_token(
     clock: &dyn Clock,
     cancel: &dyn CancelFlag,
 ) -> Result<String, String> {
-    let mut interval = device.interval.max(1);
-    let deadline = clock.now() + Duration::from_secs(device.expires_in);
+    // Validate again at the consumer boundary because tests and future internal
+    // callers can construct DeviceCode directly without parsing the DTO.
+    let mut interval = accepted_interval(device.interval)?;
+    let deadline = clock.now() + Duration::from_secs(bounded_lifetime(device.expires_in));
     loop {
+        wait_for_next_poll(clock, cancel, deadline, Duration::from_secs(interval))?;
         if cancel.is_canceled() {
             return Err("Sign-in canceled.".into());
-        }
-        clock.sleep(Duration::from_secs(interval));
-        if cancel.is_canceled() {
-            return Err("Sign-in canceled.".into());
-        }
-        if clock.now() >= deadline {
-            return Err("The sign-in code expired. Please try again.".into());
         }
         let resp = http.post_form(
             token_endpoint,
@@ -180,20 +195,61 @@ pub fn poll_for_token(
             ],
             &[("Accept", "application/json")],
         )?;
+        // A Cancel may arrive while the network request is in progress. Never
+        // accept or persist a token returned after that cancellation.
+        if cancel.is_canceled() {
+            return Err("Sign-in canceled.".into());
+        }
+        if clock.now() >= deadline {
+            return Err("The sign-in code expired. Please try again.".into());
+        }
         match classify_token_response(&resp) {
             PollStep::Authorized(token) => return Ok(token),
             PollStep::Pending => continue,
             // RFC 8628 §3.5: on slow_down, increase the interval by 5 seconds.
-            PollStep::SlowDown => interval += 5,
-            PollStep::Denied => return Err("Authorization was denied.".into()),
-            PollStep::Expired => {
-                return Err("The sign-in code expired. Please try again.".into())
+            PollStep::SlowDown => {
+                interval = interval
+                    .checked_add(5)
+                    .filter(|next| *next <= MAX_POLL_INTERVAL_SECS)
+                    .ok_or_else(|| {
+                        "The provider requested an unsupported device polling interval.".to_string()
+                    })?
             }
+            PollStep::Denied => return Err("Authorization was denied.".into()),
+            PollStep::Expired => return Err("The sign-in code expired. Please try again.".into()),
             PollStep::Disabled => {
                 return Err("This host has the OAuth device flow disabled.".into())
             }
             PollStep::Failed(msg) => return Err(msg),
         }
+    }
+}
+
+/// Wait until the next poll without making cancellation wait for the provider's
+/// whole interval. The wait never crosses the device-code deadline.
+fn wait_for_next_poll(
+    clock: &dyn Clock,
+    cancel: &dyn CancelFlag,
+    deadline: Instant,
+    interval: Duration,
+) -> Result<(), String> {
+    let next_poll = clock
+        .now()
+        .checked_add(interval)
+        .unwrap_or(deadline)
+        .min(deadline);
+    loop {
+        if cancel.is_canceled() {
+            return Err("Sign-in canceled.".into());
+        }
+        let now = clock.now();
+        if now >= deadline {
+            return Err("The sign-in code expired. Please try again.".into());
+        }
+        if now >= next_poll {
+            return Ok(());
+        }
+        clock.sleep((next_poll - now).min(CANCEL_CHECK_INTERVAL));
     }
 }
 
@@ -224,8 +280,9 @@ fn device_request_error(resp: &HttpResponse) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::oauth::http::testing::MockTransport;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use crate::git::oauth::http::{testing::MockTransport, HttpResult};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
 
     fn resp(status: u16, body: &str) -> HttpResponse {
         HttpResponse {
@@ -246,33 +303,67 @@ mod tests {
             true
         }
     }
+    struct CancelAfterFirstWait(AtomicU64);
+    impl CancelFlag for CancelAfterFirstWait {
+        fn is_canceled(&self) -> bool {
+            self.0.fetch_add(1, Ordering::SeqCst) > 0
+        }
+    }
+
+    struct SharedCancel(Arc<AtomicBool>);
+    impl CancelFlag for SharedCancel {
+        fn is_canceled(&self) -> bool {
+            self.0.load(Ordering::SeqCst)
+        }
+    }
+
+    struct CancelingTransport {
+        canceled: Arc<AtomicBool>,
+        requests: AtomicU64,
+    }
+    impl HttpTransport for CancelingTransport {
+        fn post_form(
+            &self,
+            _url: &str,
+            _form: &[(&str, &str)],
+            _headers: &[(&str, &str)],
+        ) -> HttpResult {
+            self.requests.fetch_add(1, Ordering::SeqCst);
+            self.canceled.store(true, Ordering::SeqCst);
+            Ok(resp(200, r#"{"access_token":"must-not-be-accepted"}"#))
+        }
+
+        fn get(&self, _url: &str, _headers: &[(&str, &str)]) -> HttpResult {
+            unreachable!("device polling never performs GET")
+        }
+    }
 
     /// A clock that never really sleeps: it records every requested sleep and
-    /// advances a virtual `now` by a fixed step per query, so deadline logic is
-    /// deterministic.
+    /// advances a virtual `now` by the requested duration, so deadline logic is
+    /// deterministic and cancellation slices remain observable.
     struct TestClock {
         base: Instant,
         elapsed_ms: AtomicU64,
-        step_ms: u64,
         sleeps: std::sync::Mutex<Vec<u64>>,
     }
     impl TestClock {
-        fn new(step_ms: u64) -> Self {
+        fn new() -> Self {
             Self {
                 base: Instant::now(),
                 elapsed_ms: AtomicU64::new(0),
-                step_ms,
                 sleeps: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
     impl Clock for TestClock {
         fn now(&self) -> Instant {
-            let e = self.elapsed_ms.fetch_add(self.step_ms, Ordering::SeqCst);
+            let e = self.elapsed_ms.load(Ordering::SeqCst);
             self.base + Duration::from_millis(e)
         }
         fn sleep(&self, dur: Duration) {
-            self.sleeps.lock().unwrap().push(dur.as_secs());
+            let millis = u64::try_from(dur.as_millis()).unwrap();
+            self.sleeps.lock().unwrap().push(millis);
+            self.elapsed_ms.fetch_add(millis, Ordering::SeqCst);
         }
     }
 
@@ -318,11 +409,59 @@ mod tests {
             200,
             r#"{"device_code":"dc","user_code":"WXYZ-1234","verification_uri":"https://gitlab.com/device"}"#,
         )]);
-        let dc = request_device_code(&http, "https://gitlab.com/oauth/authorize_device", "cid", "read_repository")
-            .unwrap();
+        let dc = request_device_code(
+            &http,
+            "https://gitlab.com/oauth/authorize_device",
+            "cid",
+            "read_repository",
+        )
+        .unwrap();
         assert_eq!(dc.user_code, "WXYZ-1234");
         assert_eq!(dc.interval, 5); // defaulted
         assert_eq!(dc.open_uri(), "https://gitlab.com/device");
+    }
+
+    #[test]
+    fn bounds_untrusted_device_lifetime() {
+        let http = MockTransport::new(vec![MockTransport::ok(
+            200,
+            &format!(
+                r#"{{"device_code":"dc","user_code":"CODE","verification_uri":"https://gitlab.com/device","expires_in":{},"interval":{}}}"#,
+                u64::MAX,
+                MAX_POLL_INTERVAL_SECS
+            ),
+        )]);
+        let dc = request_device_code(
+            &http,
+            "https://gitlab.com/oauth/authorize_device",
+            "cid",
+            "read_repository",
+        )
+        .unwrap();
+
+        assert_eq!(dc.expires_in, MAX_DEVICE_LIFETIME_SECS);
+        assert_eq!(dc.interval, MAX_POLL_INTERVAL_SECS);
+    }
+
+    #[test]
+    fn rejects_an_untrusted_poll_interval_above_the_cap() {
+        let http = MockTransport::new(vec![MockTransport::ok(
+            200,
+            &format!(
+                r#"{{"device_code":"dc","user_code":"CODE","verification_uri":"https://gitlab.com/device","interval":{}}}"#,
+                u64::MAX
+            ),
+        )]);
+
+        let err = request_device_code(
+            &http,
+            "https://gitlab.com/oauth/authorize_device",
+            "cid",
+            "read_repository",
+        )
+        .unwrap_err();
+
+        assert!(err.contains("unsupported device polling interval"));
     }
 
     #[test]
@@ -335,7 +474,10 @@ mod tests {
             expires_in: 900,
             interval: 5,
         };
-        assert_eq!(dc.open_uri(), "https://gitlab.com/device?user_code=AAAA-1111");
+        assert_eq!(
+            dc.open_uri(),
+            "https://gitlab.com/device?user_code=AAAA-1111"
+        );
     }
 
     #[test]
@@ -353,7 +495,7 @@ mod tests {
             expires_in: 900,
             interval: 5,
         };
-        let clock = TestClock::new(10);
+        let clock = TestClock::new();
         let token = poll_for_token(
             &http,
             "https://gitlab.com/oauth/token",
@@ -367,11 +509,20 @@ mod tests {
         assert_eq!(http.request_count(), 3);
         // Every poll hit the token endpoint with the device-code grant + code.
         let reqs = http.requests.lock().unwrap();
-        assert!(reqs.iter().all(|r| r.url == "https://gitlab.com/oauth/token"));
+        assert!(reqs
+            .iter()
+            .all(|r| r.url == "https://gitlab.com/oauth/token"));
         let last = reqs.last().unwrap();
-        assert!(last.form.iter().any(|(k, v)| k == "grant_type"
-            && v == "urn:ietf:params:oauth:grant-type:device_code"));
-        assert!(last.form.iter().any(|(k, v)| k == "device_code" && v == "dc"));
+        assert!(
+            last.form
+                .iter()
+                .any(|(k, v)| k == "grant_type"
+                    && v == "urn:ietf:params:oauth:grant-type:device_code")
+        );
+        assert!(last
+            .form
+            .iter()
+            .any(|(k, v)| k == "device_code" && v == "dc"));
     }
 
     #[test]
@@ -388,11 +539,19 @@ mod tests {
             expires_in: 900,
             interval: 5,
         };
-        let clock = TestClock::new(10);
-        poll_for_token(&http, "https://gitlab.com/oauth/token", "cid", &device, &clock, &NeverCancel)
-            .unwrap();
+        let clock = TestClock::new();
+        poll_for_token(
+            &http,
+            "https://gitlab.com/oauth/token",
+            "cid",
+            &device,
+            &clock,
+            &NeverCancel,
+        )
+        .unwrap();
         let sleeps = clock.sleeps.lock().unwrap().clone();
-        assert_eq!(sleeps, vec![5, 10], "second interval must be first + 5s");
+        assert!(sleeps.iter().all(|millis| *millis <= 100));
+        assert_eq!(sleeps.iter().sum::<u64>(), 15_000);
     }
 
     #[test]
@@ -406,7 +565,7 @@ mod tests {
             expires_in: 900,
             interval: 5,
         };
-        let clock = TestClock::new(10);
+        let clock = TestClock::new();
         let err = poll_for_token(
             &http,
             "https://gitlab.com/oauth/token",
@@ -421,9 +580,92 @@ mod tests {
     }
 
     #[test]
+    fn cancellation_interrupts_an_interval_wait() {
+        let http = MockTransport::new(vec![MockTransport::ok(200, r#"{"access_token":"t"}"#)]);
+        let device = DeviceCode {
+            device_code: "dc".into(),
+            user_code: "AAAA-1111".into(),
+            verification_uri: "https://gitlab.com/device".into(),
+            verification_uri_complete: None,
+            expires_in: 900,
+            interval: MAX_POLL_INTERVAL_SECS,
+        };
+        let clock = TestClock::new();
+        let err = poll_for_token(
+            &http,
+            "https://gitlab.com/oauth/token",
+            "cid",
+            &device,
+            &clock,
+            &CancelAfterFirstWait(AtomicU64::new(0)),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("canceled"));
+        assert_eq!(clock.sleeps.lock().unwrap().as_slice(), &[100]);
+        assert_eq!(http.request_count(), 0);
+    }
+
+    #[test]
+    fn cancellation_during_a_request_discards_its_token() {
+        let canceled = Arc::new(AtomicBool::new(false));
+        let http = CancelingTransport {
+            canceled: canceled.clone(),
+            requests: AtomicU64::new(0),
+        };
+        let device = DeviceCode {
+            device_code: "dc".into(),
+            user_code: "AAAA-1111".into(),
+            verification_uri: "https://gitlab.com/device".into(),
+            verification_uri_complete: None,
+            expires_in: 900,
+            interval: 1,
+        };
+        let err = poll_for_token(
+            &http,
+            "https://gitlab.com/oauth/token",
+            "cid",
+            &device,
+            &TestClock::new(),
+            &SharedCancel(canceled),
+        )
+        .unwrap_err();
+
+        assert!(err.contains("canceled"));
+        assert_eq!(http.requests.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn slow_down_above_the_interval_cap_fails_closed() {
+        let http = MockTransport::new(vec![MockTransport::ok(400, r#"{"error":"slow_down"}"#)]);
+        let device = DeviceCode {
+            device_code: "dc".into(),
+            user_code: "AAAA-1111".into(),
+            verification_uri: "https://gitlab.com/device".into(),
+            verification_uri_complete: None,
+            expires_in: 900,
+            interval: MAX_POLL_INTERVAL_SECS,
+        };
+        let clock = TestClock::new();
+
+        let err = poll_for_token(
+            &http,
+            "https://gitlab.com/oauth/token",
+            "cid",
+            &device,
+            &clock,
+            &NeverCancel,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("unsupported device polling interval"));
+        assert_eq!(clock.sleeps.lock().unwrap().iter().sum::<u64>(), 60_000);
+        assert_eq!(http.request_count(), 1);
+    }
+
+    #[test]
     fn expiry_ends_the_loop() {
-        // expires_in is short and the clock advances 100s per query, so the
-        // deadline is crossed before the first request.
+        // The initial interval reaches the deadline before the first request.
         let http = MockTransport::new(vec![MockTransport::ok(
             400,
             r#"{"error":"authorization_pending"}"#,
@@ -436,7 +678,7 @@ mod tests {
             expires_in: 5,
             interval: 5,
         };
-        let clock = TestClock::new(100_000);
+        let clock = TestClock::new();
         let err = poll_for_token(
             &http,
             "https://gitlab.com/oauth/token",

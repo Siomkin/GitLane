@@ -7,13 +7,19 @@ on:
   # tests, and producing the required status checks on workflow-bootstrap PRs
   # that swap their own triggers (neither trigger side fires on such PRs).
   workflow_dispatch:
+  # Dependency advisories can appear without a repository change. Re-scan the
+  # current lockfiles weekly so the gate does not depend only on PR activity.
+  schedule:
+    - cron: "17 4 * * 1"
   # Base-branch workflow controls runner selection; see the checkout refs below.
   pull_request_target:
     branches: [latest]
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Weekly audits are their own non-canceling lane: a docs-only push to latest
+  # must neither share their group nor terminate the only run that scans deps.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled-audit' || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 # Untrusted fork-PR code executes in this workflow (the PR merge ref is checked
 # out and built/tested) under pull_request_target, with no approval gate — that
@@ -41,19 +47,21 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
+      security: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.security }}
       # The policy above, exported once so the downstream jobs cannot drift.
       runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]' }}
     steps:
       # On PR events paths-filter reads the changed-file list from the GitHub
       # API, so the mutable merge ref is never checked out in this job — only
       # push events need the repo on disk to diff against the base.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         if: github.event_name != 'pull_request_target'
         with:
           persist-credentials: false
 
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4
         id: filter
+        if: github.event_name != 'schedule'
         with:
           # `rust` gates cargo test, which doesn't consume src/** at all — a
           # frontend-only PR must not pay for a Rust compile (see rust-tests' `if`).
@@ -69,7 +77,63 @@ jobs:
               - '.github/workflows/ci.yml'
             rust:
               - 'src-tauri/**'
+              - 'rust-toolchain*'
+              - '.github/actions/setup-rust/**'
               - '.github/workflows/ci.yml'
+            security:
+              - 'package.json'
+              - 'bun.lock'
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              - 'src-tauri/.cargo/**'
+              - 'rust-toolchain*'
+              - 'SECURITY.md'
+              - '.github/dependabot.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/workflows/**'
+
+  security:
+    name: Dependency security audit
+    needs: changes
+    if: needs.changes.outputs.security == 'true'
+    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify merge ref still matches the scheduled head
+        if: github.event_name == 'pull_request_target'
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
+            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
+            exit 1
+          }
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Audit JavaScript dependencies
+        run: bun audit
+
+      - uses: ./.github/actions/setup-rust
+
+      # Run the CLI from the Rust project root so src-tauri/.cargo/audit.toml
+      # controls both advisory exceptions and the process exit status. The
+      # direct command needs no Checks/Issues API writes, so the same read-only
+      # job works for untrusted PRs, pushes, dispatches, and weekly schedules.
+      - name: Install pinned cargo-audit
+        run: cargo install cargo-audit --locked --version 0.22.2
+
+      - name: Enforce Rust advisory policy
+        working-directory: src-tauri
+        run: cargo audit
 
   # PRs + latest: fast frontend gate when frontend/package/CI inputs changed.
   frontend:
@@ -80,7 +144,7 @@ jobs:
     runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           # Depth 2 keeps the merge ref's parents available for the check below.
@@ -100,7 +164,7 @@ jobs:
             exit 1
           }
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -131,7 +195,7 @@ jobs:
     runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           # Depth 2 keeps the merge ref's parents available for the check below.
@@ -150,7 +214,9 @@ jobs:
           }
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: ./.github/actions/setup-rust
+        with:
+          components: rustfmt, clippy
 
       # Self-hosted: compile into a persistent target dir on the box instead of the
       # GitHub cache API. actions/checkout wipes the workspace (git clean -ffdx)
@@ -166,7 +232,7 @@ jobs:
 
       - name: Cache Rust build (github-hosted fallback)
         if: runner.environment == 'github-hosted'
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: "./src-tauri -> target"
           # pull_request_target runs write caches into the *base branch* scope,
@@ -175,6 +241,10 @@ jobs:
           # gate above (opener or actor != TRUSTED_CI_USER, or the var is unset),
           # so keep them restore-only.
           save-if: ${{ github.event_name != 'pull_request_target' }}
+
+      - name: Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
 
       - name: Install Linux Tauri dependencies
         # Skipped on the self-hosted runner (sudo-less user; deps preinstalled on the
@@ -187,3 +257,7 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+      - name: Rust Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings

@@ -332,9 +332,10 @@ pub fn move_branch_to_worktree(
         .count();
     let source_dirty = source_changes > 0;
     if source_dirty && !carry {
-        return Err(format!(
+        return Err(
             "The source worktree has uncommitted changes. Carry them along, or commit/stash them first."
-        ));
+                .to_string(),
+        );
     }
 
     // 1. Stash the source's changes (they ride along with the branch).

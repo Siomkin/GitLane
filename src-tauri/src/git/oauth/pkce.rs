@@ -39,7 +39,10 @@ pub struct Pkce {
 pub fn generate_pkce() -> Result<Pkce, String> {
     let verifier = B64URL.encode(random_bytes::<64>()?);
     let challenge = code_challenge(&verifier);
-    Ok(Pkce { verifier, challenge })
+    Ok(Pkce {
+        verifier,
+        challenge,
+    })
 }
 
 /// A fresh CSRF `state` value (base64url of 32 random bytes).

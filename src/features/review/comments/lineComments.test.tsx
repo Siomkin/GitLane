@@ -113,6 +113,40 @@ describe("in-diff local comments", () => {
     });
   });
 
+  it("isolates repeated-path controllers while persisting the real file path", () => {
+    const lines: LineMeta[] = [
+      { seq: 0, side: "R", lineNo: 1, ref: "R1", code: "same path" },
+    ];
+    const linesByFile = new Map([
+      ["occurrence:1", lines],
+      ["occurrence:2", lines],
+    ]);
+    const noteFileForKey = () => "src/repeated.ts";
+    const { result } = renderHook(() =>
+      useMultiFileLineComments("pr:42", linesByFile, { noteFileForKey }),
+    );
+    const mouseEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+
+    act(() => {
+      result.current
+        .controllerFor("occurrence:1")
+        .rowFor(0)
+        .onHandleDown(mouseEvent as never);
+    });
+    fireEvent.mouseUp(document);
+    act(() => result.current.controllerFor("occurrence:1").setDraft("fix both views"));
+    act(() => result.current.controllerFor("occurrence:1").save());
+
+    expect(useUi.getState().reviewNotes).toMatchObject([
+      { surface: "pr:42", file: "src/repeated.ts", body: "fix both views" },
+    ]);
+    expect(result.current.controllerFor("occurrence:1").rowFor(0).isAnchor).toBe(true);
+    expect(result.current.controllerFor("occurrence:2").rowFor(0).isAnchor).toBe(true);
+  });
+
   it("HandToAgentBar surfaces the pending count and opens the composer", () => {
     useUi.getState().addReviewNote({
       surface: "work",

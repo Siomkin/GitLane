@@ -407,11 +407,17 @@ interface UiState {
   /** Pending text queued to be pasted into the terminal PTY (bracketed paste).
    * Consumed by the TerminalLayer once the PTY is alive, then cleared. When
    * `command` is set, the terminal launches that agent first, then pastes
-   * `text` into the agent prompt. `repoKey` is the repo whose flow queued it —
-   * the consumer discards the injection if another repo is active by the time
-   * it could deliver, so queued text never pastes into a different repo's
-   * shell (GL-176 review). */
-  terminalInject: { text: string; command?: string; repoKey: string | null } | null;
+   * `text` into the agent prompt. `repoKey` and `tabId` identify the exact pane
+   * whose flow queued it, so switching repos or tabs cannot retarget queued
+   * text into a different shell. */
+  terminalInject: {
+    text: string;
+    command?: string;
+    repoKey: string | null;
+    tabId: string | null;
+    /** Correlates a failed terminal delivery with the draft poll it must stop. */
+    draftToken?: string;
+  } | null;
   createBranchOpen: boolean;
   createBranchStart: string | null;
   /** When set, the center pane shows a stacked all-files review for this oid
@@ -593,7 +599,7 @@ interface UiState {
   /** Open the terminal and queue `text` to be pasted into it. When `command`
    * is provided, launch that terminal agent before pasting the text. The
    * injection is stamped with the active repo and delivers only there. */
-  sendToTerminal: (text: string, command?: string) => void;
+  sendToTerminal: (text: string, command?: string, draftToken?: string) => void;
   clearTerminalInject: () => void;
   closeOverlays: () => void;
   setCreateBranchOpen: (open: boolean) => void;
@@ -956,17 +962,23 @@ export const useUi = create<UiState>()(
     }),
   // Open the terminal and stash the message; the TerminalLayer pastes it once the
   // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
-  // repo whose flow queued it (one-shot cross-store read) so it can never
-  // deliver into another repo's shell (GL-176 review).
-  sendToTerminal: (text, command) => {
+  // repo + tab whose flow queued it (one-shot cross-store read) so it can never
+  // deliver into another shell (GL-281).
+  sendToTerminal: (text, command, draftToken) => {
     const repoKey = useRepo.getState().summary?.path ?? null;
+    let tabId: string | null = null;
     // A live PTY does not reveal whether its foreground program is the shell,
     // this agent, another agent, or an unrelated TUI. Every agent launch gets
     // a fresh tab so its command can never be typed into an unknown prompt.
-    if (command && repoKey) useTerminals.getState().openTab(repoKey);
+    if (repoKey) {
+      const terminals = useTerminals.getState();
+      tabId = command ? terminals.openTab(repoKey) : terminals.ensureTab(repoKey);
+    }
     set((s) => ({
       ...terminalViewPatch(s, "open"),
-      terminalInject: command ? { text, command, repoKey } : { text, repoKey },
+      terminalInject: command
+        ? { text, command, repoKey, tabId, ...(draftToken ? { draftToken } : {}) }
+        : { text, repoKey, tabId },
     }));
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
@@ -1031,7 +1043,7 @@ export const useUi = create<UiState>()(
 
   openCommit: () => set({ leftTab: "changes", changesAll: false, rightTab: "details" }),
   startAgentCommitDraft: (request, instruction, command) => {
-    get().sendToTerminal(instruction, command);
+    get().sendToTerminal(instruction, command, request.token);
     set({ agentCommitDraft: request });
 
     const poll = async () => {

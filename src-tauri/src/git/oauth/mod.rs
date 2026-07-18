@@ -53,6 +53,10 @@ pub trait CancelFlag: Send + Sync {
 pub struct SignInSlotState {
     in_progress: bool,
     canceled: bool,
+    /// The final credential transaction has been linearized. Cancellation after
+    /// this point is too late to abort and must not claim success while the
+    /// keychain write is already committing.
+    committing: bool,
 }
 
 pub type SignInSlot = Arc<Mutex<SignInSlotState>>;
@@ -76,6 +80,7 @@ impl Drop for InProgressGuard {
         if let Ok(mut g) = self.0.lock() {
             g.in_progress = false;
             g.canceled = false;
+            g.committing = false;
         }
     }
 }
@@ -109,6 +114,19 @@ fn claim_slot(slot: &SignInSlot) -> Result<(), String> {
         return Err("Sign-in canceled.".into());
     }
     g.in_progress = true;
+    g.committing = false;
+    Ok(())
+}
+
+/// Atomically cross the cancellation boundary into the final keychain write.
+/// Either Cancel acquired the slot first and this returns without storing, or
+/// this marks the flow committed first and later cancellation is a no-op.
+fn begin_credential_commit(slot: &SignInSlot) -> Result<(), String> {
+    let mut g = slot.lock().map_err(|e| e.to_string())?;
+    if g.canceled {
+        return Err("Sign-in canceled.".into());
+    }
+    g.committing = true;
     Ok(())
 }
 
@@ -139,20 +157,24 @@ fn run_sign_in_inner(
 
     let http = UreqTransport::new();
     let token = match cfg.flow {
-        OauthFlow::Device => {
-            run_device(app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel)?
-        }
-        OauthFlow::Pkce => {
-            run_pkce(app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel)?
-        }
+        OauthFlow::Device => run_device(
+            app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel,
+        )?,
+        OauthFlow::Pkce => run_pkce(
+            app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel,
+        )?,
     };
+    if cancel.is_canceled() {
+        return Err("Sign-in canceled.".into());
+    }
 
     emit(app, provider, "authorized", None, None, None);
     let account = identity::resolve_account(&http, provider, &endpoints.user_api, &token)?;
 
-    emit(app, provider, "storing", None, None, None);
     let key = SecretKey::new(provider, host, &account.account_id);
     key.validate()?;
+    begin_credential_commit(&slot)?;
+    emit(app, provider, "storing", None, None, None);
     KeyringStore::new().set(&key, &token)?;
 
     Ok(ProviderOauthResult {
@@ -266,15 +288,23 @@ fn run_pkce(
 /// Signal the in-flight sign-in to stop. Instant (a lock + a flag), so the IPC
 /// command stays synchronous and never queues behind the blocking pool.
 pub fn cancel_sign_in(slot: &SignInSlot) -> Result<(), String> {
-    if let Ok(mut g) = slot.lock() {
-        g.canceled = true;
+    let mut g = slot
+        .lock()
+        .map_err(|_| "Could not access the provider sign-in state.".to_string())?;
+    if g.committing {
+        return Err("Sign-in has already completed and can no longer be canceled.".to_string());
     }
+    g.canceled = true;
     Ok(())
 }
 
 /// Resolve the effective public client id for `provider`/`host`: a per-host
 /// Settings override wins over the compile-time built-in.
-fn resolve_client_id(app: &AppHandle, provider: &str, host: &str) -> Option<(String, &'static str)> {
+fn resolve_client_id(
+    app: &AppHandle,
+    provider: &str,
+    host: &str,
+) -> Option<(String, &'static str)> {
     if let Some(id) = client_ids::get(app, provider, host) {
         return Some((id, "override"));
     }
@@ -303,7 +333,12 @@ pub fn client_status(app: &AppHandle, provider: &str, host: &str) -> OauthClient
 }
 
 /// Set (or clear, when empty) the per-host client-id override.
-pub fn set_client_id(app: &AppHandle, provider: &str, host: &str, client_id: &str) -> Result<(), String> {
+pub fn set_client_id(
+    app: &AppHandle,
+    provider: &str,
+    host: &str,
+    client_id: &str,
+) -> Result<(), String> {
     client_ids::set(app, provider, host, client_id)
 }
 
@@ -344,6 +379,7 @@ mod tests {
         let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
             in_progress: true,
             canceled: true,
+            committing: false,
         }));
         {
             let _guard = InProgressGuard(slot.clone());
@@ -379,7 +415,41 @@ mod tests {
         let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
             in_progress: true,
             canceled: false,
+            committing: false,
         }));
-        assert!(claim_slot(&slot).unwrap_err().contains("already in progress"));
+        assert!(claim_slot(&slot)
+            .unwrap_err()
+            .contains("already in progress"));
+    }
+
+    #[test]
+    fn canceled_flow_cannot_begin_the_credential_commit() {
+        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
+            in_progress: true,
+            canceled: true,
+            committing: false,
+        }));
+
+        assert!(begin_credential_commit(&slot)
+            .unwrap_err()
+            .contains("canceled"));
+        assert!(!slot.lock().unwrap().committing);
+    }
+
+    #[test]
+    fn credential_commit_linearizes_before_a_late_cancel() {
+        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
+            in_progress: true,
+            canceled: false,
+            committing: false,
+        }));
+
+        begin_credential_commit(&slot).unwrap();
+        let error = cancel_sign_in(&slot).unwrap_err();
+
+        let g = slot.lock().unwrap();
+        assert!(error.contains("can no longer be canceled"));
+        assert!(g.committing);
+        assert!(!g.canceled, "cancel is too late once storage has committed");
     }
 }

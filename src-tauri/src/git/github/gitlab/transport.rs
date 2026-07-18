@@ -14,9 +14,14 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use crate::git::oauth::http::HttpTransport;
+use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
 use super::super::domain::GithubError;
+
+/// GitLab's MR `/diffs` endpoint can return up to 100 full file patches per
+/// page. Ordinary provider JSON has its own bounded allowance, but raw patch
+/// bodies still need the larger explicit ceiling shared with Bitbucket diffs.
+pub(super) const DIFF_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 
 /// The write verbs the operations need beyond GET.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +45,21 @@ impl Method {
 /// reads MR parameters from the form body.
 pub trait GitlabApi {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError>;
+    fn get_with_limit(
+        &self,
+        operation: &'static str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        let body = self.get(operation, path)?;
+        if body.len() > max_bytes {
+            Err(GithubError::InvalidResponse(format!(
+                "GitLab {operation} exceeded the {max_bytes}-byte response limit; the partial response was discarded."
+            )))
+        } else {
+            Ok(body)
+        }
+    }
     fn send(
         &self,
         operation: &'static str,
@@ -186,17 +206,20 @@ impl<'a> RestClient<'a> {
         format!("Bearer {}", self.token)
     }
 
-    fn finish(
-        &self,
-        operation: &'static str,
-        result: Result<crate::git::oauth::http::HttpResponse, String>,
-    ) -> Result<String, GithubError> {
+    fn finish(&self, operation: &'static str, result: HttpResult) -> Result<String, GithubError> {
         match result {
             Ok(resp) if resp.is_success() => Ok(resp.body),
             Ok(resp) => Err(map_http_error(operation, &self.host, resp.status, &resp.body)),
+            Err(HttpError::ResponseTooLarge { limit }) => Err(GithubError::InvalidResponse(
+                format!(
+                    "GitLab {operation} exceeded the {limit}-byte response limit; the partial response was discarded."
+                ),
+            )),
             // A transport failure message may quote the request URL (never a
             // secret — the token rides in a header), but redact defensively.
-            Err(err) => Err(GithubError::Network(crate::redact::redact_secrets(&err))),
+            Err(HttpError::Transport(err)) => {
+                Err(GithubError::Network(crate::redact::redact_secrets(&err)))
+            }
         }
     }
 }
@@ -204,8 +227,33 @@ impl<'a> RestClient<'a> {
 impl GitlabApi for RestClient<'_> {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
         let auth = self.auth_header();
-        let headers = [("Authorization", auth.as_str()), ("Accept", "application/json")];
-        self.finish(operation, self.http.get(&self.url(path), &headers))
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ];
+        self.finish(
+            operation,
+            self.http
+                .get_with_limit(&self.url(path), &headers, PROVIDER_JSON_RESPONSE_LIMIT),
+        )
+    }
+
+    fn get_with_limit(
+        &self,
+        operation: &'static str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        let auth = self.auth_header();
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ];
+        self.finish(
+            operation,
+            self.http
+                .get_with_limit(&self.url(path), &headers, max_bytes),
+        )
     }
 
     fn send(
@@ -216,11 +264,20 @@ impl GitlabApi for RestClient<'_> {
         form: &[(&str, &str)],
     ) -> Result<String, GithubError> {
         let auth = self.auth_header();
-        let headers = [("Authorization", auth.as_str()), ("Accept", "application/json")];
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Accept", "application/json"),
+        ];
         let url = self.url(path);
         let result = match method {
-            Method::Post => self.http.post_form(&url, form, &headers),
-            Method::Put => self.http.put_form(&url, form, &headers),
+            Method::Post => {
+                self.http
+                    .post_form_with_limit(&url, form, &headers, PROVIDER_JSON_RESPONSE_LIMIT)
+            }
+            Method::Put => {
+                self.http
+                    .put_form_with_limit(&url, form, &headers, PROVIDER_JSON_RESPONSE_LIMIT)
+            }
         };
         self.finish(operation, result)
     }
@@ -269,6 +326,54 @@ fn gitlab_message(body: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::oauth::http::{testing::MockTransport, DEFAULT_RESPONSE_LIMIT};
+
+    #[test]
+    fn ordinary_json_can_exceed_the_oauth_response_limit() {
+        let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
+        let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+
+        assert_eq!(
+            client.get("detail", "projects/1/merge_requests/1").unwrap(),
+            body
+        );
+        assert_eq!(
+            http.requests.lock().unwrap()[0].max_bytes,
+            PROVIDER_JSON_RESPONSE_LIMIT
+        );
+    }
+
+    #[test]
+    fn mutation_json_uses_the_provider_response_limit() {
+        let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
+        let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+
+        assert_eq!(
+            client
+                .send("create", Method::Post, "projects/1/merge_requests", &[])
+                .unwrap(),
+            body
+        );
+        assert_eq!(
+            http.requests.lock().unwrap()[0].max_bytes,
+            PROVIDER_JSON_RESPONSE_LIMIT
+        );
+
+        let oversized = "x".repeat(PROVIDER_JSON_RESPONSE_LIMIT + 1);
+        let http = MockTransport::new(vec![MockTransport::ok(200, &oversized)]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+        assert!(matches!(
+            client.send(
+                "merge",
+                Method::Put,
+                "projects/1/merge_requests/1/merge",
+                &[]
+            ),
+            Err(GithubError::InvalidResponse(_))
+        ));
+    }
 
     #[test]
     fn extracts_gitlab_error_message() {
@@ -304,7 +409,12 @@ mod tests {
             GithubError::RateLimited { .. }
         ));
         // A 404 surfaces GitLab's own message when present.
-        match map_http_error("detail", "gitlab.com", 404, r#"{"message":"404 Not found"}"#) {
+        match map_http_error(
+            "detail",
+            "gitlab.com",
+            404,
+            r#"{"message":"404 Not found"}"#,
+        ) {
             GithubError::CommandFailed(msg) => assert!(msg.contains("Not found")),
             other => panic!("expected CommandFailed, got {other:?}"),
         }

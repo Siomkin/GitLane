@@ -6,12 +6,11 @@
 //! without that token ever reaching the frontend. It does so the way editors
 //! like VS Code do: git is pointed at **this same executable** as its
 //! `GIT_ASKPASS` helper. Git execs it directly (no shell — so an app path with
-//! spaces is never a hazard) with the credential prompt as `argv[1]`; a few
-//! **non-secret** environment variables tell the helper which keychain entry to
-//! answer with. The helper reads the token from the OS keychain
-//! ([`crate::secrets`]) inside that short-lived child process and prints it on
-//! stdout. The token lives only in the git↔helper process pair; it is never in
-//! IPC, the command line, or a log.
+//! spaces is never a hazard) with the credential prompt as `argv[1]`. The parent
+//! process reads the token from the OS keychain once and exposes it through a
+//! command-scoped loopback broker protected by a random nonce. The helper carries
+//! no keychain locator and prints only the broker's answer on stdout. The token
+//! is never in IPC, the command line, the git environment, or a log.
 //!
 //! Two entry points:
 //! - [`is_askpass_invocation`] / [`respond_to_askpass`] — the re-entrant helper,
@@ -24,22 +23,25 @@ use std::io::Write;
 use crate::git::transport_auth::{ProviderTokenBridge, TransportCredential};
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
+mod broker;
+
 /// Marks a child process launched as our `GIT_ASKPASS` helper. Its presence — set
 /// only on the git child we spawn — is what distinguishes an askpass invocation
 /// from a normal app launch.
 const ASKPASS_FLAG: &str = "GITLANE_ASKPASS";
-const ENV_PROVIDER: &str = "GITLANE_ASKPASS_PROVIDER";
-const ENV_HOST: &str = "GITLANE_ASKPASS_HOST";
-const ENV_ACCOUNT: &str = "GITLANE_ASKPASS_ACCOUNT";
+const ENV_ENDPOINT: &str = "GITLANE_ASKPASS_ENDPOINT";
+const ENV_NONCE: &str = "GITLANE_ASKPASS_NONCE";
 const ENV_USERNAME: &str = "GITLANE_ASKPASS_USERNAME";
 
 /// The `-c` config prefix and extra environment for one git network invocation.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct GitInvocation {
     /// `-c key=value` pairs to prepend to the git argv.
     pub config: Vec<String>,
     /// Extra environment variables for the git child.
     pub env: Vec<(String, String)>,
+    /// Owns the parent-side token broker for exactly as long as the git command.
+    _broker: Option<broker::Lease>,
 }
 
 /// Whether this process was spawned by git as the `GIT_ASKPASS` helper.
@@ -55,8 +57,7 @@ pub fn is_askpass_invocation() -> bool {
 pub fn respond_to_askpass() {
     let prompt = std::env::args().nth(1).unwrap_or_default();
     let env = AskpassEnv::from_process();
-    let store = KeyringStore::new();
-    if let Some(answer) = answer_askpass(&prompt, &env, &store) {
+    if let Some(answer) = answer_askpass(&prompt, &env) {
         // The single line of stdout is the credential; the secret is never
         // written to stderr, argv, or any log.
         let mut out = std::io::stdout();
@@ -76,13 +77,15 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
         TransportCredential::Gh { host } => Ok(GitInvocation {
             config: gh_helper_config(host),
             env: Vec::new(),
+            _broker: None,
         }),
         TransportCredential::Glab { host } => Ok(GitInvocation {
             config: glab_helper_config(host),
             env: Vec::new(),
+            _broker: None,
         }),
         TransportCredential::ProviderToken(bridge) => {
-            Ok(provider_token_invocation(bridge, &current_exe_path()?))
+            provider_token_invocation(bridge, &current_exe_path()?, &KeyringStore::new())
         }
     }
 }
@@ -115,8 +118,8 @@ fn glab_helper_config(host: &str) -> Vec<String> {
 
 /// Point git at this binary as `GIT_ASKPASS`, clearing the host's inherited
 /// helper so git falls through to the bridge (rather than returning a different
-/// stored credential). The env carries only non-secret locators; the token is
-/// fetched from the keychain by the helper child.
+/// stored credential). The parent reads the keychain and starts an ephemeral
+/// broker; the child receives only its random capability and the username.
 ///
 /// The single empty `credential.https://<host>.helper=` reliably overrides a
 /// *global* `credential.helper` too: git treats an empty value as a reset of the
@@ -126,13 +129,29 @@ fn glab_helper_config(host: &str) -> Vec<String> {
 /// pin a specific account. It is deliberately scoped to this host so a submodule
 /// on another host keeps using the user's helper.
 ///
-/// Threat model: the helper reads the keychain from a child of this same signed
-/// binary, so a local, same-user process that can exec GitLane with the right env
-/// could invoke it and read a token. That is inherent to the GIT_ASKPASS +
-/// OS-keychain pattern (VS Code, GitKraken, etc. share it); hardening it to a
-/// parent-brokered socket with a per-run nonce is tracked as future work.
-fn provider_token_invocation(bridge: &ProviderTokenBridge, exe: &str) -> GitInvocation {
-    GitInvocation {
+/// The capability is generated afresh for this command and the broker is torn
+/// down when [`GitInvocation`] drops. Static provider/host/account locators are
+/// intentionally absent, so independently launching the app as an askpass
+/// helper cannot turn it into a keychain oracle.
+fn provider_token_invocation(
+    bridge: &ProviderTokenBridge,
+    exe: &str,
+    store: &dyn SecretStore,
+) -> Result<GitInvocation, String> {
+    let key = SecretKey::new(
+        &bridge.provider,
+        &bridge.credential_host,
+        &bridge.account_id,
+    );
+    let token = store
+        .get(&key)
+        .map_err(String::from)?
+        .ok_or_else(|| "No stored token is available for this account.".to_string())?;
+    let broker = broker::start(bridge.credential_host.clone(), token)?;
+    let endpoint = broker.endpoint().to_string();
+    let nonce = broker.nonce().to_string();
+
+    Ok(GitInvocation {
         config: vec![
             "-c".to_string(),
             format!("credential.https://{}.helper=", bridge.credential_host),
@@ -140,12 +159,12 @@ fn provider_token_invocation(bridge: &ProviderTokenBridge, exe: &str) -> GitInvo
         env: vec![
             ("GIT_ASKPASS".to_string(), exe.to_string()),
             (ASKPASS_FLAG.to_string(), "1".to_string()),
-            (ENV_PROVIDER.to_string(), bridge.provider.clone()),
-            (ENV_HOST.to_string(), bridge.credential_host.clone()),
-            (ENV_ACCOUNT.to_string(), bridge.account_id.clone()),
+            (ENV_ENDPOINT.to_string(), endpoint),
+            (ENV_NONCE.to_string(), nonce),
             (ENV_USERNAME.to_string(), bridge.username.clone()),
         ],
-    }
+        _broker: Some(broker),
+    })
 }
 
 fn current_exe_path() -> Result<String, String> {
@@ -155,11 +174,10 @@ fn current_exe_path() -> Result<String, String> {
         .ok_or_else(|| "Could not locate the GitLane executable for the credential bridge.".into())
 }
 
-/// Non-secret locator read from the child process environment.
+/// Ephemeral broker capability read from the helper process environment.
 struct AskpassEnv {
-    provider: String,
-    host: String,
-    account_id: String,
+    endpoint: String,
+    nonce: String,
     username: String,
 }
 
@@ -167,9 +185,8 @@ impl AskpassEnv {
     fn from_process() -> Self {
         let read = |k: &str| std::env::var(k).unwrap_or_default();
         Self {
-            provider: read(ENV_PROVIDER),
-            host: read(ENV_HOST),
-            account_id: read(ENV_ACCOUNT),
+            endpoint: read(ENV_ENDPOINT),
+            nonce: read(ENV_NONCE),
             username: read(ENV_USERNAME),
         }
     }
@@ -205,28 +222,15 @@ fn prompt_host(prompt: &str) -> Option<String> {
     super::forge::credential_host_for_url(&rest[..end])
 }
 
-/// Resolve the answer for one askpass prompt from `env` + `store`, or `None` when
-/// GitLane should stay silent (unknown field, host mismatch, or no stored token).
-fn answer_askpass(prompt: &str, env: &AskpassEnv, store: &dyn SecretStore) -> Option<String> {
+/// Resolve one askpass prompt. Usernames are non-secret; passwords must come
+/// from the live parent broker. Any missing/forged capability stays silent.
+fn answer_askpass(prompt: &str, env: &AskpassEnv) -> Option<String> {
     match askpass_field(prompt)? {
         AskpassField::Username => {
             let username = env.username.trim();
             (!username.is_empty()).then(|| username.to_string())
         }
-        AskpassField::Password => {
-            // Fail closed: only hand the token to the exact host it was scoped to.
-            // `GIT_ASKPASS` is inherited by nested git processes (submodule
-            // fetches, cross-host redirects), so if the prompt names a different
-            // host — or no parseable host at all — refuse rather than risk leaking
-            // the token to the wrong authority.
-            match prompt_host(prompt) {
-                Some(host) if hosts_match(&host, &env.host) => {
-                    let key = SecretKey::new(&env.provider, &env.host, &env.account_id);
-                    store.get(&key).ok().flatten()
-                }
-                _ => None,
-            }
-        }
+        AskpassField::Password => broker::request(&env.endpoint, &env.nonce, prompt),
     }
 }
 
@@ -239,12 +243,32 @@ mod tests {
     use super::*;
     use crate::secrets::MemoryStore;
 
-    fn env(host: &str) -> AskpassEnv {
-        AskpassEnv {
-            provider: "gitlab".into(),
-            host: host.into(),
-            account_id: "42".into(),
+    fn bridge() -> ProviderTokenBridge {
+        ProviderTokenBridge {
+            credential_host: "gitlab.com".into(),
             username: "alice".into(),
+            provider: "gitlab".into(),
+            account_id: "42".into(),
+        }
+    }
+
+    fn stored_token() -> MemoryStore {
+        let store = MemoryStore::new();
+        store
+            .set(
+                &SecretKey::new("gitlab", "gitlab.com", "42"),
+                "glpat-secret",
+            )
+            .unwrap();
+        store
+    }
+
+    fn askpass_env(invocation: &GitInvocation) -> AskpassEnv {
+        let values: std::collections::HashMap<_, _> = invocation.env.iter().cloned().collect();
+        AskpassEnv {
+            endpoint: values.get(ENV_ENDPOINT).cloned().unwrap_or_default(),
+            nonce: values.get(ENV_NONCE).cloned().unwrap_or_default(),
+            username: values.get(ENV_USERNAME).cloned().unwrap_or_default(),
         }
     }
 
@@ -276,49 +300,50 @@ mod tests {
     }
 
     #[test]
-    fn answers_username_from_env_and_password_from_keychain() {
-        let store = MemoryStore::new();
-        store
-            .set(
-                &SecretKey::new("gitlab", "gitlab.com", "42"),
-                "glpat-secret",
-            )
-            .unwrap();
-        let env = env("gitlab.com");
+    fn answers_username_from_env_and_password_from_parent_broker() {
+        let invocation = provider_token_invocation(&bridge(), "/app/GitLane", &stored_token())
+            .expect("brokered invocation");
+        let env = askpass_env(&invocation);
 
         assert_eq!(
-            answer_askpass("Username for 'https://gitlab.com': ", &env, &store).as_deref(),
+            answer_askpass("Username for 'https://gitlab.com': ", &env).as_deref(),
             Some("alice")
         );
         assert_eq!(
-            answer_askpass("Password for 'https://alice@gitlab.com': ", &env, &store).as_deref(),
+            answer_askpass("Password for 'https://alice@gitlab.com': ", &env).as_deref(),
             Some("glpat-secret")
         );
     }
 
     #[test]
-    fn stays_silent_when_no_token_is_stored() {
+    fn missing_token_refuses_to_create_a_broker() {
         let store = MemoryStore::new();
-        let env = env("gitlab.com");
+        assert!(provider_token_invocation(&bridge(), "/app/GitLane", &store).is_err());
+    }
+
+    #[test]
+    fn static_locator_environment_cannot_read_the_keychain() {
+        // The former provider/host/account variables are intentionally ignored;
+        // without a live endpoint + random nonce, the helper stays silent.
+        let env = AskpassEnv {
+            endpoint: String::new(),
+            nonce: String::new(),
+            username: "alice".into(),
+        };
         assert_eq!(
-            answer_askpass("Password for 'https://alice@gitlab.com': ", &env, &store),
+            answer_askpass("Password for 'https://alice@gitlab.com': ", &env),
             None
         );
     }
 
     #[test]
     fn refuses_to_answer_a_password_for_a_different_host() {
-        let store = MemoryStore::new();
-        store
-            .set(
-                &SecretKey::new("gitlab", "gitlab.com", "42"),
-                "glpat-secret",
-            )
-            .unwrap();
-        let env = env("gitlab.com");
+        let invocation = provider_token_invocation(&bridge(), "/app/GitLane", &stored_token())
+            .expect("brokered invocation");
+        let env = askpass_env(&invocation);
         // git is asking for evil.example, our token is scoped to gitlab.com.
         assert_eq!(
-            answer_askpass("Password for 'https://alice@evil.example': ", &env, &store),
+            answer_askpass("Password for 'https://alice@evil.example': ", &env),
             None
         );
     }
@@ -327,23 +352,18 @@ mod tests {
     fn refuses_a_password_prompt_with_no_parseable_host() {
         // Fail closed: a prompt we cannot attribute to our host must not yield the
         // token (GIT_ASKPASS is inherited by nested git processes).
-        let store = MemoryStore::new();
-        store
-            .set(
-                &SecretKey::new("gitlab", "gitlab.com", "42"),
-                "glpat-secret",
-            )
-            .unwrap();
-        let env = env("gitlab.com");
-        assert_eq!(answer_askpass("Password: ", &env, &store), None);
+        let invocation = provider_token_invocation(&bridge(), "/app/GitLane", &stored_token())
+            .expect("brokered invocation");
+        let env = askpass_env(&invocation);
+        assert_eq!(answer_askpass("Password: ", &env), None);
     }
 
     #[test]
     fn git_invocation_none_is_empty() {
-        assert_eq!(
-            git_invocation(&TransportCredential::None).unwrap(),
-            GitInvocation::default()
-        );
+        let invocation = git_invocation(&TransportCredential::None).unwrap();
+        assert!(invocation.config.is_empty());
+        assert!(invocation.env.is_empty());
+        assert!(invocation._broker.is_none());
     }
 
     #[test]
@@ -384,13 +404,12 @@ mod tests {
 
     #[test]
     fn provider_token_invocation_clears_helper_and_carries_no_secret() {
-        let bridge = ProviderTokenBridge {
-            credential_host: "gitlab.com".into(),
-            username: "alice".into(),
-            provider: "gitlab".into(),
-            account_id: "42".into(),
-        };
-        let inv = provider_token_invocation(&bridge, "/Apps/Git Lane.app/Contents/MacOS/GitLane");
+        let inv = provider_token_invocation(
+            &bridge(),
+            "/Apps/Git Lane.app/Contents/MacOS/GitLane",
+            &stored_token(),
+        )
+        .unwrap();
 
         // Only the helper-clearing -c line; no gh helper, no secret.
         assert_eq!(
@@ -400,17 +419,21 @@ mod tests {
                 "credential.https://gitlab.com.helper=".to_string(),
             ]
         );
-        // Env points GIT_ASKPASS at this binary and carries only locators.
+        // Env points GIT_ASKPASS at this binary and carries only a fresh broker
+        // capability plus the non-secret username — never keychain locators.
         let env: std::collections::HashMap<_, _> = inv.env.iter().cloned().collect();
         assert_eq!(
             env.get("GIT_ASKPASS").map(String::as_str),
             Some("/Apps/Git Lane.app/Contents/MacOS/GitLane")
         );
         assert_eq!(env.get(ASKPASS_FLAG).map(String::as_str), Some("1"));
-        assert_eq!(env.get(ENV_PROVIDER).map(String::as_str), Some("gitlab"));
-        assert_eq!(env.get(ENV_HOST).map(String::as_str), Some("gitlab.com"));
-        assert_eq!(env.get(ENV_ACCOUNT).map(String::as_str), Some("42"));
+        assert!(env.get(ENV_ENDPOINT).is_some_and(|value| !value.is_empty()));
+        assert!(env.get(ENV_NONCE).is_some_and(|value| value.len() == 64));
         assert_eq!(env.get(ENV_USERNAME).map(String::as_str), Some("alice"));
+        assert!(!env.contains_key("GITLANE_ASKPASS_PROVIDER"));
+        assert!(!env.contains_key("GITLANE_ASKPASS_HOST"));
+        assert!(!env.contains_key("GITLANE_ASKPASS_ACCOUNT"));
+        assert!(inv._broker.is_some());
         // The token itself is never present in the invocation.
         assert!(!inv
             .env
@@ -427,6 +450,7 @@ mod tests {
 #[cfg(all(test, unix))]
 mod git_integration {
     use super::*;
+    use crate::secrets::MemoryStore;
     use base64::Engine;
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -525,7 +549,14 @@ mod git_integration {
             provider: "gitlab".into(),
             account_id: "1".into(),
         };
-        let inv = provider_token_invocation(&bridge, askpass.to_str().unwrap());
+        let store = MemoryStore::new();
+        store
+            .set(
+                &SecretKey::new("gitlab", &format!("{addr}"), "1"),
+                "broker-token-unused-by-stub",
+            )
+            .unwrap();
+        let inv = provider_token_invocation(&bridge, askpass.to_str().unwrap(), &store).unwrap();
 
         let url = format!("http://testuser@{addr}/repo.git");
         let mut args: Vec<String> = vec!["-C".into(), repo.to_str().unwrap().into()];

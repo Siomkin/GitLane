@@ -197,6 +197,7 @@ describe("view-tab transitions", () => {
     expect(useUi.getState().terminalInject).toEqual(expect.objectContaining({
       text: "draft this commit",
       command: "codex",
+      tabId: useTerminals.getState().byRepo["/repo"].activeId,
     }));
 
     await vi.advanceTimersByTimeAsync(500);
@@ -237,6 +238,7 @@ describe("view-tab transitions", () => {
       text: "draft this commit",
       command: "codex --model gpt-5.6-sol",
       repoKey: "/repo",
+      tabId: repo.activeId,
     });
     useUi.getState().cancelAgentCommitDraft();
   });

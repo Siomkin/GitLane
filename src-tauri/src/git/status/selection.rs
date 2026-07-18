@@ -249,6 +249,7 @@ fn file_change(
         add,
         del,
         binary,
+        line_count_truncated: false,
         // The multi-commit union diff is keyed by a single path (renames are
         // resolved into the net add/delete), so there is no distinct old side.
         previous_path: None,
@@ -327,11 +328,13 @@ fn merge_text(ancestor: &[u8], ours: &[u8], theirs: &[u8], path: &str) -> Option
 /// Returns `None` (caller falls back to the blob-range) when the chain isn't
 /// pure text — an add/delete side or a binary blob — or a compose step
 /// conflicts, since those can't be composed at the blob level.
+type TextComposition = Option<(Vec<u8>, Vec<u8>)>;
+
 fn compose_text(
     repo: &Repository,
     ordered: &[Commit],
     file: &str,
-) -> Result<Option<(Vec<u8>, Vec<u8>)>, git2::Error> {
+) -> Result<TextComposition, git2::Error> {
     let mut base: Option<Vec<u8>> = None;
     let mut acc: Vec<u8> = Vec::new();
     for commit in ordered {
@@ -381,6 +384,7 @@ fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileChange, git2::
         add,
         del,
         binary: false,
+        line_count_truncated: false,
         previous_path: None,
         advanced: None,
     })

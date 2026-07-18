@@ -10,7 +10,7 @@ use git2::{DiffOptions, Oid, Repository};
 use crate::git::read::open;
 use crate::git::types::{CompareResult, FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
 
 fn tree_for<'a>(repo: &'a Repository, spec: &str) -> Result<git2::Tree<'a>, git2::Error> {
     repo.revparse_single(spec)?.peel_to_tree()
@@ -82,8 +82,7 @@ pub fn compare_file_diff(
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
-    let mut opts = DiffOptions::new();
-    opts.pathspec(file).context_lines(3);
+    let mut opts = literal_file_options(file);
     let mut diff = build_diff(&repo, base, head, &mut opts)?;
     diff.find_similar(None)?;
 

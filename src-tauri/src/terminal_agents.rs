@@ -355,7 +355,10 @@ fn sweep_mailboxes(git_dir: &Path) {
         let Some(name) = file_name.to_str() else {
             continue;
         };
-        if !MAILBOX_PREFIXES.iter().any(|prefix| name.starts_with(prefix)) {
+        if !MAILBOX_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+        {
             continue;
         }
         let Ok(metadata) = entry.metadata() else {
@@ -475,7 +478,10 @@ mod tests {
         let json = serde_json::to_value(&messages).unwrap();
         assert_eq!(json["draftInstruction"], DEFAULT_DRAFT_INSTRUCTION);
         assert_eq!(json["commitInstruction"], DEFAULT_COMMIT_INSTRUCTION);
-        assert_eq!(json["descriptionInstruction"], DEFAULT_DESCRIPTION_INSTRUCTION);
+        assert_eq!(
+            json["descriptionInstruction"],
+            DEFAULT_DESCRIPTION_INSTRUCTION
+        );
     }
 
     #[test]
@@ -487,13 +493,18 @@ mod tests {
         .unwrap();
         assert_eq!(messages.draft_instruction, "Custom draft");
         assert_eq!(messages.commit_instruction, "Custom commit");
-        assert_eq!(messages.description_instruction, DEFAULT_DESCRIPTION_INSTRUCTION);
+        assert_eq!(
+            messages.description_instruction,
+            DEFAULT_DESCRIPTION_INSTRUCTION
+        );
     }
 
     #[test]
     fn commit_agent_messages_reject_blank_instructions() {
-        let mut messages = CommitAgentMessages::default();
-        messages.draft_instruction = "  ".into();
+        let messages = CommitAgentMessages {
+            draft_instruction: "  ".into(),
+            ..CommitAgentMessages::default()
+        };
         assert!(!valid_messages(&messages));
     }
 

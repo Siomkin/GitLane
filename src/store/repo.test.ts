@@ -93,6 +93,90 @@ beforeEach(() => {
   });
 });
 
+describe("repo store — ensureWorkingFileSelection", () => {
+  const change = (path: string) => ({
+    path,
+    status: "M" as const,
+    add: 1,
+    del: 0,
+    binary: false,
+  });
+  const diff = (path: string) => ({
+    ...change(path),
+    hunks: [],
+    truncated: false,
+  });
+
+  it("selects the first live working file when no working selection exists", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [change("staged.ts")],
+        unstaged: [change("unstaged.ts")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diff("unstaged.ts")) : defaultInvoke(cmd),
+    );
+
+    useRepo.getState().ensureWorkingFileSelection();
+
+    await vi.waitFor(() =>
+      expect(useRepo.getState().selectedFile).toEqual({ path: "unstaged.ts", source: "unstaged" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("file_diff", {
+      path: "/repo",
+      file: "unstaged.ts",
+      staged: false,
+      full: null,
+    });
+  });
+
+  it("keeps the path but changes source when staging moves the selected file", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [change("src/a.ts")],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "file_diff" ? Promise.resolve(diff("src/a.ts")) : defaultInvoke(cmd),
+    );
+
+    useRepo.getState().ensureWorkingFileSelection();
+
+    await vi.waitFor(() =>
+      expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith("file_diff", {
+      path: "/repo",
+      file: "src/a.ts",
+      staged: true,
+      full: null,
+    });
+  });
+
+  it("does not reload a selection that is still in its owning bucket", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [change("src/a.ts")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+
+    useRepo.getState().ensureWorkingFileSelection();
+
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("repo store — discardFile", () => {
   it("re-points the diff at the surviving bucket for a partially-staged file", async () => {
     // The file is staged *and* unstaged; after discarding its unstaged changes
@@ -1311,6 +1395,53 @@ describe("repo store — large history", () => {
       await vi.waitFor(() => expect(useRepo.getState().fileDiff).toEqual(emptyDiff));
       expect(invokeMock).toHaveBeenCalledWith("file_diff", expect.objectContaining({ staged: false }));
       expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "unstaged" });
+    });
+
+    it("publishes only the latest staged or unstaged selection for the same path", async () => {
+      const slowUnstaged = deferred<ReturnType<typeof diff>>();
+      const staged = diff({ add: 7 });
+      let calls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "file_diff") {
+          return ++calls === 1 ? slowUnstaged.promise : Promise.resolve(staged);
+        }
+        return defaultInvoke(cmd);
+      });
+
+      const oldSelection = useRepo.getState().selectFile("src/a.ts", "unstaged");
+      await useRepo.getState().selectFile("src/a.ts", "staged");
+      slowUnstaged.resolve(diff({ add: 99 }));
+      await oldSelection;
+
+      expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
+      expect(useRepo.getState().fileDiff).toEqual(staged);
+      expect(useRepo.getState().diffLoading).toBe(false);
+    });
+
+    it("publishes only the latest full diff when the same path changes bucket", async () => {
+      const slowUnstaged = deferred<ReturnType<typeof diff>>();
+      const staged = diff({ add: 8 });
+      useRepo.setState({
+        selectedFile: { path: "src/a.ts", source: "unstaged" },
+        fileDiff: diff({ truncated: true }),
+      });
+      let calls = 0;
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === "file_diff") {
+          return ++calls === 1 ? slowUnstaged.promise : Promise.resolve(staged);
+        }
+        return defaultInvoke(cmd);
+      });
+
+      const oldFull = useRepo.getState().loadFullFileDiff();
+      useRepo.setState({ selectedFile: { path: "src/a.ts", source: "staged" } });
+      await useRepo.getState().loadFullFileDiff();
+      slowUnstaged.resolve(diff({ add: 99 }));
+      await oldFull;
+
+      expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
+      expect(useRepo.getState().fileDiff).toEqual(staged);
+      expect(useRepo.getState().diffLoading).toBe(false);
     });
   });
 

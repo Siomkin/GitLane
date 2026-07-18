@@ -29,6 +29,12 @@ GitLane currently installs only the plugins needed by existing product behavior:
 Adding a plugin is not complete until its permissions are added narrowly there
 and the reason is documented in this file.
 
+The custom title bar uses Tauri drag regions. Its explicit core-window grants
+include `core:window:allow-internal-toggle-maximize` (GL-253), the internal
+command Tauri emits when a drag region is double-clicked. This is intentionally
+separate from the frontend-invoked `allow-toggle-maximize`; omitting it disables
+native title-bar double-click maximize even though the window buttons still work.
+
 ## Non-negotiable rules
 
 - Secrets stay out of IPC, Zustand, localStorage, Tauri Store JSON, logs, crash

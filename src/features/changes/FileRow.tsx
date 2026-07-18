@@ -72,7 +72,12 @@ export function FileRow({
             action && "group-hover:opacity-0",
           )}
         >
-          <ChangeCounts add={file.add} del={file.del} binary={file.binary} />
+          <ChangeCounts
+            add={file.add}
+            del={file.del}
+            binary={file.binary}
+            addAtLeast={file.lineCountTruncated}
+          />
           <StatusBadge status={file.status} />
         </span>
       </button>

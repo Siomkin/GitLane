@@ -26,6 +26,7 @@ export function createRepoSelectionActions(
   | "selectCommitMulti"
   | "clearSelection"
   | "selectWip"
+  | "ensureWorkingFileSelection"
   | "selectFile"
   | "loadFullFileDiff"
   | "clearSelectedFile"
@@ -158,6 +159,32 @@ export function createRepoSelectionActions(
         commitFiles: [],
       }),
 
+    ensureWorkingFileSelection: () => {
+      const { changes, selectedFile } = get();
+      const workingSelection = selectedFile?.source === "commit" ? null : selectedFile;
+      if (workingSelection) {
+        const currentBucket =
+          workingSelection.source === "unstaged" ? changes.unstaged : changes.staged;
+        if (currentBucket.some((file) => file.path === workingSelection.path)) return;
+
+        // Staging/unstaging can move the selected path between buckets. Keep the
+        // path but update its source so the next diff reads the correct index.
+        const otherSource = workingSelection.source === "unstaged" ? "staged" : "unstaged";
+        const otherBucket = otherSource === "unstaged" ? changes.unstaged : changes.staged;
+        if (otherBucket.some((file) => file.path === workingSelection.path)) {
+          void get().selectFile(workingSelection.path, otherSource);
+          return;
+        }
+      }
+
+      const first = changes.unstaged[0] ?? changes.staged[0];
+      if (first) {
+        void get().selectFile(first.path, changes.unstaged[0] ? "unstaged" : "staged");
+      } else if (workingSelection) {
+        get().clearSelectedFile();
+      }
+    },
+
     selectFile: async (path, source) => {
       const { summary, selectedCommit, selectionDiff } = get();
       if (!summary) return;
@@ -167,22 +194,25 @@ export function createRepoSelectionActions(
       // file path keeps the path — so also pin the union's commit set, or a slow
       // response could publish the wrong selection's merged diff for that file.
       const selKey = selectionKey(selectionDiff?.commits);
+      const requestId = get().fileSelectionRequestId + 1;
       const fresh = () =>
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
+        get().selectedFile?.source === source &&
+        get().fileSelectionRequestId === requestId &&
         selectionKey(get().selectionDiff?.commits) === selKey;
       // An explicit selection supersedes any background reconcile in flight —
       // its result must not publish over this fresher fetch (GL-123).
       invalidateFileDiffReconciles();
       // Selecting a file dismisses the standalone repo-file viewer — the diff of
       // the chosen file takes over the center pane.
-      set((state) => ({
+      set({
         selectedFile: { path, source },
-        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        fileSelectionRequestId: requestId,
         fileView: null,
         diffLoading: true,
         error: null,
-      }));
+      });
       try {
         // In a multi-commit selection a committed file's diff is the merged
         // ("union") diff across the whole selection, not the focus commit (GL-69).
@@ -206,14 +236,17 @@ export function createRepoSelectionActions(
       const { path, source } = selectedFile;
       const repoPath = summary.path;
       const selKey = selectionKey(selectionDiff?.commits);
+      const requestId = get().fileSelectionRequestId + 1;
       const fresh = () =>
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
+        get().selectedFile?.source === source &&
+        get().fileSelectionRequestId === requestId &&
         selectionKey(get().selectionDiff?.commits) === selKey;
       // See selectFile: drop any in-flight reconcile so it can't overwrite the
       // expanded diff after this load completes.
       invalidateFileDiffReconciles();
-      set({ diffLoading: true });
+      set({ diffLoading: true, fileSelectionRequestId: requestId });
       try {
         const fileDiff =
           source === "commit" && selectionDiff

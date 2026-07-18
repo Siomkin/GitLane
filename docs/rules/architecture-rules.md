@@ -118,6 +118,8 @@ A change isn't finished until:
 bunx tsc --noEmit                 # frontend typechecks
 bun run lint                      # eslint: the load-bearing import boundaries (GL-58)
 (cd src-tauri && cargo check)     # Rust compiles (cargo build for a real binary)
+(cd src-tauri && cargo fmt --all -- --check)
+(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
 bun run build                     # tsc --noEmit + vite build passes
 ```
 

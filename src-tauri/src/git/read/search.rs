@@ -175,8 +175,12 @@ fn search_history_with_budget(
         // topological, not strictly chronological, so filter instead of
         // terminating early.
         let commit_time = commit.time().seconds();
-        if query.since_timestamp.is_some_and(|since| commit_time < since)
-            || query.until_timestamp.is_some_and(|until| commit_time > until)
+        if query
+            .since_timestamp
+            .is_some_and(|since| commit_time < since)
+            || query
+                .until_timestamp
+                .is_some_and(|until| commit_time > until)
         {
             continue;
         }
@@ -271,8 +275,8 @@ mod tests {
         fn new(tag: &str) -> Self {
             static SEQ: AtomicU32 = AtomicU32::new(0);
             let n = SEQ.fetch_add(1, Ordering::Relaxed);
-            let dir =
-                std::env::temp_dir().join(format!("gitlane-search-{tag}-{}-{n}", std::process::id()));
+            let dir = std::env::temp_dir()
+                .join(format!("gitlane-search-{tag}-{}-{n}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             TempRepo(dir)
@@ -292,13 +296,24 @@ mod tests {
 
     /// Commit `message` (as its own file) onto `update_ref` at committer time
     /// `secs`, returning the new oid.
-    fn commit_at(repo: &Repository, update_ref: &str, message: &str, parents: &[Oid], secs: i64) -> Oid {
+    fn commit_at(
+        repo: &Repository,
+        update_ref: &str,
+        message: &str,
+        parents: &[Oid],
+        secs: i64,
+    ) -> Oid {
         let blob = repo.blob(message.as_bytes()).unwrap();
         let mut builder = repo.treebuilder(None).unwrap();
-        builder.insert(format!("{message}.txt"), blob, 0o100644).unwrap();
+        builder
+            .insert(format!("{message}.txt"), blob, 0o100644)
+            .unwrap();
         let tree = repo.find_tree(builder.write().unwrap()).unwrap();
         let sig = Signature::new("GitLane", "gitlane@example.test", &Time::new(secs, 0)).unwrap();
-        let parent_commits = parents.iter().map(|oid| repo.find_commit(*oid).unwrap()).collect::<Vec<_>>();
+        let parent_commits = parents
+            .iter()
+            .map(|oid| repo.find_commit(*oid).unwrap())
+            .collect::<Vec<_>>();
         let parent_refs = parent_commits.iter().collect::<Vec<_>>();
         repo.commit(Some(update_ref), &sig, &sig, message, &tree, &parent_refs)
             .unwrap()
@@ -355,8 +370,14 @@ mod tests {
 
         let all = search_history(dir.str_path(), empty_query()).unwrap();
         let msgs = summaries(&all);
-        assert!(msgs.iter().any(|m| m == "base"), "branch commit should be found: {msgs:?}");
-        assert!(!msgs.iter().any(|m| m == "stashy"), "stash-only commit must be excluded: {msgs:?}");
+        assert!(
+            msgs.iter().any(|m| m == "base"),
+            "branch commit should be found: {msgs:?}"
+        );
+        assert!(
+            !msgs.iter().any(|m| m == "stashy"),
+            "stash-only commit must be excluded: {msgs:?}"
+        );
     }
 
     #[test]
@@ -386,7 +407,10 @@ mod tests {
         q.revision = Some("does-not-exist".into());
         let error = search_history(dir.str_path(), q).unwrap_err();
         assert!(error.contains("Unknown revision"), "got: {error}");
-        assert!(!error.contains("class="), "must not leak libgit2 internals: {error}");
+        assert!(
+            !error.contains("class="),
+            "must not leak libgit2 internals: {error}"
+        );
     }
 
     #[test]

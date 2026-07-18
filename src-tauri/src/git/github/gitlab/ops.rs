@@ -10,7 +10,7 @@
 use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
-use super::transport::{GitlabApi, Method};
+use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
 use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummary};
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×
@@ -26,9 +26,13 @@ const MAX_COMMIT_PAGES: usize = 20;
 /// `state=all` explicitly requests every state (opened/closed/locked/merged),
 /// matching `gh pr list --state all` — so the list is state-complete regardless
 /// of the endpoint's default.
-pub fn list_prs(api: &dyn GitlabApi, project_id: &str) -> Result<Vec<PullRequestSummary>, GithubError> {
-    let path =
-        format!("projects/{project_id}/merge_requests?state=all&per_page=50&order_by=created_at&sort=desc");
+pub fn list_prs(
+    api: &dyn GitlabApi,
+    project_id: &str,
+) -> Result<Vec<PullRequestSummary>, GithubError> {
+    let path = format!(
+        "projects/{project_id}/merge_requests?state=all&per_page=50&order_by=created_at&sort=desc"
+    );
     let raw = api.get("list merge requests", &path)?;
     let mrs: Vec<GitlabMr> = parse(&raw, "merge request list")?;
     Ok(mrs.into_iter().map(GitlabMr::into_summary).collect())
@@ -68,7 +72,7 @@ pub fn pr_diff(
         let path = format!(
             "projects/{project_id}/merge_requests/{number}/diffs?per_page={DIFF_PER_PAGE}&page={page}"
         );
-        let raw = api.get("merge request diff", &path)?;
+        let raw = api.get_with_limit("merge request diff", &path, DIFF_RESPONSE_LIMIT)?;
         let batch: Vec<GitlabDiff> = parse(&raw, "merge request diff")?;
         let full_page = batch.len() == DIFF_PER_PAGE;
         diffs.extend(batch);
@@ -268,8 +272,16 @@ fn percent_encode(input: &str) -> String {
 fn reconstruct_patch(diffs: &[GitlabDiff]) -> String {
     let mut out = String::new();
     for d in diffs {
-        let old = if d.old_path.is_empty() { &d.new_path } else { &d.old_path };
-        let new = if d.new_path.is_empty() { &d.old_path } else { &d.new_path };
+        let old = if d.old_path.is_empty() {
+            &d.new_path
+        } else {
+            &d.old_path
+        };
+        let new = if d.new_path.is_empty() {
+            &d.old_path
+        } else {
+            &d.new_path
+        };
         out.push_str(&format!("diff --git a/{old} b/{new}\n"));
         if d.new_file {
             out.push_str("new file mode 100644\n");
@@ -286,8 +298,16 @@ fn reconstruct_patch(diffs: &[GitlabDiff]) -> String {
             }
             continue;
         }
-        let old_side = if d.new_file { "/dev/null".to_string() } else { format!("a/{old}") };
-        let new_side = if d.deleted_file { "/dev/null".to_string() } else { format!("b/{new}") };
+        let old_side = if d.new_file {
+            "/dev/null".to_string()
+        } else {
+            format!("a/{old}")
+        };
+        let new_side = if d.deleted_file {
+            "/dev/null".to_string()
+        } else {
+            format!("b/{new}")
+        };
         out.push_str(&format!("--- {old_side}\n+++ {new_side}\n"));
         out.push_str(&d.diff);
         if !d.diff.ends_with('\n') {
@@ -299,12 +319,12 @@ fn reconstruct_patch(diffs: &[GitlabDiff]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::transport::RestClient;
     use super::*;
     use crate::git::oauth::http::testing::MockTransport;
-    use crate::git::oauth::http::HttpResponse;
-    use super::super::transport::RestClient;
+    use crate::git::oauth::http::HttpResult;
 
-    fn ok(body: &str) -> Result<HttpResponse, String> {
+    fn ok(body: &str) -> HttpResult {
         MockTransport::ok(200, body)
     }
 
@@ -367,7 +387,12 @@ mod tests {
         assert_eq!(files[0].path, "a.txt");
         assert_eq!(files[0].status, "M");
         assert_eq!(files[1].status, "A");
-        assert!(files[2].binary, "empty diff on a non-rename reads as binary");
+        assert!(
+            files[2].binary,
+            "empty diff on a non-rename reads as binary"
+        );
+        let requests = http.requests.lock().unwrap();
+        assert_eq!(requests[0].max_bytes, DIFF_RESPONSE_LIMIT);
     }
 
     #[test]
@@ -382,8 +407,12 @@ mod tests {
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "POST");
         let form = &reqs[0].form;
-        assert!(form.iter().any(|(k, v)| k == "source_branch" && v == "feat"));
-        assert!(form.iter().any(|(k, v)| k == "target_branch" && v == "main"));
+        assert!(form
+            .iter()
+            .any(|(k, v)| k == "source_branch" && v == "feat"));
+        assert!(form
+            .iter()
+            .any(|(k, v)| k == "target_branch" && v == "main"));
         assert!(
             form.iter().any(|(k, v)| k == "title" && v == "Draft: New"),
             "draft prefixes the title"
@@ -408,7 +437,10 @@ mod tests {
         // User already typed a draft title AND ticked draft → prefix added once.
         create_pr(&client, "p", "main", "f", "Draft: New", "", true).expect("create");
         let reqs = http.requests.lock().unwrap();
-        assert!(reqs[0].form.iter().any(|(k, v)| k == "title" && v == "Draft: New"));
+        assert!(reqs[0]
+            .form
+            .iter()
+            .any(|(k, v)| k == "title" && v == "Draft: New"));
     }
 
     #[test]
@@ -417,7 +449,11 @@ mod tests {
         let client = RestClient::new(&http, "gitlab.com", "tok");
         let err = merge_pr(&client, "p", 7, "rebase", false).unwrap_err();
         assert!(matches!(err, GithubError::CommandFailed(_)));
-        assert_eq!(http.request_count(), 0, "no request on an unsupported method");
+        assert_eq!(
+            http.request_count(),
+            0,
+            "no request on an unsupported method"
+        );
     }
 
     #[test]
@@ -434,7 +470,9 @@ mod tests {
         assert!(reqs[0].url.ends_with("/merge_requests/7/merge"));
         let form = &reqs[0].form;
         assert!(form.iter().any(|(k, v)| k == "squash" && v == "true"));
-        assert!(form.iter().any(|(k, v)| k == "should_remove_source_branch" && v == "true"));
+        assert!(form
+            .iter()
+            .any(|(k, v)| k == "should_remove_source_branch" && v == "true"));
     }
 
     #[test]

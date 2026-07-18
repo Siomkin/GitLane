@@ -25,6 +25,9 @@ export interface PaneReconcilerInputs {
   terminalView: "hidden" | "collapsed" | "open";
   terminalExpanded: boolean;
   theme: "dark" | "light";
+  /** Both PTY event subscriptions are installed. New shells must not spawn
+   * before this becomes true or their initial output can be lost. */
+  ptyEventsReady: boolean;
   /** Ensure `repoKey` has at least one tab (store action, stable). */
   ensureTab: (repoKey: string) => string;
 }
@@ -39,6 +42,7 @@ export function usePaneReconciler({
   terminalView,
   terminalExpanded,
   theme,
+  ptyEventsReady,
   ensureTab,
 }: PaneReconcilerInputs): void {
   // ── Dispose every pane's xterm + PTY when the layer unmounts ──────────────
@@ -76,7 +80,7 @@ export function usePaneReconciler({
     // kept (disposed below only when their tab actually leaves the store). The
     // shell spawns in the active repo's working dir (`cwd`).
     for (const [tabId, key] of wanted) {
-      if (controller.get(tabId) || key !== repoKey) continue;
+      if (!ptyEventsReady || controller.get(tabId) || key !== repoKey) continue;
       controller.create(tabId, cwd ?? key);
     }
     // Dispose panes whose tab left the store (tab closed, or its repo closed).
@@ -88,7 +92,17 @@ export function usePaneReconciler({
       pane.view.el.style.display = tabId === activeTabId ? "block" : "none";
     }
     if (activeTabId) controller.refit(activeTabId);
-  }, [controller, hostRef, byRepo, activeTabId, repoKey, cwd, terminalView, terminalExpanded]);
+  }, [
+    controller,
+    hostRef,
+    byRepo,
+    activeTabId,
+    repoKey,
+    cwd,
+    terminalView,
+    terminalExpanded,
+    ptyEventsReady,
+  ]);
 
   // ── Re-fit the active pane when the drawer resizes ───────────────────────
   useEffect(() => {

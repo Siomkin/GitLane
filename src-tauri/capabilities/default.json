@@ -4,18 +4,29 @@
   "description": "Capability for the main window",
   "windows": ["main"],
   "permissions": [
-    "core:default",
+    "core:app:allow-version",
+    "core:app:allow-tauri-version",
+    "core:app:allow-identifier",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
     "core:window:allow-set-decorations",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
+    "core:window:allow-internal-toggle-maximize",
     "core:window:allow-is-maximized",
     "core:window:allow-close",
-    "opener:default",
-    "dialog:default",
-    "window-state:default",
-    "updater:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://*" },
+        { "url": "mailto:*" }
+      ]
+    },
+    "dialog:allow-open",
+    "updater:allow-download-and-install",
     "process:allow-restart"
   ]
 }

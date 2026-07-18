@@ -8,11 +8,14 @@ export const ChangeCounts = ({
   add,
   del,
   binary = false,
+  addAtLeast = false,
   className,
 }: {
   add: number;
   del: number;
   binary?: boolean;
+  /** The addition count is a bounded lower estimate, not an exact total. */
+  addAtLeast?: boolean;
   /** Applied to the counts wrapper (callers set the font size, e.g. `text-xs`). */
   className?: string;
 }) => {
@@ -24,7 +27,17 @@ export const ChangeCounts = ({
         </span>
       ) : (
         <span className="inline-flex items-center gap-2 font-mono">
-          <span className="text-[color:var(--accent)]">+{add}</span>
+          <span
+            className="text-[color:var(--accent)]"
+            title={
+              addAtLeast
+                ? `At least ${add} added lines; the large-file count was capped`
+                : undefined
+            }
+          >
+            +{addAtLeast ? "≥" : ""}
+            {add}
+          </span>
           <span className="text-rose-500">−{del}</span>
         </span>
       )}

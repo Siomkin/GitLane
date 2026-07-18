@@ -142,7 +142,7 @@ export function useTerminalPanes(): TerminalPanes {
   const activePane = activeTabId ? (controller.get(activeTabId) ?? null) : null;
   const alive = activePane?.alive ?? false;
 
-  usePtyEvents(controller);
+  const ptyEventsReady = usePtyEvents(controller);
   usePaneReconciler({
     controller,
     hostRef,
@@ -153,6 +153,7 @@ export function useTerminalPanes(): TerminalPanes {
     terminalView,
     terminalExpanded,
     theme,
+    ptyEventsReady,
     ensureTab,
   });
 
@@ -178,7 +179,7 @@ export function useTerminalPanes(): TerminalPanes {
     if (activeTabId) controller.get(activeTabId)?.view.clear();
   };
 
-  useTerminalInjection({ controller, activeTabId, alive, repoKey });
+  useTerminalInjection({ controller, repoKey });
 
   return { hostRef, alive, agents, terminalPath: repoKey, runAgent, clearTerminal };
 }

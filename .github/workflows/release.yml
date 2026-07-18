@@ -9,6 +9,11 @@ on:
         description: "Release tag to publish, e.g. v0.1.0. Defaults to the app version."
         required: false
         type: string
+      manifest_only:
+        description: "Only repoint the rolling beta manifest to an existing public release."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release
@@ -29,6 +34,7 @@ env:
 jobs:
   preflight:
     name: Release preflight
+    if: github.event_name != 'workflow_dispatch' || !inputs.manifest_only
     # Run preflight on the self-hosted Mac mini so a release fails before the
     # matrix if the macOS runner is unavailable or not started from the GUI
     # session needed for DMG packaging. (GL-78)
@@ -36,19 +42,40 @@ jobs:
     timeout-minutes: 35
     outputs:
       release_tag: ${{ steps.release-tag.outputs.release_tag }}
+      release_commit: ${{ steps.release-commit.outputs.release_commit }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
           fetch-depth: 0
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      # Keep setup logic in the workflow definition rather than a repository-local
+      # action from the checked-out build tree: historical release tags predate
+      # `.github/actions/setup-rust`. Those tags originally built on `stable`, while
+      # newer trees declare an exact channel in rust-toolchain.toml.
+      - name: Resolve release Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: |
+          CHANNEL=stable
+          if [[ -f rust-toolchain.toml ]]; then
+            CHANNEL=$(awk -F'"' '/^channel =/ { print $2; exit }' rust-toolchain.toml)
+          fi
+          if [[ ! "$CHANNEL" =~ ^[0-9A-Za-z._+-]+$ ]]; then
+            echo "Invalid Rust channel in release tree."
+            exit 1
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust ${{ steps.rust-toolchain.outputs.channel }}
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
 
       # No Rust cache here: preflight compiles nothing (see the note at the end of
       # this job), so restoring a target-dir archive was pure wasted minutes.
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -102,20 +129,29 @@ jobs:
             exit 1
           fi
 
-      - name: Validate release tag is on latest
+      - name: Resolve and validate release commit
+        id: release-commit
         run: |
           git fetch --no-tags origin latest:refs/remotes/origin/latest
-          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null; then
-            RELEASE_COMMIT=$(git rev-list -n 1 "$RELEASE_TAG")
-          else
-            RELEASE_COMMIT="$GITHUB_SHA"
-            echo "Tag $RELEASE_TAG does not exist locally; validating checked-out commit $RELEASE_COMMIT."
+          if ! git fetch --no-tags origin \
+            "refs/tags/$RELEASE_TAG:refs/gitlane-release/$RELEASE_TAG"
+          then
+            echo "Release tag $RELEASE_TAG must already exist on origin."
+            echo "Create it from a commit on latest; the workflow never creates release tags."
+            exit 1
+          fi
+          RELEASE_COMMIT=$(git rev-parse "refs/gitlane-release/$RELEASE_TAG^{commit}")
+          CHECKED_OUT_COMMIT=$(git rev-parse HEAD)
+          if [[ "$CHECKED_OUT_COMMIT" != "$RELEASE_COMMIT" ]]; then
+            echo "Checked-out commit $CHECKED_OUT_COMMIT does not match release commit $RELEASE_COMMIT."
+            exit 1
           fi
           if ! git merge-base --is-ancestor "$RELEASE_COMMIT" origin/latest; then
             echo "Release tag $RELEASE_TAG must publish a commit reachable from origin/latest."
             echo "Merge the release commit to latest before tagging or re-running this workflow."
             exit 1
           fi
+          echo "release_commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
 
       # Fail fast with a clear message instead of letting the bundle step die
       # opaquely: createUpdaterArtifacts is always on, so a missing/empty signing
@@ -149,9 +185,62 @@ jobs:
       # now pure release-specific validation (tag shape, version match,
       # on-latest, signing secrets); the matrix legs do the real artifact build.
 
+  prepare-release:
+    name: Prepare private release draft
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.release_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create or validate the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+          COMMIT: ${{ needs.preflight.outputs.release_commit }}
+        run: |
+          # Version tags are protected from update/deletion by the repository's
+          # active tag ruleset. Re-read the remote ref immediately before release
+          # creation and prove its peeled commit still matches every build leg.
+          git fetch --no-tags --force origin \
+            "refs/tags/$TAG:refs/gitlane-release/$TAG"
+          TAG_COMMIT=$(git rev-parse "refs/gitlane-release/$TAG^{commit}")
+          if [[ "$TAG_COMMIT" != "$COMMIT" ]]; then
+            echo "Remote tag $TAG resolves to $TAG_COMMIT, not validated release commit $COMMIT."
+            exit 1
+          fi
+
+          if IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [[ "$IS_DRAFT" != "true" ]]; then
+              echo "Release $TAG is already public; refusing to mutate it from a matrix rerun."
+              exit 1
+            fi
+            echo "Resuming existing draft release $TAG."
+            exit 0
+          fi
+
+          PRERELEASE_ARGS=()
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE_ARGS+=(--prerelease)
+          fi
+          gh release create "$TAG" \
+            --draft \
+            --verify-tag \
+            "${PRERELEASE_ARGS[@]}" \
+            --title "GitLane $TAG" \
+            --notes "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)." \
+            --generate-notes
+
   release-app:
     name: Release app (${{ matrix.name }})
-    needs: preflight
+    needs: [preflight, prepare-release]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -186,13 +275,28 @@ jobs:
             # bundle via bundle.createUpdaterArtifacts. (GL-78)
             args: "--bundles nsis"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
+          ref: ${{ needs.preflight.outputs.release_commit }}
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Resolve release Rust toolchain
+        id: rust-toolchain
+        shell: bash
+        run: |
+          CHANNEL=stable
+          if [[ -f rust-toolchain.toml ]]; then
+            CHANNEL=$(awk -F'"' '/^channel =/ { print $2; exit }' rust-toolchain.toml)
+          fi
+          if [[ ! "$CHANNEL" =~ ^[0-9A-Za-z._+-]+$ ]]; then
+            echo "Invalid Rust channel in release tree."
+            exit 1
+          fi
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust ${{ steps.rust-toolchain.outputs.channel }}
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       # Self-hosted legs (linux + both macOS triples): compile into a persistent
@@ -218,11 +322,11 @@ jobs:
       # uses this step at all.
       - name: Cache Rust build (github-hosted)
         if: runner.environment == 'github-hosted'
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: "./src-tauri -> target"
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Install Linux Tauri dependencies
         # Only GitHub-hosted Linux needs this. The self-hosted `linux-gitlane` runner
@@ -254,7 +358,7 @@ jobs:
           done
 
       - name: Build and publish release artifact
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # linuxdeploy + appimagetool are themselves AppImages, which need the
@@ -298,7 +402,10 @@ jobs:
           # Keep the install-guide link: the asset list alone gives no guidance on
           # which file to pick (Linux ships three formats — GL-83).
           releaseBody: "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)."
-          releaseDraft: false
+          # Every matrix leg uploads into the same private draft. Publishing from
+          # a leg would expose an incomplete release when another platform fails;
+          # publish-release flips the draft only after the whole matrix succeeds.
+          releaseDraft: true
           # Pre-release tags publish a GitHub pre-release, so the `/latest/` alias
           # (the stable updater endpoint) keeps ignoring them; the beta channel is
           # served separately by the publish-beta-manifest job below.
@@ -313,6 +420,56 @@ jobs:
           # releaseAssetNamePattern, not assetNamePattern).
           releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
 
+  publish-release:
+    name: Publish complete release
+    needs: [preflight, release-app]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish the completed draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          rm -f latest.json
+          gh release download "$TAG" --pattern latest.json
+          MANIFEST_VERSION="${TAG#v}"
+          jq -e --arg version "$MANIFEST_VERSION" '.version == $version' latest.json >/dev/null
+          for PLATFORM in \
+            darwin-aarch64 \
+            darwin-x86_64 \
+            linux-x86_64 \
+            windows-x86_64
+          do
+            if ! jq -e --arg platform "$PLATFORM" '
+              .platforms[$platform] as $entry
+              | ($entry | type) == "object"
+                and ($entry.url | type) == "string"
+                and ($entry.url | length) > 0
+                and ($entry.signature | type) == "string"
+                and ($entry.signature | length) > 0
+            ' latest.json >/dev/null; then
+              echo "latest.json is missing a complete $PLATFORM updater entry."
+              exit 1
+            fi
+          done
+          gh release view "$TAG" --json assets --jq '[.assets[] | .apiUrl, .url]' > release-asset-urls.json
+          if ! jq -e --slurpfile assets release-asset-urls.json '
+            all(.platforms[].url; . as $url | ($assets[0] | index($url)) != null)
+          ' latest.json >/dev/null; then
+            echo "latest.json references an updater asset that is not attached to $TAG."
+            exit 1
+          fi
+
+          IS_PRERELEASE=false
+          if [[ "$TAG" == *-* ]]; then
+            IS_PRERELEASE=true
+          fi
+          gh release edit "$TAG" --draft=false --prerelease="$IS_PRERELEASE"
+
   # Roll the beta channel's manifest after every release. GitHub's `/latest/`
   # alias can't serve a pre-release, so the beta channel is a fixed `beta` release
   # holding a rolling latest.json at a stable URL
@@ -325,7 +482,7 @@ jobs:
   # release rolls it forward. See docs/release-channels.md. (GL-76)
   publish-beta-manifest:
     name: Roll the beta channel manifest
-    needs: [preflight, release-app]
+    needs: [preflight, publish-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -343,6 +500,68 @@ jobs:
           # versioned release; its asset URLs point back at that release, so the
           # copy on `beta` keeps resolving to the right artifacts.
           gh release download "$TAG" --pattern latest.json --clobber
+          if ! gh release view beta >/dev/null 2>&1; then
+            gh release create beta \
+              --prerelease \
+              --title "GitLane beta channel" \
+              --notes "Rolling updater manifest for the beta channel. Artifacts live on the versioned releases — do not download from here."
+          fi
+          gh release upload beta latest.json --clobber
+
+  rollback-beta-manifest:
+    name: Restore the beta channel manifest
+    if: github.event_name == 'workflow_dispatch' && inputs.manifest_only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Validate and copy an existing release manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+            echo "Manifest-only rollback requires an explicit version tag."
+            exit 1
+          fi
+          IS_DRAFT=$(gh release view "$TAG" --json isDraft --jq .isDraft)
+          if [[ "$IS_DRAFT" != "false" ]]; then
+            echo "Manifest-only rollback requires an already-public release."
+            exit 1
+          fi
+
+          rm -f latest.json
+          gh release download "$TAG" --pattern latest.json
+          MANIFEST_VERSION="${TAG#v}"
+          jq -e --arg version "$MANIFEST_VERSION" '.version == $version' latest.json >/dev/null
+          for PLATFORM in \
+            darwin-aarch64 \
+            darwin-x86_64 \
+            linux-x86_64 \
+            windows-x86_64
+          do
+            if ! jq -e --arg platform "$PLATFORM" '
+              .platforms[$platform] as $entry
+              | ($entry | type) == "object"
+                and ($entry.url | type) == "string"
+                and ($entry.url | length) > 0
+                and ($entry.signature | type) == "string"
+                and ($entry.signature | length) > 0
+            ' latest.json >/dev/null; then
+              echo "latest.json is missing a complete $PLATFORM updater entry."
+              exit 1
+            fi
+          done
+          gh release view "$TAG" --json assets --jq '[.assets[] | .apiUrl, .url]' > release-asset-urls.json
+          if ! jq -e --slurpfile assets release-asset-urls.json '
+            all(.platforms[].url; . as $url | ($assets[0] | index($url)) != null)
+          ' latest.json >/dev/null; then
+            echo "latest.json references an updater asset that is not attached to $TAG."
+            exit 1
+          fi
+
           if ! gh release view beta >/dev/null 2>&1; then
             gh release create beta \
               --prerelease \

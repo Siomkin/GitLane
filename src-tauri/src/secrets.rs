@@ -87,8 +87,8 @@ impl SecretKey {
 }
 
 /// Backend-owned secret store. Implementations keep secrets inside the Rust
-/// process only — values are written and read here and handed straight to a
-/// child git process, never returned across IPC.
+/// process only — values are written and read here and handed to a command-scoped
+/// git credential broker, never returned across IPC.
 pub trait SecretStore: Send + Sync {
     /// Store (or replace) the secret for `key`. Returns an error for an invalid
     /// key or an empty secret.

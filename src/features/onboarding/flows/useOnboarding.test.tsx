@@ -595,4 +595,32 @@ describe("overlay unmount during clone", () => {
     unmount();
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("cancel_clone"));
   });
+
+  it("keeps the success path active when publication already beat cancel", async () => {
+    let resolveClone!: (path: string) => void;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "clone_repo") {
+        return new Promise<string>((resolve) => {
+          resolveClone = resolve;
+        });
+      }
+      if (cmd === "cancel_clone") return Promise.reject(new Error("already publishing"));
+      if (cmd === "open_repo") {
+        return Promise.resolve({ path: "/tmp/r", headBranch: "main" });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://github.com/o/r.git"));
+    act(() => result.current.cloneRun.start());
+    await waitFor(() => expect(result.current.screen).toBe("progress"));
+
+    act(() => result.current.cloneRun.cancel());
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("cancel_clone"));
+    expect(result.current.screen).toBe("progress");
+
+    act(() => resolveClone("/tmp/r"));
+    await waitFor(() => expect(result.current.screen).toBe("opened"));
+  });
 });

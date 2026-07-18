@@ -58,21 +58,25 @@ export function Tokens({ content, lang = Language.Generic }: { content: string; 
 export function DiffTruncatedNotice({
   onShowFull,
   loading,
+  message = "Large diff truncated for performance — only the first lines are shown.",
 }: {
-  onShowFull: () => void;
+  onShowFull?: () => void;
   loading?: boolean;
+  message?: string;
 }) {
   return (
     <div className="flex items-center gap-3 border-t border-amber-300/50 bg-amber-50/80 px-4 py-2.5 text-xs text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/[0.06] dark:text-amber-300">
-      <span>Large diff truncated for performance — only the first lines are shown.</span>
-      <button
-        type="button"
-        onClick={onShowFull}
-        disabled={loading}
-        className="ml-auto flex-none rounded-md border border-amber-400/50 px-2.5 py-1 font-medium hover:bg-amber-100/70 disabled:cursor-wait disabled:opacity-50 dark:hover:bg-amber-400/10"
-      >
-        {loading ? "Loading…" : "Show full diff"}
-      </button>
+      <span>{message}</span>
+      {onShowFull && (
+        <button
+          type="button"
+          onClick={onShowFull}
+          disabled={loading}
+          className="ml-auto flex-none rounded-md border border-amber-400/50 px-2.5 py-1 font-medium hover:bg-amber-100/70 disabled:cursor-wait disabled:opacity-50 dark:hover:bg-amber-400/10"
+        >
+          {loading ? "Loading…" : "Show full diff"}
+        </button>
+      )}
     </div>
   );
 }

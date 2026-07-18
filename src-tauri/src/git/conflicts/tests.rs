@@ -41,6 +41,10 @@ impl Drop for TempRepo {
 /// Stop a merge on a content conflict in `f.txt`. `base`/`ours`/`theirs` are
 /// the middle line each commit writes; surrounding bytes are shared context.
 fn conflict_repo(tag: &str, base: &[u8], ours: &[u8], theirs: &[u8]) -> TempRepo {
+    conflict_repo_at(tag, "f.txt", base, ours, theirs)
+}
+
+fn conflict_repo_at(tag: &str, file: &str, base: &[u8], ours: &[u8], theirs: &[u8]) -> TempRepo {
     let repo = TempRepo::new(tag);
     repo.init();
     let body = |mid: &[u8]| {
@@ -49,14 +53,17 @@ fn conflict_repo(tag: &str, base: &[u8], ours: &[u8], theirs: &[u8]) -> TempRepo
         v.extend_from_slice(b"\nbottom\n");
         v
     };
-    std::fs::write(repo.0.join("f.txt"), body(base)).unwrap();
-    repo.git(&["add", "f.txt"]);
+    if let Some(parent) = repo.0.join(file).parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    std::fs::write(repo.0.join(file), body(base)).unwrap();
+    repo.git(&["add", file]);
     repo.git(&["commit", "-qm", "base"]);
     repo.git(&["checkout", "-q", "-b", "other"]);
-    std::fs::write(repo.0.join("f.txt"), body(theirs)).unwrap();
+    std::fs::write(repo.0.join(file), body(theirs)).unwrap();
     repo.git(&["commit", "-qam", "theirs"]);
     repo.git(&["checkout", "-q", "main"]);
-    std::fs::write(repo.0.join("f.txt"), body(ours)).unwrap();
+    std::fs::write(repo.0.join(file), body(ours)).unwrap();
     repo.git(&["commit", "-qam", "ours"]);
     let _ = repo.git(&["merge", "other"]);
     repo
@@ -123,6 +130,31 @@ fn conflict_file_returns_text_with_markers() {
     assert!(!content.binary);
     assert!(content.content.contains("<<<<<<<"));
     assert!(content.content.contains(">>>>>>>"));
+}
+
+#[cfg(unix)]
+#[test]
+fn conflict_file_refuses_an_ancestor_symlink() {
+    use std::os::unix::fs::symlink;
+
+    let repo = conflict_repo_at(
+        "cf-ancestor-symlink",
+        "nested/f.txt",
+        b"base",
+        b"ours",
+        b"theirs",
+    );
+    let outside = repo.0.with_extension("outside");
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("f.txt"), "outside secret\n").unwrap();
+    std::fs::rename(repo.0.join("nested"), repo.0.join("nested-original")).unwrap();
+    symlink(&outside, repo.0.join("nested")).unwrap();
+
+    let result = conflict_file(repo.path(), "nested/f.txt");
+
+    assert!(result.is_err(), "conflict read must not follow {result:?}");
+    let _ = std::fs::remove_dir_all(&outside);
 }
 
 #[test]

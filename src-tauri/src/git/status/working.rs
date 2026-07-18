@@ -2,11 +2,12 @@
 
 use git2::{DiffOptions, Repository, Status};
 
-use crate::git::read::{open, worktree_join};
+use crate::git::read::open;
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
+use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
-use super::diff::{diffs_to_changes, diffs_to_files, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
 
 /// Resolve the HEAD commit's tree, if any (a fresh repo with no commits has
 /// none).
@@ -110,6 +111,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add: 0,
                 del: 0,
                 binary: false,
+                line_count_truncated: false,
                 previous_path: None,
                 advanced: None,
             });
@@ -165,6 +167,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add,
                 del,
                 binary,
+                line_count_truncated: false,
                 previous_path,
                 advanced: None,
             });
@@ -215,6 +218,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 .flatten();
             let (mut add, del, mut binary) =
                 unstaged_counts.get(&p).copied().unwrap_or((0, 0, false));
+            let mut line_count_truncated = false;
             // Untracked files don't appear in the index-to-workdir diff stats
             // above unless include_untracked content was diffed; ensure a
             // sensible count by reading the file when needed. The same probe
@@ -229,13 +233,15 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                     // line count; files past the cap are counted approximately.
                     use std::io::Read;
                     const MAX_PROBE: u64 = 1 << 20; // 1 MiB
-                    if let Ok(file) = std::fs::File::open(wd.join(&p)) {
+                    if let Ok(mut file) = open_regular_worktree_file(wd, &p) {
+                        let exceeds_probe = file.len() > MAX_PROBE;
                         let mut buf = Vec::new();
-                        if file.take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
+                        if file.reader().take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
                             if buf.contains(&0) {
                                 binary = true;
                             } else {
                                 add = String::from_utf8_lossy(&buf).lines().count();
+                                line_count_truncated = exceeds_probe;
                             }
                         }
                     }
@@ -247,6 +253,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
                 add,
                 del,
                 binary,
+                line_count_truncated,
                 previous_path,
                 advanced: None,
             });
@@ -282,8 +289,7 @@ pub fn file_diff(
     let repo = open(path)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
 
-    let mut opts = DiffOptions::new();
-    opts.pathspec(file).context_lines(3);
+    let mut opts = literal_file_options(file);
 
     let diff = if staged {
         let head = head_tree(&repo);
@@ -296,9 +302,8 @@ pub fn file_diff(
     };
 
     let mut files = diffs_to_files(&diff, limit)?;
-    // The pathspec can match more than one delta (e.g. a path that prefixes
-    // others); pick the delta whose path matches `file` rather than blindly
-    // taking the last, falling back to the last only when nothing matches.
+    // Keep the exact-path selection defensive even though literal pathspec mode
+    // should yield at most one delta.
     let result = files
         .iter()
         .position(|f| f.path == file)
@@ -309,11 +314,11 @@ pub fn file_diff(
     // files, so the list can report additions while this diff comes back empty.
     // When that happens for a brand-new file, synthesize the diff from disk.
     if !staged {
-        let empty = result.as_ref().map_or(true, |f| f.hunks.is_empty());
+        let empty = result.as_ref().is_none_or(|f| f.hunks.is_empty());
         if empty
             && repo
                 .status_file(std::path::Path::new(file))
-                .map_or(false, |s| s.contains(Status::WT_NEW))
+                .is_ok_and(|s| s.contains(Status::WT_NEW))
         {
             if let Some(synth) = untracked_file_diff(&repo, file, limit) {
                 return Ok(synth);
@@ -333,14 +338,9 @@ pub fn file_diff(
 /// produce hunks for untracked content (see [`file_diff`]).
 fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<FileDiff> {
     let workdir = repo.workdir()?;
-    // `file` is IPC-supplied (the `file_diff` command), so reject traversal and
-    // never follow a symlink / read a non-regular entry — same guard as
-    // `read_binary_blob` / `conflict_file`.
-    let full = worktree_join(workdir, file).ok()?;
-    if !std::fs::symlink_metadata(&full).ok()?.file_type().is_file() {
-        return None;
-    }
-    let bytes = std::fs::read(&full).ok()?;
+    let mut opened = open_regular_worktree_file(workdir, file).ok()?;
+    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
+    std::io::Read::read_to_end(opened.reader(), &mut bytes).ok()?;
 
     if bytes.contains(&0) {
         return Some(FileDiff {

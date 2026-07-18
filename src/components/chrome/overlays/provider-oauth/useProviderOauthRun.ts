@@ -63,21 +63,40 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
   }, []);
   const inFlight = useRef(false);
   const canceled = useRef(false);
+  const cancelDecision = useRef<Promise<boolean> | null>(null);
   const opened = useRef(false);
   // The remote's account before this flow pins to it — snapshotted at start so a
   // late cancel can restore it (the pin is reverted, not left dangling).
   const priorRemoteUsername = useRef<string | null>(null);
 
   const cancel = () => {
-    canceled.current = true;
-    void useAccounts.getState().cancelProviderOauthSignIn();
-    setPhase("configure");
+    if (!inFlight.current || cancelDecision.current) return;
+    const decision = useAccounts
+      .getState()
+      .cancelProviderOauthSignIn()
+      .then(() => true)
+      .catch((e) => {
+        useUi
+          .getState()
+          .showToast(
+            friendlyGitError(String(e instanceof Error ? e.message : e)),
+            "error",
+          );
+        return false;
+      });
+    cancelDecision.current = decision;
+    void decision.then((accepted) => {
+      if (!accepted) return;
+      canceled.current = true;
+      if (mounted.current) setPhase("configure");
+    });
   };
 
   const start = () => {
     if (inFlight.current) return;
     inFlight.current = true;
     canceled.current = false;
+    cancelDecision.current = null;
     opened.current = false;
     // Snapshot the remote's current account before the flow pins to it.
     priorRemoteUsername.current = req.remote
@@ -118,6 +137,7 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
         const result = await useAccounts
           .getState()
           .signInProviderOauth(req.provider, req.host, req.remote);
+        if (cancelDecision.current) await cancelDecision.current;
         if (canceled.current) {
           // Late cancel: the flow finished and persisted a keychain token (and,
           // for a bound remote, pinned it into the remote URL) before the cancel
@@ -147,6 +167,7 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
         setPhase("done");
       } catch (e) {
         const raw = String(e instanceof Error ? e.message : e);
+        if (cancelDecision.current) await cancelDecision.current;
         if (!mounted.current) return;
         if (canceled.current) setPhase("configure");
         else {

@@ -1,7 +1,5 @@
 //! Repository opening, summary, and graph entry points.
 
-use std::path::{Component, Path, PathBuf};
-
 use git2::Repository;
 
 use crate::git::graph;
@@ -44,25 +42,6 @@ fn classify_open_error(path: &str, err: &git2::Error) -> RepoOpenError {
         message,
         path: path.to_string(),
     }
-}
-
-/// Join an IPC-supplied relative `file` onto `workdir`, rejecting any path that
-/// could escape the worktree (absolute, `..`, or a Windows drive prefix). The
-/// `file` arg crosses the IPC boundary and is ultimately chosen by the frontend,
-/// so every worktree read validates it defensively. Callers still decide how to
-/// treat the *target* (e.g. reject symlinks / non-regular entries) after joining.
-pub fn worktree_join(workdir: &Path, file: &str) -> Result<PathBuf, git2::Error> {
-    let rel = Path::new(file);
-    if rel.is_absolute()
-        || rel
-            .components()
-            .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
-    {
-        return Err(git2::Error::from_str(&format!(
-            "refusing unsafe path outside the worktree: {file:?}"
-        )));
-    }
-    Ok(workdir.join(rel))
 }
 
 /// The main checkout's path for a *linked* worktree — the stable repository

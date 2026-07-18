@@ -1,5 +1,5 @@
 use super::branches::align_equivalent_sibling;
-use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution, worktree_path};
+use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution};
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;
 use super::remotes::{
@@ -8,19 +8,19 @@ use super::remotes::{
 use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
 use super::{
     abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_pull_target,
-    branch_push_remote,
-    checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto, clear_repo_identity,
-    commit_expected, continue_operation, create_branch, create_tag, delete_branch_with_worktree,
-    delete_remote_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
-    fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
-    merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
-    preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
-    pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
-    reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
-    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
-    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
-    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
-    unstage_file, unstage_files, worktrees, write_repo_file,
+    branch_push_remote, checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto,
+    clear_repo_identity, commit_expected, continue_operation, create_branch, create_tag,
+    delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
+    fast_forward_branch, fast_forward_branch_at, fetch, force_push, head_push_remote,
+    mark_conflict_resolved, merge, merge_into, move_branch_to_worktree, preview_delete_branch,
+    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset,
+    publish_branch, publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file,
+    reflog_entries, remove_worktree, reset, reset_branch, resolve_conflict_file, revert,
+    revert_many, revert_onto, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
+    skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktrees,
+    write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::TransportCredential;
@@ -460,7 +460,10 @@ fn fast_forward_refuses_dirty_changes_in_the_owning_worktree() {
 
     assert_eq!(rev_parse(&repo, "moving"), base);
     assert_eq!(rev_parse(&linked, "HEAD"), base);
-    assert_eq!(std::fs::read_to_string(linked.0.join("f.txt")).unwrap(), "dirty\n");
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("f.txt")).unwrap(),
+        "dirty\n"
+    );
     assert_eq!(
         String::from_utf8_lossy(&linked.git(&["status", "--porcelain"]).stdout).trim_end(),
         " M f.txt"
@@ -619,7 +622,7 @@ fn pull_branch_supports_a_local_tracking_upstream() {
         "refs/heads/main",
         &TransportCredential::None,
     )
-        .expect("pull from local upstream");
+    .expect("pull from local upstream");
 
     assert_eq!(rev_parse(&repo, "feature"), main_tip);
 }
@@ -1743,7 +1746,10 @@ fn discard_all_preserves_leading_whitespace_in_untracked_paths() {
 
     discard_all(repo.path()).expect("discard_all");
 
-    assert!(!path.exists(), "the exact leading-space path should be cleaned");
+    assert!(
+        !path.exists(),
+        "the exact leading-space path should be cleaned"
+    );
 }
 
 #[cfg(not(windows))]
@@ -1755,7 +1761,10 @@ fn discard_all_treats_pathspec_magic_as_a_literal_filename() {
 
     discard_all(repo.path()).expect("discard_all");
 
-    assert!(!path.exists(), "the pathspec-like filename should be cleaned");
+    assert!(
+        !path.exists(),
+        "the pathspec-like filename should be cleaned"
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -2632,6 +2641,7 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
         patch_diff_args(false, "file.txt"),
         vec![
+            "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
             "--no-color",
@@ -2648,6 +2658,7 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
         patch_diff_args(true, "file.txt"),
         vec![
+            "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
             "--no-color",
@@ -2802,6 +2813,76 @@ fn stage_files_with_no_paths_is_a_noop() {
     assert_eq!(stage_files(repo.path(), &[]).unwrap(), "");
     let staged = repo.git(&["diff", "--cached", "--name-only"]);
     assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn exact_file_staging_treats_pathspec_magic_as_a_literal_filename() {
+    let repo = repo_with_file("stage-pathspec-magic", "tracked.txt", b"base\n");
+    let magic = ":(glob)z*";
+    std::fs::write(repo.0.join(magic), "base\n").unwrap();
+    std::fs::write(repo.0.join("z-victim.txt"), "base\n").unwrap();
+
+    stage_file(repo.path(), magic).expect("stage literal magic filename");
+
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout).trim(), magic);
+    let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
+    let status = String::from_utf8_lossy(&status.stdout);
+    assert!(status.contains("?? z-victim.txt"), "{status}");
+
+    unstage_file(repo.path(), magic).expect("unstage literal magic filename");
+    stage_files(repo.path(), &[magic.to_string()]).expect("bulk-stage literal magic filename");
+    stage_file(repo.path(), "z-victim.txt").expect("stage unrelated file");
+    unstage_files(repo.path(), &[magic.to_string()]).expect("bulk-unstage literal magic filename");
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(
+        String::from_utf8_lossy(&staged.stdout).trim(),
+        "z-victim.txt"
+    );
+
+    stage_file(repo.path(), magic).expect("re-stage literal magic filename");
+    unstage_file(repo.path(), magic).expect("single-unstage literal magic filename");
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(
+        String::from_utf8_lossy(&staged.stdout).trim(),
+        "z-victim.txt"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn hunk_staging_uses_the_literal_file_not_a_pathspec_match() {
+    let magic = ":(glob)z*";
+    let repo = TempRepo::new("hunk-pathspec-magic");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join(magic), "base\n").unwrap();
+    std::fs::write(repo.0.join("z-victim.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(repo.0.join(magic), "changed\n").unwrap();
+    std::fs::write(repo.0.join("z-victim.txt"), "changed\n").unwrap();
+
+    apply_hunk(
+        repo.path(),
+        magic,
+        false,
+        0,
+        "@@ -1 +1 @@",
+        "-base\n+changed",
+    )
+    .expect("stage hunk in literal magic filename");
+
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout).trim(), magic);
+    let unstaged = repo.git(&["diff", "--name-only"]);
+    assert_eq!(
+        String::from_utf8_lossy(&unstaged.stdout).trim(),
+        "z-victim.txt"
+    );
 }
 
 #[test]
@@ -3791,16 +3872,6 @@ fn empty_after_resolution_matches_only_the_empty_phrase() {
     assert!(!is_empty_after_resolution("hook rejected the commit"));
 }
 
-#[test]
-fn worktree_path_rejects_escapes_and_accepts_relative() {
-    let root = "/tmp/repo";
-    assert!(worktree_path(root, "src/a.ts").is_ok());
-    assert!(worktree_path(root, "nested/dir/file.txt").is_ok());
-    assert!(worktree_path(root, "../escape.txt").is_err());
-    assert!(worktree_path(root, "a/../../escape.txt").is_err());
-    assert!(worktree_path(root, "/etc/passwd").is_err());
-}
-
 /// A repo with one commit on `main` and a configured (but offline) origin.
 /// `git config` here keeps commits unsigned so CI without a signing key works.
 fn repo_with_base_commit(tag: &str) -> (TempRepo, String) {
@@ -4050,6 +4121,34 @@ fn continue_operation_completes_a_resolved_merge() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn resolve_conflict_file_refuses_a_final_symlink_and_preserves_its_target() {
+    use std::os::unix::fs::symlink;
+
+    let repo = merge_conflict_repo("resolve-final-symlink");
+    let outside = repo.0.with_extension("outside-target");
+    let _ = std::fs::remove_file(&outside);
+    std::fs::write(&outside, "outside must survive\n").unwrap();
+    std::fs::remove_file(repo.0.join("f.txt")).unwrap();
+    symlink(&outside, repo.0.join("f.txt")).unwrap();
+
+    let result = resolve_conflict_file(repo.path(), "f.txt", "attacker content\n");
+
+    assert!(result.is_err(), "final symlink must be refused: {result:?}");
+    assert_eq!(
+        std::fs::read_to_string(&outside).unwrap(),
+        "outside must survive\n"
+    );
+    let unmerged = repo.git(&["ls-files", "-u", "--", "f.txt"]);
+    assert!(
+        !String::from_utf8_lossy(&unmerged.stdout).trim().is_empty(),
+        "a refused write must not stage the conflict"
+    );
+
+    let _ = std::fs::remove_file(&outside);
+}
+
 #[test]
 fn abort_operation_restores_pre_merge_state() {
     let repo = merge_conflict_repo("abort");
@@ -4134,6 +4233,47 @@ fn resolves_a_dash_prefixed_conflicted_path() {
     );
     let unmerged = repo.git(&["ls-files", "-u", "--", "-foo"]);
     assert!(String::from_utf8_lossy(&unmerged.stdout).trim().is_empty());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn resolving_a_pathspec_magic_filename_leaves_other_conflicts_unmerged() {
+    let repo = TempRepo::new("literal-conflict-path");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "t@t.t"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    let magic = ":(glob)*";
+    std::fs::write(repo.0.join(magic), "base\n").unwrap();
+    std::fs::write(repo.0.join("victim.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "other"]);
+    std::fs::write(repo.0.join(magic), "theirs\n").unwrap();
+    std::fs::write(repo.0.join("victim.txt"), "theirs\n").unwrap();
+    repo.git_ok(&["commit", "-qam", "theirs"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join(magic), "ours\n").unwrap();
+    std::fs::write(repo.0.join("victim.txt"), "ours\n").unwrap();
+    repo.git_ok(&["commit", "-qam", "ours"]);
+    let merge = repo.git(&["merge", "other"]);
+    assert!(
+        !merge.status.success(),
+        "merge should stop on both conflicts"
+    );
+
+    mark_conflict_resolved(repo.path(), magic).expect("stage only the literal conflict path");
+
+    let unmerged = repo.git(&["ls-files", "-u"]);
+    let unmerged = String::from_utf8_lossy(&unmerged.stdout);
+    assert!(
+        !unmerged.contains(magic),
+        "magic filename should be resolved: {unmerged}"
+    );
+    assert!(
+        unmerged.contains("victim.txt"),
+        "unrelated conflict must remain unresolved: {unmerged}"
+    );
 }
 
 #[test]
@@ -4893,6 +5033,40 @@ fn discard_file_preserves_empty_directory_shells() {
     assert!(repo.0.join("untracked/empty-nested").is_dir());
 }
 
+#[cfg(not(windows))]
+#[test]
+fn discard_file_does_not_expand_an_untracked_pathspec_magic_filename() {
+    let repo = TempRepo::new("discard-file-pathspec-magic");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("tracked-a.txt"), "a\n").unwrap();
+    std::fs::write(repo.0.join("tracked-b.txt"), "b\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    let magic = ":(glob)*";
+    std::fs::write(repo.0.join(magic), "untracked\n").unwrap();
+
+    discard_file(repo.path(), magic, false).expect("discard literal magic filename");
+
+    assert!(!repo.0.join(magic).exists());
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked-a.txt")).unwrap(),
+        "a\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked-b.txt")).unwrap(),
+        "b\n"
+    );
+    let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
+    assert!(
+        String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+        "tracked files must not be removed or staged: {}",
+        String::from_utf8_lossy(&status.stdout)
+    );
+}
+
 #[test]
 fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
     // GL-115 Bug 2 regression: the new `git rm -f` path must behave like the
@@ -5227,7 +5401,10 @@ fn init_in_place_repairs_a_broken_or_partial_git_directory() {
     let result = init_in_place(dir.path()).expect("a broken .git must be repairable");
 
     assert!(same_path(&result, dir.path()));
-    assert!(dir.0.join(".git/HEAD").is_file(), "init must have run for real");
+    assert!(
+        dir.0.join(".git/HEAD").is_file(),
+        "init must have run for real"
+    );
     assert!(dir.0.join("existing.txt").exists());
 }
 
@@ -5244,7 +5421,10 @@ fn init_in_place_repairs_a_dangling_git_worktree_pointer_file() {
     let result = init_in_place(dir.path()).expect("a dangling .git file must be repairable");
 
     assert!(same_path(&result, dir.path()));
-    assert!(dir.0.join(".git").is_dir(), "the stale .git file must be replaced with a real gitdir");
+    assert!(
+        dir.0.join(".git").is_dir(),
+        "the stale .git file must be replaced with a real gitdir"
+    );
     assert!(dir.0.join("existing.txt").exists());
 }
 
@@ -5280,7 +5460,10 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
     let result = init_in_place(&path).expect("init must target the exact path");
 
     assert!(same_path(&result, &path));
-    assert!(dir_with_space.join(".git").is_dir(), "the spaced directory must be initialized");
+    assert!(
+        dir_with_space.join(".git").is_dir(),
+        "the spaced directory must be initialized"
+    );
     assert!(
         !trimmed_sibling.join(".git").exists(),
         "the trimmed sibling must not be touched"
@@ -5308,7 +5491,10 @@ fn write_repo_file_overwrites_and_reports_new_size() {
     let repo = repo_with_file("wrf-ok", "a.txt", b"old\n");
     let size = write_repo_file(repo.path(), "a.txt", "new content\n", Some(4)).expect("write ok");
     assert_eq!(size, "new content\n".len() as u64);
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "new content\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "new content\n"
+    );
 }
 
 #[test]
@@ -5318,7 +5504,10 @@ fn write_repo_file_rejects_size_mismatch() {
     // >2 MiB prefix) must be refused before the unseen remainder is destroyed.
     let err = write_repo_file(repo.path(), "a.txt", "x", Some(999)).unwrap_err();
     assert!(err.contains("changed on disk"), "unexpected: {err}");
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
 }
 
 #[test]
@@ -5336,7 +5525,10 @@ fn write_repo_file_refuses_binary_content_and_binary_target() {
     assert!(write_repo_file(repo.path(), "a.txt", "a\0b", Some(4)).is_err());
     let late_nul = format!("{}\0", "x".repeat(9000));
     assert!(write_repo_file(repo.path(), "a.txt", &late_nul, Some(4)).is_err());
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
 
     // NUL already on disk — an editor should never have offered it as text.
     let bin = repo_with_file("wrf-bin2", "b.bin", b"\0\0\0\0");
@@ -5357,7 +5549,10 @@ fn write_repo_file_refuses_oversized_and_dotgit_paths() {
     let huge = "x".repeat(2 * 1024 * 1024 + 1);
     let err = write_repo_file(repo.path(), "a.txt", &huge, Some(4)).unwrap_err();
     assert!(err.contains("too large"), "unexpected: {err}");
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.txt")).unwrap(), "old\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
 
     // The raw IPC surface must not be pointed at repository metadata.
     assert!(write_repo_file(repo.path(), ".git/config", "x", None).is_err());
@@ -5370,13 +5565,28 @@ fn write_repo_file_leaves_original_intact_and_preserves_mode() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(repo.0.join("a.sh"), std::fs::Permissions::from_mode(0o755)).unwrap();
-        let before = std::fs::metadata(repo.0.join("a.sh")).unwrap().permissions().mode() & 0o777;
+        std::fs::set_permissions(repo.0.join("a.sh"), std::fs::Permissions::from_mode(0o755))
+            .unwrap();
+        let before = std::fs::metadata(repo.0.join("a.sh"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
         write_repo_file(repo.path(), "a.sh", "#!/bin/sh\necho bye\n", Some(18)).expect("write ok");
-        let after = std::fs::metadata(repo.0.join("a.sh")).unwrap().permissions().mode() & 0o777;
-        assert_eq!(before, after, "executable bit must survive the atomic replace");
+        let after = std::fs::metadata(repo.0.join("a.sh"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            before, after,
+            "executable bit must survive the atomic replace"
+        );
     }
-    assert_eq!(std::fs::read_to_string(repo.0.join("a.sh")).unwrap(), "#!/bin/sh\necho bye\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.sh")).unwrap(),
+        "#!/bin/sh\necho bye\n"
+    );
     // No temp files should be left behind in the worktree.
     let leftovers: Vec<_> = std::fs::read_dir(&repo.0)
         .unwrap()
@@ -5394,8 +5604,28 @@ fn write_repo_file_rejects_traversal_and_symlink() {
 
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink("a.txt", repo.0.join("link.txt")).unwrap();
+        use std::os::unix::fs::symlink;
+
+        symlink("a.txt", repo.0.join("link.txt")).unwrap();
         // A symlink is not a regular file — refuse rather than follow it.
         assert!(write_repo_file(repo.path(), "link.txt", "x", None).is_err());
+
+        let outside = repo.0.with_extension("editor-outside");
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("target.txt"), "outside\n").unwrap();
+        symlink(&outside, repo.0.join("ancestor-link")).unwrap();
+        assert!(write_repo_file(
+            repo.path(),
+            "ancestor-link/target.txt",
+            "changed\n",
+            Some(8)
+        )
+        .is_err());
+        assert_eq!(
+            std::fs::read_to_string(outside.join("target.txt")).unwrap(),
+            "outside\n"
+        );
+        let _ = std::fs::remove_dir_all(&outside);
     }
 }

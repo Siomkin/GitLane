@@ -174,8 +174,8 @@ pub fn build_profiled(
         // become connector edges resolved later from (row, lane).
         let mut root_lane: Option<usize> = None;
         let mut cont_lane: Option<usize> = None;
-        for slot in 0..lanes.len() {
-            if let Some(l) = &lanes[slot] {
+        for (slot, lane_state) in lanes.iter().enumerate() {
+            if let Some(l) = lane_state {
                 if l.waiting == oid {
                     if l.branch_root {
                         root_lane.get_or_insert(slot);
@@ -195,9 +195,9 @@ pub fn build_profiled(
             wip_lane = Some(lane);
             wip_color = Some(lane);
         }
-        for slot in 0..lanes.len() {
-            if slot != lane && matches!(&lanes[slot], Some(l) if l.waiting == oid) {
-                lanes[slot] = None;
+        for (slot, lane_state) in lanes.iter_mut().enumerate() {
+            if slot != lane && matches!(lane_state.as_ref(), Some(l) if l.waiting == oid) {
+                *lane_state = None;
             }
         }
 

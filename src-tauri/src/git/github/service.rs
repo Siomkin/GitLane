@@ -11,10 +11,8 @@ use crate::git::types::{
 };
 use crate::git::{forge, forge::ForgeKind};
 
-use super::domain::{
-    normalize_account_ref, GithubContext, GithubError, GithubRepository,
-};
 use super::bitbucket::BitbucketProvider;
+use super::domain::{normalize_account_ref, GithubContext, GithubError, GithubRepository};
 use super::gh_provider::GhProvider;
 use super::gitlab::GitLabProvider;
 
@@ -237,6 +235,7 @@ impl GithubService {
         provider.set_pr_state(&ctx, number, action)
     }
 
+    #[allow(clippy::too_many_arguments)] // Mirrors the cross-provider create-PR contract.
     pub fn create_pr(
         &self,
         workdir: &str,
@@ -353,8 +352,8 @@ mod tests {
             use std::sync::atomic::{AtomicU32, Ordering};
             static SEQ: AtomicU32 = AtomicU32::new(0);
             let n = SEQ.fetch_add(1, Ordering::Relaxed);
-            let dir = std::env::temp_dir()
-                .join(format!("gitlane-svc-{tag}-{}-{n}", std::process::id()));
+            let dir =
+                std::env::temp_dir().join(format!("gitlane-svc-{tag}-{}-{n}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             let repo = git2::Repository::init(&dir).unwrap();

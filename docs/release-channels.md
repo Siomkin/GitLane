@@ -30,6 +30,10 @@ preflight fails the release otherwise. Release tags must be created from commits
 that are already reachable from `latest`; `develop` and `staging` are not
 release sources. What the release ships per platform, and which install channels
 exist or are planned, is recorded in [`distribution.md`](distribution.md).
+Release tags must exist on `origin` before the workflow starts. The active
+repository tag ruleset allows new `v*` tags but blocks updating or deleting them;
+the workflow revalidates the remote tag against the pinned build commit and never
+creates a tag itself.
 
 - **Stable:** bump the three files to `X.Y.Z`, tag `vX.Y.Z`. Published as a
   normal release; becomes the `/latest/` target.
@@ -64,7 +68,10 @@ publish an **out-of-order lower** version — say a `v0.2.1` stable hotfix after
 higher `v0.3.0-beta.1` — the manifest points at the lower version and testers on
 the higher pre-release see no update until the next **higher** release rolls it
 forward. Avoid shipping a lower tag after a higher pre-release, or re-publish the
-higher one via `workflow_dispatch` (with its tag) to roll the manifest back to it.
+higher one via `workflow_dispatch`: enter its tag, enable **manifest only**, and
+run the workflow. That path requires an already-public release, validates the
+manifest version and all four signed platform entries, and updates only the
+rolling `beta` release — it does not rebuild or mutate the versioned release.
 
 ## Operational notes
 
@@ -72,9 +79,9 @@ higher one via `workflow_dispatch` (with its tag) to roll the manifest back to i
   depends on the whole `release-app` matrix succeeding, so if one platform fails,
   the beta channel keeps its previous (complete) manifest rather than publishing a
   partial one. Fix the cause, then re-run the failed job(s) from that Actions run
-  (you can't re-push an existing tag; a `workflow_dispatch` with the tag input
-  also works). The versioned release may already exist, so re-running is safe
-  (`--clobber`).
+  (you can't re-push an existing tag; use GitHub's **Re-run failed jobs** for a
+  failed build). Use the manifest-only dispatch only after a versioned release
+  is already public and you need to restore its manifest without rebuilding.
 - **A transient `gh` failure** in the roll step leaves the manifest stale, with a
   red workflow step as the only signal; re-run that job to recover.
 

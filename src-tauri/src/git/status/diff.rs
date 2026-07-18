@@ -1,6 +1,6 @@
 //! Shared libgit2 diff-to-DTO conversion helpers.
 
-use git2::{Delta, Diff, Patch};
+use git2::{Delta, Diff, DiffOptions, Patch};
 
 use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff};
 
@@ -54,6 +54,17 @@ fn line_for(line: &git2::DiffLine) -> DiffLine {
 /// frontend virtualization. Beyond this the diff is truncated and the UI offers
 /// an explicit "show full diff" that re-requests it uncapped.
 pub const DIFF_LINE_LIMIT: usize = 20_000;
+
+/// Options for a one-file diff requested across IPC. libgit2 treats pathspecs
+/// as fnmatch patterns by default; exact mode prevents a repository filename
+/// such as `:(glob)*` or `*.rs` from selecting unrelated deltas.
+pub(super) fn literal_file_options(file: &str) -> DiffOptions {
+    let mut opts = DiffOptions::new();
+    opts.pathspec(file)
+        .disable_pathspec_match(true)
+        .context_lines(3);
+    opts
+}
 
 /// Render one `Patch` (from a tree diff or a blob pair) into accurate add/del
 /// totals plus capped hunks. `add`/`del` come from `line_stats` so the +/− pills
@@ -231,6 +242,7 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             add,
             del,
             binary,
+            line_count_truncated: false,
             previous_path,
             advanced: None,
         });

@@ -68,6 +68,6 @@ pub(super) fn read_in_window_stashes(
     }
     // Date-descending so the merge-interleave below can slot each stash in with a
     // single forward scan; the reflog index travels along as `stash@{index}`.
-    metas.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    metas.sort_by_key(|meta| std::cmp::Reverse(meta.timestamp));
     metas
 }

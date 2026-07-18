@@ -74,9 +74,22 @@ export interface Pane {
   lastWriteNotice: "" | "starting" | "dead" | "failed";
 }
 
+interface PendingSessionEvents {
+  chunks: Uint8Array[];
+  bytes: number;
+  exited: boolean;
+}
+
+const MAX_PENDING_SESSIONS = 32;
+const MAX_PENDING_SESSION_BYTES = 64 * 1024;
+
 export class PaneController {
   readonly panes = new Map<string, Pane>();
   readonly bySession = new Map<number, string>();
+  /** Rust can emit immediately after creating a session, before Tauri resolves
+   * the spawn invoke with its id. Keep that narrow adoption window bounded by
+   * both session count and bytes, then replay once the owning pane is known. */
+  private readonly pendingSessionEvents = new Map<number, PendingSessionEvents>();
 
   constructor(
     private readonly io: PtyIo,
@@ -120,20 +133,36 @@ export class PaneController {
         // session into the wrong (or a gone) pane would orphan a PTY and
         // cross-wire its output — so kill it instead.
         if (this.panes.get(tabId) !== pane) {
+          this.pendingSessionEvents.delete(sessionId);
+          this.clearPendingIfNoSpawns();
           void this.io.kill(sessionId).catch(() => {});
           return;
         }
         pane.spawning = false;
         pane.sessionId = sessionId;
-        pane.alive = true;
         this.bySession.set(sessionId, tabId);
+        const pending = this.pendingSessionEvents.get(sessionId);
+        this.pendingSessionEvents.delete(sessionId);
+        this.clearPendingIfNoSpawns();
+        if (pending) {
+          for (const chunk of pending.chunks) this.routeData(sessionId, chunk);
+          if (pending.exited) {
+            this.routeExit(sessionId);
+            return;
+          }
+        }
+        pane.alive = true;
         this.onAliveChange();
       })
       .catch((e) => {
         // The pane may have been disposed while the spawn was failing — never
         // write into a disposed terminal.
-        if (this.panes.get(tabId) !== pane) return;
+        if (this.panes.get(tabId) !== pane) {
+          this.clearPendingIfNoSpawns();
+          return;
+        }
         pane.spawning = false;
+        this.clearPendingIfNoSpawns();
         view.term.writeln(
           "\x1b[31mFailed to start terminal: " +
             String(e instanceof Error ? e.message : e) +
@@ -154,6 +183,7 @@ export class PaneController {
     pane.view.term.dispose();
     pane.view.el.remove();
     this.panes.delete(tabId);
+    this.clearPendingIfNoSpawns();
   }
 
   disposeAll(): void {
@@ -184,7 +214,10 @@ export class PaneController {
 
   routeData(sessionId: number, data: ArrayLike<number>): void {
     const tabId = this.bySession.get(sessionId);
-    if (!tabId) return;
+    if (!tabId) {
+      this.bufferPendingData(sessionId, data);
+      return;
+    }
     const pane = this.panes.get(tabId);
     if (!pane) return;
     pane.lastOutputAt = Date.now();
@@ -195,7 +228,10 @@ export class PaneController {
 
   routeExit(sessionId: number): void {
     const tabId = this.bySession.get(sessionId);
-    if (!tabId) return;
+    if (!tabId) {
+      this.bufferPendingExit(sessionId);
+      return;
+    }
     this.bySession.delete(sessionId);
     const pane = this.panes.get(tabId);
     if (!pane) return;
@@ -203,6 +239,42 @@ export class PaneController {
     pane.alive = false;
     pane.view.term.writeln("\r\n\x1b[2m[shell exited]\x1b[0m");
     this.onAliveChange();
+  }
+
+  private pendingEvents(sessionId: number): PendingSessionEvents | null {
+    // Unknown events are meaningful only while at least one spawn is waiting
+    // for adoption. Drop late events from already-retired sessions otherwise.
+    if (![...this.panes.values()].some((pane) => pane.spawning)) return null;
+    const existing = this.pendingSessionEvents.get(sessionId);
+    if (existing) return existing;
+    if (this.pendingSessionEvents.size >= MAX_PENDING_SESSIONS) {
+      const oldest = this.pendingSessionEvents.keys().next().value as number | undefined;
+      if (oldest !== undefined) this.pendingSessionEvents.delete(oldest);
+    }
+    const created: PendingSessionEvents = { chunks: [], bytes: 0, exited: false };
+    this.pendingSessionEvents.set(sessionId, created);
+    return created;
+  }
+
+  private clearPendingIfNoSpawns(): void {
+    if (![...this.panes.values()].some((pane) => pane.spawning)) {
+      this.pendingSessionEvents.clear();
+    }
+  }
+
+  private bufferPendingData(sessionId: number, data: ArrayLike<number>): void {
+    const pending = this.pendingEvents(sessionId);
+    if (!pending || pending.exited || pending.bytes >= MAX_PENDING_SESSION_BYTES) return;
+    const remaining = MAX_PENDING_SESSION_BYTES - pending.bytes;
+    const chunk = Uint8Array.from(data).slice(0, remaining);
+    if (chunk.length === 0) return;
+    pending.chunks.push(chunk);
+    pending.bytes += chunk.length;
+  }
+
+  private bufferPendingExit(sessionId: number): void {
+    const pending = this.pendingEvents(sessionId);
+    if (pending) pending.exited = true;
   }
 
   /** The one PTY write path (GL-176). Resolves true when the shell accepted

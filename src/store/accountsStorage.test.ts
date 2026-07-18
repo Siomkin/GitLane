@@ -7,6 +7,8 @@ import {
   migratePathKey,
   providerTokenKey,
   readBindings,
+  readForgeCredentials,
+  readIdentities,
   readProviderTokens,
   writeBindings,
   writeProviderTokens,
@@ -52,10 +54,133 @@ describe("localStorage maps", () => {
     expect(readProviderTokens()).toEqual({});
   });
 
+  it("keeps legacy bare-string and v3 per-remote bindings for migration", () => {
+    const persisted = {
+      "/legacy": "alice",
+      "/v3": {
+        version: 3,
+        remotes: {
+          origin: {
+            provider: "gh",
+            host: "github.com",
+            accountId: "1",
+            login: "alice",
+          },
+          fork: { unbound: true },
+          mirror: "legacy-account-id",
+        },
+      },
+    };
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify(persisted));
+
+    expect(readBindings()).toEqual(persisted);
+  });
+
   it("keeps the provider-token metadata under its keyed map", () => {
     const t = token();
     writeProviderTokens({ [providerTokenKey(t.credentialHost, t.login)]: t });
     expect(readProviderTokens()[providerTokenKey("gitlab.com", "alice")]).toEqual(t);
+  });
+
+  it("keeps valid rows while rejecting malformed persisted account metadata", () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        "/valid": { version: 2, provider: "gh", host: "github.com", accountId: "1", login: "alice" },
+        "/invalid": { version: 2, provider: "unknown", host: "github.com" },
+      }),
+    );
+    localStorage.setItem(
+      "gitlane.repoIdentity",
+      JSON.stringify({
+        "/valid": { name: "Alice", email: "alice@example.com", gpgSign: true },
+        "/invalid": { name: "Mallory", email: 42 },
+      }),
+    );
+    localStorage.setItem(
+      "gitlane.forgeCredentials",
+      JSON.stringify({
+        gitlab: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          path: null,
+          username: "alice",
+          helper: "store",
+          savedAt: 1,
+        },
+        bitbucket: {
+          provider: "gitea",
+          credentialHost: "gitea.example",
+          path: null,
+          username: "mallory",
+          helper: "store",
+          savedAt: 1,
+        },
+      }),
+    );
+
+    expect(readBindings()).toEqual({
+      "/valid": { version: 2, provider: "gh", host: "github.com", accountId: "1", login: "alice" },
+    });
+    expect(readIdentities()).toEqual({
+      "/valid": { name: "Alice", email: "alice@example.com", gpgSign: true },
+    });
+    expect(Object.keys(readForgeCredentials())).toEqual(["gitlab"]);
+  });
+
+  it("keeps known binding and identity fields across newer-schema rollbacks", () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({
+        "/repo": {
+          version: 2,
+          provider: "gh",
+          host: "github.com",
+          accountId: "1",
+          login: "alice",
+          futureBindingMode: "team",
+        },
+      }),
+    );
+    localStorage.setItem(
+      "gitlane.repoIdentity",
+      JSON.stringify({
+        "/repo": {
+          name: "Alice",
+          email: "alice@example.com",
+          gpgSign: true,
+          futureSigningPolicy: "required",
+        },
+      }),
+    );
+
+    expect(readBindings()).toEqual({
+      "/repo": {
+        version: 2,
+        provider: "gh",
+        host: "github.com",
+        accountId: "1",
+        login: "alice",
+      },
+    });
+    expect(readIdentities()).toEqual({
+      "/repo": { name: "Alice", email: "alice@example.com", gpgSign: true },
+    });
+  });
+
+  it("rejects provider-token rows with secret fields or mismatched lookup keys", () => {
+    const valid = token();
+    const validKey = providerTokenKey(valid.credentialHost, valid.login);
+    localStorage.setItem(
+      "gitlane.providerTokens",
+      JSON.stringify({
+        [validKey]: valid,
+        [providerTokenKey("gitlab.com", "mallory")]: { ...token({ login: "mallory" }), token: "must-not-enter-state" },
+        [providerTokenKey("gitlab.com", "wrong")]: token({ login: "bob" }),
+      }),
+    );
+
+    expect(readProviderTokens()).toEqual({ [validKey]: valid });
   });
 });
 

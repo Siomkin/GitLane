@@ -154,6 +154,7 @@ fn encode_userinfo(value: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)] // Tests stay beside the URL helper they exercise.
 mod url_rewrite_tests {
     use super::rewrite_https_user;
 

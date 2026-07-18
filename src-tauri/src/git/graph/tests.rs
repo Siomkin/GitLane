@@ -128,7 +128,15 @@ fn detached_worktree_only_commit_is_included_in_the_graph() {
     let repo = Repository::init(&dir).unwrap();
 
     let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
-    let stranded = commit_on(&repo, &dir, "refs/heads/temp", "a.txt", "wt\n", &[base], 200);
+    let stranded = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/temp",
+        "a.txt",
+        "wt\n",
+        &[base],
+        200,
+    );
 
     // Check the temp branch out in a linked worktree, then detach that
     // worktree at the commit and drop the branch — the worktree HEAD is now
