@@ -301,10 +301,10 @@ fn reconstruct_patch(diffs: &[GitlabDiff]) -> String {
 mod tests {
     use super::*;
     use crate::git::oauth::http::testing::MockTransport;
-    use crate::git::oauth::http::HttpResponse;
+    use crate::git::oauth::http::HttpResult;
     use super::super::transport::RestClient;
 
-    fn ok(body: &str) -> Result<HttpResponse, String> {
+    fn ok(body: &str) -> HttpResult {
         MockTransport::ok(200, body)
     }
 

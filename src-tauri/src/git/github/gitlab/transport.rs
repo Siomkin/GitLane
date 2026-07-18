@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-use crate::git::oauth::http::HttpTransport;
+use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport};
 
 use super::super::domain::GithubError;
 
@@ -186,17 +186,20 @@ impl<'a> RestClient<'a> {
         format!("Bearer {}", self.token)
     }
 
-    fn finish(
-        &self,
-        operation: &'static str,
-        result: Result<crate::git::oauth::http::HttpResponse, String>,
-    ) -> Result<String, GithubError> {
+    fn finish(&self, operation: &'static str, result: HttpResult) -> Result<String, GithubError> {
         match result {
             Ok(resp) if resp.is_success() => Ok(resp.body),
             Ok(resp) => Err(map_http_error(operation, &self.host, resp.status, &resp.body)),
+            Err(HttpError::ResponseTooLarge { limit }) => Err(GithubError::InvalidResponse(
+                format!(
+                    "GitLab {operation} exceeded the {limit}-byte response limit; the partial response was discarded."
+                ),
+            )),
             // A transport failure message may quote the request URL (never a
             // secret — the token rides in a header), but redact defensively.
-            Err(err) => Err(GithubError::Network(crate::redact::redact_secrets(&err))),
+            Err(HttpError::Transport(err)) => {
+                Err(GithubError::Network(crate::redact::redact_secrets(&err)))
+            }
         }
     }
 }

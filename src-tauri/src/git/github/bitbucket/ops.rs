@@ -238,9 +238,9 @@ mod tests {
     use super::super::transport::RestClient;
     use super::*;
     use crate::git::oauth::http::testing::MockTransport;
-    use crate::git::oauth::http::HttpResponse;
+    use crate::git::oauth::http::HttpResult;
 
-    fn ok(body: &str) -> Result<HttpResponse, String> {
+    fn ok(body: &str) -> HttpResult {
         MockTransport::ok(200, body)
     }
 
@@ -309,6 +309,27 @@ mod tests {
             .find(|(k, _)| k.eq_ignore_ascii_case("accept"))
             .map(|(_, v)| v.as_str());
         assert_eq!(accept, Some("text/plain"));
+    }
+
+    #[test]
+    fn pr_diff_keeps_files_after_the_shared_json_response_limit() {
+        let long_line = "a".repeat(crate::git::oauth::http::DEFAULT_RESPONSE_LIMIT + 1);
+        let patch = format!(
+            "diff --git a/large.txt b/large.txt\nnew file mode 100644\n--- /dev/null\n+++ b/large.txt\n@@ -0,0 +1 @@\n+{long_line}\n\
+             diff --git a/tail.txt b/tail.txt\nnew file mode 100644\n--- /dev/null\n+++ b/tail.txt\n@@ -0,0 +1 @@\n+tail\n"
+        );
+        let http = MockTransport::new(vec![ok(&patch)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let files = pr_diff(&client, REPO, 6).expect("large diff");
+
+        assert_eq!(
+            files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["large.txt", "tail.txt"]
+        );
     }
 
     #[test]

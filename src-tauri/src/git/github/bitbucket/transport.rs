@@ -23,13 +23,19 @@
 use base64::Engine as _;
 use serde::Deserialize;
 
-use crate::git::oauth::http::HttpTransport;
+use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport};
 
 use super::super::domain::GithubError;
 
 /// The fixed Bitbucket Cloud REST API 2.0 base. Cloud repos are always served
 /// here regardless of the `bitbucket.org` web host.
 const API_BASE: &str = "https://api.bitbucket.org/2.0";
+
+/// Raw PR patches are much larger than OAuth/provider JSON, but still need a
+/// hard allocation bound. Bitbucket currently limits a PR diff to 8,000 changed
+/// lines, 200 files, and 100 KiB of raw diff per file; 32 MiB covers that stated
+/// envelope plus patch metadata while refusing an unexpectedly unbounded body.
+pub(super) const DIFF_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
 
 /// The git HTTPS username a Bitbucket **OAuth** access token authenticates as
 /// (matches `oauth::config`'s `transport_username` for Bitbucket). When the
@@ -97,17 +103,20 @@ impl<'a> RestClient<'a> {
         }
     }
 
-    fn finish(
-        &self,
-        operation: &'static str,
-        result: Result<crate::git::oauth::http::HttpResponse, String>,
-    ) -> Result<String, GithubError> {
+    fn finish(&self, operation: &'static str, result: HttpResult) -> Result<String, GithubError> {
         match result {
             Ok(resp) if resp.is_success() => Ok(resp.body),
             Ok(resp) => Err(map_http_error(operation, &self.host, resp.status, &resp.body)),
+            Err(HttpError::ResponseTooLarge { limit }) => Err(GithubError::InvalidResponse(
+                format!(
+                    "Bitbucket {operation} exceeded the {limit}-byte response limit; the partial response was discarded."
+                ),
+            )),
             // A transport failure message may quote the request URL (never a
             // secret — the token rides in a header), but redact defensively.
-            Err(err) => Err(GithubError::Network(crate::redact::redact_secrets(&err))),
+            Err(HttpError::Transport(err)) => {
+                Err(GithubError::Network(crate::redact::redact_secrets(&err)))
+            }
         }
     }
 }
@@ -125,7 +134,11 @@ impl BitbucketApi for RestClient<'_> {
     fn get_text(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
         let auth = self.auth_header();
         let headers = [("Authorization", auth.as_str()), ("Accept", "text/plain")];
-        self.finish(operation, self.http.get(&self.url(path), &headers))
+        self.finish(
+            operation,
+            self.http
+                .get_with_limit(&self.url(path), &headers, DIFF_RESPONSE_LIMIT),
+        )
     }
 
     fn post_json(
@@ -286,6 +299,33 @@ mod tests {
         ) {
             GithubError::CommandFailed(msg) => assert!(msg.contains("No such pull request")),
             other => panic!("expected CommandFailed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn oversized_diff_is_a_typed_invalid_response_not_a_partial_success() {
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+
+        let result = client.finish(
+            "pull request diff",
+            Err(HttpError::ResponseTooLarge {
+                limit: DIFF_RESPONSE_LIMIT,
+            }),
+        );
+
+        match result {
+            Err(GithubError::InvalidResponse(message)) => {
+                assert!(
+                    message.contains("partial response was discarded"),
+                    "{message}"
+                );
+                assert!(
+                    message.contains(&DIFF_RESPONSE_LIMIT.to_string()),
+                    "{message}"
+                );
+            }
+            other => panic!("expected typed invalid response, got {other:?}"),
         }
     }
 }
