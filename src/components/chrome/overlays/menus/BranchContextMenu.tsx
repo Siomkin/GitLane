@@ -292,7 +292,10 @@ export function BranchContextMenu() {
     // two menu items apart).
     const newWorktree: MenuItem = {
       label: "New worktree here…",
-      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, wtCheckedOut && tipShort ? tipShort : undefined),
+      onClick: () =>
+        promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, {
+          detachedAt: wtCheckedOut && tipShort ? tipShort : undefined,
+        }),
     };
     const children: MenuItem[] = [];
     if (existingWt) {

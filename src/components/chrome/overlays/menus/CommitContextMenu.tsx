@@ -153,8 +153,8 @@ export function CommitContextMenu() {
       icon: <PlusIcon className="h-4 w-4" />,
       submenu: [
         { label: "Branch in current worktree…", onClick: () => openCreateBranchFrom(sha) },
-        { label: "Detached worktree…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
-        { label: "Branch in new worktree…", onClick: () => promptNewBranchWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
+        { label: "New worktree at commit…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha, { detached: true }) },
+        { label: "New worktree with branch…", onClick: () => promptNewBranchWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, shortSha) },
         { label: "Tag here…", onClick: () => requestPrompt({ title: `Create tag at ${shortSha}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, sha)) }) },
         { label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, sha, shortSha) },
         { label: "Patch from commit", onClick: () => act(() => createPatchAt(sha)) },

@@ -6,6 +6,14 @@ import type { PromptRequest } from "@/store/ui";
 export type PromptFn = (req: PromptRequest) => void;
 export type RunFn = (op: () => Promise<string>) => void;
 
+interface CreateWorktreePromptOptions {
+  /** The reference is a commit/tag, so the new worktree has no branch. */
+  detached?: boolean;
+  /** A branch is already checked out elsewhere, forcing this worktree to use
+   * its captured tip without checking out the branch itself. */
+  detachedAt?: string;
+}
+
 /** A sibling directory path for a new worktree: `/work/repo` + `feat/x` →
  * `/work/repo-wt-feat-x`. Pre-fills the create-worktree prompt. */
 function defaultWorktreePath(base: string, ref: string): string {
@@ -15,8 +23,8 @@ function defaultWorktreePath(base: string, ref: string): string {
 }
 
 /** Prompt for a path, then create + open a worktree checked out to `reference`.
- * `detachedAt` (a short sha) marks a ref that is already checked out somewhere,
- * so the new worktree opens detached at that tip — disclosed in the message. */
+ * The copy names whether it opens on a branch or without one; "linked" is an
+ * implementation detail shared by both states, not a user-facing alternative. */
 export function promptCreateWorktree(
   requestPrompt: PromptFn,
   run: RunFn,
@@ -24,13 +32,16 @@ export function promptCreateWorktree(
   reference: string,
   workdir: string,
   label: string,
-  detachedAt?: string,
+  options: CreateWorktreePromptOptions = {},
 ) {
+  const { detached, detachedAt } = options;
   requestPrompt({
     title: `Create worktree from ${label}`,
     message: detachedAt
-      ? `${label} is already checked out, so this worktree opens detached at its tip (${detachedAt}). It is created at this path, then opened.`
-      : "A new linked worktree is created at this path, then opened.",
+      ? `${label} is already checked out, so a new worktree is created without a branch at its tip (${detachedAt}), then opened.`
+      : detached
+        ? "A new worktree is created at this commit without a branch, then opened."
+        : `A new worktree is created with ${label} checked out, then opened.`,
     placeholder: "/path/to/worktree",
     defaultValue: defaultWorktreePath(workdir, label),
     confirmLabel: "Create worktree",
@@ -52,7 +63,7 @@ export function promptNewBranchWorktree(
 ) {
   requestPrompt({
     title: `New branch in a worktree from ${label}`,
-    message: "A new branch is created at this point and checked out in a fresh linked worktree.",
+    message: "A new branch is created at this point and checked out in a new worktree.",
     placeholder: "feature/my-branch",
     confirmLabel: "Create branch & worktree",
     validate: validateBranchName,

@@ -371,7 +371,8 @@ describe("BranchContextMenu", () => {
     openGroup("Worktree");
     fireEvent.click(screen.getByRole("menuitem", { name: "New worktree here…" }));
     const prompt = useUi.getState().prompt;
-    expect(prompt?.message).toMatch(/detached/i);
+    expect(prompt?.message).toContain("without a branch");
+    expect(prompt?.message).not.toContain("linked");
     expect(prompt?.message).toContain("abc1234");
     prompt!.onSubmit("/work/repo-wt-2");
     await waitFor(() =>

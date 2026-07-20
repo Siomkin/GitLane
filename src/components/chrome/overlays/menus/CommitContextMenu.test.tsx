@@ -120,8 +120,8 @@ describe("CommitContextMenu (single commit)", () => {
 
     openGroup("Create");
     expect(screen.getByRole("menuitem", { name: "Branch in current worktree…" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Detached worktree…" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Branch in new worktree…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "New worktree at commit…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "New worktree with branch…" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Worktree from commit…" })).not.toBeInTheDocument();
   });
 
