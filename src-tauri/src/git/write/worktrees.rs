@@ -3,9 +3,9 @@
 use std::path::PathBuf;
 
 use crate::git::handoff;
-use crate::git::types::WorktreeInfo;
+use crate::git::types::{WorktreeDirtyState, WorktreeInfo};
 
-use super::cli::run_git;
+use super::cli::{run_git, run_git_stdout};
 use super::operands::{ensure_operand, ensure_opt};
 
 /// List linked worktrees via `git worktree list --porcelain`. This is a read,
@@ -142,6 +142,61 @@ pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<S
     args.push(worktree_path);
     run_git(repo, &args)?;
     Ok(format!("Removed worktree {worktree_path}"))
+}
+
+/// Count the uncommitted work in a linked worktree, so a removal confirm can
+/// say what a forced remove would destroy instead of leaving the user to
+/// discover it from git's `fatal: ... contains modified or untracked files`.
+///
+/// Runs `git status` *inside the worktree* — a linked worktree is a valid git
+/// directory, so it is its own `repo` operand here. `--untracked-files=all`
+/// expands untracked directories to real files: the default collapses them to
+/// one entry per directory, which would understate the loss in the warning.
+///
+/// This is a read, but it lives beside the removal it guards rather than in
+/// `read.rs`, and it is called on demand (never from the worktree list refresh).
+pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, String> {
+    ensure_operand(worktree_path)?;
+    // stdout only, untrimmed — see `run_git_stdout`: the combined/trimmed form
+    // would both invent records from stderr warnings and strip the leading
+    // status column off the first one.
+    let raw = run_git_stdout(
+        worktree_path,
+        &["status", "--porcelain", "--untracked-files=all"],
+    )?;
+    let mut modified = 0u32;
+    let mut untracked = 0u32;
+    for line in raw.lines().filter(|line| is_porcelain_record(line)) {
+        if line.starts_with("??") {
+            untracked += 1;
+        } else {
+            modified += 1;
+        }
+    }
+    Ok(WorktreeDirtyState {
+        modified,
+        untracked,
+    })
+}
+
+/// Whether a line is a porcelain v1 status record (`XY <path>`) rather than
+/// something git wrote to stderr.
+///
+/// `run_git` returns stdout and stderr *combined* on success, so a plain
+/// `lines()` count would score a warning ("warning: unable to access ...") as a
+/// changed file — inflating the confirm's numbers and, on an otherwise clean
+/// worktree, forcing a removal that never needed forcing. Matching the record
+/// shape keeps that to the probe rather than changing `run_git`, whose combined
+/// output other callers rely on.
+pub(super) fn is_porcelain_record(line: &str) -> bool {
+    // `XY` is two status codes from git's fixed set (space means "unmodified in
+    // this half"), followed by a space, then the path.
+    const CODES: &[char] = &[' ', 'M', 'A', 'D', 'R', 'C', 'U', 'T', '?', '!'];
+    let mut chars = line.chars();
+    let (Some(x), Some(y), Some(sep)) = (chars.next(), chars.next(), chars.next()) else {
+        return false;
+    };
+    sep == ' ' && CODES.contains(&x) && CODES.contains(&y) && !(x == ' ' && y == ' ')
 }
 
 /// Whether the worktree at `path` is locked, from live `git worktree list` state.

@@ -3,7 +3,8 @@ import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
+import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
+import { useRemoveWorktree } from "./useRemoveWorktree";
 
 /** Right-click menu on a navigator worktree row. The row's left-click reveals
  * the worktree's tip in the graph (consistent with the branch/tag rows); this
@@ -13,15 +14,13 @@ import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overl
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
-  const requestConfirm = useUi((s) => s.requestConfirm);
   const openHandoff = useUi((s) => s.openHandoff);
   const showToast = useUi((s) => s.showToast);
   const summary = useRepo((s) => s.summary);
   const worktrees = useRepo((s) => s.worktrees);
   const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const removeWorktree = useRepo((s) => s.removeWorktree);
-  const run = useBranchOp();
+  const requestRemoveWorktree = useRemoveWorktree();
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
@@ -98,30 +97,21 @@ export function WorktreeContextMenu() {
   // Don't offer removal of the primary worktree (git refuses) or the one
   // currently open in the app (it'd delete the active tab's directory).
   if (!isMain && !isActiveWorktree) {
-    // "Its branch and commits are kept" is only true when a branch holds the
-    // commits. A detached worktree's HEAD is the last thing keeping its commit
-    // reachable — removal can strand it, so warn with the oid instead.
-    const keepNote = wtBranch
-      ? " Its branch and commits are kept."
-      : ` It is detached (no branch) — its commit${
-          wtEntry?.head ? ` ${wtEntry.head.slice(0, 7)}` : ""
-        } may become unreachable unless a branch or tag points to it.`;
     items.push({
       label: "Remove worktree",
       icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
       sep: true,
+      // The confirm is built after probing the worktree for uncommitted work,
+      // so a dirty worktree is warned about and force-removed on confirm rather
+      // than dead-ending on git's refusal (GL-296).
       onClick: () =>
-        requestConfirm({
-          title: `Remove worktree ${name}?`,
-          message: `The linked worktree at ${path} will be removed.${keepNote}${
-            wtLocked ? " This worktree is locked; removing it will override the lock." : ""
-          }`,
-          confirmLabel: "Remove worktree",
-          danger: true,
-          // A locked worktree needs a forced removal (`--force --force` on the
-          // backend); an ordinary one stays unforced so git's dirty check applies.
-          onConfirm: () => void run(() => removeWorktree(path, wtLocked)),
+        void requestRemoveWorktree({
+          name,
+          path,
+          branch: wtBranch,
+          head: wtEntry?.head ?? null,
+          locked: wtLocked,
         }),
     });
   }

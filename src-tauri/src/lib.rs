@@ -570,6 +570,16 @@ async fn remove_worktree(
     blocking(move || git::write::remove_worktree(&path, &worktree_path, force)).await
 }
 
+/// Uncommitted work in a linked worktree, probed on demand so a removal confirm
+/// can quote what a forced remove would discard (GL-296). Kept out of the
+/// worktree list because that refreshes on every filesystem event.
+#[tauri::command]
+async fn worktree_dirty_state(
+    worktree_path: String,
+) -> Result<git::types::WorktreeDirtyState, String> {
+    blocking(move || git::write::worktree_dirty_state(&worktree_path)).await
+}
+
 /// Delete `branch` on `remote`, optionally pinned to that remote's bound
 /// GitHub account. Token is resolved server-side.
 #[tauri::command]
@@ -1936,6 +1946,7 @@ pub fn run() {
             delete_remote_tag,
             push_tag,
             remove_worktree,
+            worktree_dirty_state,
             delete_remote_branch,
             force_push,
             discard_all,

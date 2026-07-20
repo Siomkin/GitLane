@@ -6,6 +6,7 @@ use super::remotes::{
     is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection, push_target_at,
 };
 use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
+use super::worktrees::is_porcelain_record;
 use super::{
     abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
     branch_push_remote, checkout_remote_branch, cherry_pick, cherry_pick_many,
@@ -20,8 +21,8 @@ use super::{
     revert_many, revert_onto, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
     skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
     stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktrees,
-    write_repo_file,
+    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktree_dirty_state,
+    worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
@@ -2816,6 +2817,67 @@ fn remove_worktree_force_overrides_a_lock() {
         !linked.0.exists(),
         "the locked worktree directory should be gone after a forced remove"
     );
+}
+
+// GL-296: the probe that lets the removal confirm quote what a forced remove
+// would destroy, instead of dead-ending on git's "contains modified or
+// untracked files" refusal.
+#[test]
+fn worktree_dirty_state_counts_modified_and_untracked_work() {
+    let repo = TempRepo::new("wt-dirty");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    std::fs::write(repo.0.join("b.txt"), "b\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-dirty");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+
+    // A freshly added worktree is clean.
+    let clean = worktree_dirty_state(linked.as_str()).expect("probe a clean worktree");
+    assert_eq!((clean.modified, clean.untracked), (0, 0));
+
+    // Two tracked edits plus untracked files nested in a new directory. The
+    // probe must expand that directory (`--untracked-files=all`) rather than
+    // collapsing it to a single entry, or the warning understates the loss.
+    std::fs::write(linked.0.join("a.txt"), "changed\n").unwrap();
+    std::fs::write(linked.0.join("b.txt"), "changed too\n").unwrap();
+    std::fs::create_dir(linked.0.join("fresh")).unwrap();
+    std::fs::write(linked.0.join("fresh/one.txt"), "1\n").unwrap();
+    std::fs::write(linked.0.join("fresh/two.txt"), "2\n").unwrap();
+
+    let dirty = worktree_dirty_state(linked.as_str()).expect("probe a dirty worktree");
+    assert_eq!(
+        (dirty.modified, dirty.untracked),
+        (2, 2),
+        "expected 2 modified and 2 untracked (directory expanded), got {dirty:?}"
+    );
+
+    // Review finding: `run_git` returns stdout and stderr combined on success,
+    // so anything git writes to stderr must not be scored as a changed file.
+    // Renames and conflict codes are one record each and stay counted.
+    assert!(!is_porcelain_record("warning: unable to access something"));
+    assert!(!is_porcelain_record("fatal: not a git repository"));
+    assert!(!is_porcelain_record(""));
+    assert!(!is_porcelain_record("   "));
+    assert!(is_porcelain_record("?? new.txt"));
+    assert!(is_porcelain_record(" M tracked.txt"));
+    assert!(is_porcelain_record("R  old.txt -> new.txt"));
+    assert!(is_porcelain_record("UU conflicted.txt"));
+    assert!(is_porcelain_record("A  added.txt"));
+    assert!(is_porcelain_record("D  deleted.txt"));
+
+    // The probe is a read: it must not itself disturb the worktree, and git
+    // still refuses the unforced removal it is warning about.
+    assert!(
+        remove_worktree(repo.path(), linked.as_str(), false).is_err(),
+        "an unforced remove of a dirty worktree must still refuse"
+    );
+    remove_worktree(repo.path(), linked.as_str(), true).expect("force-remove a dirty worktree");
+    assert!(!linked.0.exists(), "the worktree directory should be gone");
 }
 
 #[test]

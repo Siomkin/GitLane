@@ -35,6 +35,9 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd === "can_fast_forward") return Promise.resolve(false);
+    // GL-296: the removal confirm probes the worktree first; default to clean
+    // so only the tests that care about dirtiness opt into it.
+    if (cmd === "worktree_dirty_state") return Promise.resolve({ modified: 0, untracked: 0 });
     if (cmd.startsWith("preview_")) {
       return Promise.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: ["Recovery warning"] });
     }
@@ -731,7 +734,7 @@ describe("BranchContextMenu", () => {
 
   // "Remove worktree" (in the Worktree group) keeps the branch — it only removes
   // the worktree dir (the keep-the-branch counterpart to the combined delete).
-  it("removes only the worktree (keeping the branch) on confirm", () => {
+  it("removes only the worktree (keeping the branch) on confirm", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed worktree");
     const deleteBranchWithWorktree = vi.fn().mockResolvedValue("Deleted feature and its worktree");
     useRepo.setState({
@@ -746,10 +749,11 @@ describe("BranchContextMenu", () => {
 
     openGroup("Worktree");
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    // The confirm is raised only after the GL-296 dirty probe resolves.
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     const confirm = useUi.getState().confirm;
-    expect(confirm).not.toBeNull();
     confirm!.onConfirm();
-    // Unlocked worktree → unforced removal (git's dirty check still applies).
+    // Clean, unlocked worktree → unforced removal.
     expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", false);
     // The branch is untouched — the combined delete must not fire.
     expect(deleteBranchWithWorktree).not.toHaveBeenCalled();
@@ -757,7 +761,7 @@ describe("BranchContextMenu", () => {
 
   // A locked worktree needs a forced removal (`--force --force` on the backend);
   // the confirm surfaces the lock and the call forces it.
-  it("forces removal of a locked worktree and warns in the confirm", () => {
+  it("forces removal of a locked worktree and warns in the confirm", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed worktree");
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
@@ -770,8 +774,9 @@ describe("BranchContextMenu", () => {
 
     openGroup("Worktree");
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     const confirm = useUi.getState().confirm;
-    expect(confirm?.message).toMatch(/locked/i);
+    expect(confirm?.warnings?.join(" ")).toMatch(/locked/i);
     confirm!.onConfirm();
     expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", true);
   });

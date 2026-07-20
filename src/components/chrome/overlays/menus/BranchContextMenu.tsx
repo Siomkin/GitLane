@@ -23,6 +23,7 @@ import {
   TreeIcon,
   WarningIcon,
 } from "@/components/ui/icons";
+import { useRemoveWorktree } from "./useRemoveWorktree";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -67,7 +68,7 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const removeWorktree = useRepo((s) => s.removeWorktree);
+  const requestRemoveWorktree = useRemoveWorktree();
   const run = useBranchOp();
 
   // Can the current branch fast-forward to this one? (branch is a descendant of
@@ -327,7 +328,9 @@ export function BranchContextMenu() {
           label: "Remove worktree",
           danger: true,
           sep: true,
-          onClick: () => requestConfirm({ title: `Remove worktree ${existingWtInfo?.name ?? existingWt.path}?`, message: `The linked worktree at ${existingWt.path} will be removed. ${b} and its commits are kept.${existingWtInfo?.locked ? " This worktree is locked; removing it will override the lock." : ""}`, confirmLabel: "Remove worktree", danger: true, onConfirm: () => void run(() => removeWorktree(existingWt.path, existingWtInfo?.locked ?? false)) }),
+          // Shares the worktree row menu's probe-then-confirm so a dirty
+          // worktree is warned about and force-removed here too (GL-296).
+          onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path, branch: b, head: existingWtInfo?.head ?? null, locked: existingWtInfo?.locked ?? false }),
         });
       }
     } else {
