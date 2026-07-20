@@ -20,11 +20,12 @@ export function CreateBranchDialog() {
 
 function CreateBranchDialogBody() {
   const start = useUi((s) => s.createBranchStart);
+  const initialName = useUi((s) => s.createBranchName);
   const setOpen = useUi((s) => s.setCreateBranchOpen);
   const summary = useRepo((s) => s.summary);
   const createBranchAt = useRepo((s) => s.createBranchAt);
   const run = useBranchOp();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName ?? "");
 
   const base = start ?? summary?.headBranch ?? "HEAD";
 

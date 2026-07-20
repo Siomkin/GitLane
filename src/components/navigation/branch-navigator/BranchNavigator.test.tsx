@@ -60,7 +60,14 @@ beforeEach(() => {
     commitFiles: [],
     revealTarget: null,
   });
-  useUi.setState({ filter: "", navOpen: true, stackedReview: null });
+  useUi.setState({
+    filter: "",
+    navOpen: true,
+    stackedReview: null,
+    pinnedNavRefs: {},
+    createBranchOpen: false,
+    createBranchName: null,
+  });
   useNotifications.setState({ toasts: [] });
 });
 
@@ -109,12 +116,62 @@ describe("BranchNavigator", () => {
     expect(screen.getByText("feature/search")).toBeInTheDocument();
   });
 
-  it("shows a 'No matches' hint and hides rows when nothing matches", () => {
+  it("shows the empty state and hides rows when nothing matches", () => {
     useUi.setState({ filter: "zzz-nope" });
     render(<BranchNavigator />);
-    expect(screen.getByText("No matches")).toBeInTheDocument();
+    expect(screen.getByText("No ref matches", { exact: false, selector: "p" })).toBeInTheDocument();
     expect(screen.queryByText("main")).not.toBeInTheDocument();
     expect(screen.queryByText("feature/search")).not.toBeInTheDocument();
+  });
+
+  it("offers to create a branch named after an unmatched query, prefilled", () => {
+    useUi.setState({ filter: "feat/new-thing" });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Create branch/ }));
+
+    // Hands off to the existing create-branch dialog (branches from HEAD) with
+    // the query as the proposed name; the popup closes under it.
+    expect(useUi.getState().createBranchOpen).toBe(true);
+    expect(useUi.getState().createBranchStart).toBeNull();
+    expect(useUi.getState().createBranchName).toBe("feat/new-thing");
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("shows the match count beside the search box while filtering", () => {
+    useUi.setState({ filter: "feature" });
+    render(<BranchNavigator />);
+    expect(screen.getByText("1 match")).toBeInTheDocument();
+  });
+
+  it("switches category from the sidebar, clearing the search, and shows that kind only", () => {
+    useUi.setState({ filter: "feature" });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Tags/ }));
+
+    expect(useUi.getState().filter).toBe("");
+    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+    expect(screen.queryByText("main")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Filter tags")).toBeInTheDocument();
+  });
+
+  it("sorts a pinned branch above unpinned ones with a separator, current first", () => {
+    useRepo.setState({
+      branches: [
+        branch("alpha", "local"),
+        branch("main", "local"),
+        branch("zulu", "local"),
+      ],
+    });
+    useUi.setState({ pinnedNavRefs: { "local|zulu": true } });
+    render(<BranchNavigator />);
+
+    const rows = screen
+      .getAllByRole("button", { name: /^(Current|Reveal) local / })
+      .map((el) => el.getAttribute("aria-label"));
+    expect(rows).toEqual(["Current local main", "Reveal local zulu", "Reveal local alpha"]);
+    expect(screen.getByRole("separator")).toBeInTheDocument();
   });
 
   it("shows worktrees with their path, flags the open one, and reveals a linked one's tip on click", () => {

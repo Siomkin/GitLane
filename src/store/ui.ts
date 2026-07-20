@@ -378,6 +378,9 @@ interface UiState {
 
   /** Branch navigator dropdown raised by the "Checked out" trigger. Transient. */
   navOpen: boolean;
+  /** Refs pinned to the top of the branch navigator's lists, keyed by
+   * `pinKey(kind, name)` (e.g. `"local|develop"`). Persisted. */
+  pinnedNavRefs: Record<string, true>;
   draggingFrom: BranchDragRef | null;
   actionMenu: ActionMenu | null;
   contextMenu: ContextMenu | null;
@@ -420,6 +423,9 @@ interface UiState {
   } | null;
   createBranchOpen: boolean;
   createBranchStart: string | null;
+  /** Prefill for the create-branch dialog's name input (the navigator's
+   * "Create branch <query>" empty-state action). Cleared when the dialog closes. */
+  createBranchName: string | null;
   /** When set, the center pane shows a stacked all-files review for this oid
    * (a commit or a stash commit), or — when `range` is set — the combined diff
    * of the base..head range, or — when `selection` is set — the merged ("union")
@@ -570,6 +576,11 @@ interface UiState {
   openNav: () => void;
   closeNav: () => void;
   toggleNav: () => void;
+  /** Pin/unpin a navigator ref (key = `pinKey(kind, name)`). */
+  toggleNavPin: (key: string) => void;
+  /** Open the create-branch dialog with the name input prefilled (branches from
+   * HEAD) — the navigator's "Create branch <query>" action. */
+  openCreateBranchNamed: (name: string) => void;
   startDrag: (branch: BranchDragRef) => void;
   clearDrag: () => void;
   openActionMenu: (menu: ActionMenu) => void;
@@ -769,6 +780,7 @@ export const useUi = create<UiState>()(
   onboardingOpen: false,
 
   navOpen: false,
+  pinnedNavRefs: {},
   draggingFrom: null,
   actionMenu: null,
   contextMenu: null,
@@ -788,6 +800,7 @@ export const useUi = create<UiState>()(
   terminalInject: null,
   createBranchOpen: false,
   createBranchStart: null,
+  createBranchName: null,
   stackedReview: null,
 
   leftTab: "history",
@@ -896,6 +909,15 @@ export const useUi = create<UiState>()(
   openNav: () => set({ navOpen: true }),
   closeNav: () => set((s) => (s.navOpen ? { navOpen: false } : s)),
   toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
+  toggleNavPin: (key) =>
+    set((s) => {
+      const pinned = { ...s.pinnedNavRefs };
+      if (pinned[key]) delete pinned[key];
+      else pinned[key] = true;
+      return { pinnedNavRefs: pinned };
+    }),
+  openCreateBranchNamed: (name) =>
+    set({ ...noMenus, createBranchOpen: true, createBranchStart: null, createBranchName: name }),
   startDrag: (branch) => set({ draggingFrom: branch }),
   clearDrag: () => set({ draggingFrom: null }),
   // Menus are mutually exclusive: opening one (or any modal/overlay) clears the
@@ -983,7 +1005,12 @@ export const useUi = create<UiState>()(
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
   closeOverlays: () => set({ ...noMenus, draggingFrom: null }),
-  setCreateBranchOpen: (open) => set({ createBranchOpen: open, createBranchStart: open ? get().createBranchStart : null }),
+  setCreateBranchOpen: (open) =>
+    set({
+      createBranchOpen: open,
+      createBranchStart: open ? get().createBranchStart : null,
+      createBranchName: open ? get().createBranchName : null,
+    }),
   openCreateBranchFrom: (start) => set({ ...noMenus, createBranchOpen: true, createBranchStart: start }),
   openStackedReview: (oid, title) => set({ ...noMenus, stackedReview: { oid, title } }),
   openRangeReview: (base, head, title) =>
@@ -1198,6 +1225,7 @@ export const useUi = create<UiState>()(
         terminalExpanded: s.terminalExpanded,
         prFilter: s.prFilter,
         collapsed: s.collapsed,
+        pinnedNavRefs: s.pinnedNavRefs,
         commitComposerMode: s.commitComposerMode,
         commitDraftAgent: s.commitDraftAgent,
         fileListView: s.fileListView,

@@ -43,7 +43,7 @@ export const ActionBar = () => {
     navOpen,
   } = m;
 
-  // The 280px dropdown is anchored under the branch button; dismiss it on
+  // The 560px dropdown is anchored under the branch button; dismiss it on
   // outside click / Escape.
   const wrapRef = useRef<HTMLDivElement>(null);
   useDismiss(navOpen, m.closeNav, wrapRef);
@@ -109,7 +109,7 @@ export const ActionBar = () => {
           </button>
 
           {navOpen && (
-            <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[280px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)] dark:border-white/10 dark:bg-neutral-800">
+            <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[560px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)] dark:border-white/10 dark:bg-neutral-800">
               <BranchNavigator />
             </div>
           )}

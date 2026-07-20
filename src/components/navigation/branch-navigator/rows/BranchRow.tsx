@@ -5,8 +5,8 @@ import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
 import { useUi } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
-import { TreeIcon } from "@/components/ui/icons";
-import { RowKind } from "@/components/navigation/branch-navigator/refs";
+import { PinFilledIcon, PinIcon, TreeIcon } from "@/components/ui/icons";
+import { pinKey, RowKind } from "@/components/navigation/branch-navigator/refs";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
 import { RowGlyph } from "./RowGlyph";
@@ -15,12 +15,14 @@ import { DIM_CLASS } from "./rowStyles";
 /** A branch / remote / tag row. Click jumps the graph to its tip and closes the
  * popup; checkout lives on the right-click context menu (single-click closes the
  * popup, so a double-click gesture here can't land reliably). Tags aren't drag
- * sources, but they do get a tag-specific right-click menu. */
+ * sources, but they do get a tag-specific right-click menu. Hovering swaps the
+ * leading glyph for a pin toggle — pinned rows sort to the top of the section. */
 export function BranchRow({
   name,
   kind,
   oid,
   isCurrent = false,
+  pinned = false,
   dimmed = false,
   query = "",
   sync = null,
@@ -30,6 +32,8 @@ export function BranchRow({
   kind: RowKind;
   oid?: string;
   isCurrent?: boolean;
+  /** Pinned to the top of its section (the hover pin toggle's state). */
+  pinned?: boolean;
   dimmed?: boolean;
   /** Active search term — marks the matched substring in the name (3+ chars). */
   query?: string;
@@ -40,6 +44,7 @@ export function BranchRow({
   const navigate = useRevealNavigate();
   const openContextMenu = useUi((s) => s.openContextMenu);
   const openTagMenu = useUi((s) => s.openTagMenu);
+  const toggleNavPin = useUi((s) => s.toggleNavPin);
   const tip = useTruncatedTooltip(name);
   const draggable = kind !== RowKind.Tag;
   const syncLabel = kind === RowKind.Local ? syncBadgeLabel(sync) : null;
@@ -58,7 +63,7 @@ export function BranchRow({
       tabIndex={0}
       aria-label={isCurrent ? `Current ${kind} ${name}` : `Reveal ${kind} ${name}`}
       className={cn(
-        "flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] transition-opacity",
+        "group flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] transition-opacity",
         focusRing,
         isCurrent
           ? "bg-[var(--accent-soft)] font-medium text-[color:var(--accent)]"
@@ -86,23 +91,47 @@ export function BranchRow({
         openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent });
       }}
     >
-      {worktree && !isCurrent ? (
-        // A branch parked in a worktree gets the neutral worktree glyph in
-        // place of the branch fork — the same icon as the Worktrees section, so
-        // the two read as the same thing. The tooltip names which worktree.
-        <span
-          title={`Checked out in worktree: ${worktree}`}
-          aria-label={`Checked out in worktree ${worktree}`}
-          className="shrink-0 text-neutral-400"
-        >
-          <TreeIcon className="h-3.5 w-3.5" />
+      {/* The glyph slot doubles as the pin toggle: hovering the row fades the
+          kind glyph out and the pin button in (per the design). */}
+      <span className="relative h-3.5 w-3.5 shrink-0">
+        <span className="absolute inset-0 grid place-items-center transition-opacity group-hover:opacity-0">
+          {worktree && !isCurrent ? (
+            // A branch parked in a worktree gets the neutral worktree glyph in
+            // place of the branch fork — the same icon as the Worktrees section,
+            // so the two read as the same thing. The tooltip names which worktree.
+            <span
+              title={`Checked out in worktree: ${worktree}`}
+              aria-label={`Checked out in worktree ${worktree}`}
+              className="text-neutral-400"
+            >
+              <TreeIcon className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <RowGlyph kind={kind} current={isCurrent} />
+          )}
         </span>
-      ) : (
-        <RowGlyph kind={kind} current={isCurrent} />
-      )}
-      <span data-truncate className="min-w-0 flex-1 truncate">
+        <button
+          type="button"
+          title={pinned ? "Unpin" : "Pin to top"}
+          aria-label={pinned ? `Unpin ${name}` : `Pin ${name} to top`}
+          aria-pressed={pinned}
+          className={cn(
+            "absolute inset-0 grid place-items-center rounded opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100",
+            pinned ? "text-[color:var(--accent)]" : "text-neutral-400 hover:text-[color:var(--accent)]",
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleNavPin(pinKey(kind, name));
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {pinned ? <PinFilledIcon className="h-3.5 w-3.5" /> : <PinIcon className="h-3.5 w-3.5" />}
+        </button>
+      </span>
+      <span data-truncate className="min-w-0 flex-1 truncate font-mono">
         <HighlightMatch text={name} query={query} />
       </span>
+      {isCurrent && <span className="shrink-0 font-mono text-[10.5px] text-neutral-400">current</span>}
       {syncLabel && (
         <span
           title={syncTitle(sync)}

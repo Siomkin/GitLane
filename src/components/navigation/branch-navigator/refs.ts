@@ -10,6 +10,26 @@ export const RowKind = {
 } as const;
 export type RowKind = (typeof RowKind)[keyof typeof RowKind];
 
+/** The navigator's category tabs (the left sidebar of the two-pane palette).
+ * "All" shows every section grouped under headers; the rest show one flat list.
+ * Compare against these consts, never the raw strings. */
+export const NavCategory = {
+  All: "all",
+  Branches: "branches",
+  Remotes: "remotes",
+  Worktrees: "worktrees",
+  Tags: "tags",
+  Stashes: "stashes",
+} as const;
+export type NavCategory = (typeof NavCategory)[keyof typeof NavCategory];
+
+/** Stable identity of a pinnable ref in the persisted pin map
+ * (`ui.pinnedNavRefs`) — kind-scoped so a tag can't collide with a branch of
+ * the same name. */
+export function pinKey(kind: RowKind, name: string): string {
+  return `${kind}|${name}`;
+}
+
 /** A navigable ref row: a display name plus the commit oid to jump to. `oid` is
  * absent when the tip can't be resolved (e.g. a branch with no `target` whose tip
  * is outside the loaded graph window). */

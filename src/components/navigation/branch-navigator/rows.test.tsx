@@ -25,6 +25,7 @@ beforeEach(() => {
     worktreeMenu: null,
     stashMenu: null,
     draggingFrom: null,
+    pinnedNavRefs: {},
   });
 });
 
@@ -119,6 +120,26 @@ describe("BranchRow", () => {
     // worktree marker is only for branches parked in ANOTHER worktree.
     render(<BranchRow name="main" kind="local" oid="abc123" isCurrent worktree="repo-main" />);
     expect(screen.queryByLabelText(/Checked out in worktree/)).not.toBeInTheDocument();
+  });
+
+  it("toggles the pin from the hover pin button without navigating", () => {
+    const revealCommit = vi.fn();
+    useRepo.setState({ revealCommit });
+
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+    fireEvent.click(screen.getByRole("button", { name: "Pin feature to top" }));
+
+    // The pin key is kind-scoped so a tag named "feature" can't collide.
+    expect(useUi.getState().pinnedNavRefs).toEqual({ "local|feature": true });
+    expect(revealCommit).not.toHaveBeenCalled();
+    expect(useUi.getState().navOpen).toBe(true);
+  });
+
+  it("unpins a pinned row from the same button", () => {
+    useUi.setState({ pinnedNavRefs: { "tag|v1.0": true } });
+    render(<BranchRow name="v1.0" kind="tag" oid="tag123" pinned />);
+    fireEvent.click(screen.getByRole("button", { name: "Unpin v1.0" }));
+    expect(useUi.getState().pinnedNavRefs).toEqual({});
   });
 
   it("shows the sync badge for a local branch and the worktree glyph when parked elsewhere", () => {
