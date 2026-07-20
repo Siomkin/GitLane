@@ -6,8 +6,8 @@
 //! below this boundary.
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
-    PullRequestSummary, ReviewThread,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
+    PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 
@@ -31,13 +31,13 @@ pub trait GithubProvider {
     fn pr_detail(&self, ctx: &GithubContext, number: u64)
         -> Result<PullRequestDetail, GithubError>;
     fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError>;
-    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCommit>, GithubError>;
+    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError>;
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError>;
     fn review_threads(
         &self,
         ctx: &GithubContext,
         number: u64,
-    ) -> Result<Vec<ReviewThread>, GithubError>;
+    ) -> Result<ReviewThreadList, GithubError>;
     fn set_thread_resolved(
         &self,
         ctx: &GithubContext,
@@ -142,7 +142,7 @@ impl GithubService {
         workdir: &str,
         number: u64,
         account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<PrCommit>, GithubError> {
+    ) -> Result<PrCommitList, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.pr_commits(&ctx, number)
     }
@@ -162,7 +162,7 @@ impl GithubService {
         workdir: &str,
         number: u64,
         account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<ReviewThread>, GithubError> {
+    ) -> Result<ReviewThreadList, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.review_threads(&ctx, number)
     }

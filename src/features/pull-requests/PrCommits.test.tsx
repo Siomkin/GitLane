@@ -75,6 +75,7 @@ beforeEach(() => {
     prDetailError: {},
     prCommitsError: {},
     prCommitsLoaded: {},
+    prCommitsTruncated: {},
   });
   useUi.setState({ prSelected: null, prTab: "info" });
 });
@@ -110,6 +111,17 @@ describe("Commits tab", () => {
     // Exactly one badge — the signed commit.
     expect(screen.getAllByText("Verified")).toHaveLength(1);
     expect(screen.getByTitle("Signature verified by GitHub")).toBeInTheDocument();
+  });
+
+  it("warns when the backend commit page cap omitted later commits", () => {
+    seed(makePr({ commits: [commit()] }));
+    usePulls.setState({ prCommitsTruncated: { 42: true } });
+
+    render(<PullRequestDetail />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Showing the first 1 commit — some commits were not loaded.",
+    );
   });
 
   it("renders a fallback when GitHub returns no author", () => {

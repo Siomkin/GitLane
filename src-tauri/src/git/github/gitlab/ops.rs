@@ -11,7 +11,7 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
 use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
-use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×
 /// 20 pages is far beyond any realistic MR; the cap guards a runaway loop.
@@ -98,7 +98,7 @@ pub fn pr_commits(
     api: &dyn GitlabApi,
     project_id: &str,
     number: u64,
-) -> Result<Vec<PrCommit>, GithubError> {
+) -> Result<PrCommitList, GithubError> {
     let mut commits: Vec<PrCommit> = Vec::new();
     let mut hit_cap = false;
     for page in 1..=MAX_COMMIT_PAGES {
@@ -120,7 +120,10 @@ pub fn pr_commits(
             commits.len()
         );
     }
-    Ok(commits)
+    Ok(PrCommitList {
+        commits,
+        truncated: hit_cap,
+    })
 }
 
 /// Open a new merge request from `head` into `base`. Returns the new MR's web URL.
@@ -499,10 +502,11 @@ mod tests {
             r#"[{"id":"deadbeef","title":"Fix","author_name":"Ada","authored_date":"2026-01-01"}]"#,
         )]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let commits = pr_commits(&client, "p", 2).expect("commits");
-        assert_eq!(commits.len(), 1);
-        assert_eq!(commits[0].oid, "deadbeef");
-        assert_eq!(commits[0].headline, "Fix");
-        assert!(!commits[0].verified);
+        let result = pr_commits(&client, "p", 2).expect("commits");
+        assert_eq!(result.commits.len(), 1);
+        assert_eq!(result.commits[0].oid, "deadbeef");
+        assert_eq!(result.commits[0].headline, "Fix");
+        assert!(!result.commits[0].verified);
+        assert!(!result.truncated);
     }
 }

@@ -25,8 +25,8 @@ mod transport;
 use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
-    PullRequestSummary, ReviewThread,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
+    PullRequestSummary, ReviewThreadList,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -135,7 +135,7 @@ impl GithubProvider for BitbucketProvider {
         Ok(Vec::new())
     }
 
-    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCommit>, GithubError> {
+    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError> {
         self.with_api(ctx, |api, repo| ops::pr_commits(api, repo, number))
     }
 
@@ -147,10 +147,13 @@ impl GithubProvider for BitbucketProvider {
         &self,
         _ctx: &GithubContext,
         _number: u64,
-    ) -> Result<Vec<ReviewThread>, GithubError> {
+    ) -> Result<ReviewThreadList, GithubError> {
         // Inline review threads are out of scope for GL-141; report none so the
         // detail view simply omits the threads section.
-        Ok(Vec::new())
+        Ok(ReviewThreadList {
+            threads: Vec::new(),
+            truncated: false,
+        })
     }
 
     fn set_thread_resolved(

@@ -14,7 +14,7 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
-use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
 
 /// Bitbucket Cloud caps `pagelen` at 50; use the max and a hard page cap as a
 /// runaway guard (50 × 40 pages = 2000 items, far beyond any real PR).
@@ -184,7 +184,7 @@ pub fn pr_commits(
     api: &dyn BitbucketApi,
     repo: &str,
     number: u64,
-) -> Result<Vec<PrCommit>, GithubError> {
+) -> Result<PrCommitList, GithubError> {
     let mut commits: Vec<PrCommit> = Vec::new();
     let mut hit_cap = false;
     for page in 1..=MAX_PAGES {
@@ -204,7 +204,10 @@ pub fn pr_commits(
             commits.len()
         );
     }
-    Ok(commits)
+    Ok(PrCommitList {
+        commits,
+        truncated: hit_cap,
+    })
 }
 
 /// Open a new pull request from `head` into `base`. Returns the new PR's web URL.
@@ -641,11 +644,12 @@ mod tests {
                 "author":{"raw":"Ada <a@x.io>","user":{"display_name":"Ada L.","nickname":"ada"}}}]}"#,
         )]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
-        let commits = pr_commits(&client, REPO, 2).expect("commits");
-        assert_eq!(commits.len(), 1);
-        assert_eq!(commits[0].oid, "deadbeef");
-        assert_eq!(commits[0].headline, "Fix");
-        assert_eq!(commits[0].author_login, "ada");
-        assert!(!commits[0].verified);
+        let result = pr_commits(&client, REPO, 2).expect("commits");
+        assert_eq!(result.commits.len(), 1);
+        assert_eq!(result.commits[0].oid, "deadbeef");
+        assert_eq!(result.commits[0].headline, "Fix");
+        assert_eq!(result.commits[0].author_login, "ada");
+        assert!(!result.commits[0].verified);
+        assert!(!result.truncated);
     }
 }

@@ -28,7 +28,9 @@ export interface PrCacheSlice {
   prThreadsLoading: boolean;
   prThreadsLoadingByNum: Record<number, number>;
   prThreadsError: Record<number, string>;
+  prThreadsTruncated: Record<number, boolean>;
   prCommitsLoaded: Record<number, boolean>;
+  prCommitsTruncated: Record<number, boolean>;
   prCommitsError: Record<number, string>;
   prResourceVersion: Record<number, number>;
 }
@@ -170,7 +172,9 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
     prDiffs: omitMany(s.prDiffs, stale),
     prChecks: omitMany(s.prChecks, stale),
     prThreads: omitMany(s.prThreads, stale),
+    prThreadsTruncated: omitMany(s.prThreadsTruncated, stale),
     prCommitsLoaded: omitMany(s.prCommitsLoaded, stale),
+    prCommitsTruncated: omitMany(s.prCommitsTruncated, stale),
     prCommitsError: omitMany(s.prCommitsError, stale),
     prDetailError: omitMany(s.prDetailError, stale),
     prDiffError: omitMany(s.prDiffError, stale),

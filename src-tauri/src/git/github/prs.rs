@@ -8,8 +8,9 @@
 use super::cli::{repo_selector, run_gh};
 use super::domain::GithubRepository;
 use super::dto::*;
+use super::pagination::{collect_cursor_pages, CursorPage};
 use crate::git::types::{
-    PrCheck, PrCommit, PrLabel, PrReview, PullRequestDetail, PullRequestSummary,
+    PrCheck, PrCommitList, PrLabel, PrReview, PullRequestDetail, PullRequestSummary,
 };
 
 // `gh pr view --json commits` caps its commit projection and carries no
@@ -186,15 +187,12 @@ pub fn pr_commits(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<Vec<PrCommit>, String> {
+) -> Result<PrCommitList, String> {
     let query_field = format!("query={PR_COMMITS_QUERY}");
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
-    let mut commits = Vec::new();
-    let mut cursor: Option<String> = None;
-    let mut more_pages = false;
-    for _ in 0..MAX_COMMIT_PAGES {
+    let result = collect_cursor_pages(MAX_COMMIT_PAGES, |cursor| {
         let mut args = pr_commits_args(
             &repository.host,
             &query_field,
@@ -203,7 +201,7 @@ pub fn pr_commits(
             &number_field,
         );
         // Omitted on the first page so `$cursor` stays null (same as threads.rs).
-        let cursor_field = cursor.as_ref().map(|c| format!("cursor={c}"));
+        let cursor_field = cursor.map(|c| format!("cursor={c}"));
         if let Some(f) = cursor_field.as_deref() {
             args.push("-f");
             args.push(f);
@@ -212,34 +210,34 @@ pub fn pr_commits(
         let parsed: GqlCommitsResp = serde_json::from_str(&raw)
             .map_err(|e| format!("failed to parse pull request commits: {e}"))?;
         let connection = parsed.data.repository.pull_request.commits;
-        commits.extend(connection.nodes.into_iter().map(GqlCommitNode::into_commit));
-        match connection.page_info.filter(|p| p.has_next_page) {
-            Some(page) => match page.end_cursor {
-                Some(next) => {
-                    cursor = Some(next);
-                    more_pages = true;
-                }
-                None => {
-                    more_pages = false;
-                    break;
-                }
-            },
-            None => {
-                more_pages = false;
-                break;
-            }
-        }
-    }
+        let has_more = connection
+            .page_info
+            .as_ref()
+            .is_some_and(|page| page.has_next_page);
+        let end_cursor = connection.page_info.and_then(|page| page.end_cursor);
+        Ok::<_, String>(CursorPage {
+            items: connection
+                .nodes
+                .into_iter()
+                .map(GqlCommitNode::into_commit)
+                .collect(),
+            has_more,
+            end_cursor,
+        })
+    })?;
     // Same runaway-guard breadcrumb as review threads: don't drop the tail
     // silently if a pathologically large PR ever reaches the page cap.
-    if more_pages {
+    if result.truncated {
         eprintln!(
             "gitlane: commits for PR #{number} hit the {MAX_COMMIT_PAGES}-page cap; \
              {} fetched, later commits omitted",
-            commits.len()
+            result.items.len()
         );
     }
-    Ok(commits)
+    Ok(PrCommitList {
+        commits: result.items,
+        truncated: result.truncated,
+    })
 }
 
 /// Fetch just the CI/status checks for a PR (the slow `statusCheckRollup`

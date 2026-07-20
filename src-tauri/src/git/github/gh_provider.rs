@@ -2,8 +2,8 @@
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
-    PullRequestSummary, ReviewThread,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
+    PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
@@ -107,7 +107,7 @@ impl GithubProvider for GhProvider {
             .map_err(|err| GithubError::from_command("pull request checks", err))
     }
 
-    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCommit>, GithubError> {
+    fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError> {
         let token = self.token_for_context(ctx, "pull request commits")?;
         prs::pr_commits(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request commits", err))
@@ -123,7 +123,7 @@ impl GithubProvider for GhProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-    ) -> Result<Vec<ReviewThread>, GithubError> {
+    ) -> Result<ReviewThreadList, GithubError> {
         let token = self.token_for_context(ctx, "pull request review threads")?;
         threads::review_threads(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request review threads", err))

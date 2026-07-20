@@ -182,13 +182,19 @@ describe("lib/api seam validation", () => {
       commentsTruncated: false,
       comments: [],
     };
-    invokeMock.mockResolvedValueOnce([{ ...valid, isResolved: undefined }]);
+    invokeMock.mockResolvedValueOnce({
+      threads: [{ ...valid, isResolved: undefined }],
+      truncated: false,
+    });
     await expect(api.pullRequestReviewThreads("/r", 1)).rejects.toThrow(
       /pull_request_review_threads/,
     );
 
-    invokeMock.mockResolvedValueOnce([valid]);
-    await expect(api.pullRequestReviewThreads("/r", 1)).resolves.toEqual([valid]);
+    invokeMock.mockResolvedValueOnce({ threads: [valid], truncated: false });
+    await expect(api.pullRequestReviewThreads("/r", 1)).resolves.toEqual({
+      threads: [valid],
+      truncated: false,
+    });
   });
 
   // Check state buckets come normalized from Rust today, but a newer backend
@@ -254,10 +260,16 @@ describe("lib/api seam validation", () => {
       authorLogin: "a",
       verified: true,
     };
-    invokeMock.mockResolvedValueOnce([{ ...validCommit, verified: "yes" }]);
+    invokeMock.mockResolvedValueOnce({
+      commits: [{ ...validCommit, verified: "yes" }],
+      truncated: false,
+    });
     await expect(api.pullRequestCommits("/r", 1)).rejects.toThrow(/pull_request_commits/);
 
-    invokeMock.mockResolvedValueOnce([validCommit]);
-    await expect(api.pullRequestCommits("/r", 1)).resolves.toEqual([validCommit]);
+    invokeMock.mockResolvedValueOnce({ commits: [validCommit], truncated: false });
+    await expect(api.pullRequestCommits("/r", 1)).resolves.toEqual({
+      commits: [validCommit],
+      truncated: false,
+    });
   });
 });

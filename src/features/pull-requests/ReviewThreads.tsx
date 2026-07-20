@@ -13,12 +13,14 @@ import { usePulls } from "@/store/pulls";
 import { Markdown } from "@/components/ui/Markdown";
 import { ReviewThreadControls } from "./ReviewThreadControls";
 import { reviewThreadsModel } from "./reviewThreadsModel";
+import { PaginationNotice } from "./PaginationNotice";
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
 export function ReviewThreads({ pr }: { pr: PullRequest }) {
   const threads = usePulls((s) => s.prThreads[pr.num]);
   const threadsError = usePulls((s) => s.prThreadsError[pr.num]);
+  const threadsTruncated = usePulls((s) => s.prThreadsTruncated[pr.num]);
   const loadPrThreads = usePulls((s) => s.loadPrThreads);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
   const [hideResolved, setHideResolved] = useState(true);
@@ -55,6 +57,12 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
 
   return (
     <div>
+      {threadsTruncated && (
+        <PaginationNotice>
+          Showing the first {threads.length} review thread{threads.length === 1 ? "" : "s"} — some
+          threads were not loaded.
+        </PaginationNotice>
+      )}
       <div className="mb-3 flex items-center">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
           Review threads

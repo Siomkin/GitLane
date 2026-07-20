@@ -10,11 +10,13 @@ import type { PrCommitView, PullRequest } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { GitHubIcon } from "@/components/ui/icons";
 import { Loading, LoadError } from "@/components/ui/Loading";
+import { PaginationNotice } from "./PaginationNotice";
 
 export function PrCommitsTab({ pr }: { pr: PullRequest }) {
   const loadPrCommits = usePulls((s) => s.loadPrCommits);
   const commitsError = usePulls((s) => s.prCommitsError[pr.num]);
   const commitsLoaded = usePulls((s) => s.prCommitsLoaded[pr.num]);
+  const commitsTruncated = usePulls((s) => s.prCommitsTruncated[pr.num]);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
 
   useEffect(() => {
@@ -39,6 +41,12 @@ export function PrCommitsTab({ pr }: { pr: PullRequest }) {
   }
   return (
     <>
+      {commitsTruncated && (
+        <PaginationNotice>
+          Showing the first {pr.commits.length} commit{pr.commits.length === 1 ? "" : "s"} — some
+          commits were not loaded.
+        </PaginationNotice>
+      )}
       {/* The full-list load is supplementary — the capped `gh pr view` list
           below still renders — so a failure gets a quiet notice, not a
           blocking error state (GL-165). */}

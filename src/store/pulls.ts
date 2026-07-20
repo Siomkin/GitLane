@@ -118,9 +118,13 @@ interface PullsState {
   prThreadsLoadingByNum: Record<number, number>;
   /** Per-PR threads-load error (drives an inline retry in the threads section). */
   prThreadsError: Record<number, string>;
+  /** PRs whose review-thread walk hit the backend page cap. */
+  prThreadsTruncated: Record<number, boolean>;
   /** PRs whose full commit list (paginated GraphQL, with verification) has
    * replaced the capped `gh pr view` list. Tracked so it runs once per load. */
   prCommitsLoaded: Record<number, boolean>;
+  /** PRs whose commit walk hit the backend page cap. */
+  prCommitsTruncated: Record<number, boolean>;
   /** Per-PR commit-load error (silent; the fast-path list stays on failure). */
   prCommitsError: Record<number, string>;
   /**
@@ -210,7 +214,9 @@ export const usePulls = create<PullsState>((set, get) => ({
   prThreadsLoading: false,
   prThreadsLoadingByNum: {},
   prThreadsError: {},
+  prThreadsTruncated: {},
   prCommitsLoaded: {},
+  prCommitsTruncated: {},
   prCommitsError: {},
   prResourceVersion: {},
   prPendingActions: [],
@@ -234,7 +240,9 @@ export const usePulls = create<PullsState>((set, get) => ({
       prDiffError: {},
       prThreads: {},
       prThreadsError: {},
+      prThreadsTruncated: {},
       prCommitsLoaded: {},
+      prCommitsTruncated: {},
       prCommitsError: {},
       prResourceVersion: {},
       prsFetchedAt: null,
@@ -324,7 +332,9 @@ export const usePulls = create<PullsState>((set, get) => ({
             prChecksError: {},
             prDiffError: {},
             prThreadsError: {},
+            prThreadsTruncated: {},
             prCommitsLoaded: {},
+            prCommitsTruncated: {},
             prCommitsError: {},
             prChecksLoadingByNum: {},
             prChecksLoading: false,
@@ -467,6 +477,7 @@ export const usePulls = create<PullsState>((set, get) => ({
           // Fresh commits (verified: false) — drop the applied marker so the lazy
           // signature fetch re-runs for this PR.
           prCommitsLoaded: omit(s.prCommitsLoaded, num),
+          prCommitsTruncated: omit(s.prCommitsTruncated, num),
         };
       });
     } catch (e) {
@@ -545,7 +556,7 @@ export const usePulls = create<PullsState>((set, get) => ({
     const ownsRequest = () => prCommitsRequests.get(num) === requestId;
     set((s) => ({ prCommitsError: omit(s.prCommitsError, num) }));
     try {
-      const commits = await api.pullRequestCommits(summary.path, num, account);
+      const result = await api.pullRequestCommits(summary.path, num, account);
       set((s) => {
         const d = s.prDetails[num];
         // Skip if superseded by a newer load, fetched under a stale repo/account,
@@ -560,9 +571,13 @@ export const usePulls = create<PullsState>((set, get) => ({
         return {
           prDetails: {
             ...s.prDetails,
-            [num]: { ...d, commits: uiCommits(commits, d.url) },
+            [num]: { ...d, commits: uiCommits(result.commits, d.url) },
           },
           prCommitsLoaded: { ...s.prCommitsLoaded, [num]: true },
+          prCommitsTruncated: {
+            ...s.prCommitsTruncated,
+            [num]: result.truncated,
+          },
         };
       });
     } catch (e) {
@@ -640,14 +655,21 @@ export const usePulls = create<PullsState>((set, get) => ({
       prThreadsError: omit(s.prThreadsError, num),
     }));
     try {
-      const threads = await api.pullRequestReviewThreads(summary.path, num, account);
+      const result = await api.pullRequestReviewThreads(summary.path, num, account);
       set((s) => {
         if (!ownsPrRequest(s.prThreadsLoadingByNum, num, requestId)) return {};
         const loadingByNum = omit(s.prThreadsLoadingByNum, num);
         const loading = { prThreadsLoadingByNum: loadingByNum, prThreadsLoading: hasNumericKeys(loadingByNum) };
         if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
           return loading;
-        return { ...loading, prThreads: { ...s.prThreads, [num]: threads } };
+        return {
+          ...loading,
+          prThreads: { ...s.prThreads, [num]: result.threads },
+          prThreadsTruncated: {
+            ...s.prThreadsTruncated,
+            [num]: result.truncated,
+          },
+        };
       });
     } catch (e) {
       set((s) => {

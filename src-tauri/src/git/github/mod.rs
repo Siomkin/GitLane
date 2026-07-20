@@ -29,14 +29,15 @@ mod domain;
 mod dto;
 mod gh_provider;
 mod gitlab;
+mod pagination;
 mod prs;
 mod service;
 mod signin;
 mod threads;
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
-    PullRequestSummary, ReviewThread,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
+    PullRequestSummary, ReviewThreadList,
 };
 
 use service::GithubService;
@@ -101,7 +102,7 @@ pub fn pr_commits(
     workdir: &str,
     number: u64,
     account: Option<&GithubAccountRef>,
-) -> Result<Vec<PrCommit>, String> {
+) -> Result<PrCommitList, String> {
     ipc(GithubService::default().pr_commits(workdir, number, account))
 }
 
@@ -117,7 +118,7 @@ pub fn review_threads(
     workdir: &str,
     number: u64,
     account: Option<&GithubAccountRef>,
-) -> Result<Vec<ReviewThread>, String> {
+) -> Result<ReviewThreadList, String> {
     ipc(GithubService::default().review_threads(workdir, number, account))
 }
 

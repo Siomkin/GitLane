@@ -23,10 +23,11 @@ use git::types::{
     CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
     FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
     GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
-    HistorySearchPage, HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommit,
-    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
-    ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge, RepoGraph, RepoIdentity,
-    RepoOpenError, RepoSummary, ReviewThread, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
+    HistorySearchPage, HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck,
+    PrCommitList, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary,
+    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge, RepoGraph,
+    RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
+    WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -1420,7 +1421,7 @@ async fn pull_request_commits(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<PrCommit>, String> {
+) -> Result<PrCommitList, String> {
     blocking(move || git::github::pr_commits(&path, number, account.as_ref())).await
 }
 
@@ -1430,7 +1431,7 @@ async fn pull_request_review_threads(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<ReviewThread>, String> {
+) -> Result<ReviewThreadList, String> {
     blocking(move || git::github::review_threads(&path, number, account.as_ref())).await
 }
 

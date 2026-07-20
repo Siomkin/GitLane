@@ -53,6 +53,7 @@ beforeEach(() => {
   usePulls.setState({
     prThreads: {},
     prThreadsError: {},
+    prThreadsTruncated: {},
     prsFetchedAt: 0,
     prPendingActions: [],
     loadPrThreads: vi.fn().mockResolvedValue(undefined),
@@ -132,6 +133,29 @@ describe("PR comment markdown", () => {
     render(<ReviewThreads pr={pr} />);
 
     expect(screen.getByText(/more comments than shown here/i)).toBeInTheDocument();
+  });
+
+  it("warns when the backend review-thread page cap omitted later threads", () => {
+    const pr = makePr({ state: "open" });
+    const thread: ReviewThread = {
+      id: "thread-page-cap",
+      path: "src/big.ts",
+      line: 5,
+      isResolved: false,
+      isOutdated: false,
+      commentsTruncated: false,
+      comments: [],
+    };
+    usePulls.setState({
+      prThreads: { [pr.num]: [thread] },
+      prThreadsTruncated: { [pr.num]: true },
+    });
+
+    render(<ReviewThreads pr={pr} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Showing the first 1 review thread — some threads were not loaded.",
+    );
   });
 
   it("does not show the truncation note for a complete thread", () => {
