@@ -2674,7 +2674,7 @@ describe("repo store — deleteTag", () => {
       },
     });
 
-    const msg = await useRepo.getState().deleteTag("v1", true);
+    const msg = await useRepo.getState().deleteTag("v1", "tag-object-1", true);
 
     expect(order).toEqual(["remote", "local"]);
     expect(msg).toBe("Deleted tag v1 (local and origin)");
@@ -2686,7 +2686,9 @@ describe("repo store — deleteTag", () => {
       delete_remote_tag: () => Promise.reject(new Error("auth failed")),
     });
 
-    await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow("auth failed");
+    await expect(useRepo.getState().deleteTag("v1", "tag-object-1", true)).rejects.toThrow(
+      "auth failed",
+    );
     expect(invokeMock).not.toHaveBeenCalledWith("delete_tag", expect.anything());
   });
 
@@ -2697,7 +2699,7 @@ describe("repo store — deleteTag", () => {
       delete_tag: () => Promise.reject(new Error("ref locked")),
     });
 
-    await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow(
+    await expect(useRepo.getState().deleteTag("v1", "tag-object-1", true)).rejects.toThrow(
       /on origin, but the local delete failed/,
     );
     // runOp only refreshes on success, so the catch path re-syncs quietly
@@ -2709,9 +2711,13 @@ describe("repo store — deleteTag", () => {
     useRepo.setState({ summary });
     stubTagInvokes({ delete_tag: () => Promise.resolve("ok") });
 
-    await useRepo.getState().deleteTag("v1");
+    await useRepo.getState().deleteTag("v1", "tag-object-1");
 
-    expect(invokeMock).toHaveBeenCalledWith("delete_tag", { path: "/repo", name: "v1" });
+    expect(invokeMock).toHaveBeenCalledWith("delete_tag", {
+      path: "/repo",
+      name: "v1",
+      expectedOid: "tag-object-1",
+    });
     expect(invokeMock).not.toHaveBeenCalledWith("delete_remote_tag", expect.anything());
   });
 });

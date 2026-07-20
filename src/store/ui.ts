@@ -132,12 +132,14 @@ export interface WipMenu {
 }
 
 /** Right-click menu on a tag ref (a pill in the graph or a navigator row).
- * `sha` is the commit the tag points to, for checkout / branch / worktree. */
+ * `sha` is the peeled commit for checkout / branch / worktree; `refOid` is the
+ * exact lightweight/annotated tag object captured for compare-and-swap delete. */
 export interface TagMenu {
   x: number;
   y: number;
   name: string;
   sha: string;
+  refOid: string;
 }
 
 /** Right-click menu on a worktree row in the navigator. */

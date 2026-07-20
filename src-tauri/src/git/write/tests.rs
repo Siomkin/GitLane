@@ -13,9 +13,9 @@ use super::{
     cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
     continue_operation, create_annotated_tag, create_branch, create_branch_in_worktree,
     create_patch, create_tag, delete_branch_with_worktree, delete_remote_branch, delete_remote_tag,
-    discard_all, discard_file, fast_forward, fast_forward_branch, fast_forward_branch_at, fetch,
-    force_push, head_push_remote, mark_conflict_resolved, merge, merge_into,
-    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
+    delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
+    fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
+    merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
     pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
     reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
@@ -1751,14 +1751,21 @@ fn delete_remote_tag_removes_only_the_tag_on_the_remote() {
     // A branch sharing the tag's short name — the fully-qualified `refs/tags/`
     // delete refspec must never touch it.
     repo.git_ok(&["branch", "v1"]);
+    let expected = rev_parse(&repo, "refs/tags/v1");
 
     let remote = TempRepo::new("delete-remote-tag-origin");
     remote.git_ok(&["init", "-q", "--bare"]);
     repo.git_ok(&["remote", "add", "origin", remote.path()]);
     repo.git_ok(&["push", "-q", "origin", "refs/tags/v1", "refs/heads/v1"]);
 
-    delete_remote_tag(repo.path(), "origin", "v1", &TransportCredential::None)
-        .expect("delete tag on remote");
+    delete_remote_tag(
+        repo.path(),
+        "origin",
+        "v1",
+        &expected,
+        &TransportCredential::None,
+    )
+    .expect("delete tag on remote");
 
     let tags = remote.git(&["tag"]);
     assert!(
@@ -1775,6 +1782,66 @@ fn delete_remote_tag_removes_only_the_tag_on_the_remote() {
         local.status.success(),
         "local tag ref is not touched by the remote delete"
     );
+}
+
+#[test]
+fn delete_tag_refuses_to_remove_a_tag_moved_after_confirmation() {
+    let repo = repo_with_file("delete-local-tag-lease", "a.txt", b"one\n");
+    repo.git_ok(&["tag", "--no-sign", "v1"]);
+    let expected = rev_parse(&repo, "refs/tags/v1");
+
+    std::fs::write(repo.0.join("a.txt"), b"two\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "second"]);
+    repo.git_ok(&["tag", "--no-sign", "-f", "v1"]);
+    let moved = rev_parse(&repo, "refs/tags/v1");
+    assert_ne!(expected, moved);
+
+    let error = delete_tag(repo.path(), "v1", &expected)
+        .expect_err("stale confirmation must not delete the moved tag");
+    assert!(
+        error.contains("cannot lock ref") || error.contains("is at"),
+        "unexpected update-ref diagnostic: {error}"
+    );
+    assert_eq!(rev_parse(&repo, "refs/tags/v1"), moved);
+
+    delete_tag(repo.path(), "v1", &moved).expect("current tag target can be deleted");
+    assert!(
+        !repo
+            .git(&["show-ref", "--verify", "refs/tags/v1"])
+            .status
+            .success(),
+        "tag should be absent after an exact-target delete"
+    );
+}
+
+#[test]
+fn delete_remote_tag_refuses_to_remove_a_tag_moved_after_confirmation() {
+    let repo = repo_with_file("delete-remote-tag-lease", "a.txt", b"one\n");
+    repo.git_ok(&["tag", "--no-sign", "v1"]);
+    let expected = rev_parse(&repo, "refs/tags/v1");
+    let remote = TempRepo::new("delete-remote-tag-lease-origin");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", remote.path()]);
+    repo.git_ok(&["push", "-q", "origin", "refs/tags/v1"]);
+
+    std::fs::write(repo.0.join("a.txt"), b"two\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "second"]);
+    repo.git_ok(&["tag", "--no-sign", "-f", "v1"]);
+    let moved = rev_parse(&repo, "refs/tags/v1");
+    repo.git_ok(&["push", "-q", "--force", "origin", "refs/tags/v1"]);
+
+    delete_remote_tag(
+        repo.path(),
+        "origin",
+        "v1",
+        &expected,
+        &TransportCredential::None,
+    )
+    .expect_err("stale confirmation must not delete the moved remote tag");
+
+    assert_eq!(rev_parse(&remote, "refs/tags/v1"), moved);
 }
 
 #[test]
@@ -1890,6 +1957,7 @@ fn delete_remote_tag_tolerates_a_tag_that_was_never_pushed() {
     repo.git_ok(&["add", "a.txt"]);
     repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
     repo.git_ok(&["tag", "--no-sign", "v9"]);
+    let expected = rev_parse(&repo, "refs/tags/v9");
 
     let remote = TempRepo::new("delete-remote-tag-unpushed-origin");
     remote.git_ok(&["init", "-q", "--bare"]);
@@ -1901,8 +1969,14 @@ fn delete_remote_tag_tolerates_a_tag_that_was_never_pushed() {
     // exit 0 with a "deleting a non-existent ref" warning, smart-HTTP servers
     // reject with "remote ref does not exist" (mapped to Ok by the tolerance
     // tested below) — so assert the behavior, not the message.
-    delete_remote_tag(repo.path(), "origin", "v9", &TransportCredential::None)
-        .expect("missing remote ref is not a failure");
+    delete_remote_tag(
+        repo.path(),
+        "origin",
+        "v9",
+        &expected,
+        &TransportCredential::None,
+    )
+    .expect("missing remote ref is not a failure");
 
     let local = repo.git(&["show-ref", "--verify", "refs/tags/v9"]);
     assert!(local.status.success(), "local tag is untouched");

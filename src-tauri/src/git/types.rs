@@ -12,6 +12,11 @@ pub struct RefLabel {
     pub name: String,
     /// One of: "branch" | "remote" | "tag" | "head".
     pub kind: String,
+    /// The exact object named by the ref. Present for tags so a destructive
+    /// action can compare-and-swap the tag object itself; annotated tags peel
+    /// to a different commit oid for graph placement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_oid: Option<String>,
 }
 
 /// Marks a graph node that is actually a stash rather than a commit. In-window

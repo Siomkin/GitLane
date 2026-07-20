@@ -59,7 +59,16 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
         e.preventDefault();
         e.stopPropagation();
         if (refLabel.kind === RefKind.Tag) {
-          openTagMenu({ x: e.clientX, y: e.clientY, name, sha: targetSha });
+          openTagMenu({
+            x: e.clientX,
+            y: e.clientY,
+            name,
+            sha: targetSha,
+            // Old fixtures/backends may omit the new field. Falling back to
+            // the peeled commit is fail-closed for annotated tags: the backend
+            // CAS refuses it rather than deleting an unseen tag object.
+            refOid: refLabel.targetOid ?? targetSha,
+          });
           return;
         }
         if (!model.draggable) return;

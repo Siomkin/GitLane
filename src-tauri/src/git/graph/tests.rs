@@ -58,12 +58,15 @@ fn fetched_tag_ref_labels_the_visible_commit() {
         .find(|node| node.id == tagged.to_string())
         .expect("tagged commit is in the graph");
 
-    assert!(
-        tagged_node
-            .refs
-            .iter()
-            .any(|r| r.kind == "tag" && r.name == "0.1.1"),
-        "fetched local tag should be exposed as a tag ref",
+    let label = tagged_node
+        .refs
+        .iter()
+        .find(|r| r.kind == "tag" && r.name == "0.1.1")
+        .expect("fetched local tag should be exposed as a tag ref");
+    assert_eq!(
+        label.target_oid.as_deref(),
+        Some(tagged.to_string().as_str()),
+        "a lightweight tag's exact ref target is its commit",
     );
 
     let _ = fs::remove_dir_all(&dir);
@@ -89,7 +92,8 @@ fn annotated_tag_only_commit_is_included_in_the_graph() {
     let object = repo
         .find_object(tagged, Some(ObjectType::Commit))
         .expect("tagged commit object");
-    repo.tag("v0.1.1", &object, &sig(210), "release tag", false)
+    let tag_object = repo
+        .tag("v0.1.1", &object, &sig(210), "release tag", false)
         .unwrap();
     repo.find_reference("refs/heads/release-only")
         .unwrap()
@@ -103,12 +107,16 @@ fn annotated_tag_only_commit_is_included_in_the_graph() {
         .find(|node| node.id == tagged.to_string())
         .expect("tag-only commit is seeded into the graph");
 
-    assert!(
-        tagged_node
-            .refs
-            .iter()
-            .any(|r| r.kind == "tag" && r.name == "v0.1.1"),
-        "annotated tag should label the tag-only commit",
+    let label = tagged_node
+        .refs
+        .iter()
+        .find(|r| r.kind == "tag" && r.name == "v0.1.1")
+        .expect("annotated tag should label the tag-only commit");
+    assert_ne!(tag_object, tagged, "annotated tag must name a tag object");
+    assert_eq!(
+        label.target_oid.as_deref(),
+        Some(tag_object.to_string().as_str()),
+        "the destructive guard needs the raw tag-object oid, not the peeled commit",
     );
 
     let _ = fs::remove_dir_all(&dir);

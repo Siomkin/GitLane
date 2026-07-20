@@ -518,8 +518,8 @@ async fn create_patch(path: String, sha: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn delete_tag(path: String, name: String) -> Result<String, String> {
-    blocking(move || git::write::delete_tag(&path, &name)).await
+async fn delete_tag(path: String, name: String, expected_oid: String) -> Result<String, String> {
+    blocking(move || git::write::delete_tag(&path, &name, &expected_oid)).await
 }
 
 /// Push a tag to `remote` (the default push remote when not given), optionally
@@ -556,6 +556,7 @@ async fn push_tag(
 async fn delete_remote_tag(
     path: String,
     name: String,
+    expected_oid: String,
     remote: Option<String>,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
@@ -569,7 +570,7 @@ async fn delete_remote_tag(
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::delete_remote_tag(&path, &remote, &name, &cred)
+        git::write::delete_remote_tag(&path, &remote, &name, &expected_oid, &cred)
     })
     .await
 }

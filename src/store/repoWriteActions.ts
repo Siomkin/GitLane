@@ -724,7 +724,7 @@ export function createRepoWriteActions(
         return `Created patch ${file}`;
       }),
 
-    deleteTag: (name, alsoRemote = false) =>
+    deleteTag: (name, expectedOid, alsoRemote = false) =>
       runOp(get, async (summary) => {
         // Remote first: if the remote rejects (auth, protected tag) the local
         // ref survives, so the user retries from an unchanged state instead of
@@ -733,9 +733,11 @@ export function createRepoWriteActions(
         // desired end state.
         if (alsoRemote) {
           const remote = defaultRemote();
-          await trackNet(() => api.deleteRemoteTag(summary.path, name, remote, authFor(remote)));
+          await trackNet(() =>
+            api.deleteRemoteTag(summary.path, name, expectedOid, remote, authFor(remote)),
+          );
           try {
-            await api.deleteTag(summary.path, name);
+            await api.deleteTag(summary.path, name, expectedOid);
           } catch (e) {
             // The remote has already changed but runOp only refreshes on
             // success — re-sync quietly so the UI reflects whatever state the
@@ -751,7 +753,7 @@ export function createRepoWriteActions(
           }
           return `Deleted tag ${name} (local and ${remote})`;
         }
-        await api.deleteTag(summary.path, name);
+        await api.deleteTag(summary.path, name, expectedOid);
         return `Deleted tag ${name}`;
       }),
 

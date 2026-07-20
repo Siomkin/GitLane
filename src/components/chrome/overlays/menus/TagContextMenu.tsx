@@ -26,7 +26,7 @@ export function TagContextMenu() {
   const run = useBranchOp();
   if (!menu) return null;
 
-  const { name, sha } = menu;
+  const { name, sha, refOid } = menu;
   const defaultRemote = remotes.find((r) => r.isDefault)?.name ?? remotes[0]?.name ?? "origin";
 
   // Operate on the peeled commit `sha`, never the tag name: a branch and tag can
@@ -73,7 +73,7 @@ export function TagContextMenu() {
           message: `Only the local tag ref is removed. If the tag was pushed, the next fetch re-imports it from ${defaultRemote} — use “Delete from local and ${defaultRemote}” to remove it for good.`,
           confirmLabel: "Delete local tag",
           danger: true,
-          onConfirm: () => void run(() => deleteTag(name)),
+          onConfirm: () => void run(() => deleteTag(name, refOid)),
         }),
     },
     {
@@ -86,7 +86,7 @@ export function TagContextMenu() {
           message: `The tag is deleted on ${defaultRemote} and then locally. Other clones keep their copy until they prune, but fetch will no longer restore it here.`,
           confirmLabel: `Delete from local and ${defaultRemote}`,
           danger: true,
-          onConfirm: () => void run(() => deleteTag(name, true)),
+          onConfirm: () => void run(() => deleteTag(name, refOid, true)),
         }),
     },
   ];

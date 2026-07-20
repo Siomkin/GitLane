@@ -196,7 +196,9 @@ describe("WipContextMenu", () => {
 
 describe("TagContextMenu", () => {
   it("offers checkout / push / create / copy / delete for a tag", () => {
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234" } });
+    useUi.setState({
+      tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
+    });
     render(<TagContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Checkout tag (detached)" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Push tag to origin" })).toBeInTheDocument();
@@ -210,22 +212,34 @@ describe("TagContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Worktree from tag…" })).toBeInTheDocument();
   });
 
-  it("routes the everywhere-delete through deleteTag(name, true) after confirm", async () => {
+  it("routes the everywhere-delete with the exact tag target after confirm", async () => {
     const deleteTag = vi.fn().mockResolvedValue("Deleted tag v1.0.0 (local and origin)");
     useRepo.setState({ deleteTag });
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234" } });
+    useUi.setState({
+      tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
+    });
     render(<TagContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete from local and origin" }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     confirm!.onConfirm();
-    await waitFor(() => expect(deleteTag).toHaveBeenCalledWith("v1.0.0", true));
+    await waitFor(() =>
+      expect(deleteTag).toHaveBeenCalledWith("v1.0.0", "tag-object-1", true),
+    );
   });
 
   // A branch and a tag can share a short name, so the operations must reference
   // the peeled commit sha — never the ambiguous tag name.
   it("uses the tag sha (not its name) as the create-branch start point", () => {
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234deadbeef" } });
+    useUi.setState({
+      tagMenu: {
+        x: 10,
+        y: 10,
+        name: "v1.0.0",
+        sha: "abc1234deadbeef",
+        refOid: "tag-object-1",
+      },
+    });
     render(<TagContextMenu />);
     openGroup("Create");
     fireEvent.click(screen.getByRole("menuitem", { name: "Branch from here…" }));
@@ -236,7 +250,15 @@ describe("TagContextMenu", () => {
   it("uses the tag sha (not its name) as the create-worktree reference", async () => {
     const createWorktreeAt = vi.fn().mockResolvedValue("created");
     useRepo.setState({ createWorktreeAt });
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234deadbeef" } });
+    useUi.setState({
+      tagMenu: {
+        x: 10,
+        y: 10,
+        name: "v1.0.0",
+        sha: "abc1234deadbeef",
+        refOid: "tag-object-1",
+      },
+    });
     render(<TagContextMenu />);
     openGroup("Create");
     fireEvent.click(screen.getByRole("menuitem", { name: "Worktree from tag…" }));
@@ -252,12 +274,15 @@ describe("TagContextMenu", () => {
 });
 
 describe("navigator tag row", () => {
-  it("opens the tag menu carrying the tagged commit sha", () => {
-    render(<BranchRow name="v2.3.4" kind="tag" oid="deadbeefcafe" />);
+  it("opens the tag menu carrying the peeled commit and exact ref target", () => {
+    render(
+      <BranchRow name="v2.3.4" kind="tag" oid="deadbeefcafe" refOid="tag-object-2" />,
+    );
     fireEvent.contextMenu(screen.getByText("v2.3.4"));
     const menu = useUi.getState().tagMenu;
     expect(menu?.name).toBe("v2.3.4");
     expect(menu?.sha).toBe("deadbeefcafe");
+    expect(menu?.refOid).toBe("tag-object-2");
   });
 });
 

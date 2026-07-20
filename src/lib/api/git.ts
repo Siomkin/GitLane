@@ -26,6 +26,9 @@ export type BranchKind = (typeof BranchKind)[keyof typeof BranchKind];
 export interface RefLabel {
   name: string;
   kind: RefKind;
+  /** Exact object named by a tag ref. Unlike the containing commit id, this is
+   * the annotated-tag object oid and is used as the deletion CAS token. */
+  targetOid?: string | null;
 }
 
 /** Marks a graph node that is an in-window stash rather than a commit (see the
@@ -925,23 +928,25 @@ export const gitApi = {
   createPatch: (path: string, sha: string) =>
     invoke<string>("create_patch", { path, sha }),
 
-  /** Delete a local tag. The remote copy (if any) is untouched and fetch will
-   * re-import it — use `deleteRemoteTag` to remove it from the remote too. */
-  deleteTag: (path: string, name: string) =>
-    invoke<string>("delete_tag", { path, name }),
+  /** Delete a local tag only if it still names `expectedOid`. The remote copy
+   * (if any) is untouched and fetch will re-import it — use `deleteRemoteTag`
+   * to remove it from the remote too. */
+  deleteTag: (path: string, name: string, expectedOid: string) =>
+    invoke<string>("delete_tag", { path, name, expectedOid }),
 
-  /** Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`),
-   * defaulting to the repo's default push remote, optionally as that remote's
-   * bound auth. */
+  /** Delete a tag on `remote` with an exact ref lease, defaulting to the repo's
+   * default push remote, optionally as that remote's bound auth. */
   deleteRemoteTag: (
     path: string,
     name: string,
+    expectedOid: string,
     remote?: string | null,
     auth?: GitTransportAuthRef | null,
   ) =>
     invoke<string>("delete_remote_tag", {
       path,
       name,
+      expectedOid,
       remote: remote ?? null,
       auth: auth ?? null,
     }),

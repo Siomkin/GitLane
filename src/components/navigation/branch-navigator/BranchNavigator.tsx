@@ -156,6 +156,7 @@ export function BranchNavigator() {
             name={item.item.name}
             kind={item.rowKind}
             oid={item.item.oid}
+            refOid={item.item.refOid}
             isCurrent={!!item.item.current}
             pinned={item.item.pinned}
             query={filter}

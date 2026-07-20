@@ -27,6 +27,7 @@ export function BranchRow({
   name,
   kind,
   oid,
+  refOid,
   isCurrent = false,
   pinned = false,
   dimmed = false,
@@ -37,6 +38,8 @@ export function BranchRow({
   name: string;
   kind: RowKind;
   oid?: string;
+  /** Exact object named by a tag ref; distinct from peeled commit `oid`. */
+  refOid?: string;
   isCurrent?: boolean;
   /** Pinned to the top of its section (the hover pin toggle's state). */
   pinned?: boolean;
@@ -102,10 +105,12 @@ export function BranchRow({
         }}
         onContextMenu={(e) => {
           e.preventDefault();
-          // Tags are immutable pointers — they get their own menu (checkout /
-          // branch / worktree / copy) keyed off the tagged commit oid.
+          // Tags get their own menu (checkout / branch / worktree / copy), with
+          // both the peeled commit and exact tag-ref target captured.
           if (kind === RowKind.Tag) {
-            if (oid) openTagMenu({ x: e.clientX, y: e.clientY, name, sha: oid });
+            if (oid) {
+              openTagMenu({ x: e.clientX, y: e.clientY, name, sha: oid, refOid: refOid ?? oid });
+            }
             return;
           }
           openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent });

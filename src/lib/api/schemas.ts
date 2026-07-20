@@ -57,6 +57,7 @@ import type {
 const refLabelSchema = z.object({
   name: z.string(),
   kind: z.enum(["branch", "remote", "tag", "head"]),
+  targetOid: z.string().nullish(),
 });
 
 const stashRefSchema = z.object({

@@ -658,11 +658,13 @@ pub fn push_tag(
     run_push(repo, cred, remote, &[], &[&refspec])
 }
 
-/// Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`).
-/// The fully-qualified `refs/tags/` refspec guarantees a same-named branch on
-/// the remote is never deleted. Local deletion is separate ([`super::delete_tag`]);
-/// without this, a tag deleted locally but still on the remote is re-imported by
-/// the next Fetch's explicit `refs/tags/*` refspec. `cred` selects the account.
+/// Delete a tag on `remote` only when it still points at `expected_oid`. The
+/// exact `--force-with-lease` prevents a tag moved after the confirmation was
+/// opened from being erased. The fully-qualified `refs/tags/` destination also
+/// guarantees a same-named branch on the remote is never deleted. Local
+/// deletion is separate ([`super::delete_tag`]); without this, a tag deleted
+/// locally but still on the remote is re-imported by the next Fetch's explicit
+/// `refs/tags/*` refspec. `cred` selects the account.
 ///
 /// A tag that was never pushed is not an error: absence upstream is the desired
 /// end state, so "remote ref does not exist" maps to `Ok` and a combined
@@ -673,16 +675,31 @@ pub fn delete_remote_tag(
     repo: &str,
     remote: &str,
     name: &str,
+    expected_oid: &str,
     cred: &TransportCredential,
 ) -> Result<String, String> {
     ensure_operand(remote)?;
     ensure_operand(name)?;
-    let refspec = format!("refs/tags/{name}");
-    match run_push_stable(repo, cred, remote, &["--delete"], &[&refspec]) {
+    ensure_operand(expected_oid)?;
+    let destination = format!("refs/tags/{name}");
+    let lease = format!("--force-with-lease={destination}:{expected_oid}");
+    match run_push_stable(repo, cred, remote, &[&lease, "--delete"], &[&destination]) {
         Err(output) if is_missing_remote_ref(&output) => {
             Ok(format!("Tag {name} was not on {remote}"))
         }
-        other => other,
+        Err(output) => {
+            // File transports report an already-absent leased ref as a generic
+            // stale-info rejection. Confirm absence directly before treating
+            // that desired end state as success. A moved ref produces output
+            // here and therefore preserves the original lease failure.
+            match run_transport(repo, cred, &["ls-remote", "--refs", remote, &destination]) {
+                Ok(found) if found.trim().is_empty() => {
+                    Ok(format!("Tag {name} was not on {remote}"))
+                }
+                _ => Err(output),
+            }
+        }
+        ok => ok,
     }
 }
 

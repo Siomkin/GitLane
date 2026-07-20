@@ -19,18 +19,19 @@ pub(super) fn collect_refs(
             if name.is_empty() || name.ends_with("/HEAD") {
                 continue;
             }
-            let (kind, oid) = if r.is_remote() {
-                ("remote", r.target())
+            let (kind, oid, target_oid) = if r.is_remote() {
+                ("remote", r.target(), None)
             } else if r.is_tag() {
                 // Lightweight tags have a direct commit target; annotated tags
-                // need one peel through the tag object.
-                let oid = r
-                    .target()
+                // need one peel through the tag object. Keep the unpeeled target
+                // too: deletion must CAS the exact tag object the user saw.
+                let target = r.target();
+                let oid = target
                     .filter(|target| repo.find_commit(*target).is_ok())
                     .or_else(|| r.peel_to_commit().ok().map(|commit| commit.id()));
-                ("tag", oid)
+                ("tag", oid, target.map(|oid| oid.to_string()))
             } else if r.is_branch() {
-                ("branch", r.target())
+                ("branch", r.target(), None)
             } else {
                 continue;
             };
@@ -41,6 +42,7 @@ pub(super) fn collect_refs(
             map.entry(oid).or_default().push(RefLabel {
                 name,
                 kind: kind.to_string(),
+                target_oid,
             });
         }
     }
@@ -59,6 +61,7 @@ pub(super) fn collect_refs(
             map.entry(oid).or_default().push(RefLabel {
                 name: label,
                 kind: "head".to_string(),
+                target_oid: None,
             });
         }
     }

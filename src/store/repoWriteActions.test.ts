@@ -771,11 +771,12 @@ describe("tags — explicit or default remote, with its account", () => {
   });
 
   it("deleteTag(alsoRemote) deletes on the default remote and names it in the toast", async () => {
-    const message = await useRepo.getState().deleteTag("v1.0.0", true);
+    const message = await useRepo.getState().deleteTag("v1.0.0", "tag-object-1", true);
 
     expect(invokeMock).toHaveBeenCalledWith("delete_remote_tag", {
       path: "/repo",
       name: "v1.0.0",
+      expectedOid: "tag-object-1",
       remote: "origin",
       auth: ghAuth(alice),
     });
