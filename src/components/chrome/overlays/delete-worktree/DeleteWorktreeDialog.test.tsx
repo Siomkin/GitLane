@@ -27,6 +27,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { DeleteWorktreeDialog } from "./DeleteWorktreeDialog";
 import { useRepo } from "@/store/repo";
+import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 
@@ -138,6 +139,29 @@ describe("DeleteWorktreeDialog", () => {
     await act(async () => del.resolve("Deleted feature and its worktree"));
     // The pinned repo no longer matches the active one, so the refresh is skipped
     // — refreshing /work/other would reload the wrong graph.
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("does not refresh a reopened same-path repo session after the delete resolves", async () => {
+    const del = arm();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ summary: { path: "/work/repo" } as never, refresh: refresh as never });
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    const button = await screen.findByRole("button", { name: "Delete anyway" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+
+    fireEvent.click(button);
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+    // A -> B -> A has the same displayed path at settlement, but it is a new
+    // published session and must not inherit the old dialog's refresh.
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: { path: "/work/other" } as never });
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: { path: "/work/repo" } as never });
+
+    await act(async () => del.resolve("Deleted feature and its worktree"));
+
     expect(refresh).not.toHaveBeenCalled();
   });
 

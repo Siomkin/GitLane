@@ -1,5 +1,11 @@
 import type { DestructivePreview } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import {
+  currentOpenIntent,
+  currentPublishedRepoSession,
+  openIntentIsCurrent,
+  publishedRepoSessionIsCurrent,
+} from "@/store/repoRequests";
 import { useUi, type ConfirmRequest } from "@/store/ui";
 
 export type ConfirmFn = (req: ConfirmRequest) => void;
@@ -40,8 +46,13 @@ export const previewConfirm = async <T extends DestructivePreview>({
   // and does not become shared repo state, so it stays at the UI boundary.
   const token = ++previewToken;
   const repoAtClick = useRepo.getState().summary?.path ?? null;
+  const openIntentAtClick = currentOpenIntent();
+  const repoSessionAtClick = currentPublishedRepoSession();
   const isCurrent = () =>
-    token === previewToken && useRepo.getState().summary?.path === repoAtClick;
+    token === previewToken &&
+    openIntentIsCurrent(openIntentAtClick) &&
+    useRepo.getState().summary?.path === repoAtClick &&
+    publishedRepoSessionIsCurrent(repoSessionAtClick);
   const headStillMatches = () => {
     if (!headPrecondition) return true;
     const summary = useRepo.getState().summary;

@@ -126,7 +126,12 @@ export function createRepoFilesActions(
       // file history, stacked review) so the file actually surfaces instead of
       // silently waiting behind them. (The pulls tab still outranks it — the
       // Files affordances aren't reachable there.)
-      set({ compare: null, fileHistory: null, fileView: { path, content: null, loading: true, error: null } });
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        compare: null,
+        fileHistory: null,
+        fileView: { path, content: null, loading: true, error: null },
+      }));
       useUi.getState().closeStackedReview();
       // Require the open file to still be *this* path: `closeRepoFile`,
       // `returnToGraph`, and lifecycle resets clear/replace `fileView` without
@@ -181,7 +186,12 @@ export function createRepoFilesActions(
         // Only a genuinely-gone file dismisses the viewer (e.g. it doesn't exist
         // on the newly checked-out branch); a transient read error keeps the
         // last-good content rather than closing it out from under the user.
-        if (isMissingFileError(e)) set({ fileView: null });
+        if (isMissingFileError(e)) {
+          set((state) => ({
+            fileSelectionRequestId: state.fileSelectionRequestId + 1,
+            fileView: null,
+          }));
+        }
       }
     },
 
@@ -208,7 +218,11 @@ export function createRepoFilesActions(
       }
     },
 
-    closeRepoFile: () => set({ fileView: null }),
+    closeRepoFile: () =>
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        fileView: null,
+      })),
 
     beginFileEdit: () => {
       const { summary, fileView } = get();

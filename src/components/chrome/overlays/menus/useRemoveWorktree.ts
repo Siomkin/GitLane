@@ -1,6 +1,12 @@
 import { api } from "@/lib/api";
 import type { WorktreeDirtyState } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import {
+  currentOpenIntent,
+  currentPublishedRepoSession,
+  openIntentIsCurrent,
+  publishedRepoSessionIsCurrent,
+} from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useBranchOp } from "@/components/chrome/overlays/shared";
 import {
@@ -41,8 +47,13 @@ export function useRemoveWorktree() {
     // removes a path against the now-active repo. Same guard as `previewConfirm`.
     const token = ++probeToken;
     const repoAtClick = useRepo.getState().summary?.path ?? null;
+    const openIntentAtClick = currentOpenIntent();
+    const repoSessionAtClick = currentPublishedRepoSession();
     const isCurrent = () =>
-      token === probeToken && useRepo.getState().summary?.path === repoAtClick;
+      token === probeToken &&
+      openIntentIsCurrent(openIntentAtClick) &&
+      useRepo.getState().summary?.path === repoAtClick &&
+      publishedRepoSessionIsCurrent(repoSessionAtClick);
 
     // Close the originating menu before awaiting so a slow probe cannot
     // resurrect a confirm after the user has dismissed that menu.

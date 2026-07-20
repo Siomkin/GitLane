@@ -8,6 +8,10 @@ import { listen } from "@tauri-apps/api/event";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
+import {
+  currentPublishedRepoSession,
+  publishedRepoSessionIsCurrent,
+} from "@/store/repoRequests";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
 import { deleteWorktreeStepIndex, DELETE_WORKTREE_REFRESH_ROW } from "./steps";
 
@@ -61,6 +65,11 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
     // post-op refresh) targeted at the repo the user acted on, never the
     // newly-active one. GL-107 review.
     const repoAtStart = useRepo.getState().summary?.path ?? null;
+    const repoSessionAtStart = currentPublishedRepoSession();
+    const startingRepoIsCurrent = () =>
+      repoAtStart !== null &&
+      useRepo.getState().summary?.path === repoAtStart &&
+      publishedRepoSessionIsCurrent(repoSessionAtStart);
     void (async () => {
       // Subscribe before invoking so the earliest steps can't be missed.
       const unlisten = await listen<{ step: string }>(
@@ -91,7 +100,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         // repo the delete acted on. A mid-run switch means the mutated repo isn't
         // active; refreshing the new one would reload the wrong graph (the acted-on
         // repo reconciles via its FS watcher / next load). GL-107 review.
-        if (useRepo.getState().summary?.path === repoAtStart) {
+        if (startingRepoIsCurrent()) {
           await useRepo.getState().refresh();
         }
         if (!mounted.current) {
@@ -105,7 +114,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         // worktree was removed but the prepared ref commit failed). Reconcile
         // the acted-on repo before rendering that error so the sidebar never
         // keeps showing a worktree that is already gone.
-        if (repoAtStart && useRepo.getState().summary?.path === repoAtStart) {
+        if (startingRepoIsCurrent()) {
           try {
             await useRepo.getState().refresh();
           } catch {

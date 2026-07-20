@@ -271,9 +271,10 @@ export interface RepoState {
   /** A repository file opened read-only in the center pane, or null. */
   fileView: FileViewState | null;
   selectedFile: SelectedFile | null;
-  /** Monotonic identity of explicit file-selection requests. Unlike
-   * `selectedFile`, this changes when the user re-selects the active file so
-   * virtual review surfaces can repeat navigation to its offscreen header. */
+  /** Monotonic identity of repo-bound selection/center-route navigation. It
+   * advances across commit, WIP, working-file, repository-file, history, and
+   * compare transitions, including re-selecting the active file, so async
+   * follow-ups cannot revive a route the user has since left. */
   fileSelectionRequestId: number;
   fileDiff: FileDiff | null;
   selectedCommit: string | null;

@@ -21,6 +21,7 @@ import {
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
   beginGraphRequest,
+  beginPublishedRepoSession,
   claimOpenIntent,
   openIntentIsCurrent,
 } from "./repoRequests";
@@ -126,6 +127,9 @@ export function createRepoLifecycleActions(
       persistSession(openPaths, summary.path);
       persistTabInfo(tabInfoByPath);
       persistRecents(recents);
+      // Rotate the displayed-session identity in the same synchronous phase-2
+      // publication as the summary, including a same-path reopen.
+      beginPublishedRepoSession();
       set({
         summary,
         openPaths,

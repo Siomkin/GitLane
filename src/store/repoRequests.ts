@@ -28,6 +28,18 @@ export const openIntentIsCurrent = (intent: number): boolean =>
 // its summary/graph generation catch up — so this is what flips first.
 export const currentOpenIntent = (): number => openIntentGeneration;
 
+// Identity of the repository session that is actually published in the store.
+// Unlike openIntentGeneration this advances only beside the phase-2 summary
+// publication (or an active-summary clear), so a write started while a newer
+// open is still probing cannot accidentally inherit that pending open's intent.
+// The path remains part of callers' owner keys; this generation closes the
+// same-path close/reopen ABA hole.
+let publishedRepoSessionGeneration = 0;
+export const beginPublishedRepoSession = (): number => ++publishedRepoSessionGeneration;
+export const currentPublishedRepoSession = (): number => publishedRepoSessionGeneration;
+export const publishedRepoSessionIsCurrent = (generation: number): boolean =>
+  generation === publishedRepoSessionGeneration;
+
 export type RefreshScope = "all" | "worktree";
 
 // A passive re-sync (filesystem watcher / focus) requested while `loading` was

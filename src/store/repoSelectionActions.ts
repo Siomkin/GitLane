@@ -69,6 +69,7 @@ export function createRepoSelectionActions(
       // file selection is kept — it doesn't outrank the graph (the inspector
       // shows it); only a committed file's review takes over the center pane.
       set((s) => ({
+        fileSelectionRequestId: s.fileSelectionRequestId + 1,
         compare: null,
         fileHistory: null,
         fileView: null,
@@ -97,8 +98,10 @@ export function createRepoSelectionActions(
       // diff across the whole selection (GL-68/GL-69): the net change per file,
       // for any selection (contiguous or not — the backend composes it).
       const multi = selectedCommits.length > 1;
+      const fileSelectionRequestId = get().fileSelectionRequestId + 1;
 
       set({
+        fileSelectionRequestId,
         selectedCommit: focus,
         selectedCommits,
         selectionAnchor: anchor,
@@ -145,7 +148,8 @@ export function createRepoSelectionActions(
     // Select the WIP node — like selecting a commit, but it inspects the working
     // changes in the right panel instead of opening the changes/review view.
     selectWip: () =>
-      set({
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
         wipSelected: true,
         fileHistory: null,
         compare: null,
@@ -157,7 +161,7 @@ export function createRepoSelectionActions(
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
-      }),
+      })),
 
     ensureWorkingFileSelection: () => {
       const { changes, selectedFile } = get();
@@ -263,7 +267,13 @@ export function createRepoSelectionActions(
       }
     },
 
-    clearSelectedFile: () => set({ selectedFile: null, fileDiff: null, diffLoading: false }),
+    clearSelectedFile: () =>
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        selectedFile: null,
+        fileDiff: null,
+        diffLoading: false,
+      })),
 
     compareRange: (base, head, title) => {
       useUi.getState().openRangeReview(base, head, title);
@@ -279,6 +289,7 @@ export function createRepoSelectionActions(
       const repoPath = summary.path;
       const fresh = () => get().summary?.path === repoPath && get().fileHistory?.path === requestPath;
       set({
+        fileSelectionRequestId: get().fileSelectionRequestId + 1,
         compare: null,
         fileView: null,
         fileHistory: {
@@ -380,6 +391,7 @@ export function createRepoSelectionActions(
         );
       };
       set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
         fileHistory: state.fileHistory
           ? {
               ...state.fileHistory,
@@ -457,12 +469,17 @@ export function createRepoSelectionActions(
 
     selectBlameLine: (oid) =>
       set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
         fileHistory: state.fileHistory
           ? { ...state.fileHistory, blameSelectedOid: oid }
           : null,
       })),
 
-    closeFileHistory: () => set({ fileHistory: null }),
+    closeFileHistory: () =>
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        fileHistory: null,
+      })),
 
     openCompare: async ({ base, head, baseLabel, headLabel, scope, title }) => {
       const { summary } = get();
@@ -473,6 +490,7 @@ export function createRepoSelectionActions(
         return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
       };
       set({
+        fileSelectionRequestId: get().fileSelectionRequestId + 1,
         fileHistory: null,
         fileView: null,
         compare: {
@@ -539,6 +557,7 @@ export function createRepoSelectionActions(
         );
       };
       set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
         compare: state.compare
           ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true, diffError: null }
           : null,
@@ -658,6 +677,10 @@ export function createRepoSelectionActions(
       });
     },
 
-    closeCompare: () => set({ compare: null }),
+    closeCompare: () =>
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        compare: null,
+      })),
   };
 }

@@ -177,13 +177,24 @@ export function createRepoRefreshActions(
         // e.g. a reset/rebase can drop the selected commits. Anchor stays if it
         // survives; otherwise it tracks the new focus commit.
         const liveIds = new Set(graph.commits.map((c) => c.id));
-        const prevMulti = get().selectedCommits.filter((id) => liveIds.has(id));
-        const selectedCommits =
+        const previousSelectedCommits = get().selectedCommits;
+        const prevMulti = previousSelectedCommits.filter((id) => liveIds.has(id));
+        const nextSelectedCommits =
           prevMulti.length > 0
             ? Array.from(new Set(selectedCommit ? [selectedCommit, ...prevMulti] : prevMulti))
             : selectedCommit
               ? [selectedCommit]
               : [];
+        // Preserve reference identity when refresh reconciliation did not alter
+        // the selected commit set. Refresh may put the focus first in its
+        // candidate order, but that is not a user selection change. Batch writes use that identity as their
+        // selection-owner token, so a deliberate A -> B -> A cycle (new array,
+        // same values) cannot be mistaken for an untouched selection.
+        const selectedCommits =
+          previousSelectedCommits.length === nextSelectedCommits.length &&
+          previousSelectedCommits.every((id) => nextSelectedCommits.includes(id))
+            ? previousSelectedCommits
+            : nextSelectedCommits;
         const selectionAnchor =
           get().selectionAnchor && liveIds.has(get().selectionAnchor!)
             ? get().selectionAnchor

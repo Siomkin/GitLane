@@ -16,6 +16,12 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { useAccounts } from "./accounts";
 import { useNotifications } from "./notifications";
 import { flushPendingRefresh } from "./repoGuards";
+import {
+  currentOpenIntent,
+  currentPublishedRepoSession,
+  openIntentIsCurrent,
+  publishedRepoSessionIsCurrent,
+} from "./repoRequests";
 import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
@@ -73,14 +79,76 @@ function withRenameCounterparts(bucket: FileChange[], paths: string[]): string[]
 // Shared body for the branch/history write ops: require an open repo, run the
 // op, refresh the graph, and return its toast message. Rejects (for the caller
 // to toast) when there's no repo or the git op throws.
+type RepoWriteOwner = Readonly<{ path: string; openIntent: number; publishedSession: number }>;
+
+function captureOwner(summary: RepoSummary): RepoWriteOwner {
+  return {
+    path: summary.path,
+    openIntent: currentOpenIntent(),
+    publishedSession: currentPublishedRepoSession(),
+  };
+}
+
+function ownerIsCurrent(get: RepoGet, owner: RepoWriteOwner): boolean {
+  return get().summary?.path === owner.path &&
+    publishedRepoSessionIsCurrent(owner.publishedSession);
+}
+
+// Store publication belongs to the displayed session above. Automatic
+// navigation is stricter: a newer user open wins as soon as it is claimed,
+// even while its phase-1 probe is still pending (and even if it later fails).
+function ownerMayNavigate(get: RepoGet, owner: RepoWriteOwner): boolean {
+  return ownerIsCurrent(get, owner) && openIntentIsCurrent(owner.openIntent);
+}
+
+async function refreshIfCurrent(
+  get: RepoGet,
+  owner: RepoWriteOwner,
+  opts?: Parameters<RepoState["refresh"]>[0],
+): Promise<boolean> {
+  if (!ownerIsCurrent(get, owner)) return false;
+  const refreshed = await get().refresh(opts);
+  return refreshed && ownerIsCurrent(get, owner);
+}
+
+function releaseLoadingIfCurrent(
+  set: RepoSet,
+  get: RepoGet,
+  owner: RepoWriteOwner,
+  flush = false,
+): boolean {
+  if (!ownerIsCurrent(get, owner)) return false;
+  set({ loading: false });
+  if (flush) flushPendingRefresh(get);
+  return true;
+}
+
+type FileSelectionOwner = Readonly<{
+  requestId: number;
+  fileView: RepoState["fileView"];
+}>;
+
+function captureFileSelection(get: RepoGet): FileSelectionOwner {
+  return { requestId: get().fileSelectionRequestId, fileView: get().fileView };
+}
+
+function fileSelectionIsCurrent(get: RepoGet, owner: FileSelectionOwner): boolean {
+  return get().fileSelectionRequestId === owner.requestId && get().fileView === owner.fileView;
+}
+
+function commitSetIsCurrent(get: RepoGet, commits: string[]): boolean {
+  return get().selectedCommits === commits;
+}
+
 async function runOp(
   get: RepoGet,
-  body: (summary: RepoSummary) => Promise<string>,
+  body: (summary: RepoSummary, owner: RepoWriteOwner) => Promise<string>,
 ): Promise<string> {
   const { summary } = get();
   if (!summary) throw new Error("No repository");
-  const message = await body(summary);
-  await get().refresh();
+  const owner = captureOwner(summary);
+  const message = await body(summary, owner);
+  await refreshIfCurrent(get, owner);
   return message;
 }
 
@@ -99,7 +167,7 @@ async function runMaybeConflict(
 ): Promise<string> {
   const { summary } = get();
   if (!summary) throw new Error("No repository");
-  const opPath = summary.path;
+  const owner = captureOwner(summary);
   // Capture whether an operation was ALREADY active before we start: only a
   // *newly* entered operation means this op stopped on conflicts. If one was
   // already in progress (e.g. a terminal-started merge, or a second attempt
@@ -109,14 +177,14 @@ async function runMaybeConflict(
   try {
     const message = await body(summary);
     // Don't refresh/publish onto a different repo if the user switched mid-op.
-    if (get().summary?.path === opPath) await get().refresh();
+    await refreshIfCurrent(get, owner);
     return message;
   } catch (e) {
     // Switched repos mid-op: surface the raw error; never interpret it (or the
     // global operation) against the now-current, unrelated repo.
-    if (get().summary?.path !== opPath) throw e;
-    await get().refresh();
-    if (get().summary?.path === opPath && !hadOperation && get().operation) {
+    if (!ownerIsCurrent(get, owner)) throw e;
+    await refreshIfCurrent(get, owner);
+    if (ownerIsCurrent(get, owner) && !hadOperation && get().operation) {
       return `${inProgressLabel} — resolve conflicts to continue`;
     }
     throw e;
@@ -185,6 +253,7 @@ async function findCheckoutWorktree(
   set: RepoSet,
   get: RepoGet,
   summary: RepoSummary,
+  owner: RepoWriteOwner,
   branch: string,
 ): Promise<WorktreeRef | null> {
   const currentWorkdir = summary.workdir ?? summary.path;
@@ -195,7 +264,7 @@ async function findCheckoutWorktree(
   // worktree that is still loading, so probe once before falling through to git.
   const worktrees = await api.listWorktrees(summary.path).catch(() => null);
   if (!worktrees) return null;
-  if (get().summary?.path !== summary.path) {
+  if (!ownerIsCurrent(get, owner)) {
     throw new Error("Repository changed while checking worktrees. Try again.");
   }
   set({ worktrees });
@@ -307,11 +376,12 @@ export function createRepoWriteActions(
     checkoutBranch: async (name) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
-      const existingWorktree = await findCheckoutWorktree(set, get, summary, name);
+      const owner = captureOwner(summary);
+      const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, name);
       // findCheckoutWorktree guards its own probe path, but the cached path
       // resolves without that check — re-verify ownership after the await so a
       // concurrent tab switch can't pair this repo's dialog with another's state.
-      if (get().summary?.path !== summary.path) {
+      if (!ownerMayNavigate(get, owner)) {
         throw new Error("Repository changed while checking worktrees. Try again.");
       }
       if (existingWorktree) {
@@ -358,6 +428,7 @@ export function createRepoWriteActions(
                   liveSummary.workdir ?? liveSummary.path,
                 );
               if (
+                !ownerMayNavigate(get, owner) ||
                 liveSummary?.path !== summary.path ||
                 liveHolder?.branch !== name ||
                 !liveHere ||
@@ -383,30 +454,31 @@ export function createRepoWriteActions(
             },
             secondary: {
               label: "Open that worktree",
-              onClick: () =>
+              onClick: () => {
+                if (!ownerMayNavigate(get, owner)) return;
                 void get()
                   .openWorktree(holder.path)
-                  .catch((e) => useUi.getState().showToast(String(e), "error")),
+                  .catch((e) => useUi.getState().showToast(String(e), "error"));
+              },
             },
           });
           // The dialog owns what happens next — nothing to toast.
           return "";
         }
-        await get().openWorktree(existingWorktree.path);
+        if (ownerMayNavigate(get, owner)) await get().openWorktree(existingWorktree.path);
         return `Opened ${name} worktree`;
       }
       set({ loading: true, error: null });
       try {
         await api.checkout(summary.path, name, false);
-        set({ loading: false });
-        await get().refresh();
+        releaseLoadingIfCurrent(set, get, owner);
+        await refreshIfCurrent(get, owner);
         return `Checked out ${name}`;
       } catch (e) {
         // Reset the spinner but let the caller present the failure (toast), so a
         // failed checkout never leaves a stale success message behind. Replay any
         // re-sync deferred while this op held `loading` (GL-20 review).
-        set({ loading: false });
-        flushPendingRefresh(get);
+        releaseLoadingIfCurrent(set, get, owner, true);
         throw e;
       }
     },
@@ -414,7 +486,11 @@ export function createRepoWriteActions(
     checkoutRemoteBranch: async (remote, branch) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
-      const existingWorktree = await findCheckoutWorktree(set, get, summary, branch);
+      const owner = captureOwner(summary);
+      const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, branch);
+      if (!ownerMayNavigate(get, owner)) {
+        throw new Error("Repository changed while checking worktrees. Try again.");
+      }
       set({ loading: true, error: null });
       try {
         // A branch already owned by another worktree must be advanced there:
@@ -422,28 +498,28 @@ export function createRepoWriteActions(
         // branch behind the remote ref the user explicitly selected.
         const checkoutPath = existingWorktree?.path ?? summary.path;
         await api.checkoutRemoteBranch(checkoutPath, remote, branch);
-        set({ loading: false });
+        releaseLoadingIfCurrent(set, get, owner);
         if (existingWorktree) {
-          await get().openWorktree(existingWorktree.path);
+          if (ownerMayNavigate(get, owner)) await get().openWorktree(existingWorktree.path);
           return `Updated ${branch} and opened its worktree`;
         }
-        await get().refresh();
+        await refreshIfCurrent(get, owner);
         return `Checked out ${branch}`;
       } catch (e) {
-        set({ loading: false });
+        releaseLoadingIfCurrent(set, get, owner);
         // Checkout and `merge --ff-only` are separate git commands. The
         // backend reports when checkout succeeded but dirty changes blocked
         // the merge; refresh before surfacing that partial outcome so HEAD and
         // the working tree never wait on the watcher to become truthful.
-        if (get().summary?.path === summary.path) {
+        if (ownerIsCurrent(get, owner)) {
           try {
-            await get().refresh();
+            await refreshIfCurrent(get, owner);
           } catch {
             // Preserve the operation's actionable error if the recovery read
             // also fails; the watcher can still retry the refresh later.
           }
         }
-        flushPendingRefresh(get);
+        if (ownerIsCurrent(get, owner)) flushPendingRefresh(get);
         throw e;
       }
     },
@@ -475,11 +551,13 @@ export function createRepoWriteActions(
     // dialog's destructive action to the newly-active repository.
     removeBranch: async (name, expectedOid, repoPath, force = false) => {
       if (!repoPath) throw new Error("No repository");
-      if (get().summary?.path !== repoPath) {
+      const active = get().summary;
+      if (active?.path !== repoPath) {
         throw new Error("Repository changed; preview the branch deletion again.");
       }
+      const owner = captureOwner(active);
       const message = await api.deleteBranch(repoPath, name, expectedOid, force);
-      if (get().summary?.path === repoPath) await get().refresh();
+      await refreshIfCurrent(get, owner);
       return message || `Deleted ${name}`;
     },
 
@@ -497,11 +575,14 @@ export function createRepoWriteActions(
 
     pushBranch: (branch) =>
       runOp(get, async (summary) => {
+        const expectedOid = localBranchOid(get, branch);
+        const remote = pushRemoteOf(branch);
+        const auth = authFor(remote);
         await trackNet(() => api.pushBranch(
           summary.path,
           branch,
-          localBranchOid(get, branch),
-          authFor(pushRemoteOf(branch)),
+          expectedOid,
+          auth,
         ));
         return `Pushed ${branch}`;
       }),
@@ -512,12 +593,14 @@ export function createRepoWriteActions(
           upstream,
           get().remotes.map((r) => r.name),
         );
+        const expectedOid = localBranchOid(get, branch);
+        const auth = authFor(remote);
         await trackNet(() => api.publishBranch(
           summary.path,
           branch,
-          localBranchOid(get, branch),
+          expectedOid,
           upstream,
-          authFor(remote),
+          auth,
         ));
         return `Published ${branch} to ${upstream}`;
       }),
@@ -649,6 +732,10 @@ export function createRepoWriteActions(
 
     cherryPickMany: async (shas) => {
       if (shas.length === 0) throw new Error("No commits selected");
+      const active = get().summary;
+      if (!active) throw new Error("No repository");
+      const owner = captureOwner(active);
+      const selectedCommits = get().selectedCommits;
       const n = shas.length;
       const msg = await runMaybeConflict(
         get,
@@ -663,12 +750,18 @@ export function createRepoWriteActions(
         },
         `Cherry-picking ${n} commit${n === 1 ? "" : "s"}`,
       );
-      get().clearSelection();
+      if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
+        get().clearSelection();
+      }
       return msg;
     },
 
     revertMany: async (shas) => {
       if (shas.length === 0) throw new Error("No commits selected");
+      const active = get().summary;
+      if (!active) throw new Error("No repository");
+      const owner = captureOwner(active);
+      const selectedCommits = get().selectedCommits;
       const n = shas.length;
       const msg = await runMaybeConflict(
         get,
@@ -683,11 +776,17 @@ export function createRepoWriteActions(
         },
         `Reverting ${n} commit${n === 1 ? "" : "s"}`,
       );
-      get().clearSelection();
+      if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
+        get().clearSelection();
+      }
       return msg;
     },
 
     squashSelection: async (shas, message) => {
+      const active = get().summary;
+      if (!active) throw new Error("No repository");
+      const owner = captureOwner(active);
+      const selectedCommits = get().selectedCommits;
       const msg = await runOp(get, async (summary) => {
         const parent = validateSquashRange(get().graph, shas);
         const expectedOid = requireHeadOid(summary, "squash commits");
@@ -706,7 +805,9 @@ export function createRepoWriteActions(
         );
         return `Squashed ${shas.length} commits`;
       });
-      get().clearSelection();
+      if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
+        get().clearSelection();
+      }
       return msg;
     },
 
@@ -734,7 +835,7 @@ export function createRepoWriteActions(
       }),
 
     deleteTag: (name, expectedOid, alsoRemote = false) =>
-      runOp(get, async (summary) => {
+      runOp(get, async (summary, owner) => {
         // Remote first: if the remote rejects (auth, protected tag) the local
         // ref survives, so the user retries from an unchanged state instead of
         // a half-deleted one that fetch would resurrect anyway. A never-pushed
@@ -742,8 +843,9 @@ export function createRepoWriteActions(
         // desired end state.
         if (alsoRemote) {
           const remote = defaultRemote();
+          const auth = authFor(remote);
           await trackNet(() =>
-            api.deleteRemoteTag(summary.path, name, expectedOid, remote, authFor(remote)),
+            api.deleteRemoteTag(summary.path, name, expectedOid, remote, auth),
           );
           try {
             await api.deleteTag(summary.path, name, expectedOid);
@@ -752,9 +854,7 @@ export function createRepoWriteActions(
             // success — re-sync quietly so the UI reflects whatever state the
             // failed local half left, then name the half-applied state and the
             // remaining step instead of a bare local-delete error.
-            await get()
-              .refresh({ prs: false, quiet: true })
-              .catch(() => undefined);
+            await refreshIfCurrent(get, owner, { prs: false, quiet: true });
             const reason = e instanceof Error ? e.message : String(e);
             throw new Error(
               `Deleted ${name} on ${remote}, but the local delete failed: ${reason}. Use “Delete local tag” to finish.`,
@@ -769,7 +869,8 @@ export function createRepoWriteActions(
     pushTag: (name, remote) =>
       runOp(get, async (summary) => {
         const target = remote ?? defaultRemote();
-        await trackNet(() => api.pushTag(summary.path, name, target, authFor(target)));
+        const auth = authFor(target);
+        await trackNet(() => api.pushTag(summary.path, name, target, auth));
         return `Pushed tag ${name} to ${target}`;
       }),
 
@@ -779,6 +880,7 @@ export function createRepoWriteActions(
     moveBranchToWorktree: async (branch, fromWorktreePath, toWorktreePath, carry) => {
       const { summary, loading } = get();
       if (!summary) throw new Error("No repository");
+      const owner = captureOwner(summary);
       // Guard against a double-submit: the handoff (stash → detach → checkout →
       // pop) is slow and the IPC runs before loadRepo raises `loading`, so a second
       // trigger could launch a concurrent move on the shared stash. Hold `loading`
@@ -797,23 +899,26 @@ export function createRepoWriteActions(
         // move finishes in the background — landing on the destination then
         // would yank the app off the welcome screen the user chose. The result
         // still reaches them as a toast.
-        if (get().openPaths.length === 0) return message;
+        if (!ownerMayNavigate(get, owner) || get().openPaths.length === 0) return message;
         // Land on the destination — the branch (and any carried work, or a
         // conflict to resolve) lives there now. loadRepo owns the loading lifecycle
         // + open intent, republishes the graph, and reads operation_status, so a
         // carry conflict opens the conflict workspace for the destination. The
         // landing switches the current tab in place — same repository, same
         // tab (GL-110) — rather than opening the destination as a sibling.
+        // Release this operation's spinner before `loadRepo` synchronously
+        // claims the navigation intent and takes over its own loading lifecycle.
+        releaseLoadingIfCurrent(set, get, owner);
         await get().loadRepo(toWorktreePath, { replaceTab: summary.path });
         return message;
       } catch (e) {
-        flushPendingRefresh(get);
+        releaseLoadingIfCurrent(set, get, owner, true);
         throw e;
       } finally {
         // Safety net: on success loadRepo already cleared `loading`; if it didn't
         // (IPC threw, or loadRepo failed to open the destination) don't strand the
         // spinner.
-        if (get().loading) set({ loading: false });
+        if (get().loading) releaseLoadingIfCurrent(set, get, owner);
       }
     },
 
@@ -840,17 +945,21 @@ export function createRepoWriteActions(
 
     deleteRemoteBranch: (remote, branch, expectedOid) =>
       runOp(get, async (summary) => {
-        await trackNet(() => api.deleteRemoteBranch(summary.path, remote, branch, expectedOid, authFor(remote)));
+        const auth = authFor(remote);
+        await trackNet(() => api.deleteRemoteBranch(summary.path, remote, branch, expectedOid, auth));
         return `Deleted ${remote}/${branch}`;
       }),
 
     forcePush: (branch) =>
       runOp(get, async (summary) => {
+        const expectedOid = localBranchOid(get, branch);
+        const remote = pushRemoteOf(branch);
+        const auth = authFor(remote);
         await trackNet(() => api.forcePush(
           summary.path,
           branch,
-          localBranchOid(get, branch),
-          authFor(pushRemoteOf(branch)),
+          expectedOid,
+          auth,
         ));
         return `Force-pushed ${branch} (with lease)`;
       }),
@@ -864,11 +973,12 @@ export function createRepoWriteActions(
     createWorktreeAt: async (worktreePath, reference, newBranch) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
+      const owner = captureOwner(summary);
       // Create the worktree against the current repo, then open the new path as
       // its own repo tab (loadRepo discovers + watches it). With `newBranch`,
       // `reference` is the new branch's start point.
       await api.addWorktree(summary.path, worktreePath, reference, newBranch);
-      await get().loadRepo(worktreePath);
+      if (ownerMayNavigate(get, owner)) await get().loadRepo(worktreePath);
       return newBranch
         ? `Created ${newBranch} in a worktree at ${worktreePath}`
         : `Created worktree at ${worktreePath}`;
@@ -882,17 +992,34 @@ export function createRepoWriteActions(
       // already open in another tab is simply activated (loadRepo's
       // includes-check leaves the strip untouched either way).
       const currentPath = get().summary?.path;
-      await get().loadRepo(
+      const previousPublishedSession = currentPublishedRepoSession();
+      const load = get().loadRepo(
         worktreePath,
         opts?.newTab || !currentPath ? undefined : { replaceTab: currentPath },
       );
+      // loadRepo claims its intent synchronously before its first await. Retain
+      // that exact claim so a later A -> B -> A navigation cannot revive this
+      // worktree switch's automatic WIP/HEAD selection on the reopened A.
+      const loadIntent = currentOpenIntent();
+      await load;
       // Ownership guard: loadRepo absorbs failures and can be superseded by a
       // newer open, so the post-load work below must only run when the
       // requested worktree actually became the active repo — never against
       // whichever repo is still (or newly) on screen.
-      if (!isActiveWorktreePath(get().summary, worktreePath)) return;
+      if (
+        !openIntentIsCurrent(loadIntent) ||
+        currentPublishedRepoSession() === previousPublishedSession ||
+        !isActiveWorktreePath(get().summary, worktreePath)
+      ) {
+        return;
+      }
       const summary = get().summary;
       if (!summary) return;
+      const owner: RepoWriteOwner = {
+        path: summary.path,
+        openIntent: loadIntent,
+        publishedSession: currentPublishedRepoSession(),
+      };
       // A reveal already pending here is a during-load pick (GL-20): the user
       // navigated somewhere deliberate while the graph skeleton was up, and
       // loadRepo honored it — the HEAD reveal below must not clobber it. The
@@ -900,6 +1027,7 @@ export function createRepoWriteActions(
       // click during the status await (a click sets no revealTarget).
       const duringLoadPick = get().revealTarget !== null;
       const parkedSelection = get().selectedCommit;
+      const parkedFileSelection = captureFileSelection(get);
       // Switching into a worktree is usually about its in-progress work. If the
       // freshly loaded worktree is dirty, surface its working tree (the WIP
       // node, always the top row) so the uncommitted files are visible
@@ -911,15 +1039,17 @@ export function createRepoWriteActions(
           changes.staged.length > 0 ||
           changes.unstaged.length > 0 ||
           changes.conflicted.length > 0;
-        if (dirty && get().summary?.path === summary.path) {
+        if (dirty && ownerIsCurrent(get, owner)) {
           set({ changes });
           // The same user-signal rule as the clean HEAD reveal below: a
           // during-load pick or a selection made while the status read was in
           // flight is deliberate navigation — don't yank it to the WIP node.
           if (
             !duringLoadPick &&
+            ownerMayNavigate(get, owner) &&
             get().revealTarget === null &&
-            get().selectedCommit === parkedSelection
+            get().selectedCommit === parkedSelection &&
+            fileSelectionIsCurrent(get, parkedFileSelection)
           ) {
             get().selectWip();
           }
@@ -940,13 +1070,14 @@ export function createRepoWriteActions(
       // The graph is interactive during the status await, so every user signal
       // wins over the automatic reveal: a pending revealTarget (before or after
       // the await) and any selection change since the snapshot both bail.
-      if (duringLoadPick || get().revealTarget !== null) return;
+      if (!ownerMayNavigate(get, owner) || duringLoadPick || get().revealTarget !== null) return;
       if (get().selectedCommit !== parkedSelection) return;
+      if (!fileSelectionIsCurrent(get, parkedFileSelection)) return;
       // HEAD is re-read from the live summary: a same-path refresh during the
       // status read can move it, and the reveal should land on where HEAD is
       // now, not where it was before the await.
       const live = get().summary;
-      if (live?.path !== summary.path || !live.headOid) return;
+      if (!ownerMayNavigate(get, owner) || live?.path !== summary.path || !live.headOid) return;
       // Already parked on the HEAD row (a tip-aligned worktree): re-revealing
       // would only re-fetch its files and flash a row the user is looking at.
       if (get().selectedCommit === live.headOid) return;
@@ -957,6 +1088,8 @@ export function createRepoWriteActions(
     stageFile: async (path) => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         // A worktree rename shows as one "R" entry naming the new path, but its
@@ -969,8 +1102,12 @@ export function createRepoWriteActions(
         } else {
           await api.stageFile(summary.path, path);
         }
-        await get().refresh();
-        await get().selectFile(path, "staged");
+        if (
+          await refreshIfCurrent(get, owner) &&
+          fileSelectionIsCurrent(get, fileSelection)
+        ) {
+          await get().selectFile(path, "staged");
+        }
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -979,6 +1116,8 @@ export function createRepoWriteActions(
     unstageFile: async (path) => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         // Mirror of stageFile: restore both sides of a staged rename at once so
@@ -989,8 +1128,12 @@ export function createRepoWriteActions(
         } else {
           await api.unstageFile(summary.path, path);
         }
-        await get().refresh();
-        await get().selectFile(path, "unstaged");
+        if (
+          await refreshIfCurrent(get, owner) &&
+          fileSelectionIsCurrent(get, fileSelection)
+        ) {
+          await get().selectFile(path, "unstaged");
+        }
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1002,13 +1145,14 @@ export function createRepoWriteActions(
     stagePaths: async (paths) => {
       const { summary } = get();
       if (!summary || paths.length === 0) return;
+      const owner = captureOwner(summary);
       const blocked = paths.map((p) => guardedPathMessage(get, p)).find(Boolean) ?? null;
       if (toastAdvancedGuard(blocked)) return;
       try {
         // Pull each rolled-up rename's old side in too, so a rename under this
         // folder stages as one rename instead of a half-staged pair (GL-127).
         await api.stageFiles(summary.path, withRenameCounterparts(get().changes.unstaged, paths));
-        await get().refresh();
+        await refreshIfCurrent(get, owner);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1017,12 +1161,13 @@ export function createRepoWriteActions(
     unstagePaths: async (paths) => {
       const { summary } = get();
       if (!summary || paths.length === 0) return;
+      const owner = captureOwner(summary);
       const blocked = paths.map((p) => guardedPathMessage(get, p)).find(Boolean) ?? null;
       if (toastAdvancedGuard(blocked)) return;
       try {
         // Symmetric to stagePaths: unstage each rolled-up rename's old side too.
         await api.unstageFiles(summary.path, withRenameCounterparts(get().changes.staged, paths));
-        await get().refresh();
+        await refreshIfCurrent(get, owner);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1031,6 +1176,8 @@ export function createRepoWriteActions(
     applyHunk: async (path, staged, hunkIndex, expectedHeader, expectedBody) => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         const message = await api.applyHunk(
@@ -1041,7 +1188,11 @@ export function createRepoWriteActions(
           expectedHeader,
           expectedBody,
         );
-        await get().refresh();
+        const refreshed = await refreshIfCurrent(get, owner);
+        if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) {
+          useUi.getState().showToast(message);
+          return;
+        }
         const { changes } = get();
         const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
         const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
@@ -1049,7 +1200,7 @@ export function createRepoWriteActions(
           await get().selectFile(path, preferred);
         } else if (changes[fallback].some((file) => file.path === path)) {
           await get().selectFile(path, fallback);
-        } else {
+        } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
           set({ selectedFile: null, fileDiff: null });
         }
         useUi.getState().showToast(message);
@@ -1061,10 +1212,13 @@ export function createRepoWriteActions(
     applyLine: async (path, staged, hunkIndex, lineIndex, line) => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         await api.applyLine(summary.path, path, staged, hunkIndex, lineIndex, line);
-        await get().refresh();
+        const refreshed = await refreshIfCurrent(get, owner);
+        if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) return;
         const { changes } = get();
         const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
         const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
@@ -1072,7 +1226,7 @@ export function createRepoWriteActions(
           await get().selectFile(path, preferred);
         } else if (changes[fallback].some((file) => file.path === path)) {
           await get().selectFile(path, fallback);
-        } else {
+        } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
           set({ selectedFile: null, fileDiff: null });
         }
       } catch (e) {
@@ -1090,6 +1244,8 @@ export function createRepoWriteActions(
     discardFile: async (repoPath, path, previousPath, staged, expectedState) => {
       const { summary } = get();
       if (!summary || summary.path !== repoPath) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
         const message = await api.discardFile(
@@ -1102,12 +1258,12 @@ export function createRepoWriteActions(
         // The write belongs to the repo captured by the confirmation. If the
         // user switched tabs while it was in flight, its completion must not
         // refresh or reselect a same-named path in the newly active repo.
-        if (get().summary?.path !== repoPath) {
+        if (!ownerIsCurrent(get, owner)) {
           useUi.getState().showToast(message);
           return;
         }
-        await get().refresh();
-        if (get().summary?.path !== repoPath) {
+        const refreshed = await refreshIfCurrent(get, owner);
+        if (!refreshed || !ownerIsCurrent(get, owner)) {
           useUi.getState().showToast(message);
           return;
         }
@@ -1116,13 +1272,18 @@ export function createRepoWriteActions(
         // other bucket with a now-stale `source` — re-point the diff at it so the
         // pane never shows an empty diff for a file that still has changes.
         const { selectedFile, changes } = get();
-        if (selectedFile && selectedFile.source !== "commit" && selectedFile.path === path) {
+        if (
+          fileSelectionIsCurrent(get, fileSelection) &&
+          selectedFile &&
+          selectedFile.source !== "commit" &&
+          selectedFile.path === path
+        ) {
           if (changes.unstaged.some((f) => f.path === path)) await get().selectFile(path, "unstaged");
           else if (changes.staged.some((f) => f.path === path)) await get().selectFile(path, "staged");
         }
         useUi.getState().showToast(message);
       } catch (e) {
-        if (get().summary?.path === repoPath) {
+        if (ownerIsCurrent(get, owner)) {
           useUi.getState().showToast(String(e), "error");
         }
       }
@@ -1131,11 +1292,12 @@ export function createRepoWriteActions(
     stageAll: async () => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
       const { changes } = get();
       if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(changes.unstaged, changes), changes))) return;
       try {
         await api.stageAll(summary.path);
-        await get().refresh();
+        await refreshIfCurrent(get, owner);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1144,11 +1306,12 @@ export function createRepoWriteActions(
     unstageAll: async () => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
       const { changes } = get();
       if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(changes.staged, changes), changes))) return;
       try {
         await api.unstageAll(summary.path);
-        await get().refresh();
+        await refreshIfCurrent(get, owner);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1157,6 +1320,8 @@ export function createRepoWriteActions(
     commit: async (summaryText, description, amend) => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       // Pin the repo's bound identity (author + committer) so global-config
       // changes by other tools can never leak into a GitLane commit.
       const identity = useAccounts.getState().repoIdentity;
@@ -1172,8 +1337,12 @@ export function createRepoWriteActions(
           identity?.email,
           identity,
         );
-        await get().refresh();
-        set({ selectedFile: null, fileDiff: null });
+        if (
+          await refreshIfCurrent(get, owner) &&
+          fileSelectionIsCurrent(get, fileSelection)
+        ) {
+          set({ selectedFile: null, fileDiff: null });
+        }
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1199,6 +1368,8 @@ export function createRepoWriteActions(
     commitSelected: async (message, amend = false) => {
       const { summary } = get();
       if (!summary) return false;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
       const { changes } = get();
       if (toastAdvancedGuard(fileWriteGuard(findGuardedFile(changes.staged, changes), changes))) {
         return false;
@@ -1217,8 +1388,12 @@ export function createRepoWriteActions(
           identity?.email,
           identity,
         );
-        await get().refresh();
-        set({ selectedFile: null, fileDiff: null, wipSelected: false });
+        if (
+          await refreshIfCurrent(get, owner) &&
+          fileSelectionIsCurrent(get, fileSelection)
+        ) {
+          set({ selectedFile: null, fileDiff: null, wipSelected: false });
+        }
         return true;
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -1229,10 +1404,11 @@ export function createRepoWriteActions(
     stash: async () => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
       if (toastAdvancedGuard(guardedAdvancedWriteMessage(get().changes))) return;
       try {
         await api.stash(summary.path, summary.headBranch, summary.headOid);
-        await get().refresh();
+        await refreshIfCurrent(get, owner);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1241,6 +1417,7 @@ export function createRepoWriteActions(
     fetch: async (opts) => {
       const { summary, forge } = get();
       if (!summary) return false;
+      const owner = captureOwner(summary);
       // The operation owner: every post-await store write below is guarded on
       // the displayed repo still being this one, so a fetch that outlives a
       // repo switch can't clear the new repo's loading lifecycle or refresh the
@@ -1293,10 +1470,7 @@ export function createRepoWriteActions(
       } catch (e) {
         // Replay any re-sync deferred while this fetch held `loading` (GL-20
         // review). A quiet fetch held nothing, so it has no state to restore.
-        if (!opts?.quiet && get().summary?.path === opPath) {
-          set({ loading: false });
-          flushPendingRefresh(get);
-        }
+        if (!opts?.quiet) releaseLoadingIfCurrent(set, get, owner, true);
         if (toastId !== null) {
           notes.dismiss(toastId);
           useUi.getState().showToast(String(e), "error");
@@ -1312,7 +1486,7 @@ export function createRepoWriteActions(
         // held, so there is nothing to clear or flush.
         return true;
       }
-      if (get().summary?.path !== opPath) {
+      if (!ownerIsCurrent(get, owner)) {
         // Switched repos mid-fetch: the new repo's load owns `loading` now.
         // The fetch itself succeeded, so resolve the toast — but without a
         // count, which would be read from the wrong repo's branches.
@@ -1324,13 +1498,15 @@ export function createRepoWriteActions(
         });
         return true;
       }
-      set({ loading: false });
+      releaseLoadingIfCurrent(set, get, owner);
       // Fetch succeeded — refresh (best-effort) so the count reflects new refs,
       // then report. `refresh` never rejects; it reports success as a boolean
       // (false = deferred/superseded/failed), and a refresh failure can't
       // relabel a successful fetch.
-      const refreshed = await get().refresh();
-      const headAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
+      const refreshed = await refreshIfCurrent(get, owner);
+      const headAfter = refreshed
+        ? get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)
+        : undefined;
       const gained = Math.max(0, (headAfter?.sync?.behind ?? 0) - behindBefore);
       const on = headAfter?.name ?? head?.name;
       if (toastId !== null) notes.update(toastId, {
@@ -1342,7 +1518,7 @@ export function createRepoWriteActions(
         // "No new commits" (vs "up to date") because a fetch that gained nothing
         // doesn't mean the branch is synced — it may still be behind; only pull
         // can claim sync.
-        body: !refreshed || get().summary?.path !== opPath
+        body: !refreshed || !ownerIsCurrent(get, owner)
           ? undefined
           : gained > 0 && on
             ? `↓${gained} new commit${gained === 1 ? "" : "s"} on ${on}`
@@ -1356,9 +1532,9 @@ export function createRepoWriteActions(
     pull: async () => {
       const { summary } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
       // Same ownership rule as `fetch`: post-await reads/refresh are guarded on
       // the repo this pull started on.
-      const opPath = summary.path;
       const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const remote = head?.upstreamRemote ?? "origin";
       const branch = head?.name ?? "HEAD";
@@ -1377,11 +1553,12 @@ export function createRepoWriteActions(
         if (!head?.name || !head.target) {
           throw new Error("Cannot pull: HEAD is not an attached branch with a commit.");
         }
+        const auth = authFor(remote, "fetch");
         transport = trackNet(() => api.pull(
           summary.path,
           head.name,
           head.target!,
-          authFor(remote, "fetch"),
+          auth,
         ));
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -1400,7 +1577,7 @@ export function createRepoWriteActions(
         useUi.getState().showToast(String(e), "error");
         return;
       }
-      if (get().summary?.path !== opPath) {
+      if (!ownerIsCurrent(get, owner)) {
         // Switched repos mid-pull: the pull itself succeeded, so resolve the
         // toast neutrally — the new repo's lifecycle owns refresh/loading, and
         // a tip read here would come from the wrong repo's branches.
@@ -1417,8 +1594,10 @@ export function createRepoWriteActions(
       // report. `refresh` never rejects; it reports success as a boolean
       // (false = deferred/superseded/failed), and a refresh failure can't
       // relabel a successful pull.
-      const refreshed = await get().refresh();
-      const tipAfter = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)?.target ?? null;
+      const refreshed = await refreshIfCurrent(get, owner);
+      const tipAfter = refreshed
+        ? get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)?.target ?? null
+        : null;
       // The pulled-vs-up-to-date distinction relies on the tip observed after
       // refresh; if refresh failed the tip is stale, so report a neutral success
       // rather than risk claiming "Already up to date" on a pull that moved HEAD.
@@ -1435,6 +1614,7 @@ export function createRepoWriteActions(
     push: async () => {
       const { summary, forge } = get();
       if (!summary) return;
+      const owner = captureOwner(summary);
       // Push the captured HEAD branch explicitly to its configured remote and
       // send that remote's account (GL-129). Capture the ahead count *before*
       // the push so the success toast can report how many commits went out.
@@ -1464,11 +1644,12 @@ export function createRepoWriteActions(
         }
         const headName = head.name;
         const headTarget = head.target;
+        const auth = authFor(remote);
         transport = trackNet(() => api.pushBranch(
           summary.path,
           headName,
           headTarget,
-          authFor(remote),
+          auth,
         ));
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -1513,7 +1694,7 @@ export function createRepoWriteActions(
       // Best-effort: `refresh` never rejects (it reports success as a boolean),
       // and the filesystem watcher re-syncs anyway — the toast above doesn't
       // depend on it.
-      await get().refresh();
+      await refreshIfCurrent(get, owner);
     },
   };
 }

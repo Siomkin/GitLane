@@ -8,6 +8,7 @@ import { arrayMove } from "@dnd-kit/helpers";
 import { api } from "@/lib/api";
 import { pruneTabInfo, tabInfoFromStatus } from "@/lib/tabs";
 import { usePulls } from "./pulls";
+import { beginPublishedRepoSession } from "./repoRequests";
 import {
   persistRecents,
   persistSession,
@@ -84,6 +85,7 @@ export function createRepoTabActions(
       if (remaining.length === 0) {
         persistSession([], null);
         persistTabInfo({});
+        beginPublishedRepoSession();
         set({
           openPaths: [],
           tabInfoByPath: {},
@@ -145,6 +147,7 @@ export function createRepoTabActions(
       // Remove the closing repo's data before the replacement load. If opening
       // the neighbour fails, the UI shows a clean error state rather than keeping
       // a summary whose tab no longer exists.
+      beginPublishedRepoSession();
       set({
         openPaths: remaining,
         tabInfoByPath: pruneTabInfo(get().tabInfoByPath, remaining),

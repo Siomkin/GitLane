@@ -10,6 +10,7 @@ import {
 } from "@/store/commitAgentMessages";
 import { useIdentities } from "@/store/identities";
 import { useRepo } from "@/store/repo";
+import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { CommitComposer } from "./CommitComposer";
@@ -87,6 +88,14 @@ const publishedHeadGraph = () => ({
 const openCommitMenu = () => {
   fireEvent.click(screen.getByRole("button", { name: "More commit actions" }));
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 /** Render and expand the composer (it mounts as the collapsed bar). */
 const renderComposer = () => {
@@ -422,6 +431,80 @@ describe("CommitComposer", () => {
     });
 
     expect(useUi.getState().commitMsg).toBe("fix: edited meanwhile");
+  });
+
+  it("keeps a same-text draft created by a reopened same-path repo session", async () => {
+    const commitGate = deferred<boolean>();
+    useRepo.setState({ commitSelected: vi.fn(() => commitGate.promise) });
+    useUi.setState({ commitMsg: "fix: same text" });
+    renderComposer();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+    });
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+    });
+    useUi.getState().setCommitMsg("fix: same text");
+
+    await act(async () => commitGate.resolve(true));
+
+    expect(useUi.getState().commitMsg).toBe("fix: same text");
+  });
+
+  it("does not push after commit when the same path and branch were reopened", async () => {
+    const commitGate = deferred<boolean>();
+    const push = vi.fn(async () => {});
+    useRepo.setState({
+      commitSelected: vi.fn(() => commitGate.promise),
+      push,
+      branches: [localBranch()],
+    });
+    useUi.setState({ commitMsg: "fix: something" });
+    renderComposer();
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit & push" }));
+
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+    });
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+    });
+    await act(async () => commitGate.resolve(true));
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("does not open a PR when a push settles into a reopened same checkout", async () => {
+    const pushGate = deferred<void>();
+    const push = vi.fn(() => pushGate.promise);
+    useRepo.setState({ push, forge: githubForge, branches: [localBranch()] });
+    useUi.setState({ commitMsg: "fix: something" });
+    renderComposer();
+    await screen.findByRole("button", { name: /^Commit identity:/ });
+    openCommitMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Commit, push & open PR…" }));
+    await waitFor(() => expect(push).toHaveBeenCalled());
+
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+    });
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+      branches: [localBranch()],
+    });
+    await act(async () => pushGate.resolve(undefined));
+
+    expect(useUi.getState().createPrOpen).toBe(false);
   });
 
   it("hides the open-PR action for a repo without a PR forge", () => {

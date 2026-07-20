@@ -10,6 +10,7 @@ import { trimTrailingSlash } from "@/lib/worktrees";
 import { usePulls } from "./pulls";
 import {
   beginGraphRequest,
+  beginPublishedRepoSession,
   currentOpenIntent,
   openIntentIsCurrent,
 } from "./repoRequests";
@@ -77,6 +78,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       : [...get().openPaths, path];
     persistSession(openPaths, path);
     const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
+    beginPublishedRepoSession();
     set({
       missingRepo: { path, kind },
       summary: null,
@@ -227,6 +229,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       persistSession(remaining, target);
       persistTabInfo(prunedInfo);
       persistRecents(recents);
+      beginPublishedRepoSession();
       set({
         openPaths: remaining,
         tabInfoByPath: prunedInfo,
@@ -248,6 +251,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     persistSession(remaining, null);
     persistTabInfo(prunedInfo);
     persistRecents(recents);
+    beginPublishedRepoSession();
     set({
       openPaths: remaining,
       tabInfoByPath: prunedInfo,

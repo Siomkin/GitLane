@@ -1712,7 +1712,7 @@ describe("repo store — hand-off overlay lifecycle", () => {
     const move = useRepo
       .getState()
       .moveBranchToWorktree("feature", "/repo-feature", "/repo", true);
-    useRepo.setState({ openPaths: [], summary: null });
+    await useRepo.getState().closeRepo("/repo");
     slowMove.resolve("Moved feature to repo");
 
     await expect(move).resolves.toBe("Moved feature to repo");
