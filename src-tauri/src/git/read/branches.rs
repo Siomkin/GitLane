@@ -47,11 +47,11 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
             if name.ends_with("/HEAD") {
                 continue; // skip the remote's symbolic HEAD pointer
             }
-            let target = branch
-                .get()
-                .peel_to_commit()
-                .ok()
-                .map(|c| c.id().to_string());
+            // One peel serves both the tip oid and its committer time (the
+            // "last updated" proxy the navigator sorts by).
+            let tip = branch.get().peel_to_commit().ok();
+            let target = tip.as_ref().map(|c| c.id().to_string());
+            let tip_time = tip.as_ref().map(|c| c.time().seconds());
             let configured_upstream = configured_upstream(&repo, &name);
             let upstream_branch = branch.upstream().ok();
             let resolved_upstream = upstream_branch
@@ -91,6 +91,7 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 name,
                 kind: label.to_string(),
                 target,
+                tip_time,
                 is_head: branch.is_head(),
                 upstream,
                 remote,
@@ -185,5 +186,68 @@ fn branch_sync_state(
         upstream,
         ahead,
         behind,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::branches;
+    use git2::{Oid, Repository, Signature, Time};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    struct TempRepo(PathBuf);
+    impl TempRepo {
+        fn new(tag: &str) -> Self {
+            static SEQ: AtomicU32 = AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("gitlane-branches-{tag}-{}-{n}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempRepo(dir)
+        }
+        fn str_path(&self) -> &str {
+            self.0.to_str().unwrap()
+        }
+    }
+    impl Drop for TempRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn commit_at(repo: &Repository, update_ref: &str, message: &str, secs: i64) -> Oid {
+        let blob = repo.blob(message.as_bytes()).unwrap();
+        let mut builder = repo.treebuilder(None).unwrap();
+        builder
+            .insert(format!("{message}.txt"), blob, 0o100644)
+            .unwrap();
+        let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+        let sig = Signature::new("GitLane", "gitlane@example.test", &Time::new(secs, 0)).unwrap();
+        repo.commit(Some(update_ref), &sig, &sig, message, &tree, &[])
+            .unwrap()
+    }
+
+    /// The navigator orders branches by this field, so each branch must report
+    /// its *own* tip time rather than the repo's newest commit.
+    #[test]
+    fn reports_each_branch_tip_committer_time() {
+        let dir = TempRepo::new("tip-time");
+        let repo = Repository::init(dir.0.as_path()).unwrap();
+        commit_at(&repo, "refs/heads/old", "old", 1_000);
+        commit_at(&repo, "refs/heads/new", "new", 9_000);
+
+        let listed = branches(dir.str_path()).unwrap();
+        let time_of = |name: &str| {
+            listed
+                .iter()
+                .find(|b| b.name == name)
+                .unwrap_or_else(|| panic!("{name} missing"))
+                .tip_time
+        };
+
+        assert_eq!(time_of("old"), Some(1_000));
+        assert_eq!(time_of("new"), Some(9_000));
     }
 }

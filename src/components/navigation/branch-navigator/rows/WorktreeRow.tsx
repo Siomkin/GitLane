@@ -59,7 +59,7 @@ export function WorktreeRow({
     >
       <div className="flex items-center gap-2">
         <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
-        <span data-truncate className="min-w-0 flex-1 truncate">
+        <span data-truncate className="min-w-0 flex-1 truncate font-mono">
           <HighlightMatch text={label} query={query} />
         </span>
         {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
@@ -97,7 +97,7 @@ export function WorktreeRow({
       </div>
       {/* Absolute path as secondary text (+ full path on hover) so sibling
           worktrees that share a branch-less label stay distinguishable. */}
-      <div className="truncate pl-[1.375rem] text-[11px] font-normal text-neutral-400" title={wt.path}>
+      <div className="truncate pl-[1.375rem] font-mono text-[11px] font-normal text-neutral-400" title={wt.path}>
         {wt.path}
       </div>
     </div>

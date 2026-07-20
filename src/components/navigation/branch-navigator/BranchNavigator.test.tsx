@@ -60,7 +60,14 @@ beforeEach(() => {
     commitFiles: [],
     revealTarget: null,
   });
-  useUi.setState({ filter: "", navOpen: true, stackedReview: null });
+  useUi.setState({
+    filter: "",
+    navOpen: true,
+    stackedReview: null,
+    pinnedNavRefsByRepo: {},
+    createBranchOpen: false,
+    createBranchName: null,
+  });
   useNotifications.setState({ toasts: [] });
 });
 
@@ -109,12 +116,111 @@ describe("BranchNavigator", () => {
     expect(screen.getByText("feature/search")).toBeInTheDocument();
   });
 
-  it("shows a 'No matches' hint and hides rows when nothing matches", () => {
+  it("shows the empty state and hides rows when nothing matches", () => {
     useUi.setState({ filter: "zzz-nope" });
     render(<BranchNavigator />);
-    expect(screen.getByText("No matches")).toBeInTheDocument();
+    expect(screen.getByText("No ref matches", { exact: false, selector: "p" })).toBeInTheDocument();
     expect(screen.queryByText("main")).not.toBeInTheDocument();
     expect(screen.queryByText("feature/search")).not.toBeInTheDocument();
+  });
+
+  it("mounts only a window of rows for a ref-heavy repo", () => {
+    // The point of virtualizing: a repo with thousands of refs must not put
+    // thousands of rows in the DOM. Opening the navigator on one cost ~1.4s
+    // before this (profiling recorded in useNavigatorSections.ts).
+    useRepo.setState({
+      branches: Array.from({ length: 2000 }, (_, i) => branch(`feature/topic-${i}`, "local")),
+    });
+    render(<BranchNavigator />);
+
+    const rows = screen.getAllByRole("button", { name: /^(Reveal|Current) local / });
+    expect(rows.length).toBeGreaterThan(0);
+    // A 392px viewport of 32px rows plus overscan — nowhere near 2000.
+    expect(rows.length).toBeLessThan(40);
+    // The sidebar still counts every branch, not just the mounted ones.
+    expect(screen.getByRole("button", { name: /^Branches/ })).toHaveTextContent("2000");
+  });
+
+  it("keeps the scroll extent sized for every row, not just the mounted ones", () => {
+    useRepo.setState({
+      branches: Array.from({ length: 500 }, (_, i) => branch(`feature/topic-${i}`, "local")),
+    });
+    const { container } = render(<BranchNavigator />);
+
+    // Spacer heights stand in for the unmounted rows, so the scrollbar behaves
+    // as if the whole list were present. The spacers plus the rows actually
+    // mounted must account for the full extent: 500 rows at 32px + a 28px header.
+    const scroller = container.querySelector(".overflow-auto")!;
+    const spacers = Array.from(scroller.children).filter(
+      (el) => el instanceof HTMLElement && el.style.height !== "",
+    ) as HTMLElement[];
+    const spacerHeight = spacers.reduce((sum, el) => sum + parseFloat(el.style.height), 0);
+    const fullExtent = 500 * 32 + 28;
+    // Only the mounted window (~20 rows) is real height; everything else is
+    // spacer, so the spacers alone account for the bulk of the list.
+    expect(spacerHeight).toBeGreaterThan(fullExtent - 40 * 32);
+    expect(spacerHeight).toBeLessThanOrEqual(fullExtent);
+  });
+
+  it("names an empty category without doubling its plural", () => {
+    // The repo has branches but no tags, so the Tags category is empty while the
+    // navigator is not: the copy must read "No tags yet", never "No tagss yet".
+    useRepo.setState({ graph: { ...graph, commits: [{ ...tagged, refs: [] }] } });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Tags/ }));
+
+    expect(screen.getByText("No tags yet")).toBeInTheDocument();
+  });
+
+  it("offers to create a branch named after an unmatched query, prefilled", () => {
+    useUi.setState({ filter: "feat/new-thing" });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Create branch/ }));
+
+    // Hands off to the existing create-branch dialog (branches from HEAD) with
+    // the query as the proposed name; the popup closes under it.
+    expect(useUi.getState().createBranchOpen).toBe(true);
+    expect(useUi.getState().createBranchStart).toBeNull();
+    expect(useUi.getState().createBranchName).toBe("feat/new-thing");
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("shows the match count beside the search box while filtering", () => {
+    useUi.setState({ filter: "feature" });
+    render(<BranchNavigator />);
+    expect(screen.getByText("1 match")).toBeInTheDocument();
+  });
+
+  it("switches category from the sidebar, clearing the search, and shows that kind only", () => {
+    useUi.setState({ filter: "feature" });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Tags/ }));
+
+    expect(useUi.getState().filter).toBe("");
+    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
+    expect(screen.queryByText("main")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Filter tags")).toBeInTheDocument();
+  });
+
+  it("sorts a pinned branch above unpinned ones with a separator, current first", () => {
+    useRepo.setState({
+      branches: [
+        branch("alpha", "local"),
+        branch("main", "local"),
+        branch("zulu", "local"),
+      ],
+    });
+    useUi.setState({ pinnedNavRefsByRepo: { "/r": { "local|zulu": true } } });
+    render(<BranchNavigator />);
+
+    const rows = screen
+      .getAllByRole("button", { name: /^(Current|Reveal) local / })
+      .map((el) => el.getAttribute("aria-label"));
+    expect(rows).toEqual(["Current local main", "Reveal local zulu", "Reveal local alpha"]);
+    expect(screen.getByRole("separator")).toBeInTheDocument();
   });
 
   it("shows worktrees with their path, flags the open one, and reveals a linked one's tip on click", () => {

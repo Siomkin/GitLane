@@ -371,6 +371,10 @@ pub struct BranchInfo {
     /// "local" | "remote".
     pub kind: String,
     pub target: Option<String>,
+    /// Committer time (epoch seconds) of the branch's tip commit. Git records
+    /// no branch *creation* time, so this is the proxy for "last updated" that
+    /// the navigator orders branches by. `None` when the tip can't be peeled.
+    pub tip_time: Option<i64>,
     pub is_head: bool,
     /// Upstream branch name, if any (local branches only).
     pub upstream: Option<String>,

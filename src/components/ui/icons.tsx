@@ -509,6 +509,37 @@ export function TagIcon(props: IconProps) {
   );
 }
 
+export function PinIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M12 17v5M9 10.8V4h6v6.8l2 2.2H7z" />
+    </IconBase>
+  );
+}
+
+export function PinFilledIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1" {...props}>
+      <path d="M12 17v5" strokeWidth="1.7" />
+      <path d="M9 10.8V4h6v6.8l2 2.2H7z" fill="currentColor" />
+    </IconBase>
+  );
+}
+
+/** Three list lines with leading dots — the navigator's "All" category. */
+export function ListIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <line x1="8" y1="6" x2="20" y2="6" />
+      <line x1="8" y1="12" x2="20" y2="12" />
+      <line x1="8" y1="18" x2="20" y2="18" />
+      <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
+    </IconBase>
+  );
+}
+
 export function CommentIcon(props: IconProps) {
   return (
     <IconBase {...props}>

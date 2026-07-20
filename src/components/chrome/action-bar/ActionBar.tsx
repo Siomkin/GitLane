@@ -41,15 +41,23 @@ export const ActionBar = () => {
     openPr,
     providerState,
     navOpen,
+    navOverlayBlocking,
   } = m;
 
-  // The 280px dropdown is anchored under the branch button; dismiss it on
-  // outside click / Escape.
-  const wrapRef = useRef<HTMLDivElement>(null);
-  useDismiss(navOpen, m.closeNav, wrapRef);
+  // The 560px dropdown is anchored under the branch button. Escape and any
+  // press outside dismiss it, where "outside" means outside the trigger+panel
+  // wrapper — scoping this ref to the whole toolbar instead would count presses
+  // on neighbouring toolbar controls as inside and leave the popup open. The
+  // trigger stays inside the ref so its own click toggles rather than being
+  // dismissed and immediately reopened.
+  // Dismissal stands down while a menu raised from a navigator row is open, so
+  // the press that closes that menu doesn't also collapse the navigator behind
+  // it — the same suspension SettingsModal applies for nested overlays.
+  const navRef = useRef<HTMLDivElement>(null);
+  useDismiss(navOpen && !navOverlayBlocking, m.closeNav, navRef);
 
   return (
-    <div ref={wrapRef} className="relative z-40 flex-none">
+    <div className="relative z-40 flex-none">
       <div className="flex h-12 -translate-y-px items-center gap-2 px-3.5">
         <div className="flex h-8 flex-none items-center rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
           <SegTab
@@ -70,9 +78,11 @@ export const ActionBar = () => {
           />
         </div>
 
-        <div className="relative">
+        <div ref={navRef} className="relative">
           <button type="button"
             onClick={m.toggleNav}
+            aria-haspopup="dialog"
+            aria-expanded={navOpen}
             title={`Branches, worktrees & stashes. ${currentSync.title}`}
             className="flex h-8 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
           >
@@ -109,7 +119,7 @@ export const ActionBar = () => {
           </button>
 
           {navOpen && (
-            <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[280px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)] dark:border-white/10 dark:bg-neutral-800">
+            <div className="absolute left-0 top-[calc(100%+6px)] z-50 w-[560px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)] dark:border-white/10 dark:bg-neutral-800">
               <BranchNavigator />
             </div>
           )}

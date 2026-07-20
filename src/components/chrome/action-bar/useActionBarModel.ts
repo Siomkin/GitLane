@@ -43,6 +43,10 @@ export interface ActionBarModel {
   providerState: ProviderState | null;
   accountsError: string | null;
   navOpen: boolean;
+  /** An overlay raised *from* the navigator — a row's right-click menu, or a
+   * dialog one of those menus went on to open — is up, so the navigator must
+   * suspend its own dismissal. See the ActionBar. */
+  navOverlayBlocking: boolean;
   terminalVisible: boolean;
   // Commands
   selectTab: (tab: LeftTab) => void;
@@ -84,6 +88,25 @@ export function useActionBarModel(): ActionBarModel {
   const openRecovery = useUi((state) => state.openRecovery);
   const terminalVisible = useUi((state) => state.terminalView !== "hidden");
   const navOpen = useUi((state) => state.navOpen);
+  // These all render as App-level siblings outside the toolbar's wrapper, so
+  // without this the one dismissing press would tear down the navigator under
+  // the layer it was meant to close. The dialogs matter as much as the menus:
+  // `requestConfirm` and friends clear the menu but leave the navigator open,
+  // and the navigator's Escape handler runs in the capture phase and stops
+  // propagation — so an unsuspended navigator swallows Escape from a confirm
+  // that listens on window's bubble phase, closing the wrong layer.
+  const navOverlayBlocking = useUi(
+    (state) =>
+      state.contextMenu !== null ||
+      state.tagMenu !== null ||
+      state.stashMenu !== null ||
+      state.worktreeMenu !== null ||
+      state.actionMenu !== null ||
+      state.confirm !== null ||
+      state.prompt !== null ||
+      state.removeDetached !== null ||
+      state.createBranchOpen,
+  );
   const toggleNav = useUi((state) => state.toggleNav);
   const openNav = useUi((state) => state.openNav);
   const closeNav = useUi((state) => state.closeNav);
@@ -244,6 +267,7 @@ export function useActionBarModel(): ActionBarModel {
     providerState,
     accountsError,
     navOpen,
+    navOverlayBlocking,
     terminalVisible,
     selectTab,
     toggleNav,

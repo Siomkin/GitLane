@@ -292,6 +292,13 @@ export interface BranchInfo {
   name: string;
   kind: BranchKind;
   target: string | null;
+  /** Committer time (epoch seconds) of the branch tip. Git stores no branch
+   * creation time, so this stands in for "last updated" — what the navigator
+   * orders branches and remotes by. `null` when the tip can't be resolved.
+   * Optional here to match its siblings (`upstreamRemote`, `sync`), which are
+   * also always-serialized Rust `Option`s — fixtures stay terse, and consumers
+   * treat a missing value the same as `null`. */
+  tipTime?: number | null;
   isHead: boolean;
   upstream: string | null;
   /** For a remote branch, the remote it belongs to (resolved by the backend

@@ -229,11 +229,19 @@ graph spans the width); in **PRs** mode it's `navigation/LeftPanel | center work
 
 The branch/worktree/stash navigator is **not a persistent pane** — it lives in
 `navigation/branch-navigator/` (split by concern: `refs.ts` pure helpers,
-`useNavigatorSections` view-model hook, `useRowActions` row-behaviour hooks, `rows.tsx`
-presentational rows, `BranchNavigator.tsx` container), shown in a narrow 280px dropdown
-anchored under the "Checked out" trigger (transient `navOpen` state in `ui.ts`). Picking
-a branch/remote/tag/worktree navigates the graph to its tip (`revealCommit`). The PR list
-is rendered in PRs mode.
+`pinning.ts` pure pin ordering, `navItems.ts` the flat item model the list is virtualized
+over, `useNavigatorSections` view-model hook, `useRowActions` row-behaviour hooks, `rows/`
+presentational rows, `CategorySidebar`/`NavEmptyState`, and the `BranchNavigator.tsx`
+container), shown in a 560px two-pane dropdown anchored under
+the "Checked out" trigger (transient `navOpen` state in `ui.ts`): a category rail (All /
+Branches / Remotes / Worktrees / Tags / Stashes with counts) beside the matching list,
+grouped under headers in "All". Picking a branch/remote/tag/worktree navigates the graph
+to its tip (`revealCommit`). Branches and remotes order by `tipTime` (the tip commit's
+committer time — git records no branch creation time) with the checked-out branch and
+pinned rows above; pins persist per repo in `ui.ts`'s `pinnedNavRefsByRepo`. Like the
+history view, the list pane is virtualized (`@tanstack/react-virtual`) — but over mixed
+row heights, so `navItems.ts` flattens headers, separators and rows into one sequence with
+a declared height each. The PR list is rendered in PRs mode.
 
 The center pane swaps by active tab/state between feature workspaces under
 `src/features/`:
