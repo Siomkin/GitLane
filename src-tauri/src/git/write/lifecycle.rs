@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use super::operands::{ensure_http_url_has_no_password, ensure_operand, ensure_safe_leaf};
+use super::operands::{ensure_operand, ensure_safe_leaf, ensure_url_has_no_credentials};
 use crate::git::transport_auth::TransportCredential;
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
@@ -208,7 +208,7 @@ fn validated_clone_url(url: &str) -> Result<&str, String> {
     if url.is_empty() {
         return Err("Enter a repository URL to clone.".to_string());
     }
-    ensure_http_url_has_no_password(url)?;
+    ensure_url_has_no_credentials(url)?;
     Ok(url)
 }
 

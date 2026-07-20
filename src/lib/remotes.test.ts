@@ -4,10 +4,54 @@ import {
   credentialScopePath,
   detectRemoteUrl,
   forgeAuthProviderFor,
+  httpUrlHasPassword,
+  isSecretlikeUsername,
   isValidRemoteName,
   transportProviderForRemoteProvider,
   validateRemoteUrl,
 } from "./remotes";
+
+describe("httpUrlHasPassword", () => {
+  it("rejects an explicit password half on every persisted scheme", () => {
+    // git writes ssh:// and git:// into .git/config verbatim, so a password is
+    // just as exposed there as over https.
+    for (const url of [
+      "https://alice:hunter2@example.com/team/repo.git",
+      "http://alice:hunter2@example.com/team/repo.git",
+      "ssh://alice:hunter2@example.com/team/repo.git",
+      "git://alice:hunter2@example.com/team/repo.git",
+    ]) {
+      expect(httpUrlHasPassword(url), url).toBe(true);
+      expect(detectRemoteUrl(url).valid, url).toBe(false);
+    }
+  });
+
+  it("rejects a token parked in the username slot", () => {
+    // GitHub and GitLab both accept https://<token>@host — the "username" is
+    // the credential, and it would otherwise reach .git/config and clone argv.
+    for (const url of [
+      "https://ghp_AbCdEf0123456789@github.com/o/r.git",
+      "https://github_pat_11ABC0000_aaaa@github.com/o/r.git",
+      "https://glpat-XxYyZz123456@gitlab.com/g/r.git",
+    ]) {
+      expect(httpUrlHasPassword(url), url).toBe(true);
+      expect(detectRemoteUrl(url).valid, url).toBe(false);
+    }
+  });
+
+  it("keeps username-only account selectors valid", () => {
+    // Usernames are how per-remote auth picks an account; the OAuth sentinels
+    // are not secrets. Over-redacting here would break a real feature.
+    for (const user of ["alice", "oauth2", "x-token-auth", "git"]) {
+      expect(isSecretlikeUsername(user), user).toBe(false);
+      expect(httpUrlHasPassword(`https://${user}@github.com/o/r.git`), user).toBe(false);
+    }
+    expect(detectRemoteUrl("https://alice@github.com/o/r.git")).toMatchObject({
+      valid: true,
+      user: "alice",
+    });
+  });
+});
 
 describe("detectRemoteUrl", () => {
   it("strips https userinfo and ports so the host matches account hosts (GL-129)", () => {

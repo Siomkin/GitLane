@@ -334,7 +334,16 @@ fn validate_repository_authority(
                     account_host: account.host.clone(),
                 });
             }
-            account.host.clone()
+            // An explicit port on the HTTPS remote *is* the API port, and the
+            // account ref may legitimately lack one (gh cannot express a port
+            // at all), so the remote's authority wins when it has one. A
+            // portless remote keeps the account's authority, which is where a
+            // self-hosted GitLab account ref carries its own port.
+            if authority_port(&authority).is_some() {
+                authority
+            } else {
+                account.host.clone()
+            }
         }
         Some(forge::RemoteApiAuthority::TransportHost(host)) => {
             if !authority_hostname(&account.host).eq_ignore_ascii_case(&host) {
@@ -359,8 +368,31 @@ fn validate_repository_authority(
     Ok(repository)
 }
 
+/// Compare two API authorities. Hostnames must always match; ports are compared
+/// only when *both* sides carry one.
+///
+/// An exact port-inclusive match cannot work: `gh` rejects any hostname
+/// containing a port (`gh auth login --hostname host:8443` → "invalid
+/// hostname"), so no gh account can ever carry one, and forge detection reports
+/// portless hosts too. Requiring equality would make a GHES/GitLab repo whose
+/// HTTPS remote has an explicit port a permanent `HostMismatch` whose remedy —
+/// "choose an account for the same host" — is impossible to perform. Two
+/// *explicitly different* ports are still different authorities and are
+/// rejected.
 fn authorities_match(a: &str, b: &str) -> bool {
-    a.eq_ignore_ascii_case(b)
+    if !authority_hostname(a).eq_ignore_ascii_case(authority_hostname(b)) {
+        return false;
+    }
+    match (authority_port(a), authority_port(b)) {
+        (Some(left), Some(right)) => left == right,
+        _ => true,
+    }
+}
+
+/// The explicit numeric port of an authority, if it carries one.
+fn authority_port(authority: &str) -> Option<&str> {
+    let host = authority_hostname(authority);
+    (host.len() != authority.len()).then(|| &authority[host.len() + 1..])
 }
 
 fn authority_hostname(authority: &str) -> &str {
@@ -495,20 +527,46 @@ mod tests {
     }
 
     #[test]
-    fn http_authorities_match_exactly_including_port() {
+    fn http_authorities_match_by_host_and_only_compare_explicit_ports() {
         assert!(authorities_match("ghe.example.test", "GHE.EXAMPLE.TEST"));
         assert!(authorities_match(
             "ghe.example.test:8443",
             "GHE.EXAMPLE.TEST:8443"
         ));
+        // Two explicit, different ports remain different authorities.
         assert!(!authorities_match(
             "ghe.example.test:8443",
             "ghe.example.test:9443"
         ));
-        assert!(!authorities_match(
+        assert!(!authorities_match("ghe.example.test", "other.example.test"));
+        // `gh` cannot store a ported hostname, so a portless account ref must
+        // still match a ported remote — otherwise self-hosted installs on a
+        // custom port are permanently unusable with no remedy available.
+        assert!(authorities_match(
             "ghe.example.test",
             "ghe.example.test:8443"
         ));
+        assert!(authorities_match(
+            "ghe.example.test:8443",
+            "ghe.example.test"
+        ));
+    }
+
+    #[test]
+    fn ported_remote_keeps_its_api_port_against_a_portless_account() {
+        let repo = TempRepo::init(
+            "ghes-port-portless-account",
+            "https://ghe.example.test:8443/octo/app.git",
+        );
+        let selected = account("ghe.example.test");
+
+        let (_, ctx) = GithubService::default()
+            .context(repo.path(), Some(&selected))
+            .expect("a portless account ref must serve its ported remote");
+        assert_eq!(
+            ctx.repository.host, "ghe.example.test:8443",
+            "the remote's explicit HTTPS port is the API port and must survive validation",
+        );
     }
 
     #[test]

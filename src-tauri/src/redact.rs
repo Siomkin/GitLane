@@ -53,6 +53,14 @@ pub fn redact_secrets(text: &str) -> String {
                         out.push_str("***");
                         out.push_str(host);
                     }
+                    // A username-only URL is normally an account selector, not a
+                    // secret — but `https://<token>@host/…` is a widely scripted
+                    // shape that both GitHub and GitLab accept, and there the
+                    // "username" *is* the credential.
+                    None if is_secretlike_username(userinfo) => {
+                        out.push_str("***");
+                        out.push_str(host);
+                    }
                     None => out.push_str(authority), // username only — not a secret
                 }
             }
@@ -62,6 +70,58 @@ pub fn redact_secrets(text: &str) -> String {
         cursor = scheme_sep + 3 + end;
     }
     out
+}
+
+/// Provider token prefixes that identify a credential placed in a URL's
+/// username slot. Both GitHub and GitLab accept `https://<token>@host/…`, so
+/// these must never be treated as an account selector.
+const TOKEN_USERNAME_PREFIXES: &[&str] = &[
+    // GitHub: personal access, OAuth, user-to-server, server-to-server, refresh.
+    "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "ghr_",
+    "github_pat_",
+    // GitLab: PAT, pipeline trigger, deploy, runner, OAuth/incoming mail, agent.
+    "glpat-",
+    "glptt-",
+    "gldt-",
+    "glrt-",
+    "glsoat-",
+    "glimt-",
+    "glagent-",
+    "glcbt-",
+    // Atlassian/Bitbucket app passwords and API tokens.
+    "ATBB",
+    "ATCTT",
+];
+
+/// Whether a URL's username slot actually holds a credential.
+///
+/// Deliberately conservative: usernames are how GitLane's per-remote auth
+/// selects an account, so a false positive degrades a real feature. Known
+/// provider token prefixes are matched exactly; beyond those, only strings that
+/// are implausibly long *and* shaped like opaque key material qualify. The
+/// OAuth sentinel usernames (`oauth2`, `x-token-auth`) are not secrets and stay
+/// visible.
+pub fn is_secretlike_username(user: &str) -> bool {
+    if TOKEN_USERNAME_PREFIXES
+        .iter()
+        .any(|prefix| user.starts_with(prefix))
+    {
+        return true;
+    }
+    // Generic high-entropy fallback for providers not in the list above. Real
+    // forge usernames are short and rarely mix cases and digits; 32+ characters
+    // of opaque token alphabet is not a person's handle.
+    user.len() >= 32
+        && user
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        && user.bytes().any(|b| b.is_ascii_digit())
+        && user.bytes().any(|b| b.is_ascii_uppercase())
+        && user.bytes().any(|b| b.is_ascii_lowercase())
 }
 
 /// Where a URL authority ends inside free-form log text — the path separator or
@@ -102,6 +162,42 @@ mod tests {
             redact_secrets("remote: https://alice:p@ss@example.com/o/r"),
             "remote: https://alice:***@example.com/o/r"
         );
+    }
+
+    #[test]
+    fn redacts_a_token_in_the_username_slot() {
+        // GitHub and GitLab both accept token-as-username; the "username" here
+        // is the credential, not an account selector.
+        assert_eq!(
+            redact_secrets(
+                "fatal: Authentication failed for 'https://ghp_AbCdEf0123@github.com/o/r.git'"
+            ),
+            "fatal: Authentication failed for 'https://***@github.com/o/r.git'"
+        );
+        assert_eq!(
+            redact_secrets("https://glpat-XxYyZz123456@gitlab.com/g/r.git"),
+            "https://***@gitlab.com/g/r.git"
+        );
+        assert_eq!(
+            redact_secrets("https://github_pat_11ABC0000_aaaaaaaaaa@github.com/o/r.git"),
+            "https://***@github.com/o/r.git"
+        );
+    }
+
+    #[test]
+    fn keeps_account_selector_usernames_visible() {
+        // These are how per-remote auth picks an account — redacting them would
+        // break a real feature, so the predicate must stay conservative.
+        for user in [
+            "alice",
+            "oauth2",
+            "x-token-auth",
+            "git",
+            "my-long-ish-handle",
+        ] {
+            let url = format!("https://{user}@github.com/o/r.git");
+            assert_eq!(redact_secrets(&url), url, "{user} must stay visible");
+        }
     }
 
     #[test]

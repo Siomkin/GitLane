@@ -288,6 +288,15 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
 /// bare transport hostname because an SSH port is not an HTTPS API port.
 pub fn github_project(path: &str) -> Option<(String, String)> {
     let repo = Repository::discover(path).ok()?;
+    // `gh repo set-default` is the user's explicit answer to "which repository
+    // do this checkout's pull requests belong to". It matters most in a fork
+    // clone, where `origin` is the fork but PRs live on the parent: picking the
+    // first GitHub remote would silently retarget every PR read *and write* to
+    // the fork. gh records the choice in git config, so honour it without
+    // spawning gh.
+    if let Some(resolved) = gh_resolved_project(&repo) {
+        return Some(resolved);
+    }
     let default = default_remote_name(&repo);
     let mut unknown = None;
     for name in ordered_remote_names(&repo, default.as_deref()) {
@@ -313,6 +322,45 @@ pub fn github_project(path: &str) -> Option<(String, String)> {
         }
     }
     unknown
+}
+
+/// The repository `gh repo set-default` bound this checkout to, if any.
+///
+/// gh writes `remote.<name>.gh-resolved` into the repo's git config with either
+/// `base` (that remote *is* the base repository) or an explicit `OWNER/REPO`
+/// (the base lives elsewhere — the fork-clone case). The API authority always
+/// comes from the annotated remote's own URL, so a self-hosted host and port
+/// survive either form.
+fn gh_resolved_project(repo: &Repository) -> Option<(String, String)> {
+    let config = repo.config().ok()?;
+    for name in ordered_remote_names(repo, default_remote_name(repo).as_deref()) {
+        let Ok(resolved) = config.get_string(&format!("remote.{name}.gh-resolved")) else {
+            continue;
+        };
+        let resolved = resolved.trim();
+        if resolved.is_empty() {
+            continue;
+        }
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        let Ok(url) = remote.url() else {
+            continue;
+        };
+        let host = remote_host(url)?;
+        let authority = api_host_for(url).unwrap_or(host);
+        // `base` means this remote's own project; anything else is an explicit
+        // `OWNER/REPO` pointing at a different repository on the same host.
+        let project = if resolved.eq_ignore_ascii_case("base") {
+            remote_path(url)?
+        } else if resolved.contains('/') {
+            resolved.to_string()
+        } else {
+            continue;
+        };
+        return Some((authority, project));
+    }
+    None
 }
 
 /// Find the remote authority that produced a provider-resolved repository.
@@ -664,5 +712,66 @@ mod tests {
         // so the provider reports a clear resolution error rather than a bad path.
         let bare = TempRepo::init("bb-bare", "https://bitbucket.org/loneslug.git");
         assert_eq!(bitbucket_repo(bare.0.to_str().unwrap()), None);
+    }
+
+    /// Add a second remote and record a `gh repo set-default` choice on it.
+    fn set_default_remote(dir: &std::path::Path, name: &str, url: &str, resolved: &str) {
+        let repo = Repository::open(dir).unwrap();
+        repo.remote(name, url).unwrap();
+        repo.config()
+            .unwrap()
+            .set_str(&format!("remote.{name}.gh-resolved"), resolved)
+            .unwrap();
+    }
+
+    #[test]
+    fn fork_clone_targets_the_gh_set_default_base_repository() {
+        // The classic fork layout: `origin` is your fork, `upstream` is the
+        // parent where the pull requests actually live.
+        let fork = TempRepo::init("gh-fork", "https://github.com/me/app.git");
+        set_default_remote(
+            &fork.0,
+            "upstream",
+            "https://github.com/other/app.git",
+            "base",
+        );
+        assert_eq!(
+            github_project(fork.0.to_str().unwrap()),
+            Some(("github.com".into(), "other/app".into())),
+            "PRs must target the set-default base repo, not the fork",
+        );
+    }
+
+    #[test]
+    fn gh_resolved_owner_repo_overrides_the_annotated_remote_path() {
+        // gh also records an explicit OWNER/REPO on the remote it resolved
+        // through; the authority still comes from that remote's own URL.
+        let repo = TempRepo::init(
+            "gh-resolved-explicit",
+            "https://ghe.example.test:8443/me/app.git",
+        );
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            opened
+                .config()
+                .unwrap()
+                .set_str("remote.origin.gh-resolved", "other/app")
+                .unwrap();
+        }
+        assert_eq!(
+            github_project(repo.0.to_str().unwrap()),
+            Some(("ghe.example.test:8443".into(), "other/app".into())),
+        );
+    }
+
+    #[test]
+    fn without_gh_resolved_the_default_remote_still_wins() {
+        // No set-default recorded → unchanged behaviour.
+        let repo = TempRepo::init("gh-no-resolved", "https://github.com/me/app.git");
+        set_default_remote(&repo.0, "upstream", "https://github.com/other/app.git", "");
+        assert_eq!(
+            github_project(repo.0.to_str().unwrap()),
+            Some(("github.com".into(), "me/app".into())),
+        );
     }
 }

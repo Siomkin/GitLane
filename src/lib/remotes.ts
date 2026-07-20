@@ -113,20 +113,61 @@ export const credentialScopePath = (info: RemoteUrlInfo): string | null =>
 const hasCredentialProtocolSeparator = (value: string | null): boolean =>
   value !== null && /[\r\n\0]/.test(value);
 
-/** Whether an HTTP(S) URL carries password-bearing userinfo. The final `@`
- * terminates userinfo so malformed inputs with an unescaped `@` in the password
- * are still rejected. Username-only selectors remain valid. */
+/** Provider token prefixes that mark a URL's username slot as holding a
+ * credential rather than an account selector. Mirrors
+ * `TOKEN_USERNAME_PREFIXES` in `src-tauri/src/redact.rs`. */
+const TOKEN_USERNAME_PREFIXES = [
+  "ghp_",
+  "gho_",
+  "ghu_",
+  "ghs_",
+  "ghr_",
+  "github_pat_",
+  "glpat-",
+  "glptt-",
+  "gldt-",
+  "glrt-",
+  "glsoat-",
+  "glimt-",
+  "glagent-",
+  "glcbt-",
+  "ATBB",
+  "ATCTT",
+];
+
+/** Whether a URL's username slot actually holds a credential. Conservative by
+ * design — usernames are how per-remote auth selects an account, and the OAuth
+ * sentinels (`oauth2`, `x-token-auth`) are not secrets. Mirrors
+ * `is_secretlike_username` in `src-tauri/src/redact.rs`. */
+export const isSecretlikeUsername = (user: string): boolean =>
+  TOKEN_USERNAME_PREFIXES.some((prefix) => user.startsWith(prefix)) ||
+  (user.length >= 32 &&
+    /^[A-Za-z0-9_-]+$/.test(user) &&
+    /\d/.test(user) &&
+    /[A-Z]/.test(user) &&
+    /[a-z]/.test(user));
+
+/** Whether a URL's userinfo carries a credential — an explicit `user:password`
+ * half, or a token parked in the username slot (`https://<token>@host/…`, which
+ * GitHub and GitLab both accept). The final `@` terminates userinfo so
+ * malformed inputs with an unescaped `@` in the password are still rejected.
+ * Username-only account selectors remain valid.
+ *
+ * Applies to `ssh://` and `git://` as well as HTTP(S): git will persist any of
+ * them verbatim into `.git/config`, so a password is just as exposed there. */
 export const httpUrlHasPassword = (raw: string): boolean => {
   const url = (raw ?? "").trim();
   const schemeEnd = url.indexOf("://");
   if (schemeEnd < 0) return false;
   const scheme = url.slice(0, schemeEnd).toLowerCase();
-  if (scheme !== "http" && scheme !== "https") return false;
+  if (!["http", "https", "ssh", "git"].includes(scheme)) return false;
   const rest = url.slice(schemeEnd + 3);
   const authorityEnd = rest.search(/[/?#]/);
   const authority = rest.slice(0, authorityEnd < 0 ? rest.length : authorityEnd);
   const at = authority.lastIndexOf("@");
-  return at >= 0 && authority.slice(0, at).includes(":");
+  if (at < 0) return false;
+  const userinfo = authority.slice(0, at);
+  return userinfo.includes(":") || isSecretlikeUsername(userinfo);
 };
 
 /** Parse an https or SSH/scp git remote URL into host + path + provider. */

@@ -158,12 +158,30 @@ pub fn set_repo_identity(
     tag_gpg_sign: Option<bool>,
 ) -> Result<String, String> {
     let _guard = lock_identity_config()?;
-    replace_value(repo, "user.name", name)?;
-    replace_value(repo, "user.email", email)?;
-    apply_optional(repo, "user.signingkey", signing_key)?;
-    apply_optional(repo, "gpg.format", gpg_format)?;
-    apply_optional(repo, "commit.gpgsign", bool_arg(gpg_sign))?;
-    apply_optional(repo, "tag.gpgsign", bool_arg(tag_gpg_sign))?;
+    // No ordering makes a six-command tuple atomic: each `git config` takes
+    // `.git/config.lock` on its own, so a competing git process can fail any
+    // step. A half-applied switch from card A to card B is dangerous in one
+    // specific way — B's name/email paired with A's still-installed signing key
+    // — so on any failure retire the signing tuple before surfacing the error.
+    // That degrades a torn apply to *unsigned*, never to *signed as someone
+    // else*, matching the guarantee `clear_repo_identity` makes.
+    let applied = (|| {
+        replace_value(repo, "user.name", name)?;
+        replace_value(repo, "user.email", email)?;
+        apply_optional(repo, "user.signingkey", signing_key)?;
+        apply_optional(repo, "gpg.format", gpg_format)?;
+        apply_optional(repo, "commit.gpgsign", bool_arg(gpg_sign))?;
+        apply_optional(repo, "tag.gpgsign", bool_arg(tag_gpg_sign))
+    })();
+    if let Err(error) = applied {
+        // Best effort: the config is already failing writes, so a failure here
+        // cannot be repaired automatically. The original cause is what the user
+        // needs to see.
+        for key in ["commit.gpgsign", "tag.gpgsign", "user.signingkey"] {
+            let _ = unset_value(repo, key);
+        }
+        return Err(error);
+    }
     Ok(format!("Identity set to {name} <{email}>"))
 }
 
@@ -204,13 +222,23 @@ fn apply_optional(repo: &str, key: &str, value: Option<&str>) -> Result<(), Stri
 /// idempotent success; real config/permission failures are surfaced.
 pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
     let _guard = lock_identity_config()?;
+    // Order matters. Each `git config` call takes `.git/config.lock`
+    // independently, so an external git process (or a permission error) can
+    // fail the tuple partway through. `repo_identity` reports "no identity"
+    // whenever name/email are absent *regardless of leftover signing keys*, so
+    // a clear that dropped name/email first but failed before the signing keys
+    // would leave the repo silently committing as the global identity while
+    // still signing with the removed card's key — the exact wrong-key outcome
+    // the pinned-signing checks exist to prevent. Retiring the signing tuple
+    // first makes any torn clear fail toward *unsigned*, never toward
+    // *signed as someone else*.
     for key in [
-        "user.name",
-        "user.email",
-        "user.signingkey",
-        "gpg.format",
         "commit.gpgsign",
         "tag.gpgsign",
+        "user.signingkey",
+        "gpg.format",
+        "user.name",
+        "user.email",
     ] {
         unset_value(repo, key)?;
     }

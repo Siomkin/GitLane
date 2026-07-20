@@ -25,7 +25,7 @@ pub(super) fn ensure_opt(value: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-/// Refuse HTTP(S) URLs whose userinfo contains a password delimiter. Git accepts
+/// Refuse URLs whose userinfo carries a credential. Git accepts
 /// `https://user:password@host/...`, but persisting or invoking that form would
 /// put the secret in `.git/config`, process output, and IPC payloads. A username-
 /// only selector (`https://user@host/...`) remains valid because GitLane uses it
@@ -34,19 +34,32 @@ pub(super) fn ensure_opt(value: Option<&str>) -> Result<(), String> {
 /// The final `@` terminates userinfo. Using it instead of the first one also
 /// rejects malformed-but-commonly-accepted inputs with an unescaped `@` inside
 /// the password, without ever copying the secret into the returned error.
-pub(super) fn ensure_http_url_has_no_password(url: &str) -> Result<(), String> {
+///
+/// `ssh://` and `git://` are checked alongside HTTP(S): git persists any of them
+/// into `.git/config` verbatim, so a password is equally exposed there. Scp-form
+/// (`git@host:path`) has no `://` and no password slot, so it is left alone.
+pub(super) fn ensure_url_has_no_credentials(url: &str) -> Result<(), String> {
     let trimmed = url.trim();
     let Some((scheme, rest)) = trimmed.split_once("://") else {
         return Ok(());
     };
-    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+    if !["http", "https", "ssh", "git"]
+        .iter()
+        .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
+    {
         return Ok(());
     }
 
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
     if let Some(at) = authority.rfind('@') {
-        if authority[..at].contains(':') {
+        let userinfo = &authority[..at];
+        // A colon means an explicit password half. A colon-*less* userinfo is
+        // normally an account selector, but `https://<token>@host/…` puts the
+        // credential in that same slot — accepting it would persist the token
+        // into `.git/config` and place it in `git clone` argv, where any local
+        // process can read it out of `ps`.
+        if userinfo.contains(':') || crate::redact::is_secretlike_username(userinfo) {
             return Err(
                 "Remote URLs must not contain a password or token. Save credentials with a Git helper or GitLane account instead."
                     .to_string(),
@@ -75,7 +88,7 @@ pub(super) fn ensure_safe_leaf(name: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_http_url_has_no_password, ensure_safe_leaf};
+    use super::{ensure_safe_leaf, ensure_url_has_no_credentials};
 
     #[test]
     fn safe_leaf_rejects_dot_segments_and_separators() {
@@ -87,30 +100,40 @@ mod tests {
     }
 
     #[test]
-    fn http_url_password_guard_keeps_username_only_selectors() {
+    fn credential_guard_keeps_username_only_selectors() {
         for allowed in [
             "https://alice@example.com/team/repo.git",
             "http://alice@example.com:8080/team/repo.git",
             "https://user%3Aalias@example.com/team/repo.git",
             "https://[::1]:8443/team/repo.git",
-            "ssh://git:secret@example.com/team/repo.git",
+            "ssh://git@example.com/team/repo.git",
             "git@example.com:team/repo.git",
+            // OAuth sentinel usernames are selectors, not secrets.
+            "https://oauth2@gitlab.example.com/team/repo.git",
+            "https://x-token-auth@bitbucket.org/team/repo.git",
         ] {
             assert!(
-                ensure_http_url_has_no_password(allowed).is_ok(),
+                ensure_url_has_no_credentials(allowed).is_ok(),
                 "{allowed:?} should be allowed"
             );
         }
     }
 
     #[test]
-    fn http_url_password_guard_rejects_secrets_without_echoing_them() {
+    fn credential_guard_rejects_secrets_without_echoing_them() {
         for rejected in [
             "https://alice:secret@example.com/team/repo.git",
             "http://alice:@example.com/team/repo.git",
             "HTTPS://token:p@ss@example.com/team/repo.git",
+            // git persists these verbatim too, so the password is just as exposed.
+            "ssh://git:secret@example.com/team/repo.git",
+            "git://alice:secret@example.com/team/repo.git",
+            // Token parked in the username slot — accepted by GitHub/GitLab, and
+            // would otherwise reach `.git/config` and `git clone` argv.
+            "https://ghp_AbCdEf0123456789@github.com/o/r.git",
+            "https://glpat-XxYyZz123456@gitlab.com/g/r.git",
         ] {
-            let error = ensure_http_url_has_no_password(rejected).unwrap_err();
+            let error = ensure_url_has_no_credentials(rejected).unwrap_err();
             assert!(
                 error.contains("must not contain"),
                 "unexpected error: {error}"

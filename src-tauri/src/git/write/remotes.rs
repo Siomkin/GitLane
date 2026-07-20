@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::cli::{run_git, run_git_env_redacted, run_git_env_stable_diagnostics_redacted};
-use super::operands::{ensure_http_url_has_no_password, ensure_operand};
+use super::operands::{ensure_operand, ensure_url_has_no_credentials};
 use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
 
@@ -53,7 +53,7 @@ fn env_refs(env: &[(String, String)]) -> Vec<(&str, &str)> {
 pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_operand(url)?;
-    ensure_http_url_has_no_password(url)?;
+    ensure_url_has_no_credentials(url)?;
     run_git(repo, &["remote", "add", name, url])
 }
 
@@ -65,7 +65,7 @@ pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
 pub fn set_remote_url(repo: &str, name: &str, url: &str) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_operand(url)?;
-    ensure_http_url_has_no_password(url)?;
+    ensure_url_has_no_credentials(url)?;
     let fetch = run_git(repo, &["remote", "set-url", name, url])?;
     if has_push_url(repo, name) {
         let push = run_git(repo, &["remote", "set-url", "--push", name, url])?;
