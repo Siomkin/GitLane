@@ -121,9 +121,20 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
             <button
               type="button"
               onClick={run.start}
-              className="mt-5 h-10 w-full rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110"
+              disabled={run.busy}
+              className={cn(
+                "mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110",
+                run.busy && "cursor-wait opacity-70 hover:brightness-100",
+              )}
             >
-              Sign in to {forge.name}
+              {run.busy ? (
+                <>
+                  <InlineSpinner className="h-4 w-4" />
+                  Finishing previous sign-in…
+                </>
+              ) : (
+                <>Sign in to {forge.name}</>
+              )}
             </button>
           </>
         )}
@@ -246,9 +257,20 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
               <button
                 type="button"
                 onClick={run.start}
-                className="h-10 flex-1 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110"
+                disabled={run.busy}
+                className={cn(
+                  "inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110",
+                  run.busy && "cursor-wait opacity-70 hover:brightness-100",
+                )}
               >
-                Try again
+                {run.busy ? (
+                  <>
+                    <InlineSpinner className="h-4 w-4" />
+                    Finishing…
+                  </>
+                ) : (
+                  "Try again"
+                )}
               </button>
             </div>
           </>
