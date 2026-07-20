@@ -14,9 +14,13 @@ static IDENTITY_WRITE_LOCK: Mutex<()> = Mutex::new(());
 /// through the git subprocess so a profile apply cannot interleave between
 /// those two steps.
 pub(super) fn lock_identity_config() -> Result<MutexGuard<'static, ()>, String> {
-    IDENTITY_WRITE_LOCK
+    // The protected value carries no recoverable state: Git config is the
+    // source of truth and each caller re-reads it after locking. Preserve
+    // serialization after a panic instead of bricking identity-aware writes
+    // for the rest of the process lifetime.
+    Ok(IDENTITY_WRITE_LOCK
         .lock()
-        .map_err(|_| "identity configuration lock is unavailable".to_string())
+        .unwrap_or_else(std::sync::PoisonError::into_inner))
 }
 
 #[derive(Clone, Copy)]
@@ -259,4 +263,21 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
         unset_value(repo, key)?;
     }
     Ok("Identity cleared".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lock_identity_config;
+
+    #[test]
+    fn identity_lock_recovers_after_poisoning() {
+        let panic = std::thread::spawn(|| {
+            let _guard = lock_identity_config().expect("identity lock should be available");
+            panic!("poison the identity lock");
+        })
+        .join();
+
+        assert!(panic.is_err());
+        assert!(lock_identity_config().is_ok());
+    }
 }
