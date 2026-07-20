@@ -129,10 +129,10 @@ export function BranchRow({
             <RowGlyph kind={kind} current={isCurrent} />
           )}
         </span>
-        <span data-truncate className="min-w-0 flex-1 truncate font-mono">
+        <span data-truncate className="min-w-0 flex-1 truncate">
           <HighlightMatch text={name} query={query} />
         </span>
-        {isCurrent && <span className="shrink-0 font-mono text-[10.5px] text-neutral-400">current</span>}
+        {isCurrent && <span className="shrink-0 text-[10.5px] text-neutral-400">current</span>}
         {syncLabel && (
           <span
             title={syncTitle(sync)}
