@@ -327,6 +327,22 @@ pub struct WorktreeInfo {
     pub locked: bool,
 }
 
+/// Uncommitted work sitting in a linked worktree, probed on demand before a
+/// destructive removal so the confirm can name what a forced remove would
+/// discard. Deliberately *not* part of `WorktreeInfo`: that list is rebuilt on
+/// every watcher-driven refresh, and a `git status` per worktree on that hot
+/// path costs far more than the `worktree list` it would ride along with.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeDirtyState {
+    /// Changed tracked files (modified, added, deleted, renamed) — work that a
+    /// forced removal destroys with no reflog and no stash to recover from.
+    pub modified: u32,
+    /// Untracked files. Counted with `--untracked-files=all` (not the default
+    /// collapsed-directory form) so the confirm quotes a real file count.
+    pub untracked: u32,
+}
+
 /// A stash entry for the sidebar's STASHES group.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

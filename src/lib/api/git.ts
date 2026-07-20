@@ -371,6 +371,15 @@ export interface WorktreeInfo {
   locked?: boolean;
 }
 
+/** Uncommitted work in a linked worktree, probed on demand before a removal
+ * (GL-296). Not part of `WorktreeInfo` — see `api.worktreeDirtyState`. */
+export interface WorktreeDirtyState {
+  /** Changed tracked files — destroyed by a forced remove, with no reflog. */
+  modified: number;
+  /** Untracked files, counted individually (`--untracked-files=all`). */
+  untracked: number;
+}
+
 export interface StashEntry {
   index: number;
   message: string;
@@ -932,6 +941,13 @@ export const gitApi = {
   /** Remove a linked worktree. `force` drops git's dirty/locked safety check. */
   removeWorktree: (path: string, worktreePath: string, force = false) =>
     invoke<string>("remove_worktree", { path, worktreePath, force }),
+
+  /** Uncommitted work sitting in a linked worktree, for the removal confirm to
+   * quote before a forced remove discards it (GL-296). Probed on demand — it is
+   * deliberately not a field on `WorktreeInfo`, whose list refreshes on every
+   * filesystem event. */
+  worktreeDirtyState: (worktreePath: string) =>
+    invoke<WorktreeDirtyState>("worktree_dirty_state", { worktreePath }),
 
   /** Delete `branch` on `remote` (`git push <remote> --delete`), optionally as
    * the repo's bound auth. `branch` is the short name (no `remote/` prefix). */

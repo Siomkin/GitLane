@@ -69,6 +69,25 @@ pub(super) fn run_git_allow_exit_codes(
     finish(output.status, &stdout, &stderr, args)
 }
 
+/// Run git and return **stdout only, untrimmed**, for callers that parse
+/// machine-readable output line by line.
+///
+/// [`run_git`] concatenates stdout and stderr and trims the result, which is
+/// right for the human-facing callers but corrupts porcelain parsing twice
+/// over: a warning git wrote to stderr becomes an extra "record", and trimming
+/// eats the leading space of the first one (`" M f.txt"` → `"M f.txt"`), which
+/// carries meaning — the first status column is the staged half. Failures still
+/// go through [`finish`], so error text and redaction are unchanged.
+pub(super) fn run_git_stdout(repo: &str, args: &[&str]) -> Result<String, String> {
+    let output = git_output(repo, args, &[])?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    finish(output.status, &stdout, &stderr, args)
+}
+
 /// Run a command whose trailing operands are repository paths, forcing Git to
 /// treat every pathspec byte literally. `--` only ends option parsing; without
 /// this global mode a real filename such as `:(glob)*` can still expand to
