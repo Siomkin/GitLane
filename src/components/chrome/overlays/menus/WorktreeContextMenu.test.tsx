@@ -13,9 +13,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const realOpenWorktree = useRepo.getState().openWorktree;
 const realRemoveWorktree = useRepo.getState().removeWorktree;
+const realCreateBranchInWorktree = useRepo.getState().createBranchInWorktree;
 
-const mainWt = { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false };
-const featWt = { name: "repo-feat", path: "/work/repo-feat", branch: "feat", isMain: false, bare: false, prunable: false, locked: false };
+const mainWt = { name: "repo", path: "/work/repo", branch: "main", head: "1111111", isMain: true, bare: false, prunable: false, locked: false };
+const featWt = { name: "repo-feat", path: "/work/repo-feat", branch: "feat", head: "2222222", isMain: false, bare: false, prunable: false, locked: false };
+const detachedWt = { ...featWt, name: "repo-detached", path: "/work/repo-detached", branch: null, head: "abc1234def5678900000000000000000000000ff" };
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -26,8 +28,9 @@ beforeEach(() => {
     worktrees: [mainWt, featWt],
     openWorktree: realOpenWorktree,
     removeWorktree: realRemoveWorktree,
+    createBranchInWorktree: realCreateBranchInWorktree,
   });
-  useUi.setState({ worktreeMenu: null, confirm: null, handoff: null });
+  useUi.setState({ worktreeMenu: null, confirm: null, prompt: null, handoff: null });
 });
 
 const openMenuFor = (wt: { path: string; name: string; isMain: boolean }) =>
@@ -63,6 +66,40 @@ describe("WorktreeContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Hand off branch to…" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Create branch…" })).not.toBeInTheDocument();
+  });
+
+  it("creates and checks out a branch in an inactive detached worktree", async () => {
+    const createBranchInWorktree = vi.fn().mockResolvedValue("created");
+    useRepo.setState({
+      worktrees: [mainWt, detachedWt],
+      createBranchInWorktree,
+    });
+    openMenuFor(detachedWt);
+    render(<WorktreeContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Create branch…" }));
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.title).toBe("Create branch in repo-detached");
+    expect(prompt?.message).toContain("abc1234");
+    expect(prompt?.confirmLabel).toBe("Create branch");
+    expect(prompt?.validate?.("bad branch")).not.toBeNull();
+    prompt!.onSubmit("topic/from-detached");
+
+    await waitFor(() =>
+      expect(createBranchInWorktree).toHaveBeenCalledWith(
+        "/work/repo-detached",
+        "topic/from-detached",
+        detachedWt.head,
+      ),
+    );
+  });
+
+  it("does not offer branch creation for an unusable detached worktree", () => {
+    useRepo.setState({ worktrees: [mainWt, { ...detachedWt, prunable: true }] });
+    openMenuFor(detachedWt);
+    render(<WorktreeContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: "Create branch…" })).not.toBeInTheDocument();
   });
 
   it("open-in-new-tab passes the deliberate side-by-side flag (GL-110)", () => {

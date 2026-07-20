@@ -132,6 +132,19 @@ async fn add_worktree(
 }
 
 #[tauri::command]
+async fn create_branch_in_worktree(
+    path: String,
+    worktree_path: String,
+    name: String,
+    expected_oid: String,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::create_branch_in_worktree(&path, &worktree_path, &name, &expected_oid)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn move_branch_to_worktree(
     app: tauri::AppHandle,
     path: String,
@@ -1921,6 +1934,7 @@ pub fn run() {
             list_branches,
             list_worktrees,
             add_worktree,
+            create_branch_in_worktree,
             move_branch_to_worktree,
             delete_branch_with_worktree,
             checkout,

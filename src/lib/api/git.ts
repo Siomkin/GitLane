@@ -687,6 +687,21 @@ export const gitApi = {
       newBranch: newBranch ?? null,
     }),
 
+  /** Create a branch at the captured HEAD of an existing detached worktree and
+   * check it out in that same worktree. */
+  createBranchInWorktree: (
+    path: string,
+    worktreePath: string,
+    name: string,
+    expectedOid: string,
+  ) =>
+    invoke<string>("create_branch_in_worktree", {
+      path,
+      worktreePath,
+      name,
+      expectedOid,
+    }),
+
   /** Hand `branch` off from one worktree to another (GL-74): detach the source,
    * check the branch out in `toWorktreePath`, and — when `carry` — bring the
    * source's uncommitted changes along in a stash. The destination's own

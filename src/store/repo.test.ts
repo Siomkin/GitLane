@@ -814,6 +814,21 @@ describe("repo store — captured write subjects", () => {
     });
   });
 
+  it("attaches a branch to the captured detached worktree HEAD", async () => {
+    await useRepo.getState().createBranchInWorktree(
+      "/repo-detached",
+      "topic/detached",
+      "3333333",
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("create_branch_in_worktree", {
+      path: "/repo",
+      worktreePath: "/repo-detached",
+      name: "topic/detached",
+      expectedOid: "3333333",
+    });
+  });
+
   it("keeps a remote-tracking start point as a ref so upstream setup survives", async () => {
     useRepo.setState({
       branches: [

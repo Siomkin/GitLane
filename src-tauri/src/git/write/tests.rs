@@ -11,18 +11,18 @@ use super::{
     abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
     branch_push_remote, checkout, checkout_remote_branch, cherry_pick, cherry_pick_many,
     cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
-    continue_operation, create_annotated_tag, create_branch, create_patch, create_tag,
-    delete_branch_with_worktree, delete_remote_branch, delete_remote_tag, discard_all,
-    discard_file, fast_forward, fast_forward_branch, fast_forward_branch_at, fetch, force_push,
-    head_push_remote, mark_conflict_resolved, merge, merge_into, move_branch_to_worktree,
-    preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_force_push,
-    preview_reset, publish_branch, publish_remote, pull, pull_branch, push_branch, rebase,
-    reconflict_file, reflog_entries, remove_worktree, reset, reset_branch, resolve_conflict_file,
-    revert, revert_many, revert_onto, set_remote_url, set_remote_username, set_repo_identity,
-    set_upstream, skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
-    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktree_dirty_state,
-    worktrees, write_repo_file,
+    continue_operation, create_annotated_tag, create_branch, create_branch_in_worktree,
+    create_patch, create_tag, delete_branch_with_worktree, delete_remote_branch, delete_remote_tag,
+    discard_all, discard_file, fast_forward, fast_forward_branch, fast_forward_branch_at, fetch,
+    force_push, head_push_remote, mark_conflict_resolved, merge, merge_into,
+    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
+    preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
+    pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
+    reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
+    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
+    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
+    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
+    unstage_file, unstage_files, worktree_dirty_state, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
@@ -2971,6 +2971,69 @@ fn worktrees_reports_each_entry_head_oid() {
     let main_entry = list.iter().find(|w| w.is_main).expect("main entry");
     assert!(main_entry.branch.is_some(), "main should be on a branch");
     assert_eq!(main_entry.head.as_deref(), Some(head.as_str()));
+}
+
+#[test]
+fn create_branch_in_worktree_attaches_the_detached_worktree() {
+    let (repo, linked) = repo_with_feature_worktree("wt-create-branch");
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach"]);
+    let expected_oid = rev_parse(&repo, "feature");
+
+    let message = create_branch_in_worktree(
+        repo.path(),
+        linked.as_str(),
+        "topic/from-detached",
+        &expected_oid,
+    )
+    .expect("create and check out branch in detached worktree");
+
+    assert!(message.contains("topic/from-detached"), "got: {message}");
+    let branch = git_at(&linked.0, &["branch", "--show-current"]);
+    assert_eq!(
+        String::from_utf8_lossy(&branch.stdout).trim(),
+        "topic/from-detached"
+    );
+    assert_eq!(rev_parse(&repo, "topic/from-detached"), expected_oid);
+}
+
+#[test]
+fn create_branch_in_worktree_rejects_a_stale_detached_head() {
+    let (repo, linked) = repo_with_feature_worktree("wt-create-branch-stale");
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach"]);
+    let expected_oid = rev_parse(&repo, "feature");
+
+    std::fs::write(repo.0.join("later.txt"), "later\n").unwrap();
+    repo.git_ok(&["add", "later.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "later"]);
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach", "main"]);
+
+    let err = create_branch_in_worktree(repo.path(), linked.as_str(), "topic/stale", &expected_oid)
+        .expect_err("stale menu HEAD should be rejected");
+    assert!(err.contains("HEAD changed"), "got: {err}");
+    assert!(
+        !git_at(
+            &repo.0,
+            &["show-ref", "--verify", "--quiet", "refs/heads/topic/stale"]
+        )
+        .status
+        .success(),
+        "the rejected action must not create the branch"
+    );
+}
+
+#[test]
+fn create_branch_in_worktree_rejects_an_attached_worktree() {
+    let (repo, linked) = repo_with_feature_worktree("wt-create-branch-attached");
+    let expected_oid = rev_parse(&repo, "feature");
+
+    let err = create_branch_in_worktree(
+        repo.path(),
+        linked.as_str(),
+        "topic/already-attached",
+        &expected_oid,
+    )
+    .expect_err("branch-holding worktree should be rejected");
+    assert!(err.contains("no longer detached"), "got: {err}");
 }
 
 #[cfg(unix)]

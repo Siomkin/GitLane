@@ -134,6 +134,49 @@ pub fn add_worktree(
     }
 }
 
+/// Create and check out a branch in an existing detached worktree.
+///
+/// The menu captures the worktree's path and HEAD oid. Re-read the registered
+/// worktree state and validate its detached HEAD before mutating so an external
+/// checkout cannot redirect this action to a different commit or branch.
+/// `git switch -c` performs the ref creation and checkout as one logical git
+/// operation, avoiding a branch-created-but-not-checked-out partial result.
+pub fn create_branch_in_worktree(
+    repo: &str,
+    worktree_path: &str,
+    name: &str,
+    expected_oid: &str,
+) -> Result<String, String> {
+    ensure_operand(worktree_path)?;
+    ensure_operand(name)?;
+    ensure_operand(expected_oid)?;
+
+    let worktree = worktrees(repo)?
+        .into_iter()
+        .find(|worktree| same_path(&worktree.path, worktree_path))
+        .ok_or_else(|| {
+            format!("No worktree is registered at {worktree_path} anymore. Refresh and try again.")
+        })?;
+    if worktree.bare {
+        return Err("A bare repository has no working tree to attach a branch to.".into());
+    }
+    if worktree.prunable {
+        return Err("The worktree's directory is missing. Refresh and try again.".into());
+    }
+    if let Some(branch) = worktree.branch {
+        return Err(format!(
+            "The worktree is no longer detached; it has {branch} checked out. Refresh and try again."
+        ));
+    }
+    if worktree.head.as_deref() != Some(expected_oid) {
+        return Err("The worktree's HEAD changed. Refresh and try again.".into());
+    }
+
+    super::head::ensure_expected_head(worktree_path, None, Some(expected_oid))?;
+    run_git(worktree_path, &["switch", "-c", name])?;
+    Ok(format!("Created {name} in worktree {}", worktree.name))
+}
+
 /// Remove a linked worktree (`git worktree remove <path>`). `force` adds
 /// `--force`, dropping git's dirty-worktree safety check. A *locked* worktree
 /// needs a **second** `--force` (git refuses `-f` alone: "cannot remove a locked

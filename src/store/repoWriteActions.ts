@@ -210,6 +210,7 @@ export function createRepoWriteActions(
   | "checkoutBranch"
   | "checkoutRemoteBranch"
   | "createBranchAt"
+  | "createBranchInWorktree"
   | "removeBranch"
   | "renameBranchTo"
   | "setUpstreamFor"
@@ -461,6 +462,11 @@ export function createRepoWriteActions(
         await api.checkout(summary.path, name, false);
         return `Created ${name}`;
       }),
+
+    createBranchInWorktree: (worktreePath, name, expectedOid) =>
+      runOp(get, (summary) =>
+        api.createBranchInWorktree(summary.path, worktreePath, name, expectedOid),
+      ),
 
     removeBranch: (name, force = false) =>
       runOp(get, async (summary) => {

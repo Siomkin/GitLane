@@ -1,26 +1,30 @@
 import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { validateBranchName } from "@/lib/refName";
 import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
-import { CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
+import { BranchIcon, CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
+import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { useRemoveWorktree } from "./useRemoveWorktree";
 
 /** Right-click menu on a navigator worktree row. The row's left-click reveals
  * the worktree's tip in the graph (consistent with the branch/tag rows); this
  * menu is where *switching* to the worktree lives — "Open worktree" / "Open in
- * new tab" — alongside copy path and remove. The active worktree only offers
- * "Copy path" (it's already open; nothing to open/remove). */
+ * new tab" — alongside branch attachment, hand-off, copy path, and remove. The
+ * active worktree omits only the actions that would reopen or remove itself. */
 export function WorktreeContextMenu() {
   const menu = useUi((s) => s.worktreeMenu);
   const close = useUi((s) => s.closeOverlays);
+  const requestPrompt = useUi((s) => s.requestPrompt);
   const openHandoff = useUi((s) => s.openHandoff);
   const showToast = useUi((s) => s.showToast);
   const summary = useRepo((s) => s.summary);
   const worktrees = useRepo((s) => s.worktrees);
   const changes = useRepo((s) => s.changes);
   const openWorktree = useRepo((s) => s.openWorktree);
+  const createBranchInWorktree = useRepo((s) => s.createBranchInWorktree);
   const requestRemoveWorktree = useRemoveWorktree();
+  const run = useBranchOp();
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
@@ -57,6 +61,27 @@ export function WorktreeContextMenu() {
         close();
         void openWorktree(path, { newTab: true }).catch((e) => showToast(String(e), "error"));
       },
+    });
+  }
+  // A detached worktree is useful as an inspection workspace, but users can
+  // promote it in place once they decide to keep working from that commit.
+  // Capture its oid in the prompt callback; the backend revalidates the exact
+  // registered worktree + detached HEAD before `git switch -c` mutates it.
+  if (!wtBranch && wtEntry?.head && !wtEntry.bare && !wtEntry.prunable) {
+    const detachedHead = wtEntry.head;
+    items.push({
+      label: "Create branch…",
+      icon: <BranchIcon className="h-4 w-4 text-[color:var(--accent)]" />,
+      onClick: () =>
+        requestPrompt({
+          title: `Create branch in ${name}`,
+          message: `Create a branch at ${detachedHead.slice(0, 7)} and check it out in this worktree.`,
+          placeholder: "feature/my-branch",
+          confirmLabel: "Create branch",
+          validate: validateBranchName,
+          onSubmit: (branch) =>
+            void run(() => createBranchInWorktree(path, branch, detachedHead)),
+        }),
     });
   }
   // Hand the worktree's branch (and its uncommitted work) off to another

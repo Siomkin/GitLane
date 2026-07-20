@@ -420,6 +420,13 @@ export interface RepoState {
    * safely fast-forwarding it when it already exists. */
   checkoutRemoteBranch: (remote: string, branch: string) => Promise<string>;
   createBranchAt: (name: string, startPoint?: string) => Promise<string>;
+  /** Create `name` at the captured detached HEAD and check it out in that
+   * exact worktree. */
+  createBranchInWorktree: (
+    worktreePath: string,
+    name: string,
+    expectedOid: string,
+  ) => Promise<string>;
   removeBranch: (name: string, force?: boolean) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
