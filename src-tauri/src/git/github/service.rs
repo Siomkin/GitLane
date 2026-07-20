@@ -346,7 +346,9 @@ fn validate_repository_authority(
             }
         }
         Some(forge::RemoteApiAuthority::TransportHost(host)) => {
-            if !forge::authority_hostname(&account.host).eq_ignore_ascii_case(&host) {
+            if !forge::unbracketed_hostname(&account.host)
+                .eq_ignore_ascii_case(forge::unbracketed_hostname(&host))
+            {
                 return Err(GithubError::HostMismatch {
                     repo_host: host,
                     account_host: account.host.clone(),
@@ -380,7 +382,7 @@ fn validate_repository_authority(
 /// *explicitly different* ports are still different authorities and are
 /// rejected.
 fn authorities_match(a: &str, b: &str) -> bool {
-    if !forge::authority_hostname(a).eq_ignore_ascii_case(forge::authority_hostname(b)) {
+    if !forge::unbracketed_hostname(a).eq_ignore_ascii_case(forge::unbracketed_hostname(b)) {
         return false;
     }
     match (authority_port(a), authority_port(b)) {

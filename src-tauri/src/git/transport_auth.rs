@@ -180,22 +180,47 @@ fn validate_credential_authority(host: &str) -> Result<(), String> {
     {
         return Err(format!("Invalid git credential helper host '{host}'."));
     }
-    let (name, port) = match value.rsplit_once(':') {
-        Some((name, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => {
-            (name, Some(port))
+    let invalid = || format!("Invalid git credential helper host '{host}'.");
+
+    // A bracketed IPv6 literal owns every colon inside its brackets, so only a
+    // colon *after* the closing bracket introduces a port. Bare IPv6 stays
+    // rejected on purpose: git keys credentials by the bracketed authority, so
+    // that is the only spelling a helper would ever be asked about.
+    let port = if let Some(rest) = value.strip_prefix('[') {
+        let close = rest.find(']').ok_or_else(invalid)?;
+        let (literal, after) = (&rest[..close], &rest[close + 1..]);
+        if literal.is_empty()
+            || !literal
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() || matches!(c, ':' | '.' | '%' | '-' | '_'))
+        {
+            return Err(invalid());
         }
-        Some(_) => return Err(format!("Invalid git credential helper host '{host}'.")),
-        None => (value, None),
+        match after {
+            "" => None,
+            _ => Some(after.strip_prefix(':').ok_or_else(invalid)?),
+        }
+    } else {
+        let (name, port) = match value.rsplit_once(':') {
+            Some((name, port)) if !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) => {
+                (name, Some(port))
+            }
+            Some(_) => return Err(invalid()),
+            None => (value, None),
+        };
+        if name.is_empty()
+            || !name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        {
+            return Err(invalid());
+        }
+        port
     };
-    if name.is_empty()
-        || !name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
-    {
-        return Err(format!("Invalid git credential helper host '{host}'."));
-    }
-    if port == Some("0") {
-        return Err(format!("Invalid git credential helper host '{host}'."));
+    if let Some(port) = port {
+        if port.is_empty() || port == "0" || !port.chars().all(|c| c.is_ascii_digit()) {
+            return Err(invalid());
+        }
     }
     Ok(())
 }
@@ -425,6 +450,45 @@ mod tests {
         ] {
             let err = credential_for_credential_host(host, &gh_auth(host)).unwrap_err();
             assert!(err.contains("Invalid git credential helper host"), "{err}");
+        }
+    }
+
+    /// A bracketed IPv6 literal owns every colon inside its brackets, so the
+    /// host validation must not read one of them as a port separator. Git keys
+    /// credentials by the bracketed authority, so that is the only spelling a
+    /// helper is ever asked about — the bare form stays rejected deliberately.
+    #[test]
+    fn helper_host_accepts_bracketed_ipv6_authorities() {
+        for host in ["[::1]", "[::1]:8443", "[2001:db8::1]", "[2001:db8::1]:443"] {
+            assert!(
+                credential_for_credential_host(host, &gh_auth(host)).is_ok(),
+                "{host} should be a valid credential helper host",
+            );
+        }
+    }
+
+    #[test]
+    fn helper_host_rejects_malformed_ipv6_authorities() {
+        for host in [
+            "::1",         // bare — git would never key a credential this way
+            "[::1",        // unclosed literal
+            "[]",          // empty literal
+            "[::1]x",      // trailing text where a port separator must be
+            "[::1]:",      // separator with no port
+            "[::1]:0",     // port 0 is not a real port
+            "[::1]:https", // non-numeric port
+            "[evil/path]", // not an address at all
+            // A link-local zone id (RFC 6874 `%25<zone>`) is rejected too: the
+            // literal charset is hex digits and address punctuation, and a zone
+            // name like `eth0` falls outside it. Declining a spelling git would
+            // essentially never key a credential by is the safe direction.
+            "[fe80::1%25eth0]",
+        ] {
+            let err = credential_for_credential_host(host, &gh_auth(host)).unwrap_err();
+            assert!(
+                err.contains("Invalid git credential helper host"),
+                "{host}: {err}",
+            );
         }
     }
 }
