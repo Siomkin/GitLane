@@ -160,11 +160,12 @@ pub fn set_repo_identity(
     let _guard = lock_identity_config()?;
     // No ordering makes a six-command tuple atomic: each `git config` takes
     // `.git/config.lock` on its own, so a competing git process can fail any
-    // step. A half-applied switch from card A to card B is dangerous in one
-    // specific way — B's name/email paired with A's still-installed signing key
-    // — so on any failure retire the signing tuple before surfacing the error.
-    // That degrades a torn apply to *unsigned*, never to *signed as someone
-    // else*, matching the guarantee `clear_repo_identity` makes.
+    // step. A half-applied switch from card A to card B can pair B's name/email
+    // with A's signing key (wrong signer) or B's name with A's email (wrong
+    // author), so snapshot the whole tuple first and roll the *entire* tuple
+    // back on any failure. Rollback restores the prior state rather than
+    // clearing it: a failed save must not silently unpin a working identity.
+    let previous = IDENTITY_KEYS.map(|key| (key, read_local(repo, key)));
     let applied = (|| {
         replace_value(repo, "user.name", name)?;
         replace_value(repo, "user.email", email)?;
@@ -174,15 +175,37 @@ pub fn set_repo_identity(
         apply_optional(repo, "tag.gpgsign", bool_arg(tag_gpg_sign))
     })();
     if let Err(error) = applied {
-        // Best effort: the config is already failing writes, so a failure here
+        // Best effort: config writes are already failing, so a failure here
         // cannot be repaired automatically. The original cause is what the user
-        // needs to see.
-        for key in ["commit.gpgsign", "tag.gpgsign", "user.signingkey"] {
-            let _ = unset_value(repo, key);
+        // needs to see, so rollback errors are deliberately swallowed.
+        for (key, value) in &previous {
+            let _ = match value {
+                Some(value) => replace_value(repo, key, value),
+                None => unset_value(repo, key),
+            };
         }
         return Err(error);
     }
     Ok(format!("Identity set to {name} <{email}>"))
+}
+
+/// Every local config key an identity card owns. Ordered so that a *forward*
+/// walk retires signing before author fields — see `clear_repo_identity`.
+const IDENTITY_KEYS: [&str; 6] = [
+    "commit.gpgsign",
+    "tag.gpgsign",
+    "user.signingkey",
+    "gpg.format",
+    "user.name",
+    "user.email",
+];
+
+/// The current local value of `key`, or `None` when unset. `git config --get`
+/// exits 1 for a missing key, which is a normal answer rather than a failure.
+fn read_local(repo: &str, key: &str) -> Option<String> {
+    let value = run_git_allow_exit_codes(repo, &["config", "--local", "--get", key], &[1]).ok()?;
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 fn bool_arg(value: Option<bool>) -> Option<&'static str> {
@@ -232,14 +255,7 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
     // the pinned-signing checks exist to prevent. Retiring the signing tuple
     // first makes any torn clear fail toward *unsigned*, never toward
     // *signed as someone else*.
-    for key in [
-        "commit.gpgsign",
-        "tag.gpgsign",
-        "user.signingkey",
-        "gpg.format",
-        "user.name",
-        "user.email",
-    ] {
+    for key in IDENTITY_KEYS {
         unset_value(repo, key)?;
     }
     Ok("Identity cleared".into())

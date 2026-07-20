@@ -340,6 +340,19 @@ pub fn github_project(path: &str) -> Option<(String, String)> {
     unknown
 }
 
+/// Whether `value` is exactly `OWNER/REPO` — two non-empty, non-dot-segment
+/// components. `gh_provider` later splits on the first `/`, so an unvalidated
+/// `a/b/c` would silently become the repo name `b/c`.
+fn is_owner_repo(value: &str) -> bool {
+    let mut parts = value.split('/');
+    let (Some(owner), Some(repo), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    [owner, repo]
+        .iter()
+        .all(|part| !part.is_empty() && *part != "." && *part != "..")
+}
+
 /// The repository `gh repo set-default` bound this checkout to, if any.
 ///
 /// gh writes `remote.<name>.gh-resolved` into the repo's git config with either
@@ -363,13 +376,27 @@ fn gh_resolved_project(repo: &Repository) -> Option<(String, String)> {
         let Ok(url) = remote.url() else {
             continue;
         };
-        let host = remote_host(url)?;
+        // `continue`, not `?`: one unparseable annotated remote must not hide a
+        // valid `gh-resolved` on a later one.
+        let Some(host) = remote_host(url) else {
+            continue;
+        };
+        // Only honour the annotation on a remote gh could plausibly own —
+        // GitHub, or an unrecognised host that may be GitHub Enterprise (the
+        // same fallback `github_project` itself uses). A `gh-resolved` key
+        // planted on a GitLab/Bitbucket remote must not redirect PR targeting.
+        if !matches!(classify_host(&host), Some(ForgeKind::GitHub) | None) {
+            continue;
+        }
         let authority = api_host_for(url).unwrap_or(host);
         // `base` means this remote's own project; anything else is an explicit
         // `OWNER/REPO` pointing at a different repository on the same host.
         let project = if resolved.eq_ignore_ascii_case("base") {
-            remote_path(url)?
-        } else if resolved.contains('/') {
+            match remote_path(url) {
+                Some(path) => path,
+                None => continue,
+            }
+        } else if is_owner_repo(resolved) {
             resolved.to_string()
         } else {
             continue;
@@ -838,6 +865,43 @@ mod tests {
             github_project(repo.0.to_str().unwrap()),
             Some(("ghe.example.test:8443".into(), "other/app".into())),
         );
+    }
+
+    #[test]
+    fn gh_resolved_is_ignored_on_a_non_github_remote() {
+        // A `gh-resolved` key planted on a GitLab remote (tampered .git/config)
+        // must not redirect PR targeting away from the real GitHub remote.
+        let repo = TempRepo::init("gh-resolved-gitlab", "https://github.com/me/app.git");
+        set_default_remote(
+            &repo.0,
+            "gl",
+            "https://gitlab.com/attacker/evil.git",
+            "attacker/evil",
+        );
+        assert_eq!(
+            github_project(repo.0.to_str().unwrap()),
+            Some(("github.com".into(), "me/app".into())),
+        );
+    }
+
+    #[test]
+    fn gh_resolved_rejects_malformed_owner_repo_shapes() {
+        for bad in ["a/b/c", "/repo", "owner/", "../evil", "owner/.."] {
+            let repo = TempRepo::init("gh-resolved-bad", "https://github.com/me/app.git");
+            {
+                let opened = Repository::open(&repo.0).unwrap();
+                opened
+                    .config()
+                    .unwrap()
+                    .set_str("remote.origin.gh-resolved", bad)
+                    .unwrap();
+            }
+            assert_eq!(
+                github_project(repo.0.to_str().unwrap()),
+                Some(("github.com".into(), "me/app".into())),
+                "{bad:?} must be ignored, falling back to the remote's own path",
+            );
+        }
     }
 
     #[test]

@@ -36,6 +36,14 @@ export interface RemoteUrlInfo {
   provider: RemoteProvider;
 }
 
+/** Whether a hostname carries `name` as a whole DNS label. Mirrors
+ * `has_host_label` in `src-tauri/src/git/forge.rs` — self-hosted forges are named
+ * after their software (`gitlab.example.com`, `gitlab-ee.corp.test`), so this
+ * cannot anchor to the vendor domain, but a bare substring would classify
+ * `notgitlab.com` as GitLab. */
+const hasHostLabel = (host: string, name: string): boolean =>
+  host.split(".").some((label) => label === name || label.startsWith(`${name}-`));
+
 export const providerForHost = (host: string): RemoteProvider => {
   // Mirrors the backend `forge::classify_host` (same order, same rules) so the
   // frontend and Rust agree on which forge a remote belongs to. GitHub detection
@@ -43,12 +51,17 @@ export const providerForHost = (host: string): RemoteProvider => {
   // (e.g. github.corp.example GHE) isn't github.com, so it must not claim PR
   // support the toolbar would deny. Forgejo is checked before Gitea because
   // Codeberg (a Forgejo instance) has a bespoke host.
+  //
+  // KEEP IN SYNC: any change to `classify_host` must land here too. A drift is
+  // invisible at compile time and shows up as the UI naming one forge while the
+  // backend dispatches another.
   if (host === "github.com" || host.endsWith(".github.com")) return "github";
-  if (host.includes("gitlab")) return "gitlab";
-  if (host.includes("bitbucket")) return "bitbucket";
-  if (host.includes("dev.azure") || host.includes("visualstudio")) return "azure";
-  if (host === "codeberg.org" || host.includes("forgejo")) return "forgejo";
-  if (host.includes("gitea")) return "gitea";
+  if (host === "gitlab.com" || hasHostLabel(host, "gitlab")) return "gitlab";
+  if (host === "bitbucket.org" || hasHostLabel(host, "bitbucket")) return "bitbucket";
+  if (host === "dev.azure.com" || host === "ssh.dev.azure.com" || host.endsWith(".visualstudio.com"))
+    return "azure";
+  if (host === "codeberg.org" || hasHostLabel(host, "forgejo")) return "forgejo";
+  if (hasHostLabel(host, "gitea")) return "gitea";
   return "other";
 };
 
@@ -139,13 +152,25 @@ const TOKEN_USERNAME_PREFIXES = [
  * design — usernames are how per-remote auth selects an account, and the OAuth
  * sentinels (`oauth2`, `x-token-auth`) are not secrets. Mirrors
  * `is_secretlike_username` in `src-tauri/src/redact.rs`. */
-export const isSecretlikeUsername = (user: string): boolean =>
-  TOKEN_USERNAME_PREFIXES.some((prefix) => user.startsWith(prefix)) ||
-  (user.length >= 32 &&
-    /^[A-Za-z0-9_-]+$/.test(user) &&
-    /\d/.test(user) &&
-    /[A-Z]/.test(user) &&
-    /[a-z]/.test(user));
+export const isSecretlikeUsername = (raw: string): boolean => {
+  // Classify the *decoded* userinfo — git percent-decodes it, so `ghp%5FAbCd…`
+  // authenticates as `ghp_AbCd…` while matching no literal prefix and failing
+  // the token-alphabet test below. Malformed escapes decode to themselves.
+  let user = raw;
+  try {
+    user = decodeURIComponent(raw);
+  } catch {
+    user = raw;
+  }
+  return (
+    TOKEN_USERNAME_PREFIXES.some((prefix) => user.startsWith(prefix)) ||
+    (user.length >= 32 &&
+      /^[A-Za-z0-9_-]+$/.test(user) &&
+      /\d/.test(user) &&
+      /[A-Z]/.test(user) &&
+      /[a-z]/.test(user))
+  );
+};
 
 /** Whether a URL's userinfo carries a credential — an explicit `user:password`
  * half, or a token parked in the username slot (`https://<token>@host/…`, which

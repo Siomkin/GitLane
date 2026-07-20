@@ -7,9 +7,32 @@ import {
   httpUrlHasPassword,
   isSecretlikeUsername,
   isValidRemoteName,
+  providerForHost,
   transportProviderForRemoteProvider,
   validateRemoteUrl,
 } from "./remotes";
+
+describe("providerForHost", () => {
+  // Mirrors the Rust `classification_requires_a_whole_host_label` test — these
+  // two implementations must agree or the UI names one forge while the backend
+  // dispatches another.
+  it("classifies by whole host label, not substring", () => {
+    for (const host of ["notgitlab.com", "evil-bitbucket.attacker.test", "mygitea.example.com", "gitlabber.io"]) {
+      expect(providerForHost(host), host).toBe("other");
+    }
+  });
+
+  it("still recognises real and self-hosted forge hosts", () => {
+    expect(providerForHost("github.com")).toBe("github");
+    expect(providerForHost("gitlab.com")).toBe("gitlab");
+    expect(providerForHost("gitlab.example.com")).toBe("gitlab");
+    expect(providerForHost("gitlab-ee.corp.test")).toBe("gitlab");
+    expect(providerForHost("bitbucket.org")).toBe("bitbucket");
+    expect(providerForHost("dev.azure.com")).toBe("azure");
+    expect(providerForHost("codeberg.org")).toBe("forgejo");
+    expect(providerForHost("gitea.company.test")).toBe("gitea");
+  });
+});
 
 describe("httpUrlHasPassword", () => {
   it("rejects an explicit password half on every persisted scheme", () => {
@@ -37,6 +60,15 @@ describe("httpUrlHasPassword", () => {
       expect(httpUrlHasPassword(url), url).toBe(true);
       expect(detectRemoteUrl(url).valid, url).toBe(false);
     }
+  });
+
+  it("rejects a percent-encoded token username", () => {
+    // git percent-decodes userinfo, so ghp%5F… authenticates as ghp_….
+    expect(isSecretlikeUsername("ghp%5FAbCdEf0123456789")).toBe(true);
+    expect(httpUrlHasPassword("https://ghp%5FAbCdEf0123456789@github.com/o/r.git")).toBe(true);
+    // A malformed escape must not throw — decodeURIComponent rejects a lone %.
+    expect(isSecretlikeUsername("alice%")).toBe(false);
+    expect(isSecretlikeUsername("alice%zz")).toBe(false);
   });
 
   it("keeps username-only account selectors valid", () => {
