@@ -33,6 +33,7 @@ describe("commitNodeIdentity", () => {
     ["dependabot[bot]", "person@example.com", "dependabot"],
     ["Deps Updater", "49699333+dependabot[bot]@users.noreply.github.com", "dependabot"],
     ["dependabot-preview[bot]", "support@dependabot.com", "dependabot"],
+    ["Deps Updater", "27856297+dependabot-preview[bot]@users.noreply.github.com", "dependabot"],
   ])("detects %s metadata as %s", (authorName, authorEmail, agentId) => {
     expect(identity(authorName, authorEmail)).toMatchObject({
       kind: "agent",
