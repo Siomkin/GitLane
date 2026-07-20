@@ -27,7 +27,7 @@ export function NavEmptyState({
         {query !== "" ? (
           <>
             No {nouns.one} matches{" "}
-            <span className="font-mono text-neutral-700 dark:text-neutral-200">{query}</span>
+            <span className="text-neutral-700 dark:text-neutral-200">{query}</span>
           </>
         ) : (
           <>No {nouns.many} yet</>
@@ -43,7 +43,7 @@ export function NavEmptyState({
           }}
         >
           <PlusIcon className="h-3.5 w-3.5" strokeWidth="2" />
-          Create branch <span className="font-mono opacity-90">{query}</span>
+          Create branch <span className="opacity-90">{query}</span>
         </button>
       )}
     </div>
