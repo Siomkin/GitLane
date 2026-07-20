@@ -203,6 +203,22 @@ pub fn remote_credential_host_for(
         .find_map(|url| credential_host_for_url(&url))
 }
 
+/// The authority of a URL body (everything after `scheme://`), with userinfo
+/// stripped.
+///
+/// The authority ends at the first `/`, `?`, **or** `#`. Terminating on `/`
+/// alone lets a query or fragment smuggle a different host past every caller:
+/// `https://real.example.test?@github.com/o/r` would parse as `github.com`
+/// while git actually contacts `real.example.test`. Since this feeds the
+/// transport-auth host gate, that differential decides which account's
+/// credential is released.
+fn authority_of(rest: &str) -> Option<&str> {
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    // The final `@` terminates userinfo, matching the redaction and remote-URL
+    // guards elsewhere.
+    rest[..end].rsplit('@').next()
+}
+
 /// The exact credential authority (`host[:port]`) from an HTTPS/SSH/scp remote
 /// URL. Userinfo is stripped; ports are preserved.
 pub fn credential_host_for_url(url: &str) -> Option<String> {
@@ -213,7 +229,7 @@ pub fn credential_host_for_url(url: &str) -> Option<String> {
         .or_else(|| trimmed.strip_prefix("ssh://"))
         .or_else(|| trimmed.strip_prefix("git://"))
     {
-        let authority = rest.split('/').next()?.split('@').next_back()?;
+        let authority = authority_of(rest)?;
         return Some(authority.trim().trim_end_matches('/').to_ascii_lowercase());
     }
 
@@ -505,22 +521,41 @@ fn authority_hostname(authority: &str) -> &str {
     }
 }
 
+/// Whether a hostname carries `name` as a whole DNS label.
+///
+/// Self-hosted forges are named after their software (`gitlab.example.com`,
+/// `gitlab-ee.corp.test`), so detection cannot anchor to the vendor domain the
+/// way `github.com` does. Matching a bare substring is too loose though — it
+/// classifies `notgitlab.com` and `evil-bitbucket.attacker.test` as trusted
+/// forges. Requiring a whole label (optionally with a `name-` prefix, for
+/// `gitlab-ee`) keeps genuine self-hosted installs while rejecting hostnames
+/// that merely contain the word.
+///
+/// A host that legitimately *is* named after the forge (`gitlab.evil.test`) is
+/// still classified as one; hostname shape alone cannot distinguish that, which
+/// is why classification routes providers and error text but never authorises a
+/// credential on its own — that gate is the per-host account binding.
+fn has_host_label(host: &str, name: &str) -> bool {
+    host.split('.')
+        .any(|label| label == name || label.strip_prefix(name).is_some_and(|r| r.starts_with('-')))
+}
+
 fn classify_host(host: &str) -> Option<ForgeKind> {
     let host = normalize_host(host);
     if host == "github.com" || host.ends_with(".github.com") {
         Some(ForgeKind::GitHub)
-    } else if host == "gitlab.com" || host.contains("gitlab") {
+    } else if host == "gitlab.com" || has_host_label(&host, "gitlab") {
         Some(ForgeKind::GitLab)
-    } else if host == "bitbucket.org" || host.contains("bitbucket") {
+    } else if host == "bitbucket.org" || has_host_label(&host, "bitbucket") {
         Some(ForgeKind::Bitbucket)
     } else if host == "dev.azure.com"
         || host == "ssh.dev.azure.com"
         || host.ends_with(".visualstudio.com")
     {
         Some(ForgeKind::AzureDevOps)
-    } else if host == "codeberg.org" || host.contains("forgejo") {
+    } else if host == "codeberg.org" || has_host_label(&host, "forgejo") {
         Some(ForgeKind::Forgejo)
-    } else if host.contains("gitea") {
+    } else if has_host_label(&host, "gitea") {
         Some(ForgeKind::Gitea)
     } else {
         None
@@ -535,7 +570,7 @@ fn remote_host(url: &str) -> Option<String> {
         .or_else(|| trimmed.strip_prefix("ssh://"))
         .or_else(|| trimmed.strip_prefix("git://"))
     {
-        let authority = rest.split('/').next()?.split('@').next_back()?;
+        let authority = authority_of(rest)?;
         return Some(normalize_host(
             authority.split(':').next().unwrap_or(authority),
         ));
@@ -604,6 +639,47 @@ mod tests {
         );
         assert_eq!(classify_host("codeberg.org"), Some(ForgeKind::Forgejo));
         assert_eq!(classify_host("gitea.company.test"), Some(ForgeKind::Gitea));
+        // Self-hosted installs keep working, including a `-suffix` variant.
+        assert_eq!(
+            classify_host("gitlab-ee.corp.test"),
+            Some(ForgeKind::GitLab)
+        );
+    }
+
+    #[test]
+    fn classification_requires_a_whole_host_label() {
+        // A hostname that merely *contains* the forge name is not that forge.
+        for host in [
+            "notgitlab.com",
+            "evil-bitbucket.attacker.test",
+            "mygitea.example.com",
+            "gitlabber.io",
+        ] {
+            assert_eq!(classify_host(host), None, "{host} must not be classified");
+        }
+    }
+
+    #[test]
+    fn authority_parsing_is_not_fooled_by_query_or_fragment() {
+        // Only `/` used to end the authority, so a `?`/`#` could name a
+        // different host than the one git actually contacts — and this parser
+        // decides which account's credential is released.
+        for url in [
+            "https://real.example.test?@github.com/o/r.git",
+            "https://real.example.test#@github.com/o/r.git",
+        ] {
+            assert_eq!(
+                credential_host_for_url(url).as_deref(),
+                Some("real.example.test"),
+                "{url} must resolve to the host git contacts",
+            );
+            assert_eq!(remote_host(url).as_deref(), Some("real.example.test"));
+        }
+        // Userinfo before a genuine path separator still resolves normally.
+        assert_eq!(
+            credential_host_for_url("https://alice@ghe.example.test:8443/o/r.git").as_deref(),
+            Some("ghe.example.test:8443")
+        );
     }
 
     #[test]
