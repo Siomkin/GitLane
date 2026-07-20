@@ -29,12 +29,21 @@ const toneWrap: Record<Tone, string> = {
 /** Icon + headline copy for each store status. `newVersion`/`version` fill the
  * subtitle; the action button is chosen separately below. */
 function presentation(
+  supported: boolean,
   status: UpdateStatus,
   canRetry: boolean,
   version: string,
   newVersion: string | null,
   error: string | null,
 ): { tone: Tone; Icon: ComponentType<{ className?: string }>; spin?: boolean; title: string; sub: string } {
+  if (!supported) {
+    return {
+      tone: "accent",
+      Icon: RefreshIcon,
+      title: "Source build",
+      sub: "Pull the latest source and rebuild GitLane to update.",
+    };
+  }
   switch (status) {
     case "checking":
       return { tone: "accent", Icon: RefreshIcon, spin: true, title: "Checking for updates…", sub: "Contacting the update server." };
@@ -65,6 +74,7 @@ const accentButton = cn(
 );
 
 export const UpdateSection = () => {
+  const supported = useUpdates((s) => s.supported);
   const status = useUpdates((s) => s.status);
   const version = useUpdates((s) => s.version);
   const newVersion = useUpdates((s) => s.newVersion);
@@ -83,7 +93,7 @@ export const UpdateSection = () => {
   }, [loadVersion]);
 
   const canRetry = status === "error" && update !== null;
-  const { tone, Icon, spin, title, sub } = presentation(status, canRetry, version, newVersion, error);
+  const { tone, Icon, spin, title, sub } = presentation(supported, status, canRetry, version, newVersion, error);
 
   // Narrow on contentLength (no `!`) so the percent stays type-safe.
   const pct =
@@ -105,7 +115,7 @@ export const UpdateSection = () => {
           <div className="text-[14.5px] font-semibold text-neutral-900 dark:text-white">{title}</div>
           <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">{sub}</div>
         </div>
-        {status === "ready" ? (
+        {!supported ? null : status === "ready" ? (
           <button type="button" className={accentButton} onClick={() => void restart()}>
             Relaunch
           </button>

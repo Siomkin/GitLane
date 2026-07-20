@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish, e.g. v0.1.0. Defaults to the app version."
-        required: false
+        description: "Release tag to publish, e.g. v0.1.0. Required: the tag alone carries the version (the tree's manifests are not bumped per release)."
+        required: true
         type: string
       manifest_only:
         description: "Only repoint the rolling beta manifest to an existing public release."
@@ -90,8 +90,11 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             RELEASE_TAG="$GITHUB_REF_NAME"
           else
-            APP_VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
-            RELEASE_TAG="v${APP_VERSION}"
+            # No fallback to the tree's app version: the manifests are stamped
+            # from the tag at build time (GL-288), so the checked-in version is
+            # a source-build baseline and must never name a release.
+            echo "A release needs an explicit v* tag (tag push or dispatch input)."
+            exit 1
           fi
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -105,29 +108,38 @@ jobs:
           # Allow an optional SemVer pre-release suffix (e.g. v0.2.0-beta.1) so
           # beta/rc builds can ship on the beta channel (GL-76); a bare
           # vMAJOR.MINOR.PATCH is still the stable form.
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z][0-9A-Za-z]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z][0-9A-Za-z]*))*)?$ ]]; then
             echo "Invalid release tag: $RELEASE_TAG (expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-prerelease, e.g. v0.2.0-beta.1)"
             exit 1
           fi
+          # Cargo's SemVer parser stores numeric identifiers as u64. Reject an
+          # otherwise well-shaped tag here instead of discovering overflow only
+          # after the draft release and build matrix have started.
+          # shellcheck disable=SC2016
+          bun -e '
+            try {
+              const version = process.env.RELEASE_TAG.slice(1);
+              const dash = version.indexOf("-");
+              const core = dash === -1 ? version : version.slice(0, dash);
+              const prerelease = dash === -1 ? "" : version.slice(dash + 1);
+              const max = 18_446_744_073_709_551_615n;
+              const numeric = [
+                ...core.split("."),
+                ...prerelease.split(".").filter((part) => /^[0-9]+$/.test(part)),
+              ];
+              for (const part of numeric) {
+                if (BigInt(part) > max) throw new Error(`numeric identifier exceeds u64: ${part}`);
+              }
+            } catch (error) {
+              console.error(`Invalid Cargo-compatible release tag ${process.env.RELEASE_TAG}:`, error);
+              process.exit(1);
+            }
+          '
 
-      - name: Validate app version matches tag
-        run: |
-          TAG_VERSION="${RELEASE_TAG#v}"
-          TAURI_CONF_VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
-          CARGO_VERSION=$(awk -F'"' '/^version =/ { print $2; exit }' ./src-tauri/Cargo.toml)
-          PKG_VERSION=$(node -p 'require("./package.json").version')
-          if [[ "$TAURI_CONF_VERSION" != "$TAG_VERSION" ]]; then
-            echo "src-tauri/tauri.conf.json version ($TAURI_CONF_VERSION) != tag version ($TAG_VERSION)"
-            exit 1
-          fi
-          if [[ "$CARGO_VERSION" != "$TAG_VERSION" ]]; then
-            echo "src-tauri/Cargo.toml version ($CARGO_VERSION) != tag version ($TAG_VERSION)"
-            exit 1
-          fi
-          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
-            echo "package.json version ($PKG_VERSION) != tag version ($TAG_VERSION)"
-            exit 1
-          fi
+      # The version is no longer maintained by hand in the tree: each build leg
+      # stamps the tag's version into the manifests before building (see "Stamp
+      # app version from release tag" in release-app), so tagging a current
+      # `latest` commit is the whole release trigger — no bump PR.
 
       - name: Resolve and validate release commit
         id: release-commit
@@ -182,7 +194,7 @@ jobs:
       # to latest). Re-running `bun run build` / `bun run test` / `cargo test`
       # here would test a tree CI already validated — and block the whole build
       # matrix behind a redundant full re-test on the Mac runner. Preflight is
-      # now pure release-specific validation (tag shape, version match,
+      # now pure release-specific validation (tag shape, Cargo compatibility,
       # on-latest, signing secrets); the matrix legs do the real artifact build.
 
   prepare-release:
@@ -328,6 +340,75 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
+      # The tree's manifests are NOT bumped per release (GL-288): the tag alone
+      # carries the version, and this step rewrites package.json,
+      # src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and the gitlane entry in
+      # src-tauri/Cargo.lock in the build checkout before bun install / tauri
+      # build read them. That covers every consumer: the bundler/updater version
+      # (tauri.conf.json), the About box (CARGO_PKG_VERSION from Cargo.toml), and
+      # artifact names. Runs after setup-bun and uses bun -e — self-hosted legs
+      # do not guarantee a system node, and setup-bun only installs bun. Inline
+      # rather than a repo script, consistent with the "historical release tags
+      # predate repository-local actions" convention above; it's a no-op when
+      # the tree already carries the tag's version, so dispatch-rerunning an old
+      # hand-bumped tag through this newer workflow still works. RELEASE_TAG is
+      # regex-validated in preflight and passed via env, never interpolated.
+      - name: Stamp app version from release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          # shellcheck disable=SC2016
+          bun -e '
+            import * as fs from "node:fs";
+            try {
+              const version = process.env.RELEASE_TAG.replace(/^v/, "");
+              const patch = (path, from) => {
+                const before = fs.readFileSync(path, "utf8");
+                if (!from.test(before)) throw new Error(`no version field found in ${path}`);
+                fs.writeFileSync(path, before.replace(from, `$1${version}$2`));
+              };
+              const cargoPackageBlock = (text) => {
+                const start = text.search(/^\[package\]\r?$/m);
+                if (start < 0) throw new Error("no [package] table found in src-tauri/Cargo.toml");
+                const tail = text.slice(start + 1);
+                const relativeEnd = tail.search(/^\[/m);
+                const end = relativeEnd < 0 ? text.length : start + 1 + relativeEnd;
+                const block = text.slice(start, end);
+                if (!/^name\s*=\s*"gitlane"\s*$/m.test(block)) {
+                  throw new Error("src-tauri/Cargo.toml [package] is not gitlane");
+                }
+                return { start, end, block };
+              };
+              const cargoPath = "src-tauri/Cargo.toml";
+              const cargoBefore = fs.readFileSync(cargoPath, "utf8");
+              const cargo = cargoPackageBlock(cargoBefore);
+              const cargoAfterBlock = cargo.block.replace(/(^version\s*=\s*")[^"]+(")/m, `$1${version}$2`);
+              if (cargoAfterBlock === cargo.block) throw new Error(`no gitlane package version found in ${cargoPath}`);
+              fs.writeFileSync(cargoPath, cargoBefore.slice(0, cargo.start) + cargoAfterBlock + cargoBefore.slice(cargo.end));
+
+              patch("package.json", /("version":\s*")[^"]+(")/);
+              patch("src-tauri/tauri.conf.json", /("version":\s*")[^"]+(")/);
+              patch(
+                "src-tauri/Cargo.lock",
+                /(\[\[package\]\]\r?\nname = "gitlane"\r?\nversion = ")[^"]+(")/,
+              );
+              for (const [path, read] of [
+                ["package.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
+                ["src-tauri/tauri.conf.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
+                [cargoPath, (p) => cargoPackageBlock(fs.readFileSync(p, "utf8")).block.match(/^version\s*=\s*"([^"]+)"/m)?.[1]],
+                ["src-tauri/Cargo.lock", (p) => fs.readFileSync(p, "utf8").match(/\[\[package\]\]\r?\nname = "gitlane"\r?\nversion = "([^"]+)"/)?.[1]],
+              ]) {
+                const found = read(path);
+                if (found !== version) throw new Error(`${path} reads back ${found}, expected ${version}`);
+                console.log(`${path}: ${found}`);
+              }
+            } catch (error) {
+              console.error("Failed to stamp release version:", error);
+              process.exit(1);
+            }
+          '
+
       - name: Install Linux Tauri dependencies
         # Only GitHub-hosted Linux needs this. The self-hosted `linux-gitlane` runner
         # runs as an unprivileged, sudo-less user with these deps preinstalled on the
@@ -361,6 +442,10 @@ jobs:
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only artifacts produced by this workflow may query/install signed
+          # updater releases. Source builds keep the checked-in baseline version
+          # and identify themselves as rebuild-to-update builds in Settings.
+          VITE_GITLANE_OFFICIAL_RELEASE: "1"
           # linuxdeploy + appimagetool are themselves AppImages, which need the
           # FUSE 2 runtime to mount-and-run. Ubuntu 24.04+/26.04 no longer ship
           # libfuse2 by default, so on an upgraded self-hosted runner the AppImage

@@ -11,12 +11,18 @@ import { isTauri } from "./platform";
 
 export type { Update, DownloadEvent };
 
+/** Release artifacts opt in at compile time from release.yml. Local/source
+ * builds deliberately keep the updater off because their checked-in version is
+ * only a baseline and cannot safely represent the source revision being run. */
+export const updatesSupported = import.meta.env.VITE_GITLANE_OFFICIAL_RELEASE === "1";
+
 /** Ask the selected channel's endpoint whether a newer signed build exists.
  * `beta` opts into the beta manifest; stable uses the config endpoint (GL-154).
  * Returns the live `Update` handle (call `.downloadAndInstall()` on it) or null
- * when current. Outside Tauri there is no updater, so this resolves to null. */
+ * when current. Source builds and non-Tauri runtimes have no release updater,
+ * so this resolves to null there. */
 export async function checkForUpdate(beta: boolean): Promise<Update | null> {
-  if (!isTauri) return null;
+  if (!updatesSupported || !isTauri) return null;
   return checkUpdateOnChannel(beta);
 }
 

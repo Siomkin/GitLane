@@ -24,28 +24,41 @@ endpoint differs.
 ## Cutting a release
 
 Tags drive [`.github/workflows/release.yml`](../.github/workflows/release.yml).
-The tag must equal the app version in all three files
-(`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json`) — the
-preflight fails the release otherwise. Release tags must be created from commits
-that are already reachable from `latest`; `develop` and `staging` are not
-release sources. What the release ships per platform, and which install channels
-exist or are planned, is recorded in [`distribution.md`](distribution.md).
+**The tag alone carries the version** (GL-288): the checked-in manifests
+(`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`,
+`package.json`) are *not* bumped per release — each build leg stamps the tag's
+version into them in its own checkout before building, so no bump commit or PR
+is needed. The version recorded in the tree is a baseline for development and
+source builds and never names an official release. The built-in updater is also
+disabled in those builds: Settings → About identifies them as source builds,
+which are updated by pulling and rebuilding. Only artifacts compiled by this
+release workflow opt into signed updater releases. A `workflow_dispatch` run
+must therefore pass the tag explicitly. Release tags must be created from
+commits that are already reachable from `latest`; `develop` and `staging` are
+not release sources. What the release ships per platform, and which install
+channels exist or are planned, is recorded in [`distribution.md`](distribution.md).
 Release tags must exist on `origin` before the workflow starts. The active
 repository tag ruleset allows new `v*` tags but blocks updating or deleting them;
 the workflow revalidates the remote tag against the pinned build commit and never
 creates a tag itself.
 
-- **Stable:** bump the three files to `X.Y.Z`, tag `vX.Y.Z`. Published as a
-  normal release; becomes the `/latest/` target.
-- **Beta:** bump the three files to `X.Y.Z-beta.N`, tag `vX.Y.Z-beta.N`.
-  Published as a GitHub **pre-release** (so `/latest/` ignores it), built with
-  the beta endpoint.
+- **Stable:** tag `vX.Y.Z` on a current `latest` commit containing this release
+  workflow. Published as a normal release; becomes the `/latest/` target.
+- **Beta:** tag `vX.Y.Z-beta.N`. Published as a GitHub **pre-release** (so
+  `/latest/` ignores it), built with the beta endpoint.
+
+A tag push runs the workflow definition stored in the tagged commit. To publish
+an older existing tag whose commit predates this tag-driven workflow, start a
+manual run from `latest` and pass that tag; the workflow still checks out and
+builds the tagged commit.
 
 The tag's pre-release suffix (a `-` after `X.Y.Z`) is what the workflow keys on:
 it flips `prerelease: true` and appends the beta `--config`.
 
 Supported tag shapes are `vX.Y.Z` and `vX.Y.Z-<suffix>`, where `<suffix>` is
-dot-separated alphanumerics — e.g. `-beta.1`, `-rc.2`. The preflight regex does
+dot-separated alphanumerics — e.g. `-beta.1`, `-rc.2`. Numeric identifiers use
+Cargo-compatible SemVer rules: no leading zeroes except the single value `0`,
+and values must fit in an unsigned 64-bit integer. The preflight regex does
 **not** allow extra hyphens inside the suffix (`v1.0.0-alpha-beta` is rejected),
 so stick to the `-beta.N` / `-rc.N` convention.
 
