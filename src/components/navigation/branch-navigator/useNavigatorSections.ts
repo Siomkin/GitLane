@@ -98,6 +98,23 @@ export interface NavigatorSections {
   hasMatches: boolean;
 }
 
+/* Deliberately NOT memoized beyond the graph-derived maps below, despite the
+ * obvious "this re-sorts every ref on every keystroke" reading. Measured with
+ * synthetic repos (median per keystroke, happy-dom, which understates real
+ * render cost since it does no layout or paint):
+ *
+ *     refs    section building    full navigator render    initial mount
+ *      600           0.45 ms                  8.6 ms            190 ms
+ *     2500           1.59 ms                 27.3 ms            513 ms
+ *     6000           3.62 ms                 65.5 ms           1422 ms
+ *
+ * Building the sections is ~5% of a keystroke at every size; rendering the rows
+ * it produces is the other 95%. Splitting the filter-independent mapping and
+ * sort into a memo could remove part of that 5% — invisible, at real cost to
+ * the code. What the numbers actually indict is the initial mount: this list
+ * renders every row, with no virtualization (unlike HistoryWorkspace, which
+ * uses @tanstack/react-virtual). That is where a ref-heavy repo pays, and
+ * virtualizing is the fix worth making. Re-measure before optimizing here. */
 export function useNavigatorSections(filter: string): NavigatorSections {
   const branches = useRepo((s) => s.branches);
   const worktrees = useRepo((s) => s.worktrees);
