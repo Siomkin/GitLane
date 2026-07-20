@@ -26,6 +26,12 @@ use super::CancelFlag;
 const B64URL: base64::engine::general_purpose::GeneralPurpose =
     base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
+/// Keep the loopback parser bounded while allowing ordinary provider codes and
+/// state values to arrive across several TCP reads. HTTP request lines are
+/// normally far smaller; the cap prevents a local client from growing memory
+/// without ever terminating the line.
+const MAX_REQUEST_LINE_BYTES: usize = 8 * 1024;
+
 /// A PKCE verifier/challenge pair (RFC 7636). The verifier is secret; the
 /// challenge is safe to put in the authorize URL.
 #[derive(Debug, Clone)]
@@ -119,18 +125,18 @@ pub fn wait_for_redirect(
         match listener.accept() {
             Ok((mut stream, _)) => {
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-                let mut buf = [0u8; 4096];
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let request = String::from_utf8_lossy(&buf[..n]);
-                let target = request.lines().next().and_then(parse_callback_target);
+                let target = read_request_line(&mut stream)
+                    .as_deref()
+                    .and_then(parse_callback_target);
                 let redirect = target
                     .as_deref()
                     .map(parse_redirect_query)
                     .unwrap_or_default();
-                write_browser_response(&mut stream, redirect.error.is_none());
+                let terminal = redirect.code.is_some() || redirect.error.is_some();
+                write_browser_response(&mut stream, terminal && redirect.error.is_none());
                 // Ignore stray probes (favicon, etc.) that carry neither a code
                 // nor an error; keep waiting for the real redirect.
-                if redirect.code.is_some() || redirect.error.is_some() {
+                if terminal {
                     return Ok(redirect);
                 }
             }
@@ -179,6 +185,35 @@ pub fn exchange_code(
 
 // ---- internals ----
 
+/// Read one complete HTTP request line. TCP read boundaries are arbitrary, so
+/// the browser may split even a short OAuth callback across packets; returning
+/// after the first `read` can lose the one-time code permanently. Stop at the
+/// first LF, EOF/error, or the hard line cap.
+fn read_request_line(reader: &mut impl Read) -> Option<String> {
+    let mut line = Vec::with_capacity(512);
+    let mut chunk = [0u8; 512];
+
+    loop {
+        let remaining = MAX_REQUEST_LINE_BYTES.checked_sub(line.len())?;
+        if remaining == 0 {
+            return None;
+        }
+        let chunk_len = remaining.min(chunk.len());
+        let read = match reader.read(&mut chunk[..chunk_len]) {
+            Ok(0) => return None,
+            Ok(read) => read,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return None,
+        };
+        if let Some(end) = chunk[..read].iter().position(|byte| *byte == b'\n') {
+            line.extend_from_slice(&chunk[..=end]);
+            let line = std::str::from_utf8(&line).ok()?;
+            return Some(line.trim_end_matches(['\r', '\n']).to_string());
+        }
+        line.extend_from_slice(&chunk[..read]);
+    }
+}
+
 fn random_bytes<const N: usize>() -> Result<[u8; N], String> {
     let mut bytes = [0u8; N];
     getrandom::fill(&mut bytes)
@@ -189,8 +224,16 @@ fn random_bytes<const N: usize>() -> Result<[u8; N], String> {
 /// Extract the request target (`/callback?...`) from an HTTP request line
 /// (`GET /callback?code=… HTTP/1.1`).
 fn parse_callback_target(request_line: &str) -> Option<String> {
-    let target = request_line.split_whitespace().nth(1)?;
-    target.starts_with('/').then(|| target.to_string())
+    let mut parts = request_line.split_ascii_whitespace();
+    if parts.next()? != "GET" {
+        return None;
+    }
+    let target = parts.next()?;
+    if !parts.next()?.starts_with("HTTP/") || parts.next().is_some() {
+        return None;
+    }
+    let path = target.split_once('?').map_or(target, |(path, _)| path);
+    (path == "/callback").then(|| target.to_string())
 }
 
 /// Parse the query of a loopback redirect target into its OAuth fields.
@@ -299,6 +342,17 @@ fn percent_decode(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::net::TcpStream;
+    use std::thread;
+
+    struct NeverCancel;
+
+    impl CancelFlag for NeverCancel {
+        fn is_canceled(&self) -> bool {
+            false
+        }
+    }
 
     #[test]
     fn code_challenge_matches_rfc7636_vector() {
@@ -344,6 +398,40 @@ mod tests {
             Some("/callback?code=abc&state=xyz")
         );
         assert_eq!(parse_callback_target("garbage"), None);
+        assert_eq!(
+            parse_callback_target("GET /favicon.ico?error=denied HTTP/1.1"),
+            None
+        );
+        assert_eq!(
+            parse_callback_target("POST /callback?code=abc HTTP/1.1"),
+            None
+        );
+    }
+
+    #[test]
+    fn fragmented_callback_request_keeps_the_full_code_and_state() {
+        let listener = bind_loopback().expect("bind loopback");
+        let address = listener.local_addr().expect("loopback address");
+        let client = thread::spawn(move || {
+            let mut stream = TcpStream::connect(address).expect("connect callback");
+            stream
+                .write_all(b"GET /callback?code=one-time&sta")
+                .expect("write first fragment");
+            stream.flush().expect("flush first fragment");
+            thread::sleep(Duration::from_millis(100));
+            let _ = stream.write_all(b"te=csrf-state HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        });
+
+        let redirect = wait_for_redirect(
+            &listener,
+            Instant::now() + Duration::from_secs(2),
+            &NeverCancel,
+        )
+        .expect("fragmented redirect");
+        client.join().expect("callback client");
+
+        assert_eq!(redirect.code.as_deref(), Some("one-time"));
+        assert_eq!(redirect.state.as_deref(), Some("csrf-state"));
     }
 
     #[test]
