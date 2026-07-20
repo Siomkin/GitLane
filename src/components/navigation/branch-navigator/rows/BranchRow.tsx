@@ -112,6 +112,15 @@ export function BranchRow({
         </span>
         <button
           type="button"
+          // The row itself is a drag source. `draggable={false}` opts the pin
+          // out, but a dragstart raised on it still bubbles to the row's
+          // handler — stop it here so dragging the pin can never start a ref
+          // drag (which would drop-target another branch and offer a merge).
+          draggable={false}
+          onDragStart={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           title={pinned ? "Unpin" : "Pin to top"}
           aria-label={pinned ? `Unpin ${name}` : `Pin ${name} to top`}
           aria-pressed={pinned}

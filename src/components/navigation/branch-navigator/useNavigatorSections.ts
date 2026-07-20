@@ -13,6 +13,10 @@ import { orderWithPins } from "./pinning";
 
 /** A navigable ref row plus whether it matches the active search. While
  * filtering, non-matches are removed from the popup. */
+/** Stable identity for "this repo has no pins" — returning a fresh `{}` from the
+ * store selector would hand `useSyncExternalStore` a new snapshot every render. */
+const NO_PINS: Record<string, true> = {};
+
 /** Most recently updated first. Git records no branch creation time, so rows
  * order by their tip commit's committer time; a row whose tip can't be resolved
  * has no time to compare and sinks below the dated ones, alphabetical among its
@@ -100,7 +104,10 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const stashes = useRepo((s) => s.stashes);
   const graph = useRepo((s) => s.graph);
   const summary = useRepo((s) => s.summary);
-  const pinnedNavRefs = useUi((s) => s.pinnedNavRefs);
+  const repoPath = summary?.path ?? null;
+  const pinnedNavRefs = useUi((s) =>
+    repoPath ? (s.pinnedNavRefsByRepo[repoPath] ?? NO_PINS) : NO_PINS,
+  );
 
   const lower = filter.trim().toLowerCase();
   const filtering = lower !== "";
@@ -156,6 +163,12 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const tags = allTags
     .map((t) => ({ ...t, match: matches(t.name), pinned: !!pinnedNavRefs[pinKey(RowKind.Tag, t.name)] }))
     .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+  // Branch name → authoritative tip, built once rather than scanning the branch
+  // list per worktree below.
+  const branchTarget = new Map<string, string>();
+  for (const b of branches) {
+    if (b.target) branchTarget.set(b.name, b.target);
+  }
   // Resolve a worktree's tip like a branch row does — prefer the branch's
   // authoritative `target`, fall back to the graph — so a worktree whose branch
   // tip is outside the loaded window still navigates. A detached worktree has
@@ -163,9 +176,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const worktreeItems = worktrees.map((wt) => ({
     wt,
     oid:
-      (wt.branch
-        ? (branches.find((b) => b.name === wt.branch)?.target ?? oidByName.get(wt.branch))
-        : undefined) ??
+      (wt.branch ? (branchTarget.get(wt.branch) ?? oidByName.get(wt.branch)) : undefined) ??
       wt.head ??
       undefined,
     // Match the path too — it's shown as the row's secondary text now, so a

@@ -128,7 +128,7 @@ export function BranchNavigator() {
       }
       return (
         <NavEmptyState
-          kind={filtering ? nouns.one : nouns.many}
+          nouns={nouns}
           query={filter.trim()}
           canCreate={category === NavCategory.All || category === NavCategory.Branches}
         />

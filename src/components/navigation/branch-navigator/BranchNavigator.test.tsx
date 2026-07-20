@@ -64,7 +64,7 @@ beforeEach(() => {
     filter: "",
     navOpen: true,
     stackedReview: null,
-    pinnedNavRefs: {},
+    pinnedNavRefsByRepo: {},
     createBranchOpen: false,
     createBranchName: null,
   });
@@ -124,6 +124,17 @@ describe("BranchNavigator", () => {
     expect(screen.queryByText("feature/search")).not.toBeInTheDocument();
   });
 
+  it("names an empty category without doubling its plural", () => {
+    // The repo has branches but no tags, so the Tags category is empty while the
+    // navigator is not: the copy must read "No tags yet", never "No tagss yet".
+    useRepo.setState({ graph: { ...graph, commits: [{ ...tagged, refs: [] }] } });
+    render(<BranchNavigator />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Tags/ }));
+
+    expect(screen.getByText("No tags yet")).toBeInTheDocument();
+  });
+
   it("offers to create a branch named after an unmatched query, prefilled", () => {
     useUi.setState({ filter: "feat/new-thing" });
     render(<BranchNavigator />);
@@ -164,7 +175,7 @@ describe("BranchNavigator", () => {
         branch("zulu", "local"),
       ],
     });
-    useUi.setState({ pinnedNavRefs: { "local|zulu": true } });
+    useUi.setState({ pinnedNavRefsByRepo: { "/r": { "local|zulu": true } } });
     render(<BranchNavigator />);
 
     const rows = screen

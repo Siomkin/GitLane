@@ -378,9 +378,11 @@ interface UiState {
 
   /** Branch navigator dropdown raised by the "Checked out" trigger. Transient. */
   navOpen: boolean;
-  /** Refs pinned to the top of the branch navigator's lists, keyed by
-   * `pinKey(kind, name)` (e.g. `"local|develop"`). Persisted. */
-  pinnedNavRefs: Record<string, true>;
+  /** Refs pinned to the top of the branch navigator's lists: repo path →
+   * `pinKey(kind, name)` (e.g. `"local|develop"`) → true. Keyed by repo like
+   * `graphWidthsByRepo` — a bare ref name is not unique across repositories, so
+   * a flat map would pin `main` everywhere at once. Persisted. */
+  pinnedNavRefsByRepo: Record<string, Record<string, true>>;
   draggingFrom: BranchDragRef | null;
   actionMenu: ActionMenu | null;
   contextMenu: ContextMenu | null;
@@ -576,7 +578,8 @@ interface UiState {
   openNav: () => void;
   closeNav: () => void;
   toggleNav: () => void;
-  /** Pin/unpin a navigator ref (key = `pinKey(kind, name)`). */
+  /** Pin/unpin a navigator ref (key = `pinKey(kind, name)`) in the open repo.
+   * No-ops when no repo is open — a pin has nowhere to belong. */
   toggleNavPin: (key: string) => void;
   /** Open the create-branch dialog with the name input prefilled (branches from
    * HEAD) — the navigator's "Create branch <query>" action. */
@@ -780,7 +783,7 @@ export const useUi = create<UiState>()(
   onboardingOpen: false,
 
   navOpen: false,
-  pinnedNavRefs: {},
+  pinnedNavRefsByRepo: {},
   draggingFrom: null,
   actionMenu: null,
   contextMenu: null,
@@ -911,10 +914,12 @@ export const useUi = create<UiState>()(
   toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
   toggleNavPin: (key) =>
     set((s) => {
-      const pinned = { ...s.pinnedNavRefs };
+      const repoPath = useRepo.getState().summary?.path;
+      if (!repoPath) return s;
+      const pinned = { ...(s.pinnedNavRefsByRepo[repoPath] ?? {}) };
       if (pinned[key]) delete pinned[key];
       else pinned[key] = true;
-      return { pinnedNavRefs: pinned };
+      return { pinnedNavRefsByRepo: { ...s.pinnedNavRefsByRepo, [repoPath]: pinned } };
     }),
   openCreateBranchNamed: (name) =>
     set({ ...noMenus, createBranchOpen: true, createBranchStart: null, createBranchName: name }),
@@ -1225,7 +1230,7 @@ export const useUi = create<UiState>()(
         terminalExpanded: s.terminalExpanded,
         prFilter: s.prFilter,
         collapsed: s.collapsed,
-        pinnedNavRefs: s.pinnedNavRefs,
+        pinnedNavRefsByRepo: s.pinnedNavRefsByRepo,
         commitComposerMode: s.commitComposerMode,
         commitDraftAgent: s.commitDraftAgent,
         fileListView: s.fileListView,

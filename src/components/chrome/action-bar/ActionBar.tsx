@@ -41,7 +41,7 @@ export const ActionBar = () => {
     openPr,
     providerState,
     navOpen,
-    navMenuBlocking,
+    navOverlayBlocking,
   } = m;
 
   // The 560px dropdown is anchored under the branch button. Escape and any
@@ -54,7 +54,7 @@ export const ActionBar = () => {
   // the press that closes that menu doesn't also collapse the navigator behind
   // it — the same suspension SettingsModal applies for nested overlays.
   const navRef = useRef<HTMLDivElement>(null);
-  useDismiss(navOpen && !navMenuBlocking, m.closeNav, navRef);
+  useDismiss(navOpen && !navOverlayBlocking, m.closeNav, navRef);
 
   return (
     <div className="relative z-40 flex-none">
@@ -81,6 +81,8 @@ export const ActionBar = () => {
         <div ref={navRef} className="relative">
           <button type="button"
             onClick={m.toggleNav}
+            aria-haspopup="dialog"
+            aria-expanded={navOpen}
             title={`Branches, worktrees & stashes. ${currentSync.title}`}
             className="flex h-8 max-w-[320px] items-center gap-2 rounded-lg border border-black/10 bg-white/40 px-3 hover:bg-white/70 dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
           >

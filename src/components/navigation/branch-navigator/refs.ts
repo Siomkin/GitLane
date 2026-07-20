@@ -24,7 +24,7 @@ export const NavCategory = {
 export type NavCategory = (typeof NavCategory)[keyof typeof NavCategory];
 
 /** Stable identity of a pinnable ref in the persisted pin map
- * (`ui.pinnedNavRefs`) — kind-scoped so a tag can't collide with a branch of
+ * (`ui.pinnedNavRefsByRepo[repoPath]`) — kind-scoped so a tag can't collide with a branch of
  * the same name. */
 export function pinKey(kind: RowKind, name: string): string {
   return `${kind}|${name}`;

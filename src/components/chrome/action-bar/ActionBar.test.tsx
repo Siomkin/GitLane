@@ -785,6 +785,38 @@ describe("ActionBar navigator dismissal", () => {
     outside.remove();
   });
 
+  it("leaves Escape to a confirm dialog raised from one of its rows", () => {
+    // A row menu action (e.g. delete branch) calls requestConfirm, which clears
+    // the menu but leaves the navigator open. The navigator's Escape handler
+    // runs in the capture phase and stops propagation, so if it stayed armed it
+    // would swallow Escape from ConfirmDialog's window-level listener and close
+    // the wrong layer.
+    useUi.setState({
+      navOpen: true,
+      contextMenu: null,
+      confirm: { title: "Delete branch?", confirmLabel: "Delete", onConfirm: () => {} },
+    });
+    render(<ActionBar />);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(useUi.getState().navOpen).toBe(true);
+    useUi.setState({ confirm: null });
+  });
+
+  it("leaves dismissal to the create-branch dialog raised from the navigator", () => {
+    useUi.setState({ navOpen: true, createBranchOpen: true });
+    render(<ActionBar />);
+
+    const outside = document.createElement("div");
+    document.body.appendChild(outside);
+    fireEvent.mouseDown(outside);
+
+    expect(useUi.getState().navOpen).toBe(true);
+    outside.remove();
+    useUi.setState({ createBranchOpen: false });
+  });
+
   it("resumes dismissing itself once that menu has closed", () => {
     useUi.setState({
       navOpen: true,

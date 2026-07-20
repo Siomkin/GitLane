@@ -6,12 +6,14 @@ import { PlusIcon, SearchIcon } from "@/components/ui/icons";
  * query — offers to create a branch named after the query, opening the
  * existing create-branch dialog prefilled (branches from HEAD). */
 export function NavEmptyState({
-  kind,
+  nouns,
   query,
   canCreate,
 }: {
-  /** Singular noun for the active category ("branch", "remote", "ref", …). */
-  kind: string;
+  /** Both forms for the active category — the two lines below need different
+   * ones, so the component takes the pair rather than pluralizing a noun it
+   * can't know the number of. */
+  nouns: { one: string; many: string };
   query: string;
   /** Offer the "Create branch <query>" action (branches/All with a query). */
   canCreate: boolean;
@@ -24,11 +26,11 @@ export function NavEmptyState({
       <p className="mt-3 text-[13px] text-neutral-500 dark:text-neutral-400">
         {query !== "" ? (
           <>
-            No {kind} matches{" "}
+            No {nouns.one} matches{" "}
             <span className="font-mono text-neutral-700 dark:text-neutral-200">{query}</span>
           </>
         ) : (
-          <>No {kind}s yet</>
+          <>No {nouns.many} yet</>
         )}
       </p>
       {canCreate && query !== "" && (

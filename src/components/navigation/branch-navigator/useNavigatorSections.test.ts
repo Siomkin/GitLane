@@ -55,7 +55,7 @@ const render = (filter: string) => renderHook(() => useNavigatorSections(filter)
 
 beforeEach(() => {
   seed();
-  useUi.setState({ pinnedNavRefs: {} });
+  useUi.setState({ pinnedNavRefsByRepo: {} });
 });
 
 describe("useNavigatorSections", () => {
@@ -199,7 +199,7 @@ describe("useNavigatorSections", () => {
         branch("origin/main", "remote"),
       ],
     });
-    useUi.setState({ pinnedNavRefs: { "local|zulu": true } });
+    useUi.setState({ pinnedNavRefsByRepo: { "/r": { "local|zulu": true } } });
     const s = render("");
     expect(s.locals.items.map((b) => b.name)).toEqual(["main", "zulu", "alpha"]);
     expect(s.locals.items.map((b) => b.pinned)).toEqual([false, true, false]);

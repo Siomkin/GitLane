@@ -14,6 +14,8 @@ const realRevealStash = useRepo.getState().revealStash;
 
 beforeEach(() => {
   useRepo.setState({
+    // Pins are stored per repo, so the pin action needs an open repo to key on.
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
     revealCommit: realRevealCommit,
     openWorktree: realOpenWorktree,
     revealStash: realRevealStash,
@@ -25,7 +27,7 @@ beforeEach(() => {
     worktreeMenu: null,
     stashMenu: null,
     draggingFrom: null,
-    pinnedNavRefs: {},
+    pinnedNavRefsByRepo: {},
   });
 });
 
@@ -130,16 +132,50 @@ describe("BranchRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pin feature to top" }));
 
     // The pin key is kind-scoped so a tag named "feature" can't collide.
-    expect(useUi.getState().pinnedNavRefs).toEqual({ "local|feature": true });
+    expect(useUi.getState().pinnedNavRefsByRepo).toEqual({ "/r": { "local|feature": true } });
     expect(revealCommit).not.toHaveBeenCalled();
     expect(useUi.getState().navOpen).toBe(true);
   });
 
+  it("does not start a ref drag from the pin control", () => {
+    // The pin sits inside the row, which is itself a drag source — without an
+    // explicit opt-out, dragging the pin would drag the branch.
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+    const pin = screen.getByRole("button", { name: "Pin feature to top" });
+
+    expect(pin).toHaveAttribute("draggable", "false");
+    fireEvent.dragStart(pin, { dataTransfer: dataTransfer() });
+    expect(useUi.getState().draggingFrom).toBeNull();
+  });
+
+  it("keeps pins of one repo out of another", () => {
+    // Ref names are not unique across repos: a flat pin map would pin `feature`
+    // in every repository that has a branch by that name.
+    useUi.setState({ pinnedNavRefsByRepo: { "/other": { "local|feature": true } } });
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin feature to top" }));
+
+    expect(useUi.getState().pinnedNavRefsByRepo).toEqual({
+      "/other": { "local|feature": true },
+      "/r": { "local|feature": true },
+    });
+  });
+
+  it("ignores a pin toggle when no repo is open", () => {
+    useRepo.setState({ summary: null });
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin feature to top" }));
+
+    expect(useUi.getState().pinnedNavRefsByRepo).toEqual({});
+  });
+
   it("unpins a pinned row from the same button", () => {
-    useUi.setState({ pinnedNavRefs: { "tag|v1.0": true } });
+    useUi.setState({ pinnedNavRefsByRepo: { "/r": { "tag|v1.0": true } } });
     render(<BranchRow name="v1.0" kind="tag" oid="tag123" pinned />);
     fireEvent.click(screen.getByRole("button", { name: "Unpin v1.0" }));
-    expect(useUi.getState().pinnedNavRefs).toEqual({});
+    expect(useUi.getState().pinnedNavRefsByRepo).toEqual({ "/r": {} });
   });
 
   it("shows the sync badge for a local branch and the worktree glyph when parked elsewhere", () => {
