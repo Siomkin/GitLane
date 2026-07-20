@@ -123,10 +123,10 @@ describe("classifyCloneError", () => {
 
   it("reuses friendly git auth copy for credential and SSH failures", () => {
     const bitbucket = classifyCloneError(
-      "fatal: could not read Password for 'https://SiomkinAlexander@bitbucket.org': terminal prompts disabled",
+      "fatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
     );
     expect(bitbucket.message).toBe(
-      "Bitbucket credentials are missing or invalid for @SiomkinAlexander. Set up Git Credential Manager or SSH, then try again.",
+      "Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH, then try again.",
     );
 
     const ssh = classifyCloneError(

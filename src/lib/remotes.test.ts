@@ -87,13 +87,13 @@ describe("httpUrlHasPassword", () => {
 
 describe("detectRemoteUrl", () => {
   it("strips https userinfo and ports so the host matches account hosts (GL-129)", () => {
-    expect(detectRemoteUrl("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")).toMatchObject({
+    expect(detectRemoteUrl("https://test-user@bitbucket.org/darang/gitlanebucket.git")).toMatchObject({
       valid: true,
       host: "bitbucket.org",
       credentialHost: "bitbucket.org",
       credentialPath: "darang/gitlanebucket.git",
       path: "darang/gitlanebucket",
-      user: "SiomkinAlexander",
+      user: "test-user",
       provider: "bitbucket",
     });
     expect(detectRemoteUrl("https://github.corp.example:8443/team/repo.git")).toMatchObject({
