@@ -220,17 +220,38 @@ fn authority_of(rest: &str) -> Option<&str> {
 }
 
 /// The index of the `host:path` separator in an scp-like remote
-/// (`[user@]host:path`). A bracketed IPv6 literal carries its own colons, so
-/// the search starts after the closing bracket — otherwise `git@[::1]:o/r`
-/// splits inside the address and yields only the start of the literal as host.
+/// (`[user@]host:path`), or `None` when the remote is not in that form.
+///
+/// A bracketed IPv6 literal carries its own colons, so the separator is the
+/// colon *after* the closing bracket. Which `[` opens such a literal follows
+/// git's own `host_end()`: only one at the very start of the remote, or
+/// directly after the `@` that ends userinfo. A bracket anywhere else is
+/// ordinary text.
+///
+/// That rule is a security boundary, not a formatting nicety. Treating any
+/// early `[` as a host literal reads `[evil.example]x@github.com:owner/repo` as
+/// `github.com`, while git contacts `evil.example` — so the forge indicator, PR
+/// list, and PR writes would all target a repository that has nothing to do
+/// with the code being fetched.
+///
+/// Where git salvages a host from a malformed remote of that shape, this
+/// returns `None` and the caller reports no host at all. Declining to parse is
+/// safe; naming the wrong host is not.
 fn scp_separator(url: &str) -> Option<usize> {
-    // A `[` only opens a host literal when nothing has separated the authority
-    // from a path yet; a bracket later in the path is just a path character.
-    let from = match url.find('[') {
-        Some(open) if !url[..open].contains(':') => url[open..].find(']')? + open + 1,
-        _ => 0,
+    // The authority always precedes the first `/`, so a bracket in the path can
+    // never open a host literal.
+    let head = &url[..url.find('/').unwrap_or(url.len())];
+    let opened = if head.starts_with('[') {
+        Some(0)
+    } else {
+        head.find("@[").map(|at| at + 1)
     };
-    url[from..].find(':').map(|colon| colon + from)
+    let Some(open) = opened else {
+        return url.find(':');
+    };
+    // An opened literal must close, and the separator must directly follow it.
+    let close = open + url[open..].find(']')?;
+    (url.as_bytes().get(close + 1) == Some(&b':')).then_some(close + 1)
 }
 
 /// The exact credential authority (`host[:port]`) from an HTTPS/SSH/scp remote
@@ -586,6 +607,22 @@ pub(crate) fn authority_hostname(authority: &str) -> &str {
     }
 }
 
+/// The hostname of an authority with any IPv6 brackets stripped, for comparing
+/// two authorities that may spell the same address differently.
+///
+/// Remote URLs always yield the bracketed form (`[::1]`), but an account host is
+/// whatever the user typed and is commonly stored bare (`::1`). Comparing the
+/// raw hostnames would make those a permanent mismatch whose remedy — "choose an
+/// account for the same host" — cannot be performed. Brackets are pure syntax
+/// here: they exist to fence the address off from a port, which the caller has
+/// already split away.
+pub(crate) fn unbracketed_hostname(authority: &str) -> &str {
+    let host = authority_hostname(authority);
+    host.strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .unwrap_or(host)
+}
+
 /// Whether a hostname carries `name` as a whole DNS label.
 ///
 /// Self-hosted forges are named after their software (`gitlab.example.com`,
@@ -755,6 +792,61 @@ mod tests {
             Some("github.com")
         );
         assert_eq!(scp_separator("git@host/no-colon-before-path"), None);
+    }
+
+    /// The security boundary the bracket rule exists for: only a `[` at the very
+    /// start, or directly after the `@` ending userinfo, opens a host literal.
+    /// A bracket elsewhere is ordinary text, so a remote crafted to look like one
+    /// must not have its host read out of the brackets — and where the remote is
+    /// malformed we decline to name a host rather than guess at one.
+    #[test]
+    fn refuses_to_name_a_host_from_a_spoofed_bracket() {
+        // The closing bracket is not followed by the separator, so this is not a
+        // host literal and the remote is not parseable as scp-like.
+        for spoof in [
+            "[evil.example]x@github.com:owner/repo",
+            "[evil.example]@github.com:owner/repo",
+            "[unclosed@github.com:owner/repo",
+        ] {
+            assert_eq!(scp_separator(spoof), None, "{spoof}");
+            assert_eq!(remote_host(spoof), None, "{spoof}");
+            assert_eq!(credential_host_for_url(spoof), None, "{spoof}");
+        }
+
+        // The legitimate spellings still parse. A bracket at the very start does
+        // open a literal — `scp_separator` finds the colon after it — though
+        // `remote_host` separately requires the `user@` form, so assert the
+        // separator directly there and the host via the userinfo spelling.
+        assert_eq!(scp_separator("[::1]:owner/repo"), Some(5));
+        assert_eq!(
+            remote_host("git@[2001:db8::1]:owner/repo").as_deref(),
+            Some("[2001:db8::1]")
+        );
+        assert_eq!(
+            remote_host("git@[::1]:owner/repo").as_deref(),
+            Some("[::1]")
+        );
+        // A bracket after the path separator can never open a literal.
+        assert_eq!(
+            remote_host("git@github.com:owner/[not-a-host]").as_deref(),
+            Some("github.com")
+        );
+    }
+
+    /// Bracketing is syntax that fences an address off from a port. A remote URL
+    /// always yields the bracketed spelling while a stored account host is
+    /// usually bare, so comparing them raw would be a permanent mismatch.
+    #[test]
+    fn compares_ipv6_authorities_across_bracket_spellings() {
+        assert_eq!(unbracketed_hostname("[::1]"), "::1");
+        assert_eq!(unbracketed_hostname("[::1]:443"), "::1");
+        assert_eq!(unbracketed_hostname("::1"), "::1");
+        assert_eq!(unbracketed_hostname("[2001:db8::1]"), "2001:db8::1");
+        // Ordinary hosts are untouched, with or without a port.
+        assert_eq!(unbracketed_hostname("github.com"), "github.com");
+        assert_eq!(unbracketed_hostname("github.com:8443"), "github.com");
+        // An unmatched bracket is not stripped — it is not a literal.
+        assert_eq!(unbracketed_hostname("[::1"), "[::1");
     }
 
     #[test]
