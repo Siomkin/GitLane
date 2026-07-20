@@ -5,10 +5,16 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useNavigatorSections } from "./useNavigatorSections";
 
-const branch = (name: string, kind: BranchInfo["kind"], target = "c1"): BranchInfo => ({
+const branch = (
+  name: string,
+  kind: BranchInfo["kind"],
+  target: string | null = "c1",
+  tipTime: number | null = null,
+): BranchInfo => ({
   name,
   kind,
   target,
+  tipTime,
   isHead: false,
   upstream: null,
   remote: null,
@@ -121,6 +127,67 @@ describe("useNavigatorSections", () => {
     expect(s.locals.items.find((b) => b.name === "feature/search")?.worktree).toBe("wt");
     // The head branch lives in the open worktree (/r), so it isn't flagged.
     expect(s.locals.items.find((b) => b.name === "main")?.worktree).toBeNull();
+  });
+
+  it("orders branches and remotes by tip time, most recent first", () => {
+    seed({
+      summary: { path: "/r", workdir: "/r", headBranch: "none", headOid: "c1", detached: false },
+      branches: [
+        branch("stale", "local", "c1", 100),
+        branch("newest", "local", "c1", 900),
+        branch("middle", "local", "c1", 500),
+        branch("origin/stale", "remote", "c1", 100),
+        branch("origin/fresh", "remote", "c1", 800),
+      ],
+    });
+    const s = render("");
+    expect(s.locals.items.map((b) => b.name)).toEqual(["newest", "middle", "stale"]);
+    expect(s.remotes.items.map((b) => b.name)).toEqual(["origin/fresh", "origin/stale"]);
+  });
+
+  it("sinks branches with an unresolvable tip below dated ones, alphabetical among themselves", () => {
+    seed({
+      summary: { path: "/r", workdir: "/r", headBranch: "none", headOid: "c1", detached: false },
+      branches: [
+        branch("undated-b", "local", null, null),
+        branch("dated-old", "local", "c1", 10),
+        branch("undated-a", "local", null, null),
+      ],
+    });
+    // A branch whose tip can't be peeled has no time to compare — it can't
+    // masquerade as either the newest or the oldest, so it sorts after all
+    // dated rows.
+    expect(render("").locals.items.map((b) => b.name)).toEqual(["dated-old", "undated-a", "undated-b"]);
+  });
+
+  it("keeps the checked-out branch first even when another branch is newer", () => {
+    seed({
+      branches: [branch("main", "local", "c1", 1), branch("feature/search", "local", "c1", 999)],
+    });
+    // Rank beats recency: current pins to the top (head is "main" here).
+    expect(render("").locals.items.map((b) => b.name)).toEqual(["main", "feature/search"]);
+  });
+
+  it("sorts tags newest-first, ordering version numbers numerically", () => {
+    seed({
+      graph: {
+        ...graph,
+        commits: [
+          commit({
+            id: "c1",
+            refs: [
+              { name: "v1.9.0", kind: "tag" },
+              { name: "v1.10.0", kind: "tag" },
+              { name: "v1.10.1", kind: "tag" },
+              { name: "v1.2.0", kind: "tag" },
+            ],
+          }),
+        ],
+      },
+    });
+    // Descending, and v1.10.x outranks v1.9.0 — plain lexicographic order would
+    // put "v1.9.0" first because "9" > "1".
+    expect(render("").tags.items.map((t) => t.name)).toEqual(["v1.10.1", "v1.10.0", "v1.9.0", "v1.2.0"]);
   });
 
   it("sorts pinned rows above unpinned — current always first — and marks the separator", () => {

@@ -292,6 +292,10 @@ export interface BranchInfo {
   name: string;
   kind: BranchKind;
   target: string | null;
+  /** Committer time (epoch seconds) of the branch tip. Git stores no branch
+   * creation time, so this stands in for "last updated" — what the navigator
+   * orders branches and remotes by. `null` when the tip can't be resolved. */
+  tipTime?: number | null;
   isHead: boolean;
   upstream: string | null;
   /** For a remote branch, the remote it belongs to (resolved by the backend

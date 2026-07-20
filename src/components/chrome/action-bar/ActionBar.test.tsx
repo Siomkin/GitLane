@@ -708,6 +708,98 @@ describe("ActionBar network ops — one at a time (GL-182)", () => {
   });
 });
 
+describe("ActionBar navigator dismissal", () => {
+  it("closes on a press outside the toolbar", () => {
+    useUi.setState({ navOpen: true });
+    render(<ActionBar />);
+
+    const outside = document.createElement("div");
+    document.body.appendChild(outside);
+    fireEvent.mouseDown(outside);
+
+    expect(useUi.getState().navOpen).toBe(false);
+    outside.remove();
+  });
+
+  it("closes on a press on a neighbouring toolbar control", () => {
+    // The dismiss ref covers the trigger+panel wrapper, not the whole toolbar —
+    // scoped to the bar, presses on its own controls counted as "inside" and
+    // left the popup open, which is what the trigger-only close looked like.
+    useUi.setState({ navOpen: true });
+    render(<ActionBar />);
+
+    fireEvent.mouseDown(screen.getByTitle("Fetch"));
+
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("keeps the trigger itself inside the dismiss region so its click toggles", () => {
+    // A press on the trigger must NOT dismiss: the click that follows would
+    // reopen the popup, so it could never be closed from its own button.
+    useUi.setState({ navOpen: true });
+    render(<ActionBar />);
+
+    const trigger = screen.getByTitle(/Branches, worktrees & stashes/);
+    fireEvent.mouseDown(trigger);
+    expect(useUi.getState().navOpen).toBe(true);
+
+    fireEvent.click(trigger);
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("stays open for a press inside the panel", () => {
+    useUi.setState({ navOpen: true });
+    render(<ActionBar />);
+
+    fireEvent.mouseDown(screen.getByPlaceholderText("Search all refs"));
+
+    expect(useUi.getState().navOpen).toBe(true);
+  });
+
+  it("closes on Escape", () => {
+    useUi.setState({ navOpen: true });
+    render(<ActionBar />);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+
+  it("stays open while a menu raised from one of its rows is up", () => {
+    // Right-clicking a branch row opens the context menu as an App-level
+    // sibling. The press that dismisses that menu must not also collapse the
+    // navigator behind it — one press, one layer.
+    useUi.setState({
+      navOpen: true,
+      contextMenu: { x: 0, y: 0, branch: "feature", isCurrent: false },
+    });
+    render(<ActionBar />);
+
+    // Neither an outside press nor Escape reaches the navigator.
+    const outside = document.createElement("div");
+    document.body.appendChild(outside);
+    fireEvent.mouseDown(outside);
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(useUi.getState().navOpen).toBe(true);
+    outside.remove();
+  });
+
+  it("resumes dismissing itself once that menu has closed", () => {
+    useUi.setState({
+      navOpen: true,
+      contextMenu: { x: 0, y: 0, branch: "feature", isCurrent: false },
+    });
+    const { rerender } = render(<ActionBar />);
+
+    useUi.setState({ contextMenu: null });
+    rerender(<ActionBar />);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+});
+
 describe("ActionBar navigator shortcut (GL-182)", () => {
   it("opens the navigator on ⌘⌥F (KeyF code — Option+F types ƒ on macOS)", () => {
     render(<ActionBar />);

@@ -43,6 +43,10 @@ export interface ActionBarModel {
   providerState: ProviderState | null;
   accountsError: string | null;
   navOpen: boolean;
+  /** A menu raised *from* the navigator (branch / tag / stash / worktree
+   * right-click, or a drag-drop action menu) is open, so the navigator must
+   * suspend its own dismissal — see the ActionBar. */
+  navMenuBlocking: boolean;
   terminalVisible: boolean;
   // Commands
   selectTab: (tab: LeftTab) => void;
@@ -84,6 +88,17 @@ export function useActionBarModel(): ActionBarModel {
   const openRecovery = useUi((state) => state.openRecovery);
   const terminalVisible = useUi((state) => state.terminalView !== "hidden");
   const navOpen = useUi((state) => state.navOpen);
+  // These menus render as App-level siblings outside the toolbar's wrapper, so
+  // without this the one dismissing press would tear down the navigator under
+  // the menu it was meant to close.
+  const navMenuBlocking = useUi(
+    (state) =>
+      state.contextMenu !== null ||
+      state.tagMenu !== null ||
+      state.stashMenu !== null ||
+      state.worktreeMenu !== null ||
+      state.actionMenu !== null,
+  );
   const toggleNav = useUi((state) => state.toggleNav);
   const openNav = useUi((state) => state.openNav);
   const closeNav = useUi((state) => state.closeNav);
@@ -244,6 +259,7 @@ export function useActionBarModel(): ActionBarModel {
     providerState,
     accountsError,
     navOpen,
+    navMenuBlocking,
     terminalVisible,
     selectTab,
     toggleNav,

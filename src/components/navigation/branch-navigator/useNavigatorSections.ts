@@ -13,8 +13,23 @@ import { orderWithPins } from "./pinning";
 
 /** A navigable ref row plus whether it matches the active search. While
  * filtering, non-matches are removed from the popup. */
+/** Most recently updated first. Git records no branch creation time, so rows
+ * order by their tip commit's committer time; a row whose tip can't be resolved
+ * has no time to compare and sinks below the dated ones, alphabetical among its
+ * peers (as are two branches sharing a tip). */
+function byRecency(a: { name: string; tipTime: number | null }, b: { name: string; tipTime: number | null }) {
+  if (a.tipTime !== b.tipTime) {
+    if (a.tipTime === null) return 1;
+    if (b.tipTime === null) return -1;
+    return b.tipTime - a.tipTime;
+  }
+  return a.name.localeCompare(b.name);
+}
+
 export interface NavRefItem extends RefItem {
   match: boolean;
+  /** Committer time of the tip (epoch seconds) — the sort key; see {@link byRecency}. */
+  tipTime?: number | null;
   /** This row is pinned to the top of its section (persisted in the ui store). */
   pinned: boolean;
   /** The checked-out branch — always sorts first, ahead of pins. */
@@ -121,10 +136,11 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       match: matches(b.name),
       pinned: !!pinnedNavRefs[pinKey(RowKind.Local, b.name)],
       current: b.name === head,
+      tipTime: b.tipTime ?? null,
       sync: b.sync,
       worktree: branchWorktree.get(b.name) ?? null,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(byRecency);
   const remotes = branches
     .filter((b) => b.kind === BranchKind.Remote)
     .map((b) => ({
@@ -132,11 +148,14 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       oid: b.target ?? oidByName.get(b.name),
       match: matches(b.name),
       pinned: !!pinnedNavRefs[pinKey(RowKind.Remote, b.name)],
+      tipTime: b.tipTime ?? null,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(byRecency);
+  // Tags read newest-first: descending, with numeric collation so v1.10.0 sorts
+  // above v1.9.0 (plain lexicographic order would invert them).
   const tags = allTags
     .map((t) => ({ ...t, match: matches(t.name), pinned: !!pinnedNavRefs[pinKey(RowKind.Tag, t.name)] }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
   // Resolve a worktree's tip like a branch row does — prefer the branch's
   // authoritative `target`, fall back to the graph — so a worktree whose branch
   // tip is outside the loaded window still navigates. A detached worktree has

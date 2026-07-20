@@ -41,15 +41,23 @@ export const ActionBar = () => {
     openPr,
     providerState,
     navOpen,
+    navMenuBlocking,
   } = m;
 
-  // The 560px dropdown is anchored under the branch button; dismiss it on
-  // outside click / Escape.
-  const wrapRef = useRef<HTMLDivElement>(null);
-  useDismiss(navOpen, m.closeNav, wrapRef);
+  // The 560px dropdown is anchored under the branch button. Escape and any
+  // press outside dismiss it, where "outside" means outside the trigger+panel
+  // wrapper — scoping this ref to the whole toolbar instead would count presses
+  // on neighbouring toolbar controls as inside and leave the popup open. The
+  // trigger stays inside the ref so its own click toggles rather than being
+  // dismissed and immediately reopened.
+  // Dismissal stands down while a menu raised from a navigator row is open, so
+  // the press that closes that menu doesn't also collapse the navigator behind
+  // it — the same suspension SettingsModal applies for nested overlays.
+  const navRef = useRef<HTMLDivElement>(null);
+  useDismiss(navOpen && !navMenuBlocking, m.closeNav, navRef);
 
   return (
-    <div ref={wrapRef} className="relative z-40 flex-none">
+    <div className="relative z-40 flex-none">
       <div className="flex h-12 -translate-y-px items-center gap-2 px-3.5">
         <div className="flex h-8 flex-none items-center rounded-lg bg-black/[0.06] p-0.5 text-[13px] dark:bg-white/[0.06]">
           <SegTab
@@ -70,7 +78,7 @@ export const ActionBar = () => {
           />
         </div>
 
-        <div className="relative">
+        <div ref={navRef} className="relative">
           <button type="button"
             onClick={m.toggleNav}
             title={`Branches, worktrees & stashes. ${currentSync.title}`}
