@@ -104,10 +104,12 @@ pub fn build_profiled(
         .filter(|oid| visible_oids.contains(oid));
 
     // `lanes[i]` holds the parent oid that lane `i` is reserved for (or None),
-    // plus whether that reservation is a *branch root* — i.e. opened because a
-    // merge pulled the parent in as a topic branch, rather than a plain
-    // first-parent continuation. The flag is what lets stacked branches keep
-    // their own columns instead of collapsing onto one lane.
+    // plus which *kind* of reservation it is: a plain first-parent continuation,
+    // a *branch root* (opened because a merge pulled the parent in as a topic
+    // branch — what lets stacked branches keep their own columns instead of
+    // collapsing onto one lane), or *blocked* (holding the column open for
+    // HEAD's in-flight hand-off connector; renders nothing, claims nothing —
+    // see the hand-off comment below).
     // Collect just (oid, committer time) so we can interleave stashes by time
     // without holding every commit handle alive for the whole layout pass; the
     // full handle is re-opened once per commit in the loop below.
@@ -176,8 +178,10 @@ pub fn build_profiled(
         let mut cont_lane: Option<usize> = None;
         for (slot, lane_state) in lanes.iter().enumerate() {
             if let Some(l) = lane_state {
-                if l.waiting == oid {
-                    if l.branch_root {
+                // A blocked lane is only holding the column open for an in-flight
+                // connector — it never renders the commit it points at.
+                if l.waiting == oid && l.kind != LaneKind::Blocked {
+                    if l.kind == LaneKind::Root {
                         root_lane.get_or_insert(slot);
                     } else {
                         cont_lane.get_or_insert(slot);
@@ -213,18 +217,38 @@ pub fn build_profiled(
         if parents.is_empty() {
             lanes[lane] = None;
         } else {
-            let first_parent_already_awaited = lanes
-                .iter()
-                .enumerate()
-                .any(|(slot, s)| slot != lane && matches!(s, Some(l) if l.waiting == parents[0]));
+            let first_parent_already_awaited = lanes.iter().enumerate().any(|(slot, s)| {
+                slot != lane
+                    && matches!(s, Some(l) if l.waiting == parents[0] && l.kind != LaneKind::Blocked)
+            });
             if head_target == Some(oid) && first_parent_already_awaited {
-                lanes[lane] = None;
+                // The checked-out branch hands its first parent off to the lane
+                // that already awaits it, so the trunk stays visually continuous
+                // below HEAD. But HEAD's own column must stay *blocked* until the
+                // parent renders: its connector is drawn straight down this lane,
+                // so releasing the slot here would let the next branch root
+                // allocate it and have that connector run through the unrelated
+                // branch's commits — reading as if HEAD descended from it.
+                lanes[lane] = Some(Lane::blocked(parents[0]));
             } else {
                 lanes[lane] = Some(Lane::cont(parents[0]));
             }
             for &p in &parents[1..] {
-                if lanes.iter().any(|s| matches!(s, Some(l) if l.waiting == p)) {
-                    continue; // already awaited → collapse, don't fan out
+                // Already awaited → collapse onto that lane instead of opening a
+                // redundant column — and *promote* the reservation to branch-root
+                // priority. This merge's connector is drawn vertically down the
+                // destination lane, so `p` must keep rendering there: a lower slot
+                // freed later (e.g. a released blocked column) can pick up its own
+                // continuation reservation for the same commit, and without the
+                // promotion that lower lane would win the claim and drag the
+                // connector through whatever renders in between.
+                if let Some(l) = lanes
+                    .iter_mut()
+                    .flatten()
+                    .find(|l| l.waiting == p && l.kind != LaneKind::Blocked)
+                {
+                    l.kind = LaneKind::Root;
+                    continue;
                 }
                 let l = alloc_lane(&mut lanes);
                 lanes[l] = Some(Lane::root(p));
@@ -338,27 +362,46 @@ pub fn build_profiled(
     ))
 }
 
-/// A lane reservation: the parent oid this lane is waiting to render, and whether
-/// it was opened as a merge's topic branch (`branch_root`) rather than a plain
-/// first-parent continuation. When a commit is awaited by both a branch-root lane
-/// and a continuation, the branch-root lane wins — that's what gives a merged
-/// branch its own column rather than collapsing onto the first parent's lane.
+/// A lane reservation: the parent oid this lane is waiting to render, and what
+/// kind of reservation it is (see [`LaneKind`]).
 struct Lane {
     waiting: Oid,
-    branch_root: bool,
+    kind: LaneKind,
+}
+
+/// How a lane came to await its commit. When a commit is awaited by both a
+/// branch-root lane and a continuation, the branch-root lane wins — that's what
+/// gives a merged branch its own column rather than collapsing onto the first
+/// parent's lane. A `Blocked` lane renders nothing and claims nothing, but holds
+/// its column out of [`alloc_lane`]'s reach until `waiting` renders, so the
+/// connector still travelling down it is never overdrawn by an unrelated branch.
+#[derive(Clone, Copy, PartialEq)]
+enum LaneKind {
+    /// Plain first-parent continuation of the commit above.
+    Cont,
+    /// Opened because a merge pulled the parent in as a topic branch.
+    Root,
+    /// Held open for HEAD's in-flight hand-off connector.
+    Blocked,
 }
 
 impl Lane {
     fn cont(waiting: Oid) -> Self {
         Lane {
             waiting,
-            branch_root: false,
+            kind: LaneKind::Cont,
         }
     }
     fn root(waiting: Oid) -> Self {
         Lane {
             waiting,
-            branch_root: true,
+            kind: LaneKind::Root,
+        }
+    }
+    fn blocked(waiting: Oid) -> Self {
+        Lane {
+            waiting,
+            kind: LaneKind::Blocked,
         }
     }
 }
