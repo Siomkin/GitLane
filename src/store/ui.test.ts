@@ -79,6 +79,20 @@ describe("view-tab transitions", () => {
       // render the previous repo's oid against the new repo.
       stackedReview: { oid: "abc123", title: "Old repo commit" },
       navOpen: true,
+      draggingFrom: { name: "old-branch", kind: "local" },
+      actionMenu: {
+        x: 1,
+        y: 2,
+        from: { name: "old-branch", kind: "local" },
+        to: { kind: "commit", sha: "old-oid", shortSha: "old" },
+      },
+      contextMenu: { x: 1, y: 2, branch: "old-branch", isCurrent: false },
+      commitMenu: { x: 1, y: 2, sha: "old-oid", shortSha: "old" },
+      stashMenu: { x: 1, y: 2, oid: "old-stash", message: "old stash" },
+      fileMenu: { x: 1, y: 2, path: "shared.txt", discard: { staged: false } },
+      wipMenu: { x: 1, y: 2 },
+      tagMenu: { x: 1, y: 2, name: "v1", sha: "old-oid", refOid: "old-tag-oid" },
+      worktreeMenu: { x: 1, y: 2, path: "/old-wt", name: "old-wt", isMain: false },
       reviewNotes: [
         {
           id: "work#a.ts#R1-R1",
@@ -115,6 +129,17 @@ describe("view-tab transitions", () => {
     expect(s.changesAll).toBe(false);
     expect(s.stackedReview).toBeNull();
     expect(s.navOpen).toBe(false);
+    expect(s.draggingFrom).toBeNull();
+    expect(s).toMatchObject({
+      actionMenu: null,
+      contextMenu: null,
+      commitMenu: null,
+      stashMenu: null,
+      fileMenu: null,
+      wipMenu: null,
+      tagMenu: null,
+      worktreeMenu: null,
+    });
     expect(s.reviewNotes).toEqual([]);
     expect(s.agentMessageOpen).toBe(false);
     expect(s.histSearchOpen).toBe(false);

@@ -1757,6 +1757,36 @@ describe("repo store — loadRepo failed open", () => {
 });
 
 describe("repo store — loadRepo progressive open", () => {
+  it("clears a repo-bound menu opened while the next repo is still resolving", async () => {
+    const nextSummary: RepoSummary = {
+      path: "/other",
+      workdir: "/other",
+      headBranch: "main",
+      headOid: null,
+      detached: false,
+    };
+    const opened = deferred<RepoSummary>();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return opened.promise;
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const switching = useRepo.getState().loadRepo("/other");
+    await Promise.resolve();
+    // The old repo remains interactive during phase one. This payload is valid
+    // there, but must not survive the atomic publication of `/other`.
+    useUi.setState({
+      fileMenu: { x: 10, y: 10, path: "shared.txt", discard: { staged: false } },
+    });
+
+    opened.resolve(nextSummary);
+    await switching;
+
+    expect(useRepo.getState().summary).toBe(nextSummary);
+    expect(useUi.getState().fileMenu).toBeNull();
+  });
+
   it("resets stale PR state before the commit graph resolves", async () => {
     // A previous repo's PRs are still in the store when a new open begins.
     usePulls.setState({

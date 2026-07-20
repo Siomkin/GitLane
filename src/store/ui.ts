@@ -1034,6 +1034,11 @@ export const useUi = create<UiState>()(
   onRepoSwitched: () => {
     const activeRepoPath = useRepo.getState().summary?.path;
     set((s) => ({
+      // Every menu and drag payload is repo-bound. A switch can finish after a
+      // menu was opened while `open_repo` was still pending; retaining that
+      // payload would render repo A's subject against repo B's store actions.
+      ...noMenus,
+      draggingFrom: null,
       leftTab: "history",
       rightTab: "details",
       changesAll: false,
