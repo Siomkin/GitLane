@@ -25,6 +25,8 @@ pub use super::forge::RemoteTransportDirection;
 pub enum TransportCredential {
     /// No inline handling: SSH, or the user's own credential helper / GCM.
     None,
+    /// Use the user's configured helper, optionally with path-aware matching.
+    CredentialHelper { host: String, use_http_path: bool },
     /// GitHub `gh` credential helper for `host` (account chosen by URL username).
     Gh { host: String },
     /// GitLab `glab` credential helper for `host`: glab is signed in and answers
@@ -160,7 +162,10 @@ fn credential_for_credential_host(
                 account_id: account_id.to_string(),
             }))
         }
-        "credentialHelper" => Ok(TransportCredential::None),
+        "credentialHelper" => Ok(TransportCredential::CredentialHelper {
+            host: actual_credential_host.to_string(),
+            use_http_path: auth.use_http_path,
+        }),
         other => Err(format!("Unsupported git transport auth mode '{other}'.")),
     }
 }
@@ -218,7 +223,8 @@ fn validate_credential_authority(host: &str) -> Result<(), String> {
         port
     };
     if let Some(port) = port {
-        if port.is_empty() || port == "0" || !port.chars().all(|c| c.is_ascii_digit()) {
+        let parsed = port.parse::<u16>().map_err(|_| invalid())?;
+        if parsed == 0 {
             return Err(invalid());
         }
     }
@@ -253,6 +259,7 @@ mod tests {
                 login: "octocat".into(),
             }),
             provider_account_id: None,
+            use_http_path: false,
         }
     }
 
@@ -265,6 +272,7 @@ mod tests {
             username: Some("alice".into()),
             account_ref: None,
             provider_account_id: Some("42".into()),
+            use_http_path: false,
         }
     }
 
@@ -308,10 +316,14 @@ mod tests {
             username: Some("alice".into()),
             account_ref: None,
             provider_account_id: None,
+            use_http_path: false,
         };
         assert_eq!(
             credential_for_credential_host("gitlab.com", &auth).expect("valid auth"),
-            TransportCredential::None
+            TransportCredential::CredentialHelper {
+                host: "gitlab.com".into(),
+                use_http_path: false,
+            }
         );
     }
 
@@ -363,6 +375,7 @@ mod tests {
             username: Some("ada".into()),
             account_ref: None,
             provider_account_id: None,
+            use_http_path: false,
         }
     }
 
@@ -476,6 +489,7 @@ mod tests {
             "[::1]x",      // trailing text where a port separator must be
             "[::1]:",      // separator with no port
             "[::1]:0",     // port 0 is not a real port
+            "[::1]:70000", // outside the valid TCP port range
             "[::1]:https", // non-numeric port
             "[evil/path]", // not an address at all
             // A link-local zone id (RFC 6874 `%25<zone>`) is rejected too: the
@@ -490,5 +504,27 @@ mod tests {
                 "{host}: {err}",
             );
         }
+    }
+
+    #[test]
+    fn credential_helper_preserves_path_scope_for_an_ipv6_authority() {
+        let authority = "[2001:db8::1]:8443";
+        let auth = GitTransportAuthRef {
+            mode: "credentialHelper".into(),
+            provider: Some("other".into()),
+            host: "[2001:db8::1]".into(),
+            credential_host: authority.into(),
+            username: Some("alice".into()),
+            account_ref: None,
+            provider_account_id: None,
+            use_http_path: true,
+        };
+        assert_eq!(
+            credential_for_credential_host(authority, &auth).unwrap(),
+            TransportCredential::CredentialHelper {
+                host: authority.into(),
+                use_http_path: true,
+            }
+        );
     }
 }

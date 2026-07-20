@@ -1,18 +1,22 @@
 //! Linked-worktree operations backed by git porcelain.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::git::handoff;
 use crate::git::types::{WorktreeDirtyState, WorktreeInfo};
 
-use super::cli::{run_git, run_git_stdout};
+use super::cli::{run_git, run_git_allow_exit_codes, run_git_stdout, run_git_stdout_raw};
 use super::operands::{ensure_operand, ensure_opt};
+
+static STASH_ATTEMPT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// List linked worktrees via `git worktree list --porcelain`. This is a read,
 /// but uses the CLI's stable porcelain output rather than libgit2's awkward
 /// worktree API. The first entry is always the primary (main) worktree.
 pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
-    let raw = run_git(repo, &["worktree", "list", "--porcelain"])?;
+    let raw = run_git_stdout_raw(repo, &["worktree", "list", "--porcelain", "-z"])?;
     let mut out = Vec::new();
     let mut path: Option<String> = None;
     let mut branch: Option<String> = None;
@@ -34,7 +38,11 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
                      locked: &mut bool,
                      first: &mut bool| {
         if let Some(p) = path.take() {
-            let name = p.rsplit('/').next().unwrap_or(&p).to_string();
+            let name = std::path::Path::new(&p)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&p)
+                .to_string();
             out.push(WorktreeInfo {
                 name,
                 path: p,
@@ -54,7 +62,11 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
         }
     };
 
-    for line in raw.lines() {
+    for field in raw
+        .split(|byte| *byte == 0)
+        .filter(|field| !field.is_empty())
+    {
+        let line = String::from_utf8_lossy(field);
         if let Some(p) = line.strip_prefix("worktree ") {
             flush(
                 &mut path,
@@ -65,16 +77,16 @@ pub fn worktrees(repo: &str) -> Result<Vec<WorktreeInfo>, String> {
                 &mut locked,
                 &mut first,
             );
-            path = Some(p.trim().to_string());
+            path = Some(p.to_string());
         } else if let Some(b) = line.strip_prefix("branch ") {
-            branch = Some(b.trim().trim_start_matches("refs/heads/").to_string());
+            branch = Some(b.trim_start_matches("refs/heads/").to_string());
         } else if let Some(h) = line.strip_prefix("HEAD ") {
-            head = Some(h.trim().to_string());
-        } else if line == "bare" {
+            head = Some(h.to_string());
+        } else if line.as_ref() == "bare" {
             bare = true;
-        } else if line == "prunable" || line.starts_with("prunable ") {
+        } else if line.as_ref() == "prunable" || line.starts_with("prunable ") {
             prunable = true;
-        } else if line == "locked" || line.starts_with("locked ") {
+        } else if line.as_ref() == "locked" || line.starts_with("locked ") {
             locked = true;
         }
     }
@@ -120,6 +132,49 @@ pub fn add_worktree(
         (None, Some(r)) => run_git(repo, &["worktree", "add", worktree_path, r]),
         (None, None) => run_git(repo, &["worktree", "add", worktree_path]),
     }
+}
+
+/// Create and check out a branch in an existing detached worktree.
+///
+/// The menu captures the worktree's path and HEAD oid. Re-read the registered
+/// worktree state and validate its detached HEAD before mutating so an external
+/// checkout cannot redirect this action to a different commit or branch.
+/// `git switch -c` performs the ref creation and checkout as one logical git
+/// operation, avoiding a branch-created-but-not-checked-out partial result.
+pub fn create_branch_in_worktree(
+    repo: &str,
+    worktree_path: &str,
+    name: &str,
+    expected_oid: &str,
+) -> Result<String, String> {
+    ensure_operand(worktree_path)?;
+    ensure_operand(name)?;
+    ensure_operand(expected_oid)?;
+
+    let worktree = worktrees(repo)?
+        .into_iter()
+        .find(|worktree| same_path(&worktree.path, worktree_path))
+        .ok_or_else(|| {
+            format!("No worktree is registered at {worktree_path} anymore. Refresh and try again.")
+        })?;
+    if worktree.bare {
+        return Err("A bare repository has no working tree to attach a branch to.".into());
+    }
+    if worktree.prunable {
+        return Err("The worktree's directory is missing. Refresh and try again.".into());
+    }
+    if let Some(branch) = worktree.branch {
+        return Err(format!(
+            "The worktree is no longer detached; it has {branch} checked out. Refresh and try again."
+        ));
+    }
+    if worktree.head.as_deref() != Some(expected_oid) {
+        return Err("The worktree's HEAD changed. Refresh and try again.".into());
+    }
+
+    super::head::ensure_expected_head(worktree_path, None, Some(expected_oid))?;
+    run_git(worktree_path, &["switch", "-c", name])?;
+    Ok(format!("Created {name} in worktree {}", worktree.name))
 }
 
 /// Remove a linked worktree (`git worktree remove <path>`). `force` adds
@@ -268,10 +323,28 @@ fn ensure_worktree_registered(repo: &str, to: &str, from: &str) -> Result<(), St
     }
 }
 
+fn status_entry_count(worktree: &str) -> Result<usize, String> {
+    let raw = run_git_stdout_raw(
+        worktree,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    )?;
+    let mut records = raw
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty());
+    let mut count = 0;
+    while let Some(record) = records.next() {
+        count += 1;
+        // Porcelain v1 -z emits a second NUL field for a rename/copy source.
+        if matches!(record.first(), Some(b'R' | b'C')) || matches!(record.get(1), Some(b'R' | b'C'))
+        {
+            let _ = records.next();
+        }
+    }
+    Ok(count)
+}
+
 fn is_dirty(worktree: &str) -> Result<bool, String> {
-    Ok(!run_git(worktree, &["status", "--porcelain"])?
-        .trim()
-        .is_empty())
+    Ok(status_entry_count(worktree)? > 0)
 }
 
 /// True when the worktree has unmerged (conflicted) index entries.
@@ -295,13 +368,47 @@ pub(super) fn worktree_git_dir(worktree: &str) -> Result<PathBuf, String> {
 /// always apply/drop **by oid** rather than by `stash@{n}` — a sibling worktree's
 /// stash can otherwise sit at index 0 and be popped into the wrong tree.
 fn push_stash(worktree: &str, message: &str) -> Result<String, String> {
+    let before = stash_tip(worktree)?;
+    // A stash commit's oid includes its message, but Git timestamps commits only
+    // to the second. Re-applying an existing stash and immediately pushing the
+    // same changes with the same message can therefore reproduce the exact oid.
+    // Git still cleans the worktree in that case, yet refs/stash does not move.
+    // Give every handoff attempt a unique commit message so a successful push
+    // always creates a distinct, independently droppable stash entry.
+    let message = unique_stash_message(message);
     run_git(
         worktree,
-        &["stash", "push", "--include-untracked", "-m", message],
+        &["stash", "push", "--include-untracked", "-m", &message],
     )?;
-    Ok(run_git(worktree, &["rev-parse", "refs/stash"])?
-        .trim()
-        .to_string())
+    let after = stash_tip(worktree)?;
+    match after {
+        Some(oid) if Some(oid.as_str()) != before.as_deref() => Ok(oid),
+        _ => Err(
+            "Git did not create a stash for these changes. Dirty submodules cannot be carried; commit or stash them inside the submodule first."
+                .to_string(),
+        ),
+    }
+}
+
+fn unique_stash_message(message: &str) -> String {
+    let sequence = STASH_ATTEMPT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!(
+        "{message} [GitLane attempt {}-{timestamp}-{sequence}]",
+        std::process::id()
+    )
+}
+
+fn stash_tip(worktree: &str) -> Result<Option<String>, String> {
+    let oid = run_git_allow_exit_codes(
+        worktree,
+        &["rev-parse", "--verify", "--quiet", "refs/stash"],
+        &[1],
+    )?;
+    Ok((!oid.trim().is_empty()).then(|| oid.trim().to_string()))
 }
 
 /// Drop the stash whose commit oid is `oid`, wherever it sits in the (global)
@@ -356,6 +463,7 @@ pub fn move_branch_to_worktree(
     carry: bool,
     progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
+    let _stash_guard = super::stashes::lock_stash_writes()?;
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
     ensure_operand(to_worktree_path)?;
@@ -380,11 +488,7 @@ pub fn move_branch_to_worktree(
         );
     }
 
-    let source_status = run_git(from, &["status", "--porcelain"])?;
-    let source_changes = source_status
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .count();
+    let source_changes = status_entry_count(from)?;
     let source_dirty = source_changes > 0;
     if source_dirty && !carry {
         return Err(
@@ -431,7 +535,7 @@ pub fn move_branch_to_worktree(
 
     // 3. Free the branch by detaching the source at its current HEAD.
     progress("detach");
-    if let Err(e) = run_git(from, &["checkout", "--detach"]) {
+    if let Err(e) = super::head::switch_detached(from, "HEAD") {
         // Source is still on `branch`; just restore both stashes.
         if let Some(o) = &dest_stash {
             restore_stash(to, o);
@@ -444,9 +548,9 @@ pub fn move_branch_to_worktree(
 
     // 4. Check the branch out in the (now clean) destination.
     progress("checkout");
-    if let Err(e) = run_git(to, &["checkout", branch]) {
+    if let Err(e) = super::head::switch_branch(to, branch) {
         // Roll back: re-attach the source to its branch, restore both stashes.
-        let _ = run_git(from, &["checkout", branch]);
+        let _ = super::head::switch_branch(from, branch);
         if let Some(o) = &source_stash {
             restore_stash(from, o);
         }
@@ -583,4 +687,19 @@ pub fn delete_branch_with_worktree(
     progress("deleteBranch");
     super::branches::delete_branch(repo, branch, true)?;
     Ok(format!("Deleted {branch} and its worktree"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unique_stash_message;
+
+    #[test]
+    fn handoff_stash_messages_are_unique_for_identical_attempts() {
+        let first = unique_stash_message("GitLane: handoff feature");
+        let second = unique_stash_message("GitLane: handoff feature");
+
+        assert_ne!(first, second);
+        assert!(first.starts_with("GitLane: handoff feature [GitLane attempt "));
+        assert!(second.starts_with("GitLane: handoff feature [GitLane attempt "));
+    }
 }

@@ -33,8 +33,45 @@ describe("promptCreateWorktree", () => {
     expect(requests).toHaveLength(1);
     // Trailing slash trimmed, ref sanitized to word chars/dots/dashes.
     expect(requests[0].defaultValue).toBe("/work/repo-wt-feat-x-y");
+    expect(requests[0].message).toBe(
+      "A new worktree is created with feat/x y checked out, then opened.",
+    );
     requests[0].onSubmit("/elsewhere/wt");
     expect(createWorktreeAt).toHaveBeenCalledWith("/elsewhere/wt", "abc123");
+  });
+
+  it("describes a commit worktree as branchless without calling it linked", () => {
+    const { requests, requestPrompt } = capturePrompt();
+    promptCreateWorktree(
+      requestPrompt,
+      vi.fn(),
+      vi.fn(),
+      "abc123",
+      "/work/repo",
+      "abc123",
+      { detached: true },
+    );
+
+    expect(requests[0].message).toBe(
+      "A new worktree is created at this commit without a branch, then opened.",
+    );
+    expect(requests[0].message).not.toContain("linked");
+  });
+
+  it("explains when an already-checked-out branch forces a branchless worktree", () => {
+    const { requests, requestPrompt } = capturePrompt();
+    promptCreateWorktree(
+      requestPrompt,
+      vi.fn(),
+      vi.fn(),
+      "abc123",
+      "/work/repo",
+      "feature",
+      { detachedAt: "abc1234" },
+    );
+
+    expect(requests[0].message).toContain("feature is already checked out");
+    expect(requests[0].message).toContain("without a branch at its tip (abc1234)");
   });
 });
 

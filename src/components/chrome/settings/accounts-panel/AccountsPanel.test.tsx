@@ -215,12 +215,12 @@ describe("AccountsPanel", () => {
 
   it("shows repo HTTPS usernames as GCM/helper transport accounts", () => {
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
-    useRepo.setState({ remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")] });
+    useRepo.setState({ remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")] });
     render(<AccountsPanel />);
 
     expect(screen.getByText("Bitbucket")).toBeInTheDocument();
     expect(screen.getByText("Transport only")).toBeInTheDocument();
-    expect(screen.getByText("@SiomkinAlexander")).toBeInTheDocument();
+    expect(screen.getByText("@test-user")).toBeInTheDocument();
     expect(screen.getByText("GCM/helper")).toBeInTheDocument();
     expect(screen.getByText(/origin · bitbucket.org · git transport only/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
@@ -228,42 +228,71 @@ describe("AccountsPanel", () => {
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 
+  it("keeps distinct path-scoped Azure credentials independently forgettable", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "reject_https_credential" ? { helper: "manager-core" } : []),
+    );
+    useAccounts.setState({ accounts: [], forgeAuth: [azureMissing], providerTokens: {} });
+    useRepo.setState({
+      remotes: [
+        remote("https://alex@dev.azure.com/one/Project/_git/repo.git", "azure-one"),
+        remote("https://alex@dev.azure.com/two/My%20Project/_git/repo.git", "azure-two"),
+      ],
+    });
+    render(<AccountsPanel />);
+
+    expect(screen.getAllByText("@alex")).toHaveLength(2);
+    expect(screen.getByText(/azure-one · dev\.azure\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/azure-two · dev\.azure\.com/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Forget" })[1]);
+    useUi.getState().confirm?.onConfirm();
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("reject_https_credential", {
+        credentialHost: "dev.azure.com",
+        path: "two/My Project/_git/repo.git",
+        username: "alex",
+      }),
+    );
+  });
+
   it("updates a repo transport credential from the GCM/helper row", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "approve_https_credential") return Promise.resolve({ username: "SiomkinAlexander", helper: "manager-core" });
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "test-user", helper: "manager-core" });
       if (cmd === "save_provider_token") return Promise.resolve({ hasToken: true });
       return Promise.resolve([]);
     });
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
       summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
-      remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")],
+      remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")],
     });
     render(<AccountsPanel />);
 
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
-    expect(screen.getByPlaceholderText("HTTPS username")).toHaveValue("SiomkinAlexander");
+    expect(screen.getByPlaceholderText("HTTPS username")).toHaveValue("test-user");
     fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "new-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
 
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
         credentialHost: "bitbucket.org",
-        path: "darang/gitlanebucket",
-        username: "SiomkinAlexander",
+        path: null,
+        username: "test-user",
         password: "new-secret",
       }),
     );
     expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
       path: "/repo",
       name: "origin",
-      username: "SiomkinAlexander",
+      username: "test-user",
     });
     expect(invokeMock).toHaveBeenCalledWith("save_provider_token", {
       provider: "bitbucket",
       host: "bitbucket.org",
-      accountId: "SiomkinAlexander",
-      login: "SiomkinAlexander",
+      accountId: "test-user",
+      login: "test-user",
       token: "new-secret",
     });
     await waitFor(() => expect(screen.getByText("Keychain token")).toBeInTheDocument());
@@ -276,7 +305,7 @@ describe("AccountsPanel", () => {
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
       summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
-      remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")],
+      remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")],
     });
     render(<AccountsPanel />);
 
@@ -296,7 +325,7 @@ describe("AccountsPanel", () => {
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
       summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
-      remotes: [remote("https://SiomkinAlexander@bitbucket.org/darang/gitlanebucket.git")],
+      remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")],
     });
     render(<AccountsPanel />);
 
@@ -307,13 +336,13 @@ describe("AccountsPanel", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("reject_https_credential", {
         credentialHost: "bitbucket.org",
-        path: "darang/gitlanebucket",
-        username: "SiomkinAlexander",
+        path: null,
+        username: "test-user",
       }),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
-    expect(useUi.getState().confirm?.title).toBe("Remove @SiomkinAlexander from origin?");
+    expect(useUi.getState().confirm?.title).toBe("Remove @test-user from origin?");
     useUi.getState().confirm?.onConfirm();
 
     await waitFor(() =>

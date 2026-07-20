@@ -420,6 +420,13 @@ export interface RepoState {
    * safely fast-forwarding it when it already exists. */
   checkoutRemoteBranch: (remote: string, branch: string) => Promise<string>;
   createBranchAt: (name: string, startPoint?: string) => Promise<string>;
+  /** Create `name` at the captured detached HEAD and check it out in that
+   * exact worktree. */
+  createBranchInWorktree: (
+    worktreePath: string,
+    name: string,
+    expectedOid: string,
+  ) => Promise<string>;
   removeBranch: (name: string, force?: boolean) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
@@ -496,7 +503,7 @@ export interface RepoState {
   ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
-  deleteRemoteBranch: (remote: string, branch: string) => Promise<string>;
+  deleteRemoteBranch: (remote: string, branch: string, expectedOid: string) => Promise<string>;
   /** Force-push `branch` with `--force-with-lease` (only that branch). */
   forcePush: (branch: string) => Promise<string>;
   /** Discard every uncommitted working-tree change (reset --hard + clean). */

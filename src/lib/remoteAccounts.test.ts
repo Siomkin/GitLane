@@ -23,6 +23,11 @@ describe("pushRemoteForBranch", () => {
     expect(pushRemoteForBranch({ pushRemote: "fork", upstreamRemote: "origin" })).toBe("fork");
   });
 
+  it("preserves Git's local-repository push target", () => {
+    expect(pushRemoteForBranch({ pushRemote: ".", upstreamRemote: "." })).toBe(".");
+    expect(pushRemoteForBranch({ upstreamRemote: "." })).toBe(".");
+  });
+
   it("accepts an older payload's configured upstream remote", () => {
     expect(pushRemoteForBranch({ upstreamRemote: "mirror" })).toBe("mirror");
   });

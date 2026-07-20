@@ -82,7 +82,7 @@ pub fn clone(
     let inv = crate::git::credential_bridge::git_invocation(cred)?;
     let args = clone_args(&inv.config, url, clone_target.work_arg()?);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut cmd = super::cli::git_command_bare(&arg_refs);
+    let mut cmd = super::cli::git_command_bare(&arg_refs)?;
     cmd.env("LC_ALL", "C")
         .env("LANG", "C")
         // git writes progress + errors to stderr; stdout carries nothing we need,
@@ -715,6 +715,10 @@ pub fn init(
     if parent.is_empty() {
         return Err("Choose a location for the new repository.".to_string());
     }
+    let parent_path = Path::new(parent);
+    if !parent_path.is_absolute() {
+        return Err("Choose an absolute location for the new repository.".to_string());
+    }
     if name.is_empty() {
         return Err("Enter a folder name for the new repository.".to_string());
     }
@@ -725,8 +729,8 @@ pub fn init(
     ensure_operand(name)?;
     ensure_operand(branch)?;
 
-    let target = format!("{parent}/{name}");
-    let target_path = std::path::Path::new(&target);
+    let target_path = parent_path.join(name);
+    let target = target_path.to_string_lossy().to_string();
     if target_path.join(".git").exists() {
         return Err(format!("{target} is already a Git repository."));
     }
@@ -746,7 +750,7 @@ pub fn init(
     // Run init + seed files as one fallible unit so a failure after the directory
     // exists can be rolled back rather than leaving an orphaned empty/partial repo.
     let seeded = (|| -> Result<(), String> {
-        super::cli::run_git_bare(&["init", "-b", branch, &target])?;
+        super::cli::run_git_bare(&["init", "-b", branch, "--", &target])?;
         if readme {
             std::fs::write(target_path.join("README.md"), format!("# {name}\n"))
                 .map_err(|e| format!("Couldn't write README.md: {e}"))?;
@@ -806,7 +810,7 @@ pub fn init_in_place(path: &str) -> Result<String, String> {
         std::fs::remove_file(&dot_git)
             .map_err(|e| format!("Couldn't remove the stale .git file at {path}: {e}"))?;
     }
-    super::cli::run_git_bare(&["init", path])?;
+    super::cli::run_git_bare(&["init", "--", path])?;
     crate::git::read::summary_classified(path)
         .map(|summary| summary.path)
         .map_err(|e| e.message)
@@ -1249,6 +1253,10 @@ mod tests {
                 "init should reject name {bad:?}"
             );
         }
+        assert!(
+            super::init("relative-parent", "repo", "main", false, "None").is_err(),
+            "init must not reinterpret a crafted relative destination"
+        );
     }
 
     #[test]

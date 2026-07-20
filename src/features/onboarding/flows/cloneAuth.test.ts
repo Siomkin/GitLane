@@ -110,11 +110,16 @@ describe("planCloneAuth priority order", () => {
     expect(plan).toEqual({ auth: null, method: "ssh", login: null });
   });
 
-  it("maps azure remotes to the azure-devops transport provider", () => {
-    const plan = planCloneAuth(
-      inputs({ remoteInfo: detectRemoteUrl("https://dev.azure.com/org/proj/_git/repo"), username: "ada" }),
-    );
-    expect(plan.auth?.provider).toBe("azure-devops");
+  it("maps Azure helper auth and enables Git's path-aware lookup", () => {
+    const remoteInfo = detectRemoteUrl("https://dev.azure.com/org/My%20Project/_git/repo.git");
+    for (const credentials of [{ username: "ada" }, { username: "ada", password: "tok" }]) {
+      const plan = planCloneAuth(inputs({ remoteInfo, ...credentials }));
+      expect(plan.auth).toMatchObject({
+        mode: "credentialHelper",
+        provider: "azure-devops",
+        useHttpPath: true,
+      });
+    }
   });
 });
 

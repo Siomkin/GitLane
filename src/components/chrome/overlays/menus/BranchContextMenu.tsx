@@ -292,7 +292,10 @@ export function BranchContextMenu() {
     // two menu items apart).
     const newWorktree: MenuItem = {
       label: "New worktree here…",
-      onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, wtCheckedOut && tipShort ? tipShort : undefined),
+      onClick: () =>
+        promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, {
+          detachedAt: wtCheckedOut && tipShort ? tipShort : undefined,
+        }),
     };
     const children: MenuItem[] = [];
     if (existingWt) {
@@ -403,8 +406,8 @@ export function BranchContextMenu() {
     // — a slash-containing remote name would otherwise target the wrong remote.
     const remote = info?.remote ?? null;
     const remoteBranch = remote && b.startsWith(`${remote}/`) ? b.slice(remote.length + 1) : null;
-    if (remote && remoteBranch) {
-      danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch)) }) });
+    if (remote && remoteBranch && tip) {
+      danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
     }
   }
 

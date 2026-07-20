@@ -2,7 +2,10 @@
 
 use std::collections::HashMap;
 
-use super::cli::{run_git, run_git_env_redacted, run_git_env_stable_diagnostics_redacted};
+use super::cli::{
+    run_git, run_git_allow_exit_codes, run_git_env_redacted,
+    run_git_env_stable_diagnostics_redacted,
+};
 use super::operands::{ensure_operand, ensure_url_has_no_credentials};
 use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
@@ -49,6 +52,48 @@ fn env_refs(env: &[(String, String)]) -> Vec<(&str, &str)> {
     env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
 }
 
+/// Build a single-ref push whose behavior cannot be widened by inherited
+/// `push.followTags` or `remote.<name>.mirror` configuration. `--no-mirror`
+/// does not override a remote's configured mirror mode on supported Git
+/// versions, so pin that setting with command-scoped config instead.
+fn push_command(remote: &str, options: &[&str], refspecs: &[&str]) -> Vec<String> {
+    let mirror_remote = if remote == "." { "origin" } else { remote };
+    let mut command = vec![
+        "-c".to_string(),
+        "push.followTags=false".to_string(),
+        "-c".to_string(),
+        format!("remote.{mirror_remote}.mirror=false"),
+        "push".to_string(),
+        "--no-follow-tags".to_string(),
+    ];
+    command.extend(options.iter().map(|value| (*value).to_string()));
+    command.push(remote.to_string());
+    command.extend(refspecs.iter().map(|value| (*value).to_string()));
+    command
+}
+
+fn run_push(
+    repo: &str,
+    cred: &TransportCredential,
+    remote: &str,
+    options: &[&str],
+    refspecs: &[&str],
+) -> Result<String, String> {
+    let command = push_command(remote, options, refspecs);
+    run_transport(repo, cred, &args_refs(&command))
+}
+
+fn run_push_stable(
+    repo: &str,
+    cred: &TransportCredential,
+    remote: &str,
+    options: &[&str],
+    refspecs: &[&str],
+) -> Result<String, String> {
+    let command = push_command(remote, options, refspecs);
+    run_transport_stable(repo, cred, &args_refs(&command))
+}
+
 /// Add a new remote `name` pointing at `url` (`git remote add`).
 pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
     ensure_operand(name)?;
@@ -66,8 +111,14 @@ pub fn set_remote_url(repo: &str, name: &str, url: &str) -> Result<String, Strin
     ensure_operand(name)?;
     ensure_operand(url)?;
     ensure_url_has_no_credentials(url)?;
+    let push_urls = configured_push_urls(repo, name)?;
+    if push_urls.len() > 1 {
+        return Err(format!(
+            "Remote '{name}' has multiple push URLs. Edit them in Git before changing this remote in GitLane."
+        ));
+    }
     let fetch = run_git(repo, &["remote", "set-url", name, url])?;
-    if has_push_url(repo, name) {
+    if !push_urls.is_empty() {
         let push = run_git(repo, &["remote", "set-url", "--push", name, url])?;
         return Ok(join_git_outputs(&fetch, &push));
     }
@@ -86,12 +137,17 @@ pub fn set_remote_username(
     ensure_operand(name)?;
     let username = username.map(str::trim).filter(|value| !value.is_empty());
 
-    let fetch_url = remote_get_url(repo, name, false)?;
+    let fetch_url = remote_get_url(repo, name)?;
     let next_fetch = rewrite_https_user(&fetch_url, username)?;
 
-    if has_push_url(repo, name) {
-        let push_url = remote_get_url(repo, name, true)?;
-        let next_push = rewrite_https_user(&push_url, username)?;
+    let push_urls = configured_push_urls(repo, name)?;
+    if push_urls.len() > 1 {
+        return Err(format!(
+            "Remote '{name}' has multiple push URLs. Edit them in Git before changing its username in GitLane."
+        ));
+    }
+    if let Some(push_url) = push_urls.first() {
+        let next_push = rewrite_https_user(push_url, username)?;
         let fetch = run_git(repo, &["remote", "set-url", name, &next_fetch])?;
         let push = run_git(repo, &["remote", "set-url", "--push", name, &next_push])?;
         return Ok(join_git_outputs(&fetch, &push));
@@ -100,20 +156,23 @@ pub fn set_remote_username(
     Ok(fetch)
 }
 
-/// Whether `remote.<name>.pushurl` is set (a push URL distinct from the fetch
-/// URL). `git config --get-all` exits non-zero when the key is absent.
-fn has_push_url(repo: &str, name: &str) -> bool {
+/// Explicit push URLs only; unlike `remote get-url --push --all`, this does not
+/// synthesize the fetch URL when no pushurl is configured. Exit 1 means absent;
+/// other config failures remain actionable errors.
+fn configured_push_urls(repo: &str, name: &str) -> Result<Vec<String>, String> {
     let key = format!("remote.{name}.pushurl");
-    run_git(repo, &["config", "--get-all", &key]).is_ok()
+    let raw = run_git_allow_exit_codes(repo, &["config", "--get-all", &key], &[1])?;
+    Ok(raw
+        .lines()
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .collect())
 }
 
-fn remote_get_url(repo: &str, name: &str, push: bool) -> Result<String, String> {
-    let args = if push {
-        vec!["remote", "get-url", "--push", name]
-    } else {
-        vec!["remote", "get-url", name]
-    };
-    Ok(run_git(repo, &args)?.trim().to_string())
+fn remote_get_url(repo: &str, name: &str) -> Result<String, String> {
+    Ok(run_git(repo, &["remote", "get-url", name])?
+        .trim()
+        .to_string())
 }
 
 fn rewrite_https_user(url: &str, username: Option<&str>) -> Result<String, String> {
@@ -249,7 +308,7 @@ pub fn push_branch(
     // guard it against option injection (e.g. --receive-pack=…) like the others.
     super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
     let (remote, refspec) = push_target_at(repo, branch, expected_oid);
-    run_transport(repo, cred, &["push", &remote, &refspec])
+    run_push(repo, cred, &remote, &[], &[&refspec])
 }
 
 /// Publish `branch` to `upstream` (`remote/branch`) and set it as the branch's
@@ -273,7 +332,7 @@ pub fn publish_branch(
     // configuration explicitly after the push succeeds. Push + config are not
     // one transaction: dying in between leaves the branch published but
     // untracked, which a re-publish repairs.
-    let pushed = run_transport(repo, cred, &["push", &remote, &refspec])?;
+    let pushed = run_push(repo, cred, &remote, &[], &[&refspec])?;
     let configured_remote = run_git(
         repo,
         &["config", &format!("branch.{branch}.remote"), &remote],
@@ -395,8 +454,8 @@ pub fn branch_pull_target(repo: &str, branch: &str) -> Result<(String, String), 
 
 /// Resolve where `branch` pushes: its remote via git's own push precedence
 /// (`branch.<name>.pushRemote` → `remote.pushDefault` → `branch.<name>.remote`,
-/// with local-tracking `.` treated as unset and falling back to `origin`) and
-/// refspec (honouring a divergent upstream branch name via
+/// including Git's local-repository `.` target) and refspec (honouring a
+/// divergent upstream branch name via
 /// `branch.<name>.merge`, else the fully-qualified local branch). Shared by
 /// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
 /// deferring to `push.default`. Config reads exit non-zero when unset, which
@@ -416,7 +475,7 @@ fn push_destination(repo: &str, branch: &str) -> (String, String) {
         run_git(repo, &["config", &key])
             .ok()
             .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty() && s != ".")
+            .filter(|s| !s.is_empty())
     };
     let upstream_remote = config(format!("branch.{branch}.remote"));
     // `git push` resolves its remote as branch.<name>.pushRemote →
@@ -552,13 +611,14 @@ fn fetch_remotes(repo: &str) -> Result<Vec<String>, String> {
         .collect::<Vec<_>>();
     let mut included = Vec::new();
     for remote in remotes {
-        let skip = run_git(
-            repo,
-            &["config", "--bool", &format!("remote.{remote}.skipFetchAll")],
-        )
-        .ok()
-        .map(|value| value.trim().eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
+        let skip = ["skipFetchAll", "skipDefaultUpdate"].iter().any(|key| {
+            run_git(
+                repo,
+                &["config", "--bool", &format!("remote.{remote}.{key}")],
+            )
+            .ok()
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("true"))
+        });
         if !skip {
             included.push(remote);
         }
@@ -595,7 +655,7 @@ pub fn push_tag(
     ensure_operand(name)?;
     ensure_operand(remote)?;
     let refspec = format!("refs/tags/{name}");
-    run_transport(repo, cred, &["push", remote, &refspec])
+    run_push(repo, cred, remote, &[], &[&refspec])
 }
 
 /// Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`).
@@ -618,7 +678,7 @@ pub fn delete_remote_tag(
     ensure_operand(remote)?;
     ensure_operand(name)?;
     let refspec = format!("refs/tags/{name}");
-    match run_transport_stable(repo, cred, &["push", remote, "--delete", &refspec]) {
+    match run_push_stable(repo, cred, remote, &["--delete"], &[&refspec]) {
         Err(output) if is_missing_remote_ref(&output) => {
             Ok(format!("Tag {name} was not on {remote}"))
         }
@@ -637,11 +697,15 @@ pub fn delete_remote_branch(
     repo: &str,
     remote: &str,
     branch: &str,
+    expected_oid: &str,
     cred: &TransportCredential,
 ) -> Result<String, String> {
     ensure_operand(remote)?;
     ensure_operand(branch)?;
-    run_transport(repo, cred, &["push", remote, "--delete", branch])
+    ensure_operand(expected_oid)?;
+    let destination = format!("refs/heads/{branch}");
+    let lease = format!("--force-with-lease={destination}:{expected_oid}");
+    run_push(repo, cred, remote, &[&lease, "--delete"], &[&destination])
 }
 
 /// Force-push a single `branch` with `--force-with-lease` — the *safe* force:
@@ -652,8 +716,12 @@ pub fn delete_remote_branch(
 /// An explicit `<remote> <refspec>` is always supplied (via [`push_target`]) so
 /// the force applies to **only** the selected branch. A bare `git push
 /// --force-with-lease` would defer to `push.default`/configured refspecs and
-/// could rewrite several remote branches at once. `cred` selects the inline
-/// transport credentials.
+/// could rewrite several remote branches at once. For Git's local `.` remote,
+/// there is no remote-tracking ref from which bare `--force-with-lease` can infer
+/// an expectation, so the destination branch is snapshotted explicitly. The
+/// resulting `<ref>:<oid>` (or `<ref>:` when absent) lease makes a concurrent
+/// local ref move lose atomically instead of either clobbering it or failing as
+/// "stale info" unconditionally. `cred` selects the inline credentials.
 pub fn force_push(
     repo: &str,
     branch: &str,
@@ -661,10 +729,20 @@ pub fn force_push(
     cred: &TransportCredential,
 ) -> Result<String, String> {
     super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
-    let (remote, refspec) = push_target_at(repo, branch, expected_oid);
-    run_transport(
+    let (remote, destination) = push_destination(repo, branch);
+    let refspec = format!("{expected_oid}:{destination}");
+    if remote != "." {
+        return run_push(repo, cred, &remote, &["--force-with-lease"], &[&refspec]);
+    }
+
+    ensure_operand(&destination)?;
+    let observed = run_git_allow_exit_codes(
         repo,
-        cred,
-        &["push", "--force-with-lease", &remote, &refspec],
-    )
+        &["rev-parse", "--verify", "--quiet", &destination],
+        &[1],
+    )?;
+    // An empty expected value is meaningful Git syntax: the destination must
+    // still not exist when receive-pack applies the update.
+    let lease = format!("--force-with-lease={destination}:{}", observed.trim());
+    run_push(repo, cred, &remote, &[&lease], &[&refspec])
 }

@@ -53,7 +53,7 @@ export function TagContextMenu() {
       sep: true,
       submenu: [
         { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
-        { label: "Worktree from tag…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name) },
+        { label: "Worktree from tag…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name, { detached: true }) },
       ],
     },
     {

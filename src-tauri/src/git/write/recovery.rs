@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use crate::git::types::{DestructivePreview, ReflogEntry};
 
-use super::cli::run_git;
+use super::cli::{run_git, run_git_allow_exit_codes, run_git_stdout_raw};
 use super::operands::ensure_operand;
 use super::remotes::push_target;
 
@@ -12,9 +12,18 @@ use super::remotes::push_target;
 /// than libgit2 because the CLI's reflog selectors (`HEAD@{1}`) are exactly what
 /// users recognise when recovering from a bad reset/checkout.
 pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, String> {
-    // An unborn HEAD makes `git log -g HEAD …` fatal, so short-circuit to an
-    // empty list — a repo with no commits has no recovery points to show.
-    if run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_err() {
+    run_git(repo, &["rev-parse", "--git-dir"])?;
+    let head = run_git_allow_exit_codes(repo, &["rev-parse", "--verify", "--quiet", "HEAD"], &[1])?;
+    let branch = run_git(
+        repo,
+        &[
+            "for-each-ref",
+            "--count=1",
+            "--format=%(refname)",
+            "refs/heads",
+        ],
+    )?;
+    if head.trim().is_empty() && branch.trim().is_empty() {
         return Ok(Vec::new());
     }
     let max_count = format!("--max-count={}", limit.max(1));
@@ -23,18 +32,17 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
     // spent on recovery entries rather than being eaten by remote-tracking / tag /
     // stash reflogs that `--all` would include (which could starve the list in a
     // fetch-heavy repo). GL-42 review.
-    let raw = run_git(
-        repo,
-        &[
-            "log",
-            "-g",
-            "HEAD",
-            "--branches",
-            "--date=unix",
-            &max_count,
-            "--format=%H%x1f%gd%x1f%gD%x1f%gs%x1f%gn%x1f%ge%x1f%ct",
-        ],
-    )?;
+    let mut args = vec!["log", "-g"];
+    if !head.trim().is_empty() {
+        args.push("HEAD");
+    }
+    args.extend([
+        "--branches",
+        "--date=unix",
+        &max_count,
+        "--format=%H%x1f%gd%x1f%gD%x1f%gs%x1f%gn%x1f%ge%x1f%ct",
+    ]);
+    let raw = run_git(repo, &args)?;
     Ok(raw
         .lines()
         .filter_map(|line| {
@@ -444,17 +452,19 @@ fn path_conflicts_with_reset_target(untracked: &str, target_path: &str) -> bool 
 
 fn hard_reset_untracked_obstructions(repo: &str, target: &str) -> Result<Vec<String>, String> {
     let target_tree = format!("{target}^{{tree}}");
-    let target_paths: Vec<String> = run_git(repo, &["ls-tree", "-r", "--name-only", &target_tree])?
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(str::to_string)
-        .collect();
-    let untracked_paths: Vec<String> =
-        run_git(repo, &["ls-files", "--others", "--exclude-standard"])?
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(str::to_string)
-            .collect();
+    let parse_paths = |raw: Vec<u8>| {
+        raw.split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+            .map(|path| String::from_utf8_lossy(path).into_owned())
+            .collect::<Vec<_>>()
+    };
+    let target_paths = parse_paths(run_git_stdout_raw(
+        repo,
+        &["ls-tree", "-r", "-z", "--name-only", &target_tree],
+    )?);
+    // Deliberately omit `--exclude-standard`: ignored files are still untracked,
+    // and reset --hard overwrites them when the target tree tracks that path.
+    let untracked_paths = parse_paths(run_git_stdout_raw(repo, &["ls-files", "--others", "-z"])?);
 
     let mut seen = HashSet::new();
     let mut obstructions = Vec::new();

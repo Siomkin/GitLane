@@ -62,11 +62,11 @@ describe("friendlyGitError", () => {
 
   it("rewrites terminal credential prompts into a Bitbucket setup hint", () => {
     const out = friendlyGitError(
-      "bucket:\nfatal: could not read Password for 'https://SiomkinAlexander@bitbucket.org': terminal prompts disabled",
+      "bucket:\nfatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
     );
 
     expect(out).toBe(
-      "bucket: Bitbucket credentials are missing or invalid for @SiomkinAlexander. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+      "bucket: Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -133,7 +133,7 @@ describe("friendlyGitError", () => {
   it("collapses multi-remote fetch failures into actionable lines", () => {
     const raw = [
       "bucket:",
-      "fatal: could not read Password for 'https://SiomkinAlexander@bitbucket.org': terminal prompts disabled",
+      "fatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
       "lab:",
       "remote:",
       "remote: ERROR: The project you were looking for could not be found or you don't have permission to view it.",
@@ -148,7 +148,7 @@ describe("friendlyGitError", () => {
       [
         "Some remotes need attention:",
         "",
-        "bucket: Bitbucket credentials are missing or invalid for @SiomkinAlexander. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+        "bucket: Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
         "lab: Remote repository not found or access denied. Check the remote URL and your account permissions.",
       ].join("\n"),
     );

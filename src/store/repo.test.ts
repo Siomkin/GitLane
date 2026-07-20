@@ -220,6 +220,7 @@ describe("repo store — discardFile", () => {
     expect(invokeMock).toHaveBeenCalledWith("discard_file", {
       path: "/repo",
       file: "src/a.ts",
+      previousFile: null,
       staged: false,
     });
   });
@@ -810,6 +811,21 @@ describe("repo store — captured write subjects", () => {
       name: "new-branch",
       startPoint: "refs/heads/feature",
       expectedOid: "2222222",
+    });
+  });
+
+  it("attaches a branch to the captured detached worktree HEAD", async () => {
+    await useRepo.getState().createBranchInWorktree(
+      "/repo-detached",
+      "topic/detached",
+      "3333333",
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("create_branch_in_worktree", {
+      path: "/repo",
+      worktreePath: "/repo-detached",
+      name: "topic/detached",
+      expectedOid: "3333333",
     });
   });
 

@@ -1,6 +1,7 @@
 //! Stash listing and stash mutations.
 
 use std::collections::HashMap;
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use crate::git::types::{StashContextCommit, StashEntry};
 
@@ -9,6 +10,19 @@ use super::operands::ensure_operand;
 use super::worktrees::drop_stash_by_oid;
 
 const STASH_CONTEXT_LIMIT: usize = 8;
+static STASH_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Serialize GitLane's stash-ref mutations across repositories and worktrees.
+/// Git only accepts `stash@{n}` for drop/branch, so the OID-to-index lookup and
+/// mutation cannot be one process. This lock closes the in-app race; a terminal
+/// can still mutate the reflog, so callers continue to resolve immediately
+/// before the destructive command and surface a stale/missing OID.
+pub(super) fn lock_stash_writes() -> Result<MutexGuard<'static, ()>, String> {
+    STASH_WRITE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "The stash operation lock is unavailable.".to_string())
+}
 
 /// List stashes via `git stash list`. Each line is
 /// `<oid>\x1f<parents>\x1f<committer-time>\x1f<subject>`; the line index is the
@@ -196,6 +210,7 @@ pub fn stash_apply_index_onto(
 /// oid at the last moment) — with a bare oid git would apply but silently skip
 /// the drop.
 pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, String> {
+    let _guard = lock_stash_writes()?;
     ensure_operand(branch)?;
     let stash_ref = stash_ref_for_oid(repo, oid)?;
     run_git(repo, &["stash", "branch", branch, &stash_ref])
@@ -208,6 +223,7 @@ pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, Strin
 /// under us. A conflicting apply errors out *before* the drop, so the stash is kept
 /// exactly as `git stash pop` would. Mirrors `restore_stash` in worktrees.rs.
 pub fn stash_pop(repo: &str, oid: &str) -> Result<String, String> {
+    let _guard = lock_stash_writes()?;
     let applied = stash_apply(repo, oid)?;
     drop_stash_by_oid(repo, oid)?;
     Ok(applied)
@@ -225,6 +241,7 @@ pub fn stash_pop_onto(
 
 /// Drop the stash with commit oid `oid`.
 pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
+    let _guard = lock_stash_writes()?;
     let stash_ref = stash_ref_for_oid(repo, oid)?;
     run_git(repo, &["stash", "drop", &stash_ref])
 }
@@ -232,6 +249,7 @@ pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
 /// Stash every visible working-tree change: staged, unstaged, and untracked.
 /// Ignored files stay in place because GitLane does not surface them as changes.
 pub fn stash(repo: &str) -> Result<String, String> {
+    let _guard = lock_stash_writes()?;
     run_git(repo, &["stash", "push", "--include-untracked"])
 }
 

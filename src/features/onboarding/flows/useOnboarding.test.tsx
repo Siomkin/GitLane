@@ -594,7 +594,7 @@ describe("overlay unmount during clone", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
         credentialHost: "gitlab.com",
-        path: "group/repo",
+        path: null,
         username: "",
         password: "token",
       }),
@@ -610,6 +610,53 @@ describe("overlay unmount during clone", () => {
           credentialHost: "gitlab.com",
           username: null,
         },
+      }),
+    );
+  });
+
+  it("saves and looks up Azure clone credentials with Git's exact decoded path", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "approve_https_credential") return Promise.resolve({ username: "", helper: "store" });
+      if (cmd === "clone_repo") return Promise.resolve("/tmp/repo");
+      if (cmd === "open_repo") {
+        return Promise.resolve({
+          path: "/tmp/repo",
+          workdir: "/tmp/repo",
+          headBranch: "main",
+          headOid: null,
+          detached: false,
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() =>
+      result.current.cloneForm.changeUrl(
+        "https://dev.azure.com/contoso/My%20Project/_git/repo.git",
+      ),
+    );
+    act(() => result.current.cloneForm.setPassword("token"));
+    act(() => result.current.cloneRun.start());
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
+        credentialHost: "dev.azure.com",
+        path: "contoso/My Project/_git/repo.git",
+        username: "",
+        password: "token",
+      }),
+    );
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("clone_repo", {
+        url: "https://dev.azure.com/contoso/My%20Project/_git/repo.git",
+        dest: expect.any(String),
+        auth: expect.objectContaining({
+          mode: "credentialHelper",
+          provider: "azure-devops",
+          credentialHost: "dev.azure.com",
+          useHttpPath: true,
+        }),
       }),
     );
   });

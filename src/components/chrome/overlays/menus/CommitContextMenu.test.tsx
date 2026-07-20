@@ -114,6 +114,17 @@ describe("CommitContextMenu (single commit)", () => {
     }
   });
 
+  it("distinguishes current, detached, and branch-backed worktree creation", () => {
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    openGroup("Create");
+    expect(screen.getByRole("menuitem", { name: "Branch in current worktree…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "New worktree at commit…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "New worktree with branch…" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Worktree from commit…" })).not.toBeInTheDocument();
+  });
+
   it("never opens the reset confirm when HEAD moves while the preview is pending (GL-42)", async () => {
     const resetBranchTo = vi.fn().mockResolvedValue("ok");
     useRepo.setState({ resetBranchTo });

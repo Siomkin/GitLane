@@ -210,6 +210,7 @@ export function createRepoWriteActions(
   | "checkoutBranch"
   | "checkoutRemoteBranch"
   | "createBranchAt"
+  | "createBranchInWorktree"
   | "removeBranch"
   | "renameBranchTo"
   | "setUpstreamFor"
@@ -270,7 +271,9 @@ export function createRepoWriteActions(
   // Per-operation account resolution (GL-129): each network call selects from
   // the exact fetch or push URL it will contact, not one repo-wide pick.
   const authFor = (remote: string | null, direction: "fetch" | "push" = "push") =>
-    remote ? useAccounts.getState().transportAuthForRemote(remote, direction) : null;
+    remote && remote !== "."
+      ? useAccounts.getState().transportAuthForRemote(remote, direction)
+      : null;
   // The remote a push of `branch` targets — its configured remote from the
   // branch list, with the backend's "origin" fallback.
   const pushRemoteOf = (branch: string) =>
@@ -393,7 +396,7 @@ export function createRepoWriteActions(
       }
       set({ loading: true, error: null });
       try {
-        await api.checkout(summary.path, name);
+        await api.checkout(summary.path, name, false);
         set({ loading: false });
         await get().refresh();
         return `Checked out ${name}`;
@@ -456,9 +459,14 @@ export function createRepoWriteActions(
           ? revisionSnapshot(get, startPoint)
           : { revision: "HEAD", oid: requireHeadOid(summary, "create a branch") };
         await api.createBranch(summary.path, name, start.revision, start.oid);
-        await api.checkout(summary.path, name);
+        await api.checkout(summary.path, name, false);
         return `Created ${name}`;
       }),
+
+    createBranchInWorktree: (worktreePath, name, expectedOid) =>
+      runOp(get, (summary) =>
+        api.createBranchInWorktree(summary.path, worktreePath, name, expectedOid),
+      ),
 
     removeBranch: (name, force = false) =>
       runOp(get, async (summary) => {
@@ -626,7 +634,7 @@ export function createRepoWriteActions(
 
     checkoutDetached: (sha) =>
       runOp(get, async (summary) => {
-        await api.checkout(summary.path, sha);
+        await api.checkout(summary.path, sha, true);
         return `Checked out ${sha.slice(0, 7)} (detached)`;
       }),
 
@@ -819,9 +827,9 @@ export function createRepoWriteActions(
       return api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath);
     },
 
-    deleteRemoteBranch: (remote, branch) =>
+    deleteRemoteBranch: (remote, branch, expectedOid) =>
       runOp(get, async (summary) => {
-        await trackNet(() => api.deleteRemoteBranch(summary.path, remote, branch, authFor(remote)));
+        await trackNet(() => api.deleteRemoteBranch(summary.path, remote, branch, expectedOid, authFor(remote)));
         return `Deleted ${remote}/${branch}`;
       }),
 
@@ -1066,7 +1074,9 @@ export function createRepoWriteActions(
       if (!summary) return;
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        const message = await api.discardFile(summary.path, path, staged);
+        const bucket = staged ? get().changes.staged : get().changes.unstaged;
+        const previousPath = renameOldPath(bucket.find((file) => file.path === path));
+        const message = await api.discardFile(summary.path, path, previousPath, staged);
         await get().refresh();
         // The discarded view is now empty. `refresh` drops the selection when the
         // path leaves both buckets; but a partially-staged file can survive in the
@@ -1318,6 +1328,7 @@ export function createRepoWriteActions(
       const remote = head?.upstreamRemote ?? "origin";
       const branch = head?.name ?? "HEAD";
       const upstream = head?.upstream ?? `${remote}/${branch}`;
+      const pullSource = remote === "." ? `local branch ${upstream}` : upstream;
       // Compare the branch tip across the pull to tell "fast-forwarded/merged"
       // from "already up to date".
       const tipBefore = head?.target ?? null;
@@ -1343,8 +1354,8 @@ export function createRepoWriteActions(
       }
       const toastId = notes.notify({
         kind: "progress",
-        title: `Pulling ${remote}…`,
-        body: `from ${upstream}`,
+        title: remote === "." ? "Pulling locally…" : `Pulling ${remote}…`,
+        body: `from ${pullSource}`,
         progress: "indeterminate",
       });
       try {
@@ -1361,7 +1372,7 @@ export function createRepoWriteActions(
         notes.update(toastId, {
           kind: "success",
           title: "Pulled",
-          body: `from ${upstream}`,
+          body: `from ${pullSource}`,
           progress: undefined,
           duration: 5000,
         });
@@ -1380,7 +1391,7 @@ export function createRepoWriteActions(
       notes.update(toastId, {
         kind: "success",
         title: !refreshed ? "Pulled" : changed ? "Pulled changes" : "Already up to date",
-        body: !refreshed || changed ? `from ${upstream}` : `${branch} is up to date`,
+        body: !refreshed || changed ? `from ${pullSource}` : `${branch} is up to date`,
         progress: undefined,
         duration: 5000,
       });
@@ -1394,15 +1405,20 @@ export function createRepoWriteActions(
       // the push so the success toast can report how many commits went out.
       const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
       const remote = pushRemoteForBranch(head);
+      const localPush = remote === ".";
       // The explicit push follows the configured upstream, whose name can differ
-      // from the local branch — report the *upstream* branch (from `head.upstream`,
-      // "remote/branch") for the copy + forge link, falling back to the local name.
+      // from the local branch. Named remotes encode it as "remote/branch"; a local
+      // `.` upstream is already the bare local branch name. A triangular local push
+      // (`pushRemote=.` with a non-local upstream) instead targets the same-named
+      // local branch, matching the backend's push-destination resolution.
       const remoteBranch =
-        head?.upstream && head.upstream.startsWith(`${remote}/`)
-          ? head.upstream.slice(remote.length + 1)
-          : (head?.name ?? "HEAD");
+        localPush
+          ? (head?.upstreamRemote === "." ? head.upstream : null) ?? head?.name ?? "HEAD"
+          : head?.upstream && head.upstream.startsWith(`${remote}/`)
+            ? head.upstream.slice(remote.length + 1)
+            : (head?.name ?? "HEAD");
       const aheadBefore = head?.sync?.ahead ?? 0;
-      const target = `${remote}/${remoteBranch}`;
+      const target = localPush ? `local branch ${remoteBranch}` : `${remote}/${remoteBranch}`;
       const notes = useNotifications.getState();
       // As with pull, claim the store mutex before creating progress so direct
       // commit-and-push callers get one busy error and no misleading flash.
@@ -1428,7 +1444,7 @@ export function createRepoWriteActions(
       // the success card in place.
       const toastId = notes.notify({
         kind: "progress",
-        title: `Pushing to ${remote}…`,
+        title: localPush ? "Pushing locally…" : `Pushing to ${remote}…`,
         body: `to ${target}`,
         progress: "indeterminate",
       });
@@ -1443,13 +1459,15 @@ export function createRepoWriteActions(
       }
       // The push landed — report it authoritatively *before* the refresh, so a
       // post-push refresh hiccup can't relabel a successful push as failed.
-      const webUrl = branchWebUrl(forge, remoteBranch);
+      const webUrl = localPush ? null : branchWebUrl(forge, remoteBranch);
       notes.update(toastId, {
         kind: "success",
         title:
           aheadBefore > 0
             ? `Pushed ${aheadBefore} commit${aheadBefore === 1 ? "" : "s"}`
-            : `Pushed to ${remote}`,
+            : localPush
+              ? "Pushed locally"
+              : `Pushed to ${remote}`,
         body: `to ${target}`,
         progress: undefined,
         duration: 5000,

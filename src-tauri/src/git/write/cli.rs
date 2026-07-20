@@ -3,10 +3,52 @@
 use std::ffi::OsString;
 use std::io::Write;
 use std::process::{Command, ExitStatus, Output, Stdio};
+use std::sync::OnceLock;
 
 // Stops git's own HTTPS username/password prompts from blocking the app/dev
 // terminal. SSH and external askpass helpers have their own prompting paths.
 const GIT_TERMINAL_PROMPT_DISABLED: &str = "0";
+const MINIMUM_GIT_VERSION: (u32, u32, u32) = (2, 36, 0);
+static GIT_VERSION_CHECK: OnceLock<Result<(), String>> = OnceLock::new();
+
+fn ensure_supported_git() -> Result<(), String> {
+    GIT_VERSION_CHECK
+        .get_or_init(|| {
+            let output = Command::new("git")
+                .arg("--version")
+                .env("PATH", crate::shell::path())
+                .output()
+                .map_err(|error| format!("failed to launch git: {error}"))?;
+            if !output.status.success() {
+                return Err("Git is installed but its version could not be determined.".to_string());
+            }
+            let text = String::from_utf8_lossy(&output.stdout);
+            let version = parse_git_version(&text).ok_or_else(|| {
+                format!(
+                    "Could not understand the installed Git version: {}",
+                    text.trim()
+                )
+            })?;
+            if version < MINIMUM_GIT_VERSION {
+                return Err(format!(
+                    "GitLane requires Git 2.36.0 or newer; installed version is {}.{}.{}.",
+                    version.0, version.1, version.2
+                ));
+            }
+            Ok(())
+        })
+        .clone()
+}
+
+fn parse_git_version(output: &str) -> Option<(u32, u32, u32)> {
+    let version = output.trim().strip_prefix("git version ")?;
+    let mut parts = version.split(['.', ' ', '-']);
+    Some((
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next().and_then(|part| part.parse().ok()).unwrap_or(0),
+    ))
+}
 
 /// Turn a finished git process into a `Result`, guaranteeing a **non-empty**
 /// error message. Some git versions fail a command without writing anything to
@@ -106,7 +148,7 @@ pub(super) fn run_git_os_paths(
     prefix_args: &[&str],
     path_args: &[OsString],
 ) -> Result<String, String> {
-    let mut cmd = git_command(repo);
+    let mut cmd = git_command(repo)?;
     cmd.args(prefix_args).args(path_args).stdin(Stdio::null());
 
     let output = cmd
@@ -162,7 +204,7 @@ pub(super) fn run_git_stdout_raw(repo: &str, args: &[&str]) -> Result<Vec<u8>, S
 }
 
 fn git_output(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Output, String> {
-    let mut cmd = git_command(repo);
+    let mut cmd = git_command(repo)?;
     cmd.args(args);
     // GitLane must surface missing credentials through IPC instead of letting
     // git block the dev/app terminal with an invisible password prompt.
@@ -175,7 +217,8 @@ fn git_output(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Output
         .map_err(|e| format!("failed to launch git: {e}"))
 }
 
-fn git_command(repo: &str) -> Command {
+fn git_command(repo: &str) -> Result<Command, String> {
+    ensure_supported_git()?;
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo);
     // macOS GUI apps launch with a minimal PATH; use the augmented one so a
@@ -183,12 +226,12 @@ fn git_command(repo: &str) -> Command {
     cmd.env("PATH", crate::shell::path());
     cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED);
     crate::shell::hide_console(&mut cmd);
-    cmd
+    Ok(cmd)
 }
 
 /// Run `git -C <repo> <args...>` with `input` connected to stdin.
 pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Result<String, String> {
-    let mut cmd = git_command(repo);
+    let mut cmd = git_command(repo)?;
     cmd.args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -218,20 +261,21 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
 /// (clone/init). Callers needing custom stdio/streaming — the clone progress
 /// reader — build on this so git subprocess construction stays centralized here;
 /// most callers use the buffered [`run_git_bare`].
-pub(super) fn git_command_bare(args: &[&str]) -> Command {
+pub(super) fn git_command_bare(args: &[&str]) -> Result<Command, String> {
+    ensure_supported_git()?;
     let mut cmd = Command::new("git");
     cmd.args(args)
         .env("PATH", crate::shell::path())
         .env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
         .stdin(Stdio::null());
     crate::shell::hide_console(&mut cmd);
-    cmd
+    Ok(cmd)
 }
 
 /// Run `git <args>` **without** `-C <repo>`. Returns combined stdout/stderr on
 /// success or the error output on a non-zero exit.
 pub(super) fn run_git_bare(args: &[&str]) -> Result<String, String> {
-    let output = git_command_bare(args)
+    let output = git_command_bare(args)?
         .output()
         .map_err(|e| format!("failed to launch git: {e}"))?;
 
@@ -264,7 +308,7 @@ pub(super) fn run_git_env_stable_diagnostics_redacted(
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{finish, run_git_env, run_git_env_redacted, run_git_stdout_raw};
+    use super::{finish, parse_git_version, run_git_env, run_git_env_redacted, run_git_stdout_raw};
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Command, ExitStatus};
     use std::{io::Write, net::TcpListener};
@@ -285,6 +329,17 @@ mod tests {
             err.contains("stash push"),
             "error should name the command: {err}"
         );
+    }
+
+    #[test]
+    fn parses_standard_and_vendor_git_versions() {
+        assert_eq!(parse_git_version("git version 2.29.0\n"), Some((2, 29, 0)));
+        assert_eq!(
+            parse_git_version("git version 2.39.5 (Apple Git-154)\n"),
+            Some((2, 39, 5))
+        );
+        assert_eq!(parse_git_version("git version 3.1\n"), Some((3, 1, 0)));
+        assert_eq!(parse_git_version("unexpected"), None);
     }
 
     #[test]

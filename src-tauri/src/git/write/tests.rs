@@ -9,20 +9,20 @@ use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARG
 use super::worktrees::is_porcelain_record;
 use super::{
     abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
-    branch_push_remote, checkout_remote_branch, cherry_pick, cherry_pick_many,
+    branch_push_remote, checkout, checkout_remote_branch, cherry_pick, cherry_pick_many,
     cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
-    continue_operation, create_annotated_tag, create_branch, create_tag,
-    delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
-    fast_forward_branch, fast_forward_branch_at, fetch, force_push, head_push_remote,
-    mark_conflict_resolved, merge, merge_into, move_branch_to_worktree, preview_delete_branch,
-    preview_delete_remote_branch, preview_discard_all, preview_force_push, preview_reset,
-    publish_branch, publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file,
-    reflog_entries, remove_worktree, reset, reset_branch, resolve_conflict_file, revert,
-    revert_many, revert_onto, set_remote_url, set_remote_username, set_repo_identity, set_upstream,
-    skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
-    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktree_dirty_state,
-    worktrees, write_repo_file,
+    continue_operation, create_annotated_tag, create_branch, create_branch_in_worktree,
+    create_patch, create_tag, delete_branch_with_worktree, delete_remote_branch, delete_remote_tag,
+    discard_all, discard_file, fast_forward, fast_forward_branch, fast_forward_branch_at, fetch,
+    force_push, head_push_remote, mark_conflict_resolved, merge, merge_into,
+    move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
+    preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
+    pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
+    reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
+    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
+    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
+    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
+    unstage_file, unstage_files, worktree_dirty_state, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
@@ -52,6 +52,22 @@ fn allows_legitimate_refs_and_oids() {
     ] {
         assert!(ensure_operand(ok).is_ok(), "{ok} should be allowed");
     }
+}
+
+#[test]
+fn checkout_branch_intent_never_falls_back_to_restoring_a_same_named_path() {
+    let repo = repo_with_file("checkout-intent", "stale-branch", b"original\n");
+    std::fs::write(repo.0.join("stale-branch"), b"precious edit\n").unwrap();
+
+    assert!(checkout(repo.path(), "stale-branch", false).is_err());
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("stale-branch")).unwrap(),
+        "precious edit\n"
+    );
+
+    let head = rev_parse(&repo, "HEAD");
+    checkout(repo.path(), &head, true).expect("explicit detached checkout");
+    assert!(repo.git(&["branch", "--show-current"]).stdout.is_empty());
 }
 
 /// A throwaway temp directory that cleans itself up on drop — keeps the test
@@ -634,6 +650,43 @@ fn pull_branch_supports_a_local_tracking_upstream() {
     .expect("pull from local upstream");
 
     assert_eq!(rev_parse(&repo, "feature"), main_tip);
+}
+
+#[test]
+fn force_push_to_local_upstream_leases_existing_and_missing_destinations() {
+    let (repo, _) = repo_with_base_commit("force-push-local-upstream");
+    repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "main ahead"]);
+    let previous_main = rev_parse(&repo, "main");
+    repo.git_ok(&["checkout", "-q", "feature"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "rewritten feature"]);
+    let feature_tip = rev_parse(&repo, "feature");
+    repo.git_ok(&["config", "branch.feature.remote", "."]);
+    repo.git_ok(&["config", "branch.feature.merge", "refs/heads/main"]);
+
+    force_push(
+        repo.path(),
+        "feature",
+        &feature_tip,
+        &TransportCredential::None,
+    )
+    .expect("explicit local lease should replace the observed destination");
+    assert_ne!(previous_main, feature_tip);
+    assert_eq!(rev_parse(&repo, "main"), feature_tip);
+
+    repo.git_ok(&["config", "branch.feature.merge", "refs/heads/local-copy"]);
+    assert!(!repo
+        .git(&["show-ref", "--verify", "refs/heads/local-copy"])
+        .status
+        .success());
+    force_push(
+        repo.path(),
+        "feature",
+        &feature_tip,
+        &TransportCredential::None,
+    )
+    .expect("an empty lease should require and preserve destination nonexistence");
+    assert_eq!(rev_parse(&repo, "local-copy"), feature_tip);
 }
 
 #[test]
@@ -1724,6 +1777,109 @@ fn delete_remote_tag_removes_only_the_tag_on_the_remote() {
 }
 
 #[test]
+fn delete_remote_branch_is_qualified_and_pinned_to_the_seen_tip() {
+    let repo = repo_with_file("delete-remote-branch", "a.txt", b"one\n");
+    repo.git_ok(&["branch", "v1"]);
+    repo.git_ok(&["tag", "v1"]);
+    let expected = rev_parse(&repo, "refs/heads/v1");
+    let remote = TempRepo::new("delete-remote-branch-origin");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", remote.path()]);
+    repo.git_ok(&["push", "-q", "origin", "refs/heads/v1", "refs/tags/v1"]);
+
+    // Hostile inherited push config must not widen or replace this operation.
+    repo.git_ok(&["config", "push.followTags", "true"]);
+    repo.git_ok(&["config", "remote.origin.mirror", "true"]);
+    delete_remote_branch(
+        repo.path(),
+        "origin",
+        "v1",
+        &expected,
+        &TransportCredential::None,
+    )
+    .expect("delete the exact branch");
+
+    assert!(!remote
+        .git(&["show-ref", "--verify", "refs/heads/v1"])
+        .status
+        .success());
+    assert!(remote
+        .git(&["show-ref", "--verify", "refs/tags/v1"])
+        .status
+        .success());
+
+    // Recreate the branch at a newer commit. A delete authorized for the old
+    // snapshot must be rejected and preserve the remotely advanced ref.
+    repo.git_ok(&[
+        "commit",
+        "-q",
+        "--allow-empty",
+        "--no-gpg-sign",
+        "-m",
+        "advance",
+    ]);
+    let advanced = rev_parse(&repo, "HEAD");
+    repo.git_ok(&[
+        "-c",
+        "remote.origin.mirror=false",
+        "push",
+        "-q",
+        "origin",
+        "HEAD:refs/heads/v1",
+    ]);
+    assert!(delete_remote_branch(
+        repo.path(),
+        "origin",
+        "v1",
+        &expected,
+        &TransportCredential::None,
+    )
+    .is_err());
+    assert_eq!(rev_parse(&remote, "refs/heads/v1"), advanced);
+}
+
+#[test]
+fn create_patch_refuses_merges_and_never_overwrites_an_existing_file() {
+    let repo = repo_with_file("create-patch-safe", "base.txt", b"base\n");
+    repo.git_ok(&["checkout", "-q", "-b", "side"]);
+    std::fs::write(repo.0.join("side.txt"), b"side\n").unwrap();
+    repo.git_ok(&["add", "side.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "side"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&[
+        "commit",
+        "-q",
+        "--allow-empty",
+        "--no-gpg-sign",
+        "-m",
+        "main",
+    ]);
+    repo.git_ok(&[
+        "merge",
+        "-q",
+        "--no-ff",
+        "--no-gpg-sign",
+        "-m",
+        "merge",
+        "side",
+    ]);
+    let merge = rev_parse(&repo, "HEAD");
+    assert!(create_patch(repo.path(), &merge).is_err());
+    assert!(!repo.0.join("0001-side.patch").exists());
+
+    let side = rev_parse(&repo, "side");
+    std::fs::write(repo.0.join("0001-side.patch"), b"keep me\n").unwrap();
+    let created = create_patch(repo.path(), &side).expect("create collision-safe patch");
+    assert_eq!(created, "0001-side-2.patch");
+    assert_eq!(
+        std::fs::read(repo.0.join("0001-side.patch")).unwrap(),
+        b"keep me\n"
+    );
+    let patch = std::fs::read(repo.0.join(created)).unwrap();
+    assert!(patch.starts_with(b"From "));
+}
+
+#[test]
 fn delete_remote_tag_tolerates_a_tag_that_was_never_pushed() {
     let repo = TempRepo::new("delete-remote-tag-unpushed");
     repo.git_ok(&["init", "-q"]);
@@ -2402,6 +2558,28 @@ fn move_branch_to_worktree_carries_dirty_source_changes() {
 }
 
 #[test]
+fn move_branch_to_worktree_sees_untracked_files_even_when_status_hides_them() {
+    let (repo, linked) = repo_with_feature_worktree("handoff-hidden-untracked");
+    repo.git_ok(&["config", "status.showUntrackedFiles", "no"]);
+    std::fs::write(linked.0.join("hidden.txt"), "carry me\n").unwrap();
+
+    move_branch_to_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        repo.path(),
+        true,
+        &|_| {},
+    )
+    .expect("explicit porcelain status must see hidden untracked files");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("hidden.txt")).unwrap(),
+        "carry me\n"
+    );
+}
+
+#[test]
 fn move_branch_to_worktree_refuses_dirty_source_without_carry() {
     let (repo, linked) = repo_with_feature_worktree("handoff-nocarry");
     std::fs::write(linked.0.join("file.txt"), "dirty\n").unwrap();
@@ -2582,6 +2760,16 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     assert!(
         String::from_utf8_lossy(&stashes.stdout).trim().is_empty(),
         "continue should drop the kept stash"
+    );
+
+    let content_before = std::fs::read_to_string(repo.0.join("file.txt")).unwrap();
+    assert!(
+        abort_operation(repo.path(), "carry").is_err(),
+        "a stale abort after finish must be refused before reset --hard"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
+        content_before
     );
 }
 
@@ -2786,6 +2974,87 @@ fn worktrees_reports_each_entry_head_oid() {
 }
 
 #[test]
+fn create_branch_in_worktree_attaches_the_detached_worktree() {
+    let (repo, linked) = repo_with_feature_worktree("wt-create-branch");
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach"]);
+    let expected_oid = rev_parse(&repo, "feature");
+
+    let message = create_branch_in_worktree(
+        repo.path(),
+        linked.as_str(),
+        "topic/from-detached",
+        &expected_oid,
+    )
+    .expect("create and check out branch in detached worktree");
+
+    assert!(message.contains("topic/from-detached"), "got: {message}");
+    let branch = git_at(&linked.0, &["branch", "--show-current"]);
+    assert_eq!(
+        String::from_utf8_lossy(&branch.stdout).trim(),
+        "topic/from-detached"
+    );
+    assert_eq!(rev_parse(&repo, "topic/from-detached"), expected_oid);
+}
+
+#[test]
+fn create_branch_in_worktree_rejects_a_stale_detached_head() {
+    let (repo, linked) = repo_with_feature_worktree("wt-create-branch-stale");
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach"]);
+    let expected_oid = rev_parse(&repo, "feature");
+
+    std::fs::write(repo.0.join("later.txt"), "later\n").unwrap();
+    repo.git_ok(&["add", "later.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "later"]);
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach", "main"]);
+
+    let err = create_branch_in_worktree(repo.path(), linked.as_str(), "topic/stale", &expected_oid)
+        .expect_err("stale menu HEAD should be rejected");
+    assert!(err.contains("HEAD changed"), "got: {err}");
+    assert!(
+        !git_at(
+            &repo.0,
+            &["show-ref", "--verify", "--quiet", "refs/heads/topic/stale"]
+        )
+        .status
+        .success(),
+        "the rejected action must not create the branch"
+    );
+}
+
+#[test]
+fn create_branch_in_worktree_rejects_an_attached_worktree() {
+    let (repo, linked) = repo_with_feature_worktree("wt-create-branch-attached");
+    let expected_oid = rev_parse(&repo, "feature");
+
+    let err = create_branch_in_worktree(
+        repo.path(),
+        linked.as_str(),
+        "topic/already-attached",
+        &expected_oid,
+    )
+    .expect_err("branch-holding worktree should be rejected");
+    assert!(err.contains("no longer detached"), "got: {err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn worktrees_preserves_newlines_in_worktree_paths() {
+    let repo = repo_with_file("wt-newline-path", "f.txt", b"x\n");
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-wt-newline-{}\nsecond-line",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked_str]);
+
+    let list = worktrees(repo.path()).expect("NUL-safe worktree list");
+    assert!(list.iter().any(|entry| same_path(&entry.path, linked_str)));
+
+    repo.git_ok(&["worktree", "remove", "--force", linked_str]);
+}
+
+#[test]
 fn remove_worktree_force_overrides_a_lock() {
     let repo = TempRepo::new("wt-locked");
     repo.git_ok(&["init", "-q"]);
@@ -2925,9 +3194,12 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
         patch_diff_args(false, "file.txt"),
         vec![
+            "-c",
+            "diff.suppressBlankEmpty=false",
             "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
             "--no-color",
             "--no-indent-heuristic",
             "--diff-algorithm=myers",
@@ -2942,9 +3214,12 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
         patch_diff_args(true, "file.txt"),
         vec![
+            "-c",
+            "diff.suppressBlankEmpty=false",
             "--literal-pathspecs",
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
             "--no-color",
             "--no-indent-heuristic",
             "--diff-algorithm=myers",
@@ -3447,6 +3722,7 @@ fn fetch_tag_import_honors_skip_fetch_all_remotes() {
     let source = root.0.join("source");
     let clone = root.0.join("clone");
     let unreachable = root.0.join("missing.git");
+    let also_unreachable = root.0.join("also-missing.git");
 
     Command::new("git")
         .args(["init", "--bare", "-q", origin.to_str().unwrap()])
@@ -3490,6 +3766,13 @@ fn fetch_tag_import_honors_skip_fetch_all_remotes() {
     let clone_repo = TempRepo(clone);
     clone_repo.git_ok(&["remote", "add", "backup", unreachable.to_str().unwrap()]);
     clone_repo.git_ok(&["config", "remote.backup.skipFetchAll", "true"]);
+    clone_repo.git_ok(&[
+        "remote",
+        "add",
+        "archive",
+        also_unreachable.to_str().unwrap(),
+    ]);
+    clone_repo.git_ok(&["config", "remote.archive.skipDefaultUpdate", "true"]);
 
     let result = fetch(clone_repo.path(), &std::collections::HashMap::new());
     assert!(
@@ -3773,13 +4056,30 @@ fn reflog_entries_scope_excludes_remote_and_stash() {
 
 #[test]
 fn reflog_entries_on_unborn_repo_is_empty_not_error() {
-    // An unborn HEAD makes `git log -g HEAD …` fatal, so `reflog_entries`
-    // short-circuits on the `rev-parse --verify HEAD` pre-check and returns an
-    // empty list — the recovery dialog shows its "No reflog entries" state.
+    // With neither HEAD nor any branch ref, there are no recovery points.
     let repo = TempRepo::new("reflog-empty");
     repo.git(&["init", "-q", "-b", "main"]);
     let entries = reflog_entries(repo.path(), 12).expect("reflog entries on empty repo");
     assert!(entries.is_empty());
+}
+
+#[test]
+fn reflog_entries_keep_branch_recovery_points_on_an_unborn_orphan_head() {
+    let repo = repo_with_file("reflog-orphan", "f.txt", b"base\n");
+    repo.git_ok(&["checkout", "--orphan", "empty"]);
+    repo.git_ok(&["rm", "-q", "-rf", "."]);
+
+    assert!(!repo
+        .git(&["rev-parse", "--verify", "HEAD"])
+        .status
+        .success());
+    let entries = reflog_entries(repo.path(), 12).expect("branch reflog entries");
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.selector.contains("main@{")),
+        "main's recovery reflog must remain visible: {entries:?}"
+    );
 }
 
 #[test]
@@ -4052,6 +4352,7 @@ fn reset_preview_hard_lists_tracked_and_untracked_obstructions_only() {
     // tracked path can be overwritten/deleted by reset --hard.
     std::fs::write(repo.0.join("tracked.txt"), b"dirty\n").unwrap();
     std::fs::write(repo.0.join("untracked.txt"), b"keep\n").unwrap();
+    std::fs::write(repo.0.join(".git/info/exclude"), b"restored.txt\n").unwrap();
     std::fs::write(repo.0.join("restored.txt"), b"obstruct\n").unwrap();
 
     let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
@@ -4067,7 +4368,7 @@ fn reset_preview_hard_lists_tracked_and_untracked_obstructions_only() {
     );
     assert!(
         full.contains("restored.txt"),
-        "hard-reset preview must list untracked target obstructions: {full}"
+        "hard-reset preview must list ignored/untracked target obstructions: {full}"
     );
     assert!(
         !full.contains("untracked.txt"),
@@ -4780,6 +5081,51 @@ fn set_remote_url_repoints_a_separate_push_url_too() {
 }
 
 #[test]
+fn remote_edits_refuse_multiple_push_urls_without_partial_mutation() {
+    let repo = TempRepo::new("remote-multiple-pushurls");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://gitlab.com/upstream/repo.git",
+    ]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--add",
+        "--push",
+        "origin",
+        "https://gitlab.com/one/repo.git",
+    ]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--add",
+        "--push",
+        "origin",
+        "https://gitlab.com/two/repo.git",
+    ]);
+
+    assert!(set_remote_url(repo.path(), "origin", "https://example.test/new.git").is_err());
+    assert!(set_remote_username(repo.path(), "origin", Some("alice")).is_err());
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://gitlab.com/upstream/repo.git"
+    );
+    let push_urls = repo.git(&["config", "--get-all", "remote.origin.pushurl"]);
+    assert_eq!(
+        String::from_utf8_lossy(&push_urls.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        [
+            "https://gitlab.com/one/repo.git",
+            "https://gitlab.com/two/repo.git"
+        ]
+    );
+}
+
+#[test]
 fn set_remote_username_preserves_separate_push_url_destination() {
     let repo = TempRepo::new("remote-username-pushurl");
     repo.git_ok(&["init", "-q"]);
@@ -5439,7 +5785,7 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
     repo.git_ok(&["add", "staged_new.txt"]);
     std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
 
-    discard_file(repo.path(), "staged_new.txt", false).expect("discard staged-new file");
+    discard_file(repo.path(), "staged_new.txt", None, false).expect("discard staged-new file");
     assert!(
         index_entries(&repo).is_empty(),
         "staged-new file leaves the index"
@@ -5450,7 +5796,7 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
     );
 
     // The genuinely untracked path still goes through `git clean`.
-    discard_file(repo.path(), "untracked.txt", false).expect("discard untracked file");
+    discard_file(repo.path(), "untracked.txt", None, false).expect("discard untracked file");
     assert!(
         !repo.0.join("untracked.txt").exists(),
         "untracked file is cleaned"
@@ -5463,10 +5809,144 @@ fn discard_file_preserves_empty_directory_shells() {
     std::fs::create_dir_all(repo.0.join("untracked/empty-nested")).unwrap();
     std::fs::write(repo.0.join("untracked/file.txt"), "new\n").unwrap();
 
-    discard_file(repo.path(), "untracked/file.txt", false).expect("discard untracked file");
+    discard_file(repo.path(), "untracked/file.txt", None, false).expect("discard untracked file");
 
     assert!(!repo.0.join("untracked/file.txt").exists());
     assert!(repo.0.join("untracked/empty-nested").is_dir());
+}
+
+#[test]
+fn discard_file_restores_both_sides_of_unstaged_and_staged_renames() {
+    for staged in [false, true] {
+        let repo = repo_with_file(
+            if staged {
+                "discard-staged-rename"
+            } else {
+                "discard-unstaged-rename"
+            },
+            "old.txt",
+            b"original\n",
+        );
+        if staged {
+            repo.git_ok(&["mv", "old.txt", "new.txt"]);
+        } else {
+            std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
+        }
+
+        discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+            .expect("discard both rename sides");
+
+        assert_eq!(
+            std::fs::read(repo.0.join("old.txt")).unwrap(),
+            b"original\n"
+        );
+        assert!(!repo.0.join("new.txt").exists());
+        assert!(
+            String::from_utf8_lossy(&repo.git(&["status", "--porcelain"]).stdout)
+                .trim()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn discard_file_preserves_staged_content_when_discarding_an_unstaged_rename() {
+    let repo = repo_with_file("discard-partially-staged-rename", "old.txt", b"original\n");
+    std::fs::write(repo.0.join("old.txt"), b"staged edit\n").unwrap();
+    repo.git_ok(&["add", "old.txt"]);
+    std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
+
+    discard_file(repo.path(), "new.txt", Some("old.txt"), false)
+        .expect("discard only the worktree rename");
+
+    assert_eq!(
+        std::fs::read(repo.0.join("old.txt")).unwrap(),
+        b"staged edit\n"
+    );
+    assert!(!repo.0.join("new.txt").exists());
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["show", ":old.txt"]).stdout),
+        "staged edit\n"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["status", "--porcelain=v1"]).stdout),
+        "M  old.txt\n"
+    );
+}
+
+#[test]
+fn discard_file_handles_a_case_only_staged_rename() {
+    let repo = repo_with_file("discard-case-only-rename", "case.txt", b"original\n");
+    repo.git_ok(&["mv", "case.txt", "case-intermediate.txt"]);
+    repo.git_ok(&["mv", "case-intermediate.txt", "CASE.txt"]);
+
+    discard_file(repo.path(), "CASE.txt", Some("case.txt"), true)
+        .expect("discard the case-only rename");
+
+    assert_eq!(
+        std::fs::read(repo.0.join("case.txt")).unwrap(),
+        b"original\n"
+    );
+    let worktree_names: Vec<_> = std::fs::read_dir(&repo.0)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name())
+        .collect();
+    assert!(worktree_names.iter().any(|name| name == "case.txt"));
+    assert!(!worktree_names.iter().any(|name| name == "CASE.txt"));
+    assert!(
+        String::from_utf8_lossy(&repo.git(&["status", "--porcelain=v1"]).stdout)
+            .trim()
+            .is_empty()
+    );
+}
+
+#[test]
+fn discard_file_refuses_a_stale_rename_pair_before_mutating_either_path() {
+    for staged in [false, true] {
+        let repo = repo_with_file(
+            if staged {
+                "discard-stale-staged-rename"
+            } else {
+                "discard-stale-unstaged-rename"
+            },
+            "old.txt",
+            b"old base\n",
+        );
+        std::fs::write(repo.0.join("new.txt"), b"new base\n").unwrap();
+        repo.git_ok(&["add", "new.txt"]);
+        repo.git_ok(&["commit", "-q", "-m", "track both paths"]);
+        std::fs::write(repo.0.join("old.txt"), b"precious old edit\n").unwrap();
+        std::fs::write(repo.0.join("new.txt"), b"precious new edit\n").unwrap();
+        if staged {
+            repo.git_ok(&["add", "old.txt", "new.txt"]);
+        }
+        let before_status = repo.git(&["status", "--porcelain=v1", "-z"]);
+        let before_index = repo.git(&["diff", "--cached", "--binary"]);
+
+        let error = discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+            .expect_err("stale rename metadata must fail closed");
+
+        assert!(error.contains("changed"), "unexpected error: {error}");
+        assert_eq!(
+            std::fs::read(repo.0.join("old.txt")).unwrap(),
+            b"precious old edit\n"
+        );
+        assert_eq!(
+            std::fs::read(repo.0.join("new.txt")).unwrap(),
+            b"precious new edit\n"
+        );
+        let after_status = repo.git(&["status", "--porcelain=v1", "-z"]);
+        let after_index = repo.git(&["diff", "--cached", "--binary"]);
+        assert_eq!(
+            after_status.stdout, before_status.stdout,
+            "worktree status must stay unchanged"
+        );
+        assert_eq!(
+            after_index.stdout, before_index.stdout,
+            "the index must stay unchanged"
+        );
+    }
 }
 
 #[cfg(not(windows))]
@@ -5484,7 +5964,7 @@ fn discard_file_does_not_expand_an_untracked_pathspec_magic_filename() {
     let magic = ":(glob)*";
     std::fs::write(repo.0.join(magic), "untracked\n").unwrap();
 
-    discard_file(repo.path(), magic, false).expect("discard literal magic filename");
+    discard_file(repo.path(), magic, None, false).expect("discard literal magic filename");
 
     assert!(!repo.0.join(magic).exists());
     assert_eq!(
@@ -5524,7 +6004,7 @@ fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
     std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
     repo.git_ok(&["add", "staged_new.txt"]);
 
-    discard_file(repo.path(), "staged_new.txt", true).expect("discard staged=true new file");
+    discard_file(repo.path(), "staged_new.txt", None, true).expect("discard staged=true new file");
     assert!(
         index_entries(&repo).is_empty(),
         "staged-new file leaves the index"
@@ -5545,7 +6025,7 @@ fn discard_staged_file_works_on_an_unborn_repo() {
     std::fs::write(repo.0.join("new.txt"), "new\n").unwrap();
     stage_file(repo.path(), "new.txt").expect("stage on unborn HEAD");
 
-    discard_file(repo.path(), "new.txt", true).expect("discard staged file on unborn HEAD");
+    discard_file(repo.path(), "new.txt", None, true).expect("discard staged file on unborn HEAD");
     assert!(index_entries(&repo).is_empty(), "file leaves the index");
     assert!(!repo.0.join("new.txt").exists(), "file leaves the worktree");
 }
@@ -5654,11 +6134,11 @@ fn push_remote_helpers_resolve_branch_config_and_fall_back_to_origin() {
     assert_eq!(branch_push_remote(repo.path(), "main"), "mirror");
     assert_eq!(head_push_remote(repo.path()), "mirror");
 
-    // A local-tracking branch (`.`) is not a network remote; push auth falls
-    // back to origin instead of looking for a remote literally named ".".
+    // A local-tracking branch (`.`) is a valid push target. The command layer
+    // bypasses transport auth for it rather than silently retargeting origin.
     repo.git_ok(&["config", "branch.main.remote", "."]);
-    assert_eq!(branch_push_remote(repo.path(), "main"), "origin");
-    assert_eq!(head_push_remote(repo.path()), "origin");
+    assert_eq!(branch_push_remote(repo.path(), "main"), ".");
+    assert_eq!(head_push_remote(repo.path()), ".");
 }
 
 #[test]
@@ -5755,6 +6235,7 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
         username: Some(username.into()),
         account_ref: None,
         provider_account_id: Some(account_id.into()),
+        use_http_path: false,
     };
     let fetch_auth = auth(
         "fetch-auth.example.test:8443",

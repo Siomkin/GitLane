@@ -43,9 +43,11 @@ pub(super) fn ensure_url_has_no_credentials(url: &str) -> Result<(), String> {
     let Some((scheme, rest)) = trimmed.split_once("://") else {
         return Ok(());
     };
-    if !["http", "https", "ssh", "git"]
-        .iter()
-        .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
+    if scheme.is_empty()
+        || !scheme.chars().enumerate().all(|(index, c)| {
+            c.is_ascii_alphabetic()
+                || (index > 0 && (c.is_ascii_digit() || matches!(c, '+' | '-' | '.')))
+        })
     {
         return Ok(());
     }
@@ -128,6 +130,8 @@ mod tests {
             // git persists these verbatim too, so the password is just as exposed.
             "ssh://git:secret@example.com/team/repo.git",
             "git://alice:secret@example.com/team/repo.git",
+            "ftp://alice:secret@example.com/team/repo.git",
+            "custom+git://alice:secret@example.com/team/repo.git",
             // Token parked in the username slot — accepted by GitHub/GitLab, and
             // would otherwise reach `.git/config` and `git clone` argv.
             "https://ghp_AbCdEf0123456789@github.com/o/r.git",

@@ -35,13 +35,16 @@ function repoTransportCredentials(remotes: ReturnType<typeof useRepo.getState>["
     const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
     const provider = providerKeyForRemote(info.provider);
     if (!provider || !info.user || !info.credentialHost) continue;
-    const key = `${provider}\u0000${info.credentialHost}\u0000${info.user}`;
+    const credentialPath = credentialScopePath(info);
+    // Azure helper entries are path-scoped, so two repos on dev.azure.com with
+    // the same username remain independently updateable/forgettable.
+    const key = `${provider}\u0000${info.credentialHost}\u0000${credentialPath ?? ""}\u0000${info.user}`;
     if (seen.has(key)) continue;
     seen.add(key);
     credentials.push({
       provider,
       credentialHost: info.credentialHost,
-      credentialPath: credentialScopePath(info) ?? info.path,
+      credentialPath,
       login: info.user,
       remoteName: remote.name,
     });

@@ -74,6 +74,21 @@ pub fn respond_to_askpass() {
 pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, String> {
     match cred {
         TransportCredential::None => Ok(GitInvocation::default()),
+        TransportCredential::CredentialHelper {
+            host,
+            use_http_path,
+        } => Ok(GitInvocation {
+            config: if *use_http_path {
+                vec![
+                    "-c".to_string(),
+                    format!("credential.https://{host}.useHttpPath=true"),
+                ]
+            } else {
+                Vec::new()
+            },
+            env: Vec::new(),
+            _broker: None,
+        }),
         TransportCredential::Gh { host } => Ok(GitInvocation {
             config: gh_helper_config(host),
             env: Vec::new(),
@@ -364,6 +379,23 @@ mod tests {
         assert!(invocation.config.is_empty());
         assert!(invocation.env.is_empty());
         assert!(invocation._broker.is_none());
+    }
+
+    #[test]
+    fn credential_helper_invocation_can_enable_path_matching_for_its_host() {
+        let invocation = git_invocation(&TransportCredential::CredentialHelper {
+            host: "dev.azure.com".into(),
+            use_http_path: true,
+        })
+        .unwrap();
+        assert_eq!(
+            invocation.config,
+            [
+                "-c".to_string(),
+                "credential.https://dev.azure.com.useHttpPath=true".to_string()
+            ]
+        );
+        assert!(invocation.env.is_empty());
     }
 
     #[test]
