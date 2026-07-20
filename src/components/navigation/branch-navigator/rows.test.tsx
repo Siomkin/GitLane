@@ -137,6 +137,31 @@ describe("BranchRow", () => {
     expect(useUi.getState().navOpen).toBe(true);
   });
 
+  it("keeps the pin control outside the row's interactive element", () => {
+    // The pin is a sibling of the reveal control, not a child: a real <button>
+    // inside role="button" announces as a button within a button. This is the
+    // structural guarantee behind the click/drag isolation asserted below.
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+    const row = screen.getByRole("button", { name: "Reveal local feature" });
+    const pin = screen.getByRole("button", { name: "Pin feature to top" });
+
+    expect(row).not.toContainElement(pin);
+    expect(row.querySelector("button")).toBeNull();
+    // Both remain reachable — two actions, two tab stops.
+    expect(row).toHaveAttribute("tabIndex", "0");
+    expect(pin).not.toHaveAttribute("tabIndex", "-1");
+  });
+
+  it("does not reveal when the pin is activated from the keyboard", () => {
+    const revealCommit = vi.fn();
+    useRepo.setState({ revealCommit });
+
+    render(<BranchRow name="feature" kind="local" oid="abc123" />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Pin feature to top" }), { key: "Enter" });
+
+    expect(revealCommit).not.toHaveBeenCalled();
+  });
+
   it("does not start a ref drag from the pin control", () => {
     // The pin sits inside the row, which is itself a drag source — without an
     // explicit opt-out, dragging the pin would drag the branch.
