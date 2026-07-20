@@ -473,3 +473,113 @@ fn benchmark_fixture() {
         })
     );
 }
+
+#[test]
+fn head_handoff_does_not_lend_its_lane_to_a_sibling_branch() {
+    // Regression: the checked-out branch hands its first parent off to the lane
+    // already awaiting it, but its own connector is still drawn straight down its
+    // column. Releasing that column let the next branch root allocate it, so the
+    // connector ran through an unrelated branch's commits and the graph read as
+    // though HEAD descended from that branch instead of from trunk.
+    let dir = std::env::temp_dir().join("gitlane-head-handoff-lane-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+
+    let root = commit_on(&repo, &dir, "refs/heads/trunk", "m.txt", "0\n", &[], 1000);
+    let base = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/trunk",
+        "m.txt",
+        "1\n",
+        &[root],
+        1100,
+    );
+
+    // A sibling topic branch off `base`, older than HEAD so it renders *below* it.
+    let mut sibling = base;
+    for i in 0..4 {
+        sibling = commit_on(
+            &repo,
+            &dir,
+            "refs/heads/sibling",
+            "a.txt",
+            &format!("{i}\n"),
+            &[sibling],
+            1200 + i,
+        );
+    }
+
+    // The checked-out branch: a single commit off the same `base`.
+    let head = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/checked-out",
+        "b.txt",
+        "x\n",
+        &[base],
+        1300,
+    );
+
+    // A third branch off `base`, newest — it renders above HEAD and is what opens
+    // the lane that already awaits `base`, triggering the hand-off.
+    let mut newest = base;
+    for i in 0..3 {
+        newest = commit_on(
+            &repo,
+            &dir,
+            "refs/heads/newest",
+            "c.txt",
+            &format!("{i}\n"),
+            &[newest],
+            1400 + i,
+        );
+    }
+    repo.set_head("refs/heads/checked-out").unwrap();
+
+    let graph = build(&repo, 100).unwrap();
+    let node = |oid: Oid| {
+        graph
+            .commits
+            .iter()
+            .find(|c| c.id == oid.to_string())
+            .unwrap_or_else(|| panic!("{oid} is in the graph"))
+    };
+    let head_node = node(head);
+    let base_node = node(base);
+    let sibling_nodes: Vec<_> = graph
+        .commits
+        .iter()
+        .filter(|c| c.summary == "a.txt")
+        .collect();
+
+    assert_eq!(
+        graph.wip_lane,
+        Some(head_node.lane),
+        "WIP still continues the checked-out HEAD mainline",
+    );
+    assert_ne!(
+        base_node.lane, head_node.lane,
+        "the hand-off still lets the shared base render in the already-open lane",
+    );
+
+    // The connector runs down HEAD's lane from HEAD's row to the base's row, so
+    // no other commit may occupy that lane in between.
+    let trespassers: Vec<_> = graph
+        .commits
+        .iter()
+        .filter(|c| c.lane == head_node.lane && c.row > head_node.row && c.row <= base_node.row)
+        .map(|c| (c.row, c.summary.clone()))
+        .collect();
+    assert!(
+        trespassers.is_empty(),
+        "HEAD's lane must stay blocked until its parent renders, found {trespassers:?}",
+    );
+    assert!(
+        sibling_nodes.iter().all(|c| c.lane != head_node.lane),
+        "the sibling branch must not be allocated HEAD's in-flight lane",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}

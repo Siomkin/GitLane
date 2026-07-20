@@ -176,7 +176,9 @@ pub fn build_profiled(
         let mut cont_lane: Option<usize> = None;
         for (slot, lane_state) in lanes.iter().enumerate() {
             if let Some(l) = lane_state {
-                if l.waiting == oid {
+                // A blocked lane is only holding the column open for an in-flight
+                // connector — it never renders the commit it points at.
+                if l.waiting == oid && !l.blocked {
                     if l.branch_root {
                         root_lane.get_or_insert(slot);
                     } else {
@@ -213,17 +215,26 @@ pub fn build_profiled(
         if parents.is_empty() {
             lanes[lane] = None;
         } else {
-            let first_parent_already_awaited = lanes
-                .iter()
-                .enumerate()
-                .any(|(slot, s)| slot != lane && matches!(s, Some(l) if l.waiting == parents[0]));
+            let first_parent_already_awaited = lanes.iter().enumerate().any(|(slot, s)| {
+                slot != lane && matches!(s, Some(l) if l.waiting == parents[0] && !l.blocked)
+            });
             if head_target == Some(oid) && first_parent_already_awaited {
-                lanes[lane] = None;
+                // The checked-out branch hands its first parent off to the lane
+                // that already awaits it, so the trunk stays visually continuous
+                // below HEAD. But HEAD's own column must stay *blocked* until the
+                // parent renders: its connector is drawn straight down this lane,
+                // so releasing the slot here would let the next branch root
+                // allocate it and have that connector run through the unrelated
+                // branch's commits — reading as if HEAD descended from it.
+                lanes[lane] = Some(Lane::blocked(parents[0]));
             } else {
                 lanes[lane] = Some(Lane::cont(parents[0]));
             }
             for &p in &parents[1..] {
-                if lanes.iter().any(|s| matches!(s, Some(l) if l.waiting == p)) {
+                if lanes
+                    .iter()
+                    .any(|s| matches!(s, Some(l) if l.waiting == p && !l.blocked))
+                {
                     continue; // already awaited → collapse, don't fan out
                 }
                 let l = alloc_lane(&mut lanes);
@@ -343,9 +354,13 @@ pub fn build_profiled(
 /// first-parent continuation. When a commit is awaited by both a branch-root lane
 /// and a continuation, the branch-root lane wins — that's what gives a merged
 /// branch its own column rather than collapsing onto the first parent's lane.
+/// A `blocked` lane is a third state: it renders nothing, but holds its column
+/// out of [`alloc_lane`]'s reach until `waiting` renders, so the connector still
+/// travelling down it is never overdrawn by an unrelated branch.
 struct Lane {
     waiting: Oid,
     branch_root: bool,
+    blocked: bool,
 }
 
 impl Lane {
@@ -353,12 +368,21 @@ impl Lane {
         Lane {
             waiting,
             branch_root: false,
+            blocked: false,
         }
     }
     fn root(waiting: Oid) -> Self {
         Lane {
             waiting,
             branch_root: true,
+            blocked: false,
+        }
+    }
+    fn blocked(waiting: Oid) -> Self {
+        Lane {
+            waiting,
+            branch_root: false,
+            blocked: true,
         }
     }
 }
