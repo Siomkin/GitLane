@@ -4,7 +4,7 @@
 // hinges on the TanStack virtualizer's window position after a programmatic
 // scroll. happy-dom drives scroll measurement/timing differently, leaving file-0
 // un-evicted, so this one file keeps the faithful engine (GL-242).
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
@@ -12,6 +12,14 @@ import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { MAX_CACHED_STACKED_DIFFS, StackedReview } from "./StackedReview";
+
+// Virtualizer navigation goes selection → setTimeout(0) → scrollToIndex →
+// TanStack re-render before the target header exists in the DOM. On a
+// contended CI box that chain can outlive Testing Library's default 1s async
+// timeout (vitest's testTimeout is already 15s for the same reason), so give
+// every findBy/waitFor in this file matching headroom. Vitest isolates each
+// file's environment, so this does not leak into other test files.
+configure({ asyncUtilTimeout: 10_000 });
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
