@@ -8,7 +8,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
-import { useUi, type RemoveDetachedRequest } from "@/store/ui";
+import type { WorktreeInfo } from "@/lib/api";
+import { useUi } from "@/store/ui";
 import { removeDetachedSummary, type RemoveOutcome } from "./steps";
 
 export type RemoveDetachedPhase = "configure" | "running" | "done";
@@ -25,7 +26,10 @@ export interface RemoveDetachedRun {
   start: () => void;
 }
 
-export function useRemoveDetachedRun(req: RemoveDetachedRequest): RemoveDetachedRun {
+/** `targets` is the *planned* set (GL-297), not `req.targets`: the dialog probes
+ * every candidate first and withholds the ones it cannot vouch for. The sweep
+ * itself stays deliberately unforced — see the loop below. */
+export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun {
   const removeWorktree = useRepo((s) => s.removeWorktree);
   const [phase, setPhase] = useState<RemoveDetachedPhase>("configure");
   const [outcomes, setOutcomes] = useState<RemoveOutcome[]>([]);
@@ -68,19 +72,21 @@ export function useRemoveDetachedRun(req: RemoveDetachedRequest): RemoveDetached
       let firstError: string | null = null;
       // A failure doesn't abort the sweep — record it and keep going so one
       // stuck worktree (e.g. git's dirty-worktree check) can't strand the rest.
-      // Never force: git's dirty-worktree protection must apply to a bulk delete,
-      // and locked worktrees are excluded from the removable set upstream (they
-      // stay removable one-by-one via the row menu, which warns on lock override).
-      for (let i = 0; i < req.targets.length; i++) {
+      // Never force. The plan has already withheld anything dirty, unverified,
+      // or agent-managed (GL-297), and locked worktrees never became candidates —
+      // so git's own refusal is a backstop here, not the primary guard. Forcing
+      // would turn that backstop into silent data loss; the per-row menu is where
+      // a forced removal belongs, because it names what is being discarded.
+      for (let i = 0; i < targets.length; i++) {
         if (useRepo.getState().summary?.path !== repoAtStart) {
           // Repo switched under us — record the untouched remainder as failures
           // so the checklist completes instead of stranding rows as "pending".
-          for (; i < req.targets.length; i++) acc.push("fail");
+          for (; i < targets.length; i++) acc.push("fail");
           if (firstError === null) firstError = "Repository changed — remaining worktrees were left in place.";
           break;
         }
         try {
-          await removeWorktree(req.targets[i].path, false);
+          await removeWorktree(targets[i].path, false);
           acc.push("ok");
         } catch (e) {
           acc.push("fail");
@@ -89,7 +95,7 @@ export function useRemoveDetachedRun(req: RemoveDetachedRequest): RemoveDetached
         if (mounted.current) setOutcomes([...acc]);
       }
       if (mounted.current) setOutcomes([...acc]);
-      const summary = removeDetachedSummary(acc, req.targets.length, firstError);
+      const summary = removeDetachedSummary(acc, targets.length, firstError);
       if (!mounted.current) {
         useUi.getState().showToast(summary, firstError ? "error" : "ok");
         return;

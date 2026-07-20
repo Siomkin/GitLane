@@ -3,6 +3,7 @@ import type { RepoSummary, WorktreeInfo } from "@/lib/api";
 import {
   activeWorktree,
   isActiveWorktreePath,
+  isAgentManagedWorktree,
   isDetachedWorktree,
   removableDetachedWorktrees,
   worktreeIndicatorView,
@@ -94,6 +95,26 @@ describe("isDetachedWorktree", () => {
   it("excludes bare and prunable entries (neither has a usable checkout)", () => {
     expect(isDetachedWorktree(wt({ branch: null, bare: true }))).toBe(false);
     expect(isDetachedWorktree(wt({ branch: null, prunable: true }))).toBe(false);
+  });
+});
+
+// GL-297: agents detach their worktrees by construction (git allows a branch in
+// only one worktree), so "detached" marks the most active checkouts, not the
+// disposable ones. Detection is by path convention — the only signal git gives.
+describe("isAgentManagedWorktree", () => {
+  it("recognises the known agent worktree roots", () => {
+    expect(isAgentManagedWorktree(wt({ path: "/Users/me/.codex/worktrees/6d30/GitLane" }))).toBe(true);
+    expect(isAgentManagedWorktree(wt({ path: "/Users/me/.claude/worktrees/abc/repo" }))).toBe(true);
+    // Trailing slashes are normalised before matching.
+    expect(isAgentManagedWorktree(wt({ path: "/Users/me/.codex/worktrees/6d30/GitLane/" }))).toBe(true);
+  });
+
+  it("stays narrow — a false positive would hide a genuinely disposable worktree", () => {
+    expect(isAgentManagedWorktree(wt({ path: "/work/feature" }))).toBe(false);
+    // Similar-looking but not the convention: no `worktrees` segment under the
+    // tool directory.
+    expect(isAgentManagedWorktree(wt({ path: "/Users/me/.codex/GitLane" }))).toBe(false);
+    expect(isAgentManagedWorktree(wt({ path: "/work/codex/worktrees/x" }))).toBe(false);
   });
 });
 
