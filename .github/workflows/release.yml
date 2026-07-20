@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to publish, e.g. v0.1.0. Defaults to the app version."
-        required: false
+        description: "Release tag to publish, e.g. v0.1.0. Required: the tag alone carries the version (the tree's manifests are not bumped per release)."
+        required: true
         type: string
       manifest_only:
         description: "Only repoint the rolling beta manifest to an existing public release."
@@ -90,8 +90,11 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             RELEASE_TAG="$GITHUB_REF_NAME"
           else
-            APP_VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
-            RELEASE_TAG="v${APP_VERSION}"
+            # No fallback to the tree's app version: the manifests are stamped
+            # from the tag at build time (GL-288), so the checked-in version is
+            # stale by design and must never name a release.
+            echo "A release needs an explicit v* tag (tag push or dispatch input)."
+            exit 1
           fi
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -110,24 +113,11 @@ jobs:
             exit 1
           fi
 
-      - name: Validate app version matches tag
-        run: |
-          TAG_VERSION="${RELEASE_TAG#v}"
-          TAURI_CONF_VERSION=$(node -p 'require("./src-tauri/tauri.conf.json").version')
-          CARGO_VERSION=$(awk -F'"' '/^version =/ { print $2; exit }' ./src-tauri/Cargo.toml)
-          PKG_VERSION=$(node -p 'require("./package.json").version')
-          if [[ "$TAURI_CONF_VERSION" != "$TAG_VERSION" ]]; then
-            echo "src-tauri/tauri.conf.json version ($TAURI_CONF_VERSION) != tag version ($TAG_VERSION)"
-            exit 1
-          fi
-          if [[ "$CARGO_VERSION" != "$TAG_VERSION" ]]; then
-            echo "src-tauri/Cargo.toml version ($CARGO_VERSION) != tag version ($TAG_VERSION)"
-            exit 1
-          fi
-          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
-            echo "package.json version ($PKG_VERSION) != tag version ($TAG_VERSION)"
-            exit 1
-          fi
+      # The version is no longer maintained by hand in the tree: each build leg
+      # stamps the tag's version into the manifests before building (see "Stamp
+      # app version from release tag" in release-app), so tagging any commit on
+      # `latest` is the whole release trigger — no bump PR. The old "app version
+      # must equal the tag" validation is therefore gone by design.
 
       - name: Resolve and validate release commit
         id: release-commit
@@ -278,6 +268,54 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ needs.preflight.outputs.release_commit }}
+
+      # The tree's manifests are NOT bumped per release (GL-288): the tag alone
+      # carries the version, and this step rewrites package.json,
+      # src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and the gitlane entry in
+      # src-tauri/Cargo.lock in the build checkout before anything reads them.
+      # That covers every consumer: the bundler/updater version (tauri.conf.json),
+      # the About box (CARGO_PKG_VERSION from Cargo.toml), and artifact names.
+      # Inline node (present on all legs — preflight already relies on it) rather
+      # than a repo script, consistent with the "historical release tags predate
+      # repository-local actions" convention above; it's a no-op when the tree
+      # already carries the tag's version, so dispatch-rerunning an old
+      # hand-bumped tag through this newer workflow still works. RELEASE_TAG is
+      # regex-validated in preflight and passed via env, never interpolated.
+      - name: Stamp app version from release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const version = process.env.RELEASE_TAG.replace(/^v/, "");
+            const patch = (path, from) => {
+              const before = fs.readFileSync(path, "utf8");
+              if (!from.test(before)) {
+                throw new Error(`no version field found in ${path}`);
+              }
+              fs.writeFileSync(path, before.replace(from, `$1${version}$2`));
+            };
+            patch("package.json", /("version":\s*")[^"]+(")/);
+            patch("src-tauri/tauri.conf.json", /("version":\s*")[^"]+(")/);
+            patch("src-tauri/Cargo.toml", /(^version = ")[^"]+(")/m);
+            patch(
+              "src-tauri/Cargo.lock",
+              /(\[\[package\]\]\nname = "gitlane"\nversion = ")[^"]+(")/,
+            );
+            for (const [path, read] of [
+              ["package.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
+              ["src-tauri/tauri.conf.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
+              ["src-tauri/Cargo.toml", (p) => fs.readFileSync(p, "utf8").match(/^version = "([^"]+)"/m)[1]],
+              ["src-tauri/Cargo.lock", (p) => fs.readFileSync(p, "utf8").match(/\[\[package\]\]\nname = "gitlane"\nversion = "([^"]+)"/)[1]],
+            ]) {
+              const found = read(path);
+              if (found !== version) {
+                throw new Error(`${path} reads back ${found}, expected ${version}`);
+              }
+              console.log(`${path}: ${found}`);
+            }
+          '
 
       - name: Resolve release Rust toolchain
         id: rust-toolchain
