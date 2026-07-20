@@ -3149,6 +3149,48 @@ fn worktree_dirty_state_counts_modified_and_untracked_work() {
     assert!(!linked.0.exists(), "the worktree directory should be gone");
 }
 
+// Ignored files are invisible to `--untracked-files=all`, yet git deletes them
+// on an *unforced* remove. Without a separate count, a worktree holding only a
+// local `.env` reports "nothing to lose" and is swept away with it.
+#[test]
+fn worktree_dirty_state_counts_ignored_entries_git_would_delete() {
+    let repo = TempRepo::new("wt-ignored");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join(".gitignore"), "secret.env\nbuild/\n").unwrap();
+    repo.git_ok(&["add", ".gitignore"]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-ignored");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    std::fs::write(linked.0.join("secret.env"), "TOKEN=1\n").unwrap();
+    std::fs::create_dir(linked.0.join("build")).unwrap();
+    for name in ["a.o", "b.o", "c.o"] {
+        std::fs::write(linked.0.join("build").join(name), "x").unwrap();
+    }
+
+    let state = worktree_dirty_state(linked.as_str()).expect("probe an ignored-only worktree");
+    assert_eq!(
+        (state.modified, state.untracked),
+        (0, 0),
+        "ignored files are neither modified nor untracked: {state:?}"
+    );
+    // The file plus the *collapsed* build/ directory — not the three .o files
+    // inside it, which `--ignored` alone deliberately does not expand.
+    assert_eq!(
+        state.ignored, 2,
+        "expected secret.env + collapsed build/, got {state:?}"
+    );
+
+    // Git considers this worktree clean, so the unforced removal the bulk sweep
+    // uses does delete those files. That is precisely why the count must be
+    // reported instead of assumed to be zero.
+    remove_worktree(repo.path(), linked.as_str(), false)
+        .expect("git removes an ignored-only worktree without a force");
+    assert!(!linked.0.exists(), "the worktree directory should be gone");
+}
+
 #[test]
 fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
     let repo = TempRepo::new("stage-hunk-unusual-path");

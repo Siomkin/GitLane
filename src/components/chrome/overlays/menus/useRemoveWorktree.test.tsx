@@ -47,12 +47,12 @@ describe("useRemoveWorktree", () => {
     expect(resolvers).toHaveLength(2);
 
     // The newest probe resolves first, then the stale one lands out of order.
-    resolvers[1]!({ modified: 4, untracked: 0 });
+    resolvers[1]!({ modified: 4, untracked: 0, ignored: 0 });
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     const opened = useUi.getState().confirm;
     expect(opened?.title).toContain("second");
 
-    resolvers[0]!({ modified: 99, untracked: 0 });
+    resolvers[0]!({ modified: 99, untracked: 0, ignored: 0 });
     await Promise.resolve();
     await Promise.resolve();
     // The stale result must not replace the newest click's confirm.
@@ -65,7 +65,7 @@ describe("useRemoveWorktree", () => {
     useRepo.setState({ removeWorktree });
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "worktree_dirty_state"
-        ? Promise.resolve({ modified: 0, untracked: 0 })
+        ? Promise.resolve({ modified: 0, untracked: 0, ignored: 0 })
         : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
     );
     const { result } = renderHook(() => useRemoveWorktree());

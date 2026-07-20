@@ -3,6 +3,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRemoveWorktreeConfirm,
+  describeIgnoredEntries,
   describeUncommittedWork,
   hasUncommittedWork,
   type RemoveWorktreeSubject,
@@ -14,27 +15,27 @@ const subject = (over: Partial<RemoveWorktreeSubject> = {}): RemoveWorktreeSubje
   branch: "feat",
   head: null,
   locked: false,
-  dirty: { modified: 0, untracked: 0 },
+  dirty: { modified: 0, untracked: 0, ignored: 0 },
   ...over,
 });
 
 describe("hasUncommittedWork", () => {
   it("is false for a clean probe, a null probe, and true once anything is dirty", () => {
     expect(hasUncommittedWork(null)).toBe(false);
-    expect(hasUncommittedWork({ modified: 0, untracked: 0 })).toBe(false);
-    expect(hasUncommittedWork({ modified: 1, untracked: 0 })).toBe(true);
-    expect(hasUncommittedWork({ modified: 0, untracked: 1 })).toBe(true);
+    expect(hasUncommittedWork({ modified: 0, untracked: 0, ignored: 0 })).toBe(false);
+    expect(hasUncommittedWork({ modified: 1, untracked: 0, ignored: 0 })).toBe(true);
+    expect(hasUncommittedWork({ modified: 0, untracked: 1, ignored: 0 })).toBe(true);
   });
 });
 
 describe("describeUncommittedWork", () => {
   it("joins both halves, drops a zero half, and singularises", () => {
-    expect(describeUncommittedWork({ modified: 29, untracked: 3 })).toBe(
+    expect(describeUncommittedWork({ modified: 29, untracked: 3, ignored: 0 })).toBe(
       "29 modified files and 3 untracked files",
     );
-    expect(describeUncommittedWork({ modified: 29, untracked: 0 })).toBe("29 modified files");
-    expect(describeUncommittedWork({ modified: 0, untracked: 2 })).toBe("2 untracked files");
-    expect(describeUncommittedWork({ modified: 1, untracked: 1 })).toBe(
+    expect(describeUncommittedWork({ modified: 29, untracked: 0, ignored: 0 })).toBe("29 modified files");
+    expect(describeUncommittedWork({ modified: 0, untracked: 2, ignored: 0 })).toBe("2 untracked files");
+    expect(describeUncommittedWork({ modified: 1, untracked: 1, ignored: 0 })).toBe(
       "1 modified file and 1 untracked file",
     );
   });
@@ -65,7 +66,7 @@ describe("buildRemoveWorktreeConfirm", () => {
   });
 
   it("forces and warns when the worktree holds uncommitted work", () => {
-    const confirm = buildRemoveWorktreeConfirm(subject({ dirty: { modified: 29, untracked: 3 } }));
+    const confirm = buildRemoveWorktreeConfirm(subject({ dirty: { modified: 29, untracked: 3, ignored: 0 } }));
     expect(confirm.force).toBe(true);
     expect(confirm.confirmLabel).toBe("Remove and discard changes");
     expect(confirm.warnings.join(" ")).toContain("29 modified files and 3 untracked files");
@@ -83,7 +84,7 @@ describe("buildRemoveWorktreeConfirm", () => {
 
   it("warns about both the lock and the uncommitted work when it is dirty and locked", () => {
     const confirm = buildRemoveWorktreeConfirm(
-      subject({ locked: true, dirty: { modified: 2, untracked: 0 } }),
+      subject({ locked: true, dirty: { modified: 2, untracked: 0, ignored: 0 } }),
     );
     expect(confirm.force).toBe(true);
     expect(confirm.warnings.join(" ")).toContain("override the lock");
@@ -117,5 +118,32 @@ describe("buildRemoveWorktreeConfirm", () => {
     const confirm = buildRemoveWorktreeConfirm(subject({ locked: false, dirty: null }));
     expect(confirm.force).toBe(false);
     expect(confirm.warnings.join(" ")).not.toContain("could not check");
+  });
+});
+
+// Review finding (P1): ignored files are invisible to `--untracked-files=all`,
+// yet git deletes them on an UNFORCED remove. They must not make the worktree
+// "dirty" (that would make every node_modules worktree unremovable) but they
+// must be disclosed — a local .env is ignored too.
+describe("ignored entries", () => {
+  it("does not count as uncommitted work, so no force is demanded", () => {
+    const dirty = { modified: 0, untracked: 0, ignored: 4 };
+    expect(hasUncommittedWork(dirty)).toBe(false);
+    const confirm = buildRemoveWorktreeConfirm(subject({ dirty }));
+    expect(confirm.force).toBe(false);
+    expect(confirm.confirmLabel).toBe("Remove worktree");
+  });
+
+  it("is still disclosed in the warnings so nothing vanishes unmentioned", () => {
+    const confirm = buildRemoveWorktreeConfirm(subject({ dirty: { modified: 0, untracked: 0, ignored: 4 } }));
+    const warnings = confirm.warnings.join(" ");
+    expect(warnings).toContain("4 ignored entries");
+    expect(warnings).toContain(".env");
+  });
+
+  it("singularises and stays silent when there are none", () => {
+    expect(describeIgnoredEntries({ modified: 0, untracked: 0, ignored: 1 })).toContain("1 ignored entry");
+    expect(describeIgnoredEntries({ modified: 0, untracked: 0, ignored: 0 })).toBeNull();
+    expect(describeIgnoredEntries(null)).toBeNull();
   });
 });

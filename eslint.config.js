@@ -102,7 +102,8 @@ export default [
   // destructive-preview reads in the menus folder module (GL-156), including the
   // shared discard-all hook that owns the `previewDiscardAll` read (GL-236) and
   // the shared remove-worktree hook that owns the `worktreeDirtyState` read
-  // (GL-296) (architecture-rules-react.md §1).
+  // (GL-296), and the bulk sweep's preview probe over every candidate (GL-297)
+  // (architecture-rules-react.md §1).
   {
     files: [
       "src/features/terminal/panes/useTerminalPanes.ts",
@@ -111,6 +112,7 @@ export default [
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
       "src/components/chrome/overlays/menus/useDiscardAllChanges.ts",
       "src/components/chrome/overlays/menus/useRemoveWorktree.ts",
+      "src/components/chrome/overlays/remove-detached/useRemoveDetachedPreview.ts",
     ],
     rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
   },

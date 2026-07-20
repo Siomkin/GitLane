@@ -381,6 +381,11 @@ export interface WorktreeDirtyState {
   modified: number;
   /** Untracked files, counted individually (`--untracked-files=all`). */
   untracked: number;
+  /** Ignored entries, counted with directories COLLAPSED (`node_modules/` is
+   * one). Git deletes these on an unforced removal, so they never make a
+   * worktree dirty — but a local `.env` is ignored too, so a removal says they
+   * are going rather than letting them vanish unmentioned. */
+  ignored: number;
 }
 
 export interface StashEntry {

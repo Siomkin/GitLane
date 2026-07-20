@@ -81,13 +81,46 @@ export function isDetachedWorktree(wt: WorktreeInfo): boolean {
   return wt.branch == null && !wt.bare && !wt.prunable;
 }
 
+/** Path markers of worktrees a coding agent manages for its own isolation.
+ *
+ * Agents create their worktrees **detached on purpose**: git allows a branch to
+ * be checked out in only one worktree at a time, so an agent that checked out a
+ * real branch would lock the user out of it in the main checkout. Detaching is
+ * what makes the isolation work — which means "detached" identifies the most
+ * *active* worktrees in a repository, not the abandoned ones. Anything keying
+ * "safe to delete" off the detached flag alone has the inference backwards.
+ *
+ * Matching is by path convention because that is the only signal git exposes:
+ * there is no worktree metadata recording who created it.
+ *
+ * **This is a mitigation, not a safety boundary.** An agent that uses a
+ * different root is not recognised, so a *clean* worktree of its own is still
+ * swept — the protection that actually holds for every worktree, whoever made
+ * it, is the uncommitted-work probe and the fact that the sweep names every
+ * directory it will delete before it acts. Treat this list as a way to explain
+ * a known case in the UI, and never as the reason the sweep is safe. Extend it
+ * as new agent conventions appear. */
+const AGENT_WORKTREE_MARKERS = ["/.codex/worktrees/", "/.claude/worktrees/"];
+
+/** Whether a worktree looks like a coding agent's isolation checkout — see
+ * {@link AGENT_WORKTREE_MARKERS}. */
+export function isAgentManagedWorktree(wt: WorktreeInfo): boolean {
+  const path = trimTrailingSlash(wt.path);
+  return AGENT_WORKTREE_MARKERS.some((marker) => path.includes(marker));
+}
+
 /** The detached worktrees the bulk "Remove detached" sweep may delete: never
  * the main worktree (git refuses to remove it), never the one backing the open
  * tab (removal would pull the directory out from under the app), and never a
  * locked one. Removing a locked worktree needs a force that also overrides git's
  * dirty-worktree protection — too blunt for a silent bulk sweep, so locked
  * worktrees are removed only via the per-row menu, which warns about the lock
- * override first. */
+ * override first.
+ *
+ * This is the *candidate* set, decided from the worktree list alone. Whether a
+ * candidate is actually safe to delete needs its uncommitted work probed, which
+ * costs a `git status` each — see `buildRemoveDetachedPlan`, which the sweep
+ * dialog applies on top of this before removing anything. */
 export function removableDetachedWorktrees(
   worktrees: WorktreeInfo[],
   summary: RepoSummary | null,

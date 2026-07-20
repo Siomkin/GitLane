@@ -14,7 +14,9 @@ import { CheckIcon, CloseIcon, TrashIcon, WarningIcon } from "@/components/ui/ic
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useUi, type RemoveDetachedRequest } from "@/store/ui";
 import { StepRow } from "@/components/chrome/overlays/progress";
+import { describeCollateral, describeSkip } from "./plan";
 import { removeDetachedStepLabels, removeDetachedStepStatus } from "./steps";
+import { useRemoveDetachedPreview } from "./useRemoveDetachedPreview";
 import { useRemoveDetachedRun } from "./useRemoveDetachedRun";
 
 export function RemoveDetachedDialog() {
@@ -29,10 +31,24 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
   // A background sweep from a prior, closed dialog may still be running; block a
   // second one and say why, rather than leaving an enabled button that no-ops.
   const removeDetachedRunning = useUi((s) => s.removeDetachedRunning);
-  const { phase, outcomes, message, hadFailure, start } = useRemoveDetachedRun(req);
-  const stepLabels = removeDetachedStepLabels(req.targets);
-  const count = req.targets.length;
+  // Probe every candidate before offering to remove anything: "detached" alone
+  // does not mean "disposable" (GL-297).
+  const { ready, plan } = useRemoveDetachedPreview(req.targets);
+  // The sweep and its checklist act on the worktrees themselves; the plan rows
+  // additionally carry what each removal takes with it.
+  const removeTargets = plan.remove.map((r) => r.worktree);
+  const { phase, outcomes, message, hadFailure, start } = useRemoveDetachedRun(removeTargets);
+  const stepLabels = removeDetachedStepLabels(removeTargets);
+  const count = removeTargets.length;
   const noun = count === 1 ? "detached worktree" : "detached worktrees";
+  // One source for the configure heading and the dialog's accessible name, so a
+  // screen reader is never told "Remove 0 detached worktrees" while the dialog
+  // visibly says it is still checking (or that there is nothing to remove).
+  const heading = !ready
+    ? "Checking worktrees…"
+    : count > 0
+      ? `Remove ${count} ${noun}`
+      : "Nothing to remove";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -65,7 +81,8 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={`Remove ${count} ${noun}`}
+        aria-label={phase === "configure" ? heading : `Remove ${count} ${noun}`}
+        aria-busy={phase === "configure" && !ready}
         tabIndex={-1}
         className="w-[440px] rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800"
         style={{ animation: "gp-pop .14s ease-out" }}
@@ -111,48 +128,95 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
         {phase === "configure" && (
           <>
             <div className="mt-3 text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">
-              Remove {count} {noun}
+              {heading}
             </div>
             <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">
-              These worktrees have no branch checked out. Removing them deletes their linked
-              directories — commits reachable only from a detached HEAD may become unreachable.
+              {!ready
+                ? "Checking each detached worktree for uncommitted work before offering to delete it."
+                : count > 0
+                  ? "These worktrees have no branch checked out and no uncommitted work. Removing them deletes their linked directories — commits reachable only from a detached HEAD may become unreachable."
+                  : // Deliberately does not claim what the skipped rows contain:
+                    // a withheld candidate may be dirty, agent-owned, or simply
+                    // unverifiable, and each row states its own reason.
+                    "None of these can be removed in bulk — each row below says why. Remove one individually to decide what happens to it."}
             </div>
             {/* The concrete target list (name + path) so the sweep is never a
                 blind bulk action — each row it will act on is spelled out. */}
-            <div className="mt-3.5 max-h-[168px] overflow-auto rounded-lg border border-black/[0.07] dark:border-white/[0.08]">
-              {req.targets.map((wt) => (
-                <div
-                  key={wt.path}
-                  className="flex items-center gap-2 border-b border-black/[0.05] px-3 py-2 last:border-b-0 dark:border-white/[0.06]"
-                >
-                  <TrashIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12.5px] text-neutral-700 dark:text-neutral-200">
-                      {worktreeName(wt, req.targets)}
+            {count > 0 && (
+              <div className="mt-3.5 max-h-[168px] overflow-auto rounded-lg border border-black/[0.07] dark:border-white/[0.08]">
+                {plan.remove.map((removable) => {
+                  const collateral = describeCollateral(removable);
+                  return (
+                    <div
+                      key={removable.worktree.path}
+                      className="flex items-center gap-2 border-b border-black/[0.05] px-3 py-2 last:border-b-0 dark:border-white/[0.06]"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12.5px] text-neutral-700 dark:text-neutral-200">
+                          {worktreeName(removable.worktree, req.targets)}
+                        </div>
+                        <div
+                          className="truncate font-mono text-[10.5px] text-neutral-400"
+                          title={removable.worktree.path}
+                        >
+                          {removable.worktree.path}
+                        </div>
+                        {/* Ignored files do not block the sweep — git deletes
+                            them unforced — but a local .env is ignored too, so
+                            say they are going rather than let them vanish. */}
+                        {collateral && (
+                          <div className="truncate text-[10.5px] text-neutral-400">{collateral}</div>
+                        )}
+                      </div>
                     </div>
-                    <div className="truncate font-mono text-[10.5px] text-neutral-400" title={wt.path}>
-                      {wt.path}
-                    </div>
-                  </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* Withheld candidates are listed, not silently dropped: a sweep that
+                quietly shrinks its own target set is indistinguishable from one
+                that found nothing. Each row says why it is being left alone. */}
+            {ready && plan.skip.length > 0 && (
+              <div className="mt-3.5 rounded-lg border border-amber-500/25 bg-amber-500/[0.06]">
+                <div className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                  Kept ({plan.skip.length})
                 </div>
-              ))}
-            </div>
+                <div className="max-h-[132px] overflow-auto">
+                  {plan.skip.map((skipped) => (
+                    <div key={skipped.worktree.path} className="flex items-center gap-2 px-3 py-2">
+                      <WarningIcon className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12.5px] text-neutral-700 dark:text-neutral-200">
+                          {worktreeName(skipped.worktree, req.targets)}
+                        </div>
+                        <div className="truncate text-[10.5px] text-amber-700 dark:text-amber-400">
+                          {describeSkip(skipped)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-5 flex gap-2.5">
               <button
                 type="button"
                 onClick={closeRemoveDetached}
                 className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
               >
-                Cancel
+                {ready && count === 0 ? "Close" : "Cancel"}
               </button>
-              <button
-                type="button"
-                onClick={start}
-                disabled={removeDetachedRunning}
-                className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
-              >
-                Remove {count}
-              </button>
+              {(!ready || count > 0) && (
+                <button
+                  type="button"
+                  onClick={start}
+                  disabled={removeDetachedRunning || !ready}
+                  className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
+                >
+                  {ready ? `Remove ${count}` : "Checking…"}
+                </button>
+              )}
             </div>
             {removeDetachedRunning && (
               <div className="mt-2.5 text-center text-[11.5px] text-neutral-400">
@@ -173,7 +237,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
             </div>
             <div className="mt-5 flex max-h-[240px] flex-col gap-3.5 overflow-auto pb-1">
               {stepLabels.map((label, i) => (
-                <StepRow key={req.targets[i].path} label={label} status={removeDetachedStepStatus(i, outcomes, true)} />
+                <StepRow key={removeTargets[i]!.path} label={label} status={removeDetachedStepStatus(i, outcomes, true)} />
               ))}
             </div>
           </>
@@ -191,7 +255,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
                 which rows failed (rose ✗) versus removed (accent ✓). */}
             <div className="mt-4 flex max-h-[240px] flex-col gap-3.5 overflow-auto pb-1">
               {stepLabels.map((label, i) => (
-                <StepRow key={req.targets[i].path} label={label} status={removeDetachedStepStatus(i, outcomes, false)} />
+                <StepRow key={removeTargets[i]!.path} label={label} status={removeDetachedStepStatus(i, outcomes, false)} />
               ))}
             </div>
           </>
