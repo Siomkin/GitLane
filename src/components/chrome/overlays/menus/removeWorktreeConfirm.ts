@@ -25,11 +25,31 @@ export interface RemoveWorktreeConfirm {
   force: boolean;
 }
 
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+/** Pluralise a count. Handles the one irregular noun in use here ("entry"),
+ * rather than pretending English is regular and printing "2 ignored entrys". */
+const plural = (n: number, noun: string) =>
+  `${n} ${n === 1 ? noun : noun.endsWith("y") ? `${noun.slice(0, -1)}ies` : `${noun}s`}`;
 
-/** True when the probe found work that a removal would destroy. */
+/** True when the probe found work that a removal would destroy.
+ *
+ * Ignored entries are excluded on purpose: git deletes them on an *unforced*
+ * removal, so they neither make the worktree dirty nor require a force. They
+ * are disclosed separately — see {@link describeIgnoredEntries}. */
 export function hasUncommittedWork(dirty: WorktreeDirtyState | null): dirty is WorktreeDirtyState {
   return !!dirty && dirty.modified + dirty.untracked > 0;
+}
+
+/** A sentence disclosing ignored entries a removal would delete, or null when
+ * there are none.
+ *
+ * Git's own model says ignored files are regenerable, which is why it deletes
+ * them without a force — and why withholding a worktree over them would make
+ * every JS checkout (`node_modules/`) permanently unremovable. But "ignored" is
+ * not "worthless": a local `.env` is ignored too. Naming the count is the
+ * difference between a cleanup and a silent loss. */
+export function describeIgnoredEntries(dirty: WorktreeDirtyState | null): string | null {
+  if (!dirty || dirty.ignored <= 0) return null;
+  return `${plural(dirty.ignored, "ignored entry")} (such as build output or a local .env) will also be deleted. Git treats ignored files as regenerable, so this does not need a forced removal.`;
 }
 
 /** One phrase naming the uncommitted work, e.g. "29 modified files and 3
@@ -77,6 +97,8 @@ export function buildRemoveWorktreeConfirm(
       `${describeUncommittedWork(dirty)} in this worktree will be permanently deleted. This work was never committed, so it cannot be recovered afterwards.`,
     );
   }
+  const ignoredNote = describeIgnoredEntries(dirty);
+  if (ignoredNote) warnings.push(ignoredNote);
   if (locked) {
     warnings.push("This worktree is locked; removing it will override the lock.");
   }

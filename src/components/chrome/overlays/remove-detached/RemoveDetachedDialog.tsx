@@ -14,7 +14,7 @@ import { CheckIcon, CloseIcon, TrashIcon, WarningIcon } from "@/components/ui/ic
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useUi, type RemoveDetachedRequest } from "@/store/ui";
 import { StepRow } from "@/components/chrome/overlays/progress";
-import { describeSkip } from "./plan";
+import { describeCollateral, describeSkip } from "./plan";
 import { removeDetachedStepLabels, removeDetachedStepStatus } from "./steps";
 import { useRemoveDetachedPreview } from "./useRemoveDetachedPreview";
 import { useRemoveDetachedRun } from "./useRemoveDetachedRun";
@@ -34,9 +34,12 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
   // Probe every candidate before offering to remove anything: "detached" alone
   // does not mean "disposable" (GL-297).
   const { ready, plan } = useRemoveDetachedPreview(req.targets);
-  const { phase, outcomes, message, hadFailure, start } = useRemoveDetachedRun(plan.remove);
-  const stepLabels = removeDetachedStepLabels(plan.remove);
-  const count = plan.remove.length;
+  // The sweep and its checklist act on the worktrees themselves; the plan rows
+  // additionally carry what each removal takes with it.
+  const removeTargets = plan.remove.map((r) => r.worktree);
+  const { phase, outcomes, message, hadFailure, start } = useRemoveDetachedRun(removeTargets);
+  const stepLabels = removeDetachedStepLabels(removeTargets);
+  const count = removeTargets.length;
   const noun = count === 1 ? "detached worktree" : "detached worktrees";
   // One source for the configure heading and the dialog's accessible name, so a
   // screen reader is never told "Remove 0 detached worktrees" while the dialog
@@ -141,22 +144,34 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
                 blind bulk action — each row it will act on is spelled out. */}
             {count > 0 && (
               <div className="mt-3.5 max-h-[168px] overflow-auto rounded-lg border border-black/[0.07] dark:border-white/[0.08]">
-                {plan.remove.map((wt) => (
-                  <div
-                    key={wt.path}
-                    className="flex items-center gap-2 border-b border-black/[0.05] px-3 py-2 last:border-b-0 dark:border-white/[0.06]"
-                  >
-                    <TrashIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12.5px] text-neutral-700 dark:text-neutral-200">
-                        {worktreeName(wt, req.targets)}
-                      </div>
-                      <div className="truncate font-mono text-[10.5px] text-neutral-400" title={wt.path}>
-                        {wt.path}
+                {plan.remove.map((removable) => {
+                  const collateral = describeCollateral(removable);
+                  return (
+                    <div
+                      key={removable.worktree.path}
+                      className="flex items-center gap-2 border-b border-black/[0.05] px-3 py-2 last:border-b-0 dark:border-white/[0.06]"
+                    >
+                      <TrashIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[12.5px] text-neutral-700 dark:text-neutral-200">
+                          {worktreeName(removable.worktree, req.targets)}
+                        </div>
+                        <div
+                          className="truncate font-mono text-[10.5px] text-neutral-400"
+                          title={removable.worktree.path}
+                        >
+                          {removable.worktree.path}
+                        </div>
+                        {/* Ignored files do not block the sweep — git deletes
+                            them unforced — but a local .env is ignored too, so
+                            say they are going rather than let them vanish. */}
+                        {collateral && (
+                          <div className="truncate text-[10.5px] text-neutral-400">{collateral}</div>
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             {/* Withheld candidates are listed, not silently dropped: a sweep that
@@ -222,7 +237,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
             </div>
             <div className="mt-5 flex max-h-[240px] flex-col gap-3.5 overflow-auto pb-1">
               {stepLabels.map((label, i) => (
-                <StepRow key={plan.remove[i].path} label={label} status={removeDetachedStepStatus(i, outcomes, true)} />
+                <StepRow key={removeTargets[i]!.path} label={label} status={removeDetachedStepStatus(i, outcomes, true)} />
               ))}
             </div>
           </>
@@ -240,7 +255,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
                 which rows failed (rose ✗) versus removed (accent ✓). */}
             <div className="mt-4 flex max-h-[240px] flex-col gap-3.5 overflow-auto pb-1">
               {stepLabels.map((label, i) => (
-                <StepRow key={plan.remove[i].path} label={label} status={removeDetachedStepStatus(i, outcomes, false)} />
+                <StepRow key={removeTargets[i]!.path} label={label} status={removeDetachedStepStatus(i, outcomes, false)} />
               ))}
             </div>
           </>

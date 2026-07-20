@@ -153,6 +153,11 @@ pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<S
 /// expands untracked directories to real files: the default collapses them to
 /// one entry per directory, which would understate the loss in the warning.
 ///
+/// Ignored entries are counted separately and *collapsed* by directory — see the
+/// second call below. They do not make a worktree dirty (git deletes them on an
+/// unforced remove) but they are reported so a removal can say that a local
+/// `.env` or a build directory is about to go with it.
+///
 /// This is a read, but it lives beside the removal it guards rather than in
 /// `read.rs`, and it is called on demand (never from the worktree list refresh).
 pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, String> {
@@ -173,9 +178,27 @@ pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, S
             modified += 1;
         }
     }
+    // Ignored entries need a *second* call. `--ignored` cannot ride along with
+    // the `--untracked-files=all` above: that combination expands ignored
+    // directories file by file, so a single `node_modules` turns a millisecond
+    // probe into an enormous listing. On its own, `--ignored` collapses them to
+    // one record per directory — both cheaper and the more readable count.
+    //
+    // A failure here degrades to zero rather than failing the probe: not knowing
+    // the ignored count costs a sentence in a warning, whereas failing the whole
+    // probe would withhold the worktree from the sweep entirely.
+    let ignored = run_git_stdout(worktree_path, &["status", "--porcelain", "--ignored"])
+        .map(|raw| {
+            raw.lines()
+                .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
+                .count() as u32
+        })
+        .unwrap_or(0);
+
     Ok(WorktreeDirtyState {
         modified,
         untracked,
+        ignored,
     })
 }
 

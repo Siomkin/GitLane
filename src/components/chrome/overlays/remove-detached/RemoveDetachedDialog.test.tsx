@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { RepoSummary, WorktreeInfo } from "@/lib/api";
+import type { RepoSummary, WorktreeDirtyState, WorktreeInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
@@ -39,10 +39,10 @@ const clickRemove = async () => {
 
 /** Answer the dirty probe. Defaults to clean so only the tests that care about
  * withheld candidates opt into dirtiness. */
-const mockDirtyProbe = (byPath: Record<string, { modified: number; untracked: number } | "fail"> = {}) =>
+const mockDirtyProbe = (byPath: Record<string, WorktreeDirtyState | "fail"> = {}) =>
   invokeMock.mockImplementation((cmd: string, args: { worktreePath: string }) => {
     if (cmd !== "worktree_dirty_state") return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
-    const state = byPath[args.worktreePath] ?? { modified: 0, untracked: 0 };
+    const state = byPath[args.worktreePath] ?? { modified: 0, untracked: 0, ignored: 0 };
     return state === "fail"
       ? Promise.reject(new Error("probe failed"))
       : Promise.resolve(state);
@@ -157,7 +157,7 @@ describe("RemoveDetachedDialog", () => {
   it("withholds a dirty candidate and says what it is keeping", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed");
     useRepo.setState({ removeWorktree });
-    mockDirtyProbe({ "/work/b": { modified: 29, untracked: 3 } });
+    mockDirtyProbe({ "/work/b": { modified: 29, untracked: 3, ignored: 0 } });
     open([a, b]);
     render(<RemoveDetachedDialog />);
 
@@ -192,7 +192,7 @@ describe("RemoveDetachedDialog", () => {
   // probe results. The key is JSON, so these two sets stay distinct.
   it("keys probes so a path containing the delimiter cannot reuse another set's results", async () => {
     const odd = wt({ name: "odd", path: "/work/a|/work/b" });
-    mockDirtyProbe({ "/work/a|/work/b": { modified: 7, untracked: 0 } });
+    mockDirtyProbe({ "/work/a|/work/b": { modified: 7, untracked: 0, ignored: 0 } });
     open([odd]);
     render(<RemoveDetachedDialog />);
 

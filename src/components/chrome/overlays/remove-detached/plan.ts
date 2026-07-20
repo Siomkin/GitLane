@@ -19,9 +19,17 @@ export interface SkippedWorktree {
   dirty: WorktreeDirtyState | null;
 }
 
+/** A candidate the sweep will remove, with what goes with it. */
+export interface RemovableWorktree {
+  worktree: WorktreeInfo;
+  /** Ignored entries git deletes along with the directory, collapsed by
+   * directory. Zero for a worktree with none. */
+  ignored: number;
+}
+
 export interface RemoveDetachedPlan {
   /** Candidates the sweep will remove. */
-  remove: WorktreeInfo[];
+  remove: RemovableWorktree[];
   /** Candidates deliberately left in place, each with its reason. */
   skip: SkippedWorktree[];
 }
@@ -49,7 +57,7 @@ export function buildRemoveDetachedPlan(
   candidates: WorktreeInfo[],
   probes: DirtyProbeResults,
 ): RemoveDetachedPlan {
-  const remove: WorktreeInfo[] = [];
+  const remove: RemovableWorktree[] = [];
   const skip: SkippedWorktree[] = [];
   for (const worktree of candidates) {
     const dirty = probes.get(worktree.path) ?? null;
@@ -62,7 +70,11 @@ export function buildRemoveDetachedPlan(
     } else if (dirty.modified + dirty.untracked > 0) {
       skip.push({ worktree, reason: "uncommittedWork", dirty });
     } else {
-      remove.push(worktree);
+      // Ignored files never block the sweep: git deletes them on an unforced
+      // remove because its model says they are regenerable, and withholding on
+      // them would make every JS worktree (`node_modules/`) unremovable. The
+      // count rides along so the row can say they are going.
+      remove.push({ worktree, ignored: dirty.ignored });
     }
   }
   return { remove, skip };
@@ -85,4 +97,12 @@ export function describeSkip(skipped: SkippedWorktree): string {
       return `Has ${parts.join(" and ")}`;
     }
   }
+}
+
+/** What a removable row loses beyond the directory itself, or null when the
+ * removal takes nothing else with it. */
+export function describeCollateral(removable: RemovableWorktree): string | null {
+  if (removable.ignored <= 0) return null;
+  const n = removable.ignored;
+  return `also deletes ${n} ignored ${n === 1 ? "entry" : "entries"}`;
 }

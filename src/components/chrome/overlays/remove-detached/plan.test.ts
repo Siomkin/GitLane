@@ -1,7 +1,7 @@
 // GL-297: the sweep's safe-to-delete decision. Pure — the dialog's own tests
 // cover the probe wiring and rendering.
 import { describe, it, expect } from "vitest";
-import type { WorktreeInfo } from "@/lib/api";
+import type { WorktreeDirtyState, WorktreeInfo } from "@/lib/api";
 import { buildRemoveDetachedPlan, describeSkip, type DirtyProbeResults } from "./plan";
 
 const wt = (path: string): WorktreeInfo => ({
@@ -11,23 +11,23 @@ const wt = (path: string): WorktreeInfo => ({
   isMain: false,
 });
 
-const clean = { modified: 0, untracked: 0 };
-const probes = (entries: Record<string, { modified: number; untracked: number } | null>): DirtyProbeResults =>
+const clean = { modified: 0, untracked: 0, ignored: 0 };
+const probes = (entries: Record<string, WorktreeDirtyState | null>): DirtyProbeResults =>
   new Map(Object.entries(entries));
 
 describe("buildRemoveDetachedPlan", () => {
   it("removes a candidate probed clean", () => {
     const plan = buildRemoveDetachedPlan([wt("/work/a")], probes({ "/work/a": clean }));
-    expect(plan.remove.map((w) => w.path)).toEqual(["/work/a"]);
+    expect(plan.remove.map((r) => r.worktree.path)).toEqual(["/work/a"]);
     expect(plan.skip).toHaveLength(0);
   });
 
   it("withholds uncommitted work rather than letting git refuse mid-sweep", () => {
     const plan = buildRemoveDetachedPlan(
       [wt("/work/a"), wt("/work/b")],
-      probes({ "/work/a": clean, "/work/b": { modified: 2, untracked: 1 } }),
+      probes({ "/work/a": clean, "/work/b": { modified: 2, untracked: 1, ignored: 0 } }),
     );
-    expect(plan.remove.map((w) => w.path)).toEqual(["/work/a"]);
+    expect(plan.remove.map((r) => r.worktree.path)).toEqual(["/work/a"]);
     expect(plan.skip).toHaveLength(1);
     expect(plan.skip[0]!.reason).toBe("uncommittedWork");
   });
@@ -42,7 +42,7 @@ describe("buildRemoveDetachedPlan", () => {
 
   it("prefers the agent reason over dirtiness, as the more informative one", () => {
     const agent = wt("/Users/me/.claude/worktrees/x/repo");
-    const plan = buildRemoveDetachedPlan([agent], probes({ [agent.path]: { modified: 5, untracked: 0 } }));
+    const plan = buildRemoveDetachedPlan([agent], probes({ [agent.path]: { modified: 5, untracked: 0, ignored: 0 } }));
     expect(plan.skip[0]!.reason).toBe("agentManaged");
   });
 
@@ -62,20 +62,20 @@ describe("buildRemoveDetachedPlan", () => {
     const candidates = [wt("/work/a"), wt("/work/b"), wt("/work/c")];
     const plan = buildRemoveDetachedPlan(
       candidates,
-      probes({ "/work/a": clean, "/work/b": { modified: 1, untracked: 0 }, "/work/c": clean }),
+      probes({ "/work/a": clean, "/work/b": { modified: 1, untracked: 0, ignored: 0 }, "/work/c": clean }),
     );
-    expect(plan.remove.map((w) => w.path)).toEqual(["/work/a", "/work/c"]);
+    expect(plan.remove.map((r) => r.worktree.path)).toEqual(["/work/a", "/work/c"]);
     expect(plan.remove.length + plan.skip.length).toBe(candidates.length);
   });
 });
 
 describe("describeSkip", () => {
   it("names the concrete uncommitted work, singularising and dropping a zero half", () => {
-    const at = (dirty: { modified: number; untracked: number }) =>
+    const at = (dirty: WorktreeDirtyState) =>
       describeSkip({ worktree: wt("/w"), reason: "uncommittedWork", dirty });
-    expect(at({ modified: 29, untracked: 3 })).toBe("Has 29 modified files and 3 untracked files");
-    expect(at({ modified: 1, untracked: 0 })).toBe("Has 1 modified file");
-    expect(at({ modified: 0, untracked: 2 })).toBe("Has 2 untracked files");
+    expect(at({ modified: 29, untracked: 3, ignored: 0 })).toBe("Has 29 modified files and 3 untracked files");
+    expect(at({ modified: 1, untracked: 0, ignored: 0 })).toBe("Has 1 modified file");
+    expect(at({ modified: 0, untracked: 2, ignored: 0 })).toBe("Has 2 untracked files");
   });
 
   it("explains the non-dirty reasons", () => {

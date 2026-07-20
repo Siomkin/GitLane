@@ -341,6 +341,16 @@ pub struct WorktreeDirtyState {
     /// Untracked files. Counted with `--untracked-files=all` (not the default
     /// collapsed-directory form) so the confirm quotes a real file count.
     pub untracked: u32,
+    /// Ignored entries (`!!` records), counted with **directories collapsed** —
+    /// unlike the two fields above. `node_modules/` is one entry, not fifty
+    /// thousand: expanding it is slow to produce and useless to read.
+    ///
+    /// Git treats ignored files as disposable — an *unforced* `git worktree
+    /// remove` deletes them — so they never make a worktree "dirty" and never
+    /// force a removal. They are counted anyway because "ignored" is not
+    /// "worthless": a local `.env` is ignored, and deleting one without saying
+    /// so is the difference between a safe cleanup and a silent loss.
+    pub ignored: u32,
 }
 
 /// A stash entry for the sidebar's STASHES group.

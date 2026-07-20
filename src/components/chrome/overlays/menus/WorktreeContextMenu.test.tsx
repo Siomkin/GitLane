@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import type { WorktreeDirtyState } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { WorktreeContextMenu } from "./WorktreeContextMenu";
@@ -33,10 +34,10 @@ beforeEach(() => {
 const openMenuFor = (wt: { path: string; name: string; isMain: boolean }) =>
   useUi.setState({ worktreeMenu: { x: 10, y: 10, path: wt.path, name: wt.name, isMain: wt.isMain } });
 
-const CLEAN = { modified: 0, untracked: 0 };
+const CLEAN = { modified: 0, untracked: 0, ignored: 0 };
 
 /** Answer the GL-296 dirty probe; "fail" exercises the degraded path. */
-const mockDirtyProbe = (state: { modified: number; untracked: number } | "fail") =>
+const mockDirtyProbe = (state: WorktreeDirtyState | "fail") =>
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd !== "worktree_dirty_state") return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
     return state === "fail" ? Promise.reject(new Error("probe failed")) : Promise.resolve(state);
@@ -182,7 +183,7 @@ describe("WorktreeContextMenu", () => {
   // toast. The confirm now names the loss up front and carries the force.
   it("removal of a dirty worktree quotes the work at risk and forces the remove", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("ok");
-    mockDirtyProbe({ modified: 29, untracked: 3 });
+    mockDirtyProbe({ modified: 29, untracked: 3, ignored: 0 });
     useRepo.setState({ removeWorktree });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
@@ -199,7 +200,7 @@ describe("WorktreeContextMenu", () => {
   });
 
   it("singularises the counts and omits the half that is zero", async () => {
-    mockDirtyProbe({ modified: 1, untracked: 0 });
+    mockDirtyProbe({ modified: 1, untracked: 0, ignored: 0 });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
