@@ -1,22 +1,50 @@
 //! Local repository identity configuration.
 
-use std::sync::{Mutex, MutexGuard};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Mutex, MutexGuard, OnceLock},
+};
 
 use super::cli::{run_git, run_git_allow_exit_codes};
 
 // A profile apply spans several real-git commands. Tauri may execute two IPC
-// calls concurrently, so hold one process-local lock across the whole tuple;
-// otherwise name/email/signing fields from different cards can interleave.
-static IDENTITY_WRITE_LOCK: Mutex<()> = Mutex::new(());
+// calls concurrently, so serialize each repository's identity tuple without
+// making a slow commit or signing prompt stall unrelated repositories. Values
+// live for the process lifetime just like the registry that owns their keys.
+type IdentityWriteMutex = &'static Mutex<()>;
+static IDENTITY_WRITE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, IdentityWriteMutex>>> =
+    OnceLock::new();
 
 /// Serialize identity config mutations with every operation that may create a
 /// commit or signed tag. Callers hold this guard from the config snapshot
 /// through the git subprocess so a profile apply cannot interleave between
-/// those two steps.
-pub(super) fn lock_identity_config() -> Result<MutexGuard<'static, ()>, String> {
-    IDENTITY_WRITE_LOCK
+/// those two steps. Linked worktrees share one lock because their local config
+/// lives in the repository's common Git directory.
+pub(super) fn lock_identity_config(repo: &str) -> Result<MutexGuard<'static, ()>, String> {
+    let repository = git2::Repository::discover(repo)
+        .map_err(|error| format!("Failed to resolve the repository identity lock: {error}"))?;
+    let common_dir = repository
+        .commondir()
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve the repository identity lock: {error}"))?;
+    let locks = IDENTITY_WRITE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let lock = {
+        let mut locks = locks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *locks
+            .entry(common_dir)
+            .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
+    };
+
+    // The protected value carries no recoverable state: Git config is the
+    // source of truth and each caller re-reads it after locking. Preserve
+    // serialization after a panic instead of bricking identity-aware writes
+    // for the rest of the process lifetime.
+    Ok(lock
         .lock()
-        .map_err(|_| "identity configuration lock is unavailable".to_string())
+        .unwrap_or_else(std::sync::PoisonError::into_inner))
 }
 
 #[derive(Clone, Copy)]
@@ -157,7 +185,7 @@ pub fn set_repo_identity(
     gpg_sign: Option<bool>,
     tag_gpg_sign: Option<bool>,
 ) -> Result<String, String> {
-    let _guard = lock_identity_config()?;
+    let _guard = lock_identity_config(repo)?;
     // No ordering makes a six-command tuple atomic: each `git config` takes
     // `.git/config.lock` on its own, so a competing git process can fail any
     // step. A half-applied switch from card A to card B can pair B's name/email
@@ -244,7 +272,7 @@ fn apply_optional(repo: &str, key: &str, value: Option<&str>) -> Result<(), Stri
 /// "default git identity" / "No identity" choice). Already-absent keys are an
 /// idempotent success; real config/permission failures are surfaced.
 pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
-    let _guard = lock_identity_config()?;
+    let _guard = lock_identity_config(repo)?;
     // Order matters. Each `git config` call takes `.git/config.lock`
     // independently, so an external git process (or a permission error) can
     // fail the tuple partway through. `repo_identity` reports "no identity"
@@ -259,4 +287,79 @@ pub fn clear_repo_identity(repo: &str) -> Result<String, String> {
         unset_value(repo, key)?;
     }
     Ok("Identity cleared".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lock_identity_config;
+    use std::{
+        path::{Path, PathBuf},
+        sync::atomic::{AtomicU64, Ordering},
+        time::Duration,
+    };
+
+    static NEXT_REPO_ID: AtomicU64 = AtomicU64::new(0);
+
+    struct TestRepo(PathBuf);
+
+    impl TestRepo {
+        fn new(tag: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "gitlane-identity-lock-{tag}-{}-{}",
+                std::process::id(),
+                NEXT_REPO_ID.fetch_add(1, Ordering::Relaxed)
+            ));
+            git2::Repository::init(&path).expect("test repository should initialize");
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestRepo {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn identity_lock_recovers_after_poisoning() {
+        let repo = TestRepo::new("poison");
+        let repo_path = repo.path().to_string_lossy().into_owned();
+        let panic = std::thread::spawn(move || {
+            let _guard =
+                lock_identity_config(&repo_path).expect("identity lock should be available");
+            panic!("poison the identity lock");
+        })
+        .join();
+
+        assert!(panic.is_err());
+        assert!(lock_identity_config(repo.path().to_string_lossy().as_ref()).is_ok());
+    }
+
+    #[test]
+    fn different_repositories_have_independent_identity_locks() {
+        let first = TestRepo::new("first");
+        let second = TestRepo::new("second");
+        let first_guard = lock_identity_config(first.path().to_string_lossy().as_ref())
+            .expect("first identity lock should be available");
+        let second_path = second.path().to_string_lossy().into_owned();
+        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
+
+        let second_thread = std::thread::spawn(move || {
+            let _guard = lock_identity_config(&second_path)
+                .expect("second identity lock should be available");
+            acquired_tx
+                .send(())
+                .expect("acquisition should be reported");
+        });
+
+        assert!(acquired_rx.recv_timeout(Duration::from_secs(1)).is_ok());
+        drop(first_guard);
+        second_thread
+            .join()
+            .expect("second lock thread should finish");
+    }
 }

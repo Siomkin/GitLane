@@ -146,12 +146,15 @@ describe("ProviderOauthDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Finishing previous sign-in…" }),
+      ).toBeDisabled(),
     );
     expect(invokeMock).toHaveBeenCalledWith("cancel_provider_oauth_sign_in");
     // The eventual rejection stays a cancel, not an error screen.
     await act(async () => signin.reject(new Error("killed")));
     expect(screen.queryByText("Sign-in didn’t finish")).toBeNull();
+    await screen.findByRole("button", { name: "Sign in to GitLab" });
   });
 
   it("rolls back the keychain token when the flow finishes after a cancel (late cancel)", async () => {
@@ -165,7 +168,9 @@ describe("ProviderOauthDialog", () => {
     // already persisted a token — the late success must be rolled back.
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Finishing previous sign-in…" }),
+      ).toBeDisabled(),
     );
     await act(async () => signin.resolve(result()));
 
@@ -178,11 +183,11 @@ describe("ProviderOauthDialog", () => {
     );
     // No orphaned metadata, and no success screen — back at configure.
     await waitFor(() => expect(useAccounts.getState().providerTokens).toEqual({}));
-    expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Sign in to GitLab" });
     expect(screen.queryByText("Signed in as @ada")).toBeNull();
   });
 
-  it("keeps a canceled run globally owned until its rollback finishes", async () => {
+  it("shows a disabled busy state while a canceled run finishes rollback", async () => {
     const signinA = deferred<ReturnType<typeof result>>();
     const signinB = deferred<ReturnType<typeof result>>();
     const rollbackDelete = deferred<void>();
@@ -203,12 +208,14 @@ describe("ProviderOauthDialog", () => {
     await waitFor(() => expect(signinCalls).toBe(1));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Finishing previous sign-in…" }),
+      ).toBeDisabled(),
     );
 
     // The backend committed A despite the accepted cancel. Its compensating
-    // delete is deliberately held open; the visible configure screen must not
-    // be able to launch retry B while that rollback still owns the lifecycle.
+    // delete is deliberately held open; the visible configure screen explains
+    // why retry B cannot launch while that rollback owns the lifecycle.
     await act(async () => signinA.resolve(result()));
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
@@ -217,15 +224,43 @@ describe("ProviderOauthDialog", () => {
         accountId: "42",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    const blockedSignin = screen.getByRole("button", { name: "Finishing previous sign-in…" });
+    expect(blockedSignin).toBeDisabled();
+    fireEvent.click(blockedSignin);
     expect(signinCalls).toBe(1);
 
     await act(async () => rollbackDelete.resolve());
     await waitFor(() => expect(useAccounts.getState().providerTokens).toEqual({}));
-    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    const retry = await screen.findByRole("button", { name: "Sign in to GitLab" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
     await waitFor(() => expect(signinCalls).toBe(2));
     await act(async () => signinB.resolve(result({ accountId: "43", login: "grace" })));
     await waitFor(() => expect(screen.getByText("Signed in as @grace")).toBeInTheDocument());
+  });
+
+  it("releases the global owner when the sign-in invoke rejects", async () => {
+    let signinCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "provider_oauth_sign_in") {
+        signinCalls += 1;
+        return signinCalls === 1
+          ? Promise.reject(new Error("provider unavailable"))
+          : Promise.resolve(result());
+      }
+      return Promise.resolve(undefined);
+    });
+    openDialog();
+    render(<ProviderOauthDialog />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    await waitFor(() => expect(screen.getByText("Sign-in didn’t finish")).toBeInTheDocument());
+
+    const retry = screen.getByRole("button", { name: "Try again" });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(signinCalls).toBe(2));
+    await waitFor(() => expect(screen.getByText("Signed in as @ada")).toBeInTheDocument());
   });
 
   it("late cancel leaves a manageable account when the rollback delete fails", async () => {
@@ -244,7 +279,9 @@ describe("ProviderOauthDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Finishing previous sign-in…" }),
+      ).toBeDisabled(),
     );
     await act(async () => resolveSignin(result()));
 
@@ -254,6 +291,7 @@ describe("ProviderOauthDialog", () => {
       accountId: "42",
       login: "ada",
     });
+    await screen.findByRole("button", { name: "Sign in to GitLab" });
   });
 
   it("late cancel restores a bound remote's prior account (un-pins the sentinel)", async () => {
@@ -290,7 +328,9 @@ describe("ProviderOauthDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Finishing previous sign-in…" }),
+      ).toBeDisabled(),
     );
     await act(async () => resolveSignin(result()));
 
@@ -303,6 +343,7 @@ describe("ProviderOauthDialog", () => {
       accountId: "42",
     });
     await waitFor(() => expect(useAccounts.getState().providerTokens).toEqual({}));
+    await screen.findByRole("button", { name: "Sign in to GitLab" });
   });
 
   it("keeps running when cancellation loses to the credential commit", async () => {

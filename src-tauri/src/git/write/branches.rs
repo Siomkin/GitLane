@@ -285,7 +285,7 @@ pub fn set_upstream(repo: &str, branch: &str, upstream: &str) -> Result<String, 
 #[cfg(test)]
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     merge_locked(repo, branch, &identity_args)
 }
@@ -331,7 +331,7 @@ pub fn merge_into(
     destination: Option<&str>,
     expected_destination_oid: &str,
 ) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_revision_at(repo, source, expected_source_oid)?;
     match destination {
@@ -467,7 +467,7 @@ pub fn rebase(
     onto_oid: &str,
 ) -> Result<String, String> {
     ensure_operand(source)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_commit_exists(repo, onto_oid)?;
     if source == "HEAD" {
@@ -522,7 +522,7 @@ fn group_by_mergeness<'a>(
 #[cfg(test)]
 pub fn cherry_pick(repo: &str, commit: &str) -> Result<String, String> {
     ensure_operand(commit)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     cherry_pick_locked(repo, commit, &identity_args)
 }
@@ -546,7 +546,7 @@ pub fn cherry_pick_onto(
     commit: &str,
 ) -> Result<String, String> {
     ensure_operand(commit)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     cherry_pick_locked(repo, commit, &identity_args)
@@ -564,7 +564,7 @@ pub fn cherry_pick_onto(
 /// queued in the sequencer — continue finishes only the current run.
 #[cfg(test)]
 pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     cherry_pick_many_locked(repo, commits, &identity_args)
 }
@@ -600,7 +600,7 @@ pub fn cherry_pick_many_onto(
     expected_oid: &str,
     commits: &[String],
 ) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     cherry_pick_many_locked(repo, commits, &identity_args)
@@ -613,7 +613,7 @@ pub fn cherry_pick_many_onto(
 #[cfg(test)]
 pub fn revert(repo: &str, commit: &str) -> Result<String, String> {
     ensure_operand(commit)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     revert_locked(repo, commit, &identity_args)
 }
@@ -637,7 +637,7 @@ pub fn revert_onto(
     commit: &str,
 ) -> Result<String, String> {
     ensure_operand(commit)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     revert_locked(repo, commit, &identity_args)
@@ -650,7 +650,7 @@ pub fn revert_onto(
 /// queueing the later ones.
 #[cfg(test)]
 pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     revert_many_locked(repo, commits, &identity_args)
 }
@@ -687,7 +687,7 @@ pub fn revert_many_onto(
     expected_oid: &str,
     commits: &[String],
 ) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     revert_many_locked(repo, commits, &identity_args)
@@ -722,7 +722,7 @@ pub fn create_annotated_tag(
 ) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_opt(sha)?;
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let mut args = super::identity::pinned_tag_args(repo)?;
     args.extend([
         "tag".to_string(),

@@ -147,6 +147,15 @@ describe("pulls lazy-load error isolation", () => {
     expect(s.prThreadsError[7]).toContain("threads blew up");
   });
 
+  it("records when the review-thread result hit its page cap", async () => {
+    invokeMock.mockResolvedValueOnce({ threads: [], truncated: true });
+
+    await usePulls.getState().loadPrThreads(7);
+
+    expect(usePulls.getState().prThreads[7]).toEqual([]);
+    expect(usePulls.getState().prThreadsTruncated[7]).toBe(true);
+  });
+
   it("clears the per-PR error and caches the result on a successful retry", async () => {
     invokeMock.mockRejectedValueOnce("checks blew up");
     await usePulls.getState().loadPrChecks(7);
@@ -175,7 +184,7 @@ describe("pulls lazy-load error isolation", () => {
 
   it("replies to a review thread and refreshes that PR's thread cache", async () => {
     invokeMock.mockResolvedValueOnce("reply ok");
-    invokeMock.mockResolvedValueOnce([]);
+    invokeMock.mockResolvedValueOnce({ threads: [], truncated: false });
 
     const out = await usePulls.getState().replyThread(7, "thread-1", "Fixed in this patch");
 
@@ -203,7 +212,7 @@ describe("pulls lazy-load error isolation", () => {
 
     expect(usePulls.getState().prPendingActions).toEqual([]);
     finishResolve("ok");
-    invokeMock.mockResolvedValueOnce([]);
+    invokeMock.mockResolvedValueOnce({ threads: [], truncated: false });
     await pending;
     expect(usePulls.getState().prPendingActions).toEqual([]);
   });
@@ -1085,13 +1094,16 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     usePulls.setState({
       prDetails: { 7: { ...summaryToPr(prSummary(7)), commits: [cappedRow] } },
     });
+  const commitResult = (commits: unknown[], truncated = false) => ({ commits, truncated });
 
   it("replaces the capped list with the full, verified GraphQL list", async () => {
     seedDetail();
-    invokeMock.mockResolvedValueOnce([
-      { oid: "c0", headline: "first", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
-      { oid: "c1", headline: "second", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: false },
-    ]);
+    invokeMock.mockResolvedValueOnce(
+      commitResult([
+        { oid: "c0", headline: "first", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
+        { oid: "c1", headline: "second", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: false },
+      ], true),
+    );
 
     await usePulls.getState().loadPrCommits(7);
 
@@ -1105,6 +1117,7 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     expect(s.prDetails[7].commits.map((c) => c.oid)).toEqual(["c0", "c1"]);
     expect(s.prDetails[7].commits.map((c) => c.verified)).toEqual([true, false]);
     expect(s.prCommitsLoaded[7]).toBe(true);
+    expect(s.prCommitsTruncated[7]).toBe(true);
   });
 
   it("keeps the fast-path list and records a scoped error on failure", async () => {
@@ -1128,9 +1141,11 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     const load = usePulls.getState().loadPrCommits(7);
     // A refresh bumps the PR's resource version while the read is in flight.
     usePulls.setState((s) => ({ prResourceVersion: { ...s.prResourceVersion, 7: 1 } }));
-    pending.resolve([
-      { oid: "c9", headline: "late", authoredDate: "2026-01-03T00:00:00Z", authorName: "C", authorLogin: "c", verified: true },
-    ]);
+    pending.resolve(
+      commitResult([
+        { oid: "c9", headline: "late", authoredDate: "2026-01-03T00:00:00Z", authorName: "C", authorLogin: "c", verified: true },
+      ]),
+    );
     await load;
 
     // The pre-refresh response is dropped rather than repopulating the evicted cache.
@@ -1160,9 +1175,11 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
 
     // An unchanged refresh reruns the Commits tab effect: same resource
     // version, second load. It succeeds while A is still pending.
-    invokeMock.mockResolvedValueOnce([
-      { oid: "c1", headline: "fresh", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: true },
-    ]);
+    invokeMock.mockResolvedValueOnce(
+      commitResult([
+        { oid: "c1", headline: "fresh", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: true },
+      ]),
+    );
     await usePulls.getState().loadPrCommits(7, true);
     expect(usePulls.getState().prCommitsLoaded[7]).toBe(true);
 
@@ -1180,14 +1197,18 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     invokeMock.mockReturnValueOnce(older.promise);
     const loadA = usePulls.getState().loadPrCommits(7);
 
-    invokeMock.mockResolvedValueOnce([
-      { oid: "c2", headline: "newer", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: true },
-    ]);
+    invokeMock.mockResolvedValueOnce(
+      commitResult([
+        { oid: "c2", headline: "newer", authoredDate: "2026-01-02T00:00:00Z", authorName: "B", authorLogin: "b", verified: true },
+      ]),
+    );
     await usePulls.getState().loadPrCommits(7, true);
 
-    older.resolve([
-      { oid: "c9", headline: "stale", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: false },
-    ]);
+    older.resolve(
+      commitResult([
+        { oid: "c9", headline: "stale", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: false },
+      ]),
+    );
     await loadA;
 
     // The newer request's list stays authoritative.
@@ -1204,9 +1225,11 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     // so without the key guard the old account's commits would merge into it.
     useAccounts.setState({ repoAccountRef: account("88") });
 
-    pending.resolve([
-      { oid: "c9", headline: "old account", authoredDate: "2026-01-03T00:00:00Z", authorName: "C", authorLogin: "c", verified: true },
-    ]);
+    pending.resolve(
+      commitResult([
+        { oid: "c9", headline: "old account", authoredDate: "2026-01-03T00:00:00Z", authorName: "C", authorLogin: "c", verified: true },
+      ]),
+    );
     await load;
 
     expect(usePulls.getState().prDetails[7].commits).toEqual([cappedRow]);
@@ -1216,9 +1239,11 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
   it("clears a prior commits error when a retry succeeds (GL-164)", async () => {
     seedDetail();
     usePulls.setState((s) => ({ prCommitsError: { ...s.prCommitsError, 7: "earlier failure" } }));
-    invokeMock.mockResolvedValueOnce([
-      { oid: "c0", headline: "retry", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
-    ]);
+    invokeMock.mockResolvedValueOnce(
+      commitResult([
+        { oid: "c0", headline: "retry", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
+      ]),
+    );
 
     await usePulls.getState().loadPrCommits(7, true);
 

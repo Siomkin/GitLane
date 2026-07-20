@@ -12,7 +12,8 @@
 use super::cli::run_gh;
 use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
-use crate::git::types::ReviewThread;
+use super::pagination::{collect_cursor_pages, CursorPage};
+use crate::git::types::ReviewThreadList;
 
 // Threads are paginated by cursor so a review-heavy PR never silently loses
 // threads past the first page. Comments stay capped per thread (nested
@@ -36,15 +37,12 @@ pub fn review_threads(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<Vec<ReviewThread>, String> {
+) -> Result<ReviewThreadList, String> {
     let query_field = format!("query={REVIEW_THREADS_QUERY}");
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
-    let mut threads = Vec::new();
-    let mut cursor: Option<String> = None;
-    let mut more_pages = false;
-    for _ in 0..MAX_GRAPHQL_PAGES {
+    let result = collect_cursor_pages(MAX_GRAPHQL_PAGES, |cursor| {
         let mut args = review_threads_args(
             &repository.host,
             &query_field,
@@ -54,7 +52,7 @@ pub fn review_threads(
         );
         // Omitted on the first page so the `$cursor` variable stays null —
         // `-f cursor=` would send an empty string, which GitHub rejects.
-        let cursor_field = cursor.as_ref().map(|c| format!("cursor={c}"));
+        let cursor_field = cursor.map(|c| format!("cursor={c}"));
         if let Some(f) = cursor_field.as_deref() {
             args.push("-f");
             args.push(f);
@@ -63,35 +61,35 @@ pub fn review_threads(
         let parsed: GqlThreadsResp = serde_json::from_str(&raw)
             .map_err(|e| format!("failed to parse review threads: {e}"))?;
         let connection = parsed.data.repository.pull_request.review_threads;
-        threads.extend(connection.nodes.into_iter().map(GqlThread::into_thread));
-        match connection.page_info.filter(|p| p.has_next_page) {
-            Some(page) => match page.end_cursor {
-                Some(next) => {
-                    cursor = Some(next);
-                    more_pages = true;
-                }
-                None => {
-                    more_pages = false;
-                    break;
-                }
-            },
-            None => {
-                more_pages = false;
-                break;
-            }
-        }
-    }
+        let has_more = connection
+            .page_info
+            .as_ref()
+            .is_some_and(|page| page.has_next_page);
+        let end_cursor = connection.page_info.and_then(|page| page.end_cursor);
+        Ok::<_, String>(CursorPage {
+            items: connection
+                .nodes
+                .into_iter()
+                .map(GqlThread::into_thread)
+                .collect(),
+            has_more,
+            end_cursor,
+        })
+    })?;
     // The page cap is a runaway-loop guard set far beyond any real PR, but if it
     // ever bounds a genuinely huge thread set, don't drop the tail silently —
     // leave a breadcrumb (the reachable count is still returned).
-    if more_pages {
+    if result.truncated {
         eprintln!(
             "gitlane: review threads for PR #{number} hit the {MAX_GRAPHQL_PAGES}-page cap; \
              {} fetched, later threads omitted",
-            threads.len()
+            result.items.len()
         );
     }
-    Ok(threads)
+    Ok(ReviewThreadList {
+        threads: result.items,
+        truncated: result.truncated,
+    })
 }
 
 /// Resolve (or, when `resolved` is false, unresolve) a review thread by its

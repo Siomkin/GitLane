@@ -4,7 +4,7 @@
 // done/error. Mirrors the GitHub sign-in hook; a user Cancel discards the codes
 // and returns to configure — a cancel is not a failure.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { friendlyGitError } from "@/lib/gitError";
@@ -26,6 +26,8 @@ export interface ProviderOauthDone {
 
 export interface ProviderOauthRun {
   phase: OauthPhase;
+  /** A sign-in lifecycle still owns the app-global backend flow. */
+  busy: boolean;
   /** Furthest checklist row reached (only meaningful while running). */
   reached: number;
   /** One-time device code (device flow), once the backend has requested it. */
@@ -47,9 +49,29 @@ export interface ProviderOauthRun {
 // across hook instances until that rollback has finished, so a retry can never
 // race the previous run's token deletion / remote un-pin.
 let activeProviderOauthRun: symbol | null = null;
+const providerOauthRunListeners = new Set<() => void>();
+
+const providerOauthRunBusy = () => activeProviderOauthRun !== null;
+
+const subscribeProviderOauthRun = (listener: () => void) => {
+  providerOauthRunListeners.add(listener);
+  return () => {
+    providerOauthRunListeners.delete(listener);
+  };
+};
+
+const setActiveProviderOauthRun = (owner: symbol | null) => {
+  activeProviderOauthRun = owner;
+  for (const listener of providerOauthRunListeners) listener();
+};
 
 export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOauthRun {
   const mode = oauthModeFor(req.provider);
+  const busy = useSyncExternalStore(
+    subscribeProviderOauthRun,
+    providerOauthRunBusy,
+    providerOauthRunBusy,
+  );
   const [phase, setPhase] = useState<OauthPhase>("configure");
   const [reached, setReached] = useState(-1);
   const [code, setCode] = useState<string | null>(null);
@@ -101,7 +123,7 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
   const start = () => {
     if (inFlight.current || activeProviderOauthRun) return;
     const runOwner = Symbol("provider-oauth-run");
-    activeProviderOauthRun = runOwner;
+    setActiveProviderOauthRun(runOwner);
     inFlight.current = true;
     canceled.current = false;
     cancelDecision.current = null;
@@ -188,10 +210,10 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
       } finally {
         unlisten?.();
         inFlight.current = false;
-        if (activeProviderOauthRun === runOwner) activeProviderOauthRun = null;
+        if (activeProviderOauthRun === runOwner) setActiveProviderOauthRun(null);
       }
     })();
   };
 
-  return { phase, reached, code, url, message, done, start, cancel };
+  return { phase, busy, reached, code, url, message, done, start, cancel };
 }

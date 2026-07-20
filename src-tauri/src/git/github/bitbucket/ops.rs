@@ -14,7 +14,7 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
-use crate::git::types::{FileDiff, PrCommit, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
 
 /// Bitbucket Cloud caps `pagelen` at 50; use the max and a hard page cap as a
 /// runaway guard (50 × 40 pages = 2000 items, far beyond any real PR).
@@ -184,27 +184,32 @@ pub fn pr_commits(
     api: &dyn BitbucketApi,
     repo: &str,
     number: u64,
-) -> Result<Vec<PrCommit>, GithubError> {
+) -> Result<PrCommitList, GithubError> {
     let mut commits: Vec<PrCommit> = Vec::new();
-    let mut hit_cap = false;
-    for page in 1..=MAX_PAGES {
-        let path = format!("{repo}/pullrequests/{number}/commits?pagelen={PER_PAGE}&page={page}");
+    let resource = format!("{repo}/pullrequests/{number}/commits");
+    let mut path = format!("{resource}?pagelen={PER_PAGE}");
+    for _ in 0..MAX_PAGES {
         let raw = api.get("pull request commits", &path)?;
         let batch: BitbucketPage<BitbucketCommit> = parse(&raw, "pull request commits")?;
-        let full_page = batch.values.len() == PER_PAGE;
         commits.extend(batch.values.into_iter().map(BitbucketCommit::into_commit));
-        if !full_page {
-            break;
+        match batch.next {
+            Some(next) => path = validated_next_path(&next, &resource)?,
+            None => {
+                return Ok(PrCommitList {
+                    commits,
+                    truncated: false,
+                });
+            }
         }
-        hit_cap = page == MAX_PAGES;
     }
-    if hit_cap {
-        eprintln!(
-            "gitlane: Bitbucket PR #{number} commits hit the {MAX_PAGES}-page cap; {} fetched, later commits omitted",
-            commits.len()
-        );
-    }
-    Ok(commits)
+    eprintln!(
+        "gitlane: Bitbucket PR #{number} commits hit the {MAX_PAGES}-page cap; {} fetched, later commits omitted",
+        commits.len()
+    );
+    Ok(PrCommitList {
+        commits,
+        truncated: true,
+    })
 }
 
 /// Open a new pull request from `head` into `base`. Returns the new PR's web URL.
@@ -641,11 +646,76 @@ mod tests {
                 "author":{"raw":"Ada <a@x.io>","user":{"display_name":"Ada L.","nickname":"ada"}}}]}"#,
         )]);
         let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
-        let commits = pr_commits(&client, REPO, 2).expect("commits");
-        assert_eq!(commits.len(), 1);
-        assert_eq!(commits[0].oid, "deadbeef");
-        assert_eq!(commits[0].headline, "Fix");
-        assert_eq!(commits[0].author_login, "ada");
-        assert!(!commits[0].verified);
+        let result = pr_commits(&client, REPO, 2).expect("commits");
+        assert_eq!(result.commits.len(), 1);
+        assert_eq!(result.commits[0].oid, "deadbeef");
+        assert_eq!(result.commits[0].headline, "Fix");
+        assert_eq!(result.commits[0].author_login, "ada");
+        assert!(!result.commits[0].verified);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn pr_commits_follows_an_opaque_next_after_a_short_page() {
+        let first = format!(
+            r#"{{"values":[{{"hash":"first"}}],"next":"https://api.bitbucket.org/2.0/{REPO}/pullrequests/3/commits?cursor=opaque%2Btoken"}}"#
+        );
+        let second = r#"{"values":[{"hash":"second"}]}"#;
+        let http = MockTransport::new(vec![ok(&first), ok(second)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let result = pr_commits(&client, REPO, 3).expect("cursor pages");
+
+        assert_eq!(
+            result
+                .commits
+                .iter()
+                .map(|commit| commit.oid.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first", "second"]
+        );
+        assert!(!result.truncated);
+        let requests = http.requests.lock().unwrap();
+        assert!(requests[0]
+            .url
+            .ends_with("/pullrequests/3/commits?pagelen=50"));
+        assert!(requests[1]
+            .url
+            .ends_with("/pullrequests/3/commits?cursor=opaque%2Btoken"));
+    }
+
+    #[test]
+    fn pr_commits_treats_a_full_final_page_as_complete_without_next() {
+        let values = (0..PER_PAGE)
+            .map(|index| serde_json::json!({ "hash": format!("commit-{index}") }))
+            .collect::<Vec<_>>();
+        let body = serde_json::json!({ "values": values }).to_string();
+        let http = MockTransport::new(vec![ok(&body)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let result = pr_commits(&client, REPO, 4).expect("full final page");
+
+        assert_eq!(result.commits.len(), PER_PAGE);
+        assert!(!result.truncated);
+        assert_eq!(http.request_count(), 1);
+    }
+
+    #[test]
+    fn pr_commits_marks_results_truncated_when_next_remains_after_the_cap() {
+        let responses = (0..MAX_PAGES)
+            .map(|page| {
+                ok(&format!(
+                    r#"{{"values":[],"next":"https://api.bitbucket.org/2.0/{REPO}/pullrequests/5/commits?cursor={page}"}}"#
+                ))
+            })
+            .collect();
+        let http = MockTransport::new(responses);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let result = pr_commits(&client, REPO, 5).expect("bounded commit pages");
+
+        assert!(result.commits.is_empty());
+        assert!(result.truncated);
+        assert_eq!(http.request_count(), MAX_PAGES);
     }
 }

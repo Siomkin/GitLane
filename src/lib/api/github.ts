@@ -6,10 +6,10 @@ import {
   fileDiffSchema,
   githubAccountSchema,
   prCheckSchema,
-  prCommitSchema,
+  prCommitListSchema,
   pullRequestDetailSchema,
   pullRequestSummarySchema,
-  reviewThreadSchema,
+  reviewThreadListSchema,
   githubSignInResultSchema,
 } from "./schemas";
 
@@ -98,6 +98,11 @@ export interface PrCommit {
   verified: boolean;
 }
 
+export interface PrCommitList {
+  commits: PrCommit[];
+  truncated: boolean;
+}
+
 /** An inline review thread (file/line-anchored comments + resolve state). */
 export interface ReviewThread {
   /** GraphQL node id — used to resolve/unresolve. */
@@ -110,6 +115,11 @@ export interface ReviewThread {
    * fetch cap — the list below is incomplete and the UI should say so. */
   commentsTruncated: boolean;
   comments: PrComment[];
+}
+
+export interface ReviewThreadList {
+  threads: ReviewThread[];
+  truncated: boolean;
 }
 
 /** gh mergeability verdict; "" when unresolved. */
@@ -222,9 +232,9 @@ export const githubApi = {
     path: string,
     number: number,
     account?: GithubAccountRef | null,
-  ): Promise<PrCommit[]> =>
+  ): Promise<PrCommitList> =>
     parse(
-      z.array(prCommitSchema),
+      prCommitListSchema,
       await invoke("pull_request_commits", { path, number, account: account ?? null }),
       "pull_request_commits",
     ),
@@ -246,9 +256,9 @@ export const githubApi = {
     path: string,
     number: number,
     account?: GithubAccountRef | null,
-  ): Promise<ReviewThread[]> =>
+  ): Promise<ReviewThreadList> =>
     parse(
-      z.array(reviewThreadSchema),
+      reviewThreadListSchema,
       await invoke("pull_request_review_threads", { path, number, account: account ?? null }),
       "pull_request_review_threads",
     ),

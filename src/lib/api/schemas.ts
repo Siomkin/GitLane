@@ -43,11 +43,13 @@ import type {
   PrCheck,
   PrComment,
   PrCommit,
+  PrCommitList,
   PrLabel,
   PrReview,
   PullRequestDetail,
   PullRequestSummary,
   ReviewThread,
+  ReviewThreadList,
 } from "./github";
 
 // ---- commit_graph → RepoGraph ----
@@ -227,6 +229,11 @@ export const prCommitSchema = z.object({
   verified: z.boolean(),
 });
 
+export const prCommitListSchema = z.object({
+  commits: z.array(prCommitSchema),
+  truncated: z.boolean(),
+});
+
 const prReviewSchema = z.object({
   author: prAuthorSchema,
   // The Rust side documents `state` as the raw, non-exhaustive gh value. A
@@ -316,6 +323,11 @@ export const reviewThreadSchema = z.object({
   comments: z.array(prCommentSchema),
 });
 
+export const reviewThreadListSchema = z.object({
+  threads: z.array(reviewThreadSchema),
+  truncated: z.boolean(),
+});
+
 // ---- compile-time guards: schema output ≡ documented interface ----
 // `assertEqual<A, B>()` only typechecks when A and B are the *same* type, so a
 // drift between a schema and its hand-written interface (a renamed/added/removed
@@ -350,6 +362,7 @@ assertEqual<z.infer<typeof prAuthorSchema>, PrAuthor>(true);
 assertEqual<z.infer<typeof mergeableSchema>, Mergeable>(true);
 assertEqual<z.infer<typeof prCommentSchema>, PrComment>(true);
 assertEqual<z.infer<typeof prCommitSchema>, PrCommit>(true);
+assertEqual<z.infer<typeof prCommitListSchema>, PrCommitList>(true);
 assertEqual<z.infer<typeof prReviewSchema>, PrReview>(true);
 assertEqual<z.infer<typeof prLabelSchema>, PrLabel>(true);
 assertEqual<z.infer<typeof pullRequestSummarySchema>, PullRequestSummary>(true);
@@ -358,3 +371,4 @@ assertEqual<z.infer<typeof pullRequestDetailSchema>, PullRequestDetail>(true);
 assertEqual<z.infer<typeof githubAccountSchema>, GithubAccount>(true);
 assertEqual<z.infer<typeof prCheckSchema>, PrCheck>(true);
 assertEqual<z.infer<typeof reviewThreadSchema>, ReviewThread>(true);
+assertEqual<z.infer<typeof reviewThreadListSchema>, ReviewThreadList>(true);

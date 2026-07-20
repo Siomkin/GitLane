@@ -943,6 +943,15 @@ pub struct ReviewThread {
     pub comments: Vec<PrComment>,
 }
 
+/// Bounded review-thread pagination result. `truncated` distinguishes the
+/// runaway safety cap from a complete thread list at the IPC boundary.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewThreadList {
+    pub threads: Vec<ReviewThread>,
+    pub truncated: bool,
+}
+
 /// One status check on a PR (CI job or commit status), as a display result.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -975,6 +984,15 @@ pub struct PrCommit {
     /// commits from `gh pr view` (which carries no signature data) until the
     /// paginated GraphQL commit read replaces them.
     pub verified: bool,
+}
+
+/// Bounded PR-commit pagination result. `truncated` is true when the provider
+/// reported another page after GitLane reached its safety cap.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrCommitList {
+    pub commits: Vec<PrCommit>,
+    pub truncated: bool,
 }
 
 /// A pull request as shown in the PRs list. `state` is the raw gh value

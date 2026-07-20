@@ -219,6 +219,20 @@ fn authority_of(rest: &str) -> Option<&str> {
     rest[..end].rsplit('@').next()
 }
 
+/// The index of the `host:path` separator in an scp-like remote
+/// (`[user@]host:path`). A bracketed IPv6 literal carries its own colons, so
+/// the search starts after the closing bracket — otherwise `git@[::1]:o/r`
+/// splits inside the address and yields only the start of the literal as host.
+fn scp_separator(url: &str) -> Option<usize> {
+    // A `[` only opens a host literal when nothing has separated the authority
+    // from a path yet; a bracket later in the path is just a path character.
+    let from = match url.find('[') {
+        Some(open) if !url[..open].contains(':') => url[open..].find(']')? + open + 1,
+        _ => 0,
+    };
+    url[from..].find(':').map(|colon| colon + from)
+}
+
 /// The exact credential authority (`host[:port]`) from an HTTPS/SSH/scp remote
 /// URL. Userinfo is stripped; ports are preserved.
 pub fn credential_host_for_url(url: &str) -> Option<String> {
@@ -233,7 +247,8 @@ pub fn credential_host_for_url(url: &str) -> Option<String> {
         return Some(authority.trim().trim_end_matches('/').to_ascii_lowercase());
     }
 
-    if let Some((user_host, _path)) = trimmed.split_once(':') {
+    if let Some(colon) = scp_separator(trimmed) {
+        let user_host = &trimmed[..colon];
         if user_host.contains('@') {
             let host = user_host.split('@').next_back()?;
             return Some(host.trim().trim_end_matches('/').to_ascii_lowercase());
@@ -258,7 +273,7 @@ fn remote_path(url: &str) -> Option<String> {
         &after[slash + 1..]
     } else {
         // scp-like form: git@host:owner/repo.git
-        trimmed.split_once(':')?.1
+        &trimmed[scp_separator(trimmed)? + 1..]
     };
     let path = rest.trim_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
@@ -535,16 +550,39 @@ fn api_host_for(url: &str) -> Option<String> {
     }
 }
 
-fn authority_hostname(authority: &str) -> &str {
-    match authority.rsplit_once(':') {
-        Some((host, port))
-            if !host.is_empty()
-                && !port.is_empty()
-                && port.bytes().all(|byte| byte.is_ascii_digit()) =>
+/// The hostname portion of an HTTP authority, preserving brackets around IPv6
+/// literals. A bracketless value with multiple colons is an IPv6 literal, not
+/// a `host:port` pair.
+pub(crate) fn authority_hostname(authority: &str) -> &str {
+    if authority.starts_with('[') {
+        let Some(close) = authority.find(']') else {
+            return authority;
+        };
+        let host_end = close + 1;
+        let suffix = &authority[host_end..];
+        if suffix.is_empty()
+            || suffix.strip_prefix(':').is_some_and(|port| {
+                !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit())
+            })
         {
-            host
+            return &authority[..host_end];
         }
-        _ => authority,
+        return authority;
+    }
+
+    if authority.bytes().filter(|byte| *byte == b':').count() == 1 {
+        match authority.rsplit_once(':') {
+            Some((host, port))
+                if !host.is_empty()
+                    && !port.is_empty()
+                    && port.bytes().all(|byte| byte.is_ascii_digit()) =>
+            {
+                host
+            }
+            _ => authority,
+        }
+    } else {
+        authority
     }
 }
 
@@ -598,12 +636,11 @@ fn remote_host(url: &str) -> Option<String> {
         .or_else(|| trimmed.strip_prefix("git://"))
     {
         let authority = authority_of(rest)?;
-        return Some(normalize_host(
-            authority.split(':').next().unwrap_or(authority),
-        ));
+        return Some(normalize_host(authority_hostname(authority)));
     }
 
-    if let Some((user_host, _path)) = trimmed.split_once(':') {
+    if let Some(colon) = scp_separator(trimmed) {
+        let user_host = &trimmed[..colon];
         if user_host.contains('@') {
             let host = user_host.split('@').next_back()?;
             return Some(normalize_host(host));
@@ -651,6 +688,73 @@ mod tests {
             credential_host_for_url("ssh://git@gitlab.example.com:2222/group/repo.git"),
             Some("gitlab.example.com:2222".into())
         );
+    }
+
+    #[test]
+    fn parses_ipv6_authorities_without_treating_address_segments_as_ports() {
+        for (authority, hostname) in [
+            ("[2001:db8::1]:8443", "[2001:db8::1]"),
+            ("[::1]", "[::1]"),
+            ("2001:db8::1", "2001:db8::1"),
+            ("ghe.example.test:8443", "ghe.example.test"),
+            ("ghe.example.test", "ghe.example.test"),
+        ] {
+            assert_eq!(authority_hostname(authority), hostname, "{authority}");
+        }
+    }
+
+    #[test]
+    fn remote_and_credential_hosts_agree_for_ipv6_urls() {
+        for (url, expected_host, expected_authority) in [
+            (
+                "https://[2001:db8::1]:8443/owner/repo.git",
+                "[2001:db8::1]",
+                "[2001:db8::1]:8443",
+            ),
+            ("https://[::1]/owner/repo.git", "[::1]", "[::1]"),
+            (
+                "ssh://git@[2001:db8::1]:22/owner/repo.git",
+                "[2001:db8::1]",
+                "[2001:db8::1]:22",
+            ),
+            // scp-like syntax, where the address' own colons must not be read
+            // as the `host:path` separator.
+            (
+                "git@[2001:db8::1]:owner/repo.git",
+                "[2001:db8::1]",
+                "[2001:db8::1]",
+            ),
+            ("git@[::1]:owner/repo.git", "[::1]", "[::1]"),
+        ] {
+            let credential_authority = credential_host_for_url(url).expect("credential authority");
+            assert_eq!(credential_authority, expected_authority, "{url}");
+            assert_eq!(remote_host(url).as_deref(), Some(expected_host), "{url}");
+            assert_eq!(
+                remote_host(url).as_deref(),
+                Some(authority_hostname(&credential_authority)),
+                "{url}",
+            );
+        }
+    }
+
+    #[test]
+    fn splits_scp_like_remotes_after_an_ipv6_literal() {
+        for (url, path) in [
+            ("git@[2001:db8::1]:owner/repo.git", "owner/repo"),
+            ("git@[::1]:owner/repo.git", "owner/repo"),
+            ("git@github.com:owner/repo.git", "owner/repo"),
+            // A bracket inside the path is not a host literal.
+            ("git@github.com:owner/re[po", "owner/re[po"),
+        ] {
+            assert_eq!(remote_path(url).as_deref(), Some(path), "{url}");
+        }
+        // Conventional scp syntax remains parseable after the bracket-aware
+        // separator change.
+        assert_eq!(
+            remote_host("git@github.com:o/r.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(scp_separator("git@host/no-colon-before-path"), None);
     }
 
     #[test]

@@ -209,7 +209,7 @@ pub fn continue_operation(
     if kind == handoff::CARRY_KIND {
         return continue_carry(repo);
     }
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let pre = pinned_operation_identity_args(repo, name, email, identity, identity_captured)?;
     let sub: &[&str] = match kind {
         "merge" => &["merge", "--continue"],
@@ -297,7 +297,7 @@ pub fn skip_operation(
         "revert" => &["revert", "--skip"],
         _ => return Err(format!("cannot skip a {kind} operation")),
     };
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     let pre = pinned_operation_identity_args(repo, name, email, identity, identity_captured)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
     args.extend_from_slice(sub);
