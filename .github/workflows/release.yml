@@ -269,54 +269,6 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.release_commit }}
 
-      # The tree's manifests are NOT bumped per release (GL-288): the tag alone
-      # carries the version, and this step rewrites package.json,
-      # src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and the gitlane entry in
-      # src-tauri/Cargo.lock in the build checkout before anything reads them.
-      # That covers every consumer: the bundler/updater version (tauri.conf.json),
-      # the About box (CARGO_PKG_VERSION from Cargo.toml), and artifact names.
-      # Inline node (present on all legs — preflight already relies on it) rather
-      # than a repo script, consistent with the "historical release tags predate
-      # repository-local actions" convention above; it's a no-op when the tree
-      # already carries the tag's version, so dispatch-rerunning an old
-      # hand-bumped tag through this newer workflow still works. RELEASE_TAG is
-      # regex-validated in preflight and passed via env, never interpolated.
-      - name: Stamp app version from release tag
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
-        run: |
-          node -e '
-            const fs = require("fs");
-            const version = process.env.RELEASE_TAG.replace(/^v/, "");
-            const patch = (path, from) => {
-              const before = fs.readFileSync(path, "utf8");
-              if (!from.test(before)) {
-                throw new Error(`no version field found in ${path}`);
-              }
-              fs.writeFileSync(path, before.replace(from, `$1${version}$2`));
-            };
-            patch("package.json", /("version":\s*")[^"]+(")/);
-            patch("src-tauri/tauri.conf.json", /("version":\s*")[^"]+(")/);
-            patch("src-tauri/Cargo.toml", /(^version = ")[^"]+(")/m);
-            patch(
-              "src-tauri/Cargo.lock",
-              /(\[\[package\]\]\nname = "gitlane"\nversion = ")[^"]+(")/,
-            );
-            for (const [path, read] of [
-              ["package.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
-              ["src-tauri/tauri.conf.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
-              ["src-tauri/Cargo.toml", (p) => fs.readFileSync(p, "utf8").match(/^version = "([^"]+)"/m)[1]],
-              ["src-tauri/Cargo.lock", (p) => fs.readFileSync(p, "utf8").match(/\[\[package\]\]\nname = "gitlane"\nversion = "([^"]+)"/)[1]],
-            ]) {
-              const found = read(path);
-              if (found !== version) {
-                throw new Error(`${path} reads back ${found}, expected ${version}`);
-              }
-              console.log(`${path}: ${found}`);
-            }
-          '
-
       - name: Resolve release Rust toolchain
         id: rust-toolchain
         shell: bash
@@ -365,6 +317,55 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      # The tree's manifests are NOT bumped per release (GL-288): the tag alone
+      # carries the version, and this step rewrites package.json,
+      # src-tauri/tauri.conf.json, src-tauri/Cargo.toml, and the gitlane entry in
+      # src-tauri/Cargo.lock in the build checkout before bun install / tauri
+      # build read them. That covers every consumer: the bundler/updater version
+      # (tauri.conf.json), the About box (CARGO_PKG_VERSION from Cargo.toml), and
+      # artifact names. Runs after setup-bun and uses bun -e — self-hosted legs
+      # do not guarantee a system node, and setup-bun only installs bun. Inline
+      # rather than a repo script, consistent with the "historical release tags
+      # predate repository-local actions" convention above; it's a no-op when
+      # the tree already carries the tag's version, so dispatch-rerunning an old
+      # hand-bumped tag through this newer workflow still works. RELEASE_TAG is
+      # regex-validated in preflight and passed via env, never interpolated.
+      - name: Stamp app version from release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          bun -e '
+            const fs = require("fs");
+            const version = process.env.RELEASE_TAG.replace(/^v/, "");
+            const patch = (path, from) => {
+              const before = fs.readFileSync(path, "utf8");
+              if (!from.test(before)) {
+                throw new Error(`no version field found in ${path}`);
+              }
+              fs.writeFileSync(path, before.replace(from, `$1${version}$2`));
+            };
+            patch("package.json", /("version":\s*")[^"]+(")/);
+            patch("src-tauri/tauri.conf.json", /("version":\s*")[^"]+(")/);
+            patch("src-tauri/Cargo.toml", /(^version = ")[^"]+(")/m);
+            patch(
+              "src-tauri/Cargo.lock",
+              /(\[\[package\]\]\nname = "gitlane"\nversion = ")[^"]+(")/,
+            );
+            for (const [path, read] of [
+              ["package.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
+              ["src-tauri/tauri.conf.json", (p) => JSON.parse(fs.readFileSync(p, "utf8")).version],
+              ["src-tauri/Cargo.toml", (p) => fs.readFileSync(p, "utf8").match(/^version = "([^"]+)"/m)[1]],
+              ["src-tauri/Cargo.lock", (p) => fs.readFileSync(p, "utf8").match(/\[\[package\]\]\nname = "gitlane"\nversion = "([^"]+)"/)[1]],
+            ]) {
+              const found = read(path);
+              if (found !== version) {
+                throw new Error(`${path} reads back ${found}, expected ${version}`);
+              }
+              console.log(`${path}: ${found}`);
+            }
+          '
 
       - name: Install Linux Tauri dependencies
         # Only GitHub-hosted Linux needs this. The self-hosted `linux-gitlane` runner
