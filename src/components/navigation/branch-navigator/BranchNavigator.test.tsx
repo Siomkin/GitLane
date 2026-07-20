@@ -124,6 +124,44 @@ describe("BranchNavigator", () => {
     expect(screen.queryByText("feature/search")).not.toBeInTheDocument();
   });
 
+  it("mounts only a window of rows for a ref-heavy repo", () => {
+    // The point of virtualizing: a repo with thousands of refs must not put
+    // thousands of rows in the DOM. Opening the navigator on one cost ~1.4s
+    // before this (profiling recorded in useNavigatorSections.ts).
+    useRepo.setState({
+      branches: Array.from({ length: 2000 }, (_, i) => branch(`feature/topic-${i}`, "local")),
+    });
+    render(<BranchNavigator />);
+
+    const rows = screen.getAllByRole("button", { name: /^(Reveal|Current) local / });
+    expect(rows.length).toBeGreaterThan(0);
+    // A 392px viewport of 32px rows plus overscan — nowhere near 2000.
+    expect(rows.length).toBeLessThan(40);
+    // The sidebar still counts every branch, not just the mounted ones.
+    expect(screen.getByRole("button", { name: /^Branches/ })).toHaveTextContent("2000");
+  });
+
+  it("keeps the scroll extent sized for every row, not just the mounted ones", () => {
+    useRepo.setState({
+      branches: Array.from({ length: 500 }, (_, i) => branch(`feature/topic-${i}`, "local")),
+    });
+    const { container } = render(<BranchNavigator />);
+
+    // Spacer heights stand in for the unmounted rows, so the scrollbar behaves
+    // as if the whole list were present. The spacers plus the rows actually
+    // mounted must account for the full extent: 500 rows at 32px + a 28px header.
+    const scroller = container.querySelector(".overflow-auto")!;
+    const spacers = Array.from(scroller.children).filter(
+      (el) => el instanceof HTMLElement && el.style.height !== "",
+    ) as HTMLElement[];
+    const spacerHeight = spacers.reduce((sum, el) => sum + parseFloat(el.style.height), 0);
+    const fullExtent = 500 * 32 + 28;
+    // Only the mounted window (~20 rows) is real height; everything else is
+    // spacer, so the spacers alone account for the bulk of the list.
+    expect(spacerHeight).toBeGreaterThan(fullExtent - 40 * 32);
+    expect(spacerHeight).toBeLessThanOrEqual(fullExtent);
+  });
+
   it("names an empty category without doubling its plural", () => {
     // The repo has branches but no tags, so the Tags category is empty while the
     // navigator is not: the copy must read "No tags yet", never "No tagss yet".

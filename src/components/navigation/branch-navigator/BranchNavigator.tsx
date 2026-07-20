@@ -1,17 +1,43 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { useVirtualizer, type Rect, type Virtualizer } from "@tanstack/react-virtual";
 import { useUi } from "@/store/ui";
 import { CloseIcon, SearchIcon } from "@/components/ui/icons";
-import { NavCategory, RowKind } from "./refs";
-import {
-  useNavigatorSections,
-  type NavRefItem,
-  type NavSection,
-  type NavigatorSections,
-} from "./useNavigatorSections";
+import { NavCategory } from "./refs";
+import { useNavigatorSections } from "./useNavigatorSections";
+import { buildNavItems, navItemHeight, navItemKey, NavItemKind, type NavListItem } from "./navItems";
 import { useRemoveDetachedWorktrees } from "./useRowActions";
-import { BranchRow, Section, StashRow, WorktreeRow } from "./rows";
+import { BranchRow, SectionHeader, StashRow, WorktreeRow } from "./rows";
 import { CategorySidebar } from "./CategorySidebar";
 import { NavEmptyState } from "./NavEmptyState";
+
+/** Fixed height of the list body (design spec) — and therefore the virtualizer's
+ * viewport whenever the platform hasn't measured one. */
+const LIST_HEIGHT = 392;
+/** Rows rendered beyond the viewport on each side, so a fast scroll or a
+ * keyboard focus move lands on a mounted row. */
+const NAV_OVERSCAN_ROWS = 8;
+
+/** Track the scroll element's size, but treat a reported height of 0 as "not
+ * measured yet" and fall back to the pane's fixed height. Zero is never a real
+ * viewport here: it means the pre-layout frame in a browser, or an environment
+ * that doesn't lay out at all (happy-dom in the tests), and taking it at face
+ * value collapses the window to nothing so no rows mount. */
+function observeListRect(
+  instance: Virtualizer<HTMLDivElement, Element>,
+  cb: (rect: Rect) => void,
+): (() => void) | void {
+  const element = instance.scrollElement;
+  if (!element) return;
+  const report = () => {
+    const rect = element.getBoundingClientRect();
+    cb({ width: rect.width, height: rect.height || LIST_HEIGHT });
+  };
+  report();
+  if (typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(report);
+  observer.observe(element);
+  return () => observer.disconnect();
+}
 
 /** Singular / plural nouns per category — the search placeholder, match count,
  * and empty-state copy all speak in these. */
@@ -79,47 +105,78 @@ export function BranchNavigator() {
     if (filter !== "") setFilter("");
   };
 
-  const refRows = (section: NavSection<NavRefItem>, kind: RowKind): ReactNode =>
-    section.items.map((item, index) => (
-      <div key={item.name} className="contents">
-        {section.separatorAt === index && <PinSeparator />}
-        <BranchRow
-          name={item.name}
-          kind={kind}
-          oid={item.oid}
-          isCurrent={!!item.current}
-          pinned={item.pinned}
-          query={filter}
-          sync={item.sync}
-          worktree={item.worktree}
-        />
-      </div>
-    ));
-  const worktreeRows = (section: NavigatorSections["worktrees"]): ReactNode =>
-    section.items.map((w) => (
-      <WorktreeRow key={w.wt.path} wt={w.wt} oid={w.oid} isActive={w.isActive} label={w.label} query={filter} />
-    ));
-  const stashRows = (section: NavigatorSections["stashes"]): ReactNode =>
-    section.items.map((s) => <StashRow key={s.stash.index} stash={s.stash} query={filter} />);
-
   // Hidden while searching: `detachedRemovable` counts the whole worktree
   // list, so a filter that hides some rows would make the "(N)" read higher
   // than what's visible and sweep unshown rows.
-  const sweepAction =
-    !filtering && detachedRemovable.length > 0 ? (
-      // Sweep every removable detached worktree at once (confirmed with the
-      // target list) — one-by-one removal via each row's menu gets tedious once
-      // agent tools pile them up.
-      <button
-        type="button"
-        title={`Remove ${detachedRemovable.length} detached worktree${detachedRemovable.length === 1 ? "" : "s"}`}
-        aria-label="Remove all detached worktrees"
-        className="shrink-0 text-[10px] font-medium text-neutral-400 transition-colors hover:text-red-600 dark:hover:text-red-400"
-        onClick={removeDetached}
-      >
-        Remove detached ({detachedRemovable.length})
-      </button>
-    ) : undefined;
+  const showSweep = !filtering && detachedRemovable.length > 0;
+  const sweepAction = showSweep ? (
+    // Sweep every removable detached worktree at once (confirmed with the
+    // target list) — one-by-one removal via each row's menu gets tedious once
+    // agent tools pile them up.
+    <button
+      type="button"
+      title={`Remove ${detachedRemovable.length} detached worktree${detachedRemovable.length === 1 ? "" : "s"}`}
+      aria-label="Remove all detached worktrees"
+      className="shrink-0 text-[10px] font-medium text-neutral-400 transition-colors hover:text-red-600 dark:hover:text-red-400"
+      onClick={removeDetached}
+    >
+      Remove detached ({detachedRemovable.length})
+    </button>
+  ) : undefined;
+
+  const items = buildNavItems(category, sections, { showSweep });
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => navItemHeight(items[index]),
+    overscan: NAV_OVERSCAN_ROWS,
+    getItemKey: (index) => navItemKey(items[index], index),
+    // The body is a fixed 392px, so the very first window is exact rather than
+    // a guess; `observeListRect` keeps it that way until a real measurement.
+    initialRect: { width: 0, height: LIST_HEIGHT },
+    observeElementRect: observeListRect,
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+
+  const renderItem = (item: NavListItem): ReactNode => {
+    switch (item.kind) {
+      case NavItemKind.Header:
+        return (
+          <SectionHeader label={item.label} count={item.count} action={item.sweep ? sweepAction : undefined} />
+        );
+      case NavItemKind.Sweep:
+        return <div className="flex h-7 items-center justify-end px-2">{sweepAction}</div>;
+      case NavItemKind.Separator:
+        return <PinSeparator />;
+      case NavItemKind.Ref:
+        return (
+          <BranchRow
+            name={item.item.name}
+            kind={item.rowKind}
+            oid={item.item.oid}
+            isCurrent={!!item.item.current}
+            pinned={item.item.pinned}
+            query={filter}
+            sync={item.item.sync}
+            worktree={item.item.worktree}
+          />
+        );
+      case NavItemKind.Worktree:
+        return (
+          <WorktreeRow
+            wt={item.item.wt}
+            oid={item.item.oid}
+            isActive={item.item.isActive}
+            label={item.item.label}
+            query={filter}
+          />
+        );
+      case NavItemKind.Stash:
+        return <StashRow stash={item.item.stash} query={filter} />;
+    }
+  };
 
   const list = (() => {
     if (visibleCount === 0) {
@@ -134,39 +191,23 @@ export function BranchNavigator() {
         />
       );
     }
-    if (category === NavCategory.All) {
-      const groups: { label: string; rows: ReactNode; count: number; action?: ReactNode }[] = [
-        { label: "Branches", rows: refRows(locals, RowKind.Local), count: locals.items.length },
-        { label: "Remotes", rows: refRows(remotes, RowKind.Remote), count: remotes.items.length },
-        { label: "Worktrees", rows: worktreeRows(worktrees), count: worktrees.items.length, action: sweepAction },
-        { label: "Tags", rows: refRows(tags, RowKind.Tag), count: tags.items.length },
-        { label: "Stashes", rows: stashRows(stashes), count: stashes.items.length },
-      ];
-      return groups
-        .filter((g) => g.count > 0)
-        .map((g) => (
-          <Section key={g.label} label={g.label} count={g.count} action={g.action}>
-            {g.rows}
-          </Section>
-        ));
-    }
-    switch (category) {
-      case NavCategory.Branches:
-        return refRows(locals, RowKind.Local);
-      case NavCategory.Remotes:
-        return refRows(remotes, RowKind.Remote);
-      case NavCategory.Worktrees:
-        return (
-          <>
-            {sweepAction && <div className="flex h-7 items-center justify-end px-2">{sweepAction}</div>}
-            {worktreeRows(worktrees)}
-          </>
-        );
-      case NavCategory.Tags:
-        return refRows(tags, RowKind.Tag);
-      case NavCategory.Stashes:
-        return stashRows(stashes);
-    }
+    // Spacer padding rather than absolutely positioned items: rows keep their
+    // natural height, so a row that outgrows its estimate (a wrapped worktree
+    // path, a longer sync badge) pushes its neighbours down instead of being
+    // overlapped by them. Only the scroll extent depends on the estimates.
+    const first = virtualItems[0];
+    const last = virtualItems[virtualItems.length - 1];
+    return (
+      <>
+        <div style={{ height: first ? first.start : 0 }} />
+        {virtualItems.map((virtualItem) => (
+          <div key={virtualItem.key} data-index={virtualItem.index}>
+            {renderItem(items[virtualItem.index])}
+          </div>
+        ))}
+        <div style={{ height: last ? virtualizer.getTotalSize() - last.end : 0 }} />
+      </>
+    );
   })();
 
   return (
@@ -199,9 +240,11 @@ export function BranchNavigator() {
         </div>
       </div>
 
-      <div className="flex h-[392px]">
+      <div className="flex" style={{ height: LIST_HEIGHT }}>
         <CategorySidebar active={category} counts={counts} onSelect={selectCategory} />
-        <div className="min-w-0 flex-1 overflow-auto p-1.5">{list}</div>
+        <div ref={scrollRef} className="min-w-0 flex-1 overflow-auto p-1.5">
+          {list}
+        </div>
       </div>
     </div>
   );

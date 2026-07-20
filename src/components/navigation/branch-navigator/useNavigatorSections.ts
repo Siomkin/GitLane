@@ -101,20 +101,26 @@ export interface NavigatorSections {
 /* Deliberately NOT memoized beyond the graph-derived maps below, despite the
  * obvious "this re-sorts every ref on every keystroke" reading. Measured with
  * synthetic repos (median per keystroke, happy-dom, which understates real
- * render cost since it does no layout or paint):
+ * render cost since it does no layout or paint), before and after the list
+ * pane was virtualized:
  *
- *     refs    section building    full navigator render    initial mount
- *      600           0.45 ms                  8.6 ms            190 ms
- *     2500           1.59 ms                 27.3 ms            513 ms
- *     6000           3.62 ms                 65.5 ms           1422 ms
+ *     refs    section building    render/keystroke      initial mount
+ *                                  before   after      before    after
+ *      600           0.44 ms       8.6 ms   5.3 ms     190 ms    19 ms
+ *     2500           1.45 ms      27.3 ms   6.1 ms     513 ms    13 ms
+ *     6000           3.01 ms      65.5 ms   7.6 ms    1422 ms    11 ms
  *
- * Building the sections is ~5% of a keystroke at every size; rendering the rows
- * it produces is the other 95%. Splitting the filter-independent mapping and
- * sort into a memo could remove part of that 5% — invisible, at real cost to
- * the code. What the numbers actually indict is the initial mount: this list
- * renders every row, with no virtualization (unlike HistoryWorkspace, which
- * uses @tanstack/react-virtual). That is where a ref-heavy repo pays, and
- * virtualizing is the fix worth making. Re-measure before optimizing here. */
+ * Mount is now flat in the ref count — the window is ~20 rows whatever the
+ * repo holds — so the 1.4s that used to precede the navigator appearing is
+ * gone. Virtualizing was the fix; memoizing this hook never was.
+ *
+ * That does shift the balance: with rendering bounded, section building is now
+ * ~40% of a keystroke at 6000 refs rather than ~5%. It still leaves a keystroke
+ * at 7.6 ms, inside a 16 ms frame, so it stays unmemoized — but if this ever
+ * needs optimizing, the split to make is the filter-INDEPENDENT half (mapping
+ * and the recency sort) into a memo, leaving only match/filter/pin-order per
+ * keystroke. Memoizing the whole thing on a key that includes the query buys
+ * nothing: every keystroke is a fresh key. Re-measure first. */
 export function useNavigatorSections(filter: string): NavigatorSections {
   const branches = useRepo((s) => s.branches);
   const worktrees = useRepo((s) => s.worktrees);
