@@ -346,7 +346,7 @@ fn validate_repository_authority(
             }
         }
         Some(forge::RemoteApiAuthority::TransportHost(host)) => {
-            if !authority_hostname(&account.host).eq_ignore_ascii_case(&host) {
+            if !forge::authority_hostname(&account.host).eq_ignore_ascii_case(&host) {
                 return Err(GithubError::HostMismatch {
                     repo_host: host,
                     account_host: account.host.clone(),
@@ -380,7 +380,7 @@ fn validate_repository_authority(
 /// *explicitly different* ports are still different authorities and are
 /// rejected.
 fn authorities_match(a: &str, b: &str) -> bool {
-    if !authority_hostname(a).eq_ignore_ascii_case(authority_hostname(b)) {
+    if !forge::authority_hostname(a).eq_ignore_ascii_case(forge::authority_hostname(b)) {
         return false;
     }
     match (authority_port(a), authority_port(b)) {
@@ -391,21 +391,8 @@ fn authorities_match(a: &str, b: &str) -> bool {
 
 /// The explicit numeric port of an authority, if it carries one.
 fn authority_port(authority: &str) -> Option<&str> {
-    let host = authority_hostname(authority);
+    let host = forge::authority_hostname(authority);
     (host.len() != authority.len()).then(|| &authority[host.len() + 1..])
-}
-
-fn authority_hostname(authority: &str) -> &str {
-    match authority.rsplit_once(':') {
-        Some((host, port))
-            if !host.is_empty()
-                && !port.is_empty()
-                && port.bytes().all(|byte| byte.is_ascii_digit()) =>
-        {
-            host
-        }
-        _ => authority,
-    }
 }
 
 #[cfg(test)]
@@ -550,6 +537,19 @@ mod tests {
             "ghe.example.test:8443",
             "ghe.example.test"
         ));
+
+        assert!(authorities_match("[2001:db8::1]", "[2001:DB8::1]"));
+        assert!(authorities_match(
+            "[2001:db8::1]:8443",
+            "[2001:DB8::1]:8443"
+        ));
+        assert!(!authorities_match(
+            "[2001:db8::1]:8443",
+            "[2001:db8::1]:9443"
+        ));
+        assert_eq!(authority_port("[::1]"), None);
+        assert_eq!(authority_port("[::1]:8443"), Some("8443"));
+        assert_eq!(authority_port("2001:db8::1"), None);
     }
 
     #[test]
