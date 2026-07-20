@@ -566,7 +566,7 @@ pub fn commit(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     commit_locked(
         repo,
         summary,
@@ -644,7 +644,7 @@ pub fn commit_expected(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
     commit_locked(
         repo,
@@ -675,7 +675,7 @@ pub fn squash_commits(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
-    let _identity_guard = super::identity::lock_identity_config()?;
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     super::head::ensure_commit_exists(repo, parent_oid)?;
     super::branches::reset(repo, parent_oid, "soft")?;
