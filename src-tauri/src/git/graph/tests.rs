@@ -499,6 +499,7 @@ fn head_handoff_does_not_lend_its_lane_to_a_sibling_branch() {
 
     // A sibling topic branch off `base`, older than HEAD so it renders *below* it.
     let mut sibling = base;
+    let mut sibling_oids = Vec::new();
     for i in 0..4 {
         sibling = commit_on(
             &repo,
@@ -509,6 +510,7 @@ fn head_handoff_does_not_lend_its_lane_to_a_sibling_branch() {
             &[sibling],
             1200 + i,
         );
+        sibling_oids.push(sibling);
     }
 
     // The checked-out branch: a single commit off the same `base`.
@@ -548,11 +550,7 @@ fn head_handoff_does_not_lend_its_lane_to_a_sibling_branch() {
     };
     let head_node = node(head);
     let base_node = node(base);
-    let sibling_nodes: Vec<_> = graph
-        .commits
-        .iter()
-        .filter(|c| c.summary == "a.txt")
-        .collect();
+    let sibling_nodes: Vec<_> = sibling_oids.iter().map(|&oid| node(oid)).collect();
 
     assert_eq!(
         graph.wip_lane,
