@@ -37,6 +37,7 @@ function AppMark() {
 }
 
 export const AboutPanel = () => {
+  const updatesSupported = useUpdates((s) => s.supported);
   const version = useUpdates((s) => s.version);
   const status = useUpdates((s) => s.status);
   const check = useUpdates((s) => s.check);
@@ -89,59 +90,63 @@ export const AboutPanel = () => {
         <UpdateSection />
       </div>
 
-      <div className="mt-3 flex items-center gap-4 rounded-xl border border-black/[0.07] p-4 dark:border-white/[0.08]">
-        <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">Automatically check for updates</div>
-          <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
-            Check once a day and light the titlebar when a new version is available.
+      {updatesSupported && (
+        <div className="mt-3 flex items-center gap-4 rounded-xl border border-black/[0.07] p-4 dark:border-white/[0.08]">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">Automatically check for updates</div>
+            <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
+              Check once a day and light the titlebar when a new version is available.
+            </div>
           </div>
+          <button type="button"
+            role="switch"
+            aria-checked={autoCheck}
+            aria-label="Automatically check for updates"
+            onClick={() => setAutoCheck(!autoCheck)}
+            className={cn(
+              "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
+              autoCheck ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
+              focusRing,
+            )}
+          >
+            <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
+          </button>
         </div>
-        <button type="button"
-          role="switch"
-          aria-checked={autoCheck}
-          aria-label="Automatically check for updates"
-          onClick={() => setAutoCheck(!autoCheck)}
-          className={cn(
-            "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
-            autoCheck ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
-            focusRing,
-          )}
-        >
-          <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
-        </button>
-      </div>
+      )}
 
-      <div className="mt-3 flex items-center gap-4 rounded-xl border border-black/[0.07] p-4 dark:border-white/[0.08]">
-        <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">Receive beta updates</div>
-          <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
-            Update to pre-release beta builds as soon as they ship. Recommended until a stable release is out.
+      {updatesSupported && (
+        <div className="mt-3 flex items-center gap-4 rounded-xl border border-black/[0.07] p-4 dark:border-white/[0.08]">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">Receive beta updates</div>
+            <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
+              Update to pre-release beta builds as soon as they ship. Recommended until a stable release is out.
+            </div>
           </div>
+          <button type="button"
+            role="switch"
+            aria-checked={betaUpdates}
+            aria-label="Receive beta updates"
+            disabled={updateBusy}
+            onClick={() => {
+              setBetaUpdates(!betaUpdates);
+              // Re-check immediately so switching channel reflects right away (the
+              // store reads the fresh pref one-shot; set() is synchronous). Quiet:
+              // a found update still lights the indicator + this card, but flipping
+              // to stable (which has no release yet) must not re-pop the "check
+              // failed" error toast — the whole reason this toggle exists.
+              void check({ quiet: true });
+            }}
+            className={cn(
+              "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
+              betaUpdates ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
+              updateBusy && "cursor-not-allowed opacity-50",
+              focusRing,
+            )}
+          >
+            <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
+          </button>
         </div>
-        <button type="button"
-          role="switch"
-          aria-checked={betaUpdates}
-          aria-label="Receive beta updates"
-          disabled={updateBusy}
-          onClick={() => {
-            setBetaUpdates(!betaUpdates);
-            // Re-check immediately so switching channel reflects right away (the
-            // store reads the fresh pref one-shot; set() is synchronous). Quiet:
-            // a found update still lights the indicator + this card, but flipping
-            // to stable (which has no release yet) must not re-pop the "check
-            // failed" error toast — the whole reason this toggle exists.
-            void check({ quiet: true });
-          }}
-          className={cn(
-            "flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors",
-            betaUpdates ? "justify-end bg-[var(--accent)]" : "justify-start bg-black/15 dark:bg-white/20",
-            updateBusy && "cursor-not-allowed opacity-50",
-            focusRing,
-          )}
-        >
-          <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
-        </button>
-      </div>
+      )}
 
       <div className="mt-7 text-[11px] font-bold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
         BUILD DETAILS

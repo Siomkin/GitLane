@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   currentVersion: vi.fn(),
   relaunchApp: vi.fn(),
+  updatesSupported: true,
 }));
 vi.mock("@/lib/updater", () => mocks);
 
@@ -27,7 +28,7 @@ beforeEach(() => {
   useUi.setState({ lastUpdateCheckAt: 0, autoCheckUpdates: true });
   useNotifications.setState({ toasts: [] });
   useUpdates.setState(
-    { status: "idle", version: "", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
+    { supported: true, status: "idle", version: "", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
   );
 });
@@ -132,6 +133,18 @@ describe("useUpdates", () => {
 
     await INITIAL.checkOnLaunch();
 
+    expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+  });
+
+  it("loads the version but never checks from a source build", async () => {
+    mocks.currentVersion.mockResolvedValue("0.1.0");
+    useUpdates.setState({ supported: false });
+
+    await INITIAL.checkOnLaunch();
+    await INITIAL.check();
+
+    expect(useUpdates.getState().version).toBe("0.1.0");
+    expect(useUpdates.getState().status).toBe("idle");
     expect(mocks.checkForUpdate).not.toHaveBeenCalled();
   });
 

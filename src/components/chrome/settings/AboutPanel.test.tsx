@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   currentVersion: vi.fn(),
   relaunchApp: vi.fn(),
+  updatesSupported: true,
 }));
 vi.mock("@/lib/updater", () => mocks);
 
@@ -19,12 +20,21 @@ beforeEach(() => {
   mocks.checkForUpdate.mockResolvedValue(null);
   mocks.currentVersion.mockResolvedValue("0.1.0");
   useUpdates.setState(
-    { status: "idle", version: "0.1.0", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
+    { supported: true, status: "idle", version: "0.1.0", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
   );
 });
 
 describe("AboutPanel — beta updates toggle (GL-154)", () => {
+  it("hides release channel controls for a source build", () => {
+    useUpdates.setState({ supported: false });
+    render(<AboutPanel />);
+
+    expect(screen.getByText("Source build")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /Automatically check for updates/i })).toBeNull();
+    expect(screen.queryByRole("switch", { name: /Receive beta updates/i })).toBeNull();
+  });
+
   it("reflects the betaUpdates pref and toggles it, re-checking on the new channel", () => {
     useUi.setState({ betaUpdates: false });
     render(<AboutPanel />);

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   currentVersion: vi.fn(),
   relaunchApp: vi.fn(),
+  updatesSupported: true,
 }));
 vi.mock("@/lib/updater", () => mocks);
 
@@ -21,7 +22,7 @@ beforeEach(() => {
   mocks.checkForUpdate.mockResolvedValue(null);
   mocks.currentVersion.mockResolvedValue("0.1.0");
   useUpdates.setState(
-    { status: "idle", version: "0.1.0", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
+    { supported: true, status: "idle", version: "0.1.0", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
   );
 });
@@ -29,6 +30,14 @@ beforeEach(() => {
 const btn = () => screen.getByRole("button");
 
 describe("UpdateSection", () => {
+  it("identifies source builds without offering the release updater", () => {
+    useUpdates.setState({ supported: false });
+    render(<UpdateSection />);
+    expect(screen.getByText("Source build")).toBeInTheDocument();
+    expect(screen.getByText(/pull the latest source and rebuild/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
   it("offers a check and shows the running version when idle", () => {
     render(<UpdateSection />);
     expect(screen.getByText(/running GitLane 0\.1\.0/)).toBeInTheDocument();

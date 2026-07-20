@@ -6,7 +6,7 @@
 import { create } from "zustand";
 
 import { useUi } from "./ui";
-import { checkForUpdate, currentVersion, relaunchApp, type Update } from "@/lib/updater";
+import { checkForUpdate, currentVersion, relaunchApp, updatesSupported, type Update } from "@/lib/updater";
 
 export type UpdateStatus =
   | "idle" // not checked yet this session
@@ -18,6 +18,8 @@ export type UpdateStatus =
   | "error"; // the last check/download failed
 
 interface UpdatesState {
+  /** True only for signed artifacts produced by the official release workflow. */
+  supported: boolean;
   status: UpdateStatus;
   /** Running app version (lazy-loaded for display). */
   version: string;
@@ -59,6 +61,7 @@ export function hasPendingUpdate(s: UpdatesState): boolean {
 }
 
 export const useUpdates = create<UpdatesState>((set, get) => ({
+  supported: updatesSupported,
   status: "idle",
   version: "",
   newVersion: null,
@@ -79,6 +82,7 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
 
   checkOnLaunch: async () => {
     await get().loadVersion();
+    if (!get().supported) return;
     // Channel prefs are read one-shot (never subscribed): `lastUpdateCheckAt`
     // is stamped by `check` itself only when there is nothing to install, so a
     // pending update found before quitting re-surfaces on the next launch.
@@ -89,6 +93,7 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
   },
 
   check: async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!get().supported) return;
     // Don't re-check while busy, and don't clobber a downloaded-pending-restart
     // ("ready") update by resetting it to "checking".
     const status = get().status;

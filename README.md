@@ -39,6 +39,10 @@ bun install
 bun run tauri build
 ```
 
+Source builds use the repository's baseline version metadata and do not use the
+built-in release updater. Pull the latest source and rebuild to update; official
+release artifacts enable signed in-app updates during the release workflow.
+
 For development with hot reload:
 
 ```bash
