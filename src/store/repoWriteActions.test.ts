@@ -595,6 +595,42 @@ describe("push family — the target remote's account, not a repo-wide one", () 
     expect(toast?.actions?.[0]?.label).toBe("View on GitHub");
   });
 
+  it("labels a local-repository push without origin auth or a forge link", async () => {
+    const forge: RepoForge = {
+      hasRemote: true,
+      kind: ForgeKind.GitHub,
+      forge: "GitHub",
+      host: "github.com",
+      webUrl: "https://github.com/owner/repo",
+    };
+    useRepo.setState({
+      branches: [
+        branch({
+          name: "feature",
+          isHead: true,
+          upstream: "shared",
+          upstreamRemote: ".",
+          pushRemote: ".",
+          sync: { status: "ahead", upstream: "shared", ahead: 2, behind: 0 },
+        }),
+      ],
+      forge,
+    });
+
+    await useRepo.getState().push();
+
+    expect(invokeMock).toHaveBeenCalledWith("push_branch", {
+      path: "/repo",
+      branch: "feature",
+      expectedOid: HEAD_OID,
+      auth: null,
+    });
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.title).toBe("Pushed 2 commits");
+    expect(toast?.body).toBe("to local branch shared");
+    expect(toast?.actions).toBeUndefined();
+  });
+
   it("drops the progress toast and surfaces an error toast when the push fails", async () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "push_branch" ? Promise.reject("remote rejected") : refreshInvoke(cmd),
@@ -699,12 +735,13 @@ describe("push family — the target remote's account, not a repo-wide one", () 
   });
 
   it("deleteRemoteBranch uses the explicit remote's account", async () => {
-    await useRepo.getState().deleteRemoteBranch("mirror", "feat");
+    await useRepo.getState().deleteRemoteBranch("mirror", "feat", HEAD_OID);
 
     expect(invokeMock).toHaveBeenCalledWith("delete_remote_branch", {
       path: "/repo",
       remote: "mirror",
       branch: "feat",
+      expectedOid: HEAD_OID,
       auth: ghAuth(bob),
     });
   });

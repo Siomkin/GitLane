@@ -401,8 +401,8 @@ pub struct BranchInfo {
     /// re-guessing it from the first `/`.
     pub remote: Option<String>,
     /// For a local branch, its fetch/upstream remote
-    /// (`branch.<name>.remote`) when set and not the local-tracking `"."`.
-    /// `None` for remote branches.
+    /// (`branch.<name>.remote`) when set. Git's `"."` value denotes another
+    /// branch in the same repository. `None` for remote branches.
     pub upstream_remote: Option<String>,
     /// For a local branch, the actual push remote after Git's precedence:
     /// `branch.<name>.pushRemote` → `remote.pushDefault` →
@@ -819,6 +819,9 @@ pub struct GitTransportAuthRef {
     /// for every other mode. Never a token.
     #[serde(default)]
     pub provider_account_id: Option<String>,
+    /// Whether Git should include the URL path in credential-helper lookups.
+    #[serde(default)]
+    pub use_http_path: bool,
 }
 
 /// One `remote → auth` pair for the multi-remote fetch.

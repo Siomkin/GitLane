@@ -496,7 +496,7 @@ export interface RepoState {
   ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
-  deleteRemoteBranch: (remote: string, branch: string) => Promise<string>;
+  deleteRemoteBranch: (remote: string, branch: string, expectedOid: string) => Promise<string>;
   /** Force-push `branch` with `--force-with-lease` (only that branch). */
   forcePush: (branch: string) => Promise<string>;
   /** Discard every uncommitted working-tree change (reset --hard + clean). */

@@ -769,6 +769,88 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
   });
 
+  it("reuses an exact non-Azure path-scoped helper marker for a bare remote URL", () => {
+    localStorage.setItem(
+      "gitlane.forgeCredentials",
+      JSON.stringify({
+        gitlab: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          path: "group one/repo.git",
+          username: "ada",
+          helper: "Git Credential Manager",
+          savedAt: 1,
+        },
+      }),
+    );
+    useAccounts.setState({ accounts: [], forgeAuth: [] });
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("lab", "https://gitlab.com/group%20one/repo.git")],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
+      mode: "credentialHelper",
+      provider: "gitlab",
+      host: "gitlab.com",
+      credentialHost: "gitlab.com",
+      username: null,
+      useHttpPath: true,
+    });
+  });
+
+  it("does not apply a saved non-Azure path scope to another repository or username", () => {
+    localStorage.setItem(
+      "gitlane.forgeCredentials",
+      JSON.stringify({
+        gitlab: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          path: "group/repo.git",
+          username: "ada",
+          helper: "Git Credential Manager",
+          savedAt: 1,
+        },
+      }),
+    );
+    useAccounts.setState({ accounts: [], forgeAuth: [] });
+
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("other", "https://gitlab.com/group/other.git")],
+    });
+    expect(useAccounts.getState().transportAuthForRemote("other")).toBeNull();
+
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("lab", "https://grace@gitlab.com/group/repo.git")],
+    });
+    expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
+      mode: "credentialHelper",
+      provider: "gitlab",
+      host: "gitlab.com",
+      credentialHost: "gitlab.com",
+      username: "grace",
+    });
+  });
+
+  it("enables Azure path matching even when the remote URL has no username", () => {
+    useAccounts.setState({ accounts: [], forgeAuth: [] });
+    useRepo.setState({
+      summary,
+      remotes: [remoteInfo("azure", "https://dev.azure.com/contoso/Project/_git/repo.git")],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("azure")).toEqual({
+      mode: "credentialHelper",
+      provider: "azure-devops",
+      host: "dev.azure.com",
+      credentialHost: "dev.azure.com",
+      username: null,
+      useHttpPath: true,
+    });
+  });
+
   it("transportAuthForRemote requires an exact credential host for custom ports", () => {
     const portAccount: Account = {
       ...account,
@@ -1121,6 +1203,28 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
 
     expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("remote write blew up");
     expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+  });
+
+  it("saveRemoteCredential uses Git's exact decoded Azure helper path", async () => {
+    const azure = remoteInfo(
+      "azure",
+      "https://alex@dev.azure.com/contoso/My%20Project/_git/repo.git",
+    );
+    useRepo.setState({ summary, remotes: [azure] });
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "list_remotes" ? [azure] : null),
+    );
+
+    await expect(useAccounts.getState().saveRemoteCredential("azure", "alex", "tok")).resolves.toBe(
+      true,
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
+      credentialHost: "dev.azure.com",
+      path: "contoso/My Project/_git/repo.git",
+      username: "alex",
+      password: "tok",
+    });
   });
 
   it("saveRemoteCredential pins the username write to the initiating repo", async () => {

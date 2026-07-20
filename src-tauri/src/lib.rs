@@ -192,8 +192,8 @@ async fn delete_branch_with_worktree(
 }
 
 #[tauri::command]
-async fn checkout(path: String, target: String) -> Result<String, String> {
-    blocking(move || git::write::checkout(&path, &target)).await
+async fn checkout(path: String, target: String, detached: bool) -> Result<String, String> {
+    blocking(move || git::write::checkout(&path, &target, detached)).await
 }
 
 #[tauri::command]
@@ -587,6 +587,7 @@ async fn delete_remote_branch(
     path: String,
     remote: String,
     branch: String,
+    expected_oid: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
@@ -596,7 +597,7 @@ async fn delete_remote_branch(
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::delete_remote_branch(&path, &remote, &branch, &cred)
+        git::write::delete_remote_branch(&path, &remote, &branch, &expected_oid, &cred)
     })
     .await
 }
@@ -614,12 +615,16 @@ async fn force_push(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
-        let cred = git::transport_auth::credential_for_remote(
-            &path,
-            &remote,
-            git::transport_auth::RemoteTransportDirection::Push,
-            auth.as_ref(),
-        )?;
+        let cred = if remote == "." {
+            git::transport_auth::TransportCredential::None
+        } else {
+            git::transport_auth::credential_for_remote(
+                &path,
+                &remote,
+                git::transport_auth::RemoteTransportDirection::Push,
+                auth.as_ref(),
+            )?
+        };
         git::write::force_push(&path, &branch, &expected_oid, &cred)
     })
     .await
@@ -901,8 +906,13 @@ async fn unstage_files(path: String, files: Vec<String>) -> Result<String, Strin
 }
 
 #[tauri::command]
-async fn discard_file(path: String, file: String, staged: bool) -> Result<String, String> {
-    blocking(move || git::write::discard_file(&path, &file, staged)).await
+async fn discard_file(
+    path: String,
+    file: String,
+    previous_file: Option<String>,
+    staged: bool,
+) -> Result<String, String> {
+    blocking(move || git::write::discard_file(&path, &file, previous_file.as_deref(), staged)).await
 }
 
 #[tauri::command]
@@ -1130,12 +1140,16 @@ async fn push_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
-        let cred = git::transport_auth::credential_for_remote(
-            &path,
-            &remote,
-            git::transport_auth::RemoteTransportDirection::Push,
-            auth.as_ref(),
-        )?;
+        let cred = if remote == "." {
+            git::transport_auth::TransportCredential::None
+        } else {
+            git::transport_auth::credential_for_remote(
+                &path,
+                &remote,
+                git::transport_auth::RemoteTransportDirection::Push,
+                auth.as_ref(),
+            )?
+        };
         git::write::push_branch(&path, &branch, &expected_oid, &cred)
     })
     .await

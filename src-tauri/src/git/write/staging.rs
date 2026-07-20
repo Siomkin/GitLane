@@ -3,6 +3,8 @@
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
+use git2::{Status, StatusOptions};
+
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 
@@ -114,9 +116,12 @@ pub fn apply_line(
 /// divergence fails safe ("refresh and try again") instead of staging the wrong hunk.
 pub(super) fn patch_diff_args(staged: bool, file: &str) -> Vec<&str> {
     let mut args = vec![
+        "-c",
+        "diff.suppressBlankEmpty=false",
         "--literal-pathspecs",
         "diff",
         "--no-ext-diff",
+        "--no-textconv",
         "--no-color",
         "--no-indent-heuristic",
         "--diff-algorithm=myers",
@@ -490,6 +495,64 @@ pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
     run_git_literal_paths(repo, &args)
 }
 
+/// Fail closed when a rename row came from a stale frontend status snapshot.
+/// This deliberately mirrors `status::working_changes`' rename options so the
+/// write precondition agrees with the read that supplied `previous_file`.
+fn ensure_current_rename(
+    repo: &str,
+    file: &str,
+    previous_file: &str,
+    staged: bool,
+) -> Result<(), String> {
+    let repository = git2::Repository::discover(repo)
+        .map_err(|error| format!("Could not validate the rename before discarding it: {error}"))?;
+    let mut options = StatusOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+    let statuses = repository
+        .statuses(Some(&mut options))
+        .map_err(|error| format!("Could not validate the rename before discarding it: {error}"))?;
+
+    let current = statuses.iter().any(|entry| {
+        let status = entry.status();
+        let is_rename = if staged {
+            status.contains(Status::INDEX_RENAMED)
+        } else {
+            status.contains(Status::WT_RENAMED)
+        };
+        if !is_rename {
+            return false;
+        }
+
+        let delta = if staged {
+            entry.head_to_index()
+        } else {
+            entry.index_to_workdir()
+        };
+        delta.is_some_and(|delta| {
+            delta
+                .old_file()
+                .path()
+                .is_some_and(|path| path == Path::new(previous_file))
+                && delta
+                    .new_file()
+                    .path()
+                    .is_some_and(|path| path == Path::new(file))
+        })
+    });
+
+    if current {
+        Ok(())
+    } else {
+        Err(format!(
+            "The rename {previous_file} → {file} changed. Refresh and try again."
+        ))
+    }
+}
+
 /// Discard a single file's working-tree changes, reverting it to its HEAD/index
 /// state. When `staged` is set the file is unstaged first, then its worktree
 /// copy is restored — so "discard" works whether the change is staged or not.
@@ -497,20 +560,74 @@ pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
 /// Whether the file exists in HEAD decides how it's discarded: a file present in
 /// HEAD is restored from it; a *new* file (untracked, or staged but never
 /// committed — and every file in an unborn repo) has nothing to restore *to*, so
-/// it is removed instead. This branch is decided up front from `cat-file`,
-/// rather than by catching a `git restore` error — so a genuine restore failure
-/// on a committed file (a lock, a permission error) surfaces as an error instead
-/// of being silently swallowed by the removal fallback and reported as success.
+/// it is removed instead. This branch is decided up front from HEAD tree
+/// membership, rather than by catching a `git restore` error — so a genuine
+/// restore failure on a committed file (a lock, a permission error) surfaces as
+/// an error instead of being silently swallowed by the removal fallback and
+/// reported as success.
 ///
 /// For the new-file branch the *index* — not the caller's `staged` flag, which
 /// can be stale — decides between `git rm -f` (staged-new: clears index and
 /// worktree; `git clean` would silently skip a tracked file and report success)
 /// and scoped `git clean -f` (genuinely untracked file). Skipping
 /// `restore --staged` here also keeps the staged case working on an unborn HEAD.
-pub fn discard_file(repo: &str, file: &str, staged: bool) -> Result<String, String> {
-    // `cat-file -e HEAD:<path>` exits 0 only when the path resolves in HEAD; it
-    // fails for a new path and for an unborn repo (no HEAD at all).
-    let in_head = run_git(repo, &["cat-file", "-e", &format!("HEAD:{file}")]).is_ok();
+pub fn discard_file(
+    repo: &str,
+    file: &str,
+    previous_file: Option<&str>,
+    staged: bool,
+) -> Result<String, String> {
+    if let Some(previous) = previous_file.filter(|previous| *previous != file) {
+        ensure_current_rename(repo, file, previous, staged)?;
+        if staged {
+            // Restore both index paths and the worktree in one command. Besides
+            // avoiding partial index state, this is essential for case-only
+            // renames: on a case-insensitive filesystem the two spellings name
+            // one file, so restoring the old side and then removing the new side
+            // would delete the file that was just restored.
+            run_git_literal_paths(
+                repo,
+                &[
+                    "restore",
+                    "--source=HEAD",
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    previous,
+                    file,
+                ],
+            )?;
+        } else {
+            // An unstaged rename is index(old) → worktree(new). Remove the
+            // untracked new side first, then restore the old side *from the
+            // index*, preserving any staged content already recorded there.
+            // This order is also safe when the names are case aliases.
+            run_git_literal_paths(repo, &["clean", "-f", "--", file])?;
+            run_git_literal_paths(repo, &["restore", "--worktree", "--", previous])?;
+        }
+        return Ok(format!("Discarded rename {previous} → {file}"));
+    }
+
+    // Tree membership must not require the referenced object to be present: a
+    // gitlink entry can legitimately point at a submodule commit absent from the
+    // superproject object database, where `cat-file -e HEAD:<path>` fails.
+    let in_head = if has_head(repo) {
+        !run_git_stdout_raw(
+            repo,
+            &[
+                "--literal-pathspecs",
+                "ls-tree",
+                "-z",
+                "--name-only",
+                "HEAD",
+                "--",
+                file,
+            ],
+        )?
+        .is_empty()
+    } else {
+        false
+    };
 
     if in_head {
         if staged {

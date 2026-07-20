@@ -220,6 +220,7 @@ describe("repo store — discardFile", () => {
     expect(invokeMock).toHaveBeenCalledWith("discard_file", {
       path: "/repo",
       file: "src/a.ts",
+      previousFile: null,
       staged: false,
     });
   });

@@ -1,22 +1,26 @@
 //! Branch, tag, patch, sequencer, and reset operations.
 
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
+
 use super::cli::{run_git, run_git_env_stable_diagnostics, run_git_with_input};
 use super::head::{
     checkout_expected_branch, current_branch, ensure_commit_exists, ensure_expected_branch_tip,
-    ensure_expected_head, ensure_revision_at,
+    ensure_expected_head, ensure_revision_at, switch_branch, switch_detached,
 };
 use super::operands::{ensure_operand, ensure_opt};
 
-/// Check out an existing branch, tag, or commit.
-///
-/// The bare `target` is intentional even when a branch and tag share the name:
-/// `git checkout <name>` DWIMs to the *branch* (git's own precedence for
-/// checkout), whereas `git checkout refs/heads/<name>` would *detach* HEAD. So
-/// unlike merge/rebase below, checkout needs no `refs/heads/` qualification —
-/// adding it would regress the common "switch to branch" case.
-pub fn checkout(repo: &str, target: &str) -> Result<String, String> {
-    ensure_operand(target)?;
-    run_git(repo, &["checkout", target])
+/// Switch to an existing local branch or detach at an explicit revision.
+/// `detached` is part of the IPC intent: one-argument `git checkout <target>` is
+/// deliberately forbidden because a stale branch can be reinterpreted as a
+/// pathspec and silently restore a same-named tracked file.
+pub fn checkout(repo: &str, target: &str, detached: bool) -> Result<String, String> {
+    if detached {
+        switch_detached(repo, target)
+    } else {
+        switch_branch(repo, target)
+    }
 }
 
 /// Check out the local counterpart of an existing remote-tracking ref. Create
@@ -36,7 +40,7 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
         // divergence must not change HEAD. Reclassify after checkout because
         // either ref may move while the subprocess runs.
         classify_remote_checkout(repo, &local_ref, &remote_ref)?;
-        checkout(repo, branch)?;
+        switch_branch(repo, branch)?;
         match classify_remote_checkout(repo, &local_ref, &remote_ref).map_err(|error| {
             format!(
                 "{branch} is checked out, but it couldn't be updated to {remote_ref}: {error}"
@@ -68,7 +72,10 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
                 }),
         }
     } else {
-        run_git(repo, &["checkout", "--track", "-b", branch, &remote_ref])
+        run_git(
+            repo,
+            &["switch", "--track", "-c", branch, "--", &remote_ref],
+        )
     }
 }
 
@@ -738,12 +745,58 @@ pub fn create_annotated_tag(
     run_git(repo, &refs)
 }
 
-/// Write a patch file for the single commit `sha` into the worktree via
-/// `git format-patch -1`. Git names the file `NNNN-<subject>.patch` and prints
-/// the path it created, which we return as the success message.
+/// Write a patch for one non-merge commit into the worktree without allowing
+/// git's generated filename to overwrite an existing file. `format-patch -1`
+/// silently skips merge commits and selects a nearby non-merge ancestor, so
+/// merges are rejected until the UI exposes an explicit first-parent policy.
 pub fn create_patch(repo: &str, sha: &str) -> Result<String, String> {
     ensure_operand(sha)?;
-    run_git(repo, &["format-patch", "-1", sha])
+    if is_merge_commit(repo, sha)? {
+        return Err(
+            "Merge commits do not have a single email-patch delta. Review a parent diff or choose a non-merge commit."
+                .to_string(),
+        );
+    }
+
+    let patch = super::cli::run_git_stdout_raw(repo, &["format-patch", "--stdout", "-1", sha])?;
+    let subject = run_git(
+        repo,
+        &["show", "-s", "--no-show-signature", "--format=%f", sha],
+    )?;
+    let fallback: String = sha.chars().take(12).collect();
+    let safe_subject: String = subject.trim().chars().take(96).collect();
+    let safe_subject = if safe_subject.is_empty() {
+        fallback.as_str()
+    } else {
+        safe_subject.as_str()
+    };
+
+    let worktree_raw = super::cli::run_git_stdout_raw(repo, &["rev-parse", "--show-toplevel"])?;
+    let worktree = String::from_utf8(worktree_raw)
+        .map_err(|_| "The repository worktree path is not valid UTF-8.".to_string())?;
+    let worktree = PathBuf::from(worktree.trim_end_matches(['\r', '\n']));
+
+    for collision in 0..10_000 {
+        let filename = if collision == 0 {
+            format!("0001-{safe_subject}.patch")
+        } else {
+            format!("0001-{safe_subject}-{}.patch", collision + 1)
+        };
+        let path = worktree.join(&filename);
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                if let Err(error) = file.write_all(&patch) {
+                    let _ = std::fs::remove_file(&path);
+                    return Err(format!("Couldn't write patch {filename}: {error}"));
+                }
+                return Ok(filename);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Couldn't create patch {filename}: {error}")),
+        }
+    }
+
+    Err("Couldn't choose an unused patch filename in the worktree.".to_string())
 }
 
 /// Reset the current branch to `target`. `mode` is one of soft|mixed|hard.

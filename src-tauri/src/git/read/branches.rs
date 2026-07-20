@@ -110,15 +110,16 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
     Ok(out)
 }
 
-/// The remote a local branch pushes to (`branch.<name>.remote`), excluding the
-/// local-tracking `"."` — mirrors the fallback-free half of the write side's
-/// `push_target` so the frontend and the actual push agree on the target.
+/// The configured upstream remote for a local branch. Git's `"."` value means
+/// another branch in this repository, and must remain visible in the read model:
+/// the write side treats it as a real push target rather than falling back to
+/// `origin`.
 fn configured_remote(repo: &Repository, branch_name: &str) -> Option<String> {
     let cfg = repo.config().ok()?;
     let remote = cfg
         .get_string(&format!("branch.{branch_name}.remote"))
         .ok()?;
-    if remote.is_empty() || remote == "." {
+    if remote.is_empty() {
         return None;
     }
     Some(crate::redact::redact_secrets(&remote))
@@ -132,7 +133,7 @@ fn configured_push_remote(repo: &Repository, branch_name: &str) -> String {
         config
             .as_ref()
             .and_then(|cfg| cfg.get_string(key).ok())
-            .filter(|remote| !remote.is_empty() && remote != ".")
+            .filter(|remote| !remote.is_empty())
             .map(|remote| crate::redact::redact_secrets(&remote))
     };
     value(&format!("branch.{branch_name}.pushRemote"))

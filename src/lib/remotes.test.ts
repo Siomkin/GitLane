@@ -91,6 +91,7 @@ describe("detectRemoteUrl", () => {
       valid: true,
       host: "bitbucket.org",
       credentialHost: "bitbucket.org",
+      credentialPath: "darang/gitlanebucket.git",
       path: "darang/gitlanebucket",
       user: "SiomkinAlexander",
       provider: "bitbucket",
@@ -140,6 +141,25 @@ describe("detectRemoteUrl", () => {
       provider: "github",
     });
     expect(detectRemoteUrl("https://github.com/Siomkin/GitLane").provider).toBe("github");
+  });
+
+  it("keeps Git's exact decoded credential path separate from the normalized repo path", () => {
+    expect(
+      detectRemoteUrl("https://dev.azure.com/contoso/Project%20One/_git/repo.git/"),
+    ).toMatchObject({
+      valid: true,
+      path: "contoso/Project%20One/_git/repo",
+      credentialPath: "contoso/Project One/_git/repo.git",
+    });
+    // Git decodes URL bytes once: an escaped percent remains for the helper.
+    expect(
+      detectRemoteUrl("https://dev.azure.com/contoso/Project%2520One/_git/repo.git")
+        .credentialPath,
+    ).toBe("contoso/Project%20One/_git/repo.git");
+    // Malformed escapes remain literal, matching Git's credential parser.
+    expect(
+      detectRemoteUrl("https://dev.azure.com/contoso/Project%ZZ/_git/repo.git").credentialPath,
+    ).toBe("contoso/Project%ZZ/_git/repo.git");
   });
 
   it("parses scp-style SSH URLs and classifies the provider", () => {
@@ -210,6 +230,9 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("git@gitlab.com\rhost=evil.example:owner/repo.git")).toMatchObject({
       valid: false,
     });
+    expect(detectRemoteUrl("https://dev.azure.com/org/project%0Aname/_git/repo.git")).toMatchObject({
+      valid: false,
+    });
   });
 
   it("rejects malformed percent-encoded userinfo without throwing", () => {
@@ -248,11 +271,10 @@ describe("transportProviderForRemoteProvider", () => {
 });
 
 describe("azureOrg + credentialScopePath (GL-136)", () => {
-  it("extracts the org from a dev.azure.com URL", () => {
-    const info = detectRemoteUrl("https://dev.azure.com/contoso/proj/_git/repo");
+  it("extracts the org while scoping helpers by Git's exact full path", () => {
+    const info = detectRemoteUrl("https://dev.azure.com/contoso/My%20Project/_git/repo.git");
     expect(azureOrg(info)).toBe("contoso");
-    // Credentials scope by org, so multiple orgs on dev.azure.com don't collide.
-    expect(credentialScopePath(info)).toBe("contoso");
+    expect(credentialScopePath(info)).toBe("contoso/My Project/_git/repo.git");
   });
 
   it("extracts the org from a legacy {org}.visualstudio.com URL", () => {

@@ -11,7 +11,7 @@ Rust core + React/TypeScript frontend.
 
 ## Commands
 
-The package manager is **bun** (note `bun.lock`; `tauri.conf.json` runs `bun run dev`/`bun run build`). Don't use npm/yarn.
+The package manager is **bun** (note `bun.lock`; `tauri.conf.json` runs `bun run dev`/`bun run build`). Don't use npm/yarn. GitLane requires **Git 2.36.0 or newer**; the write layer checks this before invoking Git.
 
 ```bash
 bun install

@@ -270,6 +270,8 @@ export interface GitTransportAuthRef {
   accountRef?: GithubAccountRef | null;
   /** Keychain locator for `providerToken` mode; never a token. */
   providerAccountId?: string | null;
+  /** Match Git's credential.useHttpPath lookup for path-scoped credentials. */
+  useHttpPath?: boolean;
 }
 
 /** One `remote → auth` pair for the multi-remote fetch. */
@@ -307,7 +309,8 @@ export interface BranchInfo {
    * against the known remote list). `null` for local branches. */
   remote: string | null;
   /** For a local branch, its configured fetch/upstream remote
-   * (`branch.<name>.remote`). `null` for remote branches or when unset. */
+   * (`branch.<name>.remote`); `.` means another branch in this repository.
+   * `null` for remote branches or when unset. */
   upstreamRemote?: string | null;
   /** For a local branch, the actual push remote after Git's
    * branch.pushRemote → remote.pushDefault → branch.remote → origin
@@ -708,8 +711,8 @@ export const gitApi = {
   deleteBranchWithWorktree: (path: string, branch: string, fromWorktreePath: string) =>
     invoke<string>("delete_branch_with_worktree", { path, branch, fromWorktreePath }),
 
-  checkout: (path: string, target: string) =>
-    invoke<string>("checkout", { path, target }),
+  checkout: (path: string, target: string, detached = false) =>
+    invoke<string>("checkout", { path, target, detached }),
 
   /** Check out the local counterpart of `remote/branch`, creating it with
    * tracking or safely fast-forwarding the existing local branch. */
@@ -955,8 +958,9 @@ export const gitApi = {
     path: string,
     remote: string,
     branch: string,
+    expectedOid: string,
     auth?: GitTransportAuthRef | null,
-  ) => invoke<string>("delete_remote_branch", { path, remote, branch, auth: auth ?? null }),
+  ) => invoke<string>("delete_remote_branch", { path, remote, branch, expectedOid, auth: auth ?? null }),
 
   /** Force-push a specific `branch` with `--force-with-lease` (targets only that
    * branch, never the whole push.default set), optionally as the bound auth. */
@@ -1161,10 +1165,10 @@ export const gitApi = {
   unstageFiles: (path: string, files: string[]) =>
     invoke<string>("unstage_files", { path, files }),
 
-  /** Discard a file's working-tree changes (reverting to HEAD). When `staged`,
-   * the file is unstaged first; an untracked file is removed. */
-  discardFile: (path: string, file: string, staged: boolean) =>
-    invoke<string>("discard_file", { path, file, staged }),
+  /** Discard a file's working-tree changes (reverting to HEAD). Renames carry
+   * `previousFile` so both sides are restored as one logical change. */
+  discardFile: (path: string, file: string, previousFile: string | null, staged: boolean) =>
+    invoke<string>("discard_file", { path, file, previousFile, staged }),
 
   stageAll: (path: string) => invoke<string>("stage_all", { path }),
 

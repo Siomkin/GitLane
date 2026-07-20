@@ -10,7 +10,12 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { api, type CloneProgress } from "@/lib/api";
 import { supportsProviderTokenAuth } from "@/lib/forgeHelp";
 import { repoLabel } from "@/lib/paths";
-import { detectRemoteUrl, forgeAuthProviderFor, withUrlUser } from "@/lib/remotes";
+import {
+  credentialScopePath,
+  detectRemoteUrl,
+  forgeAuthProviderFor,
+  withUrlUser,
+} from "@/lib/remotes";
 import { pickProviderTokenForHost, useAccounts } from "@/store/accounts";
 import { readForgeCredentials } from "@/store/accountsStorage";
 import {
@@ -295,7 +300,12 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
             // it — the fallback when the keychain path didn't apply (helper opt-in,
             // blank username, non-PR forge) or its write failed. `auth` is still
             // the plan's credentialHelper ref here, so the clone stays consistent.
-            await api.approveHttpsCredential(auth.credentialHost, urlInfo.path, username, password);
+            await api.approveHttpsCredential(
+              auth.credentialHost,
+              credentialScopePath(urlInfo),
+              username,
+              password,
+            );
           }
           setClonePassword("");
         }

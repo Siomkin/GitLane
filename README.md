@@ -200,7 +200,7 @@ terminal, dark/light themes with accent colors.
 
 ## Develop
 
-Prerequisites: `bun`, the Rust toolchain, `git`, and optionally `gh` 2.95.0+
+Prerequisites: `bun`, the Rust toolchain, `git` 2.36.0+, and optionally `gh` 2.95.0+
 for GitHub/PR features.
 
 ```bash

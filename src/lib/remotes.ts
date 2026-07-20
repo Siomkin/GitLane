@@ -24,6 +24,10 @@ export interface RemoteUrlInfo {
   host: string | null;
   /** Exact credential authority (`host[:port]`) Git passes to helpers. */
   credentialHost: string | null;
+  /** Exact decoded HTTPS path Git passes to credential helpers when
+   * `credential.useHttpPath=true`. Unlike `path`, this retains a trailing
+   * `.git` suffix and is never a display/repository-name normalization. */
+  credentialPath: string | null;
   path: string | null;
   /** The https URL's userinfo (`https://USER@host/…`) — git's native carrier
    * for "which account authenticates this remote" (gitcredentials(7): the
@@ -100,11 +104,10 @@ export const transportProviderForRemoteProvider = (p: RemoteProvider): GitTransp
 };
 
 /** The Azure DevOps organization from a remote path. Azure hosts many orgs on
- * one host (`dev.azure.com/{org}/…`, or the legacy `{org}.visualstudio.com`),
- * so credentials must scope by org — the git credential context needs the org
- * as its path (with `credential.useHttpPath=true`) or credentials collide across
- * orgs on `dev.azure.com`. Returns the org, or `null` when the URL isn't Azure
- * or the org can't be determined. */
+ * one host (`dev.azure.com/{org}/…`, or the legacy `{org}.visualstudio.com`).
+ * Returns the org, or `null` when the URL isn't Azure or the org can't be
+ * determined. Credential helpers use `credentialPath`, not this display/API
+ * grouping value: Git path matching is exact. */
 export const azureOrg = (info: Pick<RemoteUrlInfo, "provider" | "host" | "path">): string | null => {
   if (info.provider !== "azure") return null;
   // Legacy `{org}.visualstudio.com`: the org is the leading host label.
@@ -117,11 +120,38 @@ export const azureOrg = (info: Pick<RemoteUrlInfo, "provider" | "host" | "path">
   return first || null;
 };
 
-/** The credential-context path git should scope by for `info`, or `null` for the
- * host-only scope. Azure scopes by org (see {@link azureOrg}); every other
- * provider scopes by host alone, matching how their credential helpers behave. */
+/** The exact credential-context path git sends to helpers for `info`, or `null`
+ * for host-only scope. Azure requires the full URL path when
+ * `credential.useHttpPath=true`; every other provider remains host-scoped. */
 export const credentialScopePath = (info: RemoteUrlInfo): string | null =>
-  info.provider === "azure" ? azureOrg(info) : null;
+  info.provider === "azure" ? info.credentialPath : null;
+
+const utf8Encoder = new TextEncoder();
+const utf8Decoder = new TextDecoder();
+
+/** Decode a URL path the way Git's credential parser does: valid `%HH` bytes
+ * are decoded once and malformed escapes remain literal. Git preserves `%00`
+ * rather than placing a NUL in its line protocol, so keep that escape intact;
+ * the separator validation below rejects decoded CR/LF before IPC. */
+const decodeGitCredentialPath = (value: string): string => {
+  const bytes: number[] = [];
+  for (let index = 0; index < value.length; ) {
+    const escape = value.slice(index, index + 3);
+    if (/^%[0-9a-f]{2}$/i.test(escape) && escape.toLowerCase() !== "%00") {
+      bytes.push(Number.parseInt(escape.slice(1), 16));
+      index += 3;
+      continue;
+    }
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined) break;
+    const character = String.fromCodePoint(codePoint);
+    bytes.push(...utf8Encoder.encode(character));
+    index += character.length;
+  }
+  // Git removes trailing path separators after URL decoding but preserves an
+  // encoded leading slash (for example `%2Forg` becomes `/org`).
+  return utf8Decoder.decode(Uint8Array.from(bytes)).replace(/\/+$/, "");
+};
 
 const hasCredentialProtocolSeparator = (value: string | null): boolean =>
   value !== null && /[\r\n\0]/.test(value);
@@ -203,6 +233,7 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
     valid: false,
     host: null,
     credentialHost: null,
+    credentialPath: null,
     path: null,
     user: null,
     ssh: false,
@@ -214,11 +245,19 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
 
   let host: string | null = null;
   let credentialHost: string | null = null;
+  let credentialPath: string | null = null;
   let path: string | null = null;
   let ssh = false;
   let m: RegExpMatchArray | null;
-  if ((m = url.match(/^https?:\/\/([^/\s]+)\/(.+?)(?:\.git)?\/?$/i))) {
-    [, host, path] = m;
+  if ((m = url.match(/^https?:\/\/([^/\s]+)\/(.+)$/i))) {
+    const [, httpsHost, rawPath] = m;
+    host = httpsHost;
+    // Git removes literal leading separators before decoding, then strips all
+    // trailing separators after decoding. Keep the repo/display path's historic
+    // `.git` normalization separate from this transport credential value.
+    const pathWithoutOuterSlashes = rawPath.replace(/^\/+|\/+$/g, "");
+    credentialPath = decodeGitCredentialPath(rawPath.replace(/^\/+/, ""));
+    path = pathWithoutOuterSlashes.replace(/\.git$/i, "");
   } else if ((m = url.match(/^ssh:\/\/(?:[^@/\s]+@)?(\[[^\]\s]+\]|[^:/\s]+)(?::(\d+))?\/(.+?)(?:\.git)?\/?$/i))) {
     const [, sshHost, sshPort, sshPath] = m;
     host = sshHost;
@@ -232,7 +271,12 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   }
   // Require a host and at least an owner/repo (two path segments).
   if (!host || !path || path.split("/").filter(Boolean).length < 2) return miss;
-  if (hasCredentialProtocolSeparator(host) || hasCredentialProtocolSeparator(path)) return miss;
+  if (
+    hasCredentialProtocolSeparator(host) ||
+    hasCredentialProtocolSeparator(path) ||
+    hasCredentialProtocolSeparator(credentialPath)
+  )
+    return miss;
 
   // Split off username-only https userinfo (https://user@host/…) — that's the
   // account selector git hands to credential helpers. A colon before the final
@@ -261,7 +305,17 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
     host = host.split(":")[0] || host;
   }
   host = host.replace(/^www\./, "").toLowerCase();
-  return { empty: false, valid: true, host, credentialHost, path, user, ssh, provider: providerForHost(host) };
+  return {
+    empty: false,
+    valid: true,
+    host,
+    credentialHost,
+    credentialPath,
+    path,
+    user,
+    ssh,
+    provider: providerForHost(host),
+  };
 };
 
 /** Rewrite an https remote URL's userinfo — the git-native way to pin which

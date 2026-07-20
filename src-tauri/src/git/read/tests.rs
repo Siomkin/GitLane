@@ -104,6 +104,31 @@ fn branch_info_reports_git_push_remote_precedence() {
 }
 
 #[test]
+fn branch_info_preserves_local_upstream_and_push_remote() {
+    let dir = TempRepo::new("local-push-remote");
+    let repo = Repository::init(dir.path()).unwrap();
+    let base = commit(&repo, "refs/heads/main", "base", &[]);
+    repo.reference("refs/heads/shared", base, true, "seed local upstream")
+        .unwrap();
+    repo.set_head("refs/heads/main").unwrap();
+
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("branch.main.remote", ".").unwrap();
+    cfg.set_str("branch.main.merge", "refs/heads/shared")
+        .unwrap();
+    drop(cfg);
+
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == "local" && branch.name == "main")
+        .unwrap();
+    assert_eq!(branch.upstream.as_deref(), Some("shared"));
+    assert_eq!(branch.upstream_remote.as_deref(), Some("."));
+    assert_eq!(branch.push_remote.as_deref(), Some("."));
+}
+
+#[test]
 fn branch_info_redacts_credentials_from_url_valued_remote_config() {
     let dir = TempRepo::new("branch-config-secret-redaction");
     let repo = Repository::init(dir.path()).unwrap();

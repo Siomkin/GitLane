@@ -228,6 +228,35 @@ describe("AccountsPanel", () => {
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 
+  it("keeps distinct path-scoped Azure credentials independently forgettable", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === "reject_https_credential" ? { helper: "manager-core" } : []),
+    );
+    useAccounts.setState({ accounts: [], forgeAuth: [azureMissing], providerTokens: {} });
+    useRepo.setState({
+      remotes: [
+        remote("https://alex@dev.azure.com/one/Project/_git/repo.git", "azure-one"),
+        remote("https://alex@dev.azure.com/two/My%20Project/_git/repo.git", "azure-two"),
+      ],
+    });
+    render(<AccountsPanel />);
+
+    expect(screen.getAllByText("@alex")).toHaveLength(2);
+    expect(screen.getByText(/azure-one · dev\.azure\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/azure-two · dev\.azure\.com/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Forget" })[1]);
+    useUi.getState().confirm?.onConfirm();
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("reject_https_credential", {
+        credentialHost: "dev.azure.com",
+        path: "two/My Project/_git/repo.git",
+        username: "alex",
+      }),
+    );
+  });
+
   it("updates a repo transport credential from the GCM/helper row", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "approve_https_credential") return Promise.resolve({ username: "SiomkinAlexander", helper: "manager-core" });
@@ -249,7 +278,7 @@ describe("AccountsPanel", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
         credentialHost: "bitbucket.org",
-        path: "darang/gitlanebucket",
+        path: null,
         username: "SiomkinAlexander",
         password: "new-secret",
       }),
@@ -307,7 +336,7 @@ describe("AccountsPanel", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("reject_https_credential", {
         credentialHost: "bitbucket.org",
-        path: "darang/gitlanebucket",
+        path: null,
         username: "SiomkinAlexander",
       }),
     );

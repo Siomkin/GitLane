@@ -979,9 +979,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       return false;
     }
     try {
-      // Azure Repos scopes credentials by org (dev.azure.com/{org}); other
-      // providers keep the remote's own path scope.
-      const scopePath = credentialScopePath(info) ?? info.path;
+      // Azure Repos uses the exact URL path with credential.useHttpPath=true;
+      // other providers use Git's normal host-only matching.
+      const scopePath = credentialScopePath(info);
       await api.approveHttpsCredential(info.credentialHost, scopePath, clean, password);
       // The captured repo's remote, not the then-current one (GL-167).
       await api.setRemoteUsername(ctx.path, remote, clean);
@@ -1329,9 +1329,38 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     });
     const tokenForHost = pickProviderTokenForHost(get().providerTokens, credentialHost);
 
+    // `saveHttpsCredential` records the non-secret scope that was approved.
+    // A non-Azure advanced path save needs the same one-invocation
+    // `credential.useHttpPath=true` override as Azure, otherwise subsequent git
+    // commands omit the path and cannot retrieve that helper entry. Match the
+    // exact Git-decoded path, authority, and (when the URL pins one) username so
+    // one path-scoped credential never changes lookup semantics for a different
+    // account or repository on the same host.
+    const markerProvider = forgeAuthProviderFor(info.provider);
+    const savedCredential = markerProvider ? readForgeCredentials()[markerProvider] : undefined;
+    const usesSavedCredentialPath =
+      savedCredential?.path != null &&
+      savedCredential.path !== "" &&
+      info.credentialPath === savedCredential.path &&
+      savedCredential.credentialHost.trim().toLowerCase() === credentialHost.trim().toLowerCase() &&
+      (!info.user || savedCredential.username.toLowerCase() === info.user.toLowerCase());
+    const useHttpPath = info.provider === "azure" || usesSavedCredentialPath;
+    const helperAuth = (): GitTransportAuthRef => ({
+      mode: "credentialHelper",
+      provider,
+      host,
+      credentialHost,
+      username: info.user,
+      ...(useHttpPath ? { useHttpPath: true } : {}),
+    });
+
     // The HTTPS account mode selects the identity by the URL username; without
-    // one, a keychain token or glab (both host-scoped) authenticate.
-    if (!info.user) return tokenForHost ? tokenRef(tokenForHost) : glabAuth;
+    // one, a keychain token or glab (both host-scoped) authenticate. A
+    // path-scoped helper is also explicit auth: return its ref even for a bare
+    // URL so Git receives the path and can let the helper supply the username.
+    if (!info.user) {
+      return tokenForHost ? tokenRef(tokenForHost) : (glabAuth ?? (useHttpPath ? helperAuth() : null));
+    }
 
     const account = get().accounts.find(
       (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === info.user!.toLowerCase(),
@@ -1352,15 +1381,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const token = get().providerTokens[providerTokenKey(credentialHost, info.user)] ?? tokenForHost;
     if (token) return tokenRef(token);
 
-    return (
-      glabAuth ?? {
-        mode: "credentialHelper",
-        provider,
-        host,
-        credentialHost,
-        username: info.user,
-      }
-    );
+    return glabAuth ?? helperAuth();
   },
 
   // GitLab: when glab is signed in, inject `glab auth git-credential` per

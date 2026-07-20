@@ -8,7 +8,11 @@
 // No React, no IPC; unit-tested for parity in cloneAuth.test.ts.
 
 import type { GitTransportAuthRef, GitTransportProvider } from "@/lib/api";
-import { transportProviderForRemoteProvider, type RemoteUrlInfo } from "@/lib/remotes";
+import {
+  credentialScopePath,
+  transportProviderForRemoteProvider,
+  type RemoteUrlInfo,
+} from "@/lib/remotes";
 
 /** The slice of a gh account the resolution needs (store/accounts `Account`). */
 export interface CloneAuthAccount {
@@ -71,6 +75,14 @@ export function planCloneAuth(inputs: CloneAuthInputs): CloneAuthPlan {
   if (!httpsClone || !host || !credentialHost) return { auth: null, method: "system", login: null };
 
   const provider = cloneProviderFor(remoteInfo);
+  const helperAuth = (helperUsername: string | null): GitTransportAuthRef => ({
+    mode: "credentialHelper",
+    provider,
+    host,
+    credentialHost,
+    username: helperUsername,
+    ...(credentialScopePath(remoteInfo) !== null ? { useHttpPath: true } : {}),
+  });
   if (selectedAccount) {
     return {
       auth: {
@@ -88,7 +100,7 @@ export function planCloneAuth(inputs: CloneAuthInputs): CloneAuthPlan {
   if (password) {
     // An explicitly entered token wins — saved to the git helper, then used.
     return {
-      auth: { mode: "credentialHelper", provider, host, credentialHost, username: username || null },
+      auth: helperAuth(username || null),
       method: "enteredToken",
       login: username || null,
     };
@@ -112,7 +124,7 @@ export function planCloneAuth(inputs: CloneAuthInputs): CloneAuthPlan {
   }
   if (username) {
     return {
-      auth: { mode: "credentialHelper", provider, host, credentialHost, username },
+      auth: helperAuth(username),
       method: "system",
       login: username,
     };

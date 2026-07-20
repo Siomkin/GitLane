@@ -253,18 +253,20 @@ pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
 /// resolved changes stay in the working tree — that's the whole point of the
 /// carry. Refuses while any unmerged path remains (the workspace also gates this).
 fn continue_carry(repo: &str) -> Result<String, String> {
+    let _stash_guard = super::stashes::lock_stash_writes()?;
     if !run_git(repo, &["ls-files", "-u"])?.trim().is_empty() {
         return Err("Resolve and stage the remaining conflicts before finishing the carry.".into());
     }
     let git_dir = worktree_git_dir(repo)?;
-    if let Some(marker) = handoff::read_marker(&git_dir) {
-        for oid in marker
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-        {
-            drop_stash_by_oid(repo, oid)?;
-        }
+    let marker = handoff::read_marker(&git_dir).ok_or_else(|| {
+        "This carry operation is no longer active. Refresh and try again.".to_string()
+    })?;
+    for oid in marker
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
+        drop_stash_by_oid(repo, oid)?;
     }
     handoff::clear_marker(&git_dir);
     Ok("Carried changes applied".to_string())
@@ -275,7 +277,11 @@ fn continue_carry(repo: &str) -> Result<String, String> {
 /// (they were recorded in the marker), so the carried work is preserved and can
 /// be re-applied — nothing is dropped here.
 fn abort_carry(repo: &str) -> Result<String, String> {
+    let _stash_guard = super::stashes::lock_stash_writes()?;
     let git_dir = worktree_git_dir(repo)?;
+    if handoff::read_marker(&git_dir).is_none() {
+        return Err("This carry operation is no longer active. Refresh and try again.".to_string());
+    }
     run_git(repo, &["reset", "--hard", "HEAD"])?;
     handoff::clear_marker(&git_dir);
     Ok("Discarded the carry — your changes are preserved in a stash".to_string())

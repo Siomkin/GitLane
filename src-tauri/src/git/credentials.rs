@@ -137,11 +137,12 @@ pub fn approve_https_credential(
         );
     }
 
+    let use_http_path = path.is_some_and(|value| !value.is_empty());
     let input = credential_input(credential_host, path, username, Some(password));
-    run_git_credential("approve", &input)?;
+    run_git_credential("approve", &input, use_http_path)?;
 
     let verify = credential_input(credential_host, path, username, None);
-    let filled = run_git_credential("fill", &verify)?;
+    let filled = run_git_credential("fill", &verify, use_http_path)?;
     let has_username = username.is_empty()
         || filled.lines().any(|line| {
             line.strip_prefix("username=")
@@ -189,8 +190,9 @@ pub fn reject_https_credential(
     }
 
     // No password: `reject` scopes by protocol/host/[path]/[username] only.
+    let use_http_path = path.is_some_and(|value| !value.is_empty());
     let input = credential_input(credential_host, path, username, None);
-    run_git_credential("reject", &input)?;
+    run_git_credential("reject", &input, use_http_path)?;
 
     Ok(CredentialForgetResult {
         helper: status.helpers.join(", "),
@@ -218,9 +220,12 @@ fn credential_input(
         input.push_str(username.trim());
         input.push('\n');
     }
-    if let Some(path) = path.map(str::trim).filter(|value| !value.is_empty()) {
+    // `path` is already the exact context Git derived from the remote URL. Do
+    // not trim whitespace or leading slashes: both can result from one-pass URL
+    // decoding and are significant when `credential.useHttpPath=true`.
+    if let Some(path) = path.filter(|value| !value.is_empty()) {
         input.push_str("path=");
-        input.push_str(path.trim_start_matches('/'));
+        input.push_str(path);
         input.push('\n');
     }
     if let Some(password) = password {
@@ -258,8 +263,11 @@ fn git_config_get_regexp(pattern: &str) -> Result<String, String> {
     }
 }
 
-fn run_git_credential(op: &str, input: &str) -> Result<String, String> {
+fn run_git_credential(op: &str, input: &str, use_http_path: bool) -> Result<String, String> {
     let mut cmd = Command::new("git");
+    if use_http_path {
+        cmd.args(["-c", "credential.useHttpPath=true"]);
+    }
     cmd.args(["credential", op])
         .env("PATH", crate::shell::path())
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -349,18 +357,29 @@ mod tests {
     }
 
     #[test]
-    fn credential_input_preserves_host_path_and_secret() {
+    fn credential_input_preserves_exact_git_path_and_secret() {
         let input = credential_input(
             "dev.azure.com",
-            Some("org/project/_git/repo"),
+            Some("org/My Project/_git/repo.git"),
             "alice",
             Some("secret"),
         );
         assert!(input.contains("protocol=https\n"));
         assert!(input.contains("host=dev.azure.com\n"));
-        assert!(input.contains("path=org/project/_git/repo\n"));
+        assert!(input.contains("path=org/My Project/_git/repo.git\n"));
         assert!(input.contains("username=alice\n"));
         assert!(input.contains("password=secret\n"));
+    }
+
+    #[test]
+    fn credential_input_does_not_normalize_path_significant_bytes() {
+        let input = credential_input(
+            "dev.azure.com",
+            Some("/org/project/_git/repo.git "),
+            "alice",
+            None,
+        );
+        assert!(input.contains("path=/org/project/_git/repo.git \n"));
     }
 
     #[test]
