@@ -28,6 +28,12 @@ describe("commitNodeIdentity", () => {
     ["Codex", "person@example.com", "codex"],
     ["Pair", "cursoragent@cursor.com", "cursor"],
     ["GitHub Copilot[bot]", "198982749+Copilot@users.noreply.github.com", "copilot"],
+    // Name and email are exercised independently, so a regression in either
+    // Dependabot matcher fails a test instead of hiding behind the other.
+    ["dependabot[bot]", "person@example.com", "dependabot"],
+    ["Deps Updater", "49699333+dependabot[bot]@users.noreply.github.com", "dependabot"],
+    ["dependabot-preview[bot]", "support@dependabot.com", "dependabot"],
+    ["Deps Updater", "27856297+dependabot-preview[bot]@users.noreply.github.com", "dependabot"],
   ])("detects %s metadata as %s", (authorName, authorEmail, agentId) => {
     expect(identity(authorName, authorEmail)).toMatchObject({
       kind: "agent",
@@ -46,6 +52,7 @@ describe("commitNodeIdentity", () => {
     ["Claude Dupont", "claude.dupont@example.com"],
     ["Cursor Malovic", "cursor.malovic@example.com"],
     ["Codex Rivera", "codex.rivera@example.com"],
+    ["Dependabot Smith", "dependabot.smith@example.com"],
   ])("treats a human whose name merely contains an agent word as human: %s", (name, email) => {
     expect(identity(name, email).kind).toBe("human");
   });

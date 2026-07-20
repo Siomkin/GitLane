@@ -5,6 +5,7 @@ import claudeIconUrl from "@/assets/commit-agents/claude.svg";
 import codexIconUrl from "@/assets/commit-agents/codex.svg";
 import cursorIconUrl from "@/assets/commit-agents/cursor.svg";
 import copilotIconUrl from "@/assets/commit-agents/copilot.svg";
+import dependabotIconUrl from "@/assets/commit-agents/dependabot.svg";
 
 interface CommitAgentPattern {
   name?: RegExp;
@@ -75,6 +76,22 @@ export const KNOWN_COMMIT_AGENTS = [
       {
         email:
           /^(?:\d+\+)?(?:github-)?copilot(?:\[bot\])?@(?:github\.com|users\.noreply\.github\.com)$/i,
+      },
+    ],
+  },
+  {
+    id: "dependabot",
+    label: "Dependabot",
+    // Dependabot has no standalone mark in Simple Icons, and it is a GitHub
+    // product — the GitHub glyph on Dependabot's blue reads correctly and stays
+    // distinct from Copilot's near-black.
+    iconUrl: dependabotIconUrl,
+    color: "#0366d6",
+    patterns: [
+      { name: /^dependabot(?:-preview)?(?:\[bot\])?$/i },
+      {
+        email:
+          /^(?:\d+\+)?dependabot(?:-preview)?(?:\[bot\])?@(?:github\.com|users\.noreply\.github\.com)$/i,
       },
     ],
   },
