@@ -34,6 +34,12 @@ describe("validateCloneUrl", () => {
     expect(validateCloneUrl("ftp://example.com/x").state).toBe("invalid");
   });
 
+  it("rejects password-bearing HTTPS URLs but keeps username-only selectors", () => {
+    expect(validateCloneUrl("https://alice@github.com/owner/repo.git").state).toBe("valid");
+    expect(validateCloneUrl("https://alice:secret@github.com/owner/repo.git").state).toBe("invalid");
+    expect(validateCloneUrl("https://token:p@ss@git.example.test/owner/repo.git").state).toBe("invalid");
+  });
+
   it("rejects URLs whose derived folder name would escape the parent", () => {
     // Otherwise-wellformed URLs whose leaf is a dot-segment must not be cloneable.
     expect(validateCloneUrl("https://github.com/owner/.").state).toBe("invalid");

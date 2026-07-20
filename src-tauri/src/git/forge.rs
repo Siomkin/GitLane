@@ -25,6 +25,15 @@ pub enum ForgeKind {
     Forgejo,
 }
 
+/// Authority information carried by a repository remote. HTTP(S) URLs name the
+/// exact API authority, including an explicit port. SSH/scp/git URLs name only a
+/// transport host; their port (when present) is not an HTTPS API port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RemoteApiAuthority {
+    Http(String),
+    TransportHost(String),
+}
+
 impl ForgeKind {
     pub fn label(&self) -> &'static str {
         match self {
@@ -162,20 +171,52 @@ pub fn default_remote(path: &str) -> Option<String> {
     default_remote_name(&repo)
 }
 
-/// The exact credential authority (`host[:port]`) for a named remote's push URL
-/// (falling back to fetch URL). This preserves the port because Git credential
-/// helpers scope by protocol + host/port + username; display/provider matching
-/// must normalize separately when it wants a portless host.
-pub fn remote_credential_host_for(path: &str, remote: &str) -> Option<String> {
+/// Which configured URL a git transport operation contacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteTransportDirection {
+    Fetch,
+    Push,
+}
+
+/// The exact credential authority (`host[:port]`) for the URL a named remote
+/// uses in `direction`. Fetch never consults a separate push URL; push prefers
+/// it and falls back to the fetch URL, matching git's own remote semantics.
+/// Ports are preserved because credential helpers scope by protocol +
+/// host/port + username; display/provider matching must normalize separately
+/// when it wants a portless host.
+pub fn remote_credential_host_for(
+    path: &str,
+    remote: &str,
+    direction: RemoteTransportDirection,
+) -> Option<String> {
     let repo = Repository::discover(path).ok()?;
     let remote = repo.find_remote(remote).ok()?;
-    let urls = [
-        remote.pushurl().ok().flatten().map(str::to_string),
-        remote.url().ok().map(str::to_string),
-    ];
+    let urls = match direction {
+        RemoteTransportDirection::Fetch => [remote.url().ok().map(str::to_string), None],
+        RemoteTransportDirection::Push => [
+            remote.pushurl().ok().flatten().map(str::to_string),
+            remote.url().ok().map(str::to_string),
+        ],
+    };
     urls.into_iter()
         .flatten()
         .find_map(|url| credential_host_for_url(&url))
+}
+
+/// The authority of a URL body (everything after `scheme://`), with userinfo
+/// stripped.
+///
+/// The authority ends at the first `/`, `?`, **or** `#`. Terminating on `/`
+/// alone lets a query or fragment smuggle a different host past every caller:
+/// `https://real.example.test?@github.com/o/r` would parse as `github.com`
+/// while git actually contacts `real.example.test`. Since this feeds the
+/// transport-auth host gate, that differential decides which account's
+/// credential is released.
+fn authority_of(rest: &str) -> Option<&str> {
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    // The final `@` terminates userinfo, matching the redaction and remote-URL
+    // guards elsewhere.
+    rest[..end].rsplit('@').next()
 }
 
 /// The exact credential authority (`host[:port]`) from an HTTPS/SSH/scp remote
@@ -188,7 +229,7 @@ pub fn credential_host_for_url(url: &str) -> Option<String> {
         .or_else(|| trimmed.strip_prefix("ssh://"))
         .or_else(|| trimmed.strip_prefix("git://"))
     {
-        let authority = rest.split('/').next()?.split('@').next_back()?;
+        let authority = authority_of(rest)?;
         return Some(authority.trim().trim_end_matches('/').to_ascii_lowercase());
     }
 
@@ -247,6 +288,158 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
             };
             if let Some(kind) = classify_host(&host) {
                 return Some(RemoteForge { kind, host });
+            }
+        }
+    }
+    None
+}
+
+/// Resolve the GitHub remote's `(api_authority, owner/repo)` for `path` without
+/// invoking `gh`, reading credentials, or making a network request. Known
+/// GitHub remotes win; when no configured remote has a recognised forge host,
+/// the first parseable remote is retained as a potential GitHub Enterprise
+/// Server repository for the gh provider to validate against a bound account.
+///
+/// HTTP(S) authorities preserve an explicit port. SSH/scp/git remotes return a
+/// bare transport hostname because an SSH port is not an HTTPS API port.
+pub fn github_project(path: &str) -> Option<(String, String)> {
+    let repo = Repository::discover(path).ok()?;
+    // `gh repo set-default` is the user's explicit answer to "which repository
+    // do this checkout's pull requests belong to". It matters most in a fork
+    // clone, where `origin` is the fork but PRs live on the parent: picking the
+    // first GitHub remote would silently retarget every PR read *and write* to
+    // the fork. gh records the choice in git config, so honour it without
+    // spawning gh.
+    if let Some(resolved) = gh_resolved_project(&repo) {
+        return Some(resolved);
+    }
+    let default = default_remote_name(&repo);
+    let mut unknown = None;
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            let Some(host) = remote_host(url) else {
+                continue;
+            };
+            let Some(project) = remote_path(url) else {
+                continue;
+            };
+            let authority = api_host_for(url).unwrap_or_else(|| host.clone());
+            match classify_host(&host) {
+                Some(ForgeKind::GitHub) => return Some((authority, project)),
+                None if unknown.is_none() => unknown = Some((authority, project)),
+                _ => {}
+            }
+        }
+    }
+    unknown
+}
+
+/// Whether `value` is exactly `OWNER/REPO` — two non-empty, non-dot-segment
+/// components. `gh_provider` later splits on the first `/`, so an unvalidated
+/// `a/b/c` would silently become the repo name `b/c`.
+fn is_owner_repo(value: &str) -> bool {
+    let mut parts = value.split('/');
+    let (Some(owner), Some(repo), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    [owner, repo]
+        .iter()
+        .all(|part| !part.is_empty() && *part != "." && *part != "..")
+}
+
+/// The repository `gh repo set-default` bound this checkout to, if any.
+///
+/// gh writes `remote.<name>.gh-resolved` into the repo's git config with either
+/// `base` (that remote *is* the base repository) or an explicit `OWNER/REPO`
+/// (the base lives elsewhere — the fork-clone case). The API authority always
+/// comes from the annotated remote's own URL, so a self-hosted host and port
+/// survive either form.
+fn gh_resolved_project(repo: &Repository) -> Option<(String, String)> {
+    let config = repo.config().ok()?;
+    for name in ordered_remote_names(repo, default_remote_name(repo).as_deref()) {
+        let Ok(resolved) = config.get_string(&format!("remote.{name}.gh-resolved")) else {
+            continue;
+        };
+        let resolved = resolved.trim();
+        if resolved.is_empty() {
+            continue;
+        }
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        let Ok(url) = remote.url() else {
+            continue;
+        };
+        // `continue`, not `?`: one unparseable annotated remote must not hide a
+        // valid `gh-resolved` on a later one.
+        let Some(host) = remote_host(url) else {
+            continue;
+        };
+        // Only honour the annotation on a remote gh could plausibly own —
+        // GitHub, or an unrecognised host that may be GitHub Enterprise (the
+        // same fallback `github_project` itself uses). A `gh-resolved` key
+        // planted on a GitLab/Bitbucket remote must not redirect PR targeting.
+        if !matches!(classify_host(&host), Some(ForgeKind::GitHub) | None) {
+            continue;
+        }
+        let authority = api_host_for(url).unwrap_or(host);
+        // `base` means this remote's own project; anything else is an explicit
+        // `OWNER/REPO` pointing at a different repository on the same host.
+        let project = if resolved.eq_ignore_ascii_case("base") {
+            match remote_path(url) {
+                Some(path) => path,
+                None => continue,
+            }
+        } else if is_owner_repo(resolved) {
+            resolved.to_string()
+        } else {
+            continue;
+        };
+        return Some((authority, project));
+    }
+    None
+}
+
+/// Find the remote authority that produced a provider-resolved repository.
+/// This lets the PR service distinguish an exact HTTP(S) API authority from an
+/// SSH/scp transport hostname before it resolves any selected-account secret.
+pub(crate) fn remote_api_authority_for_project(
+    path: &str,
+    repository_host: &str,
+    project: &str,
+) -> Option<RemoteApiAuthority> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    let repository_hostname = authority_hostname(repository_host);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            if remote_path(url).as_deref() != Some(project) {
+                continue;
+            }
+            let Some(host) = remote_host(url) else {
+                continue;
+            };
+            if !host.eq_ignore_ascii_case(repository_hostname) {
+                continue;
+            }
+            if let Some(authority) = api_host_for(url) {
+                if authority.eq_ignore_ascii_case(repository_host) {
+                    return Some(RemoteApiAuthority::Http(authority));
+                }
+            } else {
+                return Some(RemoteApiAuthority::TransportHost(host));
             }
         }
     }
@@ -342,22 +535,54 @@ fn api_host_for(url: &str) -> Option<String> {
     }
 }
 
+fn authority_hostname(authority: &str) -> &str {
+    match authority.rsplit_once(':') {
+        Some((host, port))
+            if !host.is_empty()
+                && !port.is_empty()
+                && port.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            host
+        }
+        _ => authority,
+    }
+}
+
+/// Whether a hostname carries `name` as a whole DNS label.
+///
+/// Self-hosted forges are named after their software (`gitlab.example.com`,
+/// `gitlab-ee.corp.test`), so detection cannot anchor to the vendor domain the
+/// way `github.com` does. Matching a bare substring is too loose though — it
+/// classifies `notgitlab.com` and `evil-bitbucket.attacker.test` as trusted
+/// forges. Requiring a whole label (optionally with a `name-` prefix, for
+/// `gitlab-ee`) keeps genuine self-hosted installs while rejecting hostnames
+/// that merely contain the word.
+///
+/// A host that legitimately *is* named after the forge (`gitlab.evil.test`) is
+/// still classified as one; hostname shape alone cannot distinguish that, which
+/// is why classification routes providers and error text but never authorises a
+/// credential on its own — that gate is the per-host account binding.
+fn has_host_label(host: &str, name: &str) -> bool {
+    host.split('.')
+        .any(|label| label == name || label.strip_prefix(name).is_some_and(|r| r.starts_with('-')))
+}
+
 fn classify_host(host: &str) -> Option<ForgeKind> {
     let host = normalize_host(host);
     if host == "github.com" || host.ends_with(".github.com") {
         Some(ForgeKind::GitHub)
-    } else if host == "gitlab.com" || host.contains("gitlab") {
+    } else if host == "gitlab.com" || has_host_label(&host, "gitlab") {
         Some(ForgeKind::GitLab)
-    } else if host == "bitbucket.org" || host.contains("bitbucket") {
+    } else if host == "bitbucket.org" || has_host_label(&host, "bitbucket") {
         Some(ForgeKind::Bitbucket)
     } else if host == "dev.azure.com"
         || host == "ssh.dev.azure.com"
         || host.ends_with(".visualstudio.com")
     {
         Some(ForgeKind::AzureDevOps)
-    } else if host == "codeberg.org" || host.contains("forgejo") {
+    } else if host == "codeberg.org" || has_host_label(&host, "forgejo") {
         Some(ForgeKind::Forgejo)
-    } else if host.contains("gitea") {
+    } else if has_host_label(&host, "gitea") {
         Some(ForgeKind::Gitea)
     } else {
         None
@@ -372,7 +597,7 @@ fn remote_host(url: &str) -> Option<String> {
         .or_else(|| trimmed.strip_prefix("ssh://"))
         .or_else(|| trimmed.strip_prefix("git://"))
     {
-        let authority = rest.split('/').next()?.split('@').next_back()?;
+        let authority = authority_of(rest)?;
         return Some(normalize_host(
             authority.split(':').next().unwrap_or(authority),
         ));
@@ -441,6 +666,47 @@ mod tests {
         );
         assert_eq!(classify_host("codeberg.org"), Some(ForgeKind::Forgejo));
         assert_eq!(classify_host("gitea.company.test"), Some(ForgeKind::Gitea));
+        // Self-hosted installs keep working, including a `-suffix` variant.
+        assert_eq!(
+            classify_host("gitlab-ee.corp.test"),
+            Some(ForgeKind::GitLab)
+        );
+    }
+
+    #[test]
+    fn classification_requires_a_whole_host_label() {
+        // A hostname that merely *contains* the forge name is not that forge.
+        for host in [
+            "notgitlab.com",
+            "evil-bitbucket.attacker.test",
+            "mygitea.example.com",
+            "gitlabber.io",
+        ] {
+            assert_eq!(classify_host(host), None, "{host} must not be classified");
+        }
+    }
+
+    #[test]
+    fn authority_parsing_is_not_fooled_by_query_or_fragment() {
+        // Only `/` used to end the authority, so a `?`/`#` could name a
+        // different host than the one git actually contacts — and this parser
+        // decides which account's credential is released.
+        for url in [
+            "https://real.example.test?@github.com/o/r.git",
+            "https://real.example.test#@github.com/o/r.git",
+        ] {
+            assert_eq!(
+                credential_host_for_url(url).as_deref(),
+                Some("real.example.test"),
+                "{url} must resolve to the host git contacts",
+            );
+            assert_eq!(remote_host(url).as_deref(), Some("real.example.test"));
+        }
+        // Userinfo before a genuine path separator still resolves normally.
+        assert_eq!(
+            credential_host_for_url("https://alice@ghe.example.test:8443/o/r.git").as_deref(),
+            Some("ghe.example.test:8443")
+        );
     }
 
     #[test]
@@ -549,5 +815,103 @@ mod tests {
         // so the provider reports a clear resolution error rather than a bad path.
         let bare = TempRepo::init("bb-bare", "https://bitbucket.org/loneslug.git");
         assert_eq!(bitbucket_repo(bare.0.to_str().unwrap()), None);
+    }
+
+    /// Add a second remote and record a `gh repo set-default` choice on it.
+    fn set_default_remote(dir: &std::path::Path, name: &str, url: &str, resolved: &str) {
+        let repo = Repository::open(dir).unwrap();
+        repo.remote(name, url).unwrap();
+        repo.config()
+            .unwrap()
+            .set_str(&format!("remote.{name}.gh-resolved"), resolved)
+            .unwrap();
+    }
+
+    #[test]
+    fn fork_clone_targets_the_gh_set_default_base_repository() {
+        // The classic fork layout: `origin` is your fork, `upstream` is the
+        // parent where the pull requests actually live.
+        let fork = TempRepo::init("gh-fork", "https://github.com/me/app.git");
+        set_default_remote(
+            &fork.0,
+            "upstream",
+            "https://github.com/other/app.git",
+            "base",
+        );
+        assert_eq!(
+            github_project(fork.0.to_str().unwrap()),
+            Some(("github.com".into(), "other/app".into())),
+            "PRs must target the set-default base repo, not the fork",
+        );
+    }
+
+    #[test]
+    fn gh_resolved_owner_repo_overrides_the_annotated_remote_path() {
+        // gh also records an explicit OWNER/REPO on the remote it resolved
+        // through; the authority still comes from that remote's own URL.
+        let repo = TempRepo::init(
+            "gh-resolved-explicit",
+            "https://ghe.example.test:8443/me/app.git",
+        );
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            opened
+                .config()
+                .unwrap()
+                .set_str("remote.origin.gh-resolved", "other/app")
+                .unwrap();
+        }
+        assert_eq!(
+            github_project(repo.0.to_str().unwrap()),
+            Some(("ghe.example.test:8443".into(), "other/app".into())),
+        );
+    }
+
+    #[test]
+    fn gh_resolved_is_ignored_on_a_non_github_remote() {
+        // A `gh-resolved` key planted on a GitLab remote (tampered .git/config)
+        // must not redirect PR targeting away from the real GitHub remote.
+        let repo = TempRepo::init("gh-resolved-gitlab", "https://github.com/me/app.git");
+        set_default_remote(
+            &repo.0,
+            "gl",
+            "https://gitlab.com/attacker/evil.git",
+            "attacker/evil",
+        );
+        assert_eq!(
+            github_project(repo.0.to_str().unwrap()),
+            Some(("github.com".into(), "me/app".into())),
+        );
+    }
+
+    #[test]
+    fn gh_resolved_rejects_malformed_owner_repo_shapes() {
+        for bad in ["a/b/c", "/repo", "owner/", "../evil", "owner/.."] {
+            let repo = TempRepo::init("gh-resolved-bad", "https://github.com/me/app.git");
+            {
+                let opened = Repository::open(&repo.0).unwrap();
+                opened
+                    .config()
+                    .unwrap()
+                    .set_str("remote.origin.gh-resolved", bad)
+                    .unwrap();
+            }
+            assert_eq!(
+                github_project(repo.0.to_str().unwrap()),
+                Some(("github.com".into(), "me/app".into())),
+                "{bad:?} must be ignored, falling back to the remote's own path",
+            );
+        }
+    }
+
+    #[test]
+    fn without_gh_resolved_the_default_remote_still_wins() {
+        // No set-default recorded → unchanged behaviour.
+        let repo = TempRepo::init("gh-no-resolved", "https://github.com/me/app.git");
+        set_default_remote(&repo.0, "upstream", "https://github.com/other/app.git", "");
+        assert_eq!(
+            github_project(repo.0.to_str().unwrap()),
+            Some(("github.com".into(), "me/app".into())),
+        );
     }
 }

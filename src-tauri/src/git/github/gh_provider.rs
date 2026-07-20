@@ -1,10 +1,10 @@
 //! `gh`-backed implementation of the internal GitHub provider contract.
 
+use crate::git::forge;
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommit, PullRequestDetail,
     PullRequestSummary, ReviewThread,
 };
-use crate::git::{forge, forge::ForgeKind};
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
 use super::service::GithubProvider;
@@ -32,7 +32,17 @@ impl GhProvider {
                     }
                 })
             })
-            .transpose()
+            .transpose()?
+            .map_or_else(
+                || {
+                    // Repository authority has already been validated by the
+                    // service at this point. Preserve the gh capability gate
+                    // for system-auth operations without resolving a secret.
+                    cli::ensure_supported()?;
+                    Ok(None)
+                },
+                |token| Ok(Some(token)),
+            )
     }
 
     fn map(operation: &'static str, result: Result<String, String>) -> Result<String, GithubError> {
@@ -52,37 +62,32 @@ impl GithubProvider for GhProvider {
     fn resolve_repository(
         &self,
         workdir: &str,
-        account: Option<&GithubAccountRef>,
+        _account: Option<&GithubAccountRef>,
     ) -> Result<GithubRepository, GithubError> {
-        let token = account
-            .map(|account| {
-                cli::token_for(account).map_err(|err| {
-                    match GithubError::from_command("repository token", err) {
-                        GithubError::CommandFailed(_) => GithubError::NotAuthenticated {
-                            host: account.host.clone(),
-                            account: Some(account.login.clone()),
-                        },
-                        other => other,
-                    }
-                })
-            })
-            .transpose()?;
-        cli::repo_identity(workdir, token.as_deref()).map_err(|err| {
-            let mapped = GithubError::from_command("repository resolution", err);
-            match mapped {
-                GithubError::CommandFailed(_) => {
-                    unsupported_forge(workdir).unwrap_or_else(|| GithubError::RepositoryNotFound {
-                        workdir: workdir.to_string(),
-                    })
-                }
-                other => other,
-            }
+        // Repository discovery is deliberately local and token-free. Calling
+        // `gh repo view` here would resolve the selected account token before
+        // the service had proved that the repository belongs to that account's
+        // authority, allowing a wrong GHES host/port to receive the token.
+        let (host, project) =
+            forge::github_project(workdir).ok_or_else(|| GithubError::RepositoryNotFound {
+                workdir: workdir.to_string(),
+            })?;
+        let (owner, name) = project
+            .split_once('/')
+            .filter(|(owner, name)| !owner.is_empty() && !name.is_empty() && !name.contains('/'))
+            .ok_or_else(|| GithubError::RepositoryNotFound {
+                workdir: workdir.to_string(),
+            })?;
+        Ok(GithubRepository {
+            host,
+            owner: owner.to_string(),
+            name: name.to_string(),
         })
     }
 
     fn list_prs(&self, ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
         let token = self.token_for_context(ctx, "list pull requests")?;
-        prs::list_prs(&ctx.workdir, token.as_deref())
+        prs::list_prs(&ctx.workdir, &ctx.repository, token.as_deref())
             .map_err(|err| GithubError::from_command("list pull requests", err))
     }
 
@@ -92,25 +97,25 @@ impl GithubProvider for GhProvider {
         number: u64,
     ) -> Result<PullRequestDetail, GithubError> {
         let token = self.token_for_context(ctx, "pull request detail")?;
-        prs::pr_detail(&ctx.workdir, number, token.as_deref())
+        prs::pr_detail(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request detail", err))
     }
 
     fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError> {
         let token = self.token_for_context(ctx, "pull request checks")?;
-        prs::pr_checks(&ctx.workdir, number, token.as_deref())
+        prs::pr_checks(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request checks", err))
     }
 
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCommit>, GithubError> {
         let token = self.token_for_context(ctx, "pull request commits")?;
-        prs::pr_commits(&ctx.workdir, number, token.as_deref())
+        prs::pr_commits(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request commits", err))
     }
 
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError> {
         let token = self.token_for_context(ctx, "pull request diff")?;
-        diff::pr_diff(&ctx.workdir, number, token.as_deref())
+        diff::pr_diff(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request diff", err))
     }
 
@@ -120,7 +125,7 @@ impl GithubProvider for GhProvider {
         number: u64,
     ) -> Result<Vec<ReviewThread>, GithubError> {
         let token = self.token_for_context(ctx, "pull request review threads")?;
-        threads::review_threads(&ctx.workdir, &ctx.repository.host, number, token.as_deref())
+        threads::review_threads(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request review threads", err))
     }
 
@@ -135,7 +140,7 @@ impl GithubProvider for GhProvider {
             "resolve review thread",
             threads::set_thread_resolved(
                 &ctx.workdir,
-                &ctx.repository.host,
+                &ctx.repository,
                 thread_id,
                 resolved,
                 token.as_deref(),
@@ -154,7 +159,7 @@ impl GithubProvider for GhProvider {
             "reply to review thread",
             threads::reply_thread(
                 &ctx.workdir,
-                &ctx.repository.host,
+                &ctx.repository,
                 thread_id,
                 body,
                 token.as_deref(),
@@ -174,6 +179,7 @@ impl GithubProvider for GhProvider {
             "merge pull request",
             prs::merge_pr(
                 &ctx.workdir,
+                &ctx.repository,
                 number,
                 method,
                 delete_branch,
@@ -191,7 +197,13 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "comment pull request")?;
         Self::map(
             "comment pull request",
-            prs::comment_pr(&ctx.workdir, number, body, token.as_deref()),
+            prs::comment_pr(
+                &ctx.workdir,
+                &ctx.repository,
+                number,
+                body,
+                token.as_deref(),
+            ),
         )
     }
 
@@ -205,7 +217,14 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "review pull request")?;
         Self::map(
             "review pull request",
-            prs::review_pr(&ctx.workdir, number, action, body, token.as_deref()),
+            prs::review_pr(
+                &ctx.workdir,
+                &ctx.repository,
+                number,
+                action,
+                body,
+                token.as_deref(),
+            ),
         )
     }
 
@@ -218,7 +237,13 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "set pull request state")?;
         Self::map(
             "set pull request state",
-            prs::set_pr_state(&ctx.workdir, number, action, token.as_deref()),
+            prs::set_pr_state(
+                &ctx.workdir,
+                &ctx.repository,
+                number,
+                action,
+                token.as_deref(),
+            ),
         )
     }
 
@@ -236,6 +261,7 @@ impl GithubProvider for GhProvider {
             "create pull request",
             prs::create_pr(
                 &ctx.workdir,
+                &ctx.repository,
                 base,
                 head,
                 title,
@@ -245,15 +271,4 @@ impl GithubProvider for GhProvider {
             ),
         )
     }
-}
-
-fn unsupported_forge(workdir: &str) -> Option<GithubError> {
-    let remote = forge::detect(workdir)?;
-    if remote.kind == ForgeKind::GitHub {
-        return None;
-    }
-    Some(GithubError::UnsupportedForge {
-        forge: remote.kind.label().to_string(),
-        host: remote.host,
-    })
 }

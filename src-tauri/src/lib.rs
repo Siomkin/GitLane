@@ -440,9 +440,18 @@ async fn continue_operation(
     kind: String,
     name: Option<String>,
     email: Option<String>,
+    identity: Option<git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::continue_operation(&path, &kind, name.as_deref(), email.as_deref())
+        git::write::continue_operation(
+            &path,
+            &kind,
+            name.as_deref(),
+            email.as_deref(),
+            identity.as_ref(),
+            identity_captured,
+        )
     })
     .await
 }
@@ -453,8 +462,25 @@ async fn abort_operation(path: String, kind: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn skip_operation(path: String, kind: String) -> Result<String, String> {
-    blocking(move || git::write::skip_operation(&path, &kind)).await
+async fn skip_operation(
+    path: String,
+    kind: String,
+    name: Option<String>,
+    email: Option<String>,
+    identity: Option<git::types::RepoIdentity>,
+    identity_captured: bool,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::skip_operation(
+            &path,
+            &kind,
+            name.as_deref(),
+            email.as_deref(),
+            identity.as_ref(),
+            identity_captured,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -496,7 +522,12 @@ async fn push_tag(
         let remote = remote
             .or_else(|| git::forge::default_remote(&path))
             .unwrap_or_else(|| "origin".to_string());
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        let cred = git::transport_auth::credential_for_remote(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::push_tag(&path, &name, &remote, &cred)
     })
     .await
@@ -518,7 +549,12 @@ async fn delete_remote_tag(
         let remote = remote
             .or_else(|| git::forge::default_remote(&path))
             .unwrap_or_else(|| "origin".to_string());
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        let cred = git::transport_auth::credential_for_remote(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::delete_remote_tag(&path, &remote, &name, &cred)
     })
     .await
@@ -543,7 +579,12 @@ async fn delete_remote_branch(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        let cred = git::transport_auth::credential_for_remote(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::delete_remote_branch(&path, &remote, &branch, &cred)
     })
     .await
@@ -562,7 +603,12 @@ async fn force_push(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        let cred = git::transport_auth::credential_for_remote(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::force_push(&path, &branch, &expected_oid, &cred)
     })
     .await
@@ -869,6 +915,8 @@ async fn commit(
     amend: bool,
     name: Option<String>,
     email: Option<String>,
+    identity: Option<git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::commit_expected(
@@ -880,6 +928,8 @@ async fn commit(
             amend,
             name.as_deref(),
             email.as_deref(),
+            identity.as_ref(),
+            identity_captured,
         )
     })
     .await
@@ -896,6 +946,8 @@ async fn squash_commits(
     description: String,
     name: Option<String>,
     email: Option<String>,
+    identity: Option<git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::squash_commits(
@@ -907,6 +959,8 @@ async fn squash_commits(
             &description,
             name.as_deref(),
             email.as_deref(),
+            identity.as_ref(),
+            identity_captured,
         )
     })
     .await
@@ -1008,19 +1062,24 @@ async fn pull(
         let cred = if remote == "." {
             git::transport_auth::TransportCredential::None
         } else {
-            git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?
+            git::transport_auth::credential_for_remote(
+                &path,
+                &remote,
+                git::transport_auth::RemoteTransportDirection::Fetch,
+                auth.as_ref(),
+            )?
         };
         git::write::pull_branch(&path, &branch, &expected_oid, &remote, &merge_ref, &cred)
     })
     .await
 }
 
-/// Fetch + prune every non-skipped remote, each authenticated as **its own**
-/// bound account (GL-129, git-native): the account lives in the remote URL's
-/// username; `remote_accounts` only says which remotes should get the gh
-/// credential helper wired in. Unlisted remotes fetch through the system
-/// credential helpers / SSH. These auth refs never carry tokens — `gh auth
-/// git-credential` serves git directly, selected by the URL username.
+/// Fetch + prune every non-skipped remote, each authenticated from its own
+/// **fetch URL** (GL-129, git-native): the account lives in that URL's username;
+/// `remote_accounts` only says which remotes need inline transport auth.
+/// Unlisted remotes fetch through the system credential helpers / SSH. These
+/// auth refs never carry tokens — helpers serve git directly, selected by the
+/// fetch URL authority and username.
 #[tauri::command]
 async fn fetch(
     path: String,
@@ -1029,8 +1088,12 @@ async fn fetch(
     blocking(move || {
         let mut cred_by_remote = std::collections::HashMap::new();
         for pair in remote_accounts.unwrap_or_default() {
-            match git::transport_auth::credential_for_remote(&path, &pair.remote, Some(&pair.auth))
-            {
+            match git::transport_auth::credential_for_remote(
+                &path,
+                &pair.remote,
+                git::transport_auth::RemoteTransportDirection::Fetch,
+                Some(&pair.auth),
+            ) {
                 Ok(git::transport_auth::TransportCredential::None) => {}
                 Ok(cred) => {
                     cred_by_remote.insert(pair.remote, cred);
@@ -1056,7 +1119,12 @@ async fn push_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::branch_push_remote(&path, &branch);
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        let cred = git::transport_auth::credential_for_remote(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::push_branch(&path, &branch, &expected_oid, &cred)
     })
     .await
@@ -1075,7 +1143,12 @@ async fn publish_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::publish_remote(&path, &upstream)?;
-        let cred = git::transport_auth::credential_for_remote(&path, &remote, auth.as_ref())?;
+        let cred = git::transport_auth::credential_for_remote(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::publish_branch(&path, &branch, &expected_oid, &upstream, &cred)
     })
     .await

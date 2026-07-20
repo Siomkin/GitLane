@@ -5,7 +5,8 @@
 //! place. Transport goes through [`super::cli::run_gh`] and response shapes
 //! through [`super::dto`]; the output domain types come from [`crate::git::types`].
 
-use super::cli::{repo_slug, run_gh};
+use super::cli::{repo_selector, run_gh};
+use super::domain::GithubRepository;
 use super::dto::*;
 use crate::git::types::{
     PrCheck, PrCommit, PrLabel, PrReview, PullRequestDetail, PullRequestSummary,
@@ -35,11 +36,47 @@ const PR_LIST_FIELDS: &str =
 const PR_VIEW_FIELDS: &str =
     "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,body,comments,files,mergeable,reviewRequests,reviews,assignees,labels,milestone,commits";
 
+/// Attach the validated repository target to a `gh pr` argument vector. Every
+/// PR command in this module goes through this helper so none can infer a host
+/// from the workdir's remote after the selected account token is loaded.
+fn target_repository<'a>(mut args: Vec<&'a str>, repository: &'a str) -> Vec<&'a str> {
+    args.push("--repo");
+    args.push(repository);
+    args
+}
+
+fn pr_commits_args<'a>(
+    host: &'a str,
+    query_field: &'a str,
+    owner_field: &'a str,
+    name_field: &'a str,
+    number_field: &'a str,
+) -> Vec<&'a str> {
+    vec![
+        "api",
+        "--hostname",
+        host,
+        "graphql",
+        "-f",
+        query_field,
+        "-f",
+        owner_field,
+        "-f",
+        name_field,
+        "-F",
+        number_field,
+    ]
+}
+
 /// List pull requests (all states, most recent 50) for the repo at `workdir`.
-pub fn list_prs(workdir: &str, token: Option<&str>) -> Result<Vec<PullRequestSummary>, String> {
-    let raw = run_gh(
-        workdir,
-        &[
+pub fn list_prs(
+    workdir: &str,
+    repository: &GithubRepository,
+    token: Option<&str>,
+) -> Result<Vec<PullRequestSummary>, String> {
+    let repo = repo_selector(repository);
+    let args = target_repository(
+        vec![
             "pr",
             "list",
             "--state",
@@ -49,8 +86,9 @@ pub fn list_prs(workdir: &str, token: Option<&str>) -> Result<Vec<PullRequestSum
             "--json",
             PR_LIST_FIELDS,
         ],
-        token,
-    )?;
+        &repo,
+    );
+    let raw = run_gh(workdir, &args, token)?;
     let parsed: Vec<GhPrSummary> = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse gh pr list output: {e}"))?;
     Ok(parsed
@@ -77,15 +115,17 @@ pub fn list_prs(workdir: &str, token: Option<&str>) -> Result<Vec<PullRequestSum
 /// fetched separately via [`pr_checks`] so this stays fast.
 pub fn pr_detail(
     workdir: &str,
+    repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
 ) -> Result<PullRequestDetail, String> {
     let num = number.to_string();
-    let raw = run_gh(
-        workdir,
-        &["pr", "view", num.as_str(), "--json", PR_VIEW_FIELDS],
-        token,
-    )?;
+    let repo = repo_selector(repository);
+    let args = target_repository(
+        vec!["pr", "view", num.as_str(), "--json", PR_VIEW_FIELDS],
+        &repo,
+    );
+    let raw = run_gh(workdir, &args, token)?;
     let p: GhPrDetail = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse gh pr view output: {e}"))?;
     Ok(PullRequestDetail {
@@ -143,30 +183,25 @@ pub fn pr_detail(
 /// inferred locally), so unsigned commits come back `verified: false`.
 pub fn pr_commits(
     workdir: &str,
+    repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
 ) -> Result<Vec<PrCommit>, String> {
-    let (owner, name) = repo_slug(workdir, token)?;
     let query_field = format!("query={PR_COMMITS_QUERY}");
-    let owner_field = format!("owner={owner}");
-    let name_field = format!("name={name}");
+    let owner_field = format!("owner={}", repository.owner);
+    let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
     let mut commits = Vec::new();
     let mut cursor: Option<String> = None;
     let mut more_pages = false;
     for _ in 0..MAX_COMMIT_PAGES {
-        let mut args = vec![
-            "api",
-            "graphql",
-            "-f",
+        let mut args = pr_commits_args(
+            &repository.host,
             &query_field,
-            "-f",
             &owner_field,
-            "-f",
             &name_field,
-            "-F",
             &number_field,
-        ];
+        );
         // Omitted on the first page so `$cursor` stays null (same as threads.rs).
         let cursor_field = cursor.as_ref().map(|c| format!("cursor={c}"));
         if let Some(f) = cursor_field.as_deref() {
@@ -209,13 +244,19 @@ pub fn pr_commits(
 
 /// Fetch just the CI/status checks for a PR (the slow `statusCheckRollup`
 /// field), loaded lazily when the Checks tab is opened.
-pub fn pr_checks(workdir: &str, number: u64, token: Option<&str>) -> Result<Vec<PrCheck>, String> {
+pub fn pr_checks(
+    workdir: &str,
+    repository: &GithubRepository,
+    number: u64,
+    token: Option<&str>,
+) -> Result<Vec<PrCheck>, String> {
     let num = number.to_string();
-    let raw = run_gh(
-        workdir,
-        &["pr", "view", num.as_str(), "--json", "statusCheckRollup"],
-        token,
-    )?;
+    let repo = repo_selector(repository);
+    let args = target_repository(
+        vec!["pr", "view", num.as_str(), "--json", "statusCheckRollup"],
+        &repo,
+    );
+    let raw = run_gh(workdir, &args, token)?;
     let parsed: GhChecksOnly = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse gh pr checks output: {e}"))?;
     Ok(parsed
@@ -238,19 +279,26 @@ pub fn pr_checks(workdir: &str, number: u64, token: Option<&str>) -> Result<Vec<
 /// `--delete-branch`. gh enforces branch protection, required checks, etc.
 pub fn merge_pr(
     workdir: &str,
+    repository: &GithubRepository,
     number: u64,
     method: &str,
     delete_branch: bool,
     token: Option<&str>,
 ) -> Result<String, String> {
     let num = number.to_string();
-    let args = merge_pr_args(&num, method, delete_branch);
+    let repo = repo_selector(repository);
+    let args = merge_pr_args(&repo, &num, method, delete_branch);
     run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`merge_pr`]. Extracted so the exact `gh` flag
 /// order can be locked by tests before the module split moves this code.
-fn merge_pr_args<'a>(num: &'a str, method: &'a str, delete_branch: bool) -> Vec<&'a str> {
+fn merge_pr_args<'a>(
+    repository: &'a str,
+    num: &'a str,
+    method: &'a str,
+    delete_branch: bool,
+) -> Vec<&'a str> {
     let method_flag = match method {
         "squash" => "--squash",
         "rebase" => "--rebase",
@@ -260,12 +308,13 @@ fn merge_pr_args<'a>(num: &'a str, method: &'a str, delete_branch: bool) -> Vec<
     if delete_branch {
         args.push("--delete-branch");
     }
-    args
+    target_repository(args, repository)
 }
 
 /// Post a discussion comment on a PR.
 pub fn comment_pr(
     workdir: &str,
+    repository: &GithubRepository,
     number: u64,
     body: &str,
     token: Option<&str>,
@@ -274,19 +323,21 @@ pub fn comment_pr(
         return Err("Comment body is empty.".to_string());
     }
     let num = number.to_string();
-    let args = comment_pr_args(&num, body);
+    let repo = repo_selector(repository);
+    let args = comment_pr_args(&repo, &num, body);
     run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`comment_pr`].
-fn comment_pr_args<'a>(num: &'a str, body: &'a str) -> Vec<&'a str> {
-    vec!["pr", "comment", num, "--body", body]
+fn comment_pr_args<'a>(repository: &'a str, num: &'a str, body: &'a str) -> Vec<&'a str> {
+    target_repository(vec!["pr", "comment", num, "--body", body], repository)
 }
 
 /// Submit a review. `action` is "approve" | "request-changes" | "comment".
 /// `--comment` and `--request-changes` require a body; `--approve` doesn't.
 pub fn review_pr(
     workdir: &str,
+    repository: &GithubRepository,
     number: u64,
     action: &str,
     body: &str,
@@ -296,13 +347,19 @@ pub fn review_pr(
         return Err("A review body is required to comment or request changes.".to_string());
     }
     let num = number.to_string();
-    let args = review_pr_args(&num, action, body);
+    let repo = repo_selector(repository);
+    let args = review_pr_args(&repo, &num, action, body);
     run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`review_pr`]. `--body` is appended only when the
 /// body is non-empty, so `--approve` without a body omits it (matching gh).
-fn review_pr_args<'a>(num: &'a str, action: &'a str, body: &'a str) -> Vec<&'a str> {
+fn review_pr_args<'a>(
+    repository: &'a str,
+    num: &'a str,
+    action: &'a str,
+    body: &'a str,
+) -> Vec<&'a str> {
     let action_flag = match action {
         "approve" => "--approve",
         "request-changes" => "--request-changes",
@@ -313,35 +370,39 @@ fn review_pr_args<'a>(num: &'a str, action: &'a str, body: &'a str) -> Vec<&'a s
         args.push("--body");
         args.push(body);
     }
-    args
+    target_repository(args, repository)
 }
 
 /// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready"
 /// (mark a draft ready for review).
 pub fn set_pr_state(
     workdir: &str,
+    repository: &GithubRepository,
     number: u64,
     action: &str,
     token: Option<&str>,
 ) -> Result<String, String> {
     let num = number.to_string();
-    let args = set_pr_state_args(&num, action);
+    let repo = repo_selector(repository);
+    let args = set_pr_state_args(&repo, &num, action);
     run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`set_pr_state`].
-fn set_pr_state_args<'a>(num: &'a str, action: &'a str) -> Vec<&'a str> {
+fn set_pr_state_args<'a>(repository: &'a str, num: &'a str, action: &'a str) -> Vec<&'a str> {
     let sub = match action {
         "reopen" => "reopen",
         "ready" => "ready",
         _ => "close",
     };
-    vec!["pr", sub, num]
+    target_repository(vec!["pr", sub, num], repository)
 }
 
 /// Open a new PR from `head` into `base`. Returns gh's output (the new PR URL).
+#[allow(clippy::too_many_arguments)] // Keeps the validated repository target explicit beside PR fields.
 pub fn create_pr(
     workdir: &str,
+    repository: &GithubRepository,
     base: &str,
     head: &str,
     title: &str,
@@ -352,12 +413,14 @@ pub fn create_pr(
     if title.trim().is_empty() {
         return Err("A title is required to open a pull request.".to_string());
     }
-    let args = create_pr_args(base, head, title, body, draft);
+    let repo = repo_selector(repository);
+    let args = create_pr_args(&repo, base, head, title, body, draft);
     run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`create_pr`].
 fn create_pr_args<'a>(
+    repository: &'a str,
     base: &'a str,
     head: &'a str,
     title: &'a str,
@@ -370,23 +433,33 @@ fn create_pr_args<'a>(
     if draft {
         args.push("--draft");
     }
-    args
+    target_repository(args, repository)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const TARGET: &str = "ghe.example.test:8443/octo/app";
+
+    fn repository() -> GithubRepository {
+        GithubRepository {
+            host: "ghe.example.test:8443".into(),
+            owner: "octo".into(),
+            name: "app".into(),
+        }
+    }
+
     // ---- invalid empty inputs (guards return before shelling out) ----
 
     #[test]
     fn comment_pr_rejects_empty_body() {
         assert_eq!(
-            comment_pr(".", 1, "", None).unwrap_err(),
+            comment_pr(".", &repository(), 1, "", None).unwrap_err(),
             "Comment body is empty."
         );
         assert_eq!(
-            comment_pr(".", 1, "   \n", None).unwrap_err(),
+            comment_pr(".", &repository(), 1, "   \n", None).unwrap_err(),
             "Comment body is empty."
         );
     }
@@ -394,9 +467,12 @@ mod tests {
     #[test]
     fn review_pr_requires_body_for_comment_and_request_changes() {
         let msg = "A review body is required to comment or request changes.";
-        assert_eq!(review_pr(".", 1, "comment", "", None).unwrap_err(), msg);
         assert_eq!(
-            review_pr(".", 1, "request-changes", "  ", None).unwrap_err(),
+            review_pr(".", &repository(), 1, "comment", "", None).unwrap_err(),
+            msg
+        );
+        assert_eq!(
+            review_pr(".", &repository(), 1, "request-changes", "  ", None,).unwrap_err(),
             msg
         );
     }
@@ -405,11 +481,11 @@ mod tests {
     fn create_pr_rejects_empty_title() {
         let msg = "A title is required to open a pull request.";
         assert_eq!(
-            create_pr(".", "main", "feat", "", "", false, None).unwrap_err(),
+            create_pr(".", &repository(), "main", "feat", "", "", false, None,).unwrap_err(),
             msg
         );
         assert_eq!(
-            create_pr(".", "main", "feat", "  ", "", false, None).unwrap_err(),
+            create_pr(".", &repository(), "main", "feat", "  ", "", false, None,).unwrap_err(),
             msg
         );
     }
@@ -419,82 +495,161 @@ mod tests {
     #[test]
     fn merge_pr_args_preserve_order_and_default_method() {
         assert_eq!(
-            merge_pr_args("42", "squash", false),
-            vec!["pr", "merge", "42", "--squash"]
+            merge_pr_args(TARGET, "42", "squash", false),
+            vec!["pr", "merge", "42", "--squash", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args("42", "rebase", false),
-            vec!["pr", "merge", "42", "--rebase"]
+            merge_pr_args(TARGET, "42", "rebase", false),
+            vec!["pr", "merge", "42", "--rebase", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args("42", "merge", false),
-            vec!["pr", "merge", "42", "--merge"]
+            merge_pr_args(TARGET, "42", "merge", false),
+            vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
         );
         // Unknown method keeps the historical default.
         assert_eq!(
-            merge_pr_args("42", "bogus", false),
-            vec!["pr", "merge", "42", "--merge"]
+            merge_pr_args(TARGET, "42", "bogus", false),
+            vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args("42", "squash", true),
-            vec!["pr", "merge", "42", "--squash", "--delete-branch"]
+            merge_pr_args(TARGET, "42", "squash", true),
+            vec![
+                "pr",
+                "merge",
+                "42",
+                "--squash",
+                "--delete-branch",
+                "--repo",
+                TARGET,
+            ]
         );
     }
 
     #[test]
     fn comment_pr_args_match_existing_order() {
         assert_eq!(
-            comment_pr_args("7", "hi"),
-            vec!["pr", "comment", "7", "--body", "hi"]
+            comment_pr_args(TARGET, "7", "hi"),
+            vec!["pr", "comment", "7", "--body", "hi", "--repo", TARGET]
         );
     }
 
     #[test]
     fn review_pr_args_omit_body_for_approve() {
         assert_eq!(
-            review_pr_args("7", "approve", ""),
-            vec!["pr", "review", "7", "--approve"]
+            review_pr_args(TARGET, "7", "approve", ""),
+            vec!["pr", "review", "7", "--approve", "--repo", TARGET]
         );
         assert_eq!(
-            review_pr_args("7", "approve", "nice"),
-            vec!["pr", "review", "7", "--approve", "--body", "nice"]
+            review_pr_args(TARGET, "7", "approve", "nice"),
+            vec![
+                "pr",
+                "review",
+                "7",
+                "--approve",
+                "--body",
+                "nice",
+                "--repo",
+                TARGET,
+            ]
         );
         assert_eq!(
-            review_pr_args("7", "request-changes", "fix"),
-            vec!["pr", "review", "7", "--request-changes", "--body", "fix"]
+            review_pr_args(TARGET, "7", "request-changes", "fix"),
+            vec![
+                "pr",
+                "review",
+                "7",
+                "--request-changes",
+                "--body",
+                "fix",
+                "--repo",
+                TARGET,
+            ]
         );
         assert_eq!(
-            review_pr_args("7", "comment", "x"),
-            vec!["pr", "review", "7", "--comment", "--body", "x"]
+            review_pr_args(TARGET, "7", "comment", "x"),
+            vec![
+                "pr",
+                "review",
+                "7",
+                "--comment",
+                "--body",
+                "x",
+                "--repo",
+                TARGET,
+            ]
         );
         // Unknown action falls back to --comment.
         assert_eq!(
-            review_pr_args("7", "bogus", ""),
-            vec!["pr", "review", "7", "--comment"]
+            review_pr_args(TARGET, "7", "bogus", ""),
+            vec!["pr", "review", "7", "--comment", "--repo", TARGET]
         );
     }
 
     #[test]
     fn set_pr_state_args_map_action_to_subcommand() {
-        assert_eq!(set_pr_state_args("7", "close"), vec!["pr", "close", "7"]);
-        assert_eq!(set_pr_state_args("7", "reopen"), vec!["pr", "reopen", "7"]);
-        assert_eq!(set_pr_state_args("7", "ready"), vec!["pr", "ready", "7"]);
+        assert_eq!(
+            set_pr_state_args(TARGET, "7", "close"),
+            vec!["pr", "close", "7", "--repo", TARGET]
+        );
+        assert_eq!(
+            set_pr_state_args(TARGET, "7", "reopen"),
+            vec!["pr", "reopen", "7", "--repo", TARGET]
+        );
+        assert_eq!(
+            set_pr_state_args(TARGET, "7", "ready"),
+            vec!["pr", "ready", "7", "--repo", TARGET]
+        );
         // Unknown action defaults to close (historical behaviour).
-        assert_eq!(set_pr_state_args("7", "bogus"), vec!["pr", "close", "7"]);
+        assert_eq!(
+            set_pr_state_args(TARGET, "7", "bogus"),
+            vec!["pr", "close", "7", "--repo", TARGET]
+        );
     }
 
     #[test]
     fn create_pr_args_preserve_order_and_draft_flag() {
-        let base = create_pr_args("main", "feat", "t", "b", false);
+        let base = create_pr_args(TARGET, "main", "feat", "t", "b", false);
         assert_eq!(
             base,
-            vec!["pr", "create", "--base", "main", "--head", "feat", "--title", "t", "--body", "b"]
+            vec![
+                "pr", "create", "--base", "main", "--head", "feat", "--title", "t", "--body", "b",
+                "--repo", TARGET
+            ]
         );
-        let mut draft = create_pr_args("main", "feat", "t", "b", true);
-        assert_eq!(draft.pop(), Some("--draft"));
+        let draft = create_pr_args(TARGET, "main", "feat", "t", "b", true);
         assert_eq!(
             draft,
-            vec!["pr", "create", "--base", "main", "--head", "feat", "--title", "t", "--body", "b"]
+            vec![
+                "pr", "create", "--base", "main", "--head", "feat", "--title", "t", "--body", "b",
+                "--draft", "--repo", TARGET
+            ]
+        );
+    }
+
+    #[test]
+    fn graphql_commit_args_target_the_validated_authority() {
+        assert_eq!(
+            pr_commits_args(
+                "ghe.example.test:8443",
+                "query=q",
+                "owner=octo",
+                "name=app",
+                "number=7",
+            ),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "graphql",
+                "-f",
+                "query=q",
+                "-f",
+                "owner=octo",
+                "-f",
+                "name=app",
+                "-F",
+                "number=7",
+            ]
         );
     }
 }

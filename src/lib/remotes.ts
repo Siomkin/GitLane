@@ -36,6 +36,14 @@ export interface RemoteUrlInfo {
   provider: RemoteProvider;
 }
 
+/** Whether a hostname carries `name` as a whole DNS label. Mirrors
+ * `has_host_label` in `src-tauri/src/git/forge.rs` — self-hosted forges are named
+ * after their software (`gitlab.example.com`, `gitlab-ee.corp.test`), so this
+ * cannot anchor to the vendor domain, but a bare substring would classify
+ * `notgitlab.com` as GitLab. */
+const hasHostLabel = (host: string, name: string): boolean =>
+  host.split(".").some((label) => label === name || label.startsWith(`${name}-`));
+
 export const providerForHost = (host: string): RemoteProvider => {
   // Mirrors the backend `forge::classify_host` (same order, same rules) so the
   // frontend and Rust agree on which forge a remote belongs to. GitHub detection
@@ -43,12 +51,17 @@ export const providerForHost = (host: string): RemoteProvider => {
   // (e.g. github.corp.example GHE) isn't github.com, so it must not claim PR
   // support the toolbar would deny. Forgejo is checked before Gitea because
   // Codeberg (a Forgejo instance) has a bespoke host.
+  //
+  // KEEP IN SYNC: any change to `classify_host` must land here too. A drift is
+  // invisible at compile time and shows up as the UI naming one forge while the
+  // backend dispatches another.
   if (host === "github.com" || host.endsWith(".github.com")) return "github";
-  if (host.includes("gitlab")) return "gitlab";
-  if (host.includes("bitbucket")) return "bitbucket";
-  if (host.includes("dev.azure") || host.includes("visualstudio")) return "azure";
-  if (host === "codeberg.org" || host.includes("forgejo")) return "forgejo";
-  if (host.includes("gitea")) return "gitea";
+  if (host === "gitlab.com" || hasHostLabel(host, "gitlab")) return "gitlab";
+  if (host === "bitbucket.org" || hasHostLabel(host, "bitbucket")) return "bitbucket";
+  if (host === "dev.azure.com" || host === "ssh.dev.azure.com" || host.endsWith(".visualstudio.com"))
+    return "azure";
+  if (host === "codeberg.org" || hasHostLabel(host, "forgejo")) return "forgejo";
+  if (hasHostLabel(host, "gitea")) return "gitea";
   return "other";
 };
 
@@ -113,6 +126,75 @@ export const credentialScopePath = (info: RemoteUrlInfo): string | null =>
 const hasCredentialProtocolSeparator = (value: string | null): boolean =>
   value !== null && /[\r\n\0]/.test(value);
 
+/** Provider token prefixes that mark a URL's username slot as holding a
+ * credential rather than an account selector. Mirrors
+ * `TOKEN_USERNAME_PREFIXES` in `src-tauri/src/redact.rs`. */
+const TOKEN_USERNAME_PREFIXES = [
+  "ghp_",
+  "gho_",
+  "ghu_",
+  "ghs_",
+  "ghr_",
+  "github_pat_",
+  "glpat-",
+  "glptt-",
+  "gldt-",
+  "glrt-",
+  "glsoat-",
+  "glimt-",
+  "glagent-",
+  "glcbt-",
+  "ATBB",
+  "ATCTT",
+];
+
+/** Whether a URL's username slot actually holds a credential. Conservative by
+ * design — usernames are how per-remote auth selects an account, and the OAuth
+ * sentinels (`oauth2`, `x-token-auth`) are not secrets. Mirrors
+ * `is_secretlike_username` in `src-tauri/src/redact.rs`. */
+export const isSecretlikeUsername = (raw: string): boolean => {
+  // Classify the *decoded* userinfo — git percent-decodes it, so `ghp%5FAbCd…`
+  // authenticates as `ghp_AbCd…` while matching no literal prefix and failing
+  // the token-alphabet test below. Malformed escapes decode to themselves.
+  let user = raw;
+  try {
+    user = decodeURIComponent(raw);
+  } catch {
+    user = raw;
+  }
+  return (
+    TOKEN_USERNAME_PREFIXES.some((prefix) => user.startsWith(prefix)) ||
+    (user.length >= 32 &&
+      /^[A-Za-z0-9_-]+$/.test(user) &&
+      /\d/.test(user) &&
+      /[A-Z]/.test(user) &&
+      /[a-z]/.test(user))
+  );
+};
+
+/** Whether a URL's userinfo carries a credential — an explicit `user:password`
+ * half, or a token parked in the username slot (`https://<token>@host/…`, which
+ * GitHub and GitLab both accept). The final `@` terminates userinfo so
+ * malformed inputs with an unescaped `@` in the password are still rejected.
+ * Username-only account selectors remain valid.
+ *
+ * Applies to `ssh://` and `git://` as well as HTTP(S): git will persist any of
+ * them verbatim into `.git/config`, so a password is just as exposed there. */
+export const httpUrlHasPassword = (raw: string): boolean => {
+  const url = (raw ?? "").trim();
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd < 0) return false;
+  const scheme = url.slice(0, schemeEnd).toLowerCase();
+  if (!["http", "https", "ssh", "git"].includes(scheme)) return false;
+  const rest = url.slice(schemeEnd + 3);
+  const authorityEnd = rest.search(/[/?#]/);
+  const authority = rest.slice(0, authorityEnd < 0 ? rest.length : authorityEnd);
+  const at = authority.lastIndexOf("@");
+  if (at < 0) return false;
+  const userinfo = authority.slice(0, at);
+  return userinfo.includes(":") || isSecretlikeUsername(userinfo);
+};
+
 /** Parse an https or SSH/scp git remote URL into host + path + provider. */
 export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   const url = (raw ?? "").trim();
@@ -128,29 +210,40 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   };
   if (!url) return miss;
   if (hasCredentialProtocolSeparator(url)) return miss;
+  if (httpUrlHasPassword(url)) return miss;
 
   let host: string | null = null;
+  let credentialHost: string | null = null;
   let path: string | null = null;
   let ssh = false;
   let m: RegExpMatchArray | null;
   if ((m = url.match(/^https?:\/\/([^/\s]+)\/(.+?)(?:\.git)?\/?$/i))) {
     [, host, path] = m;
-  } else if ((m = url.match(/^(?:ssh:\/\/)?git@([^:/\s]+)[:/](.+?)(?:\.git)?\/?$/i))) {
+  } else if ((m = url.match(/^ssh:\/\/(?:[^@/\s]+@)?(\[[^\]\s]+\]|[^:/\s]+)(?::(\d+))?\/(.+?)(?:\.git)?\/?$/i))) {
+    const [, sshHost, sshPort, sshPath] = m;
+    host = sshHost;
+    credentialHost = sshPort ? `${sshHost}:${sshPort}` : sshHost;
+    path = sshPath;
+    ssh = true;
+  } else if ((m = url.match(/^git@([^:/\s]+):(.+?)(?:\.git)?\/?$/i))) {
     [, host, path] = m;
+    credentialHost = host;
     ssh = true;
   }
   // Require a host and at least an owner/repo (two path segments).
   if (!host || !path || path.split("/").filter(Boolean).length < 2) return miss;
   if (hasCredentialProtocolSeparator(host) || hasCredentialProtocolSeparator(path)) return miss;
 
-  // Split off the https userinfo (https://user@host/…) — that's the account
-  // selector git hands to credential helpers. Preserve the host[:port]
-  // authority for credential scoping while also exposing a portless display
-  // host for provider classification.
+  // Split off username-only https userinfo (https://user@host/…) — that's the
+  // account selector git hands to credential helpers. A colon before the final
+  // `@` is a password delimiter; reject that form so a token/password can never
+  // be persisted in remote config or echoed across IPC. Preserve the host[:port]
+  // authority for credential scoping while also exposing a portless display host
+  // for provider classification.
   let user: string | null = null;
   if (!ssh && host.includes("@")) {
     const at = host.lastIndexOf("@");
-    const rawUser = (host.slice(0, at) || "").split(":")[0] ?? "";
+    const rawUser = host.slice(0, at);
     try {
       user = decodeURIComponent(rawUser) || null;
     } catch {
@@ -159,8 +252,14 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
     host = host.slice(at + 1);
   }
   if (hasCredentialProtocolSeparator(user) || hasCredentialProtocolSeparator(host)) return miss;
-  const credentialHost = host.toLowerCase();
-  host = host.split(":")[0] || host;
+  credentialHost = (credentialHost ?? host).toLowerCase();
+  if (host.startsWith("[")) {
+    const close = host.indexOf("]");
+    if (close < 0) return miss;
+    host = host.slice(1, close);
+  } else {
+    host = host.split(":")[0] || host;
+  }
   host = host.replace(/^www\./, "").toLowerCase();
   return { empty: false, valid: true, host, credentialHost, path, user, ssh, provider: providerForHost(host) };
 };

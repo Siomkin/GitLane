@@ -30,6 +30,31 @@ describe("buildAuthRecovery", () => {
     expect(ssh.sshUrl).toBeNull();
   });
 
+  it("offers a correct HTTPS alternative for ssh:// usernames and SSH ports", () => {
+    const customUser = buildAuthRecovery("ssh://alice@example.com/team/repo.git");
+    expect(customUser.ssh).toBe(true);
+    expect(customUser.host).toBe("example.com");
+    expect(customUser.credentialHost).toBe("example.com");
+    expect(customUser.httpsUrl).toBe("https://example.com/team/repo.git");
+
+    const customPort = buildAuthRecovery("ssh://git@example.com:2222/team/repo.git");
+    expect(customPort.ssh).toBe(true);
+    expect(customPort.host).toBe("example.com");
+    expect(customPort.credentialHost).toBe("example.com:2222");
+    expect(customPort.httpsUrl).toBe("https://example.com/team/repo.git");
+  });
+
+  it("keeps IPv6 recovery URLs bracketed and uses unambiguous SSH URI syntax", () => {
+    const https = buildAuthRecovery("https://[2001:db8::1]/team/repo.git");
+    expect(https.host).toBe("2001:db8::1");
+    expect(https.sshUrl).toBe("ssh://git@[2001:db8::1]/team/repo.git");
+
+    const ssh = buildAuthRecovery("ssh://git@[2001:db8::1]:2222/team/repo.git");
+    expect(ssh.host).toBe("2001:db8::1");
+    expect(ssh.credentialHost).toBe("[2001:db8::1]:2222");
+    expect(ssh.httpsUrl).toBe("https://[2001:db8::1]/team/repo.git");
+  });
+
   it("offers no SSH switch for Azure (its SSH URLs use a different shape)", () => {
     expect(buildAuthRecovery("https://dev.azure.com/org/proj/_git/repo").sshUrl).toBeNull();
   });

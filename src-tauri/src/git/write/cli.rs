@@ -23,13 +23,17 @@ fn finish(status: ExitStatus, stdout: &str, stderr: &str, args: &[&str]) -> Resu
             .code()
             .map(|c| format!("exit code {c}"))
             .unwrap_or_else(|| "a signal".to_string());
-        // Name only the subcommand (first couple of args), never the full argv —
-        // later positions can carry a remote URL with embedded credentials or a
-        // commit message, and git gave us nothing else to echo.
+        // Name only the first couple of args, never the full argv. The second
+        // argument can itself be a URL-valued push remote, so scrub this fallback
+        // just like real stderr before it crosses IPC.
         let op = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
-        Err(format!("git {op} failed ({how})"))
+        Err(crate::redact::redact_secrets(&format!(
+            "git {op} failed ({how})"
+        )))
     } else {
-        // Scrub any credential git echoed in a URL before it reaches a toast/log.
+        // Errors cross IPC directly. Scrub any credential git echoed before it
+        // reaches a toast/log, while preserving successful machine output for
+        // internal parsers (diffs, stash lists, porcelain status, and so on).
         Err(crate::redact::redact_secrets(&combined))
     }
 }
@@ -38,6 +42,31 @@ fn finish(status: ExitStatus, stdout: &str, stderr: &str, args: &[&str]) -> Resu
 /// or the error output on a non-zero exit.
 pub(super) fn run_git(repo: &str, args: &[&str]) -> Result<String, String> {
     run_git_env(repo, args, &[])
+}
+
+/// Run git while accepting specific non-zero exit codes as an idempotent
+/// success. This is intentionally narrow: callers must name the exact codes
+/// documented by the subcommand (for example, `git config --unset-all`
+/// returns 5 when the key is already absent). Every other launch/exit failure
+/// still goes through [`finish`] and is surfaced to the user.
+pub(super) fn run_git_allow_exit_codes(
+    repo: &str,
+    args: &[&str],
+    allowed: &[i32],
+) -> Result<String, String> {
+    let output = git_output(repo, args, &[])?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if output
+        .status
+        .code()
+        .is_some_and(|code| allowed.contains(&code))
+    {
+        return Ok(crate::redact::redact_secrets(
+            format!("{stdout}{stderr}").trim(),
+        ));
+    }
+    finish(output.status, &stdout, &stderr, args)
 }
 
 /// Run a command whose trailing operands are repository paths, forcing Git to
@@ -82,6 +111,18 @@ pub(super) fn run_git_env(
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     finish(output.status, &stdout, &stderr, args)
+}
+
+/// Run a network-facing git command and redact its successful diagnostics
+/// before returning them across IPC. Low-level [`run_git`] deliberately keeps
+/// successful output byte-for-byte (apart from trimming) because many callers
+/// parse it as machine data.
+pub(super) fn run_git_env_redacted(
+    repo: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    run_git_env(repo, args, envs).map(|output| crate::redact::redact_secrets(&output))
 }
 
 /// Run git and return stdout byte-for-byte on success. This is reserved for
@@ -193,9 +234,18 @@ pub(super) fn run_git_env_stable_diagnostics(
     run_git_env(repo, args, &stable_envs)
 }
 
+pub(super) fn run_git_env_stable_diagnostics_redacted(
+    repo: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    run_git_env_stable_diagnostics(repo, args, envs)
+        .map(|output| crate::redact::redact_secrets(&output))
+}
+
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{finish, run_git_env, run_git_stdout_raw};
+    use super::{finish, run_git_env, run_git_env_redacted, run_git_stdout_raw};
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Command, ExitStatus};
     use std::{io::Write, net::TcpListener};
@@ -239,6 +289,30 @@ mod tests {
     }
 
     #[test]
+    fn silent_push_fallback_redacts_a_url_valued_remote() {
+        let err = finish(
+            exit(128),
+            "",
+            "",
+            &[
+                "push",
+                "https://alice:push-secret@example.com/team/repo.git",
+                "HEAD:main",
+            ],
+        )
+        .unwrap_err();
+        assert!(err.contains("git push"), "should name the op: {err}");
+        assert!(
+            err.contains("alice:***@"),
+            "should retain safe context: {err}"
+        );
+        assert!(
+            !err.contains("push-secret"),
+            "must not echo credentials: {err}"
+        );
+    }
+
+    #[test]
     fn failed_git_prefers_real_stderr_when_present() {
         let err = finish(exit(1), "", "fatal: boom\n", &["stash", "push"]).unwrap_err();
         assert_eq!(err, "fatal: boom");
@@ -264,6 +338,29 @@ mod tests {
             .expect("raw git output");
 
         assert_eq!(output, b" leading-space.txt\0");
+    }
+
+    #[test]
+    fn successful_network_output_redacts_echoed_remote_credentials() {
+        let repo = TestRepo::new("gitlane-redacted-success");
+        let init = Command::new("git")
+            .args(["init", "-q", repo.path()])
+            .output()
+            .expect("git init launches");
+        assert!(init.status.success(), "git init failed");
+
+        let out = run_git_env_redacted(
+            repo.path(),
+            &[
+                "-c",
+                "alias.echo-secret=!printf 'To https://alice:push-secret@example.com/team/repo.git\\n'",
+                "echo-secret",
+            ],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(out, "To https://alice:***@example.com/team/repo.git");
+        assert!(!out.contains("push-secret"));
     }
 
     #[test]

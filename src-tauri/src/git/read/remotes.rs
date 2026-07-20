@@ -25,15 +25,20 @@ pub fn list_remotes(path: &str) -> Result<Vec<RemoteInfo>, String> {
         let Ok(remote) = repo.find_remote(name) else {
             continue;
         };
-        let fetch_url = remote.url().unwrap_or("").to_string();
+        // A remote may have been configured outside GitLane with a legacy
+        // password-bearing URL. Never let that secret cross the read IPC
+        // boundary; the redacted form remains visibly invalid in the editor so
+        // the user can replace it with helper/keychain authentication.
+        let fetch_url = crate::redact::redact_secrets(remote.url().unwrap_or(""));
         // pushurl falls back to the fetch URL when not separately configured.
-        let push_url = remote
-            .pushurl()
-            .ok()
-            .flatten()
-            .or_else(|| remote.url().ok())
-            .unwrap_or("")
-            .to_string();
+        let push_url = crate::redact::redact_secrets(
+            remote
+                .pushurl()
+                .ok()
+                .flatten()
+                .or_else(|| remote.url().ok())
+                .unwrap_or(""),
+        );
         out.push(RemoteInfo {
             name: name.to_string(),
             fetch_url,

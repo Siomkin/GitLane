@@ -267,10 +267,10 @@ export function createRepoWriteActions(
   // retries once for the equivalent race with an external git process.
   let fetchTransport: { path: string; promise: Promise<unknown> } | null = null;
 
-  // Per-remote account resolution (GL-129): every push-family call sends the
-  // account bound to the remote it actually targets, not one repo-wide pick.
-  const authFor = (remote: string | null) =>
-    remote ? useAccounts.getState().transportAuthForRemote(remote) : null;
+  // Per-operation account resolution (GL-129): each network call selects from
+  // the exact fetch or push URL it will contact, not one repo-wide pick.
+  const authFor = (remote: string | null, direction: "fetch" | "push" = "push") =>
+    remote ? useAccounts.getState().transportAuthForRemote(remote, direction) : null;
   // The remote a push of `branch` targets — its configured remote from the
   // branch list, with the backend's "origin" fallback.
   const pushRemoteOf = (branch: string) =>
@@ -685,6 +685,7 @@ export function createRepoWriteActions(
           description,
           identity?.name,
           identity?.email,
+          identity,
         );
         return `Squashed ${shas.length} commits`;
       });
@@ -1124,6 +1125,7 @@ export function createRepoWriteActions(
           amend,
           identity?.name,
           identity?.email,
+          identity,
         );
         await get().refresh();
         set({ selectedFile: null, fileDiff: null });
@@ -1144,6 +1146,7 @@ export function createRepoWriteActions(
           true,
           identity?.name,
           identity?.email,
+          identity,
         );
         return "Updated commit message";
       }),
@@ -1167,6 +1170,7 @@ export function createRepoWriteActions(
           amend,
           identity?.name,
           identity?.email,
+          identity,
         );
         await get().refresh();
         set({ selectedFile: null, fileDiff: null, wipSelected: false });
@@ -1221,11 +1225,10 @@ export function createRepoWriteActions(
             progress: "indeterminate",
           });
       try {
-        // One {remote, account} pair per bound remote (GL-129); remotes
-        // without a binding are omitted and fetch through the system
-        // credential helpers / SSH.
+        // One {remote, account} pair per fetch URL with inline auth (GL-129);
+        // remotes resolved to system helpers / SSH are omitted.
         const remoteAccounts = get()
-          .remotes.map((r) => ({ remote: r.name, auth: authFor(r.name) }))
+          .remotes.map((r) => ({ remote: r.name, auth: authFor(r.name, "fetch") }))
           .filter((pair): pair is { remote: string; auth: NonNullable<typeof pair.auth> } =>
             pair.auth !== null,
           );
@@ -1332,7 +1335,7 @@ export function createRepoWriteActions(
           summary.path,
           head.name,
           head.target!,
-          authFor(head.upstreamRemote ?? null),
+          authFor(remote, "fetch"),
         ));
       } catch (e) {
         useUi.getState().showToast(String(e), "error");

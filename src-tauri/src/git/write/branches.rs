@@ -282,10 +282,43 @@ pub fn set_upstream(repo: &str, branch: &str, upstream: &str) -> Result<String, 
 /// date." The store keys its toast off that phrase (`src/lib/mergeOutcome.ts`),
 /// so diagnostics are pinned to `LC_ALL=C` to keep it locale-stable, same as
 /// the tag-clobber detection in `remotes.rs`.
+#[cfg(test)]
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
+    merge_locked(repo, branch, &identity_args)
+}
+
+fn merge_locked(repo: &str, branch: &str, identity_args: &[String]) -> Result<String, String> {
     let target = qualify_branch_if_ambiguous(repo, branch);
-    run_git_env_stable_diagnostics(repo, &["merge", "--no-ff", "--no-edit", &target], &[])
+    run_commit_git_stable_locked(
+        repo,
+        identity_args,
+        &["merge", "--no-ff", "--no-edit", &target],
+    )
+}
+
+fn run_commit_git_locked(
+    repo: &str,
+    identity_args: &[String],
+    command: &[&str],
+) -> Result<String, String> {
+    let mut args = identity_args.to_vec();
+    args.extend(command.iter().map(|arg| (*arg).to_string()));
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_git(repo, &refs)
+}
+
+fn run_commit_git_stable_locked(
+    repo: &str,
+    identity_args: &[String],
+    command: &[&str],
+) -> Result<String, String> {
+    let mut args = identity_args.to_vec();
+    args.extend(command.iter().map(|arg| (*arg).to_string()));
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_git_env_stable_diagnostics(repo, &refs, &[])
 }
 
 /// Check out the explicit destination branch at the oid the user saw, verify
@@ -298,13 +331,15 @@ pub fn merge_into(
     destination: Option<&str>,
     expected_destination_oid: &str,
 ) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_revision_at(repo, source, expected_source_oid)?;
     match destination {
         Some(branch) => checkout_expected_branch(repo, branch, expected_destination_oid)?,
         None => ensure_expected_head(repo, None, Some(expected_destination_oid))?,
     }
     ensure_revision_at(repo, source, expected_source_oid)?;
-    merge(repo, &merge_source_operand(repo, source))
+    merge_locked(repo, &merge_source_operand(repo, source), &identity_args)
 }
 
 /// The operand handed to `git merge` for a validated fully-qualified `source`.
@@ -432,13 +467,15 @@ pub fn rebase(
     onto_oid: &str,
 ) -> Result<String, String> {
     ensure_operand(source)?;
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_commit_exists(repo, onto_oid)?;
     if source == "HEAD" {
         ensure_expected_head(repo, None, Some(expected_source_oid))?;
     } else {
         ensure_expected_branch_tip(repo, source, expected_source_oid)?;
     }
-    run_git(repo, &["rebase", onto_oid, source])
+    run_commit_git_locked(repo, &identity_args, &["rebase", onto_oid, source])
 }
 
 /// Whether `commit` is a merge commit (more than one parent). Git refuses to
@@ -482,12 +519,23 @@ fn group_by_mergeness<'a>(
 /// Cherry-pick `commit` onto the current HEAD. Merge commits get `-m 1`, so
 /// the applied delta is against the first parent — the branch merged *into*,
 /// matching the graph's first-parent lane semantics.
+#[cfg(test)]
 pub fn cherry_pick(repo: &str, commit: &str) -> Result<String, String> {
     ensure_operand(commit)?;
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
+    cherry_pick_locked(repo, commit, &identity_args)
+}
+
+fn cherry_pick_locked(
+    repo: &str,
+    commit: &str,
+    identity_args: &[String],
+) -> Result<String, String> {
     if is_merge_commit(repo, commit)? {
-        run_git(repo, &["cherry-pick", "-m", "1", commit])
+        run_commit_git_locked(repo, identity_args, &["cherry-pick", "-m", "1", commit])
     } else {
-        run_git(repo, &["cherry-pick", commit])
+        run_commit_git_locked(repo, identity_args, &["cherry-pick", commit])
     }
 }
 
@@ -497,8 +545,11 @@ pub fn cherry_pick_onto(
     expected_oid: &str,
     commit: &str,
 ) -> Result<String, String> {
+    ensure_operand(commit)?;
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
-    cherry_pick(repo, commit)
+    cherry_pick_locked(repo, commit, &identity_args)
 }
 
 /// Cherry-pick several commits onto the current HEAD in order (`git
@@ -511,7 +562,18 @@ pub fn cherry_pick_onto(
 /// stops at the failing run: earlier runs stay applied (exactly like git's own
 /// sequencer stopping mid-batch), but commits after the failing run are not
 /// queued in the sequencer — continue finishes only the current run.
+#[cfg(test)]
 pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
+    cherry_pick_many_locked(repo, commits, &identity_args)
+}
+
+fn cherry_pick_many_locked(
+    repo: &str,
+    commits: &[String],
+    identity_args: &[String],
+) -> Result<String, String> {
     if commits.is_empty() {
         return Err("no commits to cherry-pick".to_string());
     }
@@ -526,7 +588,7 @@ pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String
             args.extend(["-m", "1"]);
         }
         args.extend(run);
-        outputs.push(run_git(repo, &args)?);
+        outputs.push(run_commit_git_locked(repo, identity_args, &args)?);
     }
     outputs.retain(|o| !o.is_empty());
     Ok(outputs.join("\n"))
@@ -538,20 +600,33 @@ pub fn cherry_pick_many_onto(
     expected_oid: &str,
     commits: &[String],
 ) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
-    cherry_pick_many(repo, commits)
+    cherry_pick_many_locked(repo, commits, &identity_args)
 }
 
 /// Revert `commit`, creating a new commit that undoes it. Merge commits get
 /// `-m 1`: the revert undoes what the merge brought in relative to its first
 /// parent — the branch merged *into*, matching the graph's first-parent lane
 /// semantics.
+#[cfg(test)]
 pub fn revert(repo: &str, commit: &str) -> Result<String, String> {
     ensure_operand(commit)?;
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
+    revert_locked(repo, commit, &identity_args)
+}
+
+fn revert_locked(repo: &str, commit: &str, identity_args: &[String]) -> Result<String, String> {
     if is_merge_commit(repo, commit)? {
-        run_git(repo, &["revert", "--no-edit", "-m", "1", commit])
+        run_commit_git_locked(
+            repo,
+            identity_args,
+            &["revert", "--no-edit", "-m", "1", commit],
+        )
     } else {
-        run_git(repo, &["revert", "--no-edit", commit])
+        run_commit_git_locked(repo, identity_args, &["revert", "--no-edit", commit])
     }
 }
 
@@ -561,8 +636,11 @@ pub fn revert_onto(
     expected_oid: &str,
     commit: &str,
 ) -> Result<String, String> {
+    ensure_operand(commit)?;
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
-    revert(repo, commit)
+    revert_locked(repo, commit, &identity_args)
 }
 
 /// Revert several commits in order (`git revert --no-edit A B…`); stops on the
@@ -570,7 +648,18 @@ pub fn revert_onto(
 /// `-m 1` and non-merges reject it, so mixed selections run as consecutive
 /// same-kind invocations, and a conflict leaves earlier runs applied without
 /// queueing the later ones.
+#[cfg(test)]
 pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
+    revert_many_locked(repo, commits, &identity_args)
+}
+
+fn revert_many_locked(
+    repo: &str,
+    commits: &[String],
+    identity_args: &[String],
+) -> Result<String, String> {
     if commits.is_empty() {
         return Err("no commits to revert".to_string());
     }
@@ -586,7 +675,7 @@ pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
             args.extend(["-m", "1"]);
         }
         args.extend(run);
-        outputs.push(run_git(repo, &args)?);
+        outputs.push(run_commit_git_locked(repo, identity_args, &args)?);
     }
     outputs.retain(|o| !o.is_empty());
     Ok(outputs.join("\n"))
@@ -598,8 +687,10 @@ pub fn revert_many_onto(
     expected_oid: &str,
     commits: &[String],
 ) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
-    revert_many(repo, commits)
+    revert_many_locked(repo, commits, &identity_args)
 }
 
 /// Create a lightweight tag `name` at `sha` (defaults to HEAD). Reads back as a
@@ -631,11 +722,20 @@ pub fn create_annotated_tag(
 ) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_opt(sha)?;
-    let mut args = vec!["tag", "-a", name, "-m", message];
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let mut args = super::identity::pinned_tag_args(repo)?;
+    args.extend([
+        "tag".to_string(),
+        "-a".to_string(),
+        name.to_string(),
+        "-m".to_string(),
+        message.to_string(),
+    ]);
     if let Some(s) = sha {
-        args.push(s);
+        args.push(s.to_string());
     }
-    run_git(repo, &args)
+    let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_git(repo, &refs)
 }
 
 /// Write a patch file for the single commit `sha` into the worktree via

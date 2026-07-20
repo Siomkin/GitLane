@@ -9,7 +9,8 @@
 //! default host (github.com for anyone logged into more than one host), which
 //! would send a GitHub Enterprise repo's token to the wrong endpoint and 401.
 
-use super::cli::{repo_slug, run_gh};
+use super::cli::run_gh;
+use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
 use crate::git::types::ReviewThread;
 
@@ -32,33 +33,25 @@ const REPLY_THREAD_MUTATION: &str = "mutation($id:ID!,$body:String!){addPullRequ
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
 pub fn review_threads(
     workdir: &str,
-    host: &str,
+    repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
 ) -> Result<Vec<ReviewThread>, String> {
-    let (owner, name) = repo_slug(workdir, token)?;
     let query_field = format!("query={REVIEW_THREADS_QUERY}");
-    let owner_field = format!("owner={owner}");
-    let name_field = format!("name={name}");
+    let owner_field = format!("owner={}", repository.owner);
+    let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
     let mut threads = Vec::new();
     let mut cursor: Option<String> = None;
     let mut more_pages = false;
     for _ in 0..MAX_GRAPHQL_PAGES {
-        let mut args = vec![
-            "api",
-            "--hostname",
-            host,
-            "graphql",
-            "-f",
+        let mut args = review_threads_args(
+            &repository.host,
             &query_field,
-            "-f",
             &owner_field,
-            "-f",
             &name_field,
-            "-F",
             &number_field,
-        ];
+        );
         // Omitted on the first page so the `$cursor` variable stays null —
         // `-f cursor=` would send an empty string, which GitHub rejects.
         let cursor_field = cursor.as_ref().map(|c| format!("cursor={c}"));
@@ -105,7 +98,7 @@ pub fn review_threads(
 /// GraphQL node id.
 pub fn set_thread_resolved(
     workdir: &str,
-    host: &str,
+    repository: &GithubRepository,
     thread_id: &str,
     resolved: bool,
     token: Option<&str>,
@@ -117,26 +110,14 @@ pub fn set_thread_resolved(
     };
     let query_field = format!("query={mutation}");
     let id_field = format!("id={thread_id}");
-    run_gh(
-        workdir,
-        &[
-            "api",
-            "--hostname",
-            host,
-            "graphql",
-            "-f",
-            &query_field,
-            "-f",
-            &id_field,
-        ],
-        token,
-    )
+    let args = thread_mutation_args(&repository.host, &query_field, &id_field);
+    run_gh(workdir, &args, token)
 }
 
 /// Add a reply to an existing review thread by its GraphQL node id.
 pub fn reply_thread(
     workdir: &str,
-    host: &str,
+    repository: &GithubRepository,
     thread_id: &str,
     body: &str,
     token: Option<&str>,
@@ -144,20 +125,122 @@ pub fn reply_thread(
     let query_field = format!("query={REPLY_THREAD_MUTATION}");
     let id_field = format!("id={thread_id}");
     let body_field = format!("body={body}");
-    run_gh(
-        workdir,
-        &[
-            "api",
-            "--hostname",
-            host,
-            "graphql",
-            "-f",
-            &query_field,
-            "-f",
-            &id_field,
-            "-f",
-            &body_field,
-        ],
-        token,
-    )
+    let args = reply_thread_args(&repository.host, &query_field, &id_field, &body_field);
+    run_gh(workdir, &args, token)
+}
+
+fn review_threads_args<'a>(
+    host: &'a str,
+    query_field: &'a str,
+    owner_field: &'a str,
+    name_field: &'a str,
+    number_field: &'a str,
+) -> Vec<&'a str> {
+    vec![
+        "api",
+        "--hostname",
+        host,
+        "graphql",
+        "-f",
+        query_field,
+        "-f",
+        owner_field,
+        "-f",
+        name_field,
+        "-F",
+        number_field,
+    ]
+}
+
+fn thread_mutation_args<'a>(
+    host: &'a str,
+    query_field: &'a str,
+    id_field: &'a str,
+) -> Vec<&'a str> {
+    vec![
+        "api",
+        "--hostname",
+        host,
+        "graphql",
+        "-f",
+        query_field,
+        "-f",
+        id_field,
+    ]
+}
+
+fn reply_thread_args<'a>(
+    host: &'a str,
+    query_field: &'a str,
+    id_field: &'a str,
+    body_field: &'a str,
+) -> Vec<&'a str> {
+    let mut args = thread_mutation_args(host, query_field, id_field);
+    args.push("-f");
+    args.push(body_field);
+    args
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thread_query_args_use_validated_authority_and_slug() {
+        assert_eq!(
+            review_threads_args(
+                "ghe.example.test:8443",
+                "query=q",
+                "owner=octo",
+                "name=app",
+                "number=7",
+            ),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "graphql",
+                "-f",
+                "query=q",
+                "-f",
+                "owner=octo",
+                "-f",
+                "name=app",
+                "-F",
+                "number=7",
+            ]
+        );
+    }
+
+    #[test]
+    fn thread_mutations_use_validated_authority() {
+        assert_eq!(
+            thread_mutation_args("ghe.example.test:8443", "query=m", "id=T1"),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "graphql",
+                "-f",
+                "query=m",
+                "-f",
+                "id=T1",
+            ]
+        );
+        assert_eq!(
+            reply_thread_args("ghe.example.test:8443", "query=r", "id=T1", "body=hello",),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "graphql",
+                "-f",
+                "query=r",
+                "-f",
+                "id=T1",
+                "-f",
+                "body=hello",
+            ]
+        );
+    }
 }

@@ -19,11 +19,11 @@ export function remoteNameForUpstream(upstream: string, remoteNames: string[]): 
   return slash > 0 ? upstream.slice(0, slash) : null;
 }
 
-/** The remote a push of this local branch targets: its configured
- * `branch.<name>.remote` (shipped as `upstreamRemote`), falling back to
- * "origin" — the backend's `push_target` fallback. */
+/** The remote a push of this local branch targets. `pushRemote` is resolved by
+ * the backend with Git's full triangular-push precedence; `upstreamRemote` is
+ * retained as a compatibility fallback for an older backend payload. */
 export function pushRemoteForBranch(
-  branch: Pick<BranchInfo, "upstreamRemote"> | undefined,
+  branch: Pick<BranchInfo, "pushRemote" | "upstreamRemote"> | undefined,
 ): string {
-  return branch?.upstreamRemote ?? "origin";
+  return branch?.pushRemote ?? branch?.upstreamRemote ?? "origin";
 }

@@ -14,6 +14,8 @@ import {
   writeProviderTokens,
   type StoredProviderToken,
 } from "./accountsStorage";
+import { rememberForgeCredential, safeHelperLabel, withSavedForgeCredentials } from "./forgeCredentials";
+import type { ForgeAuthStatus } from "@/lib/api";
 
 const NUL = String.fromCharCode(0);
 
@@ -181,6 +183,63 @@ describe("localStorage maps", () => {
     );
 
     expect(readProviderTokens()).toEqual({ [validKey]: valid });
+  });
+
+  it("migrates raw helper commands without exposing or retaining inline secrets", () => {
+    const secret = "ghp_INLINE_SECRET_SENTINEL";
+    localStorage.setItem(
+      "gitlane.forgeCredentials",
+      JSON.stringify({
+        gitlab: {
+          provider: "gitlab",
+          credentialHost: "gitlab.com",
+          path: null,
+          username: "alice",
+          helper: `!f() { echo username=alice; echo password=${secret}; }; f`,
+          savedAt: 1,
+        },
+      }),
+    );
+    const statuses: ForgeAuthStatus[] = [
+      {
+        provider: "gitlab",
+        forge: "GitLab",
+        cli: null,
+        authMethod: "Git credential helper",
+        available: false,
+        authenticated: null,
+        loginCommand: "",
+        docsUrl: "https://gitlab.com",
+        notes: "GitLab transport.",
+      },
+    ];
+
+    const merged = withSavedForgeCredentials(statuses);
+    const persisted = localStorage.getItem("gitlane.forgeCredentials") ?? "";
+    expect(persisted).not.toContain(secret);
+    expect(persisted).not.toContain("echo password");
+    expect(readForgeCredentials().gitlab?.helper).toBe("Custom helper");
+    expect(JSON.stringify(merged)).not.toContain(secret);
+    expect(merged[0]?.notes).toContain("Custom helper");
+  });
+
+  it("keeps known helper labels useful and sanitizes new unknown helper metadata", () => {
+    expect(safeHelperLabel("manager-core")).toBe("Git Credential Manager");
+    expect(safeHelperLabel("cache --timeout=3600")).toBe("Memory cache");
+    expect(safeHelperLabel("!gh auth git-credential")).toBe("GitHub CLI");
+
+    const secret = "glpat_NEW_SECRET_SENTINEL";
+    rememberForgeCredential(
+      "gitlab",
+      "gitlab.com",
+      null,
+      "alice",
+      `/private/helpers/custom --token ${secret}`,
+    );
+    const persisted = localStorage.getItem("gitlane.forgeCredentials") ?? "";
+    expect(persisted).not.toContain(secret);
+    expect(persisted).not.toContain("/private/helpers");
+    expect(readForgeCredentials().gitlab?.helper).toBe("Custom helper");
   });
 });
 

@@ -1,8 +1,9 @@
 // Signing-key picker for the profile editor (GL-64). Lists the keys the user
 // already has (GPG secret keys + SSH public keys, discovered server-side) so
 // they pick instead of typing a key id, with a "paste manually" escape hatch.
-// References only — the value is a GPG key id or SSH public-key path, never a
-// secret. Format is inferred from the chosen key; manual entry exposes a toggle.
+// References only — the value is a full GPG fingerprint or SSH public-key path,
+// never a secret. Format is inferred from the chosen key; manual entry exposes a
+// toggle.
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";

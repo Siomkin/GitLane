@@ -19,7 +19,11 @@ describe("remoteNameForUpstream", () => {
 });
 
 describe("pushRemoteForBranch", () => {
-  it("uses the branch's configured remote", () => {
+  it("uses the backend-resolved triangular push remote", () => {
+    expect(pushRemoteForBranch({ pushRemote: "fork", upstreamRemote: "origin" })).toBe("fork");
+  });
+
+  it("accepts an older payload's configured upstream remote", () => {
     expect(pushRemoteForBranch({ upstreamRemote: "mirror" })).toBe("mirror");
   });
 

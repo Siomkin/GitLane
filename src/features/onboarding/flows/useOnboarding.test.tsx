@@ -392,6 +392,43 @@ describe("auth-failure recovery", () => {
   });
 });
 
+describe("clone cancellation", () => {
+  it("shows Retry only after the canceled clone IPC has fully settled", async () => {
+    let rejectFirstClone!: (reason: unknown) => void;
+    let cloneCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "clone_repo") {
+        cloneCalls += 1;
+        if (cloneCalls === 1) {
+          return new Promise((_resolve, reject) => {
+            rejectFirstClone = reject;
+          });
+        }
+        return Promise.reject("clone failed again");
+      }
+      if (cmd === "cancel_clone") return Promise.resolve(undefined);
+      return Promise.resolve([]);
+    });
+
+    const { result } = renderHook(() => useOnboarding());
+    act(() => result.current.cloneForm.changeUrl("https://github.com/o/r.git"));
+    act(() => result.current.cloneRun.start());
+    await waitFor(() => expect(cloneCalls).toBe(1));
+
+    act(() => result.current.cloneRun.cancel());
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("cancel_clone"));
+    expect(result.current.screen).toBe("progress");
+
+    await act(async () => rejectFirstClone("Clone canceled."));
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+    expect(result.current.cloneRecovery.error?.kind).toBe("canceled");
+
+    act(() => result.current.cloneRecovery.retry());
+    await waitFor(() => expect(cloneCalls).toBe(2));
+    await waitFor(() => expect(result.current.screen).toBe("error"));
+  });
+});
+
 describe("clone auth plan reactivity (GL-194)", () => {
   it("flips to glab when it signs in, and back to system when a saved credential overrides it", () => {
     const { result } = renderHook(() => useOnboarding());

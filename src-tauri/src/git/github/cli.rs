@@ -12,9 +12,7 @@ use serde::Deserialize;
 
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
-use super::domain::{
-    normalize_host, GithubError, GithubRepository, DEFAULT_GITHUB_HOST, GH_PROVIDER,
-};
+use super::domain::{normalize_host, GithubError, GithubRepository, GH_PROVIDER};
 use super::dto::GhUser;
 
 const MIN_GH_VERSION: GhVersion = GhVersion {
@@ -73,13 +71,6 @@ struct GhAuthAccountStatus {
     error: String,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GhRepoView {
-    name_with_owner: String,
-    url: String,
-}
-
 /// Run `gh <args...>` in `workdir`. When `token` is set it is exported as the
 /// auth token, pinning the call to a specific account. Returns stdout on
 /// success or a readable error (including the gh-not-installed case).
@@ -120,6 +111,17 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
             format!("{stdout}{stderr}").trim(),
         ))
     }
+}
+
+/// Canonical `gh --repo` target derived from the already-validated service
+/// context. Always include the authority so `gh` never falls back to inferring a
+/// different host from the local remote (especially an SSH remote whose bare
+/// transport hostname maps to an account API authority with a custom port).
+pub(super) fn repo_selector(repository: &GithubRepository) -> String {
+    format!(
+        "{}/{}/{}",
+        repository.host, repository.owner, repository.name
+    )
 }
 
 /// True when an error string indicates `gh` itself is missing (vs. a normal
@@ -350,55 +352,6 @@ pub(super) fn accounts() -> Result<Vec<GithubAccount>, String> {
     Ok(accounts)
 }
 
-/// Resolve the provider-neutral GitHub repository identity for `workdir`.
-pub(super) fn repo_identity(
-    workdir: &str,
-    token: Option<&str>,
-) -> Result<GithubRepository, String> {
-    ensure_supported().map_err(|err| err.to_ipc_string())?;
-    let raw = run_gh(
-        workdir,
-        &["repo", "view", "--json", "nameWithOwner,url"],
-        token,
-    )?;
-    let parsed: GhRepoView = serde_json::from_str(&raw)
-        .map_err(|e| format!("failed to parse gh repo view output: {e}"))?;
-    let (owner, name) = parsed
-        .name_with_owner
-        .split_once('/')
-        .map(|(o, n)| (o.to_string(), n.to_string()))
-        .ok_or_else(|| format!("unexpected repo slug from gh: {}", parsed.name_with_owner))?;
-    let host = host_from_repo_url(&parsed.url).unwrap_or_else(|| DEFAULT_GITHUB_HOST.to_string());
-    Ok(GithubRepository { host, owner, name })
-}
-
-/// Resolve the `owner/name` slug for GraphQL calls.
-pub(super) fn repo_slug(workdir: &str, token: Option<&str>) -> Result<(String, String), String> {
-    let repo = repo_identity(workdir, token)?;
-    Ok((repo.owner, repo.name))
-}
-
-fn host_from_repo_url(url: &str) -> Option<String> {
-    if let Some(rest) = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-    {
-        return rest
-            .split('/')
-            .next()
-            .map(normalize_host)
-            .filter(|s| !s.is_empty());
-    }
-    if let Some(rest) = url.strip_prefix("git@") {
-        return rest
-            .split(':')
-            .next()
-            .map(normalize_host)
-            .filter(|s| !s.is_empty());
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,14 +433,12 @@ mod tests {
     }
 
     #[test]
-    fn extracts_hosts_from_repo_urls() {
-        assert_eq!(
-            host_from_repo_url("https://github.com/owner/repo"),
-            Some("github.com".into())
-        );
-        assert_eq!(
-            host_from_repo_url("git@github.example.com:owner/repo.git"),
-            Some("github.example.com".into())
-        );
+    fn repo_selector_preserves_the_validated_authority_and_slug() {
+        let repository = GithubRepository {
+            host: "ghe.example.test:8443".into(),
+            owner: "octo".into(),
+            name: "app".into(),
+        };
+        assert_eq!(repo_selector(&repository), "ghe.example.test:8443/octo/app");
     }
 }

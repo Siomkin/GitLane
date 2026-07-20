@@ -242,7 +242,7 @@ pub struct RemoteInfo {
 /// The commit identity pinned in a repo's *local* git config (`user.name` /
 /// `user.email`). `None` from the read side means nothing is pinned locally and
 /// the repo defers to global git config.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoIdentity {
     pub name: String,
@@ -265,12 +265,12 @@ pub struct RepoIdentity {
 }
 
 /// A signing key the user already has, offered by the profile editor's key
-/// picker. References only — a GPG key id or an SSH public-key path — never
-/// private key material or a passphrase.
+/// picker. References only — a full GPG fingerprint or an SSH public-key path —
+/// never private key material or a passphrase.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SigningKey {
-    /// The value written to `user.signingkey`: a GPG long key id, or an SSH
+    /// The value written to `user.signingkey`: a full GPG fingerprint, or an SSH
     /// public-key path.
     pub value: String,
     /// Human-readable label — the GPG uid, or the SSH key type + comment.
@@ -384,12 +384,14 @@ pub struct BranchInfo {
     /// branches. Lets the frontend address the remote/branch split without
     /// re-guessing it from the first `/`.
     pub remote: Option<String>,
-    /// For a local branch, its configured push/fetch remote
+    /// For a local branch, its fetch/upstream remote
     /// (`branch.<name>.remote`) when set and not the local-tracking `"."`.
-    /// This is the remote a push of this branch targets, so the frontend picks
-    /// the matching per-remote account (GL-129) without re-deriving it from
-    /// the upstream string. `None` for remote branches.
+    /// `None` for remote branches.
     pub upstream_remote: Option<String>,
+    /// For a local branch, the actual push remote after Git's precedence:
+    /// `branch.<name>.pushRemote` → `remote.pushDefault` →
+    /// `branch.<name>.remote` → `origin`. `None` for remote branches.
+    pub push_remote: Option<String>,
     /// Ahead/behind state against the configured upstream. Remote branches do
     /// not have their own upstream state, so this is `None` for them.
     pub sync: Option<BranchSyncState>,

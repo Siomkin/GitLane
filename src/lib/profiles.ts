@@ -31,6 +31,12 @@ export interface ProfileDraft {
   tagGpgSign?: boolean;
 }
 
+/** A pragmatic "looks like an email" check shared by the profile editor and
+ * persisted-card validation: one `@`, a dotted domain, and no whitespace. */
+export function isValidEmail(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+}
+
 /** The signing badge label for a profile ("GPG signed" / "SSH signed"), or null
  * when it doesn't sign. */
 export function signingLabel(profile: GitProfile): string | null {

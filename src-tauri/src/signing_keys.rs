@@ -2,9 +2,9 @@
 //! picker: GPG secret keys (via `gpg --list-secret-keys`) and SSH public keys
 //! (`~/.ssh/*.pub`).
 //!
-//! References only — GPG key ids and SSH public-key paths. This never reads,
-//! returns, or stores private key material or passphrases; unlocking stays with
-//! gpg-agent / ssh-agent / the OS keychain at use time.
+//! References only — full GPG fingerprints and SSH public-key paths. This never
+//! reads, returns, or stores private key material or passphrases; unlocking stays
+//! with gpg-agent / ssh-agent / the OS keychain at use time.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -20,7 +20,7 @@ pub fn list() -> Vec<SigningKey> {
 
 fn gpg_secret_keys() -> Vec<SigningKey> {
     let mut cmd = Command::new("gpg");
-    cmd.args(["--list-secret-keys", "--keyid-format=long", "--with-colons"])
+    cmd.args(["--list-secret-keys", "--with-colons", "--with-fingerprint"])
         .env("PATH", crate::shell::path())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -36,38 +36,59 @@ fn gpg_secret_keys() -> Vec<SigningKey> {
 }
 
 /// Parse `gpg --list-secret-keys --with-colons` output. Each `sec` record opens
-/// a key (field index 4 is the long key id); the first following `uid` record
-/// (field index 9) is its label. Subkeys (`ssb`) are ignored — we offer primary
-/// keys only.
+/// a primary key and its immediately following `fpr` record supplies the full
+/// fingerprint written to `user.signingkey`; the first following `uid` record is
+/// its label. Subkey (`ssb`) fingerprints are ignored.
 fn parse_gpg_secret_keys(text: &str) -> Vec<SigningKey> {
     let mut keys = Vec::new();
-    let mut pending: Option<String> = None;
+    let mut pending: Option<(Option<String>, Option<String>)> = None;
+    let mut awaiting_primary_fingerprint = false;
+
+    let flush = |keys: &mut Vec<SigningKey>,
+                 pending: &mut Option<(Option<String>, Option<String>)>| {
+        let Some((Some(value), label)) = pending.take() else {
+            return;
+        };
+        keys.push(SigningKey {
+            label: label.unwrap_or_else(|| value.clone()),
+            value,
+            format: "openpgp".into(),
+        });
+    };
+
     for line in text.lines() {
         let fields: Vec<&str> = line.split(':').collect();
         match fields.first().copied() {
             Some("sec") => {
-                pending = fields
-                    .get(4)
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string());
+                flush(&mut keys, &mut pending);
+                pending = Some((None, None));
+                awaiting_primary_fingerprint = true;
             }
-            Some("uid") => {
-                if let Some(value) = pending.take() {
-                    let label = fields
+            Some("fpr") if awaiting_primary_fingerprint => {
+                if let Some((fingerprint, _)) = pending.as_mut() {
+                    *fingerprint = fields
                         .get(9)
                         .filter(|s| !s.is_empty())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| value.clone());
-                    keys.push(SigningKey {
-                        value,
-                        label,
-                        format: "openpgp".into(),
-                    });
+                        .map(|s| s.to_string());
+                }
+                awaiting_primary_fingerprint = false;
+            }
+            Some("uid") => {
+                awaiting_primary_fingerprint = false;
+                if let Some((_, label)) = pending.as_mut() {
+                    if label.is_none() {
+                        *label = fields
+                            .get(9)
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
+                    }
                 }
             }
+            Some("ssb") => awaiting_primary_fingerprint = false,
             _ => {}
         }
     }
+    flush(&mut keys, &mut pending);
     keys
 }
 
@@ -142,15 +163,57 @@ uid:u::::1700000000::HASH::Ada Lovelace <ada@example.com>::::::::::0:
 ssb:u:4096:1:DEADBEEFDEADBEEF:1700000000::::::s:::::::
 fpr:::::::::5555666677778888:
 sec:u:255:22:99AA88BB77CC66DD:1700000000:::u:::scESC:::::::::
+fpr:::::::::9999AAAABBBBCCCCDDDDEEEEFFFF000011112222:
 uid:u::::1700000000::HASH2::Grace Hopper <grace@example.com>::::::::::0:
 ";
         let keys = parse_gpg_secret_keys(sample);
         assert_eq!(keys.len(), 2);
-        assert_eq!(keys[0].value, "ABCD1234EF567890");
+        assert_eq!(keys[0].value, "1111222233334444AAAABBBBCCCCDDDDEEEE0000");
         assert_eq!(keys[0].label, "Ada Lovelace <ada@example.com>");
         assert_eq!(keys[0].format, "openpgp");
-        assert_eq!(keys[1].value, "99AA88BB77CC66DD");
+        assert_eq!(keys[1].value, "9999AAAABBBBCCCCDDDDEEEEFFFF000011112222");
         assert_eq!(keys[1].label, "Grace Hopper <grace@example.com>");
+    }
+
+    #[test]
+    fn primary_fingerprints_disambiguate_colliding_long_key_ids() {
+        let sample = "\
+sec:u:4096:1:DEADBEEFDEADBEEF:1700000000:::u:::scESC:::::::::
+fpr:::::::::111111111111111111111111DEADBEEFDEADBEEF:
+uid:u::::1700000000::HASH::First Key <first@example.com>::::::::::0:
+sec:u:4096:1:DEADBEEFDEADBEEF:1700000000:::u:::scESC:::::::::
+fpr:::::::::222222222222222222222222DEADBEEFDEADBEEF:
+uid:u::::1700000000::HASH::Second Key <second@example.com>::::::::::0:
+";
+        let keys = parse_gpg_secret_keys(sample);
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].value, "111111111111111111111111DEADBEEFDEADBEEF");
+        assert_eq!(keys[1].value, "222222222222222222222222DEADBEEFDEADBEEF");
+        assert_ne!(keys[0].value, keys[1].value);
+    }
+
+    #[test]
+    fn primary_fingerprint_survives_non_key_metadata_records() {
+        let sample = "\
+sec:u:4096:1:ABCD1234EF567890:1700000000:::u:::scESC:::::::::
+grp:::::::::KEYGRIP:
+fpr:::::::::1111222233334444AAAABBBBCCCCDDDDEEEE0000:
+uid:u::::1700000000::HASH::Ada Lovelace <ada@example.com>::::::::::0:
+";
+        let keys = parse_gpg_secret_keys(sample);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].value, "1111222233334444AAAABBBBCCCCDDDDEEEE0000");
+    }
+
+    #[test]
+    fn key_without_a_primary_fingerprint_is_not_offered() {
+        let sample = "\
+sec:u:4096:1:ABCD1234EF567890:1700000000:::u:::scESC:::::::::
+uid:u::::1700000000::HASH::Missing Fingerprint <missing@example.com>::::::::::0:
+ssb:u:4096:1:DEADBEEFDEADBEEF:1700000000::::::s:::::::
+fpr:::::::::5555666677778888AAAABBBBCCCCDDDDEEEEFFFF:
+";
+        assert!(parse_gpg_secret_keys(sample).is_empty());
     }
 
     #[test]

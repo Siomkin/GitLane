@@ -64,6 +64,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   // switches away from the form (the backend would reject the second anyway). It
   // also tracks "a clone is in flight" for the unmount cleanup below.
   const cloningRef = useRef(false);
+  const cloneRunRef = useRef<Promise<void> | null>(null);
 
   const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
   const remoteInfo = useMemo(() => detectRemoteUrl(cloneUrl), [cloneUrl]);
@@ -216,7 +217,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     setError(null);
     setProgress(INITIAL_PROGRESS);
     setScreen("progress");
-    void (async () => {
+    const run = (async () => {
       try {
         // A transport switch starts from the new transport's default auth —
         // form credentials belong to the URL they were entered for, so they
@@ -322,13 +323,23 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
         cloningRef.current = false;
       }
     })();
+    cloneRunRef.current = run;
+    void run.finally(() => {
+      if (cloneRunRef.current === run) cloneRunRef.current = null;
+    });
   }, [cloneUrl, cloneParent, cloneFolder, cloneAccountId, cloneAuthAccounts, cloneUsername, clonePassword, cloneKeychain, remoteInfo, setScreen, setResult]);
 
   const cancelClone = useCallback(() => {
+    if (!cloningRef.current || cancelingRef.current) return;
     cancelingRef.current = true;
+    const run = cloneRunRef.current;
     void api
       .cancelClone()
-      .then(() => {
+      .then(async () => {
+        // Backend cancellation kills the child first; its original clone IPC
+        // settles after the process is reaped and private staging is cleaned.
+        // Do not expose Retry while `cloningRef` would still drop that click.
+        await run;
         setError(canceledCloneCopy());
         setScreen("error");
       })

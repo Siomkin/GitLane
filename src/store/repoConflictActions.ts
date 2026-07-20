@@ -10,6 +10,15 @@ import { operationLabel } from "./operation";
 import { useUi } from "./ui";
 import type { ActiveOperationKind, RepoGet, RepoSet, RepoState } from "./repoTypes";
 
+function isOperationIdentityPreflightError(error: unknown): boolean {
+  const message = String(error).toLowerCase();
+  return (
+    message.includes("repository identity changed before this operation") ||
+    message.includes("identity configuration lock is unavailable") ||
+    message.includes("failed to read the repository identity")
+  );
+}
+
 export function createRepoConflictActions(
   _set: RepoSet,
   get: RepoGet,
@@ -62,6 +71,10 @@ export function createRepoConflictActions(
     try {
       await call(opPath, operation.kind);
     } catch (e) {
+      // These backend checks run before git. The current conflict necessarily
+      // remains unchanged, so treating its presence as "next-step progress"
+      // would turn a rejected skip/continue into a false success message.
+      if (isOperationIdentityPreflightError(e)) throw e;
       // A continue/skip can advance to a *new* conflict step (e.g. the next
       // rebased commit) before git reports a non-zero exit. Re-read so the
       // workspace reflects the new conflict set immediately instead of showing
@@ -106,7 +119,8 @@ export function createRepoConflictActions(
     continueOperation: () => {
       const identity = useAccounts.getState().repoIdentity;
       return runOperation(
-        (path, kind) => api.continueOperation(path, kind, identity?.name, identity?.email),
+        (path, kind) =>
+          api.continueOperation(path, kind, identity?.name, identity?.email, identity),
         (label, active) =>
           active ? `${label} continued — resolve the next conflicts` : `${label} complete`,
       );
@@ -118,10 +132,13 @@ export function createRepoConflictActions(
         (label) => `${label} aborted`,
       ),
 
-    skipOperation: () =>
-      runOperation(
-        (path, kind) => api.skipOperation(path, kind),
+    skipOperation: () => {
+      const identity = useAccounts.getState().repoIdentity;
+      return runOperation(
+        (path, kind) =>
+          api.skipOperation(path, kind, identity?.name, identity?.email, identity),
         (label, active) => (active ? `Skipped — resolve the next conflicts` : `${label} complete`),
-      ),
+      );
+    },
   };
 }
