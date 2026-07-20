@@ -170,7 +170,15 @@ fn validated_next_path(next: &str, expected_resource: &str) -> Result<String, Gi
         )
     })?;
     let resource = path.split_once('?').map_or(path, |(resource, _)| resource);
-    if resource != expected_resource {
+    // Compared case-insensitively: `expected_resource` carries the workspace and
+    // slug exactly as the user's remote spells them, while Bitbucket may
+    // canonicalize the case in the `next` link it returns. Bitbucket routes
+    // these paths case-insensitively, so an exact match would reject a
+    // legitimate continuation and fail every page past the first. The origin is
+    // pinned by the API_PREFIX check above and the base is re-applied from a
+    // constant when the request is issued, so this only relaxes *which* resource
+    // under the already-fixed host the cursor may name.
+    if !resource.eq_ignore_ascii_case(expected_resource) {
         return Err(GithubError::InvalidResponse(
             "Bitbucket pagination returned a continuation for a different resource.".to_string(),
         ));
@@ -531,6 +539,49 @@ mod tests {
         assert_eq!(
             http.request_count(),
             2,
+            "foreign cursor was never requested"
+        );
+    }
+
+    #[test]
+    fn pr_commits_accepts_a_next_cursor_that_differs_only_in_case() {
+        // The remote spells the workspace/slug one way; Bitbucket may echo a
+        // canonicalized case in `next`. Rejecting that would fail every page
+        // past the first on any PR longer than one page.
+        let first = r#"{"values":[{"hash":"first"}],"next":"https://api.bitbucket.org/2.0/Repositories/Team/App/pullrequests/7/commits?page=2"}"#;
+        let second = r#"{"values":[{"hash":"second"}]}"#;
+        let http = MockTransport::new(vec![ok(first), ok(second)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        let result = pr_commits(&client, REPO, 7).expect("case-varied cursor");
+
+        assert_eq!(
+            result
+                .commits
+                .iter()
+                .map(|commit| commit.oid.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first", "second"]
+        );
+        assert!(!result.truncated);
+        assert_eq!(http.request_count(), 2);
+    }
+
+    #[test]
+    fn pr_commits_still_rejects_a_different_resource_under_the_api_host() {
+        // Case-insensitivity must not widen this to any path on the host: a
+        // cursor naming another repository is still refused.
+        let first = r#"{"values":[{"hash":"first"}],"next":"https://api.bitbucket.org/2.0/repositories/team/other/pullrequests/7/commits?page=2"}"#;
+        let http = MockTransport::new(vec![ok(first)]);
+        let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+
+        assert!(matches!(
+            pr_commits(&client, REPO, 7),
+            Err(GithubError::InvalidResponse(_))
+        ));
+        assert_eq!(
+            http.request_count(),
+            1,
             "foreign cursor was never requested"
         );
     }
