@@ -234,11 +234,21 @@ pub fn build_profiled(
                 lanes[lane] = Some(Lane::cont(parents[0]));
             }
             for &p in &parents[1..] {
-                if lanes
-                    .iter()
-                    .any(|s| matches!(s, Some(l) if l.waiting == p && l.kind != LaneKind::Blocked))
+                // Already awaited → collapse onto that lane instead of opening a
+                // redundant column — and *promote* the reservation to branch-root
+                // priority. This merge's connector is drawn vertically down the
+                // destination lane, so `p` must keep rendering there: a lower slot
+                // freed later (e.g. a released blocked column) can pick up its own
+                // continuation reservation for the same commit, and without the
+                // promotion that lower lane would win the claim and drag the
+                // connector through whatever renders in between.
+                if let Some(l) = lanes
+                    .iter_mut()
+                    .flatten()
+                    .find(|l| l.waiting == p && l.kind != LaneKind::Blocked)
                 {
-                    continue; // already awaited → collapse, don't fan out
+                    l.kind = LaneKind::Root;
+                    continue;
                 }
                 let l = alloc_lane(&mut lanes);
                 lanes[l] = Some(Lane::root(p));

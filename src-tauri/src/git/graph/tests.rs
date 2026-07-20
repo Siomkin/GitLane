@@ -581,3 +581,79 @@ fn head_handoff_does_not_lend_its_lane_to_a_sibling_branch() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn blocked_head_lane_does_not_retarget_an_existing_merge_connector_through_a_later_tip() {
+    let dir = std::env::temp_dir().join("gitlane-blocked-head-cross-connector-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+
+    let a = commit_on(&repo, &dir, "refs/heads/e", "A.txt", "A\n", &[], 1000);
+    let b = commit_on(&repo, &dir, "refs/heads/c-temp", "B.txt", "B\n", &[], 900);
+    let d = commit_on(&repo, &dir, "refs/heads/e", "D.txt", "D\n", &[a], 1500);
+    let c = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/c-temp",
+        "C.txt",
+        "C\n",
+        &[b, a],
+        1400,
+    );
+    let _e = commit_on(&repo, &dir, "refs/heads/e", "E.txt", "E\n", &[d], 1700);
+    let h = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/checked-out",
+        "H.txt",
+        "H\n",
+        &[d, c],
+        1600,
+    );
+    let f = commit_on(&repo, &dir, "refs/heads/f", "F.txt", "F\n", &[a], 1300);
+    repo.find_reference("refs/heads/c-temp")
+        .unwrap()
+        .delete()
+        .unwrap();
+    repo.set_head("refs/heads/checked-out").unwrap();
+
+    let graph = build(&repo, 100).unwrap();
+    let summaries: Vec<_> = graph
+        .commits
+        .iter()
+        .map(|node| node.summary.as_str())
+        .collect();
+    assert_eq!(
+        summaries,
+        vec!["E.txt", "H.txt", "D.txt", "C.txt", "F.txt", "A.txt", "B.txt"]
+    );
+
+    let node = |oid: Oid| {
+        graph
+            .commits
+            .iter()
+            .find(|candidate| candidate.id == oid.to_string())
+            .unwrap()
+    };
+    let h_node = node(h);
+    let c_node = node(c);
+    let f_node = node(f);
+    let a_node = node(a);
+    let edge = graph
+        .edges
+        .iter()
+        .find(|edge| {
+            edge.from_row == c_node.row && edge.to_row == a_node.row && edge.parent_index == 1
+        })
+        .expect("C has its second-parent connector to A");
+
+    assert!(h_node.row < c_node.row);
+    assert!(c_node.row < f_node.row && f_node.row < a_node.row);
+    assert_ne!(
+        f_node.lane, edge.to_lane,
+        "C's merge connector to A must not run vertically through unrelated F"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
