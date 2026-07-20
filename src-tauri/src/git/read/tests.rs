@@ -65,6 +65,84 @@ fn local_status(repo: &TempRepo, branch: &str) -> (String, Option<String>, usize
 }
 
 #[test]
+fn branch_info_reports_git_push_remote_precedence() {
+    let dir = TempRepo::new("push-remote-precedence");
+    let repo = Repository::init(dir.path()).unwrap();
+    commit(&repo, "refs/heads/main", "base", &[]);
+    repo.set_head("refs/heads/main").unwrap();
+    repo.remote("origin", "https://example.test/base.git")
+        .unwrap();
+    repo.remote("mirror", "https://example.test/mirror.git")
+        .unwrap();
+    repo.remote("fork", "https://example.test/fork.git")
+        .unwrap();
+    track(&repo, "main", "origin/main");
+
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("remote.pushDefault", "mirror").unwrap();
+    cfg.set_str("branch.main.pushRemote", "fork").unwrap();
+    drop(cfg);
+
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == "local" && branch.name == "main")
+        .unwrap();
+    assert_eq!(branch.upstream_remote.as_deref(), Some("origin"));
+    assert_eq!(branch.push_remote.as_deref(), Some("fork"));
+
+    repo.config()
+        .unwrap()
+        .remove("branch.main.pushRemote")
+        .unwrap();
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == "local" && branch.name == "main")
+        .unwrap();
+    assert_eq!(branch.push_remote.as_deref(), Some("mirror"));
+}
+
+#[test]
+fn branch_info_redacts_credentials_from_url_valued_remote_config() {
+    let dir = TempRepo::new("branch-config-secret-redaction");
+    let repo = Repository::init(dir.path()).unwrap();
+    commit(&repo, "refs/heads/main", "base", &[]);
+    repo.set_head("refs/heads/main").unwrap();
+
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str(
+        "branch.main.remote",
+        "https://alice:fetch-secret@example.test/team/repo.git",
+    )
+    .unwrap();
+    cfg.set_str("branch.main.merge", "refs/heads/main").unwrap();
+    cfg.set_str(
+        "branch.main.pushRemote",
+        "https://alice:push-secret@example.test/team/repo.git",
+    )
+    .unwrap();
+    drop(cfg);
+
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == "local" && branch.name == "main")
+        .unwrap();
+    assert_eq!(
+        branch.upstream_remote.as_deref(),
+        Some("https://alice:***@example.test/team/repo.git")
+    );
+    assert_eq!(
+        branch.push_remote.as_deref(),
+        Some("https://alice:***@example.test/team/repo.git")
+    );
+    let serialized = serde_json::to_string(&branch).unwrap();
+    assert!(!serialized.contains("fetch-secret"));
+    assert!(!serialized.contains("push-secret"));
+}
+
+#[test]
 fn branch_sync_reports_no_remote_and_no_upstream() {
     let dir = TempRepo::new("no-upstream");
     let repo = Repository::init(dir.path()).unwrap();

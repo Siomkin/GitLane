@@ -69,6 +69,7 @@ import { useUi } from "./ui";
 import { usePulls } from "./pulls";
 
 export type Forge = "GitHub" | "GitLab" | "Bitbucket" | "Azure DevOps" | "Gitea" | "Forgejo";
+type GitTransportDirection = "fetch" | "push";
 
 export interface Account {
   id: string;
@@ -181,10 +182,14 @@ interface AccountsState {
   cancelProviderOauthSignIn: () => Promise<void>;
   /** Fully undo a completed OAuth sign-in after a *late* cancel (GL-139) — one
    * that finished (token stored, remote pinned) before the cancel registered.
+   * `result` is the exact object returned by [`signInProviderOauth`] and serves
+   * as the run-ownership handle; a copied/lookalike result is intentionally a
+   * no-op so it cannot resolve a later retry through the shared sentinel key.
    * Restores `remote`'s prior URL username (`priorUsername`, snapshotted before
    * the pin via [`remoteUrlUsername`]) so the pin is reverted rather than left
-   * dangling, then deletes the keychain token + metadata. Mirrors exactly what
-   * [`signInProviderOauth`] changed, so a cancel leaves no trace. */
+   * dangling, then deletes the keychain token + metadata. If restoring the
+   * remote fails, the usable token/account is retained rather than leaving a
+   * sentinel username pointing at a deleted credential. */
   rollbackProviderOauthSignIn: (
     provider: ForgeAuthProvider,
     result: ProviderOauthResult,
@@ -255,9 +260,13 @@ interface AccountsState {
   /** The account ref that authenticates `remote`, or null for system git
    * credentials. What write actions send to push/fetch commands (GL-129). */
   accountRefForRemote: (remote: string) => GithubAccountRef | null;
-  /** Provider-neutral git transport auth for `remote`, or null for system git
-   * credentials / SSH without inline helper injection. */
-  transportAuthForRemote: (remote: string) => GitTransportAuthRef | null;
+  /** Provider-neutral git transport auth for the URL `remote` uses in
+   * `direction`, or null for system git credentials / SSH without inline helper
+   * injection. Push is the default for existing push-family callers. */
+  transportAuthForRemote: (
+    remote: string,
+    direction?: GitTransportDirection,
+  ) => GitTransportAuthRef | null;
   /** The `gitlabGlab` transport ref for a GitLab host, or null when glab can't
    * serve it (not GitLab, glab not installed/authed, or an HTTPS credential is
    * saved for GitLab). Shared by `transportAuthForRemote` and the clone flow so
@@ -392,19 +401,26 @@ function captureRepoMutationTarget(remoteName?: string): RepoMutationTarget {
   };
 }
 
-/** The remote pin the last OAuth sign-in wrote, so a late-cancel rollback
- * un-pins the SAME repo's remote even when the user switched repos during the
- * user-length browser flow (GL-167). Keyed by the signed-in account's identity
- * (provider + accountId), not just the remote name, so only a rollback of the
- * exact sign-in that wrote the pin may consume it — any other caller skips the
- * un-pin instead of stripping a repo it never touched. Module state: the OAuth
- * dialog is single-flight and rollback follows its own sign-in. */
-let lastOauthRemotePin: {
+interface OauthRemotePin {
   path: string;
   remote: string;
   provider: string;
   accountId: string;
-} | null = null;
+}
+
+interface OauthRunEffects {
+  tokenKey: string;
+  tokenEntry: StoredProviderToken;
+  pin: OauthRemotePin | null;
+}
+
+/** Exact side effects owned by each completed OAuth result. The result object is
+ * the run's opaque frontend handle: a late-cancel rollback may remove metadata
+ * or a remote pin only while those exact objects are still current. A retry that
+ * replaces the shared sentinel key/pin therefore cannot be consumed by the old
+ * run's compensation. */
+const oauthRunEffects = new WeakMap<ProviderOauthResult, OauthRunEffects>();
+let lastOauthRemotePin: OauthRemotePin | null = null;
 
 export const useAccounts = create<AccountsState>((set, get) => ({
   accounts: [],
@@ -480,48 +496,86 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const next = { ...get().providerTokens, [key]: entry };
     writeProviderTokens(next);
     set({ providerTokens: next });
+    const effects: OauthRunEffects = { tokenKey: key, tokenEntry: entry, pin: null };
+    oauthRunEffects.set(result, effects);
     if (remote && target && target.path) {
       // Pin the OAuth transport username into the remote's URL — the git-native
       // account selector — so fetch/push immediately resolve `providerToken`.
       // Written to the CAPTURED repo, and remembered so a late-cancel rollback
       // un-pins the same repo (GL-167).
       await api.setRemoteUsername(target.path, remote, result.transportUsername);
-      lastOauthRemotePin = { path: target.path, remote, provider, accountId: result.accountId };
+      const pin = { path: target.path, remote, provider, accountId: result.accountId };
+      effects.pin = pin;
+      lastOauthRemotePin = pin;
       if (target.isCurrent()) await useRepo.getState().listRemotes();
     }
     return result;
   },
   cancelProviderOauthSignIn: () => api.cancelProviderOauthSignIn(),
   rollbackProviderOauthSignIn: async (provider, result, remote, priorUsername) => {
+    const effects = oauthRunEffects.get(result);
+    if (!effects || effects.tokenEntry.provider !== provider) return;
     // Un-pin first: restore the account the remote carried before the sign-in
     // pinned this token's sentinel — not just strip it, since the remote may have
-    // named a different account. Best-effort; the token removal below runs
-    // regardless so a failed un-pin can't strand the keychain entry.
+    // named a different account. If this durable write fails, keep the token:
+    // deleting it would strand the remote on an OAuth sentinel with no matching
+    // credential. The visible account remains manageable and rollback can retry.
     if (remote) {
       // Target the repo the sign-in actually pinned (GL-167) — the user may be
       // in another repo by now. The pin must match this rollback's exact
       // sign-in (remote + provider + account); no match means that sign-in
       // never pinned (no repo was open), so there is nothing to un-pin.
-      const pin = lastOauthRemotePin;
-      const path =
-        pin && pin.remote === remote && pin.provider === provider && pin.accountId === result.accountId
-          ? pin.path
-          : null;
+      const pin = effects.pin;
+      const path = pin && lastOauthRemotePin === pin && pin.remote === remote ? pin.path : null;
       if (path) {
         try {
           await api.setRemoteUsername(path, remote, priorUsername);
-          lastOauthRemotePin = null;
-          if ((useRepo.getState().summary?.path ?? "") === path) {
+        } catch (e) {
+          useUi.getState().showToast(
+            `Could not restore the remote account; the OAuth credential was kept. ${String(e)}`,
+            "error",
+          );
+          return;
+        }
+        // A newer sign-in may have installed its own pin while the git write
+        // was pending. Never clear that newer owner's rollback handle.
+        if (lastOauthRemotePin === pin) lastOauthRemotePin = null;
+        if ((useRepo.getState().summary?.path ?? "") === path) {
+          try {
             await useRepo.getState().listRemotes();
+          } catch {
+            /* durable restore succeeded; the next repo refresh will reconcile */
           }
-        } catch {
-          /* leave the URL as-is; still remove the rolled-back token */
         }
       }
     }
-    // Delete the keychain token + metadata (keyed by the sentinel transport
-    // username, exactly as `signInProviderOauth` wrote it).
-    await get().signOutProviderToken(provider, result.host, result.transportUsername);
+    // Delete only the token metadata object this run installed. OAuth accounts
+    // share a sentinel map key, so resolving the key again here could select a
+    // later retry's entry and delete that retry's keychain token instead.
+    if (get().providerTokens[effects.tokenKey] !== effects.tokenEntry) return;
+    try {
+      await api.deleteProviderToken(
+        effects.tokenEntry.provider,
+        effects.tokenEntry.credentialHost,
+        effects.tokenEntry.accountId,
+      );
+      // Compare again after the keychain await: a later writer's metadata must
+      // remain visible/manageable even if it replaced this key mid-delete.
+      if (get().providerTokens[effects.tokenKey] !== effects.tokenEntry) return;
+      const next = { ...get().providerTokens };
+      delete next[effects.tokenKey];
+      writeProviderTokens(next);
+      set({ providerTokens: next });
+      oauthRunEffects.delete(result);
+      useUi
+        .getState()
+        .showToast(
+          `Signed out of @${effects.tokenEntry.login} on ${effects.tokenEntry.credentialHost} (keychain token removed)`,
+        );
+    } catch (e) {
+      // Keep the exact metadata entry manageable when keychain cleanup fails.
+      useUi.getState().showToast(String(e), "error");
+    }
   },
   oauthClientStatus: (provider, host) => api.oauthClientStatus(provider, host),
   setOauthClientId: async (provider, host, clientId) => {
@@ -1239,10 +1293,15 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     return get().accounts.find((a) => a.id === id)?.ref ?? null;
   },
 
-  transportAuthForRemote: (remote) => {
+  transportAuthForRemote: (remote, direction = "push") => {
     const target = useRepo.getState().remotes.find((r) => r.name === remote);
     if (!target) return null;
-    const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
+    // Git fetch/pull contact only remote.url. Push-family operations contact a
+    // separate remote.pushurl when configured, falling back to remote.url.
+    // Resolve the account from that exact URL so split-host remotes never send
+    // one authority's helper/token to the other authority.
+    const url = direction === "fetch" ? target.fetchUrl : target.pushUrl || target.fetchUrl;
+    const info = detectRemoteUrl(url);
     if (!info.valid || info.ssh || !info.host || !info.credentialHost) return null;
     // Capture the narrowed authority so the glab closure below keeps the
     // non-null types (closures don't inherit the guard's narrowing).

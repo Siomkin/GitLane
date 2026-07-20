@@ -173,9 +173,11 @@ export interface RepoSigningConfig {
 }
 
 /** A signing key the user already has, for the profile editor's key picker.
- * Reference only — a GPG key id or SSH public-key path, never private material. */
+ * Reference only — a full GPG fingerprint or SSH public-key path, never private
+ * material. */
 export interface SigningKey {
-  /** Written to `user.signingkey` — a GPG key id or SSH public-key path. */
+  /** Written to `user.signingkey` — a full GPG fingerprint or SSH public-key
+   * path. */
   value: string;
   /** GPG uid, or SSH key type + comment. */
   label: string;
@@ -297,11 +299,13 @@ export interface BranchInfo {
   /** For a remote branch, the remote it belongs to (resolved by the backend
    * against the known remote list). `null` for local branches. */
   remote: string | null;
-  /** For a local branch, its configured push/fetch remote
-   * (`branch.<name>.remote`) — the remote a push of this branch targets, so
-   * the matching per-remote account can be picked (GL-129). `null` for remote
-   * branches or when no remote is configured. */
+  /** For a local branch, its configured fetch/upstream remote
+   * (`branch.<name>.remote`). `null` for remote branches or when unset. */
   upstreamRemote?: string | null;
+  /** For a local branch, the actual push remote after Git's
+   * branch.pushRemote → remote.pushDefault → branch.remote → origin
+   * precedence. `null` for remote branches. */
+  pushRemote?: string | null;
   sync?: BranchSyncState | null;
 }
 
@@ -835,21 +839,39 @@ export const gitApi = {
     kind: OperationKind,
     name?: string | null,
     email?: string | null,
+    identity?: RepoIdentity | null,
   ) =>
     invoke<string>("continue_operation", {
       path,
       kind,
       name: name ?? null,
       email: email ?? null,
+      identity: identity ?? null,
+      identityCaptured: identity !== undefined,
     }),
 
   /** Abort the active operation, restoring the pre-operation state. */
   abortOperation: (path: string, kind: OperationKind) =>
     invoke<string>("abort_operation", { path, kind }),
 
-  /** Skip the current commit in a sequencer operation (rebase/cherry-pick/revert). */
-  skipOperation: (path: string, kind: OperationKind) =>
-    invoke<string>("skip_operation", { path, kind }),
+  /** Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).
+   * A skip may immediately replay the next commit, so it carries the same
+   * captured identity contract as continue. */
+  skipOperation: (
+    path: string,
+    kind: OperationKind,
+    name?: string | null,
+    email?: string | null,
+    identity?: RepoIdentity | null,
+  ) =>
+    invoke<string>("skip_operation", {
+      path,
+      kind,
+      name: name ?? null,
+      email: email ?? null,
+      identity: identity ?? null,
+      identityCaptured: identity !== undefined,
+    }),
 
   /** Create a lightweight tag at the captured `sha`. */
   createTag: (path: string, name: string, sha: string) =>
@@ -1136,6 +1158,7 @@ export const gitApi = {
     amend: boolean,
     authorName?: string | null,
     authorEmail?: string | null,
+    identity?: RepoIdentity | null,
   ) =>
     invoke<string>("commit", {
       path,
@@ -1146,6 +1169,8 @@ export const gitApi = {
       amend,
       name: authorName ?? null,
       email: authorEmail ?? null,
+      identity: identity ?? null,
+      identityCaptured: identity !== undefined,
     }),
 
   /** Squash the current tip range behind one guarded backend contract. */
@@ -1158,6 +1183,7 @@ export const gitApi = {
     description: string,
     authorName?: string | null,
     authorEmail?: string | null,
+    identity?: RepoIdentity | null,
   ) => invoke<string>("squash_commits", {
     path,
     expectedBranch,
@@ -1167,6 +1193,8 @@ export const gitApi = {
     description,
     name: authorName ?? null,
     email: authorEmail ?? null,
+    identity: identity ?? null,
+    identityCaptured: identity !== undefined,
   }),
 
   stash: (path: string, expectedBranch: string | null, expectedOid: string | null) =>

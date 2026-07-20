@@ -27,6 +27,17 @@ export interface AuthRecovery {
   httpsUrl: string | null;
 }
 
+function recoveryUrls(host: string, path: string): { ssh: string; https: string } {
+  const ipv6 = host.includes(":");
+  const authority = ipv6 ? `[${host}]` : host;
+  return {
+    // SCP syntax cannot represent a colon-bearing IPv6 hostname
+    // unambiguously, so use the URI form for that one case.
+    ssh: ipv6 ? `ssh://git@${authority}/${path}.git` : `git@${host}:${path}.git`,
+    https: `https://${authority}/${path}.git`,
+  };
+}
+
 export function buildAuthRecovery(attemptedUrl: string): AuthRecovery {
   const info = detectRemoteUrl(attemptedUrl);
   const provider = cloneProviderFor(info);
@@ -35,6 +46,7 @@ export function buildAuthRecovery(attemptedUrl: string): AuthRecovery {
   // Cross-transport switches. Azure is excluded from the SSH form: its scp-style
   // URL is ssh://git@ssh.dev.azure.com/v3/…, not derivable from the HTTPS path.
   const convertible = info.valid && !!info.host && !!info.path && info.provider !== "azure";
+  const alternatives = convertible ? recoveryUrls(info.host!, info.path!) : null;
 
   return {
     ssh: info.ssh,
@@ -43,7 +55,10 @@ export function buildAuthRecovery(attemptedUrl: string): AuthRecovery {
     host: info.host,
     credentialHost: info.credentialHost,
     sshHelp: sshKeyHelp(provider, info.host ?? ""),
-    sshUrl: !info.ssh && convertible ? `git@${info.host}:${info.path}.git` : null,
-    httpsUrl: info.ssh && convertible ? `https://${info.credentialHost ?? info.host}/${info.path}.git` : null,
+    sshUrl: !info.ssh ? alternatives?.ssh ?? null : null,
+    // An explicit ssh:// port belongs to the SSH daemon, not the forge's HTTPS
+    // endpoint. Convert with the classified bare host while still retaining the
+    // original authority in `credentialHost` for diagnostics.
+    httpsUrl: info.ssh ? alternatives?.https ?? null : null,
   };
 }

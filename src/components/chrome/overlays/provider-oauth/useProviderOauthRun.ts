@@ -42,6 +42,12 @@ export interface ProviderOauthRun {
   cancel: () => void;
 }
 
+// The backend OAuth flow is app-global, and a dialog can unmount/reopen while a
+// canceled run is still compensating its committed credential. Keep one owner
+// across hook instances until that rollback has finished, so a retry can never
+// race the previous run's token deletion / remote un-pin.
+let activeProviderOauthRun: symbol | null = null;
+
 export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOauthRun {
   const mode = oauthModeFor(req.provider);
   const [phase, setPhase] = useState<OauthPhase>("configure");
@@ -93,7 +99,9 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
   };
 
   const start = () => {
-    if (inFlight.current) return;
+    if (inFlight.current || activeProviderOauthRun) return;
+    const runOwner = Symbol("provider-oauth-run");
+    activeProviderOauthRun = runOwner;
     inFlight.current = true;
     canceled.current = false;
     cancelDecision.current = null;
@@ -108,32 +116,35 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
     setUrl(null);
     setMessage("");
     void (async () => {
-      // Subscribe before invoking so the earliest steps can't be missed.
-      const unlisten = await listen<ProviderOauthProgress>(
-        "provider-oauth-progress",
-        ({ payload }) => {
-          if (payload.provider !== req.provider) return; // ignore a stray flow
-          if (payload.userCode) {
-            setCode(payload.userCode);
-            try {
-              void navigator.clipboard?.writeText(payload.userCode);
-            } catch {
-              /* clipboard unavailable — the code is shown for manual copy */
-            }
-          }
-          if (payload.verificationUri) {
-            setUrl(payload.verificationUri);
-            // Open the verification/authorize page for the user, once.
-            if (!opened.current) {
-              opened.current = true;
-              openExternalUrl(payload.verificationUri);
-            }
-          }
-          const i = oauthStepIndex(mode, payload.step);
-          if (i >= 0) setReached((r) => Math.max(r, i));
-        },
-      );
+      let unlisten: (() => void) | null = null;
       try {
+        // Subscribe before invoking so the earliest steps can't be missed. This
+        // lives inside the lifecycle try so a listener failure also releases the
+        // app-global owner instead of wedging every later sign-in.
+        unlisten = await listen<ProviderOauthProgress>(
+          "provider-oauth-progress",
+          ({ payload }) => {
+            if (payload.provider !== req.provider) return; // ignore a stray flow
+            if (payload.userCode) {
+              setCode(payload.userCode);
+              try {
+                void navigator.clipboard?.writeText(payload.userCode);
+              } catch {
+                /* clipboard unavailable — the code is shown for manual copy */
+              }
+            }
+            if (payload.verificationUri) {
+              setUrl(payload.verificationUri);
+              // Open the verification/authorize page for the user, once.
+              if (!opened.current) {
+                opened.current = true;
+                openExternalUrl(payload.verificationUri);
+              }
+            }
+            const i = oauthStepIndex(mode, payload.step);
+            if (i >= 0) setReached((r) => Math.max(r, i));
+          },
+        );
         const result = await useAccounts
           .getState()
           .signInProviderOauth(req.provider, req.host, req.remote);
@@ -143,7 +154,7 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
           // for a bound remote, pinned it into the remote URL) before the cancel
           // registered — roll all of it back so cancel means "no account added"
           // and the remote keeps its prior account.
-          void useAccounts
+          await useAccounts
             .getState()
             .rollbackProviderOauthSignIn(
               req.provider,
@@ -175,8 +186,9 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
           setPhase("error");
         }
       } finally {
+        unlisten?.();
         inFlight.current = false;
-        unlisten();
+        if (activeProviderOauthRun === runOwner) activeProviderOauthRun = null;
       }
     })();
   };

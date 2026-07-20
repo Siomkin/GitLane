@@ -634,6 +634,67 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
   });
 
+  it("selects independent accounts for a remote's split fetch and push authorities", () => {
+    const fetchAccount: Account = {
+      ...account,
+      id: "gh:fetch.github.com:fetch-account",
+      host: "fetch.github.com",
+      accountId: "fetch-account",
+      login: "fetch-user",
+      username: "fetch-user",
+      ref: {
+        provider: "gh",
+        host: "fetch.github.com",
+        accountId: "fetch-account",
+        login: "fetch-user",
+      },
+    };
+    const pushAccount: Account = {
+      ...account,
+      id: "gh:push.github.com:push-account",
+      host: "push.github.com",
+      accountId: "push-account",
+      login: "push-user",
+      username: "push-user",
+      ref: {
+        provider: "gh",
+        host: "push.github.com",
+        accountId: "push-account",
+        login: "push-user",
+      },
+    };
+    useAccounts.setState({ accounts: [fetchAccount, pushAccount] });
+    useRepo.setState({
+      summary,
+      remotes: [
+        {
+          name: "origin",
+          fetchUrl: "https://fetch-user@fetch.github.com/owner/repo.git",
+          pushUrl: "https://push-user@push.github.com/owner/repo.git",
+          isDefault: true,
+        },
+      ],
+    });
+
+    expect(useAccounts.getState().transportAuthForRemote("origin", "fetch")).toEqual({
+      mode: "githubGh",
+      provider: "github",
+      host: "fetch.github.com",
+      credentialHost: "fetch.github.com",
+      username: "fetch-user",
+      accountRef: fetchAccount.ref,
+    });
+    // Push remains the default direction for existing push-family callers.
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toEqual({
+      mode: "githubGh",
+      provider: "github",
+      host: "push.github.com",
+      credentialHost: "push.github.com",
+      username: "push-user",
+      accountRef: pushAccount.ref,
+    });
+  });
+
   it("matches www GitHub remotes to github.com accounts while preserving helper scope", () => {
     useRepo.setState({
       summary,

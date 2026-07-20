@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 
-use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics};
-use super::operands::ensure_operand;
+use super::cli::{run_git, run_git_env_redacted, run_git_env_stable_diagnostics_redacted};
+use super::operands::{ensure_http_url_has_no_password, ensure_operand};
 use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
 
@@ -19,7 +19,7 @@ fn run_transport(
 ) -> Result<String, String> {
     let inv = credential_bridge::git_invocation(cred)?;
     let (args, env) = merge_invocation(&inv, command);
-    run_git_env(repo, &args_refs(&args), &env_refs(&env))
+    run_git_env_redacted(repo, &args_refs(&args), &env_refs(&env))
 }
 
 /// Like [`run_transport`] but with locale-stable diagnostics (`LC_ALL=C`), for
@@ -32,7 +32,7 @@ fn run_transport_stable(
 ) -> Result<String, String> {
     let inv = credential_bridge::git_invocation(cred)?;
     let (args, env) = merge_invocation(&inv, command);
-    run_git_env_stable_diagnostics(repo, &args_refs(&args), &env_refs(&env))
+    run_git_env_stable_diagnostics_redacted(repo, &args_refs(&args), &env_refs(&env))
 }
 
 fn merge_invocation(inv: &GitInvocation, command: &[&str]) -> (Vec<String>, Vec<(String, String)>) {
@@ -53,6 +53,7 @@ fn env_refs(env: &[(String, String)]) -> Vec<(&str, &str)> {
 pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_operand(url)?;
+    ensure_http_url_has_no_password(url)?;
     run_git(repo, &["remote", "add", name, url])
 }
 
@@ -64,6 +65,7 @@ pub fn add_remote(repo: &str, name: &str, url: &str) -> Result<String, String> {
 pub fn set_remote_url(repo: &str, name: &str, url: &str) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_operand(url)?;
+    ensure_http_url_has_no_password(url)?;
     let fetch = run_git(repo, &["remote", "set-url", name, url])?;
     if has_push_url(repo, name) {
         let push = run_git(repo, &["remote", "set-url", "--push", name, url])?;

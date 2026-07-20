@@ -32,14 +32,14 @@ pub struct CredentialForgetResult {
 }
 
 pub fn helper_status() -> CredentialHelperStatus {
-    let mut helpers = git_config_get_all("credential.helper")
+    let mut configured_values = git_config_get_all("credential.helper")
         .unwrap_or_default()
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
-    helpers.extend(
+    configured_values.extend(
         git_config_get_regexp(r"^credential\..*\.helper$")
             .unwrap_or_default()
             .lines()
@@ -50,12 +50,63 @@ pub fn helper_status() -> CredentialHelperStatus {
             .filter(|line| !line.is_empty())
             .map(ToOwned::to_owned),
     );
-    helpers.sort();
-    helpers.dedup();
+    let helpers = sanitized_helper_labels(configured_values.iter().map(String::as_str));
     CredentialHelperStatus {
         configured: !helpers.is_empty(),
         helpers,
     }
+}
+
+/// Convert arbitrary `credential.helper` config values into a small, display-safe
+/// vocabulary before they cross IPC. A helper value is command syntax, not merely
+/// a name: Git accepts executable paths, arguments, and `!` shell snippets, any of
+/// which can contain inline credentials. Known helpers retain a useful label;
+/// everything else is deliberately opaque.
+fn sanitized_helper_labels<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut labels = values
+        .into_iter()
+        .filter_map(helper_display_label)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    labels.sort();
+    labels.dedup();
+    labels
+}
+
+fn helper_display_label(value: &str) -> Option<&'static str> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    let lower = value.to_ascii_lowercase();
+    let shell_command = lower.strip_prefix('!').map(str::trim_start);
+    if shell_command.is_some_and(|command| command.starts_with("gh auth git-credential")) {
+        return Some("GitHub CLI");
+    }
+    if shell_command.is_some_and(|command| command.starts_with("glab auth git-credential")) {
+        return Some("GitLab CLI");
+    }
+    if shell_command.is_some() {
+        return Some("Custom helper");
+    }
+
+    // Git appends `git-credential-` to a bare helper name, but also permits an
+    // absolute executable path and arguments. Inspect only the first token and
+    // only to recognize a fixed allow-list; no part of an unknown value survives.
+    let executable = lower.split_whitespace().next().unwrap_or_default();
+    let basename = executable.rsplit(['/', '\\']).next().unwrap_or(executable);
+    let basename = basename.strip_suffix(".exe").unwrap_or(basename);
+    let helper = basename.strip_prefix("git-credential-").unwrap_or(basename);
+    Some(match helper {
+        "manager" | "manager-core" => "Git Credential Manager",
+        "osxkeychain" => "macOS Keychain",
+        "libsecret" => "Secret Service",
+        "wincred" => "Windows Credential Store",
+        "store" => "Plaintext store",
+        "cache" => "Memory cache",
+        _ => "Custom helper",
+    })
 }
 
 pub fn approve_https_credential(
@@ -241,7 +292,61 @@ fn run_git_credential(op: &str, input: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{credential_input, validate_credential_field};
+    use super::{
+        credential_input, sanitized_helper_labels, validate_credential_field,
+        CredentialHelperStatus,
+    };
+
+    #[test]
+    fn helper_metadata_is_sanitized_before_serialization() {
+        let secret = "ghp_INLINE_SECRET_SENTINEL";
+        let raw = [
+            "manager-core",
+            "cache --timeout=3600",
+            "!gh auth git-credential",
+            "!f() { echo username=alice; echo password=ghp_INLINE_SECRET_SENTINEL; }; f",
+            "/private/credentials/git-credential-unknown --token ghp_INLINE_SECRET_SENTINEL",
+        ];
+        let helpers = sanitized_helper_labels(raw);
+        assert_eq!(
+            helpers,
+            [
+                "Custom helper",
+                "Git Credential Manager",
+                "GitHub CLI",
+                "Memory cache",
+            ]
+        );
+
+        let json = serde_json::to_string(&CredentialHelperStatus {
+            configured: true,
+            helpers,
+        })
+        .expect("serialize helper status");
+        assert!(!json.contains(secret));
+        assert!(!json.contains("/private/credentials"));
+        assert!(!json.contains("--timeout"));
+        assert!(!json.contains("echo password"));
+    }
+
+    #[test]
+    fn helper_metadata_recognizes_known_executable_paths_without_returning_them() {
+        let raw = [
+            "/usr/local/bin/git-credential-osxkeychain",
+            r"C:\Tools\git-credential-manager-core.exe",
+            "store --file=/private/credentials.txt",
+            "!glab auth git-credential",
+        ];
+        assert_eq!(
+            sanitized_helper_labels(raw),
+            [
+                "Git Credential Manager",
+                "GitLab CLI",
+                "Plaintext store",
+                "macOS Keychain",
+            ]
+        );
+    }
 
     #[test]
     fn credential_input_preserves_host_path_and_secret() {

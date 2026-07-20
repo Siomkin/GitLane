@@ -86,6 +86,11 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
             } else {
                 None
             };
+            let push_remote = if kind == BranchType::Local {
+                Some(configured_push_remote(&repo, &name))
+            } else {
+                None
+            };
 
             out.push(BranchInfo {
                 name,
@@ -95,6 +100,7 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 upstream,
                 remote,
                 upstream_remote,
+                push_remote,
                 sync,
             });
         }
@@ -114,7 +120,24 @@ fn configured_remote(repo: &Repository, branch_name: &str) -> Option<String> {
     if remote.is_empty() || remote == "." {
         return None;
     }
-    Some(remote)
+    Some(crate::redact::redact_secrets(&remote))
+}
+
+/// Mirror real Git's push-remote precedence so the frontend selects credentials
+/// for the same destination the write side resolves in triangular workflows.
+fn configured_push_remote(repo: &Repository, branch_name: &str) -> String {
+    let config = repo.config().ok();
+    let value = |key: &str| {
+        config
+            .as_ref()
+            .and_then(|cfg| cfg.get_string(key).ok())
+            .filter(|remote| !remote.is_empty() && remote != ".")
+            .map(|remote| crate::redact::redact_secrets(&remote))
+    };
+    value(&format!("branch.{branch_name}.pushRemote"))
+        .or_else(|| value("remote.pushDefault"))
+        .or_else(|| value(&format!("branch.{branch_name}.remote")))
+        .unwrap_or_else(|| "origin".to_string())
 }
 
 fn configured_upstream(repo: &Repository, branch_name: &str) -> Option<String> {
@@ -132,7 +155,11 @@ fn configured_upstream(repo: &Repository, branch_name: &str) -> Option<String> {
     if remote == "." {
         Some(merge_name.to_string())
     } else {
-        Some(format!("{remote}/{merge_name}"))
+        Some(format!(
+            "{}/{}",
+            crate::redact::redact_secrets(&remote),
+            merge_name
+        ))
     }
 }
 

@@ -586,10 +586,38 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(false);
   });
 
-  it("skips the un-pin when the rollback is not for the sign-in that pinned", async () => {
-    // The recorded pin is keyed by the signed-in account, not just the remote
-    // name — a rollback for a DIFFERENT account (a caller outside the dialog's
-    // own late-cancel path) must not strip the pinned repo's remote.
+  it("keeps the OAuth credential when restoring the prior remote username fails", async () => {
+    useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "provider_oauth_sign_in") return Promise.resolve(oauthResult);
+      if (cmd === "set_remote_username" && args?.username === "alice") {
+        return Promise.reject(new Error("config locked"));
+      }
+      if (cmd === "list_remotes") return Promise.resolve([gitlabRemote]);
+      return Promise.resolve(undefined);
+    });
+    const completed = await useAccounts
+      .getState()
+      .signInProviderOauth("gitlab", "gitlab.com", "origin");
+
+    invokeMock.mockClear();
+    await useAccounts
+      .getState()
+      .rollbackProviderOauthSignIn("gitlab", completed, "origin", "alice");
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
+      path: "/repo",
+      name: "origin",
+      username: "alice",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+  });
+
+  it("ignores a rollback result that is not the exact sign-in handle", async () => {
+    // The result object itself is the run handle. A lookalike result from a
+    // different caller must not strip the pin OR resolve the shared sentinel key
+    // to the real run's token.
     useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
     invokeMock.mockImplementation((cmd: string) =>
       Promise.resolve(
@@ -604,14 +632,68 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
       .getState()
       .rollbackProviderOauthSignIn("gitlab", { ...oauthResult, accountId: "99" }, "origin", "alice");
 
-    // No un-pin — the pin belongs to account 42's sign-in — while the token
-    // removal (keyed by the stored entry) still proceeds.
+    // Neither side effect belongs to this synthetic result.
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
+    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+  });
+
+  it("a deferred rollback cannot consume a same-account retry's token or pin", async () => {
+    useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
+    // Same provider/host/account/sentinel, but distinct IPC result objects: this
+    // is the dangerous retry shape because account-id comparison alone cannot
+    // distinguish A's metadata from B's fresh token entry.
+    const resultA = { ...oauthResult };
+    const resultB = { ...oauthResult };
+    const restoreA = deferred<void>();
+    let signInCall = 0;
+    let restoreCalls = 0;
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "provider_oauth_sign_in") {
+        signInCall += 1;
+        return Promise.resolve(signInCall === 1 ? resultA : resultB);
+      }
+      if (cmd === "set_remote_username" && args?.username === "alice") {
+        restoreCalls += 1;
+        return restoreCalls === 1 ? restoreA.promise : Promise.resolve(undefined);
+      }
+      if (cmd === "list_remotes") return Promise.resolve(useRepo.getState().remotes);
+      return Promise.resolve(undefined);
+    });
+
+    const completedA = await useAccounts
+      .getState()
+      .signInProviderOauth("gitlab", "gitlab.com", "origin");
+    const rollbackA = useAccounts
+      .getState()
+      .rollbackProviderOauthSignIn("gitlab", completedA, "origin", "alice");
+    expect(restoreCalls).toBe(1); // A is paused while restoring the prior URL user.
+
+    const completedB = await useAccounts
+      .getState()
+      .signInProviderOauth("gitlab", "gitlab.com", "origin");
+    const sentinelKey = providerTokenKey("gitlab.com", "oauth2");
+    const retryEntry = useAccounts.getState().providerTokens[sentinelKey];
+
+    restoreA.resolve();
+    await rollbackA;
+
+    // A resumed after B had replaced the same sentinel key. It must not resolve
+    // that key to B, delete B's account-42 token, or clear B's pin ownership.
+    expect(useAccounts.getState().providerTokens[sentinelKey]).toBe(retryEntry);
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
+
+    // B still owns the pin: its own rollback can restore it and remove its token.
+    await useAccounts
+      .getState()
+      .rollbackProviderOauthSignIn("gitlab", completedB, "origin", "alice");
+    expect(restoreCalls).toBe(2);
     expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
       provider: "gitlab",
       host: "gitlab.com",
       accountId: "42",
     });
+    expect(useAccounts.getState().providerTokens[sentinelKey]).toBeUndefined();
   });
 
   it("skips the un-pin when the sign-in never pinned a remote", async () => {

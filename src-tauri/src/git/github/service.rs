@@ -264,27 +264,11 @@ impl GithubService {
         // provider, not to pick one.
         let remote = forge::detect(workdir);
         let provider = self.provider_for(remote.as_ref())?;
-        // Pre-check the account's host against the remote (no token, no network)
-        // before `resolve_repository` runs — otherwise a wrong-host binding sends
-        // that token to the mismatched endpoint first and the clear HostMismatch
-        // message is buried under the resulting auth failure.
-        if let (Some(account), Some(remote)) = (account.as_ref(), remote.as_ref()) {
-            if !hosts_match(&remote.host, &account.host) {
-                return Err(GithubError::HostMismatch {
-                    repo_host: remote.host.clone(),
-                    account_host: account.host.clone(),
-                });
-            }
-        }
-        let repository = provider.resolve_repository(workdir, account.as_ref())?;
-        if let Some(account) = account.as_ref() {
-            if !hosts_match(&repository.host, &account.host) {
-                return Err(GithubError::HostMismatch {
-                    repo_host: repository.host,
-                    account_host: account.host.clone(),
-                });
-            }
-        }
+        // Repository resolution runs without the selected account. This keeps
+        // its token/keychain locator out of every provider until the local
+        // remote authority has been proven compatible below.
+        let repository = provider.resolve_repository(workdir, None)?;
+        let repository = validate_repository_authority(workdir, repository, account.as_ref())?;
         Ok((
             provider,
             GithubContext {
@@ -315,21 +299,81 @@ impl GithubService {
     }
 }
 
-/// Compare two hosts ignoring a trailing numeric port. Forge detection reports a
-/// portless host, while a self-hosted GitLab account ref can carry a custom HTTPS
-/// port (`gitlab.example.com:8443`); matching by name keeps the REST base URL's
-/// port without failing the host check. GitHub hosts never carry a port, so this
-/// is a no-op there.
-fn hosts_match(a: &str, b: &str) -> bool {
-    fn strip_port(host: &str) -> &str {
-        match host.rsplit_once(':') {
-            Some((name, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
-                name
-            }
-            _ => host,
+/// Validate and bind the API authority carried into provider operations.
+/// HTTP(S) remotes have an exact API authority, so an explicit port is part of
+/// the security boundary. SSH/scp remotes carry only a transport hostname; if
+/// that hostname matches the account hostname, the account's HTTPS authority
+/// (including its API port) becomes the context authority used by later calls.
+fn validate_repository_authority(
+    workdir: &str,
+    mut repository: GithubRepository,
+    account: Option<&GithubAccountRef>,
+) -> Result<GithubRepository, GithubError> {
+    let project = if repository.owner.is_empty() {
+        repository.name.clone()
+    } else {
+        format!("{}/{}", repository.owner, repository.name)
+    };
+    let remote = forge::remote_api_authority_for_project(workdir, &repository.host, &project);
+
+    let Some(account) = account else {
+        if let Some(remote) = remote {
+            repository.host = match remote {
+                forge::RemoteApiAuthority::Http(authority)
+                | forge::RemoteApiAuthority::TransportHost(authority) => authority,
+            };
         }
+        return Ok(repository);
+    };
+
+    let repo_authority = match remote {
+        Some(forge::RemoteApiAuthority::Http(authority)) => {
+            if !authorities_match(&authority, &account.host) {
+                return Err(GithubError::HostMismatch {
+                    repo_host: authority,
+                    account_host: account.host.clone(),
+                });
+            }
+            account.host.clone()
+        }
+        Some(forge::RemoteApiAuthority::TransportHost(host)) => {
+            if !authority_hostname(&account.host).eq_ignore_ascii_case(&host) {
+                return Err(GithubError::HostMismatch {
+                    repo_host: host,
+                    account_host: account.host.clone(),
+                });
+            }
+            account.host.clone()
+        }
+        None => {
+            if !authorities_match(&repository.host, &account.host) {
+                return Err(GithubError::HostMismatch {
+                    repo_host: repository.host,
+                    account_host: account.host.clone(),
+                });
+            }
+            account.host.clone()
+        }
+    };
+    repository.host = repo_authority;
+    Ok(repository)
+}
+
+fn authorities_match(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
+}
+
+fn authority_hostname(authority: &str) -> &str {
+    match authority.rsplit_once(':') {
+        Some((host, port))
+            if !host.is_empty()
+                && !port.is_empty()
+                && port.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            host
+        }
+        _ => authority,
     }
-    strip_port(a).eq_ignore_ascii_case(strip_port(b))
 }
 
 #[cfg(test)]
@@ -341,6 +385,15 @@ mod tests {
         RemoteForge {
             kind,
             host: host.to_string(),
+        }
+    }
+
+    fn account(host: &str) -> GithubAccountRef {
+        GithubAccountRef {
+            provider: "gh".into(),
+            host: host.into(),
+            account_id: "account-that-does-not-exist".into(),
+            login: "account-that-does-not-exist".into(),
         }
     }
 
@@ -442,12 +495,101 @@ mod tests {
     }
 
     #[test]
-    fn hosts_match_ignores_a_numeric_port() {
-        assert!(hosts_match("gitlab.example.com", "gitlab.example.com:8443"));
-        assert!(hosts_match("gitlab.example.com:8443", "gitlab.example.com"));
-        assert!(hosts_match("github.com", "github.com"));
-        // Different hosts never match, port or not.
-        assert!(!hosts_match("gitlab.com", "gitlab.example.com"));
-        assert!(!hosts_match("gitlab.com:443", "gitlab.example.com:443"));
+    fn http_authorities_match_exactly_including_port() {
+        assert!(authorities_match("ghe.example.test", "GHE.EXAMPLE.TEST"));
+        assert!(authorities_match(
+            "ghe.example.test:8443",
+            "GHE.EXAMPLE.TEST:8443"
+        ));
+        assert!(!authorities_match(
+            "ghe.example.test:8443",
+            "ghe.example.test:9443"
+        ));
+        assert!(!authorities_match(
+            "ghe.example.test",
+            "ghe.example.test:8443"
+        ));
+    }
+
+    #[test]
+    fn https_port_mismatch_is_rejected_before_account_secret_resolution() {
+        let repo = TempRepo::init(
+            "ghes-port-mismatch",
+            "https://ghe.example.test:8443/octo/app.git",
+        );
+        let selected = account("ghe.example.test:9443");
+
+        // `context` must return HostMismatch using only local remote metadata.
+        // The deliberately nonexistent account would fail first if repository
+        // resolution still attempted `gh auth token` or a keychain lookup.
+        let err = match GithubService::default().context(repo.path(), Some(&selected)) {
+            Err(err) => err,
+            Ok(_) => panic!("different HTTPS ports must not share token authority"),
+        };
+        assert_eq!(
+            err,
+            GithubError::HostMismatch {
+                repo_host: "ghe.example.test:8443".into(),
+                account_host: "ghe.example.test:9443".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn exact_https_port_builds_context_without_resolving_account_secret() {
+        let repo = TempRepo::init(
+            "ghes-port-exact",
+            "https://ghe.example.test:8443/octo/app.git",
+        );
+        let selected = account("https://GHE.EXAMPLE.TEST:8443/");
+
+        let (_, ctx) = GithubService::default()
+            .context(repo.path(), Some(&selected))
+            .expect("exact authority resolves locally");
+        assert_eq!(ctx.repository.host, "ghe.example.test:8443");
+        assert_eq!(ctx.repository.owner, "octo");
+        assert_eq!(ctx.repository.name, "app");
+        assert_eq!(ctx.account.unwrap().host, "ghe.example.test:8443");
+    }
+
+    #[test]
+    fn ssh_transport_host_maps_to_matching_account_api_authority() {
+        let selected = account("ghe.example.test:8443");
+        for (tag, url) in [
+            ("ghes-scp-map", "git@ghe.example.test:octo/app.git"),
+            (
+                "ghes-ssh-map",
+                "ssh://git@ghe.example.test:2222/octo/app.git",
+            ),
+        ] {
+            let repo = TempRepo::init(tag, url);
+            let (_, ctx) = GithubService::default()
+                .context(repo.path(), Some(&selected))
+                .expect("same SSH hostname may use the account's HTTPS API port");
+            assert_eq!(ctx.repository.host, "ghe.example.test:8443");
+            assert_eq!(
+                super::super::cli::repo_selector(&ctx.repository),
+                "ghe.example.test:8443/octo/app",
+                "tokened gh commands must target the validated API authority, not the bare SSH host",
+            );
+        }
+    }
+
+    #[test]
+    fn ssh_transport_host_rejects_a_different_account_hostname() {
+        let repo = TempRepo::init("ghes-ssh-mismatch", "git@ghe.example.test:octo/app.git");
+        let selected = account("other.example.test:8443");
+
+        let err = match GithubService::default().context(repo.path(), Some(&selected)) {
+            Err(err) => err,
+            Ok(_) => panic!("different SSH and account hostnames must not share a token"),
+        };
+        assert_eq!(
+            err,
+            GithubError::HostMismatch {
+                repo_host: "ghe.example.test".into(),
+                account_host: "other.example.test:8443".into(),
+            }
+        );
     }
 }

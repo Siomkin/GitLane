@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-use super::operands::{ensure_operand, ensure_safe_leaf};
+use super::operands::{ensure_http_url_has_no_password, ensure_operand, ensure_safe_leaf};
 use crate::git::transport_auth::TransportCredential;
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
@@ -63,27 +63,14 @@ pub fn clone(
     dest: &str,
     cred: &TransportCredential,
 ) -> Result<String, String> {
-    let url = url.trim();
-    let dest = dest.trim();
-    if url.is_empty() {
-        return Err("Enter a repository URL to clone.".to_string());
-    }
-    if dest.is_empty() {
-        return Err("Choose a destination folder for the clone.".to_string());
-    }
-    // Reject a destination whose leaf is a dot-segment (`.`/`..`) — git resolves
-    // it to the parent / grandparent rather than a fresh child folder. The UI
-    // blocks this too; this is defense-in-depth on the raw joined path.
-    let leaf = dest.trim_end_matches('/').rsplit('/').next().unwrap_or("");
-    if leaf.is_empty() || leaf == "." || leaf == ".." {
-        return Err("Choose a valid destination folder.".to_string());
-    }
+    let url = validated_clone_url(url)?;
+    let dest = validated_clone_destination(dest)?;
 
     // Clone into a random sibling that only this operation owns, then publish
     // after Git succeeds. This also applies when the user selected an existing
     // empty directory: cancellation can remove the private partial clone while
     // leaving that user-owned directory untouched.
-    let mut clone_target = CloneTarget::prepare(Path::new(dest))?;
+    let mut clone_target = CloneTarget::prepare(dest)?;
 
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
     // is an absolute path the UI built, so it can never be one. `LC_ALL=C` keeps
@@ -204,13 +191,49 @@ pub fn clone(
             },
         );
         reset_clone_operation(&slot);
-        Ok(dest.to_string())
+        Ok(dest.to_string_lossy().into_owned())
     } else {
         reset_clone_operation(&slot);
         // Dropping a private CloneTarget removes only its unpredictable staging
         // sibling. A pre-existing destination is deliberately left untouched.
         Err(extract_error(&transcript))
     }
+}
+
+/// Validate the source before any clone process or filesystem work begins.
+/// Credentials belong in Git's helper/keychain flow, never in a URL that Git can
+/// echo in progress output or persist in the cloned repository's remote config.
+fn validated_clone_url(url: &str) -> Result<&str, String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("Enter a repository URL to clone.".to_string());
+    }
+    ensure_http_url_has_no_password(url)?;
+    Ok(url)
+}
+
+fn validated_clone_destination(dest: &str) -> Result<&Path, String> {
+    let dest = dest.trim();
+    if dest.is_empty() {
+        return Err("Choose a destination folder for the clone.".to_string());
+    }
+    // Check the raw final component before `Path` normalization: Rust drops a
+    // trailing `/.` component, which would otherwise turn `/parent/.` into the
+    // apparently safe leaf `parent`. Recognise both separators so Windows-form
+    // input is also rejected when tests or IPC reach a Unix build.
+    let lexical = dest.trim_end_matches(['/', '\\']);
+    let lexical_leaf = lexical.rsplit(['/', '\\']).next().unwrap_or("");
+    ensure_safe_leaf(lexical_leaf).map_err(|_| "Choose a valid destination folder.".to_string())?;
+    // Use platform-aware Path parsing, then apply the shared cross-platform
+    // leaf guard. A slash-only split misses `C:\parent\..` on Windows and can
+    // make the clone target the parent/grandparent instead of a fresh child.
+    let path = Path::new(dest);
+    let leaf = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Choose a valid destination folder.".to_string())?;
+    ensure_safe_leaf(leaf).map_err(|_| "Choose a valid destination folder.".to_string())?;
+    Ok(path)
 }
 
 fn claim_clone_publication(slot: &CloneSlot) -> Result<bool, String> {
@@ -805,6 +828,37 @@ fn gitignore_template(name: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clone_url_rejects_password_userinfo_but_keeps_username_selectors() {
+        assert_eq!(
+            validated_clone_url(" https://alice@example.com/team/repo.git ").unwrap(),
+            "https://alice@example.com/team/repo.git"
+        );
+        assert!(validated_clone_url("git@example.com:team/repo.git").is_ok());
+
+        let error = validated_clone_url("https://alice:clone-secret@example.com/team/repo.git")
+            .unwrap_err();
+        assert!(
+            error.contains("must not contain"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !error.contains("clone-secret"),
+            "clone validation echoed the secret: {error}"
+        );
+    }
+
+    #[test]
+    fn clone_destination_rejects_dot_segments_and_both_separator_styles() {
+        assert!(validated_clone_destination("/tmp/new-repo").is_ok());
+        for invalid in ["", "/", "/tmp/..", "/tmp/.", r"C:\parent\.."] {
+            assert!(
+                validated_clone_destination(invalid).is_err(),
+                "{invalid:?} should not be a clone leaf"
+            );
+        }
+    }
 
     #[test]
     fn parse_percent_reads_digits_before_the_sign() {

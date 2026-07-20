@@ -7,9 +7,10 @@ use super::remotes::{
 };
 use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
 use super::{
-    abort_operation, accept_conflict_side, apply_hunk, apply_line, branch_pull_target,
-    branch_push_remote, checkout_remote_branch, cherry_pick, cherry_pick_many, cherry_pick_onto,
-    clear_repo_identity, commit_expected, continue_operation, create_branch, create_tag,
+    abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
+    branch_push_remote, checkout_remote_branch, cherry_pick, cherry_pick_many,
+    cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
+    continue_operation, create_annotated_tag, create_branch, create_tag,
     delete_branch_with_worktree, delete_remote_tag, discard_all, discard_file, fast_forward,
     fast_forward_branch, fast_forward_branch_at, fetch, force_push, head_push_remote,
     mark_conflict_resolved, merge, merge_into, move_branch_to_worktree, preview_delete_branch,
@@ -23,7 +24,10 @@ use super::{
     write_repo_file,
 };
 use crate::git::read::repo_identity;
-use crate::git::transport_auth::TransportCredential;
+use crate::git::transport_auth::{
+    credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
+};
+use crate::git::types::GitTransportAuthRef;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -513,6 +517,8 @@ fn head_guarded_writes_reject_a_different_active_branch() {
         false,
         None,
         None,
+        None,
+        false,
     )
     .is_err());
     assert_eq!(rev_parse(&repo, "unexpected"), unexpected_tip);
@@ -568,6 +574,8 @@ fn squash_rolls_back_the_soft_reset_when_commit_fails() {
         "",
         None,
         None,
+        None,
+        false,
     );
     assert!(
         result.is_err(),
@@ -1339,6 +1347,18 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
     let repo = TempRepo::new("identity-signing");
     repo.git_ok(&["init", "-q"]);
 
+    // A config edited outside GitLane can contain duplicate values. Applying a
+    // card must collapse them so later reads/clears remain deterministic.
+    repo.git_ok(&["config", "--local", "--add", "user.name", "Old One"]);
+    repo.git_ok(&["config", "--local", "--add", "user.name", "Old Two"]);
+    repo.git_ok(&[
+        "config",
+        "--local",
+        "--add",
+        "user.email",
+        "old@example.test",
+    ]);
+
     // Apply a profile that signs: name/email + signing key, format, gpgsign, tags.
     set_repo_identity(
         repo.path(),
@@ -1360,6 +1380,14 @@ fn set_repo_identity_round_trips_signing_and_respects_tri_state() {
     assert_eq!(id.gpg_format.as_deref(), Some("openpgp"));
     assert_eq!(id.gpg_sign, Some(true));
     assert_eq!(id.tag_gpg_sign, Some(true));
+    let names = repo.git(&["config", "--local", "--get-all", "user.name"]);
+    assert!(names.status.success(), "updated name should be readable");
+    assert_eq!(
+        String::from_utf8_lossy(&names.stdout)
+            .lines()
+            .collect::<Vec<_>>(),
+        ["Work Dev"]
+    );
 
     // `None` leaves signing untouched — the legacy name/email editor must not
     // wipe a key the user (or a prior profile) set.
@@ -1419,6 +1447,11 @@ fn clear_repo_identity_removes_name_email_and_signing() {
     )
     .expect("set identity with signing");
 
+    // Duplicate values previously made `git config --unset` exit 5 while
+    // leaving the config untouched. `--unset-all` must clear every value.
+    repo.git_ok(&["config", "--local", "--add", "user.name", "Duplicate"]);
+    repo.git_ok(&["config", "--local", "--add", "user.signingkey", "KEY2"]);
+
     clear_repo_identity(repo.path()).expect("clear identity");
 
     // With name/email gone the read returns None; the signing keys are also
@@ -1431,6 +1464,194 @@ fn clear_repo_identity_removes_name_email_and_signing() {
     assert!(
         !signing.status.success(),
         "user.signingkey should be unset after clear"
+    );
+}
+
+#[test]
+fn clear_repo_identity_accepts_absent_keys_but_surfaces_real_git_errors() {
+    let repo = TempRepo::new("identity-clear-absent");
+    repo.git_ok(&["init", "-q"]);
+    clear_repo_identity(repo.path()).expect("already-absent identity is cleared");
+
+    let not_a_repo = TempRepo::new("identity-clear-not-repo");
+    let error = clear_repo_identity(not_a_repo.path()).expect_err("invalid repo must fail");
+    assert!(!error.is_empty(), "real git failure should be surfaced");
+}
+
+#[test]
+fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
+    let repo = TempRepo::new("identity-worktree-signing");
+    repo.git_ok(&["init", "-q"]);
+    set_repo_identity(
+        repo.path(),
+        "GitLane Author",
+        "author@example.test",
+        Some(""),
+        Some(""),
+        Some(false),
+        Some(false),
+    )
+    .expect("set unsigned identity");
+
+    // Worktree config has higher precedence than local config. Without the
+    // command-scoped card policy these writes would try to sign with a missing
+    // SSH key and both operations would fail.
+    repo.git_ok(&["config", "extensions.worktreeConfig", "true"]);
+    repo.git_ok(&["config", "--worktree", "gpg.format", "ssh"]);
+    repo.git_ok(&[
+        "config",
+        "--worktree",
+        "user.signingkey",
+        "/missing/gitlane-signing-key.pub",
+    ]);
+    repo.git_ok(&["config", "--worktree", "commit.gpgsign", "true"]);
+    repo.git_ok(&["config", "--worktree", "tag.gpgsign", "true"]);
+    repo.git_ok(&["config", "--worktree", "user.name", "Worktree Override"]);
+    repo.git_ok(&[
+        "config",
+        "--worktree",
+        "user.email",
+        "worktree-override@example.test",
+    ]);
+
+    std::fs::write(repo.0.join("file.txt"), "content\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    let captured_identity = repo_identity(repo.path())
+        .expect("read selected identity")
+        .expect("selected identity exists");
+    super::staging::commit(
+        repo.path(),
+        "unsigned by selected card",
+        "",
+        false,
+        Some("GitLane Author"),
+        Some("author@example.test"),
+        Some(&captured_identity),
+        true,
+    )
+    .expect("card's commit.gpgsign=false overrides worktree config");
+    create_annotated_tag(repo.path(), "v1", "release", None)
+        .expect("card's tag.gpgsign=false overrides worktree config");
+    let tagger = repo.git(&[
+        "for-each-ref",
+        "--format=%(taggername)|%(taggeremail)",
+        "refs/tags/v1",
+    ]);
+    assert_eq!(
+        String::from_utf8_lossy(&tagger.stdout).trim(),
+        "GitLane Author|<author@example.test>",
+        "annotated tagger must use the selected card, not worktree config"
+    );
+
+    let base_branch = String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout)
+        .trim()
+        .to_string();
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&[
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-q",
+        "-m",
+        "feature",
+    ]);
+    repo.git_ok(&["checkout", "-q", &base_branch]);
+    merge(repo.path(), "feature")
+        .expect("implicit merge commit uses the selected card's signing policy");
+}
+
+#[test]
+fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
+    let repo = TempRepo::new("identity-stale-commit");
+    repo.git_ok(&["init", "-q"]);
+    set_repo_identity(
+        repo.path(),
+        "Shared Author",
+        "shared@example.test",
+        Some("FIRST-SIGNING-KEY"),
+        Some("openpgp"),
+        Some(false),
+        Some(false),
+    )
+    .expect("set first identity");
+    let first_identity = repo_identity(repo.path())
+        .expect("read first identity")
+        .expect("first identity exists");
+
+    std::fs::write(repo.0.join("file.txt"), "content\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    set_repo_identity(
+        repo.path(),
+        "Shared Author",
+        "shared@example.test",
+        Some("SECOND-SIGNING-KEY"),
+        Some("ssh"),
+        Some(false),
+        Some(false),
+    )
+    .expect("replace identity before stale commit arrives");
+
+    let error = super::staging::commit(
+        repo.path(),
+        "must not use a mixed identity",
+        "",
+        false,
+        Some("Shared Author"),
+        Some("shared@example.test"),
+        Some(&first_identity),
+        true,
+    )
+    .expect_err("stale captured card must fail closed");
+    assert!(error.contains("identity changed"), "{error}");
+    assert!(
+        !repo
+            .git(&["rev-parse", "--verify", "HEAD"])
+            .status
+            .success(),
+        "the rejected operation must not create a commit"
+    );
+}
+
+#[test]
+fn commit_rejects_a_card_applied_after_this_computer_was_captured() {
+    let repo = TempRepo::new("identity-default-became-card");
+    repo.git_ok(&["init", "-q"]);
+    std::fs::write(repo.0.join("file.txt"), "content\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+
+    // The composer captured no repo-local identity. A card lands before the
+    // commit gets the identity lock; captured absence is still an expectation,
+    // not permission to silently use whatever card is current now.
+    set_repo_identity(
+        repo.path(),
+        "Late Card",
+        "late@example.test",
+        Some(""),
+        Some(""),
+        Some(false),
+        Some(false),
+    )
+    .expect("apply card after composer snapshot");
+    let error = super::staging::commit(
+        repo.path(),
+        "must not adopt the late card",
+        "",
+        false,
+        None,
+        None,
+        None,
+        true,
+    )
+    .expect_err("captured this-computer state must fail closed");
+    assert!(error.contains("identity changed"), "{error}");
+    assert!(
+        !repo
+            .git(&["rev-parse", "--verify", "HEAD"])
+            .status
+            .success(),
+        "the rejected operation must not create a commit"
     );
 }
 
@@ -2346,7 +2567,8 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     );
 
     // Finish the carry.
-    let done = continue_operation(repo.path(), "carry", None, None).expect("continue carry");
+    let done =
+        continue_operation(repo.path(), "carry", None, None, None, false).expect("continue carry");
     assert!(
         done.contains("Carried"),
         "unexpected continue message: {done}"
@@ -4106,7 +4328,7 @@ fn continue_operation_completes_a_resolved_merge() {
     let repo = merge_conflict_repo("continue");
     // Resolve + stage via the in-app write path, then continue.
     resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
-    let result = continue_operation(repo.path(), "merge", Some("T"), Some("t@t.t"));
+    let result = continue_operation(repo.path(), "merge", Some("T"), Some("t@t.t"), None, false);
     assert!(result.is_ok(), "continue failed: {result:?}");
     // No conflicts remain and HEAD is a merge commit (two parents).
     let unmerged = repo.git(&["ls-files", "-u"]);
@@ -4118,6 +4340,82 @@ fn continue_operation_completes_a_resolved_merge() {
         line.split_whitespace().count(),
         3,
         "expected a merge commit: {line:?}"
+    );
+}
+
+#[test]
+fn skip_operation_replays_the_next_commit_with_the_captured_identity() {
+    let (repo, _) = repo_with_base_commit("skip-pins-identity");
+    set_repo_identity(
+        repo.path(),
+        "Selected Card",
+        "selected@example.test",
+        Some(""),
+        Some(""),
+        Some(false),
+        Some(false),
+    )
+    .expect("set selected identity");
+    let captured = repo_identity(repo.path())
+        .expect("read selected identity")
+        .expect("selected identity exists");
+
+    repo.git_ok(&["checkout", "-q", "-b", "source"]);
+    std::fs::write(repo.0.join("f.txt"), "source conflict\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-a", "-m", "conflicting source"]);
+    let conflicting = rev_parse(&repo, "HEAD");
+    std::fs::write(repo.0.join("after.txt"), "replayed after skip\n").unwrap();
+    repo.git_ok(&["add", "after.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "replay me"]);
+    let replayed = rev_parse(&repo, "HEAD");
+
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("f.txt"), "destination conflict\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-a", "-m", "destination"]);
+    let destination = rev_parse(&repo, "HEAD");
+
+    repo.git_ok(&["config", "extensions.worktreeConfig", "true"]);
+    repo.git_ok(&["config", "--worktree", "user.name", "Worktree Override"]);
+    repo.git_ok(&[
+        "config",
+        "--worktree",
+        "user.email",
+        "override@example.test",
+    ]);
+    repo.git_ok(&["config", "--worktree", "gpg.format", "ssh"]);
+    repo.git_ok(&[
+        "config",
+        "--worktree",
+        "user.signingkey",
+        "/missing/skip-signing-key.pub",
+    ]);
+    repo.git_ok(&["config", "--worktree", "commit.gpgsign", "true"]);
+
+    let start = cherry_pick_many_onto(
+        repo.path(),
+        Some("main"),
+        &destination,
+        &[conflicting, replayed],
+    );
+    assert!(start.is_err(), "first replay must stop on the conflict");
+
+    skip_operation(
+        repo.path(),
+        "cherry-pick",
+        Some("Selected Card"),
+        Some("selected@example.test"),
+        Some(&captured),
+        true,
+    )
+    .expect("skip should replay the next commit with captured config");
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["show", "-s", "--format=%an|%ae", "HEAD"]).stdout,)
+            .trim(),
+        "Selected Card|selected@example.test"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("after.txt")).unwrap(),
+        "replayed after skip\n"
     );
 }
 
@@ -4166,8 +4464,8 @@ fn abort_operation_restores_pre_merge_state() {
 #[test]
 fn skip_operation_rejects_merge() {
     // Merge has no `--skip`; only sequencer ops do. The path is never touched.
-    assert!(skip_operation("/tmp", "merge").is_err());
-    assert!(skip_operation("/tmp", "nonsense").is_err());
+    assert!(skip_operation("/tmp", "merge", None, None, None, false).is_err());
+    assert!(skip_operation("/tmp", "nonsense", None, None, None, false).is_err());
 }
 
 #[test]
@@ -4315,6 +4613,82 @@ fn remote_url(repo: &TempRepo, args: &[&str]) -> String {
     let out = repo.git(args);
     assert!(out.status.success(), "git {args:?} failed");
     String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn remote_url_writes_reject_password_userinfo_but_allow_username_selectors() {
+    let repo = TempRepo::new("remote-url-password-guard");
+    repo.git_ok(&["init", "-q"]);
+
+    let add_error = add_remote(
+        repo.path(),
+        "origin",
+        "https://alice:add-secret@example.com/team/repo.git",
+    )
+    .unwrap_err();
+    assert!(add_error.contains("must not contain"), "{add_error}");
+    assert!(!add_error.contains("add-secret"), "{add_error}");
+    assert!(
+        !repo.git(&["remote", "get-url", "origin"]).status.success(),
+        "rejected URL must not create the remote"
+    );
+
+    add_remote(
+        repo.path(),
+        "origin",
+        "https://alice@example.com/team/repo.git",
+    )
+    .expect("username-only remote URL");
+    let set_error = set_remote_url(
+        repo.path(),
+        "origin",
+        "http://alice:set-secret@example.com/team/repo.git",
+    )
+    .unwrap_err();
+    assert!(set_error.contains("must not contain"), "{set_error}");
+    assert!(!set_error.contains("set-secret"), "{set_error}");
+    assert_eq!(
+        remote_url(&repo, &["remote", "get-url", "origin"]),
+        "https://alice@example.com/team/repo.git",
+        "rejected update must leave the prior remote URL intact"
+    );
+}
+
+#[test]
+fn list_remotes_redacts_passwords_configured_outside_gitlane() {
+    let repo = TempRepo::new("remote-url-read-redaction");
+    repo.git_ok(&["init", "-q"]);
+    // Bypass GitLane's guarded writer to model a legacy/external git config.
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://alice:legacy-secret@example.com/team/repo.git",
+    ]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "https://alice:push-secret@example.com/team/repo.git",
+    ]);
+
+    let remotes = crate::git::read::list_remotes(repo.path()).unwrap();
+    let origin = remotes
+        .iter()
+        .find(|remote| remote.name == "origin")
+        .unwrap();
+    assert_eq!(
+        origin.fetch_url,
+        "https://alice:***@example.com/team/repo.git"
+    );
+    assert_eq!(
+        origin.push_url,
+        "https://alice:***@example.com/team/repo.git"
+    );
+    let serialized = serde_json::to_string(origin).unwrap();
+    assert!(!serialized.contains("legacy-secret"));
+    assert!(!serialized.contains("push-secret"));
 }
 
 #[test]
@@ -5256,35 +5630,127 @@ fn publish_remote_splits_on_longest_configured_remote() {
 }
 
 #[test]
-fn remote_credential_host_for_prefers_the_push_url_host() {
+fn transport_credentials_follow_split_fetch_and_push_authorities() {
     let repo = TempRepo::new("remote-host-for");
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&[
         "remote",
         "add",
         "origin",
-        "https://github.com/owner/repo.git",
+        "https://fetch-user@fetch-auth.example.test:8443/owner/repo.git",
     ]);
     assert_eq!(
-        crate::git::forge::remote_credential_host_for(repo.path(), "origin").as_deref(),
-        Some("github.com")
+        crate::git::forge::remote_credential_host_for(
+            repo.path(),
+            "origin",
+            RemoteTransportDirection::Fetch,
+        )
+        .as_deref(),
+        Some("fetch-auth.example.test:8443")
     );
-
-    // A separate push URL drives pushes, so it drives auth validation too.
+    assert_eq!(
+        crate::git::forge::remote_credential_host_for(
+            repo.path(),
+            "origin",
+            RemoteTransportDirection::Push,
+        )
+        .as_deref(),
+        Some("fetch-auth.example.test:8443"),
+        "push must fall back to the fetch URL when no push URL is configured"
+    );
     repo.git_ok(&[
         "remote",
         "set-url",
         "--push",
         "origin",
-        "git@bitbucket.org:team/repo.git",
+        "https://push-user@push-auth.example.test:9443/team/repo.git",
     ]);
+
     assert_eq!(
-        crate::git::forge::remote_credential_host_for(repo.path(), "origin").as_deref(),
-        Some("bitbucket.org")
+        crate::git::forge::remote_credential_host_for(
+            repo.path(),
+            "origin",
+            RemoteTransportDirection::Fetch,
+        )
+        .as_deref(),
+        Some("fetch-auth.example.test:8443")
+    );
+    assert_eq!(
+        crate::git::forge::remote_credential_host_for(
+            repo.path(),
+            "origin",
+            RemoteTransportDirection::Push,
+        )
+        .as_deref(),
+        Some("push-auth.example.test:9443")
+    );
+
+    let auth = |credential_host: &str, username: &str, account_id: &str| GitTransportAuthRef {
+        mode: "providerToken".into(),
+        provider: Some("gitlab".into()),
+        host: credential_host.split(':').next().unwrap().into(),
+        credential_host: credential_host.into(),
+        username: Some(username.into()),
+        account_ref: None,
+        provider_account_id: Some(account_id.into()),
+    };
+    let fetch_auth = auth(
+        "fetch-auth.example.test:8443",
+        "fetch-sentinel",
+        "fetch-account",
+    );
+    let push_auth = auth(
+        "push-auth.example.test:9443",
+        "push-sentinel",
+        "push-account",
     );
 
     assert_eq!(
-        crate::git::forge::remote_credential_host_for(repo.path(), "missing"),
+        credential_for_remote(
+            repo.path(),
+            "origin",
+            RemoteTransportDirection::Fetch,
+            Some(&fetch_auth),
+        )
+        .expect("fetch auth matches fetch URL"),
+        TransportCredential::ProviderToken(ProviderTokenBridge {
+            credential_host: "fetch-auth.example.test:8443".into(),
+            username: "fetch-sentinel".into(),
+            provider: "gitlab".into(),
+            account_id: "fetch-account".into(),
+        })
+    );
+    assert_eq!(
+        credential_for_remote(
+            repo.path(),
+            "origin",
+            RemoteTransportDirection::Push,
+            Some(&push_auth),
+        )
+        .expect("push auth matches push URL"),
+        TransportCredential::ProviderToken(ProviderTokenBridge {
+            credential_host: "push-auth.example.test:9443".into(),
+            username: "push-sentinel".into(),
+            provider: "gitlab".into(),
+            account_id: "push-account".into(),
+        })
+    );
+    let err = credential_for_remote(
+        repo.path(),
+        "origin",
+        RemoteTransportDirection::Fetch,
+        Some(&push_auth),
+    )
+    .expect_err("push authority must not authenticate fetch");
+    assert!(err.contains("fetch-auth.example.test:8443"), "{err}");
+    assert!(err.contains("push-auth.example.test:9443"), "{err}");
+
+    assert_eq!(
+        crate::git::forge::remote_credential_host_for(
+            repo.path(),
+            "missing",
+            RemoteTransportDirection::Fetch,
+        ),
         None
     );
 }

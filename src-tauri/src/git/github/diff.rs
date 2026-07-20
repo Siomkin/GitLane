@@ -12,7 +12,8 @@
 //! as inert — folded `Subject:` continuations and diffstat rows start with a
 //! space and would otherwise read as hunk context.
 
-use super::cli::run_gh;
+use super::cli::{repo_selector, run_gh};
+use super::domain::GithubRepository;
 use crate::git::types::FileDiff;
 
 mod parser;
@@ -28,14 +29,45 @@ pub(in crate::git::github) use parser::parse_unified_diff;
 /// Full unified diff of a PR, parsed into per-file [`FileDiff`] so the existing
 /// diff viewer renders it unchanged. `gh pr diff --patch` emits format-patch
 /// mailbox output: one mail-headed message per commit (see the module docs).
-pub fn pr_diff(workdir: &str, number: u64, token: Option<&str>) -> Result<Vec<FileDiff>, String> {
+pub fn pr_diff(
+    workdir: &str,
+    repository: &GithubRepository,
+    number: u64,
+    token: Option<&str>,
+) -> Result<Vec<FileDiff>, String> {
     let num = number.to_string();
+    let repo = repo_selector(repository);
     // `--patch` forces the full patch body (not a name-only summary) and
     // `--color never` strips ANSI so the parser sees a clean git patch.
-    let raw = run_gh(
-        workdir,
-        &["pr", "diff", num.as_str(), "--patch", "--color", "never"],
-        token,
-    )?;
+    let args = pr_diff_args(&repo, &num);
+    let raw = run_gh(workdir, &args, token)?;
     Ok(parse_unified_diff(&raw))
+}
+
+fn pr_diff_args<'a>(repository: &'a str, number: &'a str) -> Vec<&'a str> {
+    vec![
+        "pr", "diff", number, "--patch", "--color", "never", "--repo", repository,
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diff_args_target_the_validated_repository_authority() {
+        assert_eq!(
+            pr_diff_args("ghe.example.test:8443/octo/app", "7"),
+            vec![
+                "pr",
+                "diff",
+                "7",
+                "--patch",
+                "--color",
+                "never",
+                "--repo",
+                "ghe.example.test:8443/octo/app",
+            ]
+        );
+    }
 }

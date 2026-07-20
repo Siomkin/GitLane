@@ -158,6 +158,34 @@ pub(super) fn is_empty_after_resolution(msg: &str) -> bool {
     msg.to_lowercase().contains("is now empty")
 }
 
+fn pinned_operation_identity_args(
+    repo: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
+) -> Result<Vec<String>, String> {
+    let expected_author = match (name, email) {
+        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
+        _ => None,
+    };
+    let mut args = Vec::new();
+    if let Some((n, e)) = expected_author {
+        args.push("-c".into());
+        args.push(format!("user.name={n}"));
+        args.push("-c".into());
+        args.push(format!("user.email={e}"));
+    }
+    args.extend(super::identity::pinned_signing_args(
+        repo,
+        expected_author,
+        identity,
+        identity_captured,
+        super::identity::SigningOperation::Commit,
+    )?);
+    Ok(args)
+}
+
 /// Continue the active operation once its conflicts are resolved and staged.
 /// `kind` is the operation key from `git::conflicts::operation_status`. `GIT_EDITOR=true`
 /// keeps the prepared message (MERGE_MSG / the replayed commit) without opening
@@ -173,21 +201,16 @@ pub fn continue_operation(
     kind: &str,
     name: Option<&str>,
     email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
     // A worktree-handoff carry (GL-74) isn't a git sequencer — finishing it drops
     // the kept stashes and clears the marker rather than running `--continue`.
     if kind == handoff::CARRY_KIND {
         return continue_carry(repo);
     }
-    let mut pre: Vec<String> = Vec::new();
-    if let (Some(n), Some(e)) = (name, email) {
-        if !n.is_empty() && !e.is_empty() {
-            pre.push("-c".into());
-            pre.push(format!("user.name={n}"));
-            pre.push("-c".into());
-            pre.push(format!("user.email={e}"));
-        }
-    }
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let pre = pinned_operation_identity_args(repo, name, email, identity, identity_captured)?;
     let sub: &[&str] = match kind {
         "merge" => &["merge", "--continue"],
         "rebase" => &["rebase", "--continue"],
@@ -200,7 +223,9 @@ pub fn continue_operation(
     match run_git_env_stable_diagnostics(repo, &args, &[("GIT_EDITOR", "true")]) {
         Ok(out) => Ok(out),
         Err(e) if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) => {
-            run_git_env_stable_diagnostics(repo, &[kind, "--skip"], &[("GIT_EDITOR", "true")])
+            let mut skip_args: Vec<&str> = pre.iter().map(String::as_str).collect();
+            skip_args.extend([kind, "--skip"]);
+            run_git_env_stable_diagnostics(repo, &skip_args, &[("GIT_EDITOR", "true")])
         }
         Err(e) => Err(e),
     }
@@ -258,12 +283,23 @@ fn abort_carry(repo: &str) -> Result<String, String> {
 
 /// Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).
 /// Merge has no skip and is rejected. `kind` is the operation key.
-pub fn skip_operation(repo: &str, kind: &str) -> Result<String, String> {
+pub fn skip_operation(
+    repo: &str,
+    kind: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
+) -> Result<String, String> {
     let sub: &[&str] = match kind {
         "rebase" => &["rebase", "--skip"],
         "cherry-pick" => &["cherry-pick", "--skip"],
         "revert" => &["revert", "--skip"],
         _ => return Err(format!("cannot skip a {kind} operation")),
     };
-    run_git_env(repo, sub, &[("GIT_EDITOR", "true")])
+    let _identity_guard = super::identity::lock_identity_config()?;
+    let pre = pinned_operation_identity_args(repo, name, email, identity, identity_captured)?;
+    let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
+    args.extend_from_slice(sub);
+    run_git_env(repo, &args, &[("GIT_EDITOR", "true")])
 }

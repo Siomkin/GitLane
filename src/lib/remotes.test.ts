@@ -33,12 +33,27 @@ describe("detectRemoteUrl", () => {
       credentialHost: "www.github.com",
       provider: "github",
     });
-    expect(detectRemoteUrl("https://alice:secret@bitbucket.org/team/repo.git")).toMatchObject({
+    expect(detectRemoteUrl("https://alice@bitbucket.org/team/repo.git")).toMatchObject({
       valid: true,
       host: "bitbucket.org",
       credentialHost: "bitbucket.org",
       user: "alice",
     });
+  });
+
+  it("rejects password-bearing HTTP(S) userinfo but keeps username-only selectors", () => {
+    expect(detectRemoteUrl("https://alice@bitbucket.org/team/repo.git")).toMatchObject({
+      valid: true,
+      user: "alice",
+    });
+    for (const url of [
+      "https://alice:secret@bitbucket.org/team/repo.git",
+      "http://alice:@git.example.test/team/repo.git",
+      "https://token:p@ss@git.example.test/team/repo.git",
+    ]) {
+      expect(detectRemoteUrl(url).valid, url).toBe(false);
+      expect(validateRemoteUrl(url)).toMatchObject({ level: "bad", ok: false });
+    }
   });
 
   it("parses https GitHub URLs (with and without .git)", () => {
@@ -55,9 +70,30 @@ describe("detectRemoteUrl", () => {
     expect(detectRemoteUrl("git@gitlab.com:siomkin/gitlane.git")).toMatchObject({
       valid: true,
       host: "gitlab.com",
+      credentialHost: "gitlab.com",
+      path: "siomkin/gitlane",
       provider: "gitlab",
     });
     expect(detectRemoteUrl("git@bitbucket.org:team/app.git").provider).toBe("bitbucket");
+  });
+
+  it("parses ssh:// usernames and ports without folding the port into the repo path", () => {
+    expect(detectRemoteUrl("ssh://alice@example.com/team/repo.git")).toMatchObject({
+      valid: true,
+      ssh: true,
+      host: "example.com",
+      credentialHost: "example.com",
+      path: "team/repo",
+      user: null,
+    });
+    expect(detectRemoteUrl("ssh://git@gitlab.com:2222/team/repo.git")).toMatchObject({
+      valid: true,
+      ssh: true,
+      host: "gitlab.com",
+      credentialHost: "gitlab.com:2222",
+      path: "team/repo",
+      provider: "gitlab",
+    });
   });
 
   it("detects Azure DevOps hosts", () => {

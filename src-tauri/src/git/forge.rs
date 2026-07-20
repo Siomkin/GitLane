@@ -25,6 +25,15 @@ pub enum ForgeKind {
     Forgejo,
 }
 
+/// Authority information carried by a repository remote. HTTP(S) URLs name the
+/// exact API authority, including an explicit port. SSH/scp/git URLs name only a
+/// transport host; their port (when present) is not an HTTPS API port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RemoteApiAuthority {
+    Http(String),
+    TransportHost(String),
+}
+
 impl ForgeKind {
     pub fn label(&self) -> &'static str {
         match self {
@@ -162,17 +171,33 @@ pub fn default_remote(path: &str) -> Option<String> {
     default_remote_name(&repo)
 }
 
-/// The exact credential authority (`host[:port]`) for a named remote's push URL
-/// (falling back to fetch URL). This preserves the port because Git credential
-/// helpers scope by protocol + host/port + username; display/provider matching
-/// must normalize separately when it wants a portless host.
-pub fn remote_credential_host_for(path: &str, remote: &str) -> Option<String> {
+/// Which configured URL a git transport operation contacts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteTransportDirection {
+    Fetch,
+    Push,
+}
+
+/// The exact credential authority (`host[:port]`) for the URL a named remote
+/// uses in `direction`. Fetch never consults a separate push URL; push prefers
+/// it and falls back to the fetch URL, matching git's own remote semantics.
+/// Ports are preserved because credential helpers scope by protocol +
+/// host/port + username; display/provider matching must normalize separately
+/// when it wants a portless host.
+pub fn remote_credential_host_for(
+    path: &str,
+    remote: &str,
+    direction: RemoteTransportDirection,
+) -> Option<String> {
     let repo = Repository::discover(path).ok()?;
     let remote = repo.find_remote(remote).ok()?;
-    let urls = [
-        remote.pushurl().ok().flatten().map(str::to_string),
-        remote.url().ok().map(str::to_string),
-    ];
+    let urls = match direction {
+        RemoteTransportDirection::Fetch => [remote.url().ok().map(str::to_string), None],
+        RemoteTransportDirection::Push => [
+            remote.pushurl().ok().flatten().map(str::to_string),
+            remote.url().ok().map(str::to_string),
+        ],
+    };
     urls.into_iter()
         .flatten()
         .find_map(|url| credential_host_for_url(&url))
@@ -247,6 +272,83 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
             };
             if let Some(kind) = classify_host(&host) {
                 return Some(RemoteForge { kind, host });
+            }
+        }
+    }
+    None
+}
+
+/// Resolve the GitHub remote's `(api_authority, owner/repo)` for `path` without
+/// invoking `gh`, reading credentials, or making a network request. Known
+/// GitHub remotes win; when no configured remote has a recognised forge host,
+/// the first parseable remote is retained as a potential GitHub Enterprise
+/// Server repository for the gh provider to validate against a bound account.
+///
+/// HTTP(S) authorities preserve an explicit port. SSH/scp/git remotes return a
+/// bare transport hostname because an SSH port is not an HTTPS API port.
+pub fn github_project(path: &str) -> Option<(String, String)> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    let mut unknown = None;
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            let Some(host) = remote_host(url) else {
+                continue;
+            };
+            let Some(project) = remote_path(url) else {
+                continue;
+            };
+            let authority = api_host_for(url).unwrap_or_else(|| host.clone());
+            match classify_host(&host) {
+                Some(ForgeKind::GitHub) => return Some((authority, project)),
+                None if unknown.is_none() => unknown = Some((authority, project)),
+                _ => {}
+            }
+        }
+    }
+    unknown
+}
+
+/// Find the remote authority that produced a provider-resolved repository.
+/// This lets the PR service distinguish an exact HTTP(S) API authority from an
+/// SSH/scp transport hostname before it resolves any selected-account secret.
+pub(crate) fn remote_api_authority_for_project(
+    path: &str,
+    repository_host: &str,
+    project: &str,
+) -> Option<RemoteApiAuthority> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    let repository_hostname = authority_hostname(repository_host);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            if remote_path(url).as_deref() != Some(project) {
+                continue;
+            }
+            let Some(host) = remote_host(url) else {
+                continue;
+            };
+            if !host.eq_ignore_ascii_case(repository_hostname) {
+                continue;
+            }
+            if let Some(authority) = api_host_for(url) {
+                if authority.eq_ignore_ascii_case(repository_host) {
+                    return Some(RemoteApiAuthority::Http(authority));
+                }
+            } else {
+                return Some(RemoteApiAuthority::TransportHost(host));
             }
         }
     }
@@ -339,6 +441,19 @@ fn api_host_for(url: &str) -> Option<String> {
         credential_host_for_url(trimmed)
     } else {
         None
+    }
+}
+
+fn authority_hostname(authority: &str) -> &str {
+    match authority.rsplit_once(':') {
+        Some((host, port))
+            if !host.is_empty()
+                && !port.is_empty()
+                && port.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            host
+        }
+        _ => authority,
     }
 }
 

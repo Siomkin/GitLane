@@ -50,13 +50,13 @@ const refreshInvoke = (cmd: string) => {
   }
 };
 
-const mkAccount = (accountId: string, login: string): Account => {
-  const ref: GithubAccountRef = { provider: "gh", host: "github.com", accountId, login };
+const mkAccount = (accountId: string, login: string, host = "github.com"): Account => {
+  const ref: GithubAccountRef = { provider: "gh", host, accountId, login };
   return {
-    id: `gh:github.com:${accountId}`,
+    id: `gh:${host}:${accountId}`,
     forge: "GitHub",
     provider: "gh",
-    host: "github.com",
+    host,
     accountId,
     login,
     label: login,
@@ -75,8 +75,8 @@ const bob = mkAccount("2", "bob");
 const ghAuth = (account: Account): GitTransportAuthRef => ({
   mode: "githubGh",
   provider: "github",
-  host: "github.com",
-  credentialHost: "github.com",
+  host: account.host,
+  credentialHost: account.host,
   username: account.login,
   accountRef: account.ref,
 });
@@ -102,6 +102,7 @@ const branch = (over: Partial<BranchInfo>): BranchInfo => ({
   upstream: null,
   remote: null,
   upstreamRemote: null,
+  pushRemote: null,
   sync: null,
   ...over,
 });
@@ -145,6 +146,58 @@ describe("fetch — per-remote transport auth pairs", () => {
         { remote: "mirror", auth: ghAuth(bob) },
         { remote: "bucket", auth: bucketAuth },
       ],
+    });
+  });
+
+  it("routes fetch and pull to the fetch authority while push uses the push authority", async () => {
+    const fetchAccount = mkAccount("fetch-account", "fetch-user", "fetch.github.com");
+    const pushAccount = mkAccount("push-account", "push-user", "push.github.com");
+    const splitRemote = {
+      name: "origin",
+      fetchUrl: "https://fetch-user@fetch.github.com/owner/repo.git",
+      pushUrl: "https://push-user@push.github.com/owner/repo.git",
+      isDefault: true,
+    };
+    const splitBranch = branch({
+      name: "main",
+      isHead: true,
+      upstream: "origin/main",
+      upstreamRemote: "origin",
+      pushRemote: "origin",
+    });
+    const resetSplitRepo = () => {
+      useRepo.setState({ remotes: [splitRemote], branches: [splitBranch] });
+      useAccounts.setState({
+        accounts: [fetchAccount, pushAccount],
+        repoRemoteAccountIds: {},
+        repoAccountId: null,
+        repoAccountRef: null,
+      });
+    };
+
+    resetSplitRepo();
+    await useRepo.getState().fetch({ quiet: true });
+    expect(invokeMock).toHaveBeenCalledWith("fetch", {
+      path: "/repo",
+      remoteAccounts: [{ remote: "origin", auth: ghAuth(fetchAccount) }],
+    });
+
+    resetSplitRepo();
+    await useRepo.getState().pull();
+    expect(invokeMock).toHaveBeenCalledWith("pull", {
+      path: "/repo",
+      branch: "main",
+      expectedOid: HEAD_OID,
+      auth: ghAuth(fetchAccount),
+    });
+
+    resetSplitRepo();
+    await useRepo.getState().push();
+    expect(invokeMock).toHaveBeenCalledWith("push_branch", {
+      path: "/repo",
+      branch: "main",
+      expectedOid: HEAD_OID,
+      auth: ghAuth(pushAccount),
     });
   });
 });

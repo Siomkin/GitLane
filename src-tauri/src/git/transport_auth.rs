@@ -17,6 +17,8 @@ use crate::git::types::GitTransportAuthRef;
 
 use super::forge;
 
+pub use super::forge::RemoteTransportDirection;
+
 /// How one git network invocation should obtain HTTPS credentials. Carries no
 /// secret material — see the module docs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,12 +52,13 @@ pub struct ProviderTokenBridge {
 pub fn credential_for_remote(
     workdir: &str,
     remote: &str,
+    direction: RemoteTransportDirection,
     auth: Option<&GitTransportAuthRef>,
 ) -> Result<TransportCredential, String> {
     let Some(auth) = auth else {
         return Ok(TransportCredential::None);
     };
-    let Some(remote_host) = forge::remote_credential_host_for(workdir, remote) else {
+    let Some(remote_host) = forge::remote_credential_host_for(workdir, remote, direction) else {
         return Err(format!(
             "Remote '{remote}' was not found or has no URL configured."
         ));

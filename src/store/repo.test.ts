@@ -2825,6 +2825,27 @@ describe("repo store — conflict actions", () => {
     // And no full refresh ran against B (only the continue_operation call fired).
     expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
   });
+
+  it("does not report a rejected identity-preflight skip as conflict progress", async () => {
+    const operation: OperationState = {
+      kind: "cherry-pick",
+      canSkip: true,
+      files: [{ path: "f.txt", kind: "text", deletedSide: "", resolved: false }],
+    };
+    useRepo.setState({ summary, operation });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "skip_operation") {
+        return Promise.reject(
+          new Error("The repository identity changed before this operation. Refresh and try again."),
+        );
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await expect(useRepo.getState().skipOperation()).rejects.toThrow("identity changed");
+    expect(useRepo.getState().operation).toBe(operation);
+    expect(invokeMock).not.toHaveBeenCalledWith("working_changes", expect.anything());
+  });
 });
 
 describe("repo store — openWorktree", () => {

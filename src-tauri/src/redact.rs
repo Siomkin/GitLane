@@ -39,7 +39,10 @@ pub fn redact_secrets(text: &str) -> String {
             .unwrap_or(rest.len());
         let authority = &rest[..end];
 
-        match authority.find('@') {
+        // The final `@` terminates userinfo. Some URL consumers tolerate an
+        // unescaped `@` inside a password; using the first one would leave the
+        // password suffix visible as if it were part of the host.
+        match authority.rfind('@') {
             // userinfo present: redact the password half if any.
             Some(at) => {
                 let userinfo = &authority[..at];
@@ -90,6 +93,14 @@ mod tests {
         assert_eq!(
             redact_secrets("remote: https://x-access-token:ghs_TOKEN@github.com/o/r"),
             "remote: https://x-access-token:***@github.com/o/r"
+        );
+    }
+
+    #[test]
+    fn redacts_the_whole_password_when_it_contains_an_at_sign() {
+        assert_eq!(
+            redact_secrets("remote: https://alice:p@ss@example.com/o/r"),
+            "remote: https://alice:***@example.com/o/r"
         );
     }
 

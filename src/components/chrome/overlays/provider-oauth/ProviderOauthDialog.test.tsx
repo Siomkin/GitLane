@@ -63,6 +63,16 @@ const arm = () => {
   };
 };
 
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
 const openDialog = (over: Record<string, unknown> = {}) =>
   useUi.setState({ providerOauthSignin: { provider: "gitlab", host: "gitlab.com", ...over } as never });
 
@@ -170,6 +180,52 @@ describe("ProviderOauthDialog", () => {
     await waitFor(() => expect(useAccounts.getState().providerTokens).toEqual({}));
     expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument();
     expect(screen.queryByText("Signed in as @ada")).toBeNull();
+  });
+
+  it("keeps a canceled run globally owned until its rollback finishes", async () => {
+    const signinA = deferred<ReturnType<typeof result>>();
+    const signinB = deferred<ReturnType<typeof result>>();
+    const rollbackDelete = deferred<void>();
+    let signinCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "provider_oauth_sign_in") {
+        signinCalls += 1;
+        return signinCalls === 1 ? signinA.promise : signinB.promise;
+      }
+      if (cmd === "cancel_provider_oauth_sign_in") return Promise.resolve(undefined);
+      if (cmd === "delete_provider_token") return rollbackDelete.promise;
+      return Promise.resolve(undefined);
+    });
+    openDialog();
+    render(<ProviderOauthDialog />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    await waitFor(() => expect(signinCalls).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Sign in to GitLab" })).toBeInTheDocument(),
+    );
+
+    // The backend committed A despite the accepted cancel. Its compensating
+    // delete is deliberately held open; the visible configure screen must not
+    // be able to launch retry B while that rollback still owns the lifecycle.
+    await act(async () => signinA.resolve(result()));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
+        provider: "gitlab",
+        host: "gitlab.com",
+        accountId: "42",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    expect(signinCalls).toBe(1);
+
+    await act(async () => rollbackDelete.resolve());
+    await waitFor(() => expect(useAccounts.getState().providerTokens).toEqual({}));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to GitLab" }));
+    await waitFor(() => expect(signinCalls).toBe(2));
+    await act(async () => signinB.resolve(result({ accountId: "43", login: "grace" })));
+    await waitFor(() => expect(screen.getByText("Signed in as @grace")).toBeInTheDocument());
   });
 
   it("late cancel leaves a manageable account when the rollback delete fails", async () => {

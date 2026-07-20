@@ -113,6 +113,22 @@ export const credentialScopePath = (info: RemoteUrlInfo): string | null =>
 const hasCredentialProtocolSeparator = (value: string | null): boolean =>
   value !== null && /[\r\n\0]/.test(value);
 
+/** Whether an HTTP(S) URL carries password-bearing userinfo. The final `@`
+ * terminates userinfo so malformed inputs with an unescaped `@` in the password
+ * are still rejected. Username-only selectors remain valid. */
+export const httpUrlHasPassword = (raw: string): boolean => {
+  const url = (raw ?? "").trim();
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd < 0) return false;
+  const scheme = url.slice(0, schemeEnd).toLowerCase();
+  if (scheme !== "http" && scheme !== "https") return false;
+  const rest = url.slice(schemeEnd + 3);
+  const authorityEnd = rest.search(/[/?#]/);
+  const authority = rest.slice(0, authorityEnd < 0 ? rest.length : authorityEnd);
+  const at = authority.lastIndexOf("@");
+  return at >= 0 && authority.slice(0, at).includes(":");
+};
+
 /** Parse an https or SSH/scp git remote URL into host + path + provider. */
 export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   const url = (raw ?? "").trim();
@@ -128,29 +144,40 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
   };
   if (!url) return miss;
   if (hasCredentialProtocolSeparator(url)) return miss;
+  if (httpUrlHasPassword(url)) return miss;
 
   let host: string | null = null;
+  let credentialHost: string | null = null;
   let path: string | null = null;
   let ssh = false;
   let m: RegExpMatchArray | null;
   if ((m = url.match(/^https?:\/\/([^/\s]+)\/(.+?)(?:\.git)?\/?$/i))) {
     [, host, path] = m;
-  } else if ((m = url.match(/^(?:ssh:\/\/)?git@([^:/\s]+)[:/](.+?)(?:\.git)?\/?$/i))) {
+  } else if ((m = url.match(/^ssh:\/\/(?:[^@/\s]+@)?(\[[^\]\s]+\]|[^:/\s]+)(?::(\d+))?\/(.+?)(?:\.git)?\/?$/i))) {
+    const [, sshHost, sshPort, sshPath] = m;
+    host = sshHost;
+    credentialHost = sshPort ? `${sshHost}:${sshPort}` : sshHost;
+    path = sshPath;
+    ssh = true;
+  } else if ((m = url.match(/^git@([^:/\s]+):(.+?)(?:\.git)?\/?$/i))) {
     [, host, path] = m;
+    credentialHost = host;
     ssh = true;
   }
   // Require a host and at least an owner/repo (two path segments).
   if (!host || !path || path.split("/").filter(Boolean).length < 2) return miss;
   if (hasCredentialProtocolSeparator(host) || hasCredentialProtocolSeparator(path)) return miss;
 
-  // Split off the https userinfo (https://user@host/…) — that's the account
-  // selector git hands to credential helpers. Preserve the host[:port]
-  // authority for credential scoping while also exposing a portless display
-  // host for provider classification.
+  // Split off username-only https userinfo (https://user@host/…) — that's the
+  // account selector git hands to credential helpers. A colon before the final
+  // `@` is a password delimiter; reject that form so a token/password can never
+  // be persisted in remote config or echoed across IPC. Preserve the host[:port]
+  // authority for credential scoping while also exposing a portless display host
+  // for provider classification.
   let user: string | null = null;
   if (!ssh && host.includes("@")) {
     const at = host.lastIndexOf("@");
-    const rawUser = (host.slice(0, at) || "").split(":")[0] ?? "";
+    const rawUser = host.slice(0, at);
     try {
       user = decodeURIComponent(rawUser) || null;
     } catch {
@@ -159,8 +186,14 @@ export const detectRemoteUrl = (raw: string): RemoteUrlInfo => {
     host = host.slice(at + 1);
   }
   if (hasCredentialProtocolSeparator(user) || hasCredentialProtocolSeparator(host)) return miss;
-  const credentialHost = host.toLowerCase();
-  host = host.split(":")[0] || host;
+  credentialHost = (credentialHost ?? host).toLowerCase();
+  if (host.startsWith("[")) {
+    const close = host.indexOf("]");
+    if (close < 0) return miss;
+    host = host.slice(1, close);
+  } else {
+    host = host.split(":")[0] || host;
+  }
   host = host.replace(/^www\./, "").toLowerCase();
   return { empty: false, valid: true, host, credentialHost, path, user, ssh, provider: providerForHost(host) };
 };

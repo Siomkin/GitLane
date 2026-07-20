@@ -4,6 +4,7 @@
 // of this is unit-tested in onboarding.test.ts.
 
 import { friendlyGitError } from "@/lib/gitError";
+import { httpUrlHasPassword } from "@/lib/remotes";
 
 /** The seven onboarding screens (mirrors the RepoOnboarding mockup's `screen`). */
 export type OnboardingScreen =
@@ -34,6 +35,7 @@ export function validateCloneUrl(raw: string): { state: UrlState; repo: string }
   if (!url) return { state: "empty", repo: "repository" };
   const repo = parseRepoName(url);
   const wellFormed =
+    !httpUrlHasPassword(url) &&
     /^(https?:\/\/|git@[\w.-]+:|ssh:\/\/|git:\/\/)[^\s]+/.test(url) &&
     /[/:][\w.-]+(\.git)?\/?$/.test(url);
   // A well-formed URL whose derived folder name is unsafe (e.g. ends in /., /..)

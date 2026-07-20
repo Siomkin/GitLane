@@ -554,6 +554,8 @@ pub fn unstage_all(repo: &str) -> Result<String, String> {
 /// `-c user.email`, which sets **both author and committer** for this one
 /// invocation — so a GitLane commit always uses the repo's bound identity
 /// regardless of what global/local git config (or another tool) has set.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)] // Test-only wrapper mirrors the guarded commit contract exactly.
 pub fn commit(
     repo: &str,
     summary: &str,
@@ -561,6 +563,32 @@ pub fn commit(
     amend: bool,
     name: Option<&str>,
     email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
+) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
+    commit_locked(
+        repo,
+        summary,
+        description,
+        amend,
+        name,
+        email,
+        identity,
+        identity_captured,
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // Internal half of the guarded IPC contract.
+fn commit_locked(
+    repo: &str,
+    summary: &str,
+    description: &str,
+    amend: bool,
+    name: Option<&str>,
+    email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
     // Guard an empty subject with a clear message instead of letting git fail
     // with its raw "Aborting commit due to empty commit message" — the commit
@@ -570,14 +598,23 @@ pub fn commit(
         return Err("A commit message is required.".to_string());
     }
     let mut args: Vec<String> = Vec::new();
-    if let (Some(n), Some(e)) = (name, email) {
-        if !n.is_empty() && !e.is_empty() {
-            args.push("-c".into());
-            args.push(format!("user.name={n}"));
-            args.push("-c".into());
-            args.push(format!("user.email={e}"));
-        }
+    let expected_author = match (name, email) {
+        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
+        _ => None,
+    };
+    if let Some((n, e)) = expected_author {
+        args.push("-c".into());
+        args.push(format!("user.name={n}"));
+        args.push("-c".into());
+        args.push(format!("user.email={e}"));
     }
+    args.extend(super::identity::pinned_signing_args(
+        repo,
+        expected_author,
+        identity,
+        identity_captured,
+        super::identity::SigningOperation::Commit,
+    )?);
     args.push("commit".into());
     if amend {
         args.push("--amend".into());
@@ -604,9 +641,21 @@ pub fn commit_expected(
     amend: bool,
     name: Option<&str>,
     email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    commit(repo, summary, description, amend, name, email)
+    commit_locked(
+        repo,
+        summary,
+        description,
+        amend,
+        name,
+        email,
+        identity,
+        identity_captured,
+    )
 }
 
 /// Replace the current tip range with one commit behind a single guarded IPC
@@ -623,12 +672,24 @@ pub fn squash_commits(
     description: &str,
     name: Option<&str>,
     email: Option<&str>,
+    identity: Option<&crate::git::types::RepoIdentity>,
+    identity_captured: bool,
 ) -> Result<String, String> {
+    let _identity_guard = super::identity::lock_identity_config()?;
     super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     super::head::ensure_commit_exists(repo, parent_oid)?;
     super::branches::reset(repo, parent_oid, "soft")?;
     super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))?;
-    match commit(repo, summary, description, false, name, email) {
+    match commit_locked(
+        repo,
+        summary,
+        description,
+        false,
+        name,
+        email,
+        identity,
+        identity_captured,
+    ) {
         Ok(output) => Ok(output),
         Err(error) => {
             if super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid)).is_ok() {
