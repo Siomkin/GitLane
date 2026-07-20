@@ -8,8 +8,17 @@
 // the real CLI) and leave the post-write reload + repo `refresh` to the caller,
 // which generation-guards them against a repo switch landing mid-await.
 
-import { api } from "@/lib/api";
+import { api, type RemoteInfo } from "@/lib/api";
 import { useAccounts } from "./accounts";
+import { usePulls } from "./pulls";
+import { remotesRequestIsCurrent } from "./repoGuards";
+import {
+  beginRemotesRequest,
+  claimPrPrefetch,
+  currentPublishedRepoSession,
+  markRemotesReadyForPr,
+  requestPrPrefetch,
+} from "./repoRequests";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
 
 export function createRepoRemoteActions(
@@ -29,14 +38,35 @@ export function createRepoRemoteActions(
   return {
     listRemotes: async () => {
       const path = repoPath();
-      const remotes = await api.listRemotes(path);
-      // Publish only if the same repo is still open — a repo switch landing
-      // mid-await must not adopt the previous repo's remote list.
-      if (get().summary?.path === path) {
+      const owner = {
+        path,
+        session: currentPublishedRepoSession(),
+        generation: beginRemotesRequest(),
+      };
+      let remotes: RemoteInfo[];
+      try {
+        remotes = await api.listRemotes(path);
+      } catch (error) {
+        // A superseded read no longer owns even its error. Resolve to the
+        // currently published slice so UI callers cannot flash a stale failure
+        // while the newer lane is still completing.
+        if (!remotesRequestIsCurrent(get, owner)) return get().remotes;
+        throw error;
+      }
+      // Latest-started wins inside the current published repo session. The
+      // session closes the same-path close/reopen hole; the lane token also
+      // prevents a slow manual reload from overwriting a newer full refresh.
+      if (remotesRequestIsCurrent(get, owner)) {
         set({ remotes });
         useAccounts.getState().syncRepoAccount(path);
+        requestPrPrefetch(owner.session);
+        markRemotesReadyForPr(owner.session, owner.generation);
+        if (claimPrPrefetch(owner.session)) {
+          void usePulls.getState().loadPullRequests(false, true);
+        }
+        return remotes;
       }
-      return remotes;
+      return get().remotes;
     },
     addRemote: async (name, url) => api.addRemote(repoPath(), name, url),
     setRemoteUrl: async (name, url) => api.setRemoteUrl(repoPath(), name, url),

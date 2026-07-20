@@ -40,6 +40,16 @@ const historyPage = {
 
 const fileDiff = { path: "src/a.ts", status: "M", add: 3, del: 1, binary: false, hunks: [], truncated: false };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   invokeMock.mockReset();
   useRepo.setState({ summary, fileHistory: null, compare: null, selectedCommit: null });
@@ -302,6 +312,88 @@ describe("repo store — compare", () => {
     expect(cmp.diffError).toContain("bad object");
     expect(cmp.error).toBeNull();
     expect(cmp.files).toHaveLength(2);
+  });
+
+  it("keeps the newest same-endpoint compare refresh when results finish out of order", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return Promise.resolve(compareResult);
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().openCompare({
+      base: "main",
+      head: "feature",
+      baseLabel: "main",
+      headLabel: "feature",
+      scope: "branch",
+      title: "t",
+    });
+
+    const oldResult = deferred<typeof compareResult>();
+    const newest = {
+      ...compareResult,
+      files: [{ path: "src/new.ts", status: "A" as const, add: 4, del: 0, binary: false }],
+      add: 4,
+    };
+    let calls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") {
+        calls += 1;
+        return calls === 1 ? oldResult.promise : Promise.resolve(newest);
+      }
+      if (cmd === "compare_file_diff") return Promise.resolve({ ...fileDiff, path: "src/new.ts" });
+      return Promise.resolve(null);
+    });
+
+    const stale = useRepo.getState().refreshCompare();
+    await useRepo.getState().refreshCompare();
+    oldResult.resolve(compareResult);
+    await stale;
+
+    expect(useRepo.getState().compare?.files).toEqual(newest.files);
+    expect(useRepo.getState().compare?.add).toBe(4);
+  });
+
+  it("invalidates an older selected diff and reloads equal-stat moving refs", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return Promise.resolve(compareResult);
+      if (cmd === "compare_file_diff") return Promise.resolve(fileDiff);
+      return Promise.resolve(null);
+    });
+    await useRepo.getState().openCompare({
+      base: "main",
+      head: "feature",
+      baseLabel: "main",
+      headLabel: "feature",
+      scope: "branch",
+      title: "t",
+    });
+    await vi.waitFor(() => expect(useRepo.getState().compare?.selectedDiff).toEqual(fileDiff));
+
+    const staleDiff = deferred<typeof fileDiff>();
+    const refreshedList = deferred<typeof compareResult>();
+    const newestDiff = { ...fileDiff, add: 99 };
+    let diffCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "compare_refs") return refreshedList.promise;
+      if (cmd === "compare_file_diff") {
+        diffCalls += 1;
+        return diffCalls === 1 ? staleDiff.promise : Promise.resolve(newestDiff);
+      }
+      return Promise.resolve(null);
+    });
+
+    const oldSelection = useRepo.getState().selectCompareFile("src/a.ts");
+    const refresh = useRepo.getState().refreshCompare();
+    staleDiff.resolve({ ...fileDiff, add: 50 });
+    await oldSelection;
+    expect(useRepo.getState().compare?.selectedDiff).toEqual(fileDiff);
+
+    // File stats are byte-identical, but branch names can move; the winning
+    // list refresh must still fetch a new selected diff.
+    refreshedList.resolve(compareResult);
+    await refresh;
+    await vi.waitFor(() => expect(useRepo.getState().compare?.selectedDiff).toEqual(newestDiff));
   });
 });
 

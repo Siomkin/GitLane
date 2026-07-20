@@ -19,6 +19,7 @@ const repoLeaf = (workdir: string | null | undefined): string =>
  * refreshes the toolbar provider indicator on its own. */
 export const RemotesPanel = () => {
   const summary = useRepo((s) => s.summary);
+  const remotes = useRepo((s) => s.remotes);
   const refreshRepo = useRepo((s) => s.refresh);
   const listRemotes = useRepo((s) => s.listRemotes);
   const addRemote = useRepo((s) => s.addRemote);
@@ -39,7 +40,6 @@ export const RemotesPanel = () => {
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
 
-  const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,15 +52,13 @@ export const RemotesPanel = () => {
     if (!path) return;
     const gen = ++loadGen.current;
     try {
-      const list = await listRemotes();
+      await listRemotes();
       if (gen !== loadGen.current) return; // superseded (e.g. repo switched)
-      setRemotes(list);
       setError(null);
     } catch (e) {
       // Drop the stale list and surface an error rather than rendering the
       // previous repo's remotes (or a misleading "No remotes configured").
       if (gen === loadGen.current) {
-        setRemotes([]);
         setError(String(e));
       }
     } finally {
@@ -72,7 +70,6 @@ export const RemotesPanel = () => {
   // failing) load for the new repo can't leave stale rows on screen.
   useEffect(() => {
     setLoading(true);
-    setRemotes([]);
     setError(null);
     void reload();
   }, [reload]);

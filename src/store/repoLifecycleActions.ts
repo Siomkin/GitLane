@@ -16,14 +16,24 @@ import { usePulls } from "./pulls";
 import {
   flushPendingRefresh,
   graphRequestIsCurrent,
-  repoStillDisplayed,
+  metadataRequestIsCurrent,
+  remotesRequestIsCurrent,
+  repoSessionIsCurrent,
+  worktreeRequestIsCurrent,
 } from "./repoGuards";
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
   beginGraphRequest,
+  beginMetadataRequest,
   beginPublishedRepoSession,
+  beginRemotesRequest,
+  beginWorktreeRequest,
+  claimPrPrefetch,
   claimOpenIntent,
+  markMetadataReadyForPr,
+  markRemotesReadyForPr,
   openIntentIsCurrent,
+  requestPrPrefetch,
 } from "./repoRequests";
 import {
   persistRecents,
@@ -129,7 +139,32 @@ export function createRepoLifecycleActions(
       persistRecents(recents);
       // Rotate the displayed-session identity in the same synchronous phase-2
       // publication as the summary, including a same-path reopen.
-      beginPublishedRepoSession();
+      const session = beginPublishedRepoSession();
+      // Claim one token per secondary-read batch. Each call in a lane shares
+      // its token so it can land independently, while a newer same-lane load or
+      // refresh suppresses every remaining completion from this batch.
+      const metadataOwner = {
+        path: summary.path,
+        session,
+        generation: beginMetadataRequest(),
+      };
+      const worktreeOwner = {
+        path: summary.path,
+        session,
+        generation: beginWorktreeRequest(),
+      };
+      const remotesOwner = {
+        path: summary.path,
+        session,
+        generation: beginRemotesRequest(),
+      };
+      const fileSelectionRequestId = get().fileSelectionRequestId + 1;
+      const maybePrefetchPulls = () => {
+        if (claimPrPrefetch(session)) {
+          void usePulls.getState().loadPullRequests(false, true);
+        }
+      };
+      requestPrPrefetch(session);
       set({
         summary,
         openPaths,
@@ -160,7 +195,9 @@ export function createRepoLifecycleActions(
         wipSelected: false,
         revealTarget: null,
         selectedFile: null,
+        fileSelectionRequestId,
         fileDiff: null,
+        diffLoading: false,
         commitFiles: [],
         // Inspection slices are repo-bound; a switch must not leave an old repo's
         // history/compare/files view mounted against the new (or null) summary.
@@ -231,7 +268,9 @@ export function createRepoLifecycleActions(
       usePulls.getState().reset();
       // Resolve this repo's bound account so the PR badge load (fired once the
       // forge is known, below) fetches as that account.
-      useAccounts.getState().syncRepoAccount(summary.path);
+      if (remotesRequestIsCurrent(get, remotesOwner)) {
+        useAccounts.getState().syncRepoAccount(summary.path);
+      }
 
       // Secondary reads don't gate the first paint, so fan them out independently
       // — each fills its slice as it lands rather than waiting behind the graph in
@@ -247,70 +286,90 @@ export function createRepoLifecycleActions(
       void api
         .listBranches(summary.path)
         .then((branches) => {
-          if (repoStillDisplayed(get, summary.path)) set({ branches });
+          if (metadataRequestIsCurrent(get, metadataOwner)) set({ branches });
         })
         .catch((e) => {
-          if (repoStillDisplayed(get, summary.path)) void surfaceOpenFailure(summary.path, e);
+          void surfaceOpenFailure(
+            summary.path,
+            e,
+            () =>
+              openIntentIsCurrent(intent) &&
+              metadataRequestIsCurrent(get, metadataOwner),
+          );
         });
       void api
         .listWorktrees(summary.path)
         .then((worktrees) => {
-          if (!repoStillDisplayed(get, summary.path)) return;
+          if (!metadataRequestIsCurrent(get, metadataOwner)) return;
           set({ worktrees });
           // Their uncommitted work is a second, per-worktree read — kicked off
           // once the list itself has landed and painted, never in front of it.
+          // It inherits this read's ownership guard: probing dirtiness for a
+          // superseded load would publish into the repo the user left.
           probeDirtyWorktrees(set, get);
         })
         .catch(() => {});
       void api
         .listStashes(summary.path)
         .then((stashes) => {
-          if (repoStillDisplayed(get, summary.path)) set({ stashes });
+          if (metadataRequestIsCurrent(get, metadataOwner)) set({ stashes });
         })
         .catch(() => {});
       // The forge drives the toolbar provider indicator (which paints early), so
       // load it alongside the other secondary reads rather than behind the graph.
       // Best-effort: a detection failure degrades to "no forge", never the error bar.
-      const forgeLoad = api
+      void api
         .repoForge(summary.path)
         .then((forge) => {
-          if (repoStillDisplayed(get, summary.path)) set({ forge });
+          if (metadataRequestIsCurrent(get, metadataOwner)) {
+            set({ forge });
+            markMetadataReadyForPr(session, metadataOwner.generation, forge !== null);
+            maybePrefetchPulls();
+          }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (metadataRequestIsCurrent(get, metadataOwner)) {
+            // Phase 2 already published the terminal best-effort fallback.
+            markMetadataReadyForPr(session, metadataOwner.generation, false);
+            maybePrefetchPulls();
+          }
+        });
       // The remote list feeds the per-remote account resolution (GL-129): URL
       // usernames and any legacy binding migration need the remote names +
       // default remote, so re-sync the account slice once the list lands (the
       // early sync above ran without it).
       // Best-effort like the other secondary reads.
-      const remotesLoad = api
+      void api
         .listRemotes(summary.path)
         .then((remotes) => {
-          if (repoStillDisplayed(get, summary.path)) {
+          if (remotesRequestIsCurrent(get, remotesOwner)) {
             set({ remotes });
             useAccounts.getState().syncRepoAccount(summary.path);
+            markRemotesReadyForPr(session, remotesOwner.generation);
+            maybePrefetchPulls();
           }
         })
-        .catch(() => {});
-      void Promise.allSettled([forgeLoad, remotesLoad]).then(() => {
-        // Fire the quiet PR-badge load only once the forge is known, so the
-        // GitHub-only gate in `loadPullRequests` applies on first paint — a
-        // non-GitHub / no-remote repo then skips `gh` instead of surfacing a
-        // confusing "couldn't resolve a GitHub repository" error. Waiting on the
-        // remotes too means the load fetches as the *default remote's* bound
-        // account rather than racing the per-remote resolution (GL-129). Both
-        // are cheap libgit2 reads and PRs don't gate first paint, so the wait is
-        // free. The panel isn't shown yet; opening it does its own foreground load.
-        if (repoStillDisplayed(get, summary.path)) {
-          void usePulls.getState().loadPullRequests(false, true);
-        }
-      });
+        .catch(() => {
+          if (remotesRequestIsCurrent(get, remotesOwner)) {
+            // Phase 2 already published []; account resolution ran once against
+            // that terminal fallback before the read batch started.
+            markRemotesReadyForPr(session, remotesOwner.generation);
+            maybePrefetchPulls();
+          }
+        });
       void api
         .workingChanges(summary.path)
         .then((changes) => {
-          if (repoStillDisplayed(get, summary.path)) set({ changes });
+          if (worktreeRequestIsCurrent(get, worktreeOwner)) set({ changes });
         })
         .catch((e) => {
-          if (repoStillDisplayed(get, summary.path)) void surfaceOpenFailure(summary.path, e);
+          void surfaceOpenFailure(
+            summary.path,
+            e,
+            () =>
+              openIntentIsCurrent(intent) &&
+              worktreeRequestIsCurrent(get, worktreeOwner),
+          );
         });
       // The active operation (merge/rebase/cherry-pick/revert) gates the
       // conflict workspace. Best-effort: a detection failure degrades to "no
@@ -319,7 +378,7 @@ export function createRepoLifecycleActions(
       void api
         .operationStatus(summary.path)
         .then((status) => {
-          if (repoStillDisplayed(get, summary.path)) {
+          if (worktreeRequestIsCurrent(get, worktreeOwner)) {
             set({
               operation: mergeOperationStatus(get().operation, status),
               operationAdvisory: status.advisory || null,
@@ -375,7 +434,11 @@ export function createRepoLifecycleActions(
           void api
             .commitFiles(summary.path, selectedCommit)
             .then((commitFiles) => {
-              if (repoStillDisplayed(get, summary.path) && get().selectedCommit === selectedCommit) {
+              if (
+                repoSessionIsCurrent(get, summary.path, session) &&
+                get().fileSelectionRequestId === fileSelectionRequestId &&
+                get().selectedCommit === selectedCommit
+              ) {
                 set({ commitFiles });
               }
             })
@@ -392,16 +455,26 @@ export function createRepoLifecycleActions(
         // libgit2 message (GL-108). Re-guard after the async probe.
         const missing = await wentMissing(summary.path, e);
         if (!graphRequestIsCurrent(get, generation, summary.path)) return;
-        if (missing)
+        if (missing) {
           // `intent` (claimed at this loadRepo's start, before every await) is
           // the open-intent baseline: a competing switch bumps it, flipping the
           // token even before that switch publishes its summary/generation.
-          await handleMissing(
+          const transitioned = await handleMissing(
             summary.path,
             missing,
             () => graphRequestIsCurrent(get, generation, summary.path) && openIntentIsCurrent(intent),
           );
-        else set({ loading: false, graphLoading: false, error: errorText(e) });
+          if (!transitioned && graphRequestIsCurrent(get, generation, summary.path)) {
+            // A newer phase-1 open can suppress this missing transition without
+            // yet owning the loading flags. Release the old graph shell so a
+            // later failed pick cannot leave it stuck.
+            set({ loading: false, graphLoading: false });
+          }
+        } else if (openIntentIsCurrent(intent)) {
+          set({ loading: false, graphLoading: false, error: errorText(e) });
+        } else {
+          set({ loading: false, graphLoading: false });
+        }
         flushPendingRefresh(get);
       }
     },

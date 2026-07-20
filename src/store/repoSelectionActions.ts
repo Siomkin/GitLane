@@ -1,5 +1,7 @@
 import { api } from "@/lib/api";
 import { invalidateFileDiffReconciles } from "./repoFileDiff";
+import { repoSessionIsCurrent } from "./repoGuards";
+import { currentPublishedRepoSession } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { computeSelection } from "./selection";
 import { useUi } from "./ui";
@@ -44,6 +46,19 @@ export function createRepoSelectionActions(
   | "swapCompare"
   | "closeCompare"
 > {
+  // Compare endpoints are not a sufficient response owner: two background
+  // refreshes can target the same base/head, and two full-diff requests can
+  // target the same selected path. Keep independent latest-start generations
+  // for the file-list/totals read and the selected-file diff read.
+  let compareListGeneration = 0;
+  let compareDiffGeneration = 0;
+  const claimCompareList = () => ++compareListGeneration;
+  const claimCompareDiff = () => ++compareDiffGeneration;
+  const invalidateCompare = () => {
+    compareListGeneration += 1;
+    compareDiffGeneration += 1;
+  };
+
   return {
     selectCommit: async (id) => get().selectCommitMulti(id ?? "", {}),
 
@@ -127,11 +142,15 @@ export function createRepoSelectionActions(
 
       if (!focus) return;
       const repoPath = summary.path;
+      const repoSession = currentPublishedRepoSession();
       // Don't let a single-commit fetch publish into a newer selection or a
       // different repo (a slow reject after a repo switch must not flash a stale
       // error onto the new repo's view).
       const fresh = () =>
-        get().summary?.path === repoPath && !get().selectionDiff && get().selectedCommit === focus;
+        repoSessionIsCurrent(get, repoPath, repoSession) &&
+        get().fileSelectionRequestId === fileSelectionRequestId &&
+        !get().selectionDiff &&
+        get().selectedCommit === focus;
       set({ diffLoading: true });
       try {
         const files = await api.commitFiles(repoPath, focus);
@@ -485,9 +504,18 @@ export function createRepoSelectionActions(
       const { summary } = get();
       if (!summary) return;
       const repoPath = summary.path;
+      const generation = claimCompareList();
+      // A new comparison invalidates any selected-file diff from the previous
+      // route, including an A -> B -> A endpoint cycle.
+      compareDiffGeneration += 1;
       const fresh = () => {
         const cur = get().compare;
-        return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
+        return (
+          generation === compareListGeneration &&
+          get().summary?.path === repoPath &&
+          cur?.base === base &&
+          cur.head === head
+        );
       };
       set({
         fileSelectionRequestId: get().fileSelectionRequestId + 1,
@@ -533,7 +561,7 @@ export function createRepoSelectionActions(
             : null,
         }));
         const first = result.files[0];
-        if (first) void get().selectCompareFile(first.path);
+        if (first && fresh()) void get().selectCompareFile(first.path);
       } catch (e) {
         if (!fresh()) return;
         set((state) => ({
@@ -547,9 +575,11 @@ export function createRepoSelectionActions(
       if (!summary || !compare) return;
       const { base, head } = compare;
       const repoPath = summary.path;
+      const generation = claimCompareDiff();
       const fresh = () => {
         const cur = get().compare;
         return (
+          generation === compareDiffGeneration &&
           get().summary?.path === repoPath &&
           cur?.base === base &&
           cur.head === head &&
@@ -559,7 +589,14 @@ export function createRepoSelectionActions(
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
         compare: state.compare
-          ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true, diffError: null }
+          ? {
+              ...state.compare,
+              selectedPath: path,
+              selectedDiff:
+                state.compare.selectedPath === path ? state.compare.selectedDiff : null,
+              diffLoading: true,
+              diffError: null,
+            }
           : null,
       }));
       try {
@@ -585,9 +622,24 @@ export function createRepoSelectionActions(
       if (!summary || !compare) return;
       const { base, head } = compare;
       const repoPath = summary.path;
+      const generation = claimCompareList();
+      // The refreshed file list defines the selected diff's snapshot too. Stop
+      // an older diff from landing while this newer list read is still pending.
+      compareDiffGeneration += 1;
+      // The invalidated diff can no longer clear its own spinner. Keep the last
+      // good diff visible while the list refresh runs; a winning list result
+      // starts a fresh selected-file request (and spinner) below.
+      set((state) => ({
+        compare: state.compare ? { ...state.compare, diffLoading: false } : null,
+      }));
       const fresh = () => {
         const cur = get().compare;
-        return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
+        return (
+          generation === compareListGeneration &&
+          get().summary?.path === repoPath &&
+          cur?.base === base &&
+          cur.head === head
+        );
       };
       try {
         const result = await api.compareRefs(repoPath, base, head);
@@ -611,32 +663,10 @@ export function createRepoSelectionActions(
         const selectedPath = get().compare?.selectedPath ?? null;
         const stillThere = selectedPath && result.files.some((f) => f.path === selectedPath);
         if (stillThere) {
-          // Ref-to-ref comparisons are pinned to immutable commits: if the file
-          // set and totals came back byte-identical, the selected file's diff
-          // can't have changed, so skip re-fetching it. Working-tree compares
-          // (head === null) can change content without moving line counts, so
-          // they always re-fetch to stay truthful.
-          const unchanged =
-            head !== null &&
-            result.add === compare.add &&
-            result.del === compare.del &&
-            result.ahead === compare.ahead &&
-            result.behind === compare.behind &&
-            result.files.length === compare.files.length &&
-            result.files.every((f, i) => {
-              const prev = compare.files[i];
-              return (
-                !!prev &&
-                prev.path === f.path &&
-                prev.status === f.status &&
-                prev.add === f.add &&
-                prev.del === f.del
-              );
-            });
-          if (!(unchanged && get().compare?.selectedDiff)) {
-            // Re-fetch the selected file's diff so it reflects the new endpoint state.
-            void get().selectCompareFile(selectedPath);
-          }
+          // Endpoints may be moving branch/ref names, not immutable object ids;
+          // equal file stats do not prove equal content. Every winning refresh
+          // therefore re-fetches the selected diff.
+          if (fresh()) void get().selectCompareFile(selectedPath);
         } else if (!selectedPath) {
           // Nothing selected (or selection cleared): land on the first file if any.
           const first = result.files[0]?.path ?? null;
@@ -677,10 +707,12 @@ export function createRepoSelectionActions(
       });
     },
 
-    closeCompare: () =>
+    closeCompare: () => {
+      invalidateCompare();
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
         compare: null,
-      })),
+      }));
+    },
   };
 }
