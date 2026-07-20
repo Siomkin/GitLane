@@ -667,6 +667,21 @@ pub struct RepoFileContent {
     pub size: u64,
     pub truncated: bool,
     pub binary: bool,
+    /// Opaque compare-and-swap lease for the exact repository/worktree/path,
+    /// leaf identity, and bytes represented by `text`. Present only when the
+    /// read is complete, non-binary, and valid UTF-8, so its absence is also the
+    /// backend-owned signal that editing is unsafe.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_state: Option<String>,
+}
+
+/// Result of one guarded in-app editor save. The returned state is the lease
+/// for the bytes just written, allowing another save without a redundant read.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoFileWriteResult {
+    pub size: u64,
+    pub expected_state: String,
 }
 
 /// One commit in a repository-relative file's history.

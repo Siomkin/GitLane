@@ -1572,6 +1572,7 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
     assert_eq!(plain.text.as_deref(), Some("hello\nworld\n"));
     assert!(!plain.truncated && !plain.binary);
     assert_eq!(plain.size, 12);
+    assert!(plain.expected_state.is_some());
 
     // A client cap may only lower the limit; content past it is cut.
     fs::write(dir.join("big.txt"), "a".repeat(64)).unwrap();
@@ -1579,11 +1580,29 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
     assert!(capped.truncated);
     assert_eq!(capped.size, 64);
     assert_eq!(capped.text.as_deref().map(|t| t.len()), Some(16));
+    assert!(capped.expected_state.is_none());
 
     fs::write(dir.join("blob.bin"), [0u8, 159, 146, 150]).unwrap();
     let binary = super::repo_file_text(path, "blob.bin", None).unwrap();
     assert!(binary.binary);
     assert!(binary.text.is_none());
+    assert!(binary.expected_state.is_none());
+
+    // Displayable-but-lossy bytes and a NUL beyond Git's 8 KiB binary sniff
+    // window are still never editable: no lease means the frontend cannot save
+    // replacement characters or late binary data over the source bytes.
+    fs::write(dir.join("invalid-utf8.txt"), [b'a', 0xff, b'b']).unwrap();
+    let invalid = super::repo_file_text(path, "invalid-utf8.txt", None).unwrap();
+    assert!(!invalid.binary && !invalid.truncated);
+    assert!(invalid.text.is_some());
+    assert!(invalid.expected_state.is_none());
+
+    let mut late_nul = vec![b'x'; 9000];
+    late_nul.push(0);
+    fs::write(dir.join("late-nul.txt"), late_nul).unwrap();
+    let late_nul = super::repo_file_text(path, "late-nul.txt", None).unwrap();
+    assert!(!late_nul.binary && !late_nul.truncated);
+    assert!(late_nul.expected_state.is_none());
 
     // Traversal and non-regular entries are refused.
     assert!(super::repo_file_text(path, "../outside.txt", None).is_err());
@@ -1603,6 +1622,45 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
         assert!(read_binary_blob(path, None, Some("ancestor-link/secret.txt"), None).is_err());
         let _ = fs::remove_dir_all(&outside);
     }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn repo_file_text_rejects_growth_truncation_and_replacement_during_read() {
+    use crate::git::worktree_fs::set_read_prefix_test_hook;
+
+    let dir = std::env::temp_dir().join("gitlane-file-text-race-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "race.txt", &"x".repeat(64));
+    let path = dir.to_str().unwrap();
+
+    let file = dir.join("race.txt");
+    let growing = file.clone();
+    set_read_prefix_test_hook(move || {
+        use std::io::Write as _;
+        let mut handle = fs::OpenOptions::new().append(true).open(growing).unwrap();
+        handle.write_all(b"growth").unwrap();
+    });
+    assert!(super::repo_file_text(path, "race.txt", None).is_err());
+
+    fs::write(&file, "x".repeat(64)).unwrap();
+    let truncating = file.clone();
+    set_read_prefix_test_hook(move || fs::write(truncating, b"short").unwrap());
+    assert!(super::repo_file_text(path, "race.txt", None).is_err());
+
+    fs::write(&file, "x".repeat(64)).unwrap();
+    let replacing = file.clone();
+    set_read_prefix_test_hook(move || {
+        let replacement = replacing.with_extension("replacement");
+        fs::write(&replacement, "x".repeat(64)).unwrap();
+        fs::rename(replacement, replacing).unwrap();
+    });
+    // This is deliberately a truncated read; display-only prefixes need the
+    // same held-descriptor/path coherence as complete editable reads.
+    assert!(super::repo_file_text(path, "race.txt", Some(16)).is_err());
 
     let _ = fs::remove_dir_all(&dir);
 }

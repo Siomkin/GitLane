@@ -23,7 +23,9 @@ export const isFileViewEditable = (fileView: FileViewState | null): boolean =>
   !!fileView?.content &&
   !fileView.content.binary &&
   !fileView.content.truncated &&
-  fileView.content.text != null;
+  fileView.content.text != null &&
+  typeof fileView.content.expectedState === "string" &&
+  fileView.content.expectedState.length > 0;
 
 /** Whether a `repo_file_text` failure means the file is gone (absent on the
  * newly checked-out branch, deleted, or replaced by a non-regular entry) versus
@@ -218,7 +220,13 @@ export function createRepoFilesActions(
       set({
         fileView: {
           ...fileView,
-          edit: { draft: fileView.content!.text ?? "", baseSize: fileView.content!.size, saving: false, error: null },
+          edit: {
+            draft: fileView.content!.text ?? "",
+            baseSize: fileView.content!.size,
+            baseExpectedState: fileView.content!.expectedState!,
+            saving: false,
+            error: null,
+          },
         },
       });
       // Refresh the baseline on edit entry so the change gutter reflects any
@@ -257,6 +265,7 @@ export function createRepoFilesActions(
       const path = fileView.path;
       const draft = fileView.edit.draft;
       const baseSize = fileView.edit.baseSize;
+      const baseExpectedState = fileView.edit.baseExpectedState;
       // A monotonic guard so a response can't publish into a *different* edit
       // session — closing and reopening the same path mid-save bumps this, and
       // the stale result is dropped. (The textarea is read-only while saving, so
@@ -264,18 +273,26 @@ export function createRepoFilesActions(
       const gen = ++saveGen;
       set({ fileView: { ...fileView, edit: { ...fileView.edit, saving: true, error: null } } });
       try {
-        const newSize = await api.writeRepoFile(repoPath, path, draft, baseSize);
+        const result = await api.writeRepoFile(repoPath, path, draft, baseSize, baseExpectedState);
         // Only publish if the same file is still open in the same save session.
         const cur = get().fileView;
         if (gen !== saveGen || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
         // Republish the saved text as the clean baseline: `content.text` now
-        // equals the draft (dirty clears), size advances so a second save's
-        // guard matches the new on-disk size.
+        // equals the draft (dirty clears), and both lease fields advance so a
+        // second save guards the bytes produced by this one.
         set({
           fileView: {
             ...cur,
-            content: cur.content ? { ...cur.content, text: draft, size: newSize } : cur.content,
-            edit: { ...cur.edit, baseSize: newSize, saving: false, error: null },
+            content: cur.content
+              ? { ...cur.content, text: draft, size: result.size, expectedState: result.expectedState }
+              : cur.content,
+            edit: {
+              ...cur.edit,
+              baseSize: result.size,
+              baseExpectedState: result.expectedState,
+              saving: false,
+              error: null,
+            },
           },
         });
       } catch (e) {

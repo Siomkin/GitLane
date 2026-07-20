@@ -15,12 +15,9 @@
 //!   such writes are refused in Rust independently of the frontend gate.
 //! * **binary refusal** — neither the incoming content (scanned in full) nor the
 //!   on-disk file may be binary.
-//! * **size match** — when the caller passes the byte size it read the buffer
-//!   from, a *differing* on-disk size means the file changed underneath the edit,
-//!   and the write is refused. This catches size-changing external edits (and a
-//!   truncated-prefix save); a same-size external edit in the read→save window is
-//!   not detected — a full compare-and-swap would need a content hash and is out
-//!   of scope.
+//! * **exact-state lease** — both the byte size and opaque SHA-256 state returned
+//!   by the lossless viewer read must still match a complete bounded read of the
+//!   held target. Same-size external edits are therefore refused too.
 //!
 //! The write itself goes to a sibling temp file that is then atomically renamed
 //! over the target, so a crash mid-write can't truncate the user's file, and a
@@ -28,34 +25,70 @@
 //! followed. The replacement is a fresh inode, so only the file mode is carried
 //! over — ownership / ACLs / xattrs / hard links are not preserved.
 
-use std::io::Read;
 use std::path::{Component, Path};
 
+use crate::git::file_state;
 use crate::git::read::open;
+use crate::git::types::RepoFileWriteResult;
 use crate::git::worktree_fs::open_regular_worktree_file;
-
-/// Same NUL-sniff window as the reader's binary detection (used only for the
-/// on-disk classification; incoming content is scanned in full).
-const BINARY_SNIFF_BYTES: usize = 8000;
 
 /// Largest file the editor may write — matches the reader's `MAX_TEXT_BYTES`
 /// cap. A larger file was necessarily read as a truncated prefix, so its buffer
 /// is not the whole file and must never be written back.
 const MAX_EDITABLE_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB
 
-/// Write `content` to the worktree file `file`, returning the new byte size.
-/// `expected_size` (when given) must equal the current on-disk size or the write
-/// is refused as a stale edit — see the module docs for every guard.
+#[cfg(test)]
+std::thread_local! {
+    static BEFORE_REPLACE_TEST_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+/// Deterministically replace a fixture after its content lease was verified but
+/// before the final pathname-identity check.
+#[cfg(test)]
+pub(crate) fn set_before_replace_test_hook(hook: impl FnOnce() + 'static) {
+    BEFORE_REPLACE_TEST_HOOK.with(|slot| {
+        assert!(slot.borrow_mut().replace(Box::new(hook)).is_none());
+    });
+}
+
+#[cfg(test)]
+fn run_before_replace_test_hook() {
+    BEFORE_REPLACE_TEST_HOOK.with(|slot| {
+        if let Some(hook) = slot.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
+#[cfg(not(test))]
+fn run_before_replace_test_hook() {}
+
+/// Write `content` to the worktree file `file`, returning its next state lease.
+/// Both expected values are mandatory and must describe the same complete bytes
+/// currently held at `file`; see the module docs for every guard.
 pub fn write_repo_file(
     repo: &str,
     file: &str,
     content: &str,
-    expected_size: Option<u64>,
-) -> Result<u64, String> {
+    expected_size: u64,
+    expected_state: &str,
+) -> Result<RepoFileWriteResult, String> {
+    if expected_state.is_empty() {
+        return Err("missing file state token; reload before saving".to_string());
+    }
+    if !file_state::is_well_formed(expected_state) {
+        return Err("invalid file state token; reload before saving".to_string());
+    }
+
     let repository = open(repo).map_err(|e| e.to_string())?;
     let workdir = repository
         .workdir()
         .ok_or_else(|| "repository has no working directory".to_string())?;
+    // Resolve the ownership scope exactly once before any mutation. Token
+    // generation after rename is then infallible and cannot mix a new root
+    // resolution with the pre-write leaf snapshot.
+    let state_scope = file_state::FileStateScope::capture(&repository, workdir, file)?;
     // Never let the raw IPC path address repository metadata.
     if Path::new(file)
         .components()
@@ -75,15 +108,27 @@ pub fn write_repo_file(
         ));
     }
 
-    // The remainder of a truncated read isn't in `content`; a mismatched size
-    // also catches a concurrent external edit. Both would lose data on write.
-    if let Some(expected) = expected_size {
-        if target.len() != expected {
-            return Err(format!(
-                "file changed on disk since it was opened ({} bytes now, expected {expected}); reload before saving",
-                target.len()
-            ));
-        }
+    let snapshot = target
+        .read_prefix_coherent(MAX_EDITABLE_BYTES as usize)
+        .map_err(|e| format!("read {file} before saving: {e}"))?;
+    if snapshot.truncated {
+        return Err(format!(
+            "file is too large to edit in place ({} bytes; cap {MAX_EDITABLE_BYTES})",
+            snapshot.size
+        ));
+    }
+    let actual_state = file_state::expected_state(&state_scope, snapshot.identity, &snapshot.bytes);
+    if snapshot.size != expected_size {
+        return Err(format!(
+            "file changed on disk since it was opened ({} bytes now, expected {expected_size}); reload before saving",
+            snapshot.size
+        ));
+    }
+    if actual_state != expected_state {
+        return Err(
+            "file changed on disk since it was opened (its contents or file identity no longer match); reload before saving"
+                .to_string(),
+        );
     }
 
     // Never let the editor turn a text file binary, and never overwrite a file
@@ -102,22 +147,16 @@ pub fn write_repo_file(
     if bytes.contains(&0) {
         return Err("refusing to write binary content".to_string());
     }
-    if on_disk_is_binary(target.reader())? {
+    if snapshot.bytes.contains(&0) {
         return Err(format!("refusing to overwrite binary file: {file:?}"));
     }
 
-    target
-        .replace_atomic(bytes)
+    run_before_replace_test_hook();
+    let replacement_identity = target
+        .replace_atomic_if_current(bytes)
         .map_err(|e| format!("write {file}: {e}"))?;
-    Ok(bytes.len() as u64)
-}
-
-/// NUL-sniff the first bytes of the existing file (same heuristic as the reader).
-fn on_disk_is_binary(handle: &mut impl Read) -> Result<bool, String> {
-    let mut head = Vec::new();
-    handle
-        .take(BINARY_SNIFF_BYTES as u64)
-        .read_to_end(&mut head)
-        .map_err(|e| format!("read worktree file: {e}"))?;
-    Ok(head.contains(&0))
+    Ok(RepoFileWriteResult {
+        size: bytes.len() as u64,
+        expected_state: file_state::expected_state(&state_scope, replacement_identity, bytes),
+    })
 }

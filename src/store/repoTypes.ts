@@ -121,6 +121,9 @@ export interface FileEditState {
   /** Byte size the draft was baselined from — passed to `write_repo_file` as the
    * on-disk size guard, and advanced to the new size after each save. */
   baseSize: number;
+  /** Opaque exact-target lease paired with `baseSize`, advanced after each
+   * successful save so external edits/replacements are never overwritten. */
+  baseExpectedState: string;
   /** True while a save is in flight. */
   saving: boolean;
   /** Last save failure to surface (cleared on the next edit/save). */
@@ -590,7 +593,7 @@ export interface RepoState {
   revertFileEdit: () => void;
   /** Leave edit mode (discarding any draft). Callers guard unsaved changes. */
   endFileEdit: () => void;
-  /** Save the draft to disk (`write_repo_file`); keeps edit mode open. */
+  /** Save the draft with its exact-state lease; keeps edit mode open. */
   saveFileEdit: () => Promise<void>;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;

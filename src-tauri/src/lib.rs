@@ -26,8 +26,8 @@ use git::types::{
     HandoffProgressEvent, HistorySearchPage, HistorySearchQuery, OauthClientStatus,
     OperationStatus, PrCheck, PrCommitList, ProviderOauthResult, ProviderTokenStatus,
     PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo,
-    RepoFileContent, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary,
-    ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
+    RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity, RepoOpenError,
+    RepoSummary, ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -695,17 +695,21 @@ async fn repo_file_head_text(path: String, file: String) -> Result<Option<String
 }
 
 /// Save an edited worktree file back to disk for the in-app file editor. A
-/// guarded, atomic write (overwrite-only, binary + size-match refusals, temp +
-/// rename) that runs on the blocking pool like the read; resolves with the new
-/// byte size.
+/// guarded, atomic write (overwrite-only, binary + exact-state refusals, temp +
+/// rename) that runs on the blocking pool like the read; resolves with the next
+/// exact-state lease for sequential saves.
 #[tauri::command]
 async fn write_repo_file(
     path: String,
     file: String,
     content: String,
-    expected_size: Option<u64>,
-) -> Result<u64, String> {
-    blocking(move || git::write::write_repo_file(&path, &file, &content, expected_size)).await
+    expected_size: u64,
+    expected_state: String,
+) -> Result<RepoFileWriteResult, String> {
+    blocking(move || {
+        git::write::write_repo_file(&path, &file, &content, expected_size, &expected_state)
+    })
+    .await
 }
 
 // ---- working tree / staging ----

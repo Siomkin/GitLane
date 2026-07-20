@@ -14,6 +14,7 @@
 pub mod conflicts;
 pub mod credential_bridge;
 pub mod credentials;
+mod file_state;
 pub mod forge;
 pub mod github;
 pub mod graph;

@@ -19,17 +19,19 @@ use super::{
     preview_discard_all, preview_discard_file, preview_force_push, preview_reset, publish_branch,
     publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries,
     remove_worktree, reset, reset_branch, resolve_conflict_file, revert, revert_many, revert_onto,
-    set_discard_capture_test_hook, set_remote_url, set_remote_username, set_repo_identity,
-    set_upstream, skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
-    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktree_dirty_state,
-    worktree_is_dirty, worktrees, write_repo_file,
+    set_before_replace_test_hook, set_discard_capture_test_hook, set_remote_url,
+    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
+    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
+    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
+    unstage_file, unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees,
+    write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
 };
 use crate::git::types::GitTransportAuthRef;
+use crate::git::worktree_fs::set_after_guarded_rename_test_hook;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -7088,11 +7090,22 @@ fn repo_with_file(tag: &str, name: &str, contents: &[u8]) -> TempRepo {
     repo
 }
 
+fn repo_file_lease(repo: &str, file: &str) -> (u64, String) {
+    let content = crate::git::status::repo_file_text(repo, file, None).expect("editable read");
+    (
+        content.size,
+        content.expected_state.expect("lossless text has a lease"),
+    )
+}
+
 #[test]
 fn write_repo_file_overwrites_and_reports_new_size() {
     let repo = repo_with_file("wrf-ok", "a.txt", b"old\n");
-    let size = write_repo_file(repo.path(), "a.txt", "new content\n", Some(4)).expect("write ok");
-    assert_eq!(size, "new content\n".len() as u64);
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    let result =
+        write_repo_file(repo.path(), "a.txt", "new content\n", size, &state).expect("write ok");
+    assert_eq!(result.size, "new content\n".len() as u64);
+    assert_ne!(result.expected_state, state);
     assert_eq!(
         std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
         "new content\n"
@@ -7102,9 +7115,10 @@ fn write_repo_file_overwrites_and_reports_new_size() {
 #[test]
 fn write_repo_file_rejects_size_mismatch() {
     let repo = repo_with_file("wrf-size", "a.txt", b"old\n");
+    let (_, state) = repo_file_lease(repo.path(), "a.txt");
     // On-disk is 4 bytes; a caller that loaded a different size (or a truncated
     // >2 MiB prefix) must be refused before the unseen remainder is destroyed.
-    let err = write_repo_file(repo.path(), "a.txt", "x", Some(999)).unwrap_err();
+    let err = write_repo_file(repo.path(), "a.txt", "x", 999, &state).unwrap_err();
     assert!(err.contains("changed on disk"), "unexpected: {err}");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
@@ -7115,18 +7129,20 @@ fn write_repo_file_rejects_size_mismatch() {
 #[test]
 fn write_repo_file_refuses_new_file() {
     let repo = repo_with_file("wrf-new", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
     // Overwrite-only: the panel never lists a nonexistent path.
-    assert!(write_repo_file(repo.path(), "nope.txt", "x", None).is_err());
+    assert!(write_repo_file(repo.path(), "nope.txt", "x", size, &state).is_err());
     assert!(!repo.0.join("nope.txt").exists());
 }
 
 #[test]
 fn write_repo_file_refuses_binary_content_and_binary_target() {
     let repo = repo_with_file("wrf-bin", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
     // NUL in the incoming content — scanned in full, not just the sniff window.
-    assert!(write_repo_file(repo.path(), "a.txt", "a\0b", Some(4)).is_err());
+    assert!(write_repo_file(repo.path(), "a.txt", "a\0b", size, &state).is_err());
     let late_nul = format!("{}\0", "x".repeat(9000));
-    assert!(write_repo_file(repo.path(), "a.txt", &late_nul, Some(4)).is_err());
+    assert!(write_repo_file(repo.path(), "a.txt", &late_nul, size, &state).is_err());
     assert_eq!(
         std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
         "old\n"
@@ -7134,22 +7150,23 @@ fn write_repo_file_refuses_binary_content_and_binary_target() {
 
     // NUL already on disk — an editor should never have offered it as text.
     let bin = repo_with_file("wrf-bin2", "b.bin", b"\0\0\0\0");
-    let err = write_repo_file(bin.path(), "b.bin", "text", Some(4)).unwrap_err();
-    assert!(err.contains("binary"), "unexpected: {err}");
+    let err = write_repo_file(bin.path(), "b.bin", "text", 4, &state).unwrap_err();
+    assert!(err.contains("changed on disk"), "unexpected: {err}");
 }
 
 #[test]
 fn write_repo_file_refuses_oversized_and_dotgit_paths() {
     let repo = repo_with_file("wrf-cap", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
     // A file larger than the read cap could only have been read as a prefix.
     let big = repo.0.join("big.txt");
     std::fs::write(&big, vec![b'x'; 2 * 1024 * 1024 + 1]).unwrap();
-    let err = write_repo_file(repo.path(), "big.txt", "x", None).unwrap_err();
+    let err = write_repo_file(repo.path(), "big.txt", "x", size, &state).unwrap_err();
     assert!(err.contains("too large"), "unexpected: {err}");
 
     // Incoming content is capped too — a small file can't be grown past the cap.
     let huge = "x".repeat(2 * 1024 * 1024 + 1);
-    let err = write_repo_file(repo.path(), "a.txt", &huge, Some(4)).unwrap_err();
+    let err = write_repo_file(repo.path(), "a.txt", &huge, size, &state).unwrap_err();
     assert!(err.contains("too large"), "unexpected: {err}");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
@@ -7157,8 +7174,8 @@ fn write_repo_file_refuses_oversized_and_dotgit_paths() {
     );
 
     // The raw IPC surface must not be pointed at repository metadata.
-    assert!(write_repo_file(repo.path(), ".git/config", "x", None).is_err());
-    assert!(write_repo_file(repo.path(), ".GIT/config", "x", None).is_err());
+    assert!(write_repo_file(repo.path(), ".git/config", "x", size, &state).is_err());
+    assert!(write_repo_file(repo.path(), ".GIT/config", "x", size, &state).is_err());
 }
 
 #[test]
@@ -7174,7 +7191,9 @@ fn write_repo_file_leaves_original_intact_and_preserves_mode() {
             .permissions()
             .mode()
             & 0o777;
-        write_repo_file(repo.path(), "a.sh", "#!/bin/sh\necho bye\n", Some(18)).expect("write ok");
+        let (size, state) = repo_file_lease(repo.path(), "a.sh");
+        write_repo_file(repo.path(), "a.sh", "#!/bin/sh\necho bye\n", size, &state)
+            .expect("write ok");
         let after = std::fs::metadata(repo.0.join("a.sh"))
             .unwrap()
             .permissions()
@@ -7201,8 +7220,9 @@ fn write_repo_file_leaves_original_intact_and_preserves_mode() {
 #[test]
 fn write_repo_file_rejects_traversal_and_symlink() {
     let repo = repo_with_file("wrf-guard", "a.txt", b"old\n");
-    assert!(write_repo_file(repo.path(), "../escape.txt", "x", None).is_err());
-    assert!(write_repo_file(repo.path(), "/etc/hosts", "x", None).is_err());
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    assert!(write_repo_file(repo.path(), "../escape.txt", "x", size, &state).is_err());
+    assert!(write_repo_file(repo.path(), "/etc/hosts", "x", size, &state).is_err());
 
     #[cfg(unix)]
     {
@@ -7210,7 +7230,7 @@ fn write_repo_file_rejects_traversal_and_symlink() {
 
         symlink("a.txt", repo.0.join("link.txt")).unwrap();
         // A symlink is not a regular file — refuse rather than follow it.
-        assert!(write_repo_file(repo.path(), "link.txt", "x", None).is_err());
+        assert!(write_repo_file(repo.path(), "link.txt", "x", size, &state).is_err());
 
         let outside = repo.0.with_extension("editor-outside");
         let _ = std::fs::remove_dir_all(&outside);
@@ -7221,7 +7241,8 @@ fn write_repo_file_rejects_traversal_and_symlink() {
             repo.path(),
             "ancestor-link/target.txt",
             "changed\n",
-            Some(8)
+            8,
+            &state
         )
         .is_err());
         assert_eq!(
@@ -7230,4 +7251,127 @@ fn write_repo_file_rejects_traversal_and_symlink() {
         );
         let _ = std::fs::remove_dir_all(&outside);
     }
+}
+
+#[test]
+fn write_repo_file_rejects_same_size_external_edit() {
+    let repo = repo_with_file("wrf-same-size", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    std::fs::write(repo.0.join("a.txt"), b"new\n").unwrap();
+
+    let err = write_repo_file(repo.path(), "a.txt", "mine\n", size, &state).unwrap_err();
+    assert!(
+        err.contains("contents or file identity"),
+        "unexpected: {err}"
+    );
+    assert_eq!(std::fs::read(repo.0.join("a.txt")).unwrap(), b"new\n");
+}
+
+#[test]
+fn write_repo_file_rejects_identical_atomic_replacement_after_read() {
+    let repo = repo_with_file("wrf-replaced-before", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    let replacement = repo.0.join("replacement.txt");
+    std::fs::write(&replacement, b"old\n").unwrap();
+    std::fs::rename(replacement, repo.0.join("a.txt")).unwrap();
+
+    let err = write_repo_file(repo.path(), "a.txt", "mine\n", size, &state).unwrap_err();
+    assert!(err.contains("file identity"), "unexpected: {err}");
+    assert_eq!(std::fs::read(repo.0.join("a.txt")).unwrap(), b"old\n");
+}
+
+#[test]
+fn write_repo_file_rechecks_leaf_identity_immediately_before_rename() {
+    let repo = repo_with_file("wrf-replaced-during", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    let target = repo.0.join("a.txt");
+    set_before_replace_test_hook(move || {
+        let replacement = target.with_extension("replacement");
+        std::fs::write(&replacement, b"other\n").unwrap();
+        std::fs::rename(replacement, target).unwrap();
+    });
+
+    let err = write_repo_file(repo.path(), "a.txt", "mine\n", size, &state).unwrap_err();
+    assert!(err.contains("changed while"), "unexpected: {err}");
+    assert_eq!(std::fs::read(repo.0.join("a.txt")).unwrap(), b"other\n");
+}
+
+#[test]
+fn write_repo_file_refuses_a_lease_when_published_inode_is_replaced() {
+    let repo = repo_with_file("wrf-replaced-after", "a.txt", b"old\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    let target = repo.0.join("a.txt");
+    set_after_guarded_rename_test_hook(move || {
+        let replacement = target.with_extension("external");
+        std::fs::write(&replacement, b"external\n").unwrap();
+        std::fs::rename(replacement, target).unwrap();
+    });
+
+    let err = write_repo_file(repo.path(), "a.txt", "mine\n", size, &state).unwrap_err();
+    assert!(err.contains("changed while"), "unexpected: {err}");
+    assert_eq!(std::fs::read(repo.0.join("a.txt")).unwrap(), b"external\n");
+}
+
+#[test]
+fn write_repo_file_returns_the_lease_for_a_sequential_save() {
+    let repo = repo_with_file("wrf-sequential", "a.txt", b"zero\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+    let first = write_repo_file(repo.path(), "a.txt", "one\n", size, &state).expect("first save");
+    let second = write_repo_file(
+        repo.path(),
+        "a.txt",
+        "two\n",
+        first.size,
+        &first.expected_state,
+    )
+    .expect("second save uses returned lease");
+    assert_eq!(second.size, 4);
+    assert_eq!(std::fs::read(repo.0.join("a.txt")).unwrap(), b"two\n");
+}
+
+#[test]
+fn write_repo_file_rejects_missing_and_malformed_state_tokens() {
+    let repo = repo_with_file("wrf-token-format", "a.txt", b"old\n");
+    assert!(write_repo_file(repo.path(), "a.txt", "mine\n", 4, "")
+        .unwrap_err()
+        .contains("missing file state token"));
+    assert!(
+        write_repo_file(repo.path(), "a.txt", "mine\n", 4, "v1:not-this-domain")
+            .unwrap_err()
+            .contains("invalid file state token")
+    );
+    assert_eq!(std::fs::read(repo.0.join("a.txt")).unwrap(), b"old\n");
+}
+
+#[test]
+fn write_repo_file_state_cannot_be_replayed_across_worktrees_or_nested_repos() {
+    let repo = repo_with_file("wrf-token-scope", "a.txt", b"same\n");
+    let (size, state) = repo_file_lease(repo.path(), "a.txt");
+
+    let linked = repo.0.with_extension("linked-worktree");
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_path = linked.to_string_lossy().into_owned();
+    repo.git_ok(&["worktree", "add", "-q", "-b", "linked", &linked_path]);
+    let linked_err = write_repo_file(&linked_path, "a.txt", "mine\n", size, &state).unwrap_err();
+    assert!(
+        linked_err.contains("file identity"),
+        "unexpected: {linked_err}"
+    );
+
+    let nested = repo.0.join("nested");
+    std::fs::create_dir_all(&nested).unwrap();
+    git_ok_at(&nested, &["init", "-q", "-b", "main"]);
+    git_ok_at(&nested, &["config", "user.name", "GitLane Test"]);
+    git_ok_at(&nested, &["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(nested.join("a.txt"), b"same\n").unwrap();
+    git_ok_at(&nested, &["add", "a.txt"]);
+    git_ok_at(&nested, &["commit", "-q", "-m", "seed"]);
+    let nested_path = nested.to_string_lossy().into_owned();
+    let nested_err = write_repo_file(&nested_path, "a.txt", "mine\n", size, &state).unwrap_err();
+    assert!(
+        nested_err.contains("file identity"),
+        "unexpected: {nested_err}"
+    );
+
+    repo.git_ok(&["worktree", "remove", "--force", &linked_path]);
 }

@@ -594,6 +594,15 @@ export interface RepoFileContent {
   size: number;
   truncated: boolean;
   binary: boolean;
+  /** Opaque lease for the exact repo/worktree/path, leaf identity, and raw bytes
+   * represented by `text`. Omitted for truncated, binary, or lossy/non-UTF-8
+   * reads, which are display-only. */
+  expectedState?: string;
+}
+
+export interface RepoFileWriteResult {
+  size: number;
+  expectedState: string;
 }
 
 export interface FileHistoryEntry {
@@ -1038,16 +1047,18 @@ export const gitApi = {
   repoFileHeadText: (path: string, file: string) =>
     invoke<string | null>("repo_file_head_text", { path, file }),
 
-  /** Save an edited worktree file (in-app editor, GL-212). `expectedSize` is the
-   * byte size the buffer was read from — the backend refuses the write if the
-   * on-disk size differs (external change / truncated read). Resolves with the
-   * new byte size. Overwrite-only; binary content/targets are refused. */
-  writeRepoFile: (path: string, file: string, content: string, expectedSize?: number) =>
-    invoke<number>("write_repo_file", {
+  /** Save an edited worktree file (in-app editor, GL-212). The size + opaque
+   * state pair identifies the exact target snapshot the draft was based on;
+   * Rust refuses same-size edits and atomic replacements too. Resolves with the
+   * next lease for sequential saves. Overwrite-only; binary targets/content are
+   * refused. */
+  writeRepoFile: (path: string, file: string, content: string, expectedSize: number, expectedState: string) =>
+    invoke<RepoFileWriteResult>("write_repo_file", {
       path,
       file,
       content,
-      expectedSize: expectedSize ?? null,
+      expectedSize,
+      expectedState,
     }),
 
   // ---- working tree / staging ----
