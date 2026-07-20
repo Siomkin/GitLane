@@ -357,6 +357,11 @@ export interface DestructivePreview {
   warnings: string[];
 }
 
+export interface DeleteBranchPreview extends DestructivePreview {
+  /** Full object id of the exact refs/heads/<branch> value previewed. */
+  expectedOid: string;
+}
+
 export interface DiscardFilePreview extends DestructivePreview {
   /** Opaque backend fingerprint of the exact HEAD/index/worktree state shown
    * by the confirmation. Required again by the destructive write. */
@@ -745,9 +750,20 @@ export const gitApi = {
       carry,
     }),
 
-  /** Remove the linked worktree at `fromWorktreePath`, then delete `branch`. */
-  deleteBranchWithWorktree: (path: string, branch: string, fromWorktreePath: string) =>
-    invoke<string>("delete_branch_with_worktree", { path, branch, fromWorktreePath }),
+  /** Remove the linked worktree at `fromWorktreePath`, then delete the exact
+   * previewed branch tip. */
+  deleteBranchWithWorktree: (
+    path: string,
+    branch: string,
+    fromWorktreePath: string,
+    expectedOid: string,
+  ) =>
+    invoke<string>("delete_branch_with_worktree", {
+      path,
+      branch,
+      fromWorktreePath,
+      expectedOid,
+    }),
 
   checkout: (path: string, target: string, detached = false) =>
     invoke<string>("checkout", { path, target, detached }),
@@ -763,8 +779,8 @@ export const gitApi = {
   createBranch: (path: string, name: string, startPoint: string, expectedOid: string) =>
     invoke<string>("create_branch", { path, name, startPoint, expectedOid }),
 
-  deleteBranch: (path: string, name: string, force = false) =>
-    invoke<string>("delete_branch", { path, name, force }),
+  deleteBranch: (path: string, name: string, expectedOid: string, force = false) =>
+    invoke<string>("delete_branch", { path, name, expectedOid, force }),
 
   listReflog: (path: string, limit?: number) =>
     invoke<ReflogEntry[]>("list_reflog", { path, limit: limit ?? null }),
@@ -794,7 +810,7 @@ export const gitApi = {
     }),
 
   previewDeleteBranch: (path: string, branch: string) =>
-    invoke<DestructivePreview>("preview_delete_branch", { path, branch }),
+    invoke<DeleteBranchPreview>("preview_delete_branch", { path, branch }),
 
   previewDeleteRemoteBranch: (path: string, remote: string, branch: string) =>
     invoke<DestructivePreview>("preview_delete_remote_branch", { path, remote, branch }),

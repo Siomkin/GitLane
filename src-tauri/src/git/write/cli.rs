@@ -56,7 +56,12 @@ fn parse_git_version(output: &str) -> Option<(u32, u32, u32)> {
 /// stable) on a failed `stash push` against a locked index. Returning the raw
 /// combined output there would surface an *empty* error to the user, so fall
 /// back to the exit status when there's nothing else to show.
-fn finish(status: ExitStatus, stdout: &str, stderr: &str, args: &[&str]) -> Result<String, String> {
+pub(super) fn finish(
+    status: ExitStatus,
+    stdout: &str,
+    stderr: &str,
+    args: &[&str],
+) -> Result<String, String> {
     let combined = format!("{stdout}{stderr}").trim().to_string();
     if status.success() {
         Ok(combined)
@@ -217,7 +222,7 @@ fn git_output(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Output
         .map_err(|e| format!("failed to launch git: {e}"))
 }
 
-fn git_command(repo: &str) -> Result<Command, String> {
+pub(super) fn git_command(repo: &str) -> Result<Command, String> {
     ensure_supported_git()?;
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo);

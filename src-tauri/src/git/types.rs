@@ -467,6 +467,18 @@ pub struct DestructivePreview {
     pub warnings: Vec<String>,
 }
 
+/// Branch-deletion impact plus the exact local-ref object the confirmation
+/// described. The write accepts this oid again as a compare-and-swap lease, so
+/// a branch advanced or rewritten after the dialog opened is never deleted.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteBranchPreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+    pub expected_oid: String,
+}
+
 /// Read-only impact plus the exact per-path state a later file-discard command
 /// must still observe. The token is opaque to the frontend and contains no file
 /// contents; Rust recomputes it immediately before the destructive write.

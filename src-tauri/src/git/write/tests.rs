@@ -12,8 +12,8 @@ use super::{
     branch_push_remote, checkout, checkout_remote_branch, cherry_pick, cherry_pick_many,
     cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
     continue_operation, create_annotated_tag, create_branch, create_branch_in_worktree,
-    create_patch, create_tag, delete_branch_with_worktree, delete_remote_branch, delete_remote_tag,
-    delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
+    create_patch, create_tag, delete_branch, delete_branch_with_worktree, delete_remote_branch,
+    delete_remote_tag, delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
     fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
     merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_discard_file, preview_force_push, preview_reset, publish_branch,
@@ -2304,6 +2304,7 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
     repo.git_ok(&["add", "file.txt"]);
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
     repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["config", "branch.feature.remote", "origin"]);
 
     let linked = std::env::temp_dir().join(format!(
         "gitlane-delete-worktree-branch-linked-{}",
@@ -2316,10 +2317,12 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
     // The dialog's checklist depends on these ids firing in this order, one per
     // phase as it begins (GL-107).
     let steps = std::cell::RefCell::new(Vec::new());
-    let result = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|s| {
-        steps.borrow_mut().push(s)
-    })
-    .expect("delete branch and its worktree");
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let result =
+        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|s| {
+            steps.borrow_mut().push(s)
+        })
+        .expect("delete branch and its worktree");
     assert_eq!(result, "Deleted feature and its worktree");
     assert_eq!(*steps.borrow(), ["removeWorktree", "deleteBranch"]);
 
@@ -2337,6 +2340,13 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
         "linked worktree should be removed, still in: {listing}"
     );
     assert!(!linked.exists(), "linked worktree directory should be gone");
+    assert!(
+        !repo
+            .git(&["config", "--get", "branch.feature.remote"])
+            .status
+            .success(),
+        "successful deletion must remove branch-specific config"
+    );
 
     let _ = std::fs::remove_dir_all(&linked);
 }
@@ -2352,6 +2362,7 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
     repo.git_ok(&["add", "file.txt"]);
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
     repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["config", "branch.feature.remote", "origin"]);
 
     let linked = std::env::temp_dir().join(format!(
         "gitlane-delete-worktree-branch-dirty-linked-{}",
@@ -2363,8 +2374,10 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
     // Make the worktree dirty so the (unforced) removal must refuse.
     std::fs::write(linked.join("file.txt"), "edited\n").unwrap();
 
-    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
-        .expect_err("dirty worktree should abort the delete");
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let err =
+        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
+            .expect_err("dirty worktree should abort the delete");
     assert!(!err.is_empty(), "expected a git error message");
 
     // Nothing was destroyed: the branch and worktree both survive.
@@ -2374,8 +2387,30 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
         "feature branch must survive a refused delete"
     );
     assert!(linked.exists(), "dirty worktree directory must survive");
+    assert_eq!(
+        String::from_utf8_lossy(
+            &repo
+                .git(&["config", "--get", "branch.feature.remote"])
+                .stdout
+        )
+        .trim(),
+        "origin",
+        "an aborted transaction must preserve branch config"
+    );
 
-    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    // Abort must release the ref lock: once the dirty edit is restored, the
+    // exact same preview lease can be retried successfully.
+    let restore = Command::new("git")
+        .arg("-C")
+        .arg(&linked)
+        .args(["restore", "file.txt"])
+        .output()
+        .expect("git restores the linked worktree");
+    assert!(restore.status.success());
+    delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
+        .expect("retry after abort should acquire the ref lock");
+    assert!(!linked.exists());
+
     let _ = std::fs::remove_dir_all(&linked);
 }
 
@@ -2411,8 +2446,10 @@ fn delete_branch_with_worktree_refuses_when_path_no_longer_holds_the_branch() {
         .expect("git detaches the linked worktree");
     assert!(detach.status.success());
 
-    let err = delete_branch_with_worktree(repo.path(), "feature", linked_str, &|_| {})
-        .expect_err("a stale worktree path should abort the delete");
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let err =
+        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
+            .expect_err("a stale worktree path should abort the delete");
     assert!(
         err.contains("feature"),
         "error should name the branch, got: {err}"
@@ -2428,6 +2465,255 @@ fn delete_branch_with_worktree_refuses_when_path_no_longer_holds_the_branch() {
 
     let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
     let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn delete_branch_with_worktree_rejects_a_stale_tip_before_removing_the_worktree() {
+    let (repo, expected_oid) = repo_with_base_commit("delete-worktree-stale-tip");
+    repo.git_ok(&["branch", "feature", &expected_oid]);
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-stale-tip-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+
+    // Advance the checked-out branch after the preview. The worktree is clean,
+    // but the old lease must fail during transaction prepare, before removal.
+    std::fs::write(linked.join("next.txt"), "next\n").unwrap();
+    let commit = Command::new("git")
+        .arg("-C")
+        .arg(&linked)
+        .args(["add", "next.txt"])
+        .status()
+        .expect("git add launches");
+    assert!(commit.success());
+    let commit = Command::new("git")
+        .arg("-C")
+        .arg(&linked)
+        .args(["commit", "-q", "-m", "advance feature"])
+        .status()
+        .expect("git commit launches");
+    assert!(commit.success());
+    let advanced_oid = rev_parse(&repo, "refs/heads/feature");
+    assert_ne!(advanced_oid, expected_oid);
+
+    let err =
+        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
+            .expect_err("stale branch tip must reject before worktree removal");
+    assert!(!err.is_empty());
+    assert!(linked.exists(), "stale preview must preserve the worktree");
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), advanced_oid);
+
+    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn delete_branch_with_worktree_preserves_a_branch_claimed_after_source_removal() {
+    let (repo, expected_oid) = repo_with_base_commit("delete-worktree-claimed-tip");
+    repo.git_ok(&["branch", "feature", &expected_oid]);
+    repo.git_ok(&["config", "branch.feature.remote", "origin"]);
+    let source = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-claimed-source-{}",
+        std::process::id()
+    ));
+    let claimant = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-claimed-other-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&source);
+    let _ = std::fs::remove_dir_all(&claimant);
+    let source_str = source.to_str().unwrap();
+    let claimant_str = claimant.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", source_str, "feature"]);
+    repo.git_ok(&["worktree", "add", "-q", "--detach", claimant_str, "main"]);
+
+    let switched = std::cell::Cell::new(false);
+    let err =
+        delete_branch_with_worktree(repo.path(), "feature", source_str, &expected_oid, &|step| {
+            if step == "deleteBranch" {
+                let output = Command::new("git")
+                    .arg("-C")
+                    .arg(&claimant)
+                    .args(["symbolic-ref", "HEAD", "refs/heads/feature"])
+                    .output()
+                    .expect("claimant symbolic-ref launches");
+                assert!(
+                    output.status.success(),
+                    "claiming a prepared branch through worktree HEAD failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                switched.set(true);
+            }
+        })
+        .expect_err("a newly claimed branch must be preserved");
+
+    assert!(switched.get());
+    assert!(err.contains("preserved branch"), "unexpected error: {err}");
+    assert!(
+        !source.exists(),
+        "the source was already removed at this phase"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), expected_oid);
+    assert_eq!(
+        String::from_utf8_lossy(
+            &Command::new("git")
+                .arg("-C")
+                .arg(&claimant)
+                .args(["branch", "--show-current"])
+                .output()
+                .expect("claimant branch read launches")
+                .stdout
+        )
+        .trim(),
+        "feature"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(
+            &repo
+                .git(&["config", "--get", "branch.feature.remote"])
+                .stdout
+        )
+        .trim(),
+        "origin",
+        "preserved branch must keep its config"
+    );
+
+    let _ = repo.git(&["worktree", "remove", "--force", claimant_str]);
+    let _ = std::fs::remove_dir_all(&source);
+    let _ = std::fs::remove_dir_all(&claimant);
+}
+
+#[test]
+fn delete_branch_cas_removes_config_but_preserves_a_same_named_tag() {
+    let (repo, head) = repo_with_base_commit("delete-branch-cas");
+    repo.git_ok(&["branch", "feature", &head]);
+    repo.git_ok(&["tag", "feature", &head]);
+    repo.git_ok(&["config", "branch.feature.remote", "origin"]);
+
+    let result = delete_branch(repo.path(), "feature", &head, true)
+        .expect("exact branch delete should succeed");
+    assert_eq!(result, "Deleted feature");
+    assert!(
+        !repo
+            .git(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
+            .status
+            .success(),
+        "local branch ref must be gone"
+    );
+    assert!(
+        repo.git(&["show-ref", "--verify", "--quiet", "refs/tags/feature"])
+            .status
+            .success(),
+        "same-named tag must survive"
+    );
+    assert!(
+        !repo
+            .git(&["config", "--get", "branch.feature.remote"])
+            .status
+            .success(),
+        "branch-specific config must be removed after ref commit"
+    );
+}
+
+#[test]
+fn delete_branch_cas_rejects_a_tip_changed_after_preview() {
+    let (repo, expected_oid) = repo_with_base_commit("delete-branch-stale-tip");
+    repo.git_ok(&["branch", "feature", &expected_oid]);
+    repo.git_ok(&["config", "branch.feature.remote", "origin"]);
+    std::fs::write(repo.0.join("next.txt"), "next\n").unwrap();
+    repo.git_ok(&["add", "next.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "next"]);
+    let advanced_oid = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["update-ref", "refs/heads/feature", &advanced_oid]);
+
+    let err = delete_branch(repo.path(), "feature", &expected_oid, true)
+        .expect_err("stale expected oid must reject");
+    assert!(!err.is_empty());
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), advanced_oid);
+    assert_eq!(
+        String::from_utf8_lossy(
+            &repo
+                .git(&["config", "--get", "branch.feature.remote"])
+                .stdout
+        )
+        .trim(),
+        "origin",
+        "failed CAS must not clean branch config"
+    );
+}
+
+#[test]
+fn delete_branch_rejects_current_and_linked_worktree_owners() {
+    let (repo, head) = repo_with_base_commit("delete-branch-checked-out");
+    assert!(delete_branch(repo.path(), "main", &head, true).is_err());
+    assert_eq!(rev_parse(&repo, "refs/heads/main"), head);
+
+    repo.git_ok(&["branch", "feature", &head]);
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-delete-branch-owner-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+    assert!(delete_branch(repo.path(), "feature", &head, true).is_err());
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+
+    let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn delete_branch_rejects_symbolic_and_noncanonical_leases() {
+    let (repo, head) = repo_with_base_commit("delete-branch-invalid-lease");
+    repo.git_ok(&["branch", "feature", &head]);
+    repo.git_ok(&["symbolic-ref", "refs/heads/alias", "refs/heads/feature"]);
+
+    assert!(preview_delete_branch(repo.path(), "alias").is_err());
+    assert!(delete_branch(repo.path(), "alias", &head, true).is_err());
+    assert_eq!(
+        String::from_utf8_lossy(
+            &repo
+                .git(&["symbolic-ref", "--quiet", "refs/heads/alias"])
+                .stdout
+        )
+        .trim(),
+        "refs/heads/feature"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+
+    for invalid in ["refs/heads/feature".to_string(), format!("{head}\ncommit")] {
+        assert!(
+            delete_branch(repo.path(), "feature", &invalid, true).is_err(),
+            "noncanonical lease {invalid:?} must reject"
+        );
+    }
+    assert!(
+        delete_branch(repo.path(), "feature\ncommit", &head, true).is_err(),
+        "a branch name must never inject another update-ref protocol command"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+}
+
+#[test]
+fn delete_branch_without_force_preserves_unmerged_safety() {
+    let (repo, _) = repo_with_base_commit("delete-branch-unmerged");
+    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(repo.0.join("feature.txt"), "feature\n").unwrap();
+    repo.git_ok(&["add", "feature.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "feature"]);
+    let feature_oid = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "main"]);
+
+    let err = delete_branch(repo.path(), "feature", &feature_oid, false)
+        .expect_err("non-force deletion must refuse an unmerged branch");
+    assert!(err.contains("not fully merged"), "unexpected error: {err}");
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), feature_oid);
+    delete_branch(repo.path(), "feature", &feature_oid, true)
+        .expect("force deletion may remove the unmerged branch");
 }
 
 #[test]

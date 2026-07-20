@@ -39,6 +39,7 @@ const preview = {
   warnings: [
     "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.",
   ],
+  expectedOid: "feature-preview-oid",
 };
 
 /** Wire the IPC mock: a preview plus a controllable delete. */
@@ -170,7 +171,11 @@ describe("DeleteWorktreeDialog", () => {
     // The delete targets the repo the dialog started on (/work/repo), never the
     // now-active /work/other.
     const call = invokeMock.mock.calls.find(([cmd]) => cmd === "delete_branch_with_worktree");
-    expect(call?.[1]).toMatchObject({ path: "/work/repo", branch: "feature" });
+    expect(call?.[1]).toMatchObject({
+      path: "/work/repo",
+      branch: "feature",
+      expectedOid: "feature-preview-oid",
+    });
     await act(async () => del.resolve("Deleted feature and its worktree"));
   });
 

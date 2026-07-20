@@ -1,7 +1,7 @@
 import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
-  DestructivePreview,
+  DeleteBranchPreview,
   DiscardFilePreview,
   FileBlame,
   ConflictFile,
@@ -443,7 +443,13 @@ export interface RepoState {
     name: string,
     expectedOid: string,
   ) => Promise<string>;
-  removeBranch: (name: string, force?: boolean) => Promise<string>;
+  /** Delete the exact branch tip from a preview pinned to `repoPath`. */
+  removeBranch: (
+    name: string,
+    expectedOid: string,
+    repoPath: string,
+    force?: boolean,
+  ) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
   setUpstreamFor: (branch: string, upstream: string) => Promise<string>;
@@ -505,7 +511,7 @@ export interface RepoState {
   /** Preview deleting `branch` (unmerged-commit warning + recovery note) for the
    * delete-branch-and-worktree dialog's configure screen. A read-shaped preview,
    * so it does not refresh. */
-  previewDeleteBranch: (branch: string) => Promise<DestructivePreview>;
+  previewDeleteBranch: (branch: string) => Promise<DeleteBranchPreview>;
   /** Remove the linked worktree holding `branch`, then delete the branch — the
    * one-step path when a branch's Delete is locked by its worktree. `repoPath` is
    * explicit (not read from the live summary) so the op stays pinned to the repo
@@ -516,6 +522,7 @@ export interface RepoState {
     branch: string,
     fromWorktreePath: string,
     repoPath: string,
+    expectedOid: string,
   ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */

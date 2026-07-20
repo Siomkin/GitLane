@@ -20,7 +20,7 @@ export interface DeleteWorktreeRun {
   /** Backend result (done) or readable failure (error). */
   message: string;
   /** Kick off the delete. No-op while already running. */
-  start: () => void;
+  start: (expectedOid: string) => void;
 }
 
 export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktreeRun {
@@ -45,7 +45,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
   // double-click could start two runs before the re-render lands.
   const inFlight = useRef(false);
 
-  const start = () => {
+  const start = (expectedOid: string) => {
     // Two guards: `inFlight` stops a double-click on this instance; the store
     // latch stops a *reopened* dialog (a fresh hook with inFlight=false) from
     // starting a second delete while the first still runs in the background.
@@ -79,7 +79,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         if (!repoAtStart) throw new Error("No repository");
         const msg = await useRepo
           .getState()
-          .deleteBranchWithWorktree(req.branch, req.worktreePath, repoAtStart);
+          .deleteBranchWithWorktree(req.branch, req.worktreePath, repoAtStart, expectedOid);
         // The backend emits no event for the graph refresh — advance to the
         // terminal "Refreshing" row ourselves so it spins while the store reloads.
         // (The store action deliberately skips runOp's refresh so we own it here.)
@@ -101,6 +101,18 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         setMessage(msg);
         setPhase("done");
       } catch (e) {
+        // The backend can report a truthful partial outcome (for example, the
+        // worktree was removed but the prepared ref commit failed). Reconcile
+        // the acted-on repo before rendering that error so the sidebar never
+        // keeps showing a worktree that is already gone.
+        if (repoAtStart && useRepo.getState().summary?.path === repoAtStart) {
+          try {
+            await useRepo.getState().refresh();
+          } catch {
+            // Keep the destructive operation's actionable error primary; the
+            // filesystem watcher can retry the refresh.
+          }
+        }
         const raw = String(e instanceof Error ? e.message : e);
         if (!mounted.current) {
           // showToast rewrites error-tone messages via friendlyGitError itself,

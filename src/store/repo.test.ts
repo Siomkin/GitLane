@@ -24,6 +24,8 @@ import type {
   WorktreeInfo,
 } from "@/lib/api";
 
+const realRefresh = useRepo.getState().refresh;
+
 // A minimal summary so actions that require an open repo proceed.
 const summary: RepoSummary = {
   path: "/repo",
@@ -90,6 +92,7 @@ beforeEach(() => {
     graphLimit: 2_000,
     loadingMoreHistory: false,
     fetchingPath: null,
+    refresh: realRefresh,
   });
 });
 
@@ -887,6 +890,54 @@ describe("repo store — captured write subjects", () => {
       startPoint: "refs/heads/feature",
       expectedOid: "2222222",
     });
+  });
+
+  it("deletes a branch with the previewed oid and repository path", async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ refresh });
+    invokeMock.mockResolvedValue("Deleted feature");
+
+    await useRepo
+      .getState()
+      .removeBranch("feature", "2222222", "/repo", true);
+
+    expect(invokeMock).toHaveBeenCalledWith("delete_branch", {
+      path: "/repo",
+      name: "feature",
+      expectedOid: "2222222",
+      force: true,
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a branch-delete confirmation captured for a different active repo", async () => {
+    useRepo.setState({ summary: { ...summary, path: "/other", workdir: "/other" } });
+
+    await expect(
+      useRepo.getState().removeBranch("feature", "2222222", "/repo", true),
+    ).rejects.toThrow("Repository changed");
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_branch", expect.anything());
+  });
+
+  it("does not refresh a newly-active repo when it switches during branch deletion", async () => {
+    const pending = deferred<string>();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ refresh });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "delete_branch" ? pending.promise : defaultInvoke(cmd),
+    );
+
+    const deletion = useRepo
+      .getState()
+      .removeBranch("feature", "2222222", "/repo", true);
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("delete_branch", expect.anything()),
+    );
+    useRepo.setState({ summary: { ...summary, path: "/other", workdir: "/other" } });
+    pending.resolve("Deleted feature");
+
+    await expect(deletion).resolves.toBe("Deleted feature");
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("attaches a branch to the captured detached worktree HEAD", async () => {

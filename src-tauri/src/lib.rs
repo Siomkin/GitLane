@@ -20,14 +20,15 @@ use watcher::WatcherState;
 
 use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
-    CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
-    DiscardFilePreview, FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount,
-    ForgeAuthStatus, GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult,
-    HandoffProgressEvent, HistorySearchPage, HistorySearchQuery, OauthClientStatus,
-    OperationStatus, PrCheck, PrCommitList, ProviderOauthResult, ProviderTokenStatus,
-    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo,
-    RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity, RepoOpenError,
-    RepoSummary, ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
+    CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview, DeleteWorktreeProgressEvent,
+    DestructivePreview, DiscardFilePreview, FileBlame, FileChange, FileDiff, FileHistoryPage,
+    ForgeAccount, ForgeAuthStatus, GitTransportAuthRef, GithubAccount, GithubAccountRef,
+    GithubSignInResult, HandoffProgressEvent, HistorySearchPage, HistorySearchQuery,
+    OauthClientStatus, OperationStatus, PrCheck, PrCommitList, ProviderOauthResult,
+    ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
+    RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph,
+    RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
+    WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -182,6 +183,7 @@ async fn delete_branch_with_worktree(
     path: String,
     branch: String,
     from_worktree_path: String,
+    expected_oid: String,
 ) -> Result<String, String> {
     use tauri::Emitter;
     blocking(move || {
@@ -189,6 +191,7 @@ async fn delete_branch_with_worktree(
             &path,
             &branch,
             &from_worktree_path,
+            &expected_oid,
             // Forward each phase to the webview so the delete dialog can tick its
             // checklist live; a lost event only degrades the progress UI.
             &|step| {
@@ -229,8 +232,13 @@ async fn create_branch(
 }
 
 #[tauri::command]
-async fn delete_branch(path: String, name: String, force: bool) -> Result<String, String> {
-    blocking(move || git::write::delete_branch(&path, &name, force)).await
+async fn delete_branch(
+    path: String,
+    name: String,
+    expected_oid: String,
+    force: bool,
+) -> Result<String, String> {
+    blocking(move || git::write::delete_branch(&path, &name, &expected_oid, force)).await
 }
 
 #[tauri::command]
@@ -259,7 +267,10 @@ async fn preview_discard_all(path: String) -> Result<DestructivePreview, String>
 }
 
 #[tauri::command]
-async fn preview_delete_branch(path: String, branch: String) -> Result<DestructivePreview, String> {
+async fn preview_delete_branch(
+    path: String,
+    branch: String,
+) -> Result<DeleteBranchPreview, String> {
     blocking(move || git::write::preview_delete_branch(&path, &branch)).await
 }
 

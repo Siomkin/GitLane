@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::git::types::{DestructivePreview, ReflogEntry};
+use crate::git::types::{DeleteBranchPreview, DestructivePreview, ReflogEntry};
 
 use super::cli::{run_git, run_git_allow_exit_codes, run_git_stdout_raw};
 use super::operands::ensure_operand;
@@ -260,7 +260,7 @@ pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
     })
 }
 
-pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
+pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DeleteBranchPreview, String> {
     ensure_operand(branch)?;
     // Fail closed on a missing branch (consistent with preview_reset): otherwise
     // the impact reads soft-fail to "unknown"/empty and the dialog looks fine for
@@ -268,12 +268,30 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
     // Use the fully-qualified ref for impact reads: a bare name resolves a same-
     // named tag before the branch (git ref precedence), so it could compute the
     // wrong impact while `git branch -D` deletes the branch. GL-42 review.
-    let branch_ref = format!("refs/heads/{branch}");
+    let branch_ref = super::branches::checked_branch_ref(repo, branch)?;
+    // The lease currently models a direct local ref plus its exact object id.
+    // Reject symbolic local refs rather than previewing one representation and
+    // later deleting a same-target replacement with different semantics.
+    super::branches::ensure_branch_ref_is_direct(repo, branch)?;
+    // Keep the impact preview commit-specific. The raw ref oid below is the CAS
+    // lease, while this peeled check rejects a malformed/non-commit heads ref.
     run_git(
         repo,
         &["rev-parse", "--verify", &format!("{branch_ref}^{{commit}}")],
     )?;
-    let tip = rev_parse_short(repo, &branch_ref).unwrap_or_else(|| "unknown".to_string());
+    let expected_oid = run_git(repo, &["rev-parse", "--verify", &branch_ref])?
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if expected_oid.is_empty() {
+        return Err(format!("Could not resolve {branch_ref}"));
+    }
+    // Every impact read is pinned to the captured object, not the live ref. A
+    // concurrent A -> B -> A move must not let the dialog show B's commits while
+    // carrying an A lease that can later succeed.
+    let tip = rev_parse_short(repo, &expected_oid).unwrap_or_else(|| "unknown".to_string());
     let unmerged = limited_lines(
         run_git(
             repo,
@@ -281,7 +299,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
                 "log",
                 "--oneline",
                 "--max-count=8",
-                &format!("HEAD..{branch_ref}"),
+                &format!("HEAD..{expected_oid}"),
             ],
         )
         .unwrap_or_default(),
@@ -296,12 +314,13 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
             unmerged.join("; ")
         ));
     }
-    Ok(DestructivePreview {
+    Ok(DeleteBranchPreview {
         summary: format!("Delete local branch {branch}"),
         details,
         warnings: vec![
             "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.".to_string(),
         ],
+        expected_oid,
     })
 }
 

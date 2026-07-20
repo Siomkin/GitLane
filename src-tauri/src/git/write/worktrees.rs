@@ -741,16 +741,56 @@ pub fn delete_branch_with_worktree(
     repo: &str,
     branch: &str,
     from_worktree_path: &str,
+    expected_oid: &str,
     progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
     ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
+
+    // Lock the exact previewed branch tip before removing its checkout. A stale
+    // tip fails during `prepare`, while both the branch and worktree still
+    // exist. The transaction stays prepared across the unforced removal and is
+    // aborted if that removal refuses (dirty/locked/missing worktree).
+    let deletion = super::branches::prepare_branch_deletion(repo, branch, expected_oid)?;
+    super::branches::ensure_branch_ref_is_direct(repo, branch)?;
+    ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
     progress("removeWorktree");
-    remove_worktree(repo, from_worktree_path, false)?;
+    if let Err(error) = remove_worktree(repo, from_worktree_path, false) {
+        let abort_error = deletion.abort().err();
+        return Err(match abort_error {
+            Some(abort) => format!(
+                "{error}\nThe prepared branch deletion also could not close cleanly: {abort}"
+            ),
+            None => error,
+        });
+    }
     progress("deleteBranch");
-    super::branches::delete_branch(repo, branch, true)?;
-    Ok(format!("Deleted {branch} and its worktree"))
+    // The prepared ref lock does not stop another worktree from checking out
+    // this branch. Re-read ownership after the source removal and abort the ref
+    // transaction if another checkout claimed it in that window.
+    if let Err(error) = super::branches::ensure_branch_not_checked_out(repo, branch) {
+        let abort_error = deletion.abort().err();
+        let abort_note = abort_error
+            .map(|abort| format!(" The prepared deletion also could not close cleanly: {abort}"))
+            .unwrap_or_default();
+        return Err(format!(
+            "Removed worktree {from_worktree_path}, but preserved branch {branch} because it became checked out elsewhere: {error}.{abort_note} Refresh before trying again."
+        ));
+    }
+    deletion.commit().map_err(|error| {
+        format!(
+            "Removed worktree {from_worktree_path}, but Git could not commit deletion of branch {branch}: {error}. The branch may still exist; refresh before taking another action."
+        )
+    })?;
+    let branch_message = super::branches::deleted_branch_message(repo, branch);
+    if branch_message == format!("Deleted {branch}") {
+        Ok(format!("Deleted {branch} and its worktree"))
+    } else {
+        Ok(format!(
+            "Deleted {branch} and its worktree. {branch_message}"
+        ))
+    }
 }
 
 #[cfg(test)]

@@ -52,6 +52,8 @@ export const previewConfirm = async <T extends DestructivePreview>({
   };
   const showStaleHeadToast = () =>
     useUi.getState().showToast("HEAD changed; preview the reset again before confirming.", "error");
+  const showStaleRepoToast = () =>
+    useUi.getState().showToast("Repository changed; preview the action again before confirming.", "error");
   // Destructive previews are launched from transient menus. Close the originating
   // menu before awaiting so a slow preview cannot resurrect a confirm after the
   // user dismisses that menu.
@@ -71,6 +73,10 @@ export const previewConfirm = async <T extends DestructivePreview>({
       confirmLabel,
       danger,
       onConfirm: () => {
+        if (!isCurrent()) {
+          showStaleRepoToast();
+          return;
+        }
         if (!headStillMatches()) {
           showStaleHeadToast();
           return;

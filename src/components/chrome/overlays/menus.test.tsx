@@ -39,7 +39,7 @@ beforeEach(() => {
     // so only the tests that care about dirtiness opt into it.
     if (cmd === "worktree_dirty_state") return Promise.resolve({ modified: 0, untracked: 0 });
     if (cmd.startsWith("preview_")) {
-      return Promise.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: ["Recovery warning"] });
+      return Promise.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: ["Recovery warning"], expectedOid: "branch-preview-oid" });
     }
     return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
   });
@@ -913,7 +913,37 @@ describe("BranchContextMenu", () => {
     expect(confirm?.details).toContain("Impact summary");
     expect(confirm?.warnings).toContain("Recovery warning");
     confirm!.onConfirm();
-    await waitFor(() => expect(removeBranch).toHaveBeenCalledWith("feature", true));
+    await waitFor(() =>
+      expect(removeBranch).toHaveBeenCalledWith(
+        "feature",
+        "branch-preview-oid",
+        "/work/repo",
+        true,
+      ),
+    );
+  });
+
+  it("does not run a captured branch-delete confirmation after switching repos", async () => {
+    const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      branches: [localBranch("feature")],
+      removeBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    openGroup("Danger zone");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    const confirm = useUi.getState().confirm!;
+
+    useRepo.setState({
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "other", detached: false },
+    });
+    confirm.onConfirm();
+
+    expect(removeBranch).not.toHaveBeenCalled();
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/Repository changed/i);
   });
 
   it("does not open a reset confirmation if HEAD changes while the preview is pending", async () => {

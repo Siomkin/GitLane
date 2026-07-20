@@ -469,11 +469,19 @@ export function createRepoWriteActions(
         api.createBranchInWorktree(summary.path, worktreePath, name, expectedOid),
       ),
 
-    removeBranch: (name, force = false) =>
-      runOp(get, async (summary) => {
-        await api.deleteBranch(summary.path, name, force);
-        return `Deleted ${name}`;
-      }),
+    // The confirmation owns both the exact ref oid and repository path it
+    // previewed. Do not route this through runOp (which reads the live summary
+    // after the user confirms): a repo switch must never retarget the old
+    // dialog's destructive action to the newly-active repository.
+    removeBranch: async (name, expectedOid, repoPath, force = false) => {
+      if (!repoPath) throw new Error("No repository");
+      if (get().summary?.path !== repoPath) {
+        throw new Error("Repository changed; preview the branch deletion again.");
+      }
+      const message = await api.deleteBranch(repoPath, name, expectedOid, force);
+      if (get().summary?.path === repoPath) await get().refresh();
+      return message || `Deleted ${name}`;
+    },
 
     renameBranchTo: (oldName, newName) =>
       runOp(get, async (summary) => {
@@ -825,9 +833,9 @@ export function createRepoWriteActions(
     // the dialog's run hook, and a repo switch landing in that window would
     // otherwise retarget the delete at the newly-active repo with the old
     // branch/worktree subject. GL-107 review.
-    deleteBranchWithWorktree: (branch, fromWorktreePath, repoPath) => {
+    deleteBranchWithWorktree: (branch, fromWorktreePath, repoPath, expectedOid) => {
       if (!repoPath) return Promise.reject(new Error("No repository"));
-      return api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath);
+      return api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath, expectedOid);
     },
 
     deleteRemoteBranch: (remote, branch, expectedOid) =>
