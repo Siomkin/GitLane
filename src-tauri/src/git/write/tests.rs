@@ -16,14 +16,14 @@ use super::{
     delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
     fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
     merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
-    preview_discard_all, preview_force_push, preview_reset, publish_branch, publish_remote, pull,
-    pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree, reset,
-    reset_branch, resolve_conflict_file, revert, revert_many, revert_onto, set_remote_url,
-    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
-    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
-    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
-    unstage_file, unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees,
-    write_repo_file,
+    preview_discard_all, preview_discard_file, preview_force_push, preview_reset, publish_branch,
+    publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries,
+    remove_worktree, reset, reset_branch, resolve_conflict_file, revert, revert_many, revert_onto,
+    set_discard_capture_test_hook, set_remote_url, set_remote_username, set_repo_identity,
+    set_upstream, skip_operation, squash_commits, stage_file, stage_files, stash, stash_apply,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_pop, stash_pop_onto, unstage_all, unstage_file, unstage_files, worktree_dirty_state,
+    worktree_is_dirty, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
@@ -5930,6 +5930,22 @@ fn index_entries(repo: &TempRepo) -> Vec<String> {
         .collect()
 }
 
+fn discard_current(
+    repo: &TempRepo,
+    file: &str,
+    previous_file: Option<&str>,
+    staged: bool,
+) -> Result<String, String> {
+    let preview = preview_discard_file(repo.path(), file, previous_file, staged)?;
+    discard_file(
+        repo.path(),
+        file,
+        previous_file,
+        staged,
+        &preview.expected_state,
+    )
+}
+
 #[test]
 fn unstage_works_on_an_unborn_repo() {
     // GL-115 Bug 1: with no commits yet, `restore --staged` and `reset HEAD`
@@ -5979,10 +5995,11 @@ fn unstage_works_on_an_unborn_repo() {
 }
 
 #[test]
-fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
-    // GL-115 Bug 2: `git clean` only removes *untracked* files, so discard with
-    // staged=false used to exit 0 and silently leave a staged-new file in both
-    // index and worktree. The index — not the caller's flag — decides.
+fn discard_preview_rejects_a_stale_source_bucket() {
+    // The preview is now the source-of-truth boundary: a staged-only file must
+    // not be accepted as an unstaged target. The former stale-flag fallback made
+    // this case indistinguishable from a staged-new file with additional
+    // worktree edits, whose staged blob must be preserved.
     let repo = TempRepo::new("discard-staged-new");
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&["config", "user.name", "GitLane Test"]);
@@ -6000,7 +6017,13 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
     repo.git_ok(&["add", "staged_new.txt"]);
     std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
 
-    discard_file(repo.path(), "staged_new.txt", None, false).expect("discard staged-new file");
+    let error = preview_discard_file(repo.path(), "staged_new.txt", None, false)
+        .expect_err("a staged-only file has no unstaged discard target");
+    assert!(error.contains("unstaged"), "unexpected error: {error}");
+    assert_eq!(index_entries(&repo), ["staged_new.txt"]);
+    assert!(repo.0.join("staged_new.txt").exists());
+
+    discard_current(&repo, "staged_new.txt", None, true).expect("discard staged-new file");
     assert!(
         index_entries(&repo).is_empty(),
         "staged-new file leaves the index"
@@ -6011,7 +6034,7 @@ fn discard_removes_a_staged_new_file_despite_a_stale_staged_flag() {
     );
 
     // The genuinely untracked path still goes through `git clean`.
-    discard_file(repo.path(), "untracked.txt", None, false).expect("discard untracked file");
+    discard_current(&repo, "untracked.txt", None, false).expect("discard untracked file");
     assert!(
         !repo.0.join("untracked.txt").exists(),
         "untracked file is cleaned"
@@ -6024,7 +6047,7 @@ fn discard_file_preserves_empty_directory_shells() {
     std::fs::create_dir_all(repo.0.join("untracked/empty-nested")).unwrap();
     std::fs::write(repo.0.join("untracked/file.txt"), "new\n").unwrap();
 
-    discard_file(repo.path(), "untracked/file.txt", None, false).expect("discard untracked file");
+    discard_current(&repo, "untracked/file.txt", None, false).expect("discard untracked file");
 
     assert!(!repo.0.join("untracked/file.txt").exists());
     assert!(repo.0.join("untracked/empty-nested").is_dir());
@@ -6048,7 +6071,7 @@ fn discard_file_restores_both_sides_of_unstaged_and_staged_renames() {
             std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
         }
 
-        discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+        discard_current(&repo, "new.txt", Some("old.txt"), staged)
             .expect("discard both rename sides");
 
         assert_eq!(
@@ -6071,7 +6094,7 @@ fn discard_file_preserves_staged_content_when_discarding_an_unstaged_rename() {
     repo.git_ok(&["add", "old.txt"]);
     std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
 
-    discard_file(repo.path(), "new.txt", Some("old.txt"), false)
+    discard_current(&repo, "new.txt", Some("old.txt"), false)
         .expect("discard only the worktree rename");
 
     assert_eq!(
@@ -6095,7 +6118,7 @@ fn discard_file_handles_a_case_only_staged_rename() {
     repo.git_ok(&["mv", "case.txt", "case-intermediate.txt"]);
     repo.git_ok(&["mv", "case-intermediate.txt", "CASE.txt"]);
 
-    discard_file(repo.path(), "CASE.txt", Some("case.txt"), true)
+    discard_current(&repo, "CASE.txt", Some("case.txt"), true)
         .expect("discard the case-only rename");
 
     assert_eq!(
@@ -6139,10 +6162,13 @@ fn discard_file_refuses_a_stale_rename_pair_before_mutating_either_path() {
         let before_status = repo.git(&["status", "--porcelain=v1", "-z"]);
         let before_index = repo.git(&["diff", "--cached", "--binary"]);
 
-        let error = discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+        let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
             .expect_err("stale rename metadata must fail closed");
 
-        assert!(error.contains("changed"), "unexpected error: {error}");
+        assert!(
+            error.contains("changed") || error.contains("no longer available"),
+            "unexpected error: {error}"
+        );
         assert_eq!(
             std::fs::read(repo.0.join("old.txt")).unwrap(),
             b"precious old edit\n"
@@ -6179,7 +6205,7 @@ fn discard_file_does_not_expand_an_untracked_pathspec_magic_filename() {
     let magic = ":(glob)*";
     std::fs::write(repo.0.join(magic), "untracked\n").unwrap();
 
-    discard_file(repo.path(), magic, None, false).expect("discard literal magic filename");
+    discard_current(&repo, magic, None, false).expect("discard literal magic filename");
 
     assert!(!repo.0.join(magic).exists());
     assert_eq!(
@@ -6219,7 +6245,7 @@ fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
     std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
     repo.git_ok(&["add", "staged_new.txt"]);
 
-    discard_file(repo.path(), "staged_new.txt", None, true).expect("discard staged=true new file");
+    discard_current(&repo, "staged_new.txt", None, true).expect("discard staged=true new file");
     assert!(
         index_entries(&repo).is_empty(),
         "staged-new file leaves the index"
@@ -6240,9 +6266,361 @@ fn discard_staged_file_works_on_an_unborn_repo() {
     std::fs::write(repo.0.join("new.txt"), "new\n").unwrap();
     stage_file(repo.path(), "new.txt").expect("stage on unborn HEAD");
 
-    discard_file(repo.path(), "new.txt", None, true).expect("discard staged file on unborn HEAD");
+    discard_current(&repo, "new.txt", None, true).expect("discard staged file on unborn HEAD");
     assert!(index_entries(&repo).is_empty(), "file leaves the index");
     assert!(!repo.0.join("new.txt").exists(), "file leaves the worktree");
+}
+
+#[test]
+fn discard_file_refuses_a_same_size_edit_after_preview() {
+    let repo = repo_with_file("discard-stale-same-size", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("loose.txt"), b"one\n").unwrap();
+    let preview = preview_discard_file(repo.path(), "loose.txt", None, false).expect("preview");
+
+    // Same byte length and line count: a size/stat-only precondition would miss
+    // this replacement and delete content created while the dialog was open.
+    std::fs::write(repo.0.join("loose.txt"), b"two\n").unwrap();
+    let error = discard_file(
+        repo.path(),
+        "loose.txt",
+        None,
+        false,
+        &preview.expected_state,
+    )
+    .expect_err("changed content must invalidate the preview");
+
+    assert!(error.contains("changed"), "unexpected error: {error}");
+    assert_eq!(std::fs::read(repo.0.join("loose.txt")).unwrap(), b"two\n");
+    assert_eq!(index_entries(&repo), ["tracked.txt"]);
+}
+
+#[test]
+fn discard_unstaged_side_of_staged_new_preserves_the_staged_blob() {
+    let repo = repo_with_file("discard-staged-new-edited", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("new.txt"), b"staged version\n").unwrap();
+    repo.git_ok(&["add", "new.txt"]);
+    std::fs::write(repo.0.join("new.txt"), b"working edit!!\n").unwrap();
+
+    discard_current(&repo, "new.txt", None, false)
+        .expect("discard only the unstaged side of a staged-new file");
+
+    assert_eq!(
+        std::fs::read(repo.0.join("new.txt")).unwrap(),
+        b"staged version\n"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["show", ":new.txt"]).stdout),
+        "staged version\n"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["status", "--porcelain=v1"]).stdout),
+        "A  new.txt\n"
+    );
+}
+
+#[test]
+fn discard_staged_deletion_rejects_a_new_worktree_copy_then_restores_head() {
+    let repo = repo_with_file("discard-staged-deletion", "gone.txt", b"committed\n");
+    repo.git_ok(&["rm", "-q", "gone.txt"]);
+    let preview = preview_discard_file(repo.path(), "gone.txt", None, true).expect("preview");
+
+    std::fs::write(repo.0.join("gone.txt"), b"precious\n").unwrap();
+    let error = discard_file(repo.path(), "gone.txt", None, true, &preview.expected_state)
+        .expect_err("a new worktree copy invalidates the deletion preview");
+    assert!(error.contains("changed"), "unexpected error: {error}");
+    assert_eq!(
+        std::fs::read(repo.0.join("gone.txt")).unwrap(),
+        b"precious\n"
+    );
+    assert!(repo.git(&["diff", "--cached", "--quiet"]).status.code() == Some(1));
+
+    discard_current(&repo, "gone.txt", None, true).expect("restore staged deletion");
+    assert_eq!(
+        std::fs::read(repo.0.join("gone.txt")).unwrap(),
+        b"committed\n"
+    );
+    assert!(repo.git(&["status", "--porcelain"]).stdout.is_empty());
+}
+
+#[test]
+fn discard_intent_to_add_rejects_a_real_stage_transition_and_removes_a_live_ita() {
+    let repo = repo_with_file("discard-intent-to-add", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("intent.txt"), b"draft\n").unwrap();
+    repo.git_ok(&["add", "-N", "intent.txt"]);
+    let preview = preview_discard_file(repo.path(), "intent.txt", None, false).expect("preview");
+
+    repo.git_ok(&["add", "intent.txt"]);
+    let error = discard_file(
+        repo.path(),
+        "intent.txt",
+        None,
+        false,
+        &preview.expected_state,
+    )
+    .expect_err("turning intent-to-add into staged content must fail closed");
+    assert!(
+        error.contains("no longer available") || error.contains("changed"),
+        "unexpected error: {error}"
+    );
+    assert!(repo.0.join("intent.txt").exists());
+    assert!(index_entries(&repo).contains(&"intent.txt".to_string()));
+
+    repo.git_ok(&["reset", "-q", "HEAD", "--", "intent.txt"]);
+    repo.git_ok(&["add", "-N", "intent.txt"]);
+    discard_current(&repo, "intent.txt", None, false)
+        .expect("git rm -f removes an intent-to-add entry and worktree copy");
+    assert!(!repo.0.join("intent.txt").exists());
+    assert!(!index_entries(&repo).contains(&"intent.txt".to_string()));
+}
+
+#[test]
+fn discard_rename_refuses_content_changed_after_preview() {
+    for staged in [false, true] {
+        let repo = repo_with_file(
+            if staged {
+                "discard-staged-rename-content-race"
+            } else {
+                "discard-unstaged-rename-content-race"
+            },
+            "old.txt",
+            b"base\n",
+        );
+        if staged {
+            repo.git_ok(&["mv", "old.txt", "new.txt"]);
+        } else {
+            std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
+        }
+        let preview = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+            .expect("preview rename");
+        let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
+
+        std::fs::write(repo.0.join("new.txt"), b"late\n").unwrap();
+        let error = discard_file(
+            repo.path(),
+            "new.txt",
+            Some("old.txt"),
+            staged,
+            &preview.expected_state,
+        )
+        .expect_err("rename content changed after preview");
+
+        assert!(error.contains("changed"), "unexpected error: {error}");
+        assert!(!repo.0.join("old.txt").exists());
+        assert_eq!(std::fs::read(repo.0.join("new.txt")).unwrap(), b"late\n");
+        assert_eq!(
+            repo.git(&["diff", "--cached", "--binary"]).stdout,
+            before_index
+        );
+    }
+}
+
+#[test]
+fn discard_preview_rejects_conflicted_paths_without_mutation() {
+    let repo = repo_with_file("discard-conflict", "conflict.txt", b"base\n");
+    repo.git_ok(&["checkout", "-q", "-b", "side"]);
+    std::fs::write(repo.0.join("conflict.txt"), b"side\n").unwrap();
+    repo.git_ok(&["add", "conflict.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "side"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("conflict.txt"), b"main\n").unwrap();
+    repo.git_ok(&["add", "conflict.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "main"]);
+    let merge = repo.git(&["merge", "--no-edit", "side"]);
+    assert!(!merge.status.success(), "fixture must produce a conflict");
+    let before_index = repo.git(&["ls-files", "-u"]).stdout;
+    let before_worktree = std::fs::read(repo.0.join("conflict.txt")).unwrap();
+
+    let error = preview_discard_file(repo.path(), "conflict.txt", None, false)
+        .expect_err("ordinary discard must refuse conflicts");
+
+    assert!(error.contains("conflicted"), "unexpected error: {error}");
+    assert_eq!(repo.git(&["ls-files", "-u"]).stdout, before_index);
+    assert_eq!(
+        std::fs::read(repo.0.join("conflict.txt")).unwrap(),
+        before_worktree
+    );
+}
+
+#[test]
+fn discard_expectation_tolerates_unrelated_path_and_index_changes() {
+    let repo = repo_with_file("discard-unrelated-tolerance", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"target edit\n").unwrap();
+    let preview = preview_discard_file(repo.path(), "target.txt", None, false).expect("preview");
+
+    std::fs::write(repo.0.join("other.txt"), b"other\n").unwrap();
+    repo.git_ok(&["add", "other.txt"]);
+    discard_file(
+        repo.path(),
+        "target.txt",
+        None,
+        false,
+        &preview.expected_state,
+    )
+    .expect("unrelated state must not invalidate a path-local expectation");
+
+    assert_eq!(std::fs::read(repo.0.join("target.txt")).unwrap(), b"base\n");
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["show", ":other.txt"]).stdout),
+        "other\n"
+    );
+}
+
+#[test]
+fn discard_roots_the_subprocess_at_the_discovered_worktree() {
+    let repo = repo_with_file("discard-nested-caller-root", "file.txt", b"root base\n");
+    std::fs::create_dir(repo.0.join("subdir")).unwrap();
+    std::fs::write(repo.0.join("subdir/file.txt"), b"nested base\n").unwrap();
+    repo.git_ok(&["add", "subdir/file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "nested file"]);
+    std::fs::write(repo.0.join("file.txt"), b"root edit\n").unwrap();
+    std::fs::write(repo.0.join("subdir/file.txt"), b"nested precious\n").unwrap();
+    let preview = preview_discard_file(repo.path(), "file.txt", None, false).expect("preview");
+    let nested_caller = repo.0.join("subdir");
+
+    discard_file(
+        nested_caller.to_str().unwrap(),
+        "file.txt",
+        None,
+        false,
+        &preview.expected_state,
+    )
+    .expect("the discovered root owns both the lease and pathspec");
+
+    assert_eq!(
+        std::fs::read(repo.0.join("file.txt")).unwrap(),
+        b"root base\n"
+    );
+    assert_eq!(
+        std::fs::read(repo.0.join("subdir/file.txt")).unwrap(),
+        b"nested precious\n"
+    );
+}
+
+#[test]
+fn discard_revalidates_path_observations_after_the_content_pass() {
+    let repo = repo_with_file("discard-final-leaf-recheck", "old.txt", b"base\n");
+    repo.git_ok(&["mv", "old.txt", "new.txt"]);
+    // Reverse the rename only in the worktree. Both paths remain inside the
+    // staged row's operand set, so this is safe to preview as one logical row.
+    std::fs::rename(repo.0.join("new.txt"), repo.0.join("old.txt")).unwrap();
+    let preview = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), true)
+        .expect("preview the staged rename with its opposite worktree rename");
+    let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
+    let hook_path = repo.0.join("old.txt");
+    set_discard_capture_test_hook(move || {
+        // Same size, after this earlier rename operand has already been hashed.
+        std::fs::write(hook_path, b"late\n").unwrap();
+    });
+
+    let error = discard_file(
+        repo.path(),
+        "new.txt",
+        Some("old.txt"),
+        true,
+        &preview.expected_state,
+    )
+    .expect_err("the final pathname observation must reject the late edit");
+
+    assert!(error.contains("changed"), "unexpected error: {error}");
+    assert_eq!(std::fs::read(repo.0.join("old.txt")).unwrap(), b"late\n");
+    assert!(!repo.0.join("new.txt").exists());
+    assert_eq!(
+        repo.git(&["diff", "--cached", "--binary"]).stdout,
+        before_index
+    );
+}
+
+#[test]
+fn discard_revalidates_index_semantics_after_the_content_pass() {
+    let repo = repo_with_file("discard-final-index-recheck", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
+    let preview = preview_discard_file(repo.path(), "target.txt", None, false).expect("preview");
+    let hook_repo = repo.0.clone();
+    set_discard_capture_test_hook(move || {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(hook_repo)
+            .args(["add", "target.txt"])
+            .output()
+            .expect("git launches in capture hook");
+        assert!(
+            output.status.success(),
+            "hook git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    });
+
+    let error = discard_file(
+        repo.path(),
+        "target.txt",
+        None,
+        false,
+        &preview.expected_state,
+    )
+    .expect_err("the fresh semantic capture must reject the staged transition");
+
+    assert!(error.contains("changed"), "unexpected error: {error}");
+    assert_eq!(std::fs::read(repo.0.join("target.txt")).unwrap(), b"edit\n");
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["show", ":target.txt"]).stdout),
+        "edit\n"
+    );
+}
+
+#[test]
+fn discard_staged_change_rejects_an_external_worktree_rename() {
+    let repo = repo_with_file("discard-staged-then-wt-rename", "old.txt", b"base\n");
+    std::fs::write(repo.0.join("old.txt"), b"stage\n").unwrap();
+    repo.git_ok(&["add", "old.txt"]);
+    std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
+    let before_status = repo.git(&["status", "--porcelain=v1", "-z"]).stdout;
+    let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
+
+    let error = preview_discard_file(repo.path(), "old.txt", None, true)
+        .expect_err("a staged row must not strand its external worktree rename");
+
+    assert!(
+        error.contains("unstaged rename first"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        repo.git(&["status", "--porcelain=v1", "-z"]).stdout,
+        before_status
+    );
+    assert_eq!(
+        repo.git(&["diff", "--cached", "--binary"]).stdout,
+        before_index
+    );
+    assert!(!repo.0.join("old.txt").exists());
+    assert_eq!(std::fs::read(repo.0.join("new.txt")).unwrap(), b"stage\n");
+}
+
+#[test]
+fn discard_staged_rename_rejects_a_later_external_worktree_rename() {
+    let repo = repo_with_file("discard-staged-rename-chain", "old.txt", b"base\n");
+    repo.git_ok(&["mv", "old.txt", "new.txt"]);
+    std::fs::rename(repo.0.join("new.txt"), repo.0.join("newer.txt")).unwrap();
+    let before_status = repo.git(&["status", "--porcelain=v1", "-z"]).stdout;
+    let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
+
+    let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), true)
+        .expect_err("a staged rename must not strand the next worktree rename");
+
+    assert!(
+        error.contains("unstaged rename first"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        repo.git(&["status", "--porcelain=v1", "-z"]).stdout,
+        before_status
+    );
+    assert_eq!(
+        repo.git(&["diff", "--cached", "--binary"]).stdout,
+        before_index
+    );
+    assert!(!repo.0.join("old.txt").exists());
+    assert!(!repo.0.join("new.txt").exists());
+    assert_eq!(std::fs::read(repo.0.join("newer.txt")).unwrap(), b"base\n");
 }
 
 #[test]

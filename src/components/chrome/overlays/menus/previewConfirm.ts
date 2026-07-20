@@ -17,7 +17,7 @@ export type HeadPrecondition = {
 // runs against the now-active repo — a cross-repo destructive action. GL-42 review.
 let previewToken = 0;
 
-export const previewConfirm = async ({
+export const previewConfirm = async <T extends DestructivePreview>({
   requestConfirm,
   title,
   message,
@@ -32,8 +32,8 @@ export const previewConfirm = async ({
   message: string;
   confirmLabel: string;
   danger?: boolean;
-  preview: () => Promise<DestructivePreview>;
-  onConfirm: () => void;
+  preview: () => Promise<T>;
+  onConfirm: (preview: T) => void;
   headPrecondition?: HeadPrecondition;
 }) => {
   // Local, disposable preview read: it only enriches this confirmation modal
@@ -75,7 +75,7 @@ export const previewConfirm = async ({
           showStaleHeadToast();
           return;
         }
-        onConfirm();
+        onConfirm(impact);
       },
     });
   } catch (e) {

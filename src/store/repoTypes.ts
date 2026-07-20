@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
   DestructivePreview,
+  DiscardFilePreview,
   FileBlame,
   ConflictFile,
   DiffLine,
@@ -608,8 +609,21 @@ export interface RepoState {
   ) => Promise<void>;
   /** Stage one changed line from an unstaged diff, or unstage one changed line from a staged diff. */
   applyLine: (path: string, staged: boolean, hunkIndex: number, lineIndex: number, line: DiffLine) => Promise<void>;
-  /** Discard a file's working-tree changes (unstaging first when `staged`). */
-  discardFile: (path: string, staged: boolean) => Promise<void>;
+  /** Preview one exact path-local discard and capture its backend state lease. */
+  previewDiscardFile: (
+    repoPath: string,
+    path: string,
+    previousPath: string | null,
+    staged: boolean,
+  ) => Promise<DiscardFilePreview>;
+  /** Execute the exact file discard approved by `previewDiscardFile`. */
+  discardFile: (
+    repoPath: string,
+    path: string,
+    previousPath: string | null,
+    staged: boolean,
+    expectedState: string,
+  ) => Promise<void>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
   commit: (summary: string, description: string, amend: boolean) => Promise<void>;

@@ -214,7 +214,9 @@ describe("repo store — discardFile", () => {
       }
     });
 
-    await useRepo.getState().discardFile("src/a.ts", false);
+    await useRepo
+      .getState()
+      .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
 
     expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
     expect(invokeMock).toHaveBeenCalledWith("discard_file", {
@@ -222,6 +224,7 @@ describe("repo store — discardFile", () => {
       file: "src/a.ts",
       previousFile: null,
       staged: false,
+      expectedState: "discard-state-v1",
     });
   });
 
@@ -252,9 +255,81 @@ describe("repo store — discardFile", () => {
       }
     });
 
-    await useRepo.getState().discardFile("src/a.ts", false);
+    await useRepo
+      .getState()
+      .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
 
     expect(useRepo.getState().selectedFile).toBeNull();
+  });
+
+  it("does not refresh or reselect another repo when an old discard finishes late", async () => {
+    const pending = deferred<string>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "discard_file" ? pending.promise : defaultInvoke(cmd),
+    );
+    useRepo.setState({
+      summary,
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+
+    const discard = useRepo
+      .getState()
+      .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
+    await Promise.resolve();
+    const nextSummary: RepoSummary = {
+      path: "/other",
+      workdir: "/other",
+      headBranch: "main",
+      headOid: "other-head",
+      detached: false,
+    };
+    useRepo.setState({
+      summary: nextSummary,
+      selectedFile: { path: "src/b.ts", source: "unstaged" },
+    });
+
+    pending.resolve("Discarded changes in src/a.ts");
+    await discard;
+
+    expect(useRepo.getState().summary).toBe(nextSummary);
+    expect(useRepo.getState().selectedFile).toEqual({
+      path: "src/b.ts",
+      source: "unstaged",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", expect.anything());
+  });
+
+  it("does not publish an old repo's late discard error over the active repo", async () => {
+    const pending = deferred<string>();
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "discard_file" ? pending.promise : defaultInvoke(cmd),
+    );
+
+    try {
+      const discard = useRepo
+        .getState()
+        .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
+      await Promise.resolve();
+      useRepo.setState({
+        summary: {
+          path: "/other",
+          workdir: "/other",
+          headBranch: "main",
+          headOid: "other-head",
+          detached: false,
+        },
+      });
+
+      pending.reject(new Error("repo A changed"));
+      await discard;
+
+      expect(showToast).not.toHaveBeenCalled();
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
   });
 });
 

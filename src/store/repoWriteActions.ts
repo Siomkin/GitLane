@@ -249,6 +249,7 @@ export function createRepoWriteActions(
   | "unstagePaths"
   | "applyHunk"
   | "applyLine"
+  | "previewDiscardFile"
   | "discardFile"
   | "stageAll"
   | "unstageAll"
@@ -1071,15 +1072,37 @@ export function createRepoWriteActions(
       }
     },
 
-    discardFile: async (path, staged) => {
+    previewDiscardFile: (repoPath, path, previousPath, staged) => {
+      if (get().summary?.path !== repoPath) {
+        return Promise.reject(new Error("The active repository changed; preview the discard again."));
+      }
+      return api.previewDiscardFile(repoPath, path, previousPath, staged);
+    },
+
+    discardFile: async (repoPath, path, previousPath, staged, expectedState) => {
       const { summary } = get();
-      if (!summary) return;
+      if (!summary || summary.path !== repoPath) return;
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        const bucket = staged ? get().changes.staged : get().changes.unstaged;
-        const previousPath = renameOldPath(bucket.find((file) => file.path === path));
-        const message = await api.discardFile(summary.path, path, previousPath, staged);
+        const message = await api.discardFile(
+          repoPath,
+          path,
+          previousPath,
+          staged,
+          expectedState,
+        );
+        // The write belongs to the repo captured by the confirmation. If the
+        // user switched tabs while it was in flight, its completion must not
+        // refresh or reselect a same-named path in the newly active repo.
+        if (get().summary?.path !== repoPath) {
+          useUi.getState().showToast(message);
+          return;
+        }
         await get().refresh();
+        if (get().summary?.path !== repoPath) {
+          useUi.getState().showToast(message);
+          return;
+        }
         // The discarded view is now empty. `refresh` drops the selection when the
         // path leaves both buckets; but a partially-staged file can survive in the
         // other bucket with a now-stale `source` — re-point the diff at it so the
@@ -1091,7 +1114,9 @@ export function createRepoWriteActions(
         }
         useUi.getState().showToast(message);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        if (get().summary?.path === repoPath) {
+          useUi.getState().showToast(String(e), "error");
+        }
       }
     },
 

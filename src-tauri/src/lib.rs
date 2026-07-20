@@ -21,13 +21,13 @@ use watcher::WatcherState;
 use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
     CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
-    FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
-    GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
-    HistorySearchPage, HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck,
-    PrCommitList, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary,
-    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge, RepoGraph,
-    RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
-    WorkingChanges, WorktreeInfo,
+    DiscardFilePreview, FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount,
+    ForgeAuthStatus, GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult,
+    HandoffProgressEvent, HistorySearchPage, HistorySearchQuery, OauthClientStatus,
+    OperationStatus, PrCheck, PrCommitList, ProviderOauthResult, ProviderTokenStatus,
+    PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo,
+    RepoFileContent, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary,
+    ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -930,13 +930,36 @@ async fn unstage_files(path: String, files: Vec<String>) -> Result<String, Strin
 }
 
 #[tauri::command]
+async fn preview_discard_file(
+    path: String,
+    file: String,
+    previous_file: Option<String>,
+    staged: bool,
+) -> Result<DiscardFilePreview, String> {
+    blocking(move || {
+        git::write::preview_discard_file(&path, &file, previous_file.as_deref(), staged)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn discard_file(
     path: String,
     file: String,
     previous_file: Option<String>,
     staged: bool,
+    expected_state: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::discard_file(&path, &file, previous_file.as_deref(), staged)).await
+    blocking(move || {
+        git::write::discard_file(
+            &path,
+            &file,
+            previous_file.as_deref(),
+            staged,
+            &expected_state,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2013,6 +2036,7 @@ pub fn run() {
             apply_line,
             stage_files,
             unstage_files,
+            preview_discard_file,
             discard_file,
             stage_all,
             unstage_all,

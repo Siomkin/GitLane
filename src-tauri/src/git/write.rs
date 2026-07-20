@@ -53,9 +53,11 @@ pub use remotes::{
 };
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
+#[cfg(test)]
+pub(crate) use staging::set_discard_capture_test_hook;
 pub use staging::{
-    apply_hunk, apply_line, commit_expected, discard_all, discard_file, squash_commits, stage_all,
-    stage_file, stage_files, unstage_all, unstage_file, unstage_files,
+    apply_hunk, apply_line, commit_expected, discard_all, discard_file, preview_discard_file,
+    squash_commits, stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files,
 };
 #[cfg(test)]
 pub use stashes::{stash, stash_apply, stash_pop};

@@ -467,6 +467,18 @@ pub struct DestructivePreview {
     pub warnings: Vec<String>,
 }
 
+/// Read-only impact plus the exact per-path state a later file-discard command
+/// must still observe. The token is opaque to the frontend and contains no file
+/// contents; Rust recomputes it immediately before the destructive write.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardFilePreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+    pub expected_state: String,
+}
+
 /// Per-path advanced repository state that would be misleading as a plain file
 /// change.
 #[derive(Debug, Clone, Serialize)]

@@ -357,6 +357,12 @@ export interface DestructivePreview {
   warnings: string[];
 }
 
+export interface DiscardFilePreview extends DestructivePreview {
+  /** Opaque backend fingerprint of the exact HEAD/index/worktree state shown
+   * by the confirmation. Required again by the destructive write. */
+  expectedState: string;
+}
+
 export interface WorktreeInfo {
   name: string;
   path: string;
@@ -764,6 +770,19 @@ export const gitApi = {
 
   previewDiscardAll: (path: string) =>
     invoke<DestructivePreview>("preview_discard_all", { path }),
+
+  previewDiscardFile: (
+    path: string,
+    file: string,
+    previousFile: string | null,
+    staged: boolean,
+  ) =>
+    invoke<DiscardFilePreview>("preview_discard_file", {
+      path,
+      file,
+      previousFile,
+      staged,
+    }),
 
   previewDeleteBranch: (path: string, branch: string) =>
     invoke<DestructivePreview>("preview_delete_branch", { path, branch }),
@@ -1197,10 +1216,16 @@ export const gitApi = {
   unstageFiles: (path: string, files: string[]) =>
     invoke<string>("unstage_files", { path, files }),
 
-  /** Discard a file's working-tree changes (reverting to HEAD). Renames carry
-   * `previousFile` so both sides are restored as one logical change. */
-  discardFile: (path: string, file: string, previousFile: string | null, staged: boolean) =>
-    invoke<string>("discard_file", { path, file, previousFile, staged }),
+  /** Discard one exact previewed file state. Staged changes restore from HEAD;
+   * unstaged changes restore from the index. Renames carry `previousFile` so
+   * both sides are handled as one logical change. */
+  discardFile: (
+    path: string,
+    file: string,
+    previousFile: string | null,
+    staged: boolean,
+    expectedState: string,
+  ) => invoke<string>("discard_file", { path, file, previousFile, staged, expectedState }),
 
   stageAll: (path: string) => invoke<string>("stage_all", { path }),
 
