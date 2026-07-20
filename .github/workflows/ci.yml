@@ -249,10 +249,16 @@ jobs:
       - name: Install Linux Tauri dependencies
         # Skipped on the self-hosted runner (sudo-less user; deps preinstalled on the
         # host). runner.environment keeps this working if a job ever runs hosted.
+        #
+        # `mold` is not optional here: src-tauri/.cargo/config.toml pins
+        # `-fuse-ld=mold` for x86_64-unknown-linux-gnu, so without it every link
+        # on a hosted runner dies with "collect2: fatal error: cannot find 'ld'".
+        # Hosted runs are the untrusted-PR fallback (dependabot, forks), which is
+        # why this only showed up on dependabot PRs.
         if: runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf mold
 
       - name: Rust tests
         working-directory: src-tauri
