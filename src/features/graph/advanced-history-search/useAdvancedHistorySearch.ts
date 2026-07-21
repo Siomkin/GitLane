@@ -86,22 +86,28 @@ export function useAdvancedHistorySearch({
     // React applies this render-phase adjustment before committing children, so
     // no old-repo fields, results, errors, busy state, or suggestions can flash.
     // changedMode/dateHints/editingDate remain mounted, matching the prior reset's
-    // deliberately preserved local composer state.
-    requestGen.current += 1;
-    revealSeq.current += 1;
-    suggestionGen.current += 1;
+    // deliberately preserved local composer state. Deriving state is all this
+    // does — the token bumps below are side effects and stay out of render.
     current = emptySession(repoPath);
     setSession(current);
   }
 
-  // Invalidate async work when the entire advanced-search panel unmounts.
+  // Invalidate async work owned by a repository we have left, and by the panel
+  // when it unmounts. This belongs in a committed effect rather than in render:
+  // a concurrent render that React abandons would advance a generation without
+  // committing the matching reset, and the in-flight search still holding that
+  // generation would then drop its own `loading: false` and strand the spinner.
+  //
+  // Nothing below depends on the bump for cross-repository safety — every
+  // `setSession` rejects a state whose `repoPath` has moved on, so a late
+  // response cannot write into the new session either way.
   useEffect(
     () => () => {
       requestGen.current += 1;
       revealSeq.current += 1;
       suggestionGen.current += 1;
     },
-    [],
+    [repoPath],
   );
 
   const update = (key: keyof FormFields, value: string) => {
@@ -250,6 +256,11 @@ export function useAdvancedHistorySearch({
         // Live reads are intentional: each page can replace graph/limit/actions,
         // and reveal must observe that new state rather than captured selectors.
         const state = useRepo.getState();
+        // Check the live repository directly rather than trusting the token
+        // alone. The generation bump now lands in a committed effect, so a repo
+        // switch leaves a brief window where it has not fired yet — paging must
+        // never run against a repository this reveal was not started for.
+        if ((state.summary?.path ?? null) !== repoPath) return;
         if (state.graph?.commits.some((commit) => commit.id === id)) {
           await state.revealCommit(id);
           return;

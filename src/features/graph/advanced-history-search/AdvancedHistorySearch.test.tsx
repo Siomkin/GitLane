@@ -239,6 +239,52 @@ describe("AdvancedHistorySearch async isolation", () => {
     expect(screen.queryByText("commit stale")).not.toBeInTheDocument();
   });
 
+  it("leaves the search button idle after a repo switch strands the old request", async () => {
+    // The repo-A request never settles this session's loading flag once its
+    // generation is invalidated, so the reset itself must clear the spinner —
+    // otherwise the panel is stuck on "Searching…" with no way back.
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: () => new Promise<HistorySearchPage>(() => {}),
+    });
+    const { rerender } = render(<AdvancedHistorySearch />);
+    runSearch();
+    expect(screen.getByRole("button", { name: "Searching…" })).toBeDisabled();
+
+    act(() => useRepo.setState({ summary: summaryFor("/b") }));
+    rerender(<AdvancedHistorySearch />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Search repository" })).toBeEnabled(),
+    );
+  });
+
+  it("stops reveal paging as soon as the repository underneath it changes", async () => {
+    // Reveal pages the graph in a loop; a switch mid-loop must abort it rather
+    // than hunting the old repo's commit id through the new repo's history.
+    const loadMoreHistory = vi.fn(async () => {
+      act(() => useRepo.setState({ summary: summaryFor("/b") }));
+    });
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => pageWith("c1"),
+      graph: { ...graphWith([]), truncated: true },
+      loadMoreHistory,
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+
+    fireEvent.click(await screen.findByText("commit c1"));
+
+    await waitFor(() => expect(loadMoreHistory).toHaveBeenCalledTimes(1));
+    // One page ran before the switch landed; the loop must not page again, and
+    // must not surface its "outside the loaded ref set" error for the old repo.
+    await waitFor(() =>
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+    );
+    expect(loadMoreHistory).toHaveBeenCalledTimes(1);
+  });
+
   it("does not repopulate results when a search resolves after Clear all", async () => {
     let resolveSearch: (page: HistorySearchPage) => void = () => {};
     const inFlight = new Promise<HistorySearchPage>((resolve) => (resolveSearch = resolve));

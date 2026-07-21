@@ -117,15 +117,16 @@ pub(super) fn run_gh_with_limit(
     let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
         .map_err(map_gh_capture_error)?;
 
-    finish_gh_output(output)
+    finish_gh_output(output, token)
 }
 
-fn finish_gh_output(output: BoundedOutput) -> Result<String, String> {
+fn finish_gh_output(output: BoundedOutput, token: Option<&str>) -> Result<String, String> {
     finish_gh_bytes(
         output.status.success(),
         &output.stdout,
         &output.stderr,
         output.stderr_truncated,
+        token,
     )
 }
 
@@ -134,8 +135,11 @@ fn finish_gh_bytes(
     stdout: &[u8],
     stderr: &[u8],
     stderr_truncated: bool,
+    token: Option<&str>,
 ) -> Result<String, String> {
     if success {
+        // Only stdout is returned, and it is the payload a parser consumes —
+        // never rewrite it. gh puts diagnostics on stderr, which success drops.
         Ok(String::from_utf8_lossy(stdout).to_string())
     } else {
         let stdout = String::from_utf8_lossy(stdout);
@@ -145,8 +149,16 @@ fn finish_gh_bytes(
         if stderr_truncated {
             combined.push_str(&bounded_output::stderr_truncated_notice());
         }
-        // Scrub any credential a remote URL in gh's output might carry.
-        Err(crate::redact::redact_secrets(&combined))
+        // Scrub any credential a remote URL in gh's output might carry, plus the
+        // token this invocation exported as GH_TOKEN. gh can echo its own
+        // request headers (`GH_DEBUG=api`), and the REST clients already scrub
+        // their active credential the same way (GL-320) — the CLI holds the very
+        // same secret, so it must not be the weaker boundary. An absent token is
+        // the empty string, which `redact_secrets_with_values` ignores.
+        Err(crate::redact::redact_secrets_with_values(
+            &combined,
+            &[token.unwrap_or_default()],
+        ))
     }
 }
 
@@ -431,7 +443,7 @@ mod tests {
     #[test]
     fn bounded_finish_preserves_lossy_and_stream_order_semantics() {
         assert_eq!(
-            finish_gh_bytes(true, b"ok\xff", b"ignored stderr", false).unwrap(),
+            finish_gh_bytes(true, b"ok\xff", b"ignored stderr", false, None).unwrap(),
             "ok\u{fffd}"
         );
 
@@ -440,6 +452,7 @@ mod tests {
             b" stdout first\n",
             b"stderr https://alice:secret@example.test/repo\xff \n",
             false,
+            None,
         )
         .unwrap_err();
         assert_eq!(
@@ -453,14 +466,39 @@ mod tests {
         // Truncation must not silently pass a clipped tail off as the whole
         // message; on success stderr is unread, so it stays invisible.
         assert_eq!(
-            finish_gh_bytes(true, b"payload", b"clipped trace", true).unwrap(),
+            finish_gh_bytes(true, b"payload", b"clipped trace", true, None).unwrap(),
             "payload"
         );
 
-        let error = finish_gh_bytes(false, b"", b"partial trace", true).unwrap_err();
+        let error = finish_gh_bytes(false, b"", b"partial trace", true, None).unwrap_err();
         assert_eq!(
             error,
             format!("partial trace{}", bounded_output::stderr_truncated_notice())
+        );
+    }
+
+    #[test]
+    fn failures_scrub_the_token_this_invocation_exported() {
+        // gh holds the same secret the REST clients scrub (GL-320), and a debug
+        // trace can echo it back through stderr as a request header.
+        let token = "ghp_live_secret";
+        let error = finish_gh_bytes(
+            false,
+            b"",
+            format!("GET /repos: Authorization: token {token}\nauth=ghp_live%5Fsecret").as_bytes(),
+            false,
+            Some(token),
+        )
+        .unwrap_err();
+        assert!(!error.contains(token), "{error}");
+        assert!(!error.contains("ghp_live%5Fsecret"), "{error}");
+        assert!(error.contains("GET /repos"), "{error}");
+
+        // Success returns the payload untouched — rewriting stdout would corrupt
+        // a body the caller is about to parse.
+        assert_eq!(
+            finish_gh_bytes(true, token.as_bytes(), b"", false, Some(token)).unwrap(),
+            token
         );
     }
 
