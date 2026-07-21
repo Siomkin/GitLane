@@ -2,7 +2,8 @@
 // shows, which tone classes it wears, whether/how it drags, and its tooltip.
 // Extracted from RefPill/CombinedRefPill so the visual policy is testable as a
 // matrix without a render — the leaves keep the SVGs and the store wiring
-// (useBranchWorktreeName stays a hook; its result feeds `worktreeName` here).
+// (useBranchWorktree stays a hook; its result feeds `worktreeName` +
+// `worktreeDirty` here).
 // No React, no IPC.
 import { BranchKind, RefKind, type RefLabel } from "@/lib/api";
 import type { BranchRefKind } from "@/lib/graphActions";
@@ -18,6 +19,10 @@ export interface RefPillModel {
   icon: RefPillIcon;
   /** The pill's full class string (base + tone variant). */
   className: string;
+  /** Trail the amber uncommitted-work dot: the branch lives in another worktree
+   * *and* that worktree is dirty. Never on the current branch — the open
+   * worktree's own uncommitted work is the WIP row at the top of this graph. */
+  dirty: boolean;
   /** Worktree tooltip, only when the branch lives in another worktree. */
   title: string | undefined;
 }
@@ -25,8 +30,15 @@ export interface RefPillModel {
 const PILL_BASE =
   "flex items-center gap-1 h-[22px] rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 select-none max-w-[220px]";
 
-/** Tone precedence mirrors the render: current wins, then tag, remote, local. */
-export function refPillModel(refLabel: RefLabel, current: boolean, worktreeName: string | null): RefPillModel {
+/** Tone precedence mirrors the render: current wins, then tag, remote, local.
+ * `worktreeDirty` only means anything alongside a `worktreeName` — it is that
+ * worktree's uncommitted-work flag, not this branch's. */
+export function refPillModel(
+  refLabel: RefLabel,
+  current: boolean,
+  worktreeName: string | null,
+  worktreeDirty = false,
+): RefPillModel {
   const draggable = refLabel.kind === RefKind.Branch || refLabel.kind === RefKind.Remote;
 
   const style = current
@@ -49,18 +61,20 @@ export function refPillModel(refLabel: RefLabel, current: boolean, worktreeName:
           ? "worktree"
           : "branch";
 
+  // The worktree tooltip (and its dot) belong to non-current local branches
+  // only. The hook's enabled-gate already guarantees that in the app; gating
+  // here too keeps the pure model safe for arbitrary callers.
+  const inOtherWorktree = refLabel.kind === RefKind.Branch && !current && !!worktreeName;
+  const dirty = inOtherWorktree && worktreeDirty;
   return {
     draggable,
     dragKind: draggable ? (refLabel.kind === RefKind.Branch ? BranchKind.Local : BranchKind.Remote) : null,
     icon,
     className: `${PILL_BASE} ${style}`,
-    // The worktree tooltip belongs to non-current local branches only. The
-    // hook's enabled-gate already guarantees that in the app; gating here too
-    // keeps the pure model safe for arbitrary callers.
-    title:
-      refLabel.kind === RefKind.Branch && !current && worktreeName
-        ? `Checked out in worktree: ${worktreeName}`
-        : undefined,
+    dirty,
+    title: inOtherWorktree
+      ? `Checked out in worktree: ${worktreeName}${dirty ? " — uncommitted changes" : ""}`
+      : undefined,
   };
 }
 
@@ -68,6 +82,8 @@ export interface CombinedRefPillModel {
   /** Collapsed grouped pills never show tag/remote glyphs. */
   icon: Extract<RefPillIcon, "current" | "worktree" | "branch">;
   className: string;
+  /** Trail the amber uncommitted-work dot — see {@link RefPillModel.dirty}. */
+  dirty: boolean;
   /** The trailing remote-count chip's accessible label, e.g. "2 remotes". */
   remoteLabel: string;
   title: string;
@@ -83,15 +99,26 @@ export function combinedRefPillModel(
   remoteCount: number,
   current: boolean,
   worktreeName: string | null,
+  worktreeDirty = false,
 ): CombinedRefPillModel {
   const style = current
     ? "pl-1 pr-1 bg-[var(--accent)] text-white shadow-sm"
     : "pl-1.5 pr-1 bg-white dark:bg-neutral-700 border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 shadow-sm";
   const remoteLabel = `${remoteCount} remote${remoteCount > 1 ? "s" : ""}`;
+  const inOtherWorktree = !current && !!worktreeName;
+  const dirty = inOtherWorktree && worktreeDirty;
   return {
     icon: current ? "current" : worktreeName ? "worktree" : "branch",
     className: `${COMBINED_BASE} ${style}`,
+    dirty,
     remoteLabel,
-    title: `${localName} — local + ${remoteLabel} in sync (click to split)`,
+    // The tooltip doubles as the pill's aria-label, so the worktree it lives in
+    // — and whether work is sitting there uncommitted — has to be spelled out
+    // for anyone who can't see the glyph or the dot.
+    title:
+      `${localName} — local + ${remoteLabel} in sync (click to split)` +
+      (inOtherWorktree
+        ? `, checked out in worktree: ${worktreeName}${dirty ? " — uncommitted changes" : ""}`
+        : ""),
   };
 }

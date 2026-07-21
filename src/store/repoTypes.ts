@@ -215,6 +215,12 @@ export interface RepoState {
   reflogLoading: boolean;
   reflogError: string | null;
   worktrees: WorktreeInfo[];
+  /** Paths of the *other* worktrees currently holding uncommitted work, driving
+   * the graph's dirty dot. Filled by a throttled probe that runs after a refresh
+   * rather than inside it — see `repoWorktreeDirty.ts` for why it isn't a field
+   * on [`worktrees`]. Best-effort: an unprobed or failed worktree is simply
+   * absent (no dot). */
+  dirtyWorktrees: string[];
   stashes: StashEntry[];
   /** Paths of all open repositories — the tab strip. */
   openPaths: string[];
@@ -659,6 +665,7 @@ export type RepoDataState = Pick<
   | "reflogLoading"
   | "reflogError"
   | "worktrees"
+  | "dirtyWorktrees"
   | "stashes"
   | "openPaths"
   | "sessionRestorePhase"
@@ -716,6 +723,7 @@ export function createInitialRepoData(
     reflogLoading: false,
     reflogError: null,
     worktrees: [],
+    dirtyWorktrees: [],
     stashes: [],
     openPaths,
     sessionRestorePhase,

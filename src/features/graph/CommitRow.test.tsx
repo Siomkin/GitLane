@@ -41,6 +41,7 @@ beforeEach(() => {
   useRepo.setState({
     summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
     worktrees: [],
+    dirtyWorktrees: [],
     branches: [],
     selectedCommits: [],
     checkoutBranch: realCheckoutBranch,
@@ -151,6 +152,23 @@ describe("CommitRow ref pills", () => {
     render(<CommitRow {...baseProps} commit={commit()} />);
     expect(screen.getByTitle("Worktree (detached): /work/wt-a")).toBeInTheDocument();
     expect(screen.getByTitle("Worktree (detached): /work/wt-b")).toBeInTheDocument();
+  });
+
+  it("dots only the detached worktree that has uncommitted work", () => {
+    // Agent worktrees are detached on purpose, so this pill is where unsaved
+    // work in an agent's checkout becomes visible without opening it.
+    useRepo.setState({
+      worktrees: [
+        { name: "wt-a", path: "/work/wt-a", branch: null, head: "c1", isMain: false },
+        { name: "wt-b", path: "/work/wt-b", branch: null, head: "c1", isMain: false },
+      ],
+      dirtyWorktrees: ["/work/wt-b"],
+    });
+    render(<CommitRow {...baseProps} commit={commit()} />);
+    expect(screen.getByTitle("Worktree (detached): /work/wt-a")).toBeInTheDocument();
+    const dirty = screen.getByTitle("Worktree (detached): /work/wt-b — uncommitted changes");
+    expect(dirty.querySelector("[aria-label='Uncommitted changes in this worktree']")).not.toBeNull();
+    expect(screen.getAllByLabelText("Uncommitted changes in this worktree")).toHaveLength(1);
   });
 
   it("labels the checked-out commit with a HEAD pill while detached", () => {
@@ -359,9 +377,26 @@ describe("CommitRow grouped refs", () => {
       />,
     );
 
-    const collapsed = screen.getByTitle("feature — local + 1 remote in sync (click to split)");
+    const collapsed = screen.getByTitle(
+      "feature — local + 1 remote in sync (click to split), checked out in worktree: repo-feature",
+    );
     expect(collapsed.querySelector('circle[r="2.5"]')).not.toBeNull();
     expect(collapsed.querySelector('circle[r="3"]')).toBeNull();
+    // Clean worktree — no dot.
+    expect(screen.queryByLabelText("Uncommitted changes in this worktree")).toBeNull();
+  });
+
+  it("dots the pill when the branch's other worktree has uncommitted work", () => {
+    useRepo.setState({
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      dirtyWorktrees: ["/work/repo-feature"],
+    });
+    render(
+      <CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />,
+    );
+
+    const pill = screen.getByTitle("Checked out in worktree: repo-feature — uncommitted changes");
+    expect(pill.querySelector("[aria-label='Uncommitted changes in this worktree']")).not.toBeNull();
   });
 
   it("drags the collapsed pill as the local branch", () => {

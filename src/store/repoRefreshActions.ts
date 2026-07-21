@@ -23,6 +23,7 @@ import {
 } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { persistTabInfo } from "./repoSession";
+import { probeDirtyWorktrees } from "./repoWorktreeDirty";
 import { useUi } from "./ui";
 import { GRAPH_PAGE_SIZE, type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
 
@@ -258,6 +259,10 @@ export function createRepoRefreshActions(
         // See the worktree-scope path above: a clean tree leaves the changes view.
         if (noWip) useUi.getState().onWorkingTreeClean();
         persistTabInfo(get().tabInfoByPath);
+        // Re-read which other worktrees hold uncommitted work (the graph's dirty
+        // dot). Fire-and-forget and throttled — this refresh has already
+        // published, so a `git status` per worktree never delays a repaint.
+        probeDirtyWorktrees(set, get);
         // The remote list may have changed (terminal `git remote add/remove`),
         // which changes what the per-remote bindings resolve to — re-sync before
         // the PR reload below so it fetches as the right account (GL-129).

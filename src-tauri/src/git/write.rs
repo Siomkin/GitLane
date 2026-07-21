@@ -65,5 +65,5 @@ pub use stashes::{
 };
 pub use worktrees::{
     add_worktree, create_branch_in_worktree, delete_branch_with_worktree, move_branch_to_worktree,
-    remove_worktree, worktree_dirty_state, worktrees,
+    remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
 };

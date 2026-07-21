@@ -257,6 +257,40 @@ pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, S
     })
 }
 
+/// Whether a linked worktree has uncommitted work *right now* — the one bit the
+/// graph's dirty dot needs, so a branch checked out elsewhere (or a detached
+/// worktree pill) reads as "has unsaved work" without opening it.
+///
+/// A deliberately cheaper probe than [`worktree_dirty_state`], which this marker
+/// would otherwise have reused:
+/// - no second `--ignored` call — ignored entries are git-disposable (an
+///   *unforced* `worktree remove` deletes them), so dotting a worktree for its
+///   `target/` would flag every build directory as unsaved work;
+/// - untracked directories stay **collapsed** (`--untracked-files=normal`, not
+///   the removal confirm's `=all`): a fresh `node_modules` is one record here
+///   rather than fifty thousand, and one record is all the answer needs;
+/// - `--no-renames` skips similarity detection nothing here reads.
+///
+/// Still a `git status` per worktree, so it stays off the worktree-list refresh
+/// (see [`WorktreeDirtyState`]'s note) — the frontend fans these out after a
+/// full re-sync has already painted, and throttles them.
+pub fn worktree_is_dirty(worktree_path: &str) -> Result<bool, String> {
+    ensure_operand(worktree_path)?;
+    // stdout only, untrimmed — same reasoning as `worktree_dirty_state`: the
+    // combined form would score a git warning as a changed file and dot a clean
+    // worktree.
+    let raw = run_git_stdout(
+        worktree_path,
+        &[
+            "status",
+            "--porcelain",
+            "--untracked-files=normal",
+            "--no-renames",
+        ],
+    )?;
+    Ok(raw.lines().any(is_porcelain_record))
+}
+
 /// Whether a line is a porcelain v1 status record (`XY <path>`) rather than
 /// something git wrote to stderr.
 ///

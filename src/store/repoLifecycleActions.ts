@@ -31,6 +31,7 @@ import {
   upsertRecent,
 } from "./repoSession";
 import { unwatchRepo, watchRepo } from "./repoWatchQueue";
+import { probeDirtyWorktrees } from "./repoWorktreeDirty";
 import { useUi } from "./ui";
 import {
   emptyChanges,
@@ -141,6 +142,7 @@ export function createRepoLifecycleActions(
         reflogLoading: false,
         reflogError: null,
         worktrees: [],
+        dirtyWorktrees: [],
         stashes: [],
         changes: emptyChanges,
         operation: null,
@@ -249,7 +251,11 @@ export function createRepoLifecycleActions(
       void api
         .listWorktrees(summary.path)
         .then((worktrees) => {
-          if (repoStillDisplayed(get, summary.path)) set({ worktrees });
+          if (!repoStillDisplayed(get, summary.path)) return;
+          set({ worktrees });
+          // Their uncommitted work is a second, per-worktree read — kicked off
+          // once the list itself has landed and painted, never in front of it.
+          probeDirtyWorktrees(set, get);
         })
         .catch(() => {});
       void api

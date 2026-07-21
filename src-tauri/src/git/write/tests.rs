@@ -22,7 +22,8 @@ use super::{
     set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
     stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
     stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
-    unstage_file, unstage_files, worktree_dirty_state, worktrees, write_repo_file,
+    unstage_file, unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees,
+    write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
@@ -3189,6 +3190,66 @@ fn worktree_dirty_state_counts_ignored_entries_git_would_delete() {
     remove_worktree(repo.path(), linked.as_str(), false)
         .expect("git removes an ignored-only worktree without a force");
     assert!(!linked.0.exists(), "the worktree directory should be gone");
+}
+
+// The graph's dirty dot: one bit per worktree, on a cheaper probe than the
+// removal confirm's counts. What it must *not* dot is the interesting half —
+// ignored files are git-disposable, so a worktree holding only a build
+// directory is not "unsaved work".
+#[test]
+fn worktree_is_dirty_flags_real_work_but_not_ignored_files() {
+    let repo = TempRepo::new("wt-is-dirty");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join(".gitignore"), "build/\n").unwrap();
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-is-dirty");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    assert!(
+        !worktree_is_dirty(linked.as_str()).expect("probe a clean worktree"),
+        "a freshly added worktree has no uncommitted work"
+    );
+
+    // Ignored output only: git deletes it on an unforced remove, so it must not
+    // read as unsaved work.
+    std::fs::create_dir(linked.0.join("build")).unwrap();
+    std::fs::write(linked.0.join("build/out.o"), "x").unwrap();
+    assert!(
+        !worktree_is_dirty(linked.as_str()).expect("probe an ignored-only worktree"),
+        "ignored entries must not dot a worktree"
+    );
+
+    // A tracked edit is work.
+    std::fs::write(linked.0.join("a.txt"), "changed\n").unwrap();
+    assert!(
+        worktree_is_dirty(linked.as_str()).expect("probe a modified worktree"),
+        "a modified tracked file is uncommitted work"
+    );
+
+    // So is an untracked file — even nested, where `--untracked-files=normal`
+    // reports the collapsed directory rather than the file. One record is all
+    // the answer needs, which is why the probe can afford to collapse.
+    git_ok_at(&linked.0, &["checkout", "--", "a.txt"]);
+    std::fs::create_dir(linked.0.join("fresh")).unwrap();
+    std::fs::write(linked.0.join("fresh/note.txt"), "1\n").unwrap();
+    assert!(
+        worktree_is_dirty(linked.as_str()).expect("probe an untracked-only worktree"),
+        "an untracked file nested in a new directory is uncommitted work"
+    );
+
+    // Staged-but-uncommitted work counts too — it is exactly what a forced
+    // remove would throw away.
+    std::fs::remove_dir_all(linked.0.join("fresh")).unwrap();
+    std::fs::write(linked.0.join("staged.txt"), "s\n").unwrap();
+    git_ok_at(&linked.0, &["add", "staged.txt"]);
+    assert!(
+        worktree_is_dirty(linked.as_str()).expect("probe a staged-only worktree"),
+        "staged-but-uncommitted work is uncommitted work"
+    );
 }
 
 #[test]

@@ -3,9 +3,10 @@ import { cn } from "@/lib/cn";
 import { useUi } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { RefPill } from "./RefPill";
-import { useBranchWorktreeName } from "./useBranchWorktreeName";
+import { useBranchWorktree } from "./useBranchWorktree";
 import { combinedRefPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";
+import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
 
 /** A local branch + its in-sync remote ref(s) shown as one pill. Collapsed it
  * acts as the local branch (drag source, right-click menu); a single click
@@ -30,7 +31,7 @@ export function CombinedRefPill({
   targetSha: string;
 }) {
   const openContextMenu = useUi((state) => state.openContextMenu);
-  const worktreeName = useBranchWorktreeName(local.name, !current);
+  const worktree = useBranchWorktree(local.name, !current);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
   // target); the remote ref is reachable by splitting.
   const { isDropTarget, dndProps } = useBranchRefDrag(local.name, {
@@ -65,7 +66,13 @@ export function CombinedRefPill({
     );
   }
 
-  const model = combinedRefPillModel(local.name, remotes.length, current, worktreeName);
+  const model = combinedRefPillModel(
+    local.name,
+    remotes.length,
+    current,
+    worktree?.name ?? null,
+    worktree?.dirty ?? false,
+  );
 
   return (
     <span
@@ -95,6 +102,7 @@ export function CombinedRefPill({
     >
       <PillGlyph icon={model.icon} />
       <span className="truncate">{base}</span>
+      {model.dirty && <WorktreeDirtyDot />}
       <span
         aria-label={model.remoteLabel}
         className={cn(
