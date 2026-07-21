@@ -214,19 +214,50 @@ impl<'a> RestClient<'a> {
         format!("Bearer {}", self.token)
     }
 
+    fn redact_error_text(&self, text: &str) -> String {
+        if self.token.is_empty() {
+            return crate::redact::redact_secrets_with_values(text, &[]);
+        }
+        let auth = self.auth_header();
+        let header = format!("Authorization: {auth}");
+        crate::redact::redact_secrets_with_values(
+            text,
+            &[header.as_str(), auth.as_str(), self.token.as_str()],
+        )
+    }
+
+    /// Scrub only message-bearing variants after status/detail classification.
+    /// Categorization must see the original server response; only the outward
+    /// text crossing the provider/IPC boundary is sanitized.
+    fn redact_error(&self, error: GithubError) -> GithubError {
+        match error {
+            GithubError::Network(message) => GithubError::Network(self.redact_error_text(&message)),
+            GithubError::InvalidResponse(message) => {
+                GithubError::InvalidResponse(self.redact_error_text(&message))
+            }
+            GithubError::CommandFailed(message) => {
+                GithubError::CommandFailed(self.redact_error_text(&message))
+            }
+            other => other,
+        }
+    }
+
     fn finish(&self, operation: &'static str, result: HttpResult) -> Result<String, GithubError> {
         match result {
             Ok(resp) if resp.is_success() => Ok(resp.body),
-            Ok(resp) => Err(map_http_error(operation, &self.host, resp.status, &resp.body)),
+            Ok(resp) => {
+                let error = map_http_error(operation, &self.host, resp.status, &resp.body);
+                Err(self.redact_error(error))
+            }
             Err(HttpError::ResponseTooLarge { limit }) => Err(GithubError::InvalidResponse(
                 format!(
                     "GitLab {operation} exceeded the {limit}-byte response limit; the partial response was discarded."
                 ),
             )),
-            // A transport failure message may quote the request URL (never a
-            // secret — the token rides in a header), but redact defensively.
+            // A transport adapter may echo its request headers as well as its
+            // URL. Scrub both URL credentials and this client's active bearer.
             Err(HttpError::Transport(err)) => {
-                Err(GithubError::Network(crate::redact::redact_secrets(&err)))
+                Err(GithubError::Network(self.redact_error_text(&err)))
             }
         }
     }
@@ -440,5 +471,111 @@ mod tests {
             GithubError::CommandFailed(msg) => assert!(msg.contains("Not found")),
             other => panic!("expected CommandFailed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rest_errors_redact_active_bearer_and_url_credentials() {
+        let token = "glpat-live-secret";
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "gitlab.com", token);
+        let auth = format!("Bearer {token}");
+        let header = format!("Authorization: {auth}");
+        let json = format!(
+            r#"{{"message":"token={token}; auth={auth}; header={header}; url=https://alice:url-secret@gitlab.com/g/r"}}"#
+        );
+
+        let response = client.finish("detail", MockTransport::ok(404, &json));
+        let Err(GithubError::CommandFailed(message)) = response else {
+            panic!("expected command failure");
+        };
+        for secret in [token, auth.as_str(), header.as_str(), "url-secret"] {
+            assert!(!message.contains(secret), "leaked {secret:?}: {message}");
+        }
+        assert!(
+            message.contains("https://alice:***@gitlab.com/g/r"),
+            "{message}"
+        );
+
+        // Plain-text non-2xx bodies are intentionally replaced by the existing
+        // generic status message; they must not gain a leak during mapping.
+        let text = format!("upstream echoed {header}");
+        let Err(GithubError::CommandFailed(message)) =
+            client.finish("detail", MockTransport::ok(500, &text))
+        else {
+            panic!("expected command failure");
+        };
+        assert!(!message.contains(token), "{message}");
+        assert!(!message.contains(&auth), "{message}");
+
+        let transport =
+            format!("request failed with {header} at https://alice:url-secret@gitlab.com");
+        let Err(GithubError::Network(message)) =
+            client.finish("detail", Err(HttpError::Transport(transport)))
+        else {
+            panic!("expected network failure");
+        };
+        for secret in [token, auth.as_str(), header.as_str(), "url-secret"] {
+            assert!(!message.contains(secret), "leaked {secret:?}: {message}");
+        }
+    }
+
+    #[test]
+    fn rest_errors_redact_encoded_active_values_from_queries_and_userinfo() {
+        let token = "live secret=Z";
+        let encoded_token = "live+secret%3d%5A";
+        let encoded_auth = "Bearer+live%20secret%3D%5a";
+        let encoded_header = "Authorization%3a+Bearer%20live+secret=%5A";
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "gitlab.com", token);
+        let body = format!(
+            r#"{{"message":"https://{encoded_token}@gitlab.com/g/r?token={encoded_token}&auth={encoded_auth}&header={encoded_header}"}}"#
+        );
+
+        let error = client
+            .finish("detail", MockTransport::ok(404, &body))
+            .expect_err("encoded credential echo must fail");
+        assert!(matches!(error, GithubError::CommandFailed(_)));
+
+        let debug = format!("{error:?}");
+        let ipc = error.to_ipc_string();
+        for exposed in [
+            token,
+            encoded_token,
+            encoded_auth,
+            encoded_header,
+            "live secret%3D%5a",
+        ] {
+            assert!(
+                !debug.contains(exposed),
+                "debug leaked {exposed:?}: {debug}"
+            );
+            assert!(!ipc.contains(exposed), "IPC leaked {exposed:?}: {ipc}");
+        }
+        assert!(ipc.contains("https://***@gitlab.com/g/r"), "{ipc}");
+    }
+
+    #[test]
+    fn rest_error_redaction_keeps_categories_and_ignores_an_empty_token() {
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "gitlab.com", "glpat-live-secret");
+        assert!(matches!(
+            client.finish(
+                "merge",
+                MockTransport::ok(403, r#"{"message":"glpat-live-secret"}"#),
+            ),
+            Err(GithubError::PermissionDenied { operation: "merge" })
+        ));
+
+        let empty = RestClient::new(&http, "gitlab.com", "");
+        let response = empty.finish(
+            "detail",
+            MockTransport::ok(404, r#"{"message":"Bearer authentication failed"}"#),
+        );
+        assert_eq!(
+            response,
+            Err(GithubError::CommandFailed(
+                "Bearer authentication failed".to_string()
+            ))
+        );
     }
 }
