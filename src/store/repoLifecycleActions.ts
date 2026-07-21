@@ -27,13 +27,18 @@ import {
   beginMetadataRequest,
   beginPublishedRepoSession,
   beginRemotesRequest,
+  beginTabLifetime,
   beginWorktreeRequest,
   claimPrPrefetch,
   claimOpenIntent,
+  endTabLifetime,
+  ensureTabLifetime,
   markMetadataReadyForPr,
   markRemotesReadyForPr,
   openIntentIsCurrent,
   requestPrPrefetch,
+  tabLifetimeIsCurrent,
+  type TabLifetimeLease,
 } from "./repoRequests";
 import {
   persistRecents,
@@ -71,6 +76,33 @@ export function createRepoLifecycleActions(
       // Claim the latest open intent before doing anything that can await. A newer
       // pick supersedes this one even if our open resolves later (GL-20 review).
       const intent = claimOpenIntent();
+      const initialPaths = get().openPaths;
+      // Activating an existing tab owns that exact tab lifetime. Closing it
+      // while open_repo is pending invalidates this lease, so the completion
+      // cannot silently re-add the path. A genuinely new target has no tab
+      // lifetime until phase 2 publishes it; the global open intent still gives
+      // concurrent new opens their latest-pick ordering.
+      // Snapshot every initially-live path because open_repo can canonicalize a
+      // subdirectory/symlink pick to an already-open repository path. Once the
+      // canonical summary arrives we can then prove that exact tab survived the
+      // await, without coupling a genuinely new target to unrelated tabs.
+      const initialTabOwners = new Map(
+        initialPaths.map((openPath) => [openPath, ensureTabLifetime(openPath)]),
+      );
+      const targetOwner = initialTabOwners.get(path) ?? null;
+      // In-place switches additionally own the source tab. If the source closes
+      // while the destination is resolving, the operation no longer has a tab
+      // to replace and must stand down instead of appending the destination.
+      const replacementOwner = opts?.replaceTab
+        ? initialTabOwners.get(opts.replaceTab) ?? null
+        : null;
+      const tabOwnerIsCurrent = (owner: TabLifetimeLease | null) =>
+        owner === null ||
+        (tabLifetimeIsCurrent(owner) && get().openPaths.includes(owner.path));
+      const openOwnerIsCurrent = () =>
+        openIntentIsCurrent(intent) &&
+        tabOwnerIsCurrent(targetOwner) &&
+        tabOwnerIsCurrent(replacementOwner);
 
       // Phase 1 — open the repo. This is a cheap libgit2 metadata read and the only
       // step that can fail "this isn't a repo". Crucially it touches NO shared
@@ -85,20 +117,21 @@ export function createRepoLifecycleActions(
       } catch (e) {
         // Only surface the error if this is still the latest pick — a slow failed
         // open must not error over a repo the user has since switched to.
-        if (openIntentIsCurrent(intent)) {
+        if (openOwnerIsCurrent()) {
           // A vanished path gets the dedicated missing-repo state — tab click,
           // startup restore, and a recents open all funnel through here
           // (GL-108). Other failures keep the GL-20 behavior: error bar only,
           // the current repo untouched.
           const missing = isRepoOpenError(e) && e.kind !== "other" ? e.kind : null;
-          if (missing) await handleMissing(path, missing, () => openIntentIsCurrent(intent));
+          if (missing) await handleMissing(path, missing, openOwnerIsCurrent);
           else set({ error: errorText(e) });
         }
         return;
       }
       // A newer pick superseded us while we were opening → drop this stale open so
       // it can't publish over the repo the user landed on.
-      if (!openIntentIsCurrent(intent)) return;
+      const canonicalTargetOwner = initialTabOwners.get(summary.path) ?? null;
+      if (!openOwnerIsCurrent() || !tabOwnerIsCurrent(canonicalTargetOwner)) return;
 
       // Phase 2 — commit to the switch. Bump the generation (superseding any
       // in-flight graph request) and, in one atomic commit, publish the new summary,
@@ -116,12 +149,31 @@ export function createRepoLifecycleActions(
       let openPaths: string[];
       if (prevPaths.includes(summary.path)) {
         openPaths = prevPaths;
-      } else if (opts?.replaceTab && prevPaths.includes(opts.replaceTab)) {
+      } else if (
+        replacementOwner &&
+        opts?.replaceTab &&
+        prevPaths.includes(opts.replaceTab)
+      ) {
         openPaths = prevPaths.map((p) => (p === opts.replaceTab ? summary.path : p));
       } else {
         const at = groupedInsertIndex(prevPaths, get().tabInfoByPath, repoIdentityKey(summary));
         openPaths = [...prevPaths.slice(0, at), summary.path, ...prevPaths.slice(at)];
       }
+      const addedTarget = !prevPaths.includes(summary.path);
+      const replacedSource =
+        replacementOwner &&
+        opts?.replaceTab &&
+        opts.replaceTab !== summary.path &&
+        prevPaths.includes(opts.replaceTab) &&
+        !openPaths.includes(opts.replaceTab)
+          ? opts.replaceTab
+          : null;
+      // Rotate lifetimes before persistence/UI/watch side effects. Published
+      // repo-session guards take over after phase 2, so ending a replaced source
+      // cannot invalidate any of the destination's secondary reads.
+      if (replacedSource) endTabLifetime(replacedSource);
+      if (addedTarget) beginTabLifetime(summary.path);
+      else ensureTabLifetime(summary.path);
       const tabInfoByPath = pruneTabInfo(
         { ...get().tabInfoByPath, [summary.path]: tabInfoFromSummary(summary) },
         openPaths,
@@ -511,6 +563,11 @@ export function createRepoLifecycleActions(
         // the stale tab in place (keeping its position; a no-op for a recents
         // entry that has no tab) and drop the dead recents entry — the open
         // below records the new location as active.
+        const staleWasOpen = get().openPaths.includes(stalePath);
+        const targetWasOpen = get().openPaths.includes(probe.path);
+        if (staleWasOpen) endTabLifetime(stalePath);
+        if (targetWasOpen) ensureTabLifetime(probe.path);
+        else if (staleWasOpen) beginTabLifetime(probe.path);
         useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
         migrateIdentityBindings(stalePath, probe.path);
         // The dead path may still hold a watch from before it went missing;

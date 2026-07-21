@@ -8,7 +8,12 @@ import { arrayMove } from "@dnd-kit/helpers";
 import { api } from "@/lib/api";
 import { pruneTabInfo, tabInfoFromStatus } from "@/lib/tabs";
 import { usePulls } from "./pulls";
-import { beginPublishedRepoSession } from "./repoRequests";
+import {
+  beginPublishedRepoSession,
+  endTabLifetime,
+  ensureTabLifetime,
+  tabLifetimeIsCurrent,
+} from "./repoRequests";
 import {
   persistRecents,
   persistSession,
@@ -44,6 +49,10 @@ export function createRepoTabActions(
     // Close a repo tab. If it was the active one, switch to a neighbour, or fall
     // back to the welcome screen when none remain.
     closeRepo: async (path) => {
+      // Invalidate this exact tab before any await or persisted/UI mutation.
+      // A pending activation/label probe then cannot resurrect or publish into
+      // the same-path tab after it is closed and reopened.
+      endTabLifetime(path);
       const { openPaths, summary } = get();
       const remaining = openPaths.filter((p) => p !== path);
       // Every open tab holds a filesystem watch (GL-116); closing the tab is
@@ -72,7 +81,14 @@ export function createRepoTabActions(
         else useUi.getState().onRepoSwitched();
         return;
       }
-      const wasActive = summary?.path === path;
+      // During close-active → load-neighbour phase 1 the old summary is already
+      // cleared, but the persisted last path identifies the neighbour whose
+      // activation owns the empty shell. Closing that pending neighbour is an
+      // active close too: clear the last path and run the full welcome cleanup
+      // instead of persisting a now-closed path as active.
+      const wasActive =
+        summary?.path === path ||
+        (!summary && !get().missingRepo && readLastPath() === path);
       if (!wasActive) {
         // `summary` can legitimately be null here (a missing-repo tab is the
         // active one) — keep the persisted lastPath rather than wiping it.
@@ -257,6 +273,12 @@ export function createRepoTabActions(
               last =
                 openPaths.find((p) => byPath.get(p)?.exists) ?? openPaths[0] ?? null;
             }
+            // The probe positively retired these dead restored worktree tabs.
+            // End only their exact lifetimes before publishing the pruned strip;
+            // surviving paths keep their IDs and pending background probes.
+            for (const path of restored) {
+              if (!openPaths.includes(path)) endTabLifetime(path);
+            }
             persistSession(openPaths, last);
             persistTabInfo(tabInfoByPath);
             set({ openPaths, tabInfoByPath });
@@ -284,11 +306,15 @@ export function createRepoTabActions(
     // full data reload still happens on activation (loadRepo). Best-effort;
     // a probe failure keeps the last-known label.
     refreshTabInfo: async (path) => {
+      if (!get().openPaths.includes(path)) return;
+      const owner = ensureTabLifetime(path);
       try {
         const [status] = await api.recentsStatus([path]);
         if (!status?.exists) return;
-        // Re-check after the await: the tab may have closed while probing.
-        if (!get().openPaths.includes(path)) return;
+        // Re-check both membership and the exact lifetime after the await: a
+        // same-path close/reopen is a different tab even though `includes`
+        // alone would look unchanged.
+        if (!tabLifetimeIsCurrent(owner) || !get().openPaths.includes(path)) return;
         const tabInfoByPath = {
           ...get().tabInfoByPath,
           [path]: tabInfoFromStatus(status),

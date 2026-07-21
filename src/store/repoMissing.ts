@@ -9,8 +9,11 @@ import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
 import { trimTrailingSlash } from "@/lib/worktrees";
 import { usePulls } from "./pulls";
 import {
+  beginTabLifetime,
   beginGraphRequest,
   beginPublishedRepoSession,
+  endTabLifetime,
+  ensureTabLifetime,
 } from "./repoRequests";
 import { unwatchRepo } from "./repoWatchQueue";
 import {
@@ -70,9 +73,12 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // Supersede any in-flight graph request; dropping the summary below also
     // fails every summary-path guard, so nothing stale can publish after this.
     beginGraphRequest();
-    const openPaths = get().openPaths.includes(path)
+    const wasOpen = get().openPaths.includes(path);
+    const openPaths = wasOpen
       ? get().openPaths
       : [...get().openPaths, path];
+    if (wasOpen) ensureTabLifetime(path);
+    else beginTabLifetime(path);
     persistSession(openPaths, path);
     const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
     beginPublishedRepoSession();
@@ -133,6 +139,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
   const retireDeadWorktreeTab = (path: string) => {
     const remaining = get().openPaths.filter((p) => p !== path);
     if (remaining.length === get().openPaths.length) return; // already gone
+    endTabLifetime(path);
     const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
     const recents = get().recents.filter((r) => r.path !== path);
     // `summary` is the still-displayed repo here; keep it active (falling back
@@ -208,6 +215,11 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // state or reloading; let it publish. The dead worktree tab self-heals on
     // its next activation (the store's usual async-ownership model).
     if (!isCurrent()) return false;
+
+    // The ownership check above is the removed tab's final use. End its
+    // lifetime before changing persistence/store state so stale same-path
+    // activations and label probes cannot publish into a later reopen.
+    endTabLifetime(path);
 
     // Supersede any in-flight graph read for the dead worktree; clearing the
     // summary below also fails every summary-path guard, so nothing stale can

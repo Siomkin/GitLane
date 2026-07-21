@@ -28,6 +28,49 @@ export const openIntentIsCurrent = (intent: number): boolean =>
 // its summary/graph generation catch up — so this is what flips first.
 export const currentOpenIntent = (): number => openIntentGeneration;
 
+// Identity of each live repository tab. Unlike the global open intent, these
+// leases are path-scoped: closing an unrelated background tab must not cancel a
+// pending open, while closing and reopening the *same* path must give it a new
+// identity so an old activation/probe cannot publish into the replacement tab
+// (the same-path ABA case).
+//
+// The map contains live tabs only. Restored/pre-existing tabs are registered
+// lazily when an async action first needs a lease; genuinely new tabs call
+// beginTabLifetime in the same synchronous publication that adds the path, and
+// every removal/re-key calls endTabLifetime before mutating persisted/UI state.
+let nextTabLifetime = 0;
+const tabLifetimeByPath = new Map<string, number>();
+
+export interface TabLifetimeLease {
+  path: string;
+  lifetime: number;
+}
+
+/** Capture the lifetime of an existing live tab, registering it lazily. */
+export const ensureTabLifetime = (path: string): TabLifetimeLease => {
+  let lifetime = tabLifetimeByPath.get(path);
+  if (lifetime === undefined) {
+    lifetime = ++nextTabLifetime;
+    tabLifetimeByPath.set(path, lifetime);
+  }
+  return { path, lifetime };
+};
+
+/** Publish a fresh lifetime for a newly-added/re-keyed tab. */
+export const beginTabLifetime = (path: string): TabLifetimeLease => {
+  const lifetime = ++nextTabLifetime;
+  tabLifetimeByPath.set(path, lifetime);
+  return { path, lifetime };
+};
+
+/** End only this path's live tab lifetime. A future reopen gets a new ID. */
+export const endTabLifetime = (path: string): void => {
+  tabLifetimeByPath.delete(path);
+};
+
+export const tabLifetimeIsCurrent = (lease: TabLifetimeLease): boolean =>
+  tabLifetimeByPath.get(lease.path) === lease.lifetime;
+
 // Identity of the repository session that is actually published in the store.
 // Unlike openIntentGeneration this advances only beside the phase-2 summary
 // publication (or an active-summary clear), so a write started while a newer
