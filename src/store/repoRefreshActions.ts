@@ -6,9 +6,9 @@
 import { api } from "@/lib/api";
 import { tabInfoFromSummary } from "@/lib/tabs";
 import { useAccounts } from "./accounts";
-import { mergeOperationStatus } from "./operation";
 import { usePulls } from "./pulls";
 import { reconcileFileDiff } from "./repoFileDiff";
+import { reconcileGraphSelection } from "./repoGraphReconcile";
 import {
   flushPendingRefresh,
   graphRequestIsCurrent,
@@ -37,6 +37,7 @@ import {
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { persistTabInfo } from "./repoSession";
 import { probeDirtyWorktrees } from "./repoWorktreeDirty";
+import { reconcileWorktreeState } from "./repoWorktreeReconcile";
 import { useUi } from "./ui";
 import { GRAPH_PAGE_SIZE, type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
 
@@ -112,39 +113,23 @@ export function createRepoRefreshActions(
             api.operationStatus(summary.path).catch(() => null),
           ]);
           if (!worktreeRequestIsCurrent(get, worktreeOwner)) return false;
-          const selectedFile = get().selectedFile;
-          const selectedFileGone =
-            selectedFile &&
-            selectedFile.source !== "commit" &&
-            !changes.staged.some((file) => file.path === selectedFile.path) &&
-            !changes.unstaged.some((file) => file.path === selectedFile.path);
-          const noWip =
-            changes.staged.length === 0 &&
-            changes.unstaged.length === 0 &&
-            changes.conflicted.length === 0;
-          set({
+          const worktreeReconciliation = reconcileWorktreeState({
             changes,
-            // Fold in a fresh operation status; on a detection failure, only
-            // clear a stale `operation` when no conflicts remain in the worktree
-            // (they survive in `changes.conflicted`), so a transient failure
-            // mid-resolution doesn't yank the workspace out from under the user.
-            operation: opStatus
-              ? mergeOperationStatus(get().operation, opStatus)
-              : changes.conflicted.length === 0
-                ? null
-                : get().operation,
-            // A failed status read leaves the prior advisory untouched (avoid
-            // flickering the banner on a transient error).
-            operationAdvisory: opStatus ? opStatus.advisory || null : get().operationAdvisory,
+            opStatus,
+            operation: get().operation,
+            operationAdvisory: get().operationAdvisory,
+            selectedFile: get().selectedFile,
+            wipSelected: get().wipSelected,
+          });
+          set({
+            ...worktreeReconciliation.patch,
             // Only clear the spinner if this call owned it (non-quiet). The quiet
             // watcher path never set it, so it must not clear a concurrent load's.
             ...(opts?.quiet ? {} : { loading: false }),
-            ...(selectedFileGone ? { selectedFile: null, fileDiff: null } : {}),
-            ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
           });
           // The changes view has nothing to show over a clean tree — the ui
           // store falls back to the graph when it was the active view.
-          if (noWip) useUi.getState().onWorkingTreeClean();
+          if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
           // A working-tree comparison (head: null) reflects the live tree, so a
           // worktree-scope event (edit/stage/terminal commit) must refresh it.
           // Ref-to-ref comparisons are pinned to commits and don't change here.
@@ -153,7 +138,9 @@ export function createRepoRefreshActions(
           // viewer (`fileDiff`) is a separate slice `refresh` doesn't touch — so
           // an external edit to it would stay stale until re-click. Refetch it
           // quietly; skip when it was just cleared as gone (GL-123).
-          if (!selectedFileGone) void reconcileFileDiff(set, get, summary.path);
+          if (!worktreeReconciliation.selectedFileGone) {
+            void reconcileFileDiff(set, get, summary.path);
+          }
           // The Files-tab listing mirrors the worktree; reload it (quietly, the
           // old list stays visible) once it has been loaded at least once.
           if (get().repoFiles) void get().loadRepoFiles();
@@ -315,34 +302,18 @@ export function createRepoRefreshActions(
           worktreeRequestIsCurrent(get, worktreeOwner);
         const remotesCurrent =
           remotesOwner !== null && remotesRequestIsCurrent(get, remotesOwner);
-        const selectedWorkingFile = get().selectedFile;
-        const selectedFileGone =
-          selectedWorkingFile &&
-          selectedWorkingFile.source !== "commit" &&
-          !changes.staged.some((file) => file.path === selectedWorkingFile.path) &&
-          !changes.unstaged.some((file) => file.path === selectedWorkingFile.path);
-        const noWip =
-          changes.staged.length === 0 &&
-          changes.unstaged.length === 0 &&
-          changes.conflicted.length === 0;
+        const worktreeReconciliation = reconcileWorktreeState({
+          changes,
+          opStatus,
+          operation: get().operation,
+          operationAdvisory: get().operationAdvisory,
+          selectedFile: get().selectedFile,
+          wipSelected: get().wipSelected,
+        });
         const secondaryPatch = {
           ...(metadataCurrent ? { forge, branches, worktrees, stashes } : {}),
           ...(remotesCurrent ? { remotes } : {}),
-          ...(worktreeCurrent
-            ? {
-                changes,
-                operation: opStatus
-                  ? mergeOperationStatus(get().operation, opStatus)
-                  : changes.conflicted.length === 0
-                    ? null
-                    : get().operation,
-                operationAdvisory: opStatus
-                  ? opStatus.advisory || null
-                  : get().operationAdvisory,
-                ...(selectedFileGone ? { selectedFile: null, fileDiff: null } : {}),
-                ...(get().wipSelected && noWip ? { wipSelected: false } : {}),
-              }
-            : {}),
+          ...(worktreeCurrent ? worktreeReconciliation.patch : {}),
         };
         const metadataFailureCurrent =
           ownsMetadataFailure &&
@@ -376,8 +347,10 @@ export function createRepoRefreshActions(
             changesResult.status === "fulfilled" &&
             worktreeRequestIsCurrent(get, worktreeOwner)
           ) {
-            if (noWip) useUi.getState().onWorkingTreeClean();
-            if (!selectedFileGone) void reconcileFileDiff(set, get, summary.path);
+            if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
+            if (!worktreeReconciliation.selectedFileGone) {
+              void reconcileFileDiff(set, get, summary.path);
+            }
             if (get().compare?.head === null) void get().refreshCompare();
             if (get().repoFiles) void get().loadRepoFiles();
             if (get().fileView) void get().reloadFileView();
@@ -410,88 +383,20 @@ export function createRepoRefreshActions(
           );
         }
         const graph = graphResult.value;
-        // Trim the multi-selection to ids that still exist after the refresh —
-        // e.g. a reset/rebase can drop the selected commits. Anchor stays if it
-        // survives; otherwise it tracks the new focus commit.
-        const liveIds = new Set(graph.commits.map((c) => c.id));
         const liveSelection = {
           requestId: get().fileSelectionRequestId,
           selectedCommit: get().selectedCommit,
           selectedCommits: get().selectedCommits,
+          selectionAnchor: get().selectionAnchor,
+          selectionDiff: get().selectionDiff,
+          selectedFile: get().selectedFile,
         };
-        const selectionOwnerCurrent =
-          repoSessionIsCurrent(get, summary.path, session) &&
-          liveSelection.requestId === selectionOwner.requestId &&
-          liveSelection.selectedCommit === selectionOwner.selectedCommit &&
-          liveSelection.selectedCommits === selectionOwner.selectedCommits;
-        const liveFocusSurvives =
-          liveSelection.selectedCommit !== null && liveIds.has(liveSelection.selectedCommit);
-        const liveSelectionSetSurvives = liveSelection.selectedCommits.every((id) =>
-          liveIds.has(id),
-        );
-        // A newer foreground selection that is valid in the authoritative graph
-        // owns its focus/files wholesale. An invalid/removed focus must still be
-        // reconciled to the graph tip so the inspector cannot point outside it.
-        const preserveNewerSelection =
-          !selectionOwnerCurrent && liveFocusSurvives && liveSelectionSetSurvives;
-        const selectedCommit = liveFocusSurvives
-          ? liveSelection.selectedCommit
-          : graph.commits.find((commit) => !commit.stash)?.id ?? null;
-        const previousSelectedCommits = liveSelection.selectedCommits;
-        const prevMulti = previousSelectedCommits.filter((id) => liveIds.has(id));
-        const nextSelectedCommits =
-          prevMulti.length > 0
-            ? Array.from(new Set(selectedCommit ? [selectedCommit, ...prevMulti] : prevMulti))
-            : selectedCommit
-              ? [selectedCommit]
-              : [];
-        // Preserve reference identity when refresh reconciliation did not alter
-        // the selected commit set. Refresh may put the focus first in its
-        // candidate order, but that is not a user selection change. Batch writes use that identity as their
-        // selection-owner token, so a deliberate A -> B -> A cycle (new array,
-        // same values) cannot be mistaken for an untouched selection.
-        const selectedCommits =
-          previousSelectedCommits.length === nextSelectedCommits.length &&
-          previousSelectedCommits.every((id) => nextSelectedCommits.includes(id))
-            ? previousSelectedCommits
-            : nextSelectedCommits;
-        const selectionAnchor =
-          get().selectionAnchor && liveIds.has(get().selectionAnchor!)
-            ? get().selectionAnchor
-            : selectedCommit;
-        // Reconcile the merged-selection union with the (possibly trimmed)
-        // selection: an unchanged commit *set* keeps its files (immutable by
-        // oid); a changed set is reloaded; a collapse to ≤1 commit drops it.
-        const prevDiff = get().selectionDiff;
-        const multiNow = selectedCommits.length > 1;
-        const sameSet =
-          multiNow &&
-          !!prevDiff &&
-          prevDiff.commits.length === selectedCommits.length &&
-          selectedCommits.every((id) => prevDiff.commits.includes(id));
-        // Reuse the cached union only when the set is unchanged *and* it
-        // succeeded — a stored error (or an in-flight load that errored) must be
-        // retried on refresh, not carried forward until the user re-selects.
-        const reuseUnion = sameSet && !prevDiff!.error;
-        const selectionDiff = !multiNow
-          ? null
-          : reuseUnion
-            ? // Same commit *set*: keep the files (immutable by oid) but adopt the
-              // refreshed order so `selectionDiff.commits` can't drift from
-              // `selectedCommits`.
-              { ...prevDiff!, commits: selectedCommits }
-            : { commits: selectedCommits, files: [], loading: true, error: null };
-        const fellBackSelection = liveSelection.selectedCommit !== selectedCommit;
-        const selectionSetChanged = selectedCommits !== previousSelectedCommits;
-        const selectionChanged = fellBackSelection || selectionSetChanged;
-        const publishedSelectionRequestId = selectionChanged
-          ? liveSelection.requestId + 1
-          : liveSelection.requestId;
-        const selectionCommitToLoad =
-          !preserveNewerSelection && selectionChanged && selectedCommits.length <= 1
-            ? selectedCommit
-            : null;
-        const publishSelection = !preserveNewerSelection;
+        const selectionReconciliation = reconcileGraphSelection({
+          graph,
+          selectionOwner,
+          liveSelection,
+          repoSessionCurrent: repoSessionIsCurrent(get, summary.path, session),
+        });
         set({
           summary: nextSummary,
           // Keep the active tab's label truthful — a checkout (in-app or
@@ -503,24 +408,7 @@ export function createRepoRefreshActions(
           },
           graph,
           ...secondaryPatch,
-          ...(publishSelection
-            ? {
-                ...(selectionChanged
-                  ? {
-                      fileSelectionRequestId: publishedSelectionRequestId,
-                      commitFiles: [],
-                      diffLoading: selectionCommitToLoad !== null,
-                      ...(get().selectedFile?.source === "commit"
-                        ? { selectedFile: null, fileDiff: null }
-                        : {}),
-                    }
-                  : {}),
-                selectedCommit,
-                selectedCommits,
-                selectionAnchor,
-                selectionDiff,
-              }
-            : {}),
+          ...selectionReconciliation.patch,
           ...(opts?.quiet ? {} : { loading: false }),
           // A refresh can supersede the initial open's graph request (e.g. a
           // checkout from the navigator while the skeleton is still up). When it
@@ -543,13 +431,24 @@ export function createRepoRefreshActions(
         // The union needs (re)loading whenever we didn't reuse a healthy cached
         // one — set changed, or a prior error to retry. Fire-and-forget so it
         // doesn't delay the queue.
-        if (publishSelection && multiNow && !reuseUnion) {
-          void loadSelectionUnion(set, get, nextSummary.path, selectedCommits);
+        if (
+          selectionReconciliation.publishSelection &&
+          selectionReconciliation.multiNow &&
+          !selectionReconciliation.reuseUnion
+        ) {
+          void loadSelectionUnion(
+            set,
+            get,
+            nextSummary.path,
+            selectionReconciliation.selectedCommits,
+          );
         }
-        if (selectionCommitToLoad) {
+        if (selectionReconciliation.selectionCommitToLoad) {
+          const selectionCommitToLoad = selectionReconciliation.selectionCommitToLoad;
           const fallbackIsCurrent = () =>
             repoSessionIsCurrent(get, nextSummary.path, session) &&
-            get().fileSelectionRequestId === publishedSelectionRequestId &&
+            get().fileSelectionRequestId ===
+              selectionReconciliation.publishedSelectionRequestId &&
             get().selectedCommit === selectionCommitToLoad;
           void api
             .commitFiles(nextSummary.path, selectionCommitToLoad)
