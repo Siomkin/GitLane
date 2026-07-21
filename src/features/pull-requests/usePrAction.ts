@@ -22,13 +22,19 @@ export type PrActionKey = (typeof PR_ACTION_KEY)[keyof typeof PR_ACTION_KEY];
 export function useRunPrAction() {
   const showToast = useUi((s) => s.showToast);
   return useCallback(
-    async (run: () => Promise<string>, okMessage?: string): Promise<boolean> => {
+    async (
+      run: () => Promise<string>,
+      okMessage?: string,
+      ownsResult: () => boolean = () => true,
+    ): Promise<boolean> => {
       try {
         const out = await run();
+        if (!ownsResult()) return false;
         const firstLine = out.split("\n").find((l) => l.trim().length > 0);
         showToast(okMessage ?? firstLine ?? "Done", "ok");
         return true;
       } catch (e) {
+        if (!ownsResult()) return false;
         showToast(String(e), "error");
         return false;
       }

@@ -29,6 +29,7 @@ export function CreatePrDialog() {
 
 function CreatePrDialogBody() {
   const close = useUi((s) => s.closeCreatePr);
+  const dialogGeneration = useUi((s) => s.createPrGeneration);
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
   const createPr = usePulls((s) => s.createPr);
@@ -47,23 +48,35 @@ function CreatePrDialogBody() {
   const [draft, setDraft] = useState(false);
   const locals = branches.filter((b) => b.kind === BranchKind.Local).map((b) => b.name);
   const canSubmit = !!title.trim() && !!base && !!head && base !== head;
+  const closeCurrent = () => close(dialogGeneration);
 
   const submit = async () => {
     if (!canSubmit || pending) return;
+    const repoPath = summary?.path;
+    const ownsResult = () => {
+      const ui = useUi.getState();
+      return (
+        !!repoPath &&
+        useRepo.getState().summary?.path === repoPath &&
+        ui.createPrOpen &&
+        ui.createPrGeneration === dialogGeneration
+      );
+    };
     const ok = await run(
       () => createPr(base, head, title.trim(), body, draft),
       `Opened PR from ${head} → ${base}`,
+      ownsResult,
     );
     if (ok) {
       // gh prints the new PR URL; offer to open it, then close.
-      close();
+      close(dialogGeneration);
     }
   };
 
   return (
     <div
       className="fixed inset-0 z-[60] grid place-items-center bg-black/30 backdrop-blur-sm"
-      onClick={close}
+      onClick={closeCurrent}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -96,7 +109,7 @@ function CreatePrDialogBody() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Escape") close();
+            if (e.key === "Escape") closeCurrent();
           }}
           placeholder="Title"
           className="mt-4 w-full rounded-lg border border-black/10 bg-transparent px-3 py-2.5 text-[13.5px] text-neutral-800 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
@@ -121,7 +134,7 @@ function CreatePrDialogBody() {
           </label>
           <div className="flex gap-2">
             <button type="button"
-              onClick={close}
+              onClick={closeCurrent}
               className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
             >
               Cancel

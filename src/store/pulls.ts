@@ -20,6 +20,10 @@ import { detailToPr, summaryToPr, uiCommits, type PullRequest } from "@/lib/prs"
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import {
+  currentPublishedRepoSession,
+  publishedRepoSessionIsCurrent,
+} from "./repoRequests";
+import {
   bumpResourceVersions,
   hasNumericKeys,
   knownPrNums,
@@ -743,11 +747,26 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   createPr: async (base, head, title, body, draft) => {
+    const summary = useRepo.getState().summary;
+    if (!summary) throw new Error("No repository");
+    const owner = {
+      path: summary.path,
+      session: currentPublishedRepoSession(),
+    };
     const out = await runPrAction(
       (path, account) => api.createPullRequest(path, base, head, title, body, draft, account),
       { action: PR_PENDING_ACTION.Create, prNum: null },
     );
-    await get().loadPullRequests(true);
+    // The write itself is pinned by runPrAction. Its follow-up list reload must
+    // be pinned separately: after a switch, loading "the current repo" here
+    // would let repo A's completion clear/refetch repo B's PR state. The
+    // published session also closes the same-path close/reopen ABA case.
+    if (
+      publishedRepoSessionIsCurrent(owner.session) &&
+      useRepo.getState().summary?.path === owner.path
+    ) {
+      await get().loadPullRequests(true);
+    }
     return out;
   },
 }));
