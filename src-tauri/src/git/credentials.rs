@@ -326,6 +326,9 @@ fn create_credential_command_scope() -> Result<CredentialCommandScope, String> {
             "gitlane-credential-command-{}-{nonce}",
             std::process::id()
         ));
+        // `mode` is the only mutation and it is unix-only, so on other targets
+        // the binding is never mutated (`create` takes `&self`).
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         builder.mode(0o700);
