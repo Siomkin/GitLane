@@ -110,18 +110,31 @@ pub fn run_glab_with_limit(
 }
 
 fn finish_glab_output(output: BoundedOutput) -> Result<String, String> {
-    finish_glab_bytes(output.status.success(), &output.stdout, &output.stderr)
+    finish_glab_bytes(
+        output.status.success(),
+        &output.stdout,
+        &output.stderr,
+        output.stderr_truncated,
+    )
 }
 
-fn finish_glab_bytes(success: bool, stdout: &[u8], stderr: &[u8]) -> Result<String, String> {
+fn finish_glab_bytes(
+    success: bool,
+    stdout: &[u8],
+    stderr: &[u8],
+    stderr_truncated: bool,
+) -> Result<String, String> {
     if success {
         Ok(String::from_utf8_lossy(stdout).to_string())
     } else {
         let stdout = String::from_utf8_lossy(stdout);
         let stderr = String::from_utf8_lossy(stderr);
-        Err(crate::redact::redact_secrets(
-            format!("{stdout}{stderr}").trim(),
-        ))
+        let mut combined = format!("{stdout}{stderr}").trim().to_string();
+        // Say so rather than passing a clipped tail off as glab's whole message.
+        if stderr_truncated {
+            combined.push_str(&bounded_output::stderr_truncated_notice());
+        }
+        Err(crate::redact::redact_secrets(&combined))
     }
 }
 
@@ -435,7 +448,7 @@ mod tests {
     #[test]
     fn bounded_glab_finish_preserves_lossy_and_stream_order_semantics() {
         assert_eq!(
-            finish_glab_bytes(true, b"ok\xff", b"ignored stderr").unwrap(),
+            finish_glab_bytes(true, b"ok\xff", b"ignored stderr", false).unwrap(),
             "ok\u{fffd}"
         );
 
@@ -443,11 +456,26 @@ mod tests {
             false,
             b" stdout first\n",
             b"stderr https://alice:secret@example.test/repo\xff \n",
+            false,
         )
         .unwrap_err();
         assert_eq!(
             error,
             "stdout first\nstderr https://alice:***@example.test/repo\u{fffd}"
+        );
+    }
+
+    #[test]
+    fn truncated_glab_diagnostics_are_disclosed_but_never_shown_on_success() {
+        assert_eq!(
+            finish_glab_bytes(true, b"payload", b"clipped trace", true).unwrap(),
+            "payload"
+        );
+
+        let error = finish_glab_bytes(false, b"", b"partial trace", true).unwrap_err();
+        assert_eq!(
+            error,
+            format!("partial trace{}", bounded_output::stderr_truncated_notice())
         );
     }
 

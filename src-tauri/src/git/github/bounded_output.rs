@@ -3,12 +3,22 @@
 //! Reading one pipe to completion before the other can deadlock when a child
 //! fills the unattended pipe. Provider CLIs also return remote-controlled JSON
 //! and patch text, so `Command::output`'s unbounded buffers are not appropriate
-//! at this boundary. This module drains both streams concurrently, never retains
-//! more than the configured limits, and kills then reaps the direct child if
-//! either reader cannot produce a complete bounded result. It deliberately does
-//! not manage a process tree: a descendant that inherits a pipe handle can delay
-//! reader EOF after the direct child exits. Provider CLIs are expected not to
-//! leave such descendants behind.
+//! at this boundary. This module drains both streams concurrently and never
+//! retains more than the configured limits.
+//!
+//! The two streams overflow differently because they mean different things.
+//! stdout is the payload a parser consumes, so a truncated body must never be
+//! returned: overflow kills and reaps the child and discards the partial
+//! output. stderr is diagnostics — dropped entirely on success, quoted only in
+//! a failure message — so overflow keeps the bounded prefix and lets the child
+//! finish normally. A chatty-but-successful CLI (`GH_DEBUG=api` alone can
+//! exceed the stderr limit) must not fail an operation whose stdout arrived
+//! complete. [`STDERR_DRAIN_CEILING`] still bounds how much excess is drained
+//! before the stream counts as a runaway and fails like stdout does.
+//!
+//! It deliberately does not manage a process tree: a descendant that inherits a
+//! pipe handle can delay reader EOF after the direct child exits. Provider CLIs
+//! are expected not to leave such descendants behind.
 
 use std::fmt;
 use std::io::{self, Read};
@@ -21,6 +31,12 @@ pub(super) const DEFAULT_STDOUT_LIMIT: usize = 4 * 1024 * 1024;
 pub(super) const DIFF_STDOUT_LIMIT: usize = 32 * 1024 * 1024;
 pub(super) const STDERR_LIMIT: usize = 1024 * 1024;
 
+/// How much excess stderr is discarded before the stream is treated as a
+/// runaway rather than a verbose one. Generous enough that no real CLI trace
+/// reaches it, low enough that a child which never stops writing is still
+/// killed instead of draining forever.
+const STDERR_DRAIN_CEILING: usize = 64 * 1024 * 1024;
+
 const READ_CHUNK: usize = 16 * 1024;
 const INITIAL_CAPACITY: usize = 64 * 1024;
 
@@ -29,6 +45,15 @@ pub(super) struct BoundedOutput {
     pub(super) status: ExitStatus,
     pub(super) stdout: Vec<u8>,
     pub(super) stderr: Vec<u8>,
+    /// True when diagnostics were cut at [`STDERR_LIMIT`]. Only meaningful on a
+    /// failure, where stderr becomes part of the message the user sees.
+    pub(super) stderr_truncated: bool,
+}
+
+/// Appended to a failure message whose diagnostics were cut short, so a partial
+/// tail is never mistaken for the CLI's complete output.
+pub(super) fn stderr_truncated_notice() -> String {
+    format!("\n… diagnostic output truncated at {STDERR_LIMIT} bytes.")
 }
 
 #[derive(Debug)]
@@ -84,7 +109,25 @@ enum ReaderError {
     Panicked,
 }
 
-type ReaderResult = Result<Vec<u8>, ReaderError>;
+/// What a stream does once it has filled its limit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Overflow {
+    /// The stream carries the payload: fail so no parser ever sees a truncated
+    /// body, and let the parent kill the child.
+    Fail,
+    /// The stream carries diagnostics: keep the bounded prefix and let the
+    /// child finish, escalating to [`Overflow::Fail`] only if the discarded
+    /// excess itself passes `ceiling`.
+    Truncate { ceiling: usize },
+}
+
+#[derive(Debug)]
+struct ReaderOutput {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+type ReaderResult = Result<ReaderOutput, ReaderError>;
 
 /// Spawn `command`, drain both pipes concurrently, and return only complete
 /// output within both limits. Every successfully spawned child is waited on.
@@ -117,42 +160,53 @@ pub(super) fn capture(
     };
 
     let (tx, rx) = mpsc::channel();
-    let stdout_thread = match spawn_reader("stdout", stdout, stdout_limit, tx.clone()) {
-        Ok(handle) => handle,
-        Err(source) => {
-            drop(stderr);
-            abort_and_reap(&mut child);
-            return Err(CaptureError::ReaderStart {
-                stream: "stdout",
-                source,
-            });
-        }
+    let stdout_thread =
+        match spawn_reader("stdout", stdout, stdout_limit, Overflow::Fail, tx.clone()) {
+            Ok(handle) => handle,
+            Err(source) => {
+                drop(stderr);
+                abort_and_reap(&mut child);
+                return Err(CaptureError::ReaderStart {
+                    stream: "stdout",
+                    source,
+                });
+            }
+        };
+    let stderr_overflow = Overflow::Truncate {
+        ceiling: STDERR_DRAIN_CEILING,
     };
-    let stderr_thread = match spawn_reader("stderr", stderr, stderr_limit, tx.clone()) {
-        Ok(handle) => handle,
-        Err(source) => {
-            abort_and_reap(&mut child);
-            let _ = stdout_thread.join();
-            return Err(CaptureError::ReaderStart {
-                stream: "stderr",
-                source,
-            });
-        }
-    };
+    let stderr_thread =
+        match spawn_reader("stderr", stderr, stderr_limit, stderr_overflow, tx.clone()) {
+            Ok(handle) => handle,
+            Err(source) => {
+                abort_and_reap(&mut child);
+                let _ = stdout_thread.join();
+                return Err(CaptureError::ReaderStart {
+                    stream: "stderr",
+                    source,
+                });
+            }
+        };
     drop(tx);
 
     let mut stdout_bytes = None;
     let mut stderr_bytes = None;
+    let mut stderr_truncated = false;
     let mut first_error = None;
     let mut received = 0;
     let mut wait_result = None;
     while received < 2 {
         match rx.recv() {
-            Ok((stream, Ok(bytes))) => {
+            Ok((stream, Ok(output))) => {
                 received += 1;
                 match stream {
-                    "stdout" => stdout_bytes = Some(bytes),
-                    "stderr" => stderr_bytes = Some(bytes),
+                    // stdout runs Overflow::Fail, so a successful read is always
+                    // complete and its `truncated` flag cannot be set.
+                    "stdout" => stdout_bytes = Some(output.bytes),
+                    "stderr" => {
+                        stderr_truncated = output.truncated;
+                        stderr_bytes = Some(output.bytes);
+                    }
                     _ => unreachable!("reader stream names are fixed"),
                 }
             }
@@ -196,7 +250,8 @@ pub(super) fn capture(
     Ok(BoundedOutput {
         status,
         stdout: stdout_bytes.expect("successful stdout reader sent its complete output"),
-        stderr: stderr_bytes.expect("successful stderr reader sent its complete output"),
+        stderr: stderr_bytes.expect("successful stderr reader sent its bounded output"),
+        stderr_truncated,
     })
 }
 
@@ -204,6 +259,7 @@ fn spawn_reader<R: Read + Send + 'static>(
     stream: &'static str,
     reader: R,
     limit: usize,
+    overflow: Overflow,
     tx: mpsc::Sender<(&'static str, ReaderResult)>,
 ) -> io::Result<JoinHandle<()>> {
     thread::Builder::new()
@@ -211,7 +267,7 @@ fn spawn_reader<R: Read + Send + 'static>(
         .spawn(move || {
             let mut reported = false;
             let unwind = panic::catch_unwind(AssertUnwindSafe(|| {
-                read_and_report(reader, limit, |result| {
+                read_and_report(reader, limit, overflow, |result| {
                     reported = true;
                     let _ = tx.send((stream, result));
                 });
@@ -222,11 +278,28 @@ fn spawn_reader<R: Read + Send + 'static>(
         })
 }
 
-/// Report overflow as soon as the first excess byte arrives, then keep the pipe
-/// draining without retaining more data. The parent kills and waits immediately
-/// on that report; continuing to read until EOF prevents a full pipe from
-/// blocking process teardown in the meantime.
-fn read_and_report(mut reader: impl Read, limit: usize, report: impl FnOnce(ReaderResult)) {
+/// Read at most `limit` bytes, then apply `overflow`.
+///
+/// Under [`Overflow::Fail`], report as soon as the first excess byte arrives and
+/// keep the pipe draining without retaining more data: the parent kills and
+/// waits immediately on that report, and continuing to read until EOF prevents a
+/// full pipe from blocking process teardown in the meantime.
+///
+/// Under [`Overflow::Truncate`], drain the excess first and report the bounded
+/// prefix only once the stream has actually ended, so a reported `Ok` always
+/// means EOF was observed. Excess past the ceiling escalates to the fail path.
+fn read_and_report(
+    mut reader: impl Read,
+    limit: usize,
+    overflow: Overflow,
+    report: impl FnOnce(ReaderResult),
+) {
+    let complete = |bytes| {
+        Ok(ReaderOutput {
+            bytes,
+            truncated: false,
+        })
+    };
     let mut output = Vec::new();
     if output
         .try_reserve_exact(limit.min(INITIAL_CAPACITY))
@@ -242,11 +315,27 @@ fn read_and_report(mut reader: impl Read, limit: usize, report: impl FnOnce(Read
         let remaining = limit - output.len();
         if remaining == 0 {
             match reader.read(&mut chunk) {
-                Ok(0) => report(Ok(output)),
-                Ok(_) => {
-                    report(Err(ReaderError::TooLarge));
-                    drain_to_eof(&mut reader);
-                }
+                Ok(0) => report(complete(output)),
+                Ok(read) => match overflow {
+                    Overflow::Fail => {
+                        report(Err(ReaderError::TooLarge));
+                        drain_to_eof(&mut reader);
+                    }
+                    // Those `read` bytes are already discarded, so they count
+                    // against the ceiling the rest of the drain gets — and a
+                    // single oversized read can exhaust it on its own.
+                    Overflow::Truncate { ceiling } => {
+                        if read <= ceiling && drain_to_eof_within(&mut reader, ceiling - read) {
+                            report(Ok(ReaderOutput {
+                                bytes: output,
+                                truncated: true,
+                            }));
+                        } else {
+                            report(Err(ReaderError::TooLarge));
+                            drain_to_eof(&mut reader);
+                        }
+                    }
+                },
                 Err(source) => report(Err(ReaderError::Read(source))),
             }
             return;
@@ -261,7 +350,7 @@ fn read_and_report(mut reader: impl Read, limit: usize, report: impl FnOnce(Read
             }
         };
         if read == 0 {
-            report(Ok(output));
+            report(complete(output));
             return;
         }
         if output.try_reserve_exact(read).is_err() {
@@ -279,6 +368,21 @@ fn drain_to_eof(reader: &mut impl Read) {
         match reader.read(&mut discard) {
             Ok(0) | Err(_) => return,
             Ok(_) => {}
+        }
+    }
+}
+
+/// Discard the rest of `reader`, allowing `budget` further bytes. Returns
+/// `true` when the stream ended (or errored) inside that allowance and `false`
+/// when it kept producing past it — the caller's cue to treat it as a runaway.
+fn drain_to_eof_within(reader: &mut impl Read, budget: usize) -> bool {
+    let mut discard = [0u8; READ_CHUNK];
+    let mut remaining = budget;
+    loop {
+        match reader.read(&mut discard) {
+            Ok(0) | Err(_) => return true,
+            Ok(read) if read > remaining => return false,
+            Ok(read) => remaining -= read,
         }
     }
 }
@@ -492,16 +596,115 @@ mod tests {
     }
 
     #[test]
-    fn enforces_the_stderr_cap() {
+    fn oversized_stderr_truncates_instead_of_failing_a_successful_call() {
+        // stderr is discarded on success, so overflowing a stream nobody reads
+        // must not fail an operation whose stdout arrived complete — a verbose
+        // CLI (`GH_DEBUG=api`) would otherwise break every provider call.
+        let prefix = child_stdout_prefix();
         let limit = 2048;
-        let error = capture(&mut fake_command("stderr", limit + 1), 4096, limit).unwrap_err();
-        assert!(matches!(
-            error,
-            CaptureError::TooLarge {
-                stream: "stderr",
-                limit: 2048
+        let output = capture(
+            &mut fake_command("stderr", limit + 1),
+            prefix.len().max(1),
+            limit,
+        )
+        .unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout, prefix);
+        assert_eq!(output.stderr, vec![b'e'; limit]);
+        assert!(output.stderr_truncated);
+    }
+
+    #[test]
+    fn exact_stderr_limit_is_not_reported_as_truncated() {
+        let limit = 2048;
+        let output = capture(&mut fake_command("stderr", limit), 4096, limit).unwrap();
+        assert_eq!(output.stderr, vec![b'e'; limit]);
+        assert!(!output.stderr_truncated);
+    }
+
+    #[test]
+    fn truncating_overflow_keeps_the_prefix_and_reports_truncation() {
+        let mut result = None;
+        read_and_report(
+            &b"0123456789"[..],
+            4,
+            Overflow::Truncate { ceiling: 1024 },
+            |value| result = Some(value),
+        );
+        let output = result.expect("reader reports once").expect("not an error");
+        assert_eq!(output.bytes, b"0123");
+        assert!(output.truncated);
+    }
+
+    #[test]
+    fn truncating_overflow_escalates_past_the_drain_ceiling() {
+        // A stream that keeps producing long after its limit is a runaway, not a
+        // verbose one: it must still fail so the parent kills the child rather
+        // than draining forever. The excess can arrive in one large read or many
+        // small ones — neither may slip past the ceiling.
+        for excess in [&vec![b'e'; 4096][..], &vec![b'e'; 20][..]] {
+            let mut result = None;
+            let mut source = Vec::from(b"0123".as_slice());
+            source.extend_from_slice(excess);
+            read_and_report(
+                DripFeed::new(&source, 8),
+                4,
+                Overflow::Truncate { ceiling: 8 },
+                |value| result = Some(value),
+            );
+            assert!(
+                matches!(result, Some(Err(ReaderError::TooLarge))),
+                "{} excess bytes must escalate",
+                excess.len()
+            );
+        }
+
+        let mut single_read = None;
+        read_and_report(
+            &vec![b'e'; 4096][..],
+            4,
+            Overflow::Truncate { ceiling: 8 },
+            |value| single_read = Some(value),
+        );
+        assert!(matches!(single_read, Some(Err(ReaderError::TooLarge))));
+    }
+
+    /// A reader that hands back at most `chunk` bytes per call, so drain
+    /// accounting is exercised across many reads rather than one slice copy.
+    struct DripFeed {
+        data: Vec<u8>,
+        cursor: usize,
+        chunk: usize,
+    }
+
+    impl DripFeed {
+        fn new(data: &[u8], chunk: usize) -> Self {
+            Self {
+                data: data.to_vec(),
+                cursor: 0,
+                chunk,
             }
-        ));
+        }
+    }
+
+    impl Read for DripFeed {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let take = self
+                .chunk
+                .min(buffer.len())
+                .min(self.data.len() - self.cursor);
+            buffer[..take].copy_from_slice(&self.data[self.cursor..self.cursor + take]);
+            self.cursor += take;
+            Ok(take)
+        }
+    }
+
+    #[test]
+    fn drain_ceiling_counts_bytes_rather_than_reads() {
+        assert!(drain_to_eof_within(&mut &b"12345678"[..], 8));
+        assert!(!drain_to_eof_within(&mut &b"123456789"[..], 8));
+        assert!(drain_to_eof_within(&mut &b""[..], 0));
     }
 
     #[test]
@@ -541,9 +744,14 @@ mod tests {
     #[test]
     fn reader_failure_returns_no_partial_bytes() {
         let mut result = None;
-        read_and_report(FailsAfterPartialRead(false), 1024, |reported| {
-            result = Some(reported);
-        });
+        read_and_report(
+            FailsAfterPartialRead(false),
+            1024,
+            Overflow::Fail,
+            |reported| {
+                result = Some(reported);
+            },
+        );
         assert!(matches!(
             result,
             Some(Err(ReaderError::Read(source)))
@@ -563,7 +771,7 @@ mod tests {
     fn reader_panic_is_reported_while_a_sibling_sender_stays_alive() {
         let (tx, rx) = mpsc::channel();
         let sibling_sender = tx.clone();
-        let handle = spawn_reader("stdout", PanicsOnRead, 1024, tx).unwrap();
+        let handle = spawn_reader("stdout", PanicsOnRead, 1024, Overflow::Fail, tx).unwrap();
 
         let (stream, result) = rx
             .recv_timeout(Duration::from_secs(1))
@@ -594,7 +802,8 @@ mod tests {
     #[test]
     fn panic_after_overflow_does_not_report_twice() {
         let (tx, rx) = mpsc::channel();
-        let handle = spawn_reader("stdout", OverflowsThenPanics(false), 0, tx).unwrap();
+        let handle =
+            spawn_reader("stdout", OverflowsThenPanics(false), 0, Overflow::Fail, tx).unwrap();
 
         let (_, first) = rx.recv_timeout(Duration::from_secs(1)).unwrap();
         assert!(matches!(first, Err(ReaderError::TooLarge)));
