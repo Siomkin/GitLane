@@ -1,14 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, HistorySearchPage, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { AdvancedHistorySearch } from "./AdvancedHistorySearch";
+import { AdvancedHistorySearch } from "./index";
 import { datePlaceholders } from "./advancedSearchModel";
 
 const realActions = {
   searchHistory: useRepo.getState().searchHistory,
+  suggestTreePaths: useRepo.getState().suggestTreePaths,
   revealCommit: useRepo.getState().revealCommit,
   loadMoreHistory: useRepo.getState().loadMoreHistory,
+  graphLimit: useRepo.getState().graphLimit,
 };
 const summaryFor = (path: string) => ({
   path,
@@ -33,6 +35,7 @@ const messageInput = () => screen.getByPlaceholderText("regex — fix|refactor")
 const resultButton = (label: string) => screen.getByText(label).closest("button") as HTMLButtonElement;
 
 afterEach(() => {
+  vi.useRealTimers();
   // The repo store is a singleton — undo the per-test summary/graph/action
   // overrides so the chip tests (default no-repo state) stay isolated.
   useRepo.setState({ summary: undefined, graph: null, ...realActions });
@@ -201,18 +204,21 @@ describe("AdvancedHistorySearch async isolation", () => {
     expect(screen.queryByText("No matching commits.")).not.toBeInTheDocument();
   });
 
-  it("resets the query and results when the repository switches", async () => {
+  it("synchronously masks the old query and results when the repository switches", async () => {
     useRepo.setState({ summary: summaryFor("/a"), searchHistory: async () => pageWith("c1") });
-    const { rerender } = render(<AdvancedHistorySearch />);
+    render(<AdvancedHistorySearch />);
     runSearch();
     await screen.findByText("commit c1");
+    const regexMode = screen.getAllByRole("radio")[1];
+    fireEvent.click(regexMode);
 
-    // Switch repos — the panel stays mounted; the repoPath effect must reset it.
+    // Switch repos — the controller adjusts its repo-owned session before the
+    // next children commit, without waiting on an effect or an explicit rerender.
     act(() => useRepo.setState({ summary: summaryFor("/b") }));
-    rerender(<AdvancedHistorySearch />);
-
-    await waitFor(() => expect(messageInput().value).toBe(""));
+    expect(messageInput().value).toBe("");
     expect(screen.queryByText("commit c1")).not.toBeInTheDocument();
+    // Match mode was deliberately outside the old reset and remains local.
+    expect(screen.getAllByRole("radio")[1]).toHaveAttribute("aria-checked", "true");
   });
 
   it("drops a search response that resolves after a repo switch", async () => {
@@ -307,5 +313,161 @@ describe("AdvancedHistorySearch async isolation", () => {
     // Reveal B settles — now the row re-enables.
     await act(async () => resolvers[1]());
     await waitFor(() => expect(resultButton("commit c1")).not.toBeDisabled());
+  });
+
+  it("debounces path suggestions for 200ms and preserves input focus when they land", async () => {
+    vi.useFakeTimers();
+    const suggestTreePaths = vi.fn(async () => ["src/store/repo.ts"]);
+    useRepo.setState({ summary: summaryFor("/a"), suggestTreePaths });
+    render(<AdvancedHistorySearch />);
+    const path = screen.getByPlaceholderText("src/store") as HTMLInputElement;
+    path.focus();
+    fireEvent.change(path, { target: { value: "repo" } });
+
+    await act(async () => vi.advanceTimersByTimeAsync(199));
+    expect(suggestTreePaths).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+
+    expect(suggestTreePaths).toHaveBeenCalledOnce();
+    expect(suggestTreePaths).toHaveBeenCalledWith("repo");
+    expect(screen.getByRole("option", { name: "src/store/repo.ts" })).toBeInTheDocument();
+    expect(document.activeElement).toBe(path);
+  });
+
+  it("drops an in-flight path suggestion after a repository switch", async () => {
+    vi.useFakeTimers();
+    let resolvePaths: (paths: string[]) => void = () => {};
+    const pending = new Promise<string[]>((resolve) => (resolvePaths = resolve));
+    const suggestTreePaths = vi.fn(() => pending);
+    useRepo.setState({ summary: summaryFor("/a"), suggestTreePaths });
+    render(<AdvancedHistorySearch />);
+    const path = screen.getByPlaceholderText("src/store") as HTMLInputElement;
+    fireEvent.focus(path);
+    fireEvent.change(path, { target: { value: "old" } });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(suggestTreePaths).toHaveBeenCalledWith("old");
+
+    act(() => useRepo.setState({ summary: summaryFor("/b") }));
+    expect((screen.getByPlaceholderText("src/store") as HTMLInputElement).value).toBe("");
+    await act(async () => resolvePaths(["old/repo/path.ts"]));
+
+    expect(screen.queryByRole("option", { name: "old/repo/path.ts" })).not.toBeInTheDocument();
+  });
+
+  it("clears already-visible path suggestions synchronously on repository switch", async () => {
+    vi.useFakeTimers();
+    const suggestTreePaths = vi.fn(async () => ["repo-a/path.ts"]);
+    useRepo.setState({ summary: summaryFor("/a"), suggestTreePaths });
+    render(<AdvancedHistorySearch />);
+    const path = screen.getByPlaceholderText("src/store") as HTMLInputElement;
+    fireEvent.focus(path);
+    fireEvent.change(path, { target: { value: "repo-a" } });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(screen.getByRole("option", { name: "repo-a/path.ts" })).toBeInTheDocument();
+
+    act(() => useRepo.setState({ summary: summaryFor("/b") }));
+
+    expect(path.value).toBe("");
+    expect(screen.queryByRole("option", { name: "repo-a/path.ts" })).not.toBeInTheDocument();
+  });
+
+  it("keeps newer path suggestions when an older request resolves last", async () => {
+    vi.useFakeTimers();
+    let resolveOld: (paths: string[]) => void = () => {};
+    let resolveNew: (paths: string[]) => void = () => {};
+    const oldPending = new Promise<string[]>((resolve) => (resolveOld = resolve));
+    const newPending = new Promise<string[]>((resolve) => (resolveNew = resolve));
+    const suggestTreePaths = vi.fn((filter: string) =>
+      filter === "old" ? oldPending : newPending,
+    );
+    useRepo.setState({ summary: summaryFor("/a"), suggestTreePaths });
+    render(<AdvancedHistorySearch />);
+    const path = screen.getByPlaceholderText("src/store") as HTMLInputElement;
+    fireEvent.focus(path);
+
+    fireEvent.change(path, { target: { value: "old" } });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    fireEvent.change(path, { target: { value: "new" } });
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(suggestTreePaths.mock.calls).toEqual([["old"], ["new"]]);
+
+    await act(async () => resolveNew(["new/path.ts"]));
+    expect(screen.getByRole("option", { name: "new/path.ts" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "old/path.ts" })).not.toBeInTheDocument();
+
+    await act(async () => resolveOld(["old/path.ts"]));
+    expect(screen.getByRole("option", { name: "new/path.ts" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "old/path.ts" })).not.toBeInTheDocument();
+  });
+
+  it("pages with live repo state until the selected search hit can be revealed", async () => {
+    const revealCommit = vi.fn(async () => {});
+    const loadMoreHistory = vi.fn(async () => {
+      useRepo.setState({
+        graph: graphWith(["target"]),
+        graphLimit: 4_000,
+      });
+    });
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => pageWith("target"),
+      graph: { ...graphWith(["c1"]), truncated: true },
+      graphLimit: 2_000,
+      loadMoreHistory,
+      revealCommit,
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+    await screen.findByText("commit target");
+
+    fireEvent.click(resultButton("commit target"));
+    await waitFor(() => expect(revealCommit).toHaveBeenCalledWith("target"));
+    expect(loadMoreHistory).toHaveBeenCalledOnce();
+  });
+
+  it("stops reveal paging when a page makes no graph-limit progress", async () => {
+    const revealCommit = vi.fn(async () => {});
+    const loadMoreHistory = vi.fn(async () => {});
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => pageWith("target"),
+      graph: { ...graphWith(["c1"]), truncated: true },
+      graphLimit: 2_000,
+      loadMoreHistory,
+      revealCommit,
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+    await screen.findByText("commit target");
+
+    fireEvent.click(resultButton("commit target"));
+    expect(
+      await screen.findByRole("alert"),
+    ).toHaveTextContent("The commit is reachable in search but outside the graph's loaded ref set.");
+    expect(loadMoreHistory).toHaveBeenCalledOnce();
+    expect(revealCommit).not.toHaveBeenCalled();
+  });
+
+  it("caps a progressing reveal at 50 history pages", async () => {
+    const revealCommit = vi.fn(async () => {});
+    const loadMoreHistory = vi.fn(async () => {
+      useRepo.setState((state) => ({ graphLimit: state.graphLimit + 1 }));
+    });
+    useRepo.setState({
+      summary: summaryFor("/a"),
+      searchHistory: async () => pageWith("target"),
+      graph: { ...graphWith(["c1"]), truncated: true },
+      graphLimit: 2_000,
+      loadMoreHistory,
+      revealCommit,
+    });
+    render(<AdvancedHistorySearch />);
+    runSearch();
+    await screen.findByText("commit target");
+
+    fireEvent.click(resultButton("commit target"));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(loadMoreHistory).toHaveBeenCalledTimes(50);
+    expect(revealCommit).not.toHaveBeenCalled();
   });
 });

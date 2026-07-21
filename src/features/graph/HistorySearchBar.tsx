@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
 import { useUi, type HistFilter } from "@/store/ui";
 import { CloseIcon, FilterIcon, HashIcon, SearchIcon } from "@/components/ui/icons";
-import { AdvancedHistorySearch } from "./AdvancedHistorySearch";
+import { AdvancedHistorySearch } from "./advanced-history-search";
 import { SearchResultsList } from "./SearchResultsList";
 
 const HIST_FILTERS: { key: HistFilter; label: string }[] = [
