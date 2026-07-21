@@ -1,77 +1,201 @@
 # GitLane
 
-**See your branches. Move them.** GitLane is a fast, lightweight visual git client
-for **macOS, Windows, and Linux** — a free, open-source alternative to GitKraken,
-Sourcetree, and Fork, with a swimlane-style commit tree and drag-and-drop branch
-operations. Built on **Tauri 2** (Rust core) + **React/TypeScript**, it browses
-GitHub, GitLab, and Bitbucket pull requests too.
+**See your branches. Move them.** GitLane is a fast, lightweight visual git
+client for **macOS, Windows, and Linux** — a free, open-source alternative to
+GitKraken, Sourcetree, and Fork. A swimlane commit tree with drag-and-drop
+branch operations, staging down to the single line, in-app merge-conflict
+resolution, and GitHub, GitLab, and Bitbucket pull requests without leaving
+the app.
 
 [![Latest release](https://img.shields.io/github/v/release/Siomkin/GitLane?include_prereleases&label=release)](https://github.com/Siomkin/GitLane/releases)
+[![Downloads](https://img.shields.io/github/downloads/Siomkin/GitLane/total?label=downloads)](https://github.com/Siomkin/GitLane/releases)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-<!-- Screenshots live in docs/screenshots/ — see the capture checklist there. -->
 ![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
 
-## ⚠️ Not code-signed yet
+**[Why GitLane](#why-gitlane) · [Features](#features) · [Install](#install) ·
+[Build from source](#build-from-source) · [Contributing](#contributing) ·
+[Architecture](#architecture)**
 
-macOS builds are ad-hoc signed but not Apple notarized, and Windows builds are
-not Authenticode-signed. **The apps are safe and work fine** — but macOS
-Gatekeeper and Windows SmartScreen will block the first launch of a downloaded
-release with a scary-looking warning. This is expected, not a broken download.
-You have two ways around it:
+## Why GitLane
 
-| Option | What you get |
-| --- | --- |
-| **[Build from source](#build-from-source)** | No signing warnings at all — you compiled it yourself |
-| **[Download a release](#download-a-release)** | Fastest install; one-time unblock step — see [macOS: first launch](#macos-first-launch) / [Windows: first launch](#windows-first-launch) |
+- **A commit graph you can actually read.** Every line of history gets its own
+  lane and color. The layout is computed in Rust and painted on canvas, so it
+  stays smooth on histories with thousands of commits.
+- **Your real git, not a reimplementation.** Every write — commit, merge,
+  rebase, push, stash — runs through your actual `git` binary, so hooks,
+  credential helpers, commit signing, and your `.gitconfig` all just work.
+  Reads use libgit2 for speed.
+- **Always live.** A filesystem watcher keeps the app in sync when you commit,
+  checkout, or stage from the terminal. No refresh button.
+- **Native and lean.** Tauri, not Electron: a small download that starts
+  instantly and stays light on memory.
 
-Developer ID signing + notarization (which removes this step entirely) is
-planned — see [docs/distribution.md](docs/distribution.md).
+## Features
 
-## Get GitLane
+### A graph that shows everything
 
-### Build from source
+Branches, remotes, tags, stashes, and your uncommitted work all live in one
+swimlane tree. Stashes appear at the point in history where you made them,
+uncommitted changes float on top as a WIP row, and commit nodes show author
+avatars — with badges for co-authors and commits made by bots and AI agents
+(Claude, Codex, Cursor, Copilot, Dependabot).
 
-Prerequisites: `bun`, the Rust toolchain, and `git`.
+### Drag-and-drop branch operations
 
-```bash
-bun install
-bun run tauri build
-```
+Drag one branch onto another and GitLane offers exactly the operations that
+make sense — fast-forward, merge, rebase, or reset — based on how the branches
+actually relate. No memorizing flags.
 
-Source builds use the repository's baseline version metadata and do not use the
-built-in release updater. Pull the latest source and rebuild to update; official
-release artifacts enable signed in-app updates during the release workflow.
+![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
 
-For development with hot reload:
+Everything else is one right-click away: cherry-pick, revert, or squash a
+multi-commit selection, create branches / tags / worktrees at any commit,
+compare any two refs, or export a commit as a patch file.
 
-```bash
-bun run tauri dev
-```
+### Find anything, fast
 
-Optional, for GitHub/PR features: [GitHub CLI](https://cli.github.com) `gh`
-**2.95.0 or newer**, logged in (`gh auth login`).
+Incremental search highlights matches in place — message, SHA, author, branch
+— while everything else dims, so hits stand out without losing their position
+in the tree. An advanced mode searches the whole repository, not just the
+loaded window: message regex, author, file path (with autocompletion), date
+range, and git's pickaxe ("which commit changed this code?"). Click a result
+and the graph pages in as much history as it takes to land on it.
 
-### Download a release
+![Incremental search dims non-matches and highlights hits in place](docs/screenshots/history-search.png)
+
+The branch navigator (<kbd>Cmd/Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) does
+the same for refs: branches, remotes, worktrees, tags, and stashes in one
+searchable, pinnable palette — click anything to jump the graph to it.
+
+### Staging down to the line
+
+Stage whole files, folders, individual hunks — or a single line. The commit
+composer shows exactly who you're committing as and where it will land, with
+a Conventional Commits mode, amend support, and one-click
+commit-and-push. If you have an AI CLI installed (`claude`, `codex`, …),
+GitLane can draft or improve the commit message from your staged diff.
+
+![Staging and diff review](docs/screenshots/changes-staging.png)
+
+Diffs come in unified or split view with syntax highlighting, a change
+minimap, before/after image previews, and Markdown preview. Review a whole
+commit — or a multi-commit selection's combined diff — as one scrollable
+stack, and attach local review notes you can hand to an AI agent as an
+instruction.
+
+### Merge conflicts, resolved in-app
+
+When a merge, rebase, cherry-pick, or revert stops on conflicts, GitLane
+becomes a conflict workspace: resolve hunk-by-hunk in an inline or
+side-by-side editor, take ours/theirs per file, handle binary and
+modify/delete conflicts, then continue, skip, or abort the operation — all
+without touching the terminal. Files resolved in an outside editor can be
+staged as-is, and a staged resolution can be un-staged to redo it.
+
+![Side-by-side conflict resolution with per-line picks and a merged output](docs/screenshots/conflict-resolution.png)
+
+### Pull requests without leaving the app
+
+Browse, review, and merge pull requests for the repo you have open. GitHub
+gets the full experience; GitLab merge requests and Bitbucket Cloud pull
+requests cover the core workflow:
+
+| Capability | GitHub | GitLab | Bitbucket |
+| --- | :-: | :-: | :-: |
+| List, detail, full diff, commits | ✅ | ✅ | ✅ |
+| Create PR/MR (incl. drafts) | ✅ | ✅ | ✅ |
+| Merge (merge commit / squash) | ✅ | ✅ | ✅ |
+| Rebase merge | ✅ | — | — |
+| Approve | ✅ | ✅ | ✅ |
+| Comments, review threads, request changes | ✅ | not yet | not yet |
+| CI checks (live polling) | ✅ | not yet | not yet |
+| Close / reopen / mark ready | ✅ | not yet | not yet |
+
+<sub>*not yet* = planned in GitLane · — = not offered for that forge</sub>
+
+GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`) —
+including multiple accounts and GitHub Enterprise. GitLab works through an
+installed `glab` CLI or a personal access token; Bitbucket through an
+Atlassian API token (legacy app passwords work too) — tokens are added in
+Settings → Accounts, stored in your OS keychain, and never exposed to the UI
+layer.
+
+Repos on other forges (Azure DevOps, Gitea, Forgejo/Codeberg) work fine for
+everything else — commit, branch, push, pull. Only the pull-request view is
+unavailable there, and it says so plainly instead of failing with a cryptic
+error.
+
+![Pull request list and detail](docs/screenshots/pull-requests.png)
+
+### Safety rails everywhere
+
+Every destructive action shows you its exact impact before it runs: reset and
+branch-delete preview the commits that would fall away, discard previews the
+work that would be thrown out, and force-push previews the remote commits it
+would replace. If the repo changed under you between preview and confirm —
+say, from a terminal — the operation fails cleanly instead of acting on stale
+state. Force-push always uses `--force-with-lease`. And if something still
+goes wrong, the **Recover** button browses the reflog to branch back to any
+lost commit.
+
+### Accounts authenticate, identities author
+
+Sign into several GitHub / GitLab / Bitbucket accounts at once and pick which
+one each remote uses — stored git-natively in the HTTPS remote URL, so it
+works identically from a terminal (SSH remotes pick their account by key). Completely separate, reusable **identity cards**
+(name, email, optional GPG/SSH signing key) decide who each repo commits as,
+applied to local git config only — so you never commit to a client repo with
+the wrong email or an unverified signature. A repo is fully usable with no
+account connected at all.
+
+### Worktrees, stashes, tags, terminal
+
+- **Worktrees** — create, open (in a tab), and remove linked worktrees; hand a
+  branch off to another worktree *carrying its uncommitted changes*, with a
+  live progress checklist.
+- **Stashes** — one-click stash; apply, pop, drop, or turn a stash into a new
+  branch. Stashes are addressed by commit id, so a shifted `stash@{n}` index
+  can never drop the wrong one.
+- **Tags** — lightweight or annotated (and signed), push to / delete from a
+  remote, create branches or worktrees from a tag.
+- **Integrated terminal** — real PTY tabs running your login shell in the repo
+  directory, with one-click launchers for AI coding agents. Anything you do
+  there shows up in the UI instantly.
+
+### And the everyday things
+
+Multi-repo tabs with session restore · file history and blame · in-repo file
+browser with a guarded text editor · background auto-fetch · fast-forward-only
+pull with explicit divergence handling · dark/light/system themes with nine
+accent colors · compact/comfortable density · persistent layout · built-in
+auto-updates with stable and beta channels.
+
+## Install
+
+**Requirements:** `git` **2.36+** on your `PATH`. Optional: [GitHub CLI](https://cli.github.com)
+`gh` **2.95+** signed in (`gh auth login`) for GitHub pull requests, `glab`
+signed in for GitLab merge requests.
 
 Grab the latest build from the
-[**Releases page**](https://github.com/Siomkin/GitLane/releases).
+[**Releases page**](https://github.com/Siomkin/GitLane/releases):
 
 | Platform | Package |
 | --- | --- |
-| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
-| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` — see [macOS: first launch](#macos-first-launch) |
-| Windows | `GitLane-<version>-windows-nsis.exe` — see [Windows: first launch](#windows-first-launch) |
-| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` — see [Linux: pick a package](#linux-pick-a-package) |
+| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
+| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
+| Windows | `GitLane-<version>-windows-nsis.exe` |
+| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` |
 
-The `.sig` assets are signatures for the built-in updater — you never need to
-download them.
+> [!IMPORTANT]
+> Builds aren't code-signed yet, so macOS Gatekeeper and Windows SmartScreen
+> block the **first launch** with a scary-looking warning. This is expected,
+> not a broken download — see the one-time fix for your OS below. Signing and
+> notarization are planned ([docs/distribution.md](docs/distribution.md)).
 
-GitLane updates itself through the built-in Tauri updater. Builds ship on two
-channels — **stable** and **beta** (pre-releases, updated more often); see
-[docs/release-channels.md](docs/release-channels.md).
-
-### macOS: first launch
+<details>
+<summary><strong>macOS: first launch</strong></summary>
 
 GitLane isn't notarized by Apple yet, so after downloading, Gatekeeper blocks
 the app — typically with *"GitLane is damaged and can't be opened"* (Apple
@@ -88,41 +212,36 @@ System Settings → **Privacy & Security** → **Open Anyway** after the first
 blocked launch, works instead. In-app updates delivered by the updater don't
 need this again.
 
-Developer ID signing + notarization (which removes this step) and a Homebrew
-cask are planned — see [docs/distribution.md](docs/distribution.md).
+</details>
 
-### Windows: first launch
+<details>
+<summary><strong>Windows: first launch</strong></summary>
 
-The Windows build isn't code-signed yet, so Defender SmartScreen blocks a
-fresh download — *"Windows protected your PC"*, unknown publisher, with no
-obvious way to continue. Click **More info**, then **Run anyway**. The
-installer is fine; Windows treats every unsigned download this way. Code
-signing is planned and will remove this prompt.
+Defender SmartScreen blocks a fresh download — *"Windows protected your PC"*,
+unknown publisher, with no obvious way to continue. Click **More info**, then
+**Run anyway**. The installer is fine; Windows treats every unsigned download
+this way.
 
-The installer (`GitLane-<version>-windows-nsis.exe`) installs for the current
-user — no admin rights needed — and in-app updates delivered by the updater
-don't retrigger SmartScreen.
+The installer installs for the current user — no admin rights needed — and
+in-app updates delivered by the updater don't retrigger SmartScreen.
 
-### Linux: pick a package
+</details>
+
+<details>
+<summary><strong>Linux: pick a package</strong></summary>
 
 Prefer the **`.deb`** (Debian, Ubuntu, Mint) or **`.rpm`** (Fedora, openSUSE)
 package — it gives a normal install: app-menu entry, icon, and clean uninstall
 through your package manager.
 
 ```bash
-# Debian / Ubuntu / Mint
-sudo apt install ./GitLane-<version>-linux-deb.deb
-
-# Fedora / RHEL
-sudo dnf install ./GitLane-<version>-linux-rpm.rpm
-
-# openSUSE
-sudo zypper install ./GitLane-<version>-linux-rpm.rpm
+sudo apt install ./GitLane-<version>-linux-deb.deb      # Debian / Ubuntu / Mint
+sudo dnf install ./GitLane-<version>-linux-rpm.rpm      # Fedora / RHEL
+sudo zypper install ./GitLane-<version>-linux-rpm.rpm   # openSUSE
 ```
 
-The **`.AppImage`** is the portable fallback for every other distribution (or
-when you can't install packages). Browsers never preserve the executable bit,
-so make it executable once before the first run:
+The **`.AppImage`** is the portable fallback for every other distribution.
+Browsers never preserve the executable bit, so make it executable once:
 
 ```bash
 chmod +x GitLane-<version>-linux-appimage.AppImage
@@ -130,174 +249,74 @@ chmod +x GitLane-<version>-linux-appimage.AppImage
 ```
 
 A bare AppImage doesn't integrate with the desktop (no app-menu entry or
-icon). If you want that, run it through
-[Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
-[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher).
+icon); [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
+[AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) can add
+that.
 
-Package-manager channels (Flathub, AUR) are tracked in
-[docs/distribution.md](docs/distribution.md).
+</details>
 
-### Runtime requirements
+GitLane updates itself through the built-in signed updater, on a **stable**
+or **beta** channel (toggle in Settings → About) — see
+[docs/release-channels.md](docs/release-channels.md). The `.sig`,
+`.app.tar.gz`, and `latest.json` release assets are for the auto-updater; you
+never need to download them.
 
-- `git` on your `PATH` (writes go through your real git).
-- Optional, for GitHub/PR features: [GitHub CLI](https://cli.github.com) `gh`
-  **2.95.0 or newer**, logged in (`gh auth login`).
-- Other forges (GitLab, Bitbucket, Azure DevOps, Gitea, Forgejo): core git
-  features work through your normal git transport credentials. GitLab and
-  Bitbucket PR/MR support can use provider credentials configured in GitLane.
+**First run:** open or clone a repository, then try dragging one branch pill
+onto another — or press <kbd>Cmd/Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> to
+jump anywhere in the repo.
 
-## Why GitLane
+## Build from source
 
-- **A commit graph you can actually read.** Every branch gets its own lane and
-  color. The layout is computed in Rust and painted on canvas, so it stays
-  smooth on histories with thousands of commits.
-- **Your real git, not a reimplementation.** Every write — commit, merge,
-  rebase, push, stash — runs through your actual `git` binary, so hooks,
-  credential helpers, commit signing, and your `.gitconfig` all just work.
-  Reads use libgit2 for speed.
-- **Always live.** A filesystem watcher keeps the app in sync when you commit,
-  checkout, or stage from the terminal. No refresh button.
-- **Native and lean.** Tauri, not Electron: a small download that starts
-  instantly and stays light on memory.
-
-## Features
-
-### Drag-and-drop branch operations
-
-Drag one branch onto another and GitLane offers exactly the operations that
-make sense — fast-forward, merge, rebase, or reset — based on how the branches
-actually relate. No memorizing flags.
-
-![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
-
-### Stage, review, commit
-
-A dedicated changes workspace for multi-file staging, with unified/split diffs
-and syntax highlighting. Review a whole commit as one scrollable stack, or dig
-into a single file.
-
-![Staging and diff review](docs/screenshots/changes-staging.png)
-
-### Pull requests and merge requests
-
-Browse GitHub pull requests, GitLab merge requests, and Bitbucket pull
-requests without leaving the app. GitHub uses the GitHub CLI (`gh`), while
-GitLab and Bitbucket use provider credentials configured in GitLane. Tokens
-stay in the Rust core.
-
-![Pull request list and detail](docs/screenshots/pull-requests.png)
-
-### Commit identity you can trust
-
-Reusable **identities** (name, email, optional signing key) apply per
-repository, separately from provider accounts — so you never accidentally
-commit to a client repo with the wrong email or an unverified signature.
-
-### And the everyday tools
-
-Branch/tag/remote navigator, stash management, git worktrees, an integrated
-terminal, dark/light themes with accent colors.
-
-## Develop
-
-Prerequisites: `bun`, the Rust toolchain, `git` 2.36.0+, and optionally `gh` 2.95.0+
-for GitHub/PR features.
+Prerequisites: [`bun`](https://bun.sh), the [Rust toolchain](https://rustup.rs),
+`git`, and your platform's
+[Tauri system dependencies](https://v2.tauri.app/start/prerequisites/)
+(webkit2gtk on Linux, Xcode CLT on macOS, MSVC Build Tools + WebView2 on
+Windows).
 
 ```bash
 bun install
-bun run tauri dev      # launch the app (hot-reloads frontend + Rust)
+bun run tauri build
 ```
 
-Other:
+Source builds don't use the in-app updater — pull and rebuild to update.
+No signing warnings either: you compiled it yourself.
+
+## Contributing
 
 ```bash
-bun run build          # tsc + vite production build
-bun run test           # frontend tests (vitest)
-(cd src-tauri && cargo check)
-(cd src-tauri && cargo fmt --all -- --check)
-(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
+bun install
+bun run tauri dev      # launch the app with hot reload
+bunx tsc --noEmit && bun run test          # frontend checks
+(cd src-tauri && cargo check)              # Rust checks
 ```
 
-Rust, rustfmt, and Clippy are pinned by `rust-toolchain.toml` and selected
-automatically by rustup.
-
-GitLane currently validates `gh` 2.95.0 as the minimum supported GitHub CLI baseline:
-
-| Capability | Probe |
-| --- | --- |
-| Version | `gh version` |
-| Host-aware account discovery | `gh auth status --json hosts` |
-| Host/user token resolution | `gh auth token --hostname <host> --user <login>` |
-| PR patches | `gh pr diff --patch --color never` |
-| GraphQL | `gh api graphql` |
+See [CONTRIBUTING.md](CONTRIBUTING.md) to get started, and
+[docs/rules/architecture-rules.md](docs/rules/architecture-rules.md) for the
+rules that keep changes consistent. Bug reports and feature requests are
+welcome in [issues](https://github.com/Siomkin/GitLane/issues).
 
 ## Architecture
 
-- **Shell:** Tauri 2 (native window, ~10 MB)
-- **Frontend:** React 19 + TypeScript + Vite, Canvas-rendered commit graph, Zustand state
-- **Git reads:** [`git2`](https://docs.rs/git2) (libgit2) — log, refs, branches (network features disabled)
-- **Git writes:** shell out to the real `git` binary — honours hooks, credentials, config, conflicts
-- **Provider APIs:** GitHub via the GitHub CLI (`gh`) by default; GitLab and Bitbucket via provider-specific clients; tokens stay in Rust and never cross IPC
-- **Other forges:** Azure DevOps, Gitea, and Forgejo get explicit unsupported-PR guidance while core git operations still work
+- **Shell:** Tauri 2 — native window, small footprint
+- **Frontend:** React 19 + TypeScript + Vite; canvas-rendered commit graph;
+  Zustand state
+- **Git reads:** [`git2`](https://docs.rs/git2) (libgit2), network features
+  disabled
+- **Git writes:** shell out to your real `git` binary — honours hooks,
+  credentials, config, signing, and the full conflict machinery
+- **Provider APIs:** GitHub via `gh`, GitLab via `glab`/REST, Bitbucket via
+  REST; tokens live in the OS keychain / CLI and never reach the frontend
+- **Graph layout:** computed in Rust — a topological walk assigns each commit
+  a lane via a reservation scheme; the frontend just paints coordinates
 
-```
-src/                     # React frontend
-  lib/
-    api/                 # typed invoke() wrappers → Rust (git, github, terminal; merged in index.ts)
-    cn.ts paths.ts highlight.ts prs.ts palette.ts ui.ts   # pure helpers + tokens
-  store/                 # Zustand, split by concern: repo · pulls · accounts · ui · selection
-  features/              # graph (GraphLayer canvas + palette), changes, review, pull-requests, terminal
-  components/
-    ui/                  # reusable, domain-free primitives
-    chrome/              # window chrome, toolbar, overlays
-    navigation/          # branch navigator + PR list panel
-  hooks/                 # useLazyDiffs, useDismiss, useRepoWatcher
-
-src-tauri/src/
-  auth_providers.rs      # auth-only status probes for non-GitHub forges
-  lib.rs                 # Tauri commands (IPC boundary) + generate_handler! registration
-  git/
-    forge.rs             # known remote forge detection (GitHub, GitLab, Bitbucket, Azure, Gitea, Forgejo)
-    types.rs             # serde structs shared with the frontend (camelCase)
-    read.rs status.rs    # libgit2 reads: summary, branches, working-tree status, diffs
-    graph.rs             # DAG → lane (column) layout algorithm
-    write.rs             # checkout/branch/merge/rebase/reset/stage/commit/stash via `git` CLI
-    github/              # provider boundary + default `gh` provider
-      mod.rs             #   facade: stable `git::github::*` API through GithubService
-      domain.rs          #   provider-neutral context, account refs, typed internal errors
-      service.rs         #   GithubService + GithubProvider contract
-      gh_provider.rs     #   default provider that delegates to the split gh modules
-      cli.rs             #   the single `gh` subprocess site (run_gh); accounts/tokens/repo identity
-      dto.rs             #   private gh/GraphQL response shapes + domain conversions
-      prs.rs             #   PR reads/writes (`gh pr …`) + argument builders
-      threads.rs         #   review-thread GraphQL (resolve/unresolve)
-      diff.rs            #   PR patch fetch + unified-diff parser
-  watcher.rs             # filesystem watcher → repo-changed event
-```
-
-### How the graph is laid out
-
-`git/graph.rs` walks the DAG topologically and assigns each commit a **lane**
-(column) using a reservation algorithm: every lane holds the id of the parent
-commit it's waiting to render. The first parent continues a commit's lane;
-merges branch into fresh lanes. The frontend just paints the resulting
-`(row, lane, color)` coordinates — no layout logic lives in JS.
+The deeper map — module layout, IPC contract, read/write split — lives in
+[CLAUDE.md](CLAUDE.md) (the contributor briefing that doubles as the
+architecture guide) and [docs/](docs/).
 
 ## License
 
-GitLane is licensed under the **GNU General Public License v3.0 or later**
-(`GPL-3.0-or-later`) — see [LICENSE](LICENSE). This applies to the
-software in this repository, including the bundled app icons and other shipped
-assets, unless a file states a different license.
-
-In short: you may use, study, modify, and redistribute this software, but any
-distributed derivative work must also be released under the GPL with its
-complete corresponding source. This keeps GitLane and everything built on it
-free and open.
-
-Third-party dependencies retain their own licenses. Check `package.json`,
-`bun.lock`, `src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` for the exact
-dependency set before distributing a build.
-
-© 2026 Siomkin Alexander. The GitLane name and logo may be protected as
-trademarks; the GPL grants copyright permissions, not trademark rights.
+GitLane is free software under **GPL-3.0-or-later** — see [LICENSE](LICENSE).
+You may use, study, modify, and redistribute it; distributed derivatives must
+stay under the GPL with complete source. The GitLane name and logo may be
+protected as trademarks; the GPL grants copyright permissions, not trademark
+rights.
