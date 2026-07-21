@@ -51,7 +51,7 @@ pub use recovery::{
 pub use remotes::{
     add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
     fetch, force_push, publish_branch, publish_remote, pull_branch, push_branch, push_tag,
-    remove_remote, set_remote_url, set_remote_username,
+    remove_remote, set_remote_url, set_remote_username, validate_force_push_route,
 };
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};

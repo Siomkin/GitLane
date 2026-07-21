@@ -467,6 +467,25 @@ pub struct DestructivePreview {
     pub warnings: Vec<String>,
 }
 
+/// Force-push impact plus the complete compare-and-swap contract shown by the
+/// confirmation. The local source object, resolved push route, and destination
+/// expectation all cross IPC again so the write cannot widen or silently adopt
+/// newer tracking state after the dialog opened.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForcePushPreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+    pub expected_oid: String,
+    pub remote: String,
+    pub destination_ref: String,
+    pub destination_oid: Option<String>,
+    /// SHA-256 fingerprint of the single effective push endpoint. The endpoint
+    /// itself stays backend-only because a user-managed URL may be sensitive.
+    pub push_endpoint_token: String,
+}
+
 /// Branch-deletion impact plus the exact local-ref object the confirmation
 /// described. The write accepts this oid again as a compare-and-swap lease, so
 /// a branch advanced or rewritten after the dialog opened is never deleted.

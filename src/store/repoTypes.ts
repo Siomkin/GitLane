@@ -3,6 +3,7 @@ import type {
   BranchInfo,
   DeleteBranchPreview,
   DiscardFilePreview,
+  ForcePushPreview,
   FileBlame,
   ConflictFile,
   DiffLine,
@@ -534,8 +535,9 @@ export interface RepoState {
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
   deleteRemoteBranch: (remote: string, branch: string, expectedOid: string) => Promise<string>;
-  /** Force-push `branch` with `--force-with-lease` (only that branch). */
-  forcePush: (branch: string) => Promise<string>;
+  /** Force-push `branch` using the exact source, route, and destination lease
+   * returned by its confirmation preview. */
+  forcePush: (branch: string, preview: ForcePushPreview) => Promise<string>;
   /** Discard every uncommitted working-tree change (reset --hard + clean). */
   discardAll: () => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */

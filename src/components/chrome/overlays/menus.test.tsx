@@ -30,6 +30,7 @@ const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
 const realRebaseOnto = useRepo.getState().rebaseOnto;
 const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realMergeInto = useRepo.getState().mergeInto;
+const realForcePush = useRepo.getState().forcePush;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -61,6 +62,7 @@ beforeEach(() => {
     rebaseOnto: realRebaseOnto,
     resetBranchTo: realResetBranchTo,
     mergeInto: realMergeInto,
+    forcePush: realForcePush,
   });
   useUi.setState({
     wipMenu: null,
@@ -539,6 +541,50 @@ describe("BranchContextMenu", () => {
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
+  });
+
+  it("confirms force-push with the exact route and lease returned by its preview", async () => {
+    const preview = {
+      summary: "Force-push main with lease",
+      details: ["Pushes main to fork at refs/heads/main."],
+      warnings: ["The destination must still match the preview."],
+      expectedOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      remote: "fork",
+      destinationRef: "refs/heads/main",
+      destinationOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      pushEndpointToken: "endpoint-token",
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "preview_force_push") return Promise.resolve(preview);
+      if (cmd === "can_fast_forward") return Promise.resolve(false);
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    const forcePush = vi.fn().mockResolvedValue("Force-pushed main (with lease)");
+    useRepo.setState({
+      summary: {
+        path: "/work/repo",
+        workdir: "/work/repo",
+        headBranch: "main",
+        headOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        detached: false,
+      },
+      branches: [{ ...localBranch("main"), isHead: true }],
+      forcePush,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+
+    render(<BranchContextMenu />);
+    openGroup("Danger zone");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Force push (with lease)…" }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("preview_force_push", {
+      path: "/work/repo",
+      branch: "main",
+    }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    useUi.getState().confirm!.onConfirm();
+
+    await waitFor(() => expect(forcePush).toHaveBeenCalledWith("main", preview));
   });
 
   it("opens the publish prompt for a non-current branch without an upstream", async () => {

@@ -22,12 +22,12 @@ use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
     CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview, DeleteWorktreeProgressEvent,
     DestructivePreview, DiscardFilePreview, FileBlame, FileChange, FileDiff, FileHistoryPage,
-    ForgeAccount, ForgeAuthStatus, GitTransportAuthRef, GithubAccount, GithubAccountRef,
-    GithubSignInResult, HandoffProgressEvent, HistorySearchPage, HistorySearchQuery,
-    OauthClientStatus, OperationStatus, PrCheck, PrCommitList, ProviderOauthResult,
-    ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus, ReflogEntry,
-    RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph,
-    RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
+    ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef, GithubAccount,
+    GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
+    HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
+    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
+    ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge,
+    RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
     WorkingChanges, WorktreeInfo,
 };
 
@@ -284,7 +284,7 @@ async fn preview_delete_remote_branch(
 }
 
 #[tauri::command]
-async fn preview_force_push(path: String, branch: String) -> Result<DestructivePreview, String> {
+async fn preview_force_push(path: String, branch: String) -> Result<ForcePushPreview, String> {
     blocking(move || git::write::preview_force_push(&path, &branch)).await
 }
 
@@ -646,10 +646,20 @@ async fn force_push(
     path: String,
     branch: String,
     expected_oid: String,
+    remote: String,
+    destination_ref: String,
+    destination_oid: Option<String>,
+    push_endpoint_token: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let remote = git::write::branch_push_remote(&path, &branch);
+        git::write::validate_force_push_route(
+            &path,
+            &branch,
+            &remote,
+            &destination_ref,
+            &push_endpoint_token,
+        )?;
         let cred = if remote == "." {
             git::transport_auth::TransportCredential::None
         } else {
@@ -660,7 +670,16 @@ async fn force_push(
                 auth.as_ref(),
             )?
         };
-        git::write::force_push(&path, &branch, &expected_oid, &cred)
+        git::write::force_push(
+            &path,
+            &branch,
+            &expected_oid,
+            &remote,
+            &destination_ref,
+            destination_oid.as_deref(),
+            &push_endpoint_token,
+            &cred,
+        )
     })
     .await
 }

@@ -357,6 +357,21 @@ export interface DestructivePreview {
   warnings: string[];
 }
 
+export interface ForcePushPreview extends DestructivePreview {
+  /** Full local branch object shown by the confirmation and used as the push
+   * source. */
+  expectedOid: string;
+  /** Push route resolved with Git's pushRemote / pushDefault precedence. */
+  remote: string;
+  /** Fully-qualified server-side destination, e.g. refs/heads/main. */
+  destinationRef: string;
+  /** Full oid observed in the destination's local tracking ref; null means the
+   * preview requires that destination to remain absent. */
+  destinationOid: string | null;
+  /** Opaque fingerprint of the previewed single effective push endpoint. */
+  pushEndpointToken: string;
+}
+
 export interface DeleteBranchPreview extends DestructivePreview {
   /** Full object id of the exact refs/heads/<branch> value previewed. */
   expectedOid: string;
@@ -816,7 +831,7 @@ export const gitApi = {
     invoke<DestructivePreview>("preview_delete_remote_branch", { path, remote, branch }),
 
   previewForcePush: (path: string, branch: string) =>
-    invoke<DestructivePreview>("preview_force_push", { path, branch }),
+    invoke<ForcePushPreview>("preview_force_push", { path, branch }),
 
   renameBranch: (path: string, oldName: string, newName: string) =>
     invoke<string>("rename_branch", { path, old: oldName, new: newName }),
@@ -1038,10 +1053,27 @@ export const gitApi = {
     auth?: GitTransportAuthRef | null,
   ) => invoke<string>("delete_remote_branch", { path, remote, branch, expectedOid, auth: auth ?? null }),
 
-  /** Force-push a specific `branch` with `--force-with-lease` (targets only that
-   * branch, never the whole push.default set), optionally as the bound auth. */
-  forcePush: (path: string, branch: string, expectedOid: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("force_push", { path, branch, expectedOid, auth: auth ?? null }),
+  /** Force-push a specific `branch` with the exact route/source/destination
+   * lease returned by previewForcePush, optionally as the bound auth. */
+  forcePush: (
+    path: string,
+    branch: string,
+    expectedOid: string,
+    remote: string,
+    destinationRef: string,
+    destinationOid: string | null,
+    pushEndpointToken: string,
+    auth?: GitTransportAuthRef | null,
+  ) => invoke<string>("force_push", {
+    path,
+    branch,
+    expectedOid,
+    remote,
+    destinationRef,
+    destinationOid,
+    pushEndpointToken,
+    auth: auth ?? null,
+  }),
 
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */

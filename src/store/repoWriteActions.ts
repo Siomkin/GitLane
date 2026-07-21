@@ -950,15 +950,17 @@ export function createRepoWriteActions(
         return `Deleted ${remote}/${branch}`;
       }),
 
-    forcePush: (branch) =>
+    forcePush: (branch, preview) =>
       runOp(get, async (summary) => {
-        const expectedOid = localBranchOid(get, branch);
-        const remote = pushRemoteOf(branch);
-        const auth = authFor(remote);
+        const auth = authFor(preview.remote);
         await trackNet(() => api.forcePush(
           summary.path,
           branch,
-          expectedOid,
+          preview.expectedOid,
+          preview.remote,
+          preview.destinationRef,
+          preview.destinationOid,
+          preview.pushEndpointToken,
           auth,
         ));
         return `Force-pushed ${branch} (with lease)`;

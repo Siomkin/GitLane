@@ -9,6 +9,7 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type {
   BranchInfo,
   CommitNode,
+  ForcePushPreview,
   GitTransportAuthRef,
   GithubAccountRef,
   RepoForge,
@@ -35,6 +36,16 @@ const EMPTY_CHANGES: WorkingChanges = {
   unstaged: [],
   conflicted: [],
   advanced: emptyAdvancedState,
+};
+const FORCE_PUSH_PREVIEW: ForcePushPreview = {
+  summary: "Force-push feat with lease",
+  details: [],
+  warnings: [],
+  expectedOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  remote: "mirror",
+  destinationRef: "refs/heads/review/feat",
+  destinationOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  pushEndpointToken: "endpoint-token",
 };
 
 // Valid shapes for the reads a post-action refresh performs (GL-57 seam validation).
@@ -749,14 +760,18 @@ describe("push family — the target remote's account, not a repo-wide one", () 
     });
   });
 
-  it("forcePush pins the named branch to the tip the user saw", async () => {
-    await useRepo.getState().forcePush("feat");
+  it("forcePush passes the previewed source, route, and lease without recomputing them", async () => {
+    await useRepo.getState().forcePush("feat", FORCE_PUSH_PREVIEW);
 
     expect(invokeMock).toHaveBeenCalledWith("force_push", {
       path: "/repo",
       branch: "feat",
-      expectedOid: HEAD_OID,
-      auth: ghAuth(alice),
+      expectedOid: FORCE_PUSH_PREVIEW.expectedOid,
+      remote: FORCE_PUSH_PREVIEW.remote,
+      destinationRef: FORCE_PUSH_PREVIEW.destinationRef,
+      destinationOid: FORCE_PUSH_PREVIEW.destinationOid,
+      pushEndpointToken: FORCE_PUSH_PREVIEW.pushEndpointToken,
+      auth: ghAuth(bob),
     });
   });
 

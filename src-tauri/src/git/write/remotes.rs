@@ -2,9 +2,11 @@
 
 use std::collections::HashMap;
 
+use sha2::{Digest, Sha256};
+
 use super::cli::{
     run_git, run_git_allow_exit_codes, run_git_env_redacted,
-    run_git_env_stable_diagnostics_redacted,
+    run_git_env_stable_diagnostics_redacted, run_git_stdout_raw,
 };
 use super::operands::{ensure_operand, ensure_url_has_no_credentials};
 use crate::git::credential_bridge::{self, GitInvocation};
@@ -167,6 +169,61 @@ fn configured_push_urls(repo: &str, name: &str) -> Result<Vec<String>, String> {
         .filter(|url| !url.is_empty())
         .map(str::to_string)
         .collect())
+}
+
+/// Resolve exactly one effective push endpoint for a remote and return it with
+/// an opaque digest safe to carry across IPC. `remote get-url --push --all`
+/// applies Git's URL rewrite rules, so this captures the target the transport
+/// would really contact rather than merely hashing raw config text.
+///
+/// Force-push fails closed on multi-push remotes: one refspec would otherwise be
+/// sent to every configured push URL. Credential-bearing URLs are rejected so a
+/// secret never enters process argv or influences an IPC token.
+pub(super) fn push_endpoint_token(repo: &str, remote: &str) -> Result<String, String> {
+    ensure_operand(remote)?;
+    let endpoint = if remote == "." {
+        ".".to_string()
+    } else {
+        let raw = run_git_stdout_raw(repo, &["remote", "get-url", "--push", "--all", remote])?;
+        let mut records = raw.split(|byte| *byte == b'\n').collect::<Vec<_>>();
+        if records.last().is_some_and(|record| record.is_empty()) {
+            records.pop();
+        }
+        let endpoints = records
+            .into_iter()
+            .map(|record| {
+                let value = std::str::from_utf8(record)
+                    .map_err(|_| "A remote push URL is not valid UTF-8.".to_string())?;
+                if value.is_empty()
+                    || value.trim() != value
+                    || value.chars().any(char::is_control)
+                {
+                    return Err(format!(
+                        "Remote '{remote}' has a push URL with unsupported whitespace or control characters."
+                    ));
+                }
+                Ok(value.to_string())
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        if endpoints.len() != 1 {
+            return Err(format!(
+                "Remote '{remote}' must have exactly one push URL before it can be force-pushed safely."
+            ));
+        }
+        endpoints.into_iter().next().expect("length checked")
+    };
+    ensure_operand(&endpoint)?;
+    ensure_url_has_no_credentials(&endpoint)?;
+
+    let mut digest = Sha256::new();
+    digest.update(b"gitlane-force-push-endpoint-v1\0");
+    digest.update(endpoint.as_bytes());
+    let token = digest
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(token)
 }
 
 fn remote_get_url(repo: &str, name: &str) -> Result<String, String> {
@@ -470,7 +527,7 @@ pub(super) fn push_target_at(repo: &str, branch: &str, expected_oid: &str) -> (S
     (remote, format!("{expected_oid}:{destination}"))
 }
 
-fn push_destination(repo: &str, branch: &str) -> (String, String) {
+pub(super) fn push_destination(repo: &str, branch: &str) -> (String, String) {
     let config = |key: String| {
         run_git(repo, &["config", &key])
             .ok()
@@ -725,41 +782,111 @@ pub fn delete_remote_branch(
     run_push(repo, cred, remote, &[&lease, "--delete"], &[&destination])
 }
 
-/// Force-push a single `branch` with `--force-with-lease` — the *safe* force:
-/// git refuses if the remote advanced since our last fetch, so a teammate's push
-/// is never silently clobbered. Used after history is rewritten (amend, reset,
-/// rebase) on an already-pushed branch.
+/// Force-push a single `branch` with the exact lease a confirmation preview
+/// captured. Git refuses when the server-side destination no longer matches
+/// that snapshot, even if a later fetch advanced the local remote-tracking ref.
+/// Used after history is rewritten (amend, reset, rebase) on an already-pushed
+/// branch.
 ///
-/// An explicit `<remote> <refspec>` is always supplied (via [`push_target`]) so
-/// the force applies to **only** the selected branch. A bare `git push
-/// --force-with-lease` would defer to `push.default`/configured refspecs and
-/// could rewrite several remote branches at once. For Git's local `.` remote,
-/// there is no remote-tracking ref from which bare `--force-with-lease` can infer
-/// an expectation, so the destination branch is snapshotted explicitly. The
-/// resulting `<ref>:<oid>` (or `<ref>:` when absent) lease makes a concurrent
-/// local ref move lose atomically instead of either clobbering it or failing as
-/// "stale info" unconditionally. `cred` selects the inline credentials.
+/// The preview's remote and destination are compared with the freshly-resolved
+/// push route before transport starts. The source refspec uses the previewed
+/// local oid rather than the mutable branch name, and the explicit
+/// `<destination>:<oid>` (or `<destination>:` when absent) lease never asks Git
+/// to infer an expectation from live tracking state. `cred` selects the inline
+/// credentials.
 pub fn force_push(
     repo: &str,
     branch: &str,
     expected_oid: &str,
+    expected_remote: &str,
+    expected_destination: &str,
+    expected_destination_oid: Option<&str>,
+    expected_endpoint_token: &str,
     cred: &TransportCredential,
 ) -> Result<String, String> {
     super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
-    let (remote, destination) = push_destination(repo, branch);
-    let refspec = format!("{expected_oid}:{destination}");
-    if remote != "." {
-        return run_push(repo, cred, &remote, &["--force-with-lease"], &[&refspec]);
+    ensure_operand(expected_remote)?;
+    ensure_operand(expected_destination)?;
+    if let Some(oid) = expected_destination_oid {
+        ensure_operand(oid)?;
     }
-
-    ensure_operand(&destination)?;
-    let observed = run_git_allow_exit_codes(
+    ensure_operand(expected_endpoint_token)?;
+    validate_force_push_route_inner(
         repo,
-        &["rev-parse", "--verify", "--quiet", &destination],
-        &[1],
+        branch,
+        expected_remote,
+        expected_destination,
+        expected_endpoint_token,
     )?;
+
+    let refspec = format!("{expected_oid}:{expected_destination}");
     // An empty expected value is meaningful Git syntax: the destination must
     // still not exist when receive-pack applies the update.
-    let lease = format!("--force-with-lease={destination}:{}", observed.trim());
-    run_push(repo, cred, &remote, &[&lease], &[&refspec])
+    let lease = format!(
+        "--force-with-lease={expected_destination}:{}",
+        expected_destination_oid.unwrap_or("")
+    );
+    // Keep the named remote as the transport operand: `remote get-url` already
+    // applies Git's longest-match URL rewrite once. Feeding that resolved URL
+    // back to `git push` would apply a second chained rewrite and contact a
+    // different endpoint. The route check immediately precedes this spawn; as
+    // with the ref guards, an external config edit in that narrow window can
+    // only be eliminated by Git gaining an atomic config lease.
+    run_push(repo, cred, expected_remote, &[&lease], &[&refspec])
+}
+
+fn validate_force_push_route_inner(
+    repo: &str,
+    branch: &str,
+    expected_remote: &str,
+    expected_destination: &str,
+    expected_endpoint_token: &str,
+) -> Result<(), String> {
+    if !expected_destination.starts_with("refs/heads/") {
+        return Err(format!(
+            "Unsupported force-push destination {expected_destination}. Preview the force-push again."
+        ));
+    }
+    let (remote, destination) = push_destination(repo, branch);
+    if !destination.starts_with("refs/heads/") {
+        return Err(format!(
+            "Unsupported force-push destination {destination}. Preview the force-push again."
+        ));
+    }
+    if remote != expected_remote || destination != expected_destination {
+        return Err(format!(
+            "Push destination changed from {expected_remote} {expected_destination} to {remote} {destination}. Preview the force-push again."
+        ));
+    }
+    let endpoint_token = push_endpoint_token(repo, expected_remote)?;
+    if endpoint_token != expected_endpoint_token {
+        return Err(format!(
+            "Push endpoint for remote '{expected_remote}' changed. Preview the force-push again."
+        ));
+    }
+    Ok(())
+}
+
+/// Validate the previewed force-push route before resolving credentials. The
+/// mutation repeats the endpoint check immediately before it spawns git, so
+/// config drift at either boundary normally fails closed (subject to the same
+/// narrow external config-write race as Git's other pre-spawn guards).
+pub fn validate_force_push_route(
+    repo: &str,
+    branch: &str,
+    expected_remote: &str,
+    expected_destination: &str,
+    expected_endpoint_token: &str,
+) -> Result<(), String> {
+    ensure_operand(branch)?;
+    ensure_operand(expected_remote)?;
+    ensure_operand(expected_destination)?;
+    ensure_operand(expected_endpoint_token)?;
+    validate_force_push_route_inner(
+        repo,
+        branch,
+        expected_remote,
+        expected_destination,
+        expected_endpoint_token,
+    )
 }
