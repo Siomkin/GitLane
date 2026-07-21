@@ -776,14 +776,24 @@ fn reject_tracked_paths_in_nested_repositories(
     Ok(())
 }
 
-fn begin_tracked_digest(
-    scope: &RepositoryScope,
-    head_branch: Option<&str>,
-    head_oid: Option<&str>,
-    head_tree_oid: Option<&str>,
-    index: &IndexSnapshot,
-    status: &ParsedStatus,
-) -> Sha256 {
+struct TrackedDigestContext<'a> {
+    scope: &'a RepositoryScope,
+    head_branch: Option<&'a str>,
+    head_oid: Option<&'a str>,
+    head_tree_oid: Option<&'a str>,
+    index: &'a IndexSnapshot,
+    status: &'a ParsedStatus,
+}
+
+fn begin_tracked_digest(context: &TrackedDigestContext<'_>) -> Sha256 {
+    let TrackedDigestContext {
+        scope,
+        head_branch,
+        head_oid,
+        head_tree_oid,
+        index,
+        status,
+    } = context;
     let mut state = Sha256::new();
     hash_field(&mut state, b"gitlane-discard-all-tracked-v1");
     hash_os(&mut state, scope.workdir.as_os_str());
@@ -832,27 +842,21 @@ fn begin_tracked_digest(
 }
 
 fn capture_tracked_digest(
-    scope: &RepositoryScope,
-    head_branch: Option<&str>,
-    head_oid: Option<&str>,
-    head_tree_oid: Option<&str>,
-    index: &IndexSnapshot,
-    status: &ParsedStatus,
+    context: &TrackedDigestContext<'_>,
     normalized_missing: &BTreeSet<Vec<u8>>,
     verify_normalized_missing: bool,
     remaining_bytes: &mut u64,
 ) -> Result<TrackedCapture, String> {
-    let mut state =
-        begin_tracked_digest(scope, head_branch, head_oid, head_tree_oid, index, status);
+    let mut state = begin_tracked_digest(context);
     let mut observations = Vec::new();
     let mut fingerprints = BTreeMap::new();
-    for raw_path in &status.tracked_paths {
+    for raw_path in &context.status.tracked_paths {
         hash_field(&mut state, raw_path);
         let path = git_path(raw_path)?;
         if normalized_missing.contains(raw_path) {
             if verify_normalized_missing {
                 let (fingerprint, observation) = fingerprint_with_budget(
-                    &scope.workdir,
+                    &context.scope.workdir,
                     &path,
                     remaining_bytes,
                     &format!(
@@ -874,7 +878,7 @@ fn capture_tracked_digest(
             continue;
         }
         let (fingerprint, observation) = fingerprint_with_budget(
-            &scope.workdir,
+            &context.scope.workdir,
             &path,
             remaining_bytes,
             &format!("Could not inspect {} before discarding", path_label(&path)),
@@ -892,18 +896,12 @@ fn capture_tracked_digest(
 }
 
 fn digest_tracked_from_captured(
-    scope: &RepositoryScope,
-    head_branch: Option<&str>,
-    head_oid: Option<&str>,
-    head_tree_oid: Option<&str>,
-    index: &IndexSnapshot,
-    status: &ParsedStatus,
+    context: &TrackedDigestContext<'_>,
     normalized_missing: &BTreeSet<Vec<u8>>,
     fingerprints: &BTreeMap<Vec<u8>, (WorktreeLeafFingerprint, Arc<WorktreeLeafObservation>)>,
 ) -> Result<[u8; 32], String> {
-    let mut state =
-        begin_tracked_digest(scope, head_branch, head_oid, head_tree_oid, index, status);
-    for raw_path in &status.tracked_paths {
+    let mut state = begin_tracked_digest(context);
+    for raw_path in &context.status.tracked_paths {
         hash_field(&mut state, raw_path);
         if normalized_missing.contains(raw_path) {
             state.update([0]);
@@ -976,13 +974,16 @@ fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
         .collect::<Result<Vec<_>, String>>()?;
     enforce_fingerprint_budget(&scope.workdir, inspection_paths)?;
     let mut remaining_bytes = MAX_FINGERPRINT_BYTES;
+    let digest_context = TrackedDigestContext {
+        scope: &scope,
+        head_branch: expected_head_branch.as_deref(),
+        head_oid: expected_head_oid.as_deref(),
+        head_tree_oid: expected_head_tree_oid.as_deref(),
+        index: &index,
+        status: &status,
+    };
     let tracked_capture = capture_tracked_digest(
-        &scope,
-        expected_head_branch.as_deref(),
-        expected_head_oid.as_deref(),
-        expected_head_tree_oid.as_deref(),
-        &index,
-        &status,
+        &digest_context,
         &BTreeSet::new(),
         false,
         &mut remaining_bytes,
@@ -1014,16 +1015,7 @@ fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
         .iter()
         .any(|path| status.tracked_paths.contains(path))
     {
-        digest_tracked_from_captured(
-            &scope,
-            expected_head_branch.as_deref(),
-            expected_head_oid.as_deref(),
-            expected_head_tree_oid.as_deref(),
-            &index,
-            &status,
-            &cleanup_raw,
-            &tracked_capture.fingerprints,
-        )?
+        digest_tracked_from_captured(&digest_context, &cleanup_raw, &tracked_capture.fingerprints)?
     } else {
         tracked_state
     };
@@ -1164,13 +1156,16 @@ fn capture_current_tracked_from_snapshot_once(
     let tree_oid = effective_head_tree_oid(&scope, oid.as_deref())?;
     validate_observations(snapshot)?;
     reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
+    let digest_context = TrackedDigestContext {
+        scope: &scope,
+        head_branch: branch.as_deref(),
+        head_oid: oid.as_deref(),
+        head_tree_oid: tree_oid.as_deref(),
+        index: &index,
+        status: &status,
+    };
     digest_tracked_from_captured(
-        &scope,
-        branch.as_deref(),
-        oid.as_deref(),
-        tree_oid.as_deref(),
-        &index,
-        &status,
+        &digest_context,
         &BTreeSet::new(),
         &snapshot.tracked_fingerprints,
     )
@@ -1215,12 +1210,14 @@ fn capture_current_tracked_once(
         observations,
         ..
     } = capture_tracked_digest(
-        &scope,
-        branch.as_deref(),
-        oid.as_deref(),
-        tree_oid.as_deref(),
-        &index,
-        &status,
+        &TrackedDigestContext {
+            scope: &scope,
+            head_branch: branch.as_deref(),
+            head_oid: oid.as_deref(),
+            head_tree_oid: tree_oid.as_deref(),
+            index: &index,
+            status: &status,
+        },
         normalized_missing,
         !normalized_missing.is_empty(),
         &mut remaining_bytes,

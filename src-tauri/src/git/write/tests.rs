@@ -35,7 +35,7 @@ use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
 };
-use crate::git::types::GitTransportAuthRef;
+use crate::git::types::{ForcePushRouteLease, GitTransportAuthRef};
 use crate::git::worktree_fs::set_after_guarded_rename_test_hook;
 use std::path::PathBuf;
 use std::process::Command;
@@ -647,14 +647,17 @@ fn network_branch_writes_reject_a_stale_local_tip_before_transport() {
     )
     .is_err());
     let endpoint_token = push_endpoint_token(repo.path(), "origin").expect("endpoint");
+    let route = ForcePushRouteLease {
+        remote: "origin".to_string(),
+        destination_ref: "refs/heads/main".to_string(),
+        destination_oid: None,
+        push_endpoint_token: endpoint_token,
+    };
     assert!(force_push(
         repo.path(),
         "main",
         &base,
-        "origin",
-        "refs/heads/main",
-        None,
-        &endpoint_token,
+        &route,
         &TransportCredential::None,
     )
     .is_err());
@@ -700,10 +703,7 @@ fn force_push_to_local_upstream_leases_existing_and_missing_destinations() {
         repo.path(),
         "feature",
         &first_preview.expected_oid,
-        &first_preview.remote,
-        &first_preview.destination_ref,
-        first_preview.destination_oid.as_deref(),
-        &first_preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&first_preview),
         &TransportCredential::None,
     )
     .expect("explicit local lease should replace the observed destination");
@@ -720,10 +720,7 @@ fn force_push_to_local_upstream_leases_existing_and_missing_destinations() {
         repo.path(),
         "feature",
         &second_preview.expected_oid,
-        &second_preview.remote,
-        &second_preview.destination_ref,
-        second_preview.destination_oid.as_deref(),
-        &second_preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&second_preview),
         &TransportCredential::None,
     )
     .expect("an empty lease should require and preserve destination nonexistence");
@@ -764,10 +761,7 @@ fn force_push_rejects_a_server_advance_even_after_tracking_catches_up() {
         client.path(),
         "main",
         &preview.expected_oid,
-        &preview.remote,
-        &preview.destination_ref,
-        preview.destination_oid.as_deref(),
-        &preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&preview),
         &TransportCredential::None,
     );
     assert!(
@@ -805,10 +799,7 @@ fn force_push_absent_destination_lease_rejects_an_existing_server_branch() {
         client.path(),
         "main",
         &preview.expected_oid,
-        &preview.remote,
-        &preview.destination_ref,
-        preview.destination_oid.as_deref(),
-        &preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&preview),
         &TransportCredential::None,
     );
 
@@ -870,10 +861,7 @@ fn force_push_rejects_endpoint_url_drift_after_preview() {
         repo.path(),
         "main",
         &preview.expected_oid,
-        &preview.remote,
-        &preview.destination_ref,
-        preview.destination_oid.as_deref(),
-        &preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&preview),
         &TransportCredential::None,
     )
     .expect_err("a changed endpoint must invalidate the preview");
@@ -903,10 +891,7 @@ fn force_push_rejects_remote_and_destination_config_drift_before_transport() {
         repo.path(),
         "main",
         &remote_preview.expected_oid,
-        &remote_preview.remote,
-        &remote_preview.destination_ref,
-        remote_preview.destination_oid.as_deref(),
-        &remote_preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&remote_preview),
         &TransportCredential::None,
     )
     .expect_err("pushRemote drift must invalidate the preview");
@@ -922,10 +907,7 @@ fn force_push_rejects_remote_and_destination_config_drift_before_transport() {
         repo.path(),
         "main",
         &destination_preview.expected_oid,
-        &destination_preview.remote,
-        &destination_preview.destination_ref,
-        destination_preview.destination_oid.as_deref(),
-        &destination_preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&destination_preview),
         &TransportCredential::None,
     )
     .expect_err("destination drift must invalidate the preview");
@@ -973,10 +955,7 @@ fn force_push_keeps_the_named_remote_for_chained_url_rewrites() {
         repo.path(),
         "main",
         &preview.expected_oid,
-        &preview.remote,
-        &preview.destination_ref,
-        preview.destination_oid.as_deref(),
-        &preview.push_endpoint_token,
+        &ForcePushRouteLease::from(&preview),
         &TransportCredential::None,
     )
     .expect("named remote should apply the rewrite exactly once");
@@ -1027,14 +1006,17 @@ fn force_push_rejects_a_local_dot_destination_outside_branch_refs() {
 
     assert!(preview_force_push(repo.path(), "main").is_err());
     let endpoint_token = push_endpoint_token(repo.path(), ".").expect("local endpoint");
+    let route = ForcePushRouteLease {
+        remote: ".".to_string(),
+        destination_ref: "refs/tags/v1".to_string(),
+        destination_oid: Some(tag_object.clone()),
+        push_endpoint_token: endpoint_token,
+    };
     assert!(force_push(
         repo.path(),
         "main",
         &head,
-        ".",
-        "refs/tags/v1",
-        Some(&tag_object),
-        &endpoint_token,
+        &route,
         &TransportCredential::None,
     )
     .is_err());
@@ -4016,6 +3998,17 @@ fn delete_branch_cas_removes_config_but_preserves_a_same_named_tag() {
 }
 
 #[test]
+fn delete_branch_without_local_config_reports_an_unqualified_success() {
+    let (repo, head) = repo_with_base_commit("delete-branch-no-config");
+    repo.git_ok(&["branch", "feature", &head]);
+
+    let result = delete_branch(repo.path(), "feature", &head, true)
+        .expect("a missing branch config section is already clean");
+
+    assert_eq!(result, "Deleted feature");
+}
+
+#[test]
 fn delete_branch_cas_rejects_a_tip_changed_after_preview() {
     let (repo, expected_oid) = repo_with_base_commit("delete-branch-stale-tip");
     repo.git_ok(&["branch", "feature", &expected_oid]);
@@ -4047,6 +4040,10 @@ fn delete_branch_rejects_current_and_linked_worktree_owners() {
     let (repo, head) = repo_with_base_commit("delete-branch-checked-out");
     assert!(delete_branch(repo.path(), "main", &head, true).is_err());
     assert_eq!(rev_parse(&repo, "refs/heads/main"), head);
+    assert!(
+        !repo.0.join(".git/refs/heads/main.lock").exists(),
+        "aborting a prepared deletion must release the current branch lock"
+    );
 
     repo.git_ok(&["branch", "feature", &head]);
     let linked = std::env::temp_dir().join(format!(
@@ -4058,6 +4055,10 @@ fn delete_branch_rejects_current_and_linked_worktree_owners() {
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
     assert!(delete_branch(repo.path(), "feature", &head, true).is_err());
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+    assert!(
+        !repo.0.join(".git/refs/heads/feature.lock").exists(),
+        "aborting a prepared deletion must release a linked-worktree branch lock"
+    );
 
     let _ = repo.git(&["worktree", "remove", "--force", linked_str]);
     let _ = std::fs::remove_dir_all(&linked);
@@ -7954,6 +7955,37 @@ fn discard_staged_file_works_on_an_unborn_repo() {
     discard_current(&repo, "new.txt", None, true).expect("discard staged file on unborn HEAD");
     assert!(index_entries(&repo).is_empty(), "file leaves the index");
     assert!(!repo.0.join("new.txt").exists(), "file leaves the worktree");
+}
+
+#[test]
+fn discard_staged_file_fails_closed_when_head_tree_cannot_be_read() {
+    let repo = repo_with_file("discard-missing-head-tree", "root.txt", b"root\n");
+    std::fs::create_dir(repo.0.join("nested")).unwrap();
+    std::fs::write(repo.0.join("nested/tracked.txt"), b"committed\n").unwrap();
+    repo.git_ok(&["add", "nested/tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "add nested file"]);
+    std::fs::write(repo.0.join("nested/tracked.txt"), b"staged edit\n").unwrap();
+    repo.git_ok(&["add", "nested/tracked.txt"]);
+
+    let subtree = rev_parse(&repo, "HEAD:nested");
+    let object_path = repo
+        .0
+        .join(".git/objects")
+        .join(&subtree[..2])
+        .join(&subtree[2..]);
+    std::fs::remove_file(&object_path).expect("fixture subtree object should be loose");
+
+    let error = preview_discard_file(repo.path(), "nested/tracked.txt", None, true)
+        .expect_err("an unreadable HEAD tree must never be treated as a staged-new file");
+    assert!(
+        error.contains("Could not inspect") || error.contains("unable to read tree"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        std::fs::read(repo.0.join("nested/tracked.txt")).unwrap(),
+        b"staged edit\n"
+    );
+    assert_eq!(index_entries(&repo), ["nested/tracked.txt", "root.txt"]);
 }
 
 #[test]

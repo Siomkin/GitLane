@@ -357,10 +357,7 @@ export interface DestructivePreview {
   warnings: string[];
 }
 
-export interface ForcePushPreview extends DestructivePreview {
-  /** Full local branch object shown by the confirmation and used as the push
-   * source. */
-  expectedOid: string;
+export interface ForcePushRouteLease {
   /** Push route resolved with Git's pushRemote / pushDefault precedence. */
   remote: string;
   /** Fully-qualified server-side destination, e.g. refs/heads/main. */
@@ -370,6 +367,12 @@ export interface ForcePushPreview extends DestructivePreview {
   destinationOid: string | null;
   /** Opaque fingerprint of the previewed single effective push endpoint. */
   pushEndpointToken: string;
+}
+
+export interface ForcePushPreview extends DestructivePreview, ForcePushRouteLease {
+  /** Full local branch object shown by the confirmation and used as the push
+   * source. */
+  expectedOid: string;
 }
 
 export interface DeleteBranchPreview extends DestructivePreview {
@@ -1070,19 +1073,18 @@ export const gitApi = {
     path: string,
     branch: string,
     expectedOid: string,
-    remote: string,
-    destinationRef: string,
-    destinationOid: string | null,
-    pushEndpointToken: string,
+    route: ForcePushRouteLease,
     auth?: GitTransportAuthRef | null,
   ) => invoke<string>("force_push", {
     path,
     branch,
     expectedOid,
-    remote,
-    destinationRef,
-    destinationOid,
-    pushEndpointToken,
+    route: {
+      remote: route.remote,
+      destinationRef: route.destinationRef,
+      destinationOid: route.destinationOid,
+      pushEndpointToken: route.pushEndpointToken,
+    },
     auth: auth ?? null,
   }),
 

@@ -17,7 +17,7 @@ use crate::git::worktree_fs::{
     WorktreeLeafObservation,
 };
 
-use super::cli::{run_git, run_git_literal_paths, run_git_with_input};
+use super::cli::{run_git, run_git_literal_paths, run_git_stdout_raw, run_git_with_input};
 
 /// Stage one literal repository path (also stages deletions).
 pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
@@ -700,24 +700,34 @@ fn staged_change_has_external_worktree_rename(
 
 fn hash_semantic_path_state(
     state: &mut Sha256,
-    head: Option<&git2::Tree<'_>>,
+    repo: &str,
+    has_head: bool,
     index: &git2::Index,
     file: &str,
-) {
+) -> Result<bool, String> {
     hash_field(state, file.as_bytes());
 
-    match head.and_then(|tree| tree.get_path(Path::new(file)).ok()) {
-        Some(entry) => {
-            state.update([1]);
-            state.update(entry.id().as_bytes());
-            state.update(entry.filemode_raw().to_le_bytes());
-        }
-        None => state.update([0]),
+    // Use real Git for tree membership. Besides honoring partial-clone
+    // promisor fetches, a missing/corrupt tree is now an error instead of being
+    // misclassified as a staged-new file that the destructive path may remove.
+    let head_entry = if has_head {
+        run_git_stdout_raw(
+            repo,
+            &["--literal-pathspecs", "ls-tree", "-z", "HEAD", "--", file],
+        )?
+    } else {
+        Vec::new()
+    };
+    let in_head = !head_entry.is_empty();
+    state.update([u8::from(in_head)]);
+    if in_head {
+        hash_field(state, &head_entry);
     }
 
     for stage in 0..=3 {
         hash_index_entry(state, index.get_path(Path::new(file), stage), stage);
     }
+    Ok(in_head)
 }
 
 fn hash_diff_file(state: &mut Sha256, file: git2::DiffFile<'_>) {
@@ -763,6 +773,9 @@ fn capture_discard_semantics(
     let workdir = repository
         .workdir()
         .ok_or_else(|| "Cannot discard a file in a bare repository".to_string())?;
+    let command_repo = workdir.to_str().ok_or_else(|| {
+        "Cannot discard a file from a worktree path that is not valid UTF-8".to_string()
+    })?;
     let index = repository.index().map_err(|error| {
         format!("Could not inspect the index before discarding {file}: {error}")
     })?;
@@ -806,15 +819,20 @@ fn capture_discard_semantics(
         ));
     }
 
-    let head = repository
-        .head()
-        .ok()
-        .and_then(|head| head.peel_to_commit().ok())
-        .and_then(|commit| commit.tree().ok());
-    let in_head = head
-        .as_ref()
-        .and_then(|tree| tree.get_path(Path::new(file)).ok())
-        .is_some();
+    let has_head = match repository.head() {
+        Ok(head) => {
+            head.peel_to_commit().map_err(|error| {
+                format!("Could not inspect HEAD before discarding {file}: {error}")
+            })?;
+            true
+        }
+        Err(error) if error.code() == git2::ErrorCode::UnbornBranch => false,
+        Err(error) => {
+            return Err(format!(
+                "Could not inspect HEAD before discarding {file}: {error}"
+            ));
+        }
+    };
     let index_state = index_path_state(&index, file);
 
     let mut state = Sha256::new();
@@ -827,11 +845,11 @@ fn capture_discard_semantics(
     match previous_file {
         Some(previous) => {
             state.update([1]);
-            hash_semantic_path_state(&mut state, head.as_ref(), &index, previous);
+            hash_semantic_path_state(&mut state, command_repo, has_head, &index, previous)?;
         }
         None => state.update([0]),
     }
-    hash_semantic_path_state(&mut state, head.as_ref(), &index, file);
+    let in_head = hash_semantic_path_state(&mut state, command_repo, has_head, &index, file)?;
 
     let relevant_count = statuses
         .iter()

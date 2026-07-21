@@ -104,6 +104,7 @@ export function createRepoSelectionActions(
       invalidateFileHistory();
       set((s) => ({
         fileSelectionRequestId: s.fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: null,
         fileHistory: null,
         fileView: null,
@@ -136,6 +137,7 @@ export function createRepoSelectionActions(
 
       set({
         fileSelectionRequestId,
+        diffLoading: false,
         selectedCommit: focus,
         selectedCommits,
         selectionAnchor: anchor,
@@ -188,6 +190,7 @@ export function createRepoSelectionActions(
     selectWip: () =>
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         wipSelected: true,
         fileHistory: null,
         compare: null,
@@ -334,6 +337,7 @@ export function createRepoSelectionActions(
         get().fileHistory?.path === requestPath;
       set({
         fileSelectionRequestId: get().fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: null,
         fileView: null,
         fileHistory: {
@@ -497,6 +501,7 @@ export function createRepoSelectionActions(
       };
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: state.fileHistory
           ? {
               ...state.fileHistory,
@@ -580,6 +585,7 @@ export function createRepoSelectionActions(
     selectBlameLine: (oid) =>
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: state.fileHistory
           ? { ...state.fileHistory, blameSelectedOid: oid }
           : null,
@@ -589,6 +595,7 @@ export function createRepoSelectionActions(
       invalidateFileHistory();
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: null,
       }));
     },
@@ -613,6 +620,7 @@ export function createRepoSelectionActions(
       };
       set({
         fileSelectionRequestId: get().fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: null,
         fileView: null,
         compare: {
@@ -682,6 +690,7 @@ export function createRepoSelectionActions(
       };
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: state.compare
           ? {
               ...state.compare,
@@ -805,6 +814,7 @@ export function createRepoSelectionActions(
       invalidateCompare();
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: null,
       }));
     },

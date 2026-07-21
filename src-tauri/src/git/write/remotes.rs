@@ -11,6 +11,7 @@ use super::cli::{
 use super::operands::{ensure_operand, ensure_url_has_no_credentials};
 use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
+use crate::git::types::ForcePushRouteLease;
 
 const TAG_FETCH_REFSPEC: &str = "refs/tags/*:refs/tags/*";
 
@@ -798,33 +799,31 @@ pub fn force_push(
     repo: &str,
     branch: &str,
     expected_oid: &str,
-    expected_remote: &str,
-    expected_destination: &str,
-    expected_destination_oid: Option<&str>,
-    expected_endpoint_token: &str,
+    route: &ForcePushRouteLease,
     cred: &TransportCredential,
 ) -> Result<String, String> {
     super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
-    ensure_operand(expected_remote)?;
-    ensure_operand(expected_destination)?;
-    if let Some(oid) = expected_destination_oid {
+    ensure_operand(&route.remote)?;
+    ensure_operand(&route.destination_ref)?;
+    if let Some(oid) = route.destination_oid.as_deref() {
         ensure_operand(oid)?;
     }
-    ensure_operand(expected_endpoint_token)?;
+    ensure_operand(&route.push_endpoint_token)?;
     validate_force_push_route_inner(
         repo,
         branch,
-        expected_remote,
-        expected_destination,
-        expected_endpoint_token,
+        &route.remote,
+        &route.destination_ref,
+        &route.push_endpoint_token,
     )?;
 
-    let refspec = format!("{expected_oid}:{expected_destination}");
+    let refspec = format!("{expected_oid}:{}", route.destination_ref);
     // An empty expected value is meaningful Git syntax: the destination must
     // still not exist when receive-pack applies the update.
     let lease = format!(
-        "--force-with-lease={expected_destination}:{}",
-        expected_destination_oid.unwrap_or("")
+        "--force-with-lease={}:{}",
+        route.destination_ref,
+        route.destination_oid.as_deref().unwrap_or("")
     );
     // Keep the named remote as the transport operand: `remote get-url` already
     // applies Git's longest-match URL rewrite once. Feeding that resolved URL
@@ -832,7 +831,7 @@ pub fn force_push(
     // different endpoint. The route check immediately precedes this spawn; as
     // with the ref guards, an external config edit in that narrow window can
     // only be eliminated by Git gaining an atomic config lease.
-    run_push(repo, cred, expected_remote, &[&lease], &[&refspec])
+    run_push(repo, cred, &route.remote, &[&lease], &[&refspec])
 }
 
 fn validate_force_push_route_inner(

@@ -130,6 +130,22 @@ describe("repo store — file history", () => {
     expect(useRepo.getState().compare).toBeNull();
   });
 
+  it("clears a superseded foreground diff spinner when opening history", async () => {
+    const page = deferred<FileHistoryPage>();
+    useRepo.setState({ diffLoading: true });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "file_history") return page.promise;
+      return Promise.resolve(null);
+    });
+
+    const request = useRepo.getState().openFileHistory("src/a.ts");
+    expect(useRepo.getState().diffLoading).toBe(false);
+
+    page.resolve({ ...historyPage, entries: [] });
+    await request;
+    expect(useRepo.getState().diffLoading).toBe(false);
+  });
+
   it("does not publish a history response after the repo was switched", async () => {
     let resolveHistory!: (value: unknown) => void;
     invokeMock.mockImplementation((cmd: string) => {

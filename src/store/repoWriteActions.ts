@@ -979,10 +979,7 @@ export function createRepoWriteActions(
           summary.path,
           branch,
           preview.expectedOid,
-          preview.remote,
-          preview.destinationRef,
-          preview.destinationOid,
-          preview.pushEndpointToken,
+          preview,
           auth,
         ));
         return `Force-pushed ${branch} (with lease)`;

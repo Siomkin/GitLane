@@ -486,6 +486,29 @@ pub struct ForcePushPreview {
     pub push_endpoint_token: String,
 }
 
+/// The previewed push route that must remain exact through force-push. Grouping
+/// these fields keeps the route one IPC value instead of a set of independent
+/// arguments that callers could accidentally mix between previews.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForcePushRouteLease {
+    pub remote: String,
+    pub destination_ref: String,
+    pub destination_oid: Option<String>,
+    pub push_endpoint_token: String,
+}
+
+impl From<&ForcePushPreview> for ForcePushRouteLease {
+    fn from(preview: &ForcePushPreview) -> Self {
+        Self {
+            remote: preview.remote.clone(),
+            destination_ref: preview.destination_ref.clone(),
+            destination_oid: preview.destination_oid.clone(),
+            push_endpoint_token: preview.push_endpoint_token.clone(),
+        }
+    }
+}
+
 /// Branch-deletion impact plus the exact local-ref object the confirmation
 /// described. The write accepts this oid again as a compare-and-swap lease, so
 /// a branch advanced or rewritten after the dialog opened is never deleted.

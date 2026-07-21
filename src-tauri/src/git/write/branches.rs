@@ -4,6 +4,7 @@ use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Stdio};
+use std::time::{Duration, Instant};
 
 use super::cli::{
     finish, git_command, run_git, run_git_allow_exit_codes, run_git_env_stable_diagnostics,
@@ -353,9 +354,23 @@ impl Drop for PreparedBranchDeletion {
             let _ = input.write_all(b"abort\n");
             let _ = input.flush();
         }
-        // A broken protocol must never strand refs/heads/<name>.lock. Killing
-        // and reaping the child releases the lock even when graceful abort was
-        // unavailable (for example, a closed pipe after a fatal prepare).
+        // Closing stdin lets update-ref consume the abort and remove its lock.
+        // Give that graceful path a bounded window before killing a genuinely
+        // stuck child; an immediate SIGKILL can win before Git unlinks the ref
+        // lock it acquired during `prepare`.
+        let deadline = Instant::now() + Duration::from_millis(250);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => {
+                    self.finished = true;
+                    return;
+                }
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(None) | Err(_) => break,
+            }
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
         self.finished = true;
@@ -508,7 +523,7 @@ pub(super) fn cleanup_deleted_branch_config(repo: &str, name: &str) -> Result<()
             "--remove-section",
             &format!("branch.{name}"),
         ],
-        &[5],
+        &[128],
     )
     .map(|_| ())
 }

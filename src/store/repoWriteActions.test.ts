@@ -776,10 +776,12 @@ describe("push family — the target remote's account, not a repo-wide one", () 
       path: "/repo",
       branch: "feat",
       expectedOid: FORCE_PUSH_PREVIEW.expectedOid,
-      remote: FORCE_PUSH_PREVIEW.remote,
-      destinationRef: FORCE_PUSH_PREVIEW.destinationRef,
-      destinationOid: FORCE_PUSH_PREVIEW.destinationOid,
-      pushEndpointToken: FORCE_PUSH_PREVIEW.pushEndpointToken,
+      route: {
+        remote: FORCE_PUSH_PREVIEW.remote,
+        destinationRef: FORCE_PUSH_PREVIEW.destinationRef,
+        destinationOid: FORCE_PUSH_PREVIEW.destinationOid,
+        pushEndpointToken: FORCE_PUSH_PREVIEW.pushEndpointToken,
+      },
       auth: ghAuth(bob),
     });
   });

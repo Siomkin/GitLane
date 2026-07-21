@@ -128,6 +128,7 @@ export function createRepoFilesActions(
       // Files affordances aren't reachable there.)
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: null,
         fileHistory: null,
         fileView: { path, content: null, loading: true, error: null },
@@ -189,6 +190,7 @@ export function createRepoFilesActions(
         if (isMissingFileError(e)) {
           set((state) => ({
             fileSelectionRequestId: state.fileSelectionRequestId + 1,
+            diffLoading: false,
             fileView: null,
           }));
         }
@@ -221,6 +223,7 @@ export function createRepoFilesActions(
     closeRepoFile: () =>
       set((state) => ({
         fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         fileView: null,
       })),
 

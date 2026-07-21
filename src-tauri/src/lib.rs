@@ -646,40 +646,28 @@ async fn force_push(
     path: String,
     branch: String,
     expected_oid: String,
-    remote: String,
-    destination_ref: String,
-    destination_oid: Option<String>,
-    push_endpoint_token: String,
+    route: git::types::ForcePushRouteLease,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::validate_force_push_route(
             &path,
             &branch,
-            &remote,
-            &destination_ref,
-            &push_endpoint_token,
+            &route.remote,
+            &route.destination_ref,
+            &route.push_endpoint_token,
         )?;
-        let cred = if remote == "." {
+        let cred = if route.remote == "." {
             git::transport_auth::TransportCredential::None
         } else {
             git::transport_auth::credential_for_remote(
                 &path,
-                &remote,
+                &route.remote,
                 git::transport_auth::RemoteTransportDirection::Push,
                 auth.as_ref(),
             )?
         };
-        git::write::force_push(
-            &path,
-            &branch,
-            &expected_oid,
-            &remote,
-            &destination_ref,
-            destination_oid.as_deref(),
-            &push_endpoint_token,
-            &cred,
-        )
+        git::write::force_push(&path, &branch, &expected_oid, &route, &cred)
     })
     .await
 }
