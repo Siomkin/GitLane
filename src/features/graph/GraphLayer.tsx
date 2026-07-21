@@ -1,12 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { GEOMETRY, graphLaneX, laneColor, rowY } from "./palette";
-import { segmentIntersectsViewport } from "./graphViewport";
 import { commitNodeIdentity } from "./commitAgents";
 import { readyCommitAgentImage } from "./commitAgentImages";
 import { drawCommitNode, type CommitNodeBadge } from "./commitNodePainter";
+import { buildGraphPaintIndex, queryGraphPaintIndex } from "./graphPaintIndex";
 import { useCommitAgentImages } from "./useCommitAgentImages";
 import type { StashConnector } from "./historyRows";
 
@@ -57,10 +57,28 @@ export function GraphLayer({
   // unrelated repaint.
   const theme = useResolvedTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const paintIndex = useMemo(
+    () =>
+      graph
+        ? buildGraphPaintIndex({ graph, visualRowByGraphRow, stashConnectors, hasWip })
+        : null,
+    [graph, visualRowByGraphRow, stashConnectors, hasWip],
+  );
+  const paintCandidates = useMemo(
+    () =>
+      paintIndex
+        ? queryGraphPaintIndex(paintIndex, {
+            viewportTop,
+            viewportHeight: Math.max(viewportHeight, 1),
+            rowHeight,
+          })
+        : null,
+    [paintIndex, viewportTop, viewportHeight, rowHeight],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !graph) return;
+    if (!canvas || !graph || !paintCandidates) return;
 
     const dpr = window.devicePixelRatio || 1;
     const width = graphWidth;
@@ -100,67 +118,49 @@ export function GraphLayer({
     const dimming = matchedIds != null;
     if (dimming) ctx.globalAlpha = DIM_ALPHA;
 
-    const graphRowY = (graphRow: number) =>
-      rowY(visualRowByGraphRow[graphRow] ?? graphRow + (hasWip ? 1 : 0), rowHeight);
-    const headCommit = head
-      ? graph.commits.find((commit) => commit.id === head && !commit.stash)
-      : undefined;
-
     // Synthetic connectors. The WIP node hangs off HEAD; each stash row sits at
     // its own creation time in the date-ordered list, with a dashed connector
     // reaching down to its base commit wherever that lands — so the stash reads
     // as an annotation tied to its origin rather than glued
     // beside it.
-    if ((hasWip || stashConnectors.length > 0) && head) {
-      if (hasWip && headCommit) {
-        const wipLane = graph.wipLane ?? headCommit.lane;
-        const x = graphLaneX(wipLane);
-        const headX = graphLaneX(headCommit.lane);
-        const yHead = graphRowY(headCommit.row);
-        const yWip = rowY(0, rowHeight);
-        ctx.strokeStyle = laneColor(graph.wipColor ?? headCommit.color);
-        ctx.lineWidth = 2;
-        ctx.setLineDash([2, 3]);
-        if (segmentIntersectsViewport(yWip, yHead, viewportTop, canvasHeight, rowHeight)) {
-          ctx.beginPath();
-          ctx.moveTo(x, yWip + 7 - viewportTop);
-          if (x === headX) {
-            ctx.lineTo(x, yHead - viewportTop);
-          } else {
-            ctx.lineTo(x, yHead - 12 - viewportTop);
-            ctx.quadraticCurveTo(x, yHead - viewportTop, headX, yHead - viewportTop);
-          }
-          ctx.stroke();
+    const indexedWip = paintCandidates.wipConnector ?? paintCandidates.wipNode;
+    if (indexedWip) {
+      const wipLane = indexedWip.lane;
+      const x = graphLaneX(wipLane);
+      const headX = graphLaneX(indexedWip.headCommit.lane);
+      const yHead = rowY(indexedWip.headVisualRow, rowHeight);
+      const yWip = rowY(0, rowHeight);
+      ctx.strokeStyle = laneColor(indexedWip.color);
+      ctx.lineWidth = 2;
+      ctx.setLineDash([2, 3]);
+      if (paintCandidates.wipConnector) {
+        ctx.beginPath();
+        ctx.moveTo(x, yWip + 7 - viewportTop);
+        if (x === headX) {
+          ctx.lineTo(x, yHead - viewportTop);
+        } else {
+          ctx.lineTo(x, yHead - 12 - viewportTop);
+          ctx.quadraticCurveTo(x, yHead - viewportTop, headX, yHead - viewportTop);
         }
-        if (segmentIntersectsViewport(yWip, yWip, viewportTop, canvasHeight, rowHeight)) {
-          ctx.beginPath();
-          ctx.arc(x, yWip - viewportTop, 5.5, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.setLineDash([]);
+        ctx.stroke();
       }
-    }
-
-    // Graph rows that are injected stash nodes: their single edge to the base is
-    // drawn dashed + amber (the reserved-lane stash connector) instead of a solid
-    // lane line, and their node is the amber marker (painted by the HTML row), so
-    // the canvas skips the commit dot for them.
-    const stashNodeRows = new Set<number>();
-    for (const commit of graph.commits) {
-      if (commit.stash) stashNodeRows.add(commit.row);
+      if (paintCandidates.wipNode) {
+        ctx.beginPath();
+        ctx.arc(x, yWip - viewportTop, 5.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
     }
 
     const clampY = (value: number) =>
       Math.max(-rowHeight, Math.min(canvasHeight + rowHeight, value));
-    for (const edge of graph.edges) {
+    for (const indexedEdge of paintCandidates.edges) {
+      const edge = indexedEdge.edge;
       const x1 = graphLaneX(edge.fromLane);
-      const y1 = graphRowY(edge.fromRow);
+      const y1 = rowY(indexedEdge.fromVisualRow, rowHeight);
       const x2 = graphLaneX(edge.toLane);
-      const y2 = graphRowY(edge.toRow);
-      if (!segmentIntersectsViewport(y1, y2, viewportTop, canvasHeight, rowHeight)) {
-        continue;
-      }
-      const isStashEdge = stashNodeRows.has(edge.fromRow);
+      const y2 = rowY(indexedEdge.toVisualRow, rowHeight);
+      const isStashEdge = indexedEdge.stash;
       ctx.strokeStyle = isStashEdge ? STASH_CONNECTOR : laneColor(edge.color);
       ctx.lineWidth = 2.4;
       ctx.setLineDash(isStashEdge ? [3, 4] : []);
@@ -186,18 +186,16 @@ export function GraphLayer({
     }
     ctx.setLineDash([]);
 
-    if (stashConnectors.length > 0) {
+    if (paintCandidates.stashConnectors.length > 0) {
       ctx.lineWidth = 2.4;
       ctx.setLineDash([3, 4]);
       ctx.strokeStyle = STASH_CONNECTOR;
-      for (const connector of stashConnectors) {
+      for (const indexedConnector of paintCandidates.stashConnectors) {
+        const connector = indexedConnector.connector;
         const x = graphLaneX(connector.anchorLane);
         const stashX = graphLaneX(connector.stashLane);
         const yAnchor = rowY(connector.anchorRow, rowHeight);
         const yStash = rowY(connector.stashRow, rowHeight);
-        if (!segmentIntersectsViewport(yStash, yAnchor, viewportTop, canvasHeight, rowHeight)) {
-          continue;
-        }
         const towardAnchor = yAnchor > yStash ? 1 : -1;
         ctx.beginPath();
         ctx.moveTo(stashX, yStash + towardAnchor * 7 - viewportTop);
@@ -224,15 +222,10 @@ export function GraphLayer({
     // row edge.
     const avatarRadius = rowHeight >= 40 ? 13 : 10;
 
-    for (const commit of graph.commits) {
-      // Stash nodes render as the amber dashed marker in their HTML row, not a
-      // canvas dot — their edge to the base is already drawn dashed above.
-      if (commit.stash) continue;
+    for (const indexedCommit of paintCandidates.commits) {
+      const commit = indexedCommit.commit;
       const x = graphLaneX(commit.lane);
-      const globalY = graphRowY(commit.row);
-      if (!segmentIntersectsViewport(globalY, globalY, viewportTop, canvasHeight, rowHeight)) {
-        continue;
-      }
+      const globalY = rowY(indexedCommit.visualRow, rowHeight);
       const y = globalY - viewportTop;
       const isSelected = selectedSet.has(commit.id);
       const isMerge = commit.parents.length > 1;
@@ -290,14 +283,12 @@ export function GraphLayer({
     }
   }, [
     graph,
+    paintCandidates,
     viewportTop,
     viewportHeight,
     selectedCommits,
-    hasWip,
     rowHeight,
     graphWidth,
-    visualRowByGraphRow,
-    stashConnectors,
     theme,
     matchedIds,
     showCommitNodeIcons,
