@@ -18,6 +18,7 @@ import type {
   CommitNode,
   RepoForge,
   RepoGraph,
+  RecentStatus,
   RepoSummary,
   StashEntry,
   WorkingChanges,
@@ -4243,6 +4244,418 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     await useRepo.getState().restoreSession();
 
     expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/dead-wt" });
+  });
+
+  it("preserves a background-tab close while the startup probe is pending", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return statusProbe.promise;
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    await useRepo.getState().closeRepo("/b");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "open_repo" && (args as { path?: string })?.path === "/a",
+      ),
+    ).toHaveLength(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/b" });
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not reopen the persisted tab over a newer pending user open", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    const openedC = deferred<RepoSummary>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/c") return openedC.promise;
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    const openingC = useRepo.getState().loadRepo("/c");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toEqual([
+      ["open_repo", { path: "/c" }],
+    ]);
+
+    openedC.resolve({
+      ...aliveSummary,
+      path: "/c",
+      workdir: "/c",
+      headBranch: "fresh",
+    });
+    await openingC;
+
+    expect(useRepo.getState().summary?.path).toBe("/c");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b", "/c"]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/c");
+  });
+
+  it("does not prune an existing worktree while its newer activation is pending", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    const openedB = deferred<RepoSummary>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: true, mainPath: "/a", branch: "topic" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/b") return openedB.promise;
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    const activatingB = useRepo.getState().loadRepo("/b");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    // The startup result is stale relative to the user's phase-1 activation.
+    // Its unchanged lifetime/info cannot distinguish that target, so the newer
+    // global open intent makes restore's destructive pruning stand down.
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(0);
+
+    openedB.resolve({
+      ...aliveSummary,
+      path: "/b",
+      workdir: "/b",
+      headBranch: "fresh",
+      isWorktree: true,
+      mainPath: "/a",
+    });
+    await activatingB;
+
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("fresh");
+  });
+
+  it("keeps newer metadata published within the same tab lifetime", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: true, mainPath: "/a", branch: "old" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation(
+      (cmd: string, args?: { path?: string; paths?: string[] }) => {
+        if (cmd === "recents_status" && args?.paths?.length === 2) {
+          return statusProbe.promise;
+        }
+        if (cmd === "recents_status" && args?.paths?.[0] === "/b") {
+          return Promise.resolve([
+            {
+              path: "/b",
+              exists: true,
+              branch: "fresh",
+              isWorktree: true,
+              mainPath: "/a",
+            },
+          ]);
+        }
+        if (cmd === "open_repo") return Promise.resolve(aliveSummary);
+        if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+        return defaultInvoke(cmd);
+      },
+    );
+
+    const restoring = useRepo.getState().restoreSession();
+    // refreshTabInfo replaces the metadata object without closing the tab, so
+    // its lifetime deliberately stays the same as restore's captured lease.
+    await useRepo.getState().refreshTabInfo("/b");
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("fresh");
+
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().tabInfoByPath["/b"]).toEqual({
+      isWorktree: true,
+      mainPath: "/a",
+      branch: "fresh",
+    });
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("preserves a live reorder and completed user open during the startup probe", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/c") {
+        return Promise.resolve({
+          ...aliveSummary,
+          path: "/c",
+          workdir: "/c",
+          headBranch: "fresh",
+        });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    useRepo.getState().reorderOpenPaths(1, 0);
+    await useRepo.getState().loadRepo("/c");
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/a", "/c"]);
+
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/a", "/c"]);
+    expect(useRepo.getState().summary?.path).toBe("/c");
+    expect(useRepo.getState().tabInfoByPath["/c"]?.branch).toBe("fresh");
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
+      "/b",
+      "/a",
+      "/c",
+    ]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/c");
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "open_repo" && (args as { path?: string })?.path === "/a",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("ignores a stale missing result after the same path closes and reopens", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: true, mainPath: "/a", branch: "stale" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/b") {
+        return Promise.resolve({
+          ...aliveSummary,
+          path: "/b",
+          workdir: "/b",
+          headBranch: "fresh",
+          isWorktree: true,
+          mainPath: "/a",
+        });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    await useRepo.getState().closeRepo("/b");
+    await useRepo.getState().loadRepo("/b");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(useRepo.getState().tabInfoByPath["/b"]).toEqual({
+      isWorktree: true,
+      mainPath: "/a",
+      branch: "fresh",
+    });
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reconciles an unchanged restore once: prune dead, watch background, open last", async () => {
+    useRepo.setState({
+      openPaths: ["/a", "/dead-wt", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "old-main" },
+        "/dead-wt": { isWorktree: true, mainPath: "/a", branch: "gone" },
+        "/b": { isWorktree: false, mainPath: null, branch: "old-dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+            { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+          ]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    const duplicate = useRepo.getState().restoreSession();
+    await Promise.all([restoring, duplicate]);
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("dev");
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "recents_status")).toHaveLength(1);
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toHaveLength(1);
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/b" });
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/a" });
+    expect(invokeMock).toHaveBeenCalledWith("unwatch_repo", { path: "/dead-wt" });
+  });
+
+  it("heals a pruned last tab to the first survivor in the live reordered strip", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/dead-wt", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/dead-wt": { isWorktree: true, mainPath: "/a", branch: "gone" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/dead-wt");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path) {
+        return Promise.resolve({
+          ...aliveSummary,
+          path: args.path,
+          workdir: args.path,
+          headBranch: args.path === "/b" ? "dev" : "main",
+        });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    useRepo.getState().reorderOpenPaths(2, 0);
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toEqual([
+      ["open_repo", { path: "/b" }],
+    ]);
+  });
+
+  it("restores a lastPath-only partial session as a new tab", async () => {
+    useRepo.setState({
+      openPaths: [],
+      tabInfoByPath: {},
+      sessionRestorePhase: SESSION_RESTORE_PHASE.Pending,
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(aliveSummary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toHaveLength(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("recents_status", expect.anything());
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
   });
 
   it("claims startup restoration once while it is in flight", async () => {
