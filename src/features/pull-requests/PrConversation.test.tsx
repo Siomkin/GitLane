@@ -6,6 +6,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PullRequest } from "@/lib/prs";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { PrConversation } from "./PrConversation";
 
@@ -43,6 +44,16 @@ function openPr(over: Partial<PullRequest> = {}): PullRequest {
 beforeEach(() => {
   useUi.setState({ confirm: null });
   usePulls.setState({ prPendingActions: [] });
+  useRepo.setState({
+    summary: {
+      path: "/repo",
+      workdir: "/repo",
+      headBranch: "main",
+      headOid: "abc",
+      detached: false,
+    },
+    forge: null,
+  });
 });
 
 describe("PrConversation comment identities", () => {
@@ -151,6 +162,28 @@ describe("PrConversation composer loaders", () => {
     await waitFor(() => expect(screen.queryByText("Posting…")).not.toBeInTheDocument());
   });
 
+  it("preserves a newer draft typed while an older comment is in flight", async () => {
+    let resolveComment!: (value: string) => void;
+    const commentPr = vi.fn(() => new Promise<string>((resolve) => (resolveComment = resolve)));
+    usePulls.setState({ commentPr });
+
+    render(<PrConversation pr={openPr()} />);
+    const composer = screen.getByPlaceholderText("Leave a comment…");
+    await userEvent.type(composer, "Submitted comment");
+    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(await screen.findByRole("button", { name: "Posting…" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+
+    await userEvent.clear(composer);
+    await userEvent.type(composer, "New draft for later");
+    resolveComment("done");
+    await waitFor(() => expect(screen.queryByText("Posting…")).not.toBeInTheDocument());
+
+    expect(composer).toHaveValue("New draft for later");
+  });
+
   it("shows an approving spinner once the confirm dialog runs the review", async () => {
     let resolveReview!: (v: string) => void;
     const reviewPr = vi.fn(() => new Promise<string>((r) => (resolveReview = r)));
@@ -170,5 +203,30 @@ describe("PrConversation composer loaders", () => {
 
     resolveReview("done");
     await waitFor(() => expect(screen.queryByText("Approving…")).not.toBeInTheDocument());
+  });
+
+  it("preserves a newer draft typed while an older review is in flight", async () => {
+    let resolveReview!: (value: string) => void;
+    const reviewPr = vi.fn(() => new Promise<string>((resolve) => (resolveReview = resolve)));
+    usePulls.setState({ reviewPr });
+
+    render(<PrConversation pr={openPr()} />);
+    const composer = screen.getByPlaceholderText("Leave a comment…");
+    await userEvent.type(composer, "Submitted review note");
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    act(() => {
+      void useUi.getState().confirm?.onConfirm();
+    });
+    expect(await screen.findByRole("button", { name: "Approving…" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+
+    await userEvent.clear(composer);
+    await userEvent.type(composer, "New review draft");
+    resolveReview("done");
+    await waitFor(() => expect(screen.queryByText("Approving…")).not.toBeInTheDocument());
+
+    expect(composer).toHaveValue("New review draft");
   });
 });

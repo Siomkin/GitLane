@@ -4,6 +4,10 @@
 // succeeded so callers can clear their own input on success.
 
 import { useCallback, useRef, useState } from "react";
+import {
+  capturePrActionOwner,
+  prActionOwnerIsCurrent,
+} from "@/store/pullsActionOwner";
 import { useUi } from "@/store/ui";
 
 /** Component-local button keys. These select exact labels/spinners; the pulls
@@ -25,8 +29,11 @@ export function useRunPrAction() {
     async (
       run: () => Promise<string>,
       okMessage?: string,
-      ownsResult: () => boolean = () => true,
+      ownsLocalResult: () => boolean = () => true,
     ): Promise<boolean> => {
+      const owner = capturePrActionOwner();
+      const ownsResult = () =>
+        owner !== null && prActionOwnerIsCurrent(owner) && ownsLocalResult();
       try {
         const out = await run();
         if (!ownsResult()) return false;

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PullRequest } from "@/lib/prs";
 import type { ReviewThread } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
 import { PrConversation } from "./PrConversation";
 import { ReviewThreads } from "./ReviewThreads";
 
@@ -50,6 +51,16 @@ const makePr = (over: Partial<PullRequest> = {}): PullRequest => ({
 
 beforeEach(() => {
   openUrl.mockClear();
+  useRepo.setState({
+    summary: {
+      path: "/repo",
+      workdir: "/repo",
+      headBranch: "main",
+      headOid: "abc",
+      detached: false,
+    },
+    forge: null,
+  });
   usePulls.setState({
     prThreads: {},
     prThreadsError: {},

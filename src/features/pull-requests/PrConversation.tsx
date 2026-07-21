@@ -88,8 +88,13 @@ function Composer({ pr }: { pr: PullRequest }) {
   const approving = pendingKey === PR_ACTION_KEY.Approve || approvePending;
   const requestingChanges = pendingKey === PR_ACTION_KEY.RequestChanges || requestChangesPending;
 
-  const after = (ok: boolean) => {
-    if (ok) setBody("");
+  const after = (submittedBody: string, ok: boolean) => {
+    if (ok) {
+      // The textarea stays editable while the request is in flight. Clear only
+      // the exact submitted draft; text typed after submission belongs to the
+      // next comment/review and must survive the older request's completion.
+      setBody((current) => (current === submittedBody ? "" : current));
+    }
   };
 
   return (
@@ -106,16 +111,24 @@ function Composer({ pr }: { pr: PullRequest }) {
           {isOpen && (
             <>
               <button type="button"
-                onClick={() =>
+                onClick={() => {
+                  const submittedBody = body;
                   requestConfirm({
                     title: `Request changes on #${pr.num}?`,
                     message: "Your note will be posted as a changes-requested review.",
                     confirmLabel: "Request changes",
                     danger: true,
                     onConfirm: async () =>
-                      after(await start(PR_ACTION_KEY.RequestChanges, () => reviewPr(pr.num, "request-changes", body), `Requested changes on #${pr.num}`)),
-                  })
-                }
+                      after(
+                        submittedBody,
+                        await start(
+                          PR_ACTION_KEY.RequestChanges,
+                          () => reviewPr(pr.num, "request-changes", submittedBody),
+                          `Requested changes on #${pr.num}`,
+                        ),
+                      ),
+                  });
+                }}
                 disabled={pending || !trimmed}
                 aria-busy={requestingChanges}
                 title={!trimmed ? "A note is required to request changes" : undefined}
@@ -125,15 +138,23 @@ function Composer({ pr }: { pr: PullRequest }) {
                 {requestingChanges ? "Requesting…" : "Request changes"}
               </button>
               <button type="button"
-                onClick={() =>
+                onClick={() => {
+                  const submittedBody = body;
                   requestConfirm({
                     title: `Approve #${pr.num}?`,
                     message: trimmed ? undefined : "Approve with no comment.",
                     confirmLabel: "Approve",
                     onConfirm: async () =>
-                      after(await start(PR_ACTION_KEY.Approve, () => reviewPr(pr.num, "approve", body), `Approved #${pr.num}`)),
-                  })
-                }
+                      after(
+                        submittedBody,
+                        await start(
+                          PR_ACTION_KEY.Approve,
+                          () => reviewPr(pr.num, "approve", submittedBody),
+                          `Approved #${pr.num}`,
+                        ),
+                      ),
+                  });
+                }}
                 disabled={pending}
                 aria-busy={approving}
                 className={cn(ghostBtn, "text-emerald-600 dark:text-emerald-400")}
@@ -144,7 +165,17 @@ function Composer({ pr }: { pr: PullRequest }) {
             </>
           )}
           <button type="button"
-            onClick={async () => after(await start(PR_ACTION_KEY.Comment, () => commentPr(pr.num, body), "Comment posted"))}
+            onClick={async () => {
+              const submittedBody = body;
+              after(
+                submittedBody,
+                await start(
+                  PR_ACTION_KEY.Comment,
+                  () => commentPr(pr.num, submittedBody),
+                  "Comment posted",
+                ),
+              );
+            }}
             disabled={pending || !trimmed}
             aria-busy={posting}
             className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"

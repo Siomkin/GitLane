@@ -36,13 +36,15 @@ export const ReviewThreadControls = ({ prNum, thread, authorInitials }: ReviewTh
 
   const postReply = async () => {
     if (!trimmedReply || pending) return;
+    const submittedDraft = reply;
+    const submittedReply = trimmedReply;
     setPendingAction("reply");
     try {
       const ok = await run(
-        () => replyThread(prNum, thread.id, trimmedReply),
+        () => replyThread(prNum, thread.id, submittedReply),
         "Reply posted",
       );
-      if (ok) setReply("");
+      if (ok) setReply((current) => (current === submittedDraft ? "" : current));
     } finally {
       setPendingAction(null);
     }
