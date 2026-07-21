@@ -1,4 +1,4 @@
-use super::branches::align_equivalent_sibling;
+use super::branch_checkout::align_equivalent_sibling;
 use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution};
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;

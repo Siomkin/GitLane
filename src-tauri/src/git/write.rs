@@ -5,10 +5,12 @@
 //! signing, and the full conflict machinery — all of which libgit2 wrappers
 //! reimplement only partially. This module is the public facade used by the IPC
 //! layer; focused siblings own subprocess execution, operand validation, branch
-//! writes, commit/amend/squash writes, conflict resolution, guarded file
-//! discard, patch and bulk staging, stash/worktree porcelain, remotes,
-//! recovery previews, and repo identity.
+//! checkout, branch and history writes, tags and patch creation, resets,
+//! commit/amend/squash writes, conflict resolution, guarded file discard, patch
+//! and bulk staging, stash/worktree porcelain, remotes, recovery previews, and
+//! repo identity.
 
+mod branch_checkout;
 mod branches;
 mod cli;
 mod commits;
@@ -17,29 +19,24 @@ mod discard_all;
 mod discard_file;
 mod files;
 mod head;
+mod history;
 mod identity;
 mod lifecycle;
 mod operands;
 mod patch_staging;
+mod patches;
 mod recovery;
 mod remotes;
+mod reset;
 mod staging;
 mod stashes;
+mod tags;
 #[cfg(test)]
 mod tests;
 mod worktrees;
 
-pub use branches::{
-    checkout, checkout_remote_branch, cherry_pick_many_onto, cherry_pick_onto,
-    create_annotated_tag, create_branch, create_patch, create_tag, delete_branch, delete_tag,
-    fast_forward_branch_at, merge_into, rebase, rename_branch, reset_branch, revert_many_onto,
-    revert_onto, set_upstream,
-};
-#[cfg(test)]
-pub use branches::{
-    cherry_pick, cherry_pick_many, fast_forward, fast_forward_branch, merge, reset, revert,
-    revert_many,
-};
+pub use branch_checkout::{checkout, checkout_remote_branch};
+pub use branches::{create_branch, delete_branch, rename_branch, set_upstream};
 #[cfg(test)]
 pub use commits::commit;
 pub use commits::{commit_expected, squash_commits};
@@ -62,9 +59,18 @@ pub use discard_file::{discard_file, preview_discard_file};
 #[cfg(test)]
 pub(crate) use files::set_before_replace_test_hook;
 pub use files::write_repo_file;
+#[cfg(test)]
+pub use history::{
+    cherry_pick, cherry_pick_many, fast_forward, fast_forward_branch, merge, revert, revert_many,
+};
+pub use history::{
+    cherry_pick_many_onto, cherry_pick_onto, fast_forward_branch_at, merge_into, rebase,
+    revert_many_onto, revert_onto,
+};
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use patch_staging::{apply_hunk, apply_line};
+pub use patches::create_patch;
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
     reflog_entries,
@@ -76,6 +82,9 @@ pub use remotes::{
 };
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
+#[cfg(test)]
+pub use reset::reset;
+pub use reset::reset_branch;
 pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
 #[cfg(test)]
 pub use stashes::{stash, stash_apply, stash_pop};
@@ -83,6 +92,7 @@ pub use stashes::{
     stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
     stash_pop_onto,
 };
+pub use tags::{create_annotated_tag, create_tag, delete_tag};
 pub use worktrees::{
     add_worktree, create_branch_in_worktree, delete_branch_with_worktree, move_branch_to_worktree,
     remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,

@@ -101,7 +101,7 @@ pub fn preview_reset(
         _ => "mixed",
     };
     // Qualify a branch/tag-ambiguous target to refs/heads/ exactly as the write
-    // path (`branches::reset`) does, so the preview describes the *same* ref the
+    // path (`reset::reset`) does, so the preview describes the *same* ref the
     // reset will actually move to — otherwise a same-named tag could be shown in
     // the confirm dialog while the reset lands on the branch (GL-120 review).
     let target = super::branches::qualify_branch_if_ambiguous(repo, target);
