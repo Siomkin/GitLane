@@ -124,9 +124,10 @@ its canvas backing store is bounded by the viewport plus overscan.
 
 ### Live updates: the filesystem watcher
 
-`src-tauri/src/watcher.rs` recursively watches the open worktree (including `.git`, so
-terminal commits, checkouts, and staging all register) and emits a `repo-changed` Tauri
-event. macOS uses FSEvents (directory-level, cheap), and bursts are throttled in Rust
+`src-tauri/src/watcher.rs` owns the watch registry and recursively watches the open
+worktree (including `.git`, so terminal commits, checkouts, and staging all register).
+`watcher/classification.rs` classifies those events and emits a `repo-changed` Tauri event.
+macOS uses FSEvents (directory-level, cheap), and bursts are throttled in Rust
 (300 ms) **and** debounced again in the frontend (`App.tsx`, ~400 ms) before triggering
 a quiet re-sync. Switching repos replaces the watcher (the old one is dropped). This is
 what keeps the UI live when the repo changes outside the app.
