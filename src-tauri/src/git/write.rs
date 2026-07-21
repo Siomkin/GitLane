@@ -5,18 +5,22 @@
 //! signing, and the full conflict machinery — all of which libgit2 wrappers
 //! reimplement only partially. This module is the public facade used by the IPC
 //! layer; focused siblings own subprocess execution, operand validation, branch
-//! writes, conflict resolution, staging, stash/worktree porcelain, remotes,
+//! writes, commit/amend/squash writes, conflict resolution, guarded file
+//! discard, patch and bulk staging, stash/worktree porcelain, remotes,
 //! recovery previews, and repo identity.
 
 mod branches;
 mod cli;
+mod commits;
 mod conflict_resolution;
 mod discard_all;
+mod discard_file;
 mod files;
 mod head;
 mod identity;
 mod lifecycle;
 mod operands;
+mod patch_staging;
 mod recovery;
 mod remotes;
 mod staging;
@@ -36,6 +40,9 @@ pub use branches::{
     cherry_pick, cherry_pick_many, fast_forward, fast_forward_branch, merge, reset, revert,
     revert_many,
 };
+#[cfg(test)]
+pub use commits::commit;
+pub use commits::{commit_expected, squash_commits};
 pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
     reconflict_file, resolve_conflict_file, skip_operation,
@@ -50,10 +57,14 @@ pub(crate) use discard_all::{
     take_discard_all_fingerprint_byte_count,
 };
 #[cfg(test)]
+pub(crate) use discard_file::set_discard_capture_test_hook;
+pub use discard_file::{discard_file, preview_discard_file};
+#[cfg(test)]
 pub(crate) use files::set_before_replace_test_hook;
 pub use files::write_repo_file;
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
+pub use patch_staging::{apply_hunk, apply_line};
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
     reflog_entries,
@@ -65,12 +76,7 @@ pub use remotes::{
 };
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
-#[cfg(test)]
-pub(crate) use staging::set_discard_capture_test_hook;
-pub use staging::{
-    apply_hunk, apply_line, commit_expected, discard_file, preview_discard_file, squash_commits,
-    stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files,
-};
+pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
 #[cfg(test)]
 pub use stashes::{stash, stash_apply, stash_pop};
 pub use stashes::{

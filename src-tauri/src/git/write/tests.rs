@@ -2,11 +2,11 @@ use super::branches::align_equivalent_sibling;
 use super::conflict_resolution::{conflict_stage_absent, is_empty_after_resolution};
 use super::lifecycle::init_in_place;
 use super::operands::ensure_operand;
+use super::patch_staging::{apply_hunk_patch, patch_diff_args};
 use super::remotes::{
     is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection,
     push_endpoint_token, push_target_at,
 };
-use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::worktrees::is_porcelain_record;
 use super::{
     abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
@@ -1913,7 +1913,7 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
     let captured_identity = repo_identity(repo.path())
         .expect("read selected identity")
         .expect("selected identity exists");
-    super::staging::commit(
+    super::commit(
         repo.path(),
         "unsigned by selected card",
         "",
@@ -1987,7 +1987,7 @@ fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
     )
     .expect("replace identity before stale commit arrives");
 
-    let error = super::staging::commit(
+    let error = super::commit(
         repo.path(),
         "must not use a mixed identity",
         "",
@@ -2028,7 +2028,7 @@ fn commit_rejects_a_card_applied_after_this_computer_was_captured() {
         Some(false),
     )
     .expect("apply card after composer snapshot");
-    let error = super::staging::commit(
+    let error = super::commit(
         repo.path(),
         "must not adopt the late card",
         "",
