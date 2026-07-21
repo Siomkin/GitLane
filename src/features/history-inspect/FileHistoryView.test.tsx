@@ -4,6 +4,7 @@ import type { FileHistoryEntry } from "@/lib/api";
 import type { FileHistoryState } from "@/store/repoTypes";
 import { useRepo } from "@/store/repo";
 import { FileHistoryView } from "./file-history";
+import { BlameView } from "./BlameView";
 
 // View-state tests (GL-193): the file-history mode's visible branches, seeded
 // straight into the repo store — locked against the monolithic
@@ -39,10 +40,12 @@ const historyState = (over: Partial<FileHistoryState> = {}): FileHistoryState =>
   selectedPath: null,
   selectedDiff: null,
   diffLoading: false,
+  diffError: null,
   blame: null,
   blameLoading: false,
   blameError: null,
   blameRevision: null,
+  blamePath: null,
   blameSelectedOid: null,
   ...over,
 });
@@ -51,6 +54,7 @@ const realSelectRevision = useRepo.getState().selectFileHistoryRevision;
 const realLoadMore = useRepo.getState().loadMoreFileHistory;
 const realOpenFileHistory = useRepo.getState().openFileHistory;
 const realRevealCommit = useRepo.getState().revealCommit;
+const realLoadFileBlame = useRepo.getState().loadFileBlame;
 
 beforeEach(() => {
   // Deliberately narrow isolation: FileHistoryView reads only `fileHistory`
@@ -62,6 +66,7 @@ beforeEach(() => {
     loadMoreFileHistory: realLoadMore,
     openFileHistory: realOpenFileHistory,
     revealCommit: realRevealCommit,
+    loadFileBlame: realLoadFileBlame,
   });
 });
 
@@ -89,23 +94,33 @@ describe("FileHistoryView states", () => {
     render(<FileHistoryView onBlameRevision={noop} />);
 
     expect(screen.getByText("Couldn't load history")).toBeInTheDocument();
-    // The message shows in the revision list's error card AND the diff pane.
-    expect(screen.getAllByText("fatal: bad object")).toHaveLength(2);
+    // A list failure belongs to the revision pane, not the selected diff.
+    expect(screen.getAllByText("fatal: bad object")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(openFileHistory).toHaveBeenCalledWith("src/app.ts");
   });
 
   it("keeps the entries list when an error arrives after a successful load", () => {
-    // The full-page error state is only for an empty list — a later failure
-    // (e.g. a diff fetch) must not blank the loaded history.
+    // The full-page error state is only for an empty list — a later pagination
+    // failure must not blank the loaded history or contaminate the diff pane.
     useRepo.setState({
       fileHistory: historyState({ error: "boom", entries: [entry()] }),
     });
     render(<FileHistoryView onBlameRevision={noop} />);
     expect(screen.queryByText("Couldn't load history")).not.toBeInTheDocument();
     expect(screen.getByText("feat: change the file")).toBeInTheDocument();
-    // The error still surfaces — in the diff pane, not over the list.
-    expect(screen.getByText("boom")).toBeInTheDocument();
+    // The pagination/list error remains visible beside the revision list, not
+    // in the selected revision's diff pane.
+    expect(screen.getAllByText("boom")).toHaveLength(1);
+  });
+
+  it("surfaces a selected-revision diff failure without replacing the list", () => {
+    useRepo.setState({
+      fileHistory: historyState({ diffError: "diff failed", entries: [entry()] }),
+    });
+    render(<FileHistoryView onBlameRevision={noop} />);
+    expect(screen.getByText("feat: change the file")).toBeInTheDocument();
+    expect(screen.getByText("diff failed")).toBeInTheDocument();
   });
 
   it("shows the empty state when no commits touch the path", () => {
@@ -165,6 +180,27 @@ describe("FileHistoryView states", () => {
     });
     rerender(<FileHistoryView onBlameRevision={noop} />);
     expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
+  });
+});
+
+describe("BlameView states", () => {
+  it("retries the exact failed revision and historical path", () => {
+    const loadFileBlame = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      fileHistory: historyState({
+        mode: "blame",
+        selectedOid: "selected",
+        selectedPath: "current/name.ts",
+        blameError: "fatal: missing historical path",
+        blameRevision: "parent^",
+        blamePath: "old/name.ts",
+      }),
+      loadFileBlame,
+    });
+
+    render(<BlameView />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(loadFileBlame).toHaveBeenCalledWith("parent^", "old/name.ts");
   });
 });
 

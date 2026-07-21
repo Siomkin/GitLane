@@ -6,26 +6,8 @@ import { FileHistoryView } from "./file-history";
 import { BlameView } from "./BlameView";
 import { CompareView } from "./CompareView";
 
-// ---- mode-switching for the file modes (history <-> blame) ----
-// State-free: these drive the shared `useRepo` store directly, so they live at
-// module scope rather than being rebuilt each render.
-const goHistory = () =>
-  useRepo.setState((s) => (s.fileHistory ? { fileHistory: { ...s.fileHistory, mode: "history" } } : {}));
-const goBlame = () => {
-  const fh = useRepo.getState().fileHistory;
-  if (!fh) return;
-  useRepo.setState({ fileHistory: { ...fh, mode: "blame" } });
-  // Reload when the loaded blame doesn't match the currently selected revision
-  // (e.g. a different revision was picked in History since blame last loaded).
-  if (!fh.blameLoading && fh.blameRevision !== fh.selectedOid) {
-    void useRepo.getState().loadFileBlame(fh.selectedOid, fh.selectedPath);
-  }
-};
 const blameRevision = (oid: string, path: string) => {
-  const fh = useRepo.getState().fileHistory;
-  if (!fh) return;
-  useRepo.setState({ fileHistory: { ...fh, mode: "blame" } });
-  void useRepo.getState().loadFileBlame(oid, path);
+  useRepo.getState().setFileHistoryMode("blame", oid, path);
 };
 
 /** The history-inspection surface: one card that hosts file history, blame, and
@@ -37,6 +19,7 @@ export function HistoryInspectWorkspace() {
   const changes = useRepo((s) => s.changes);
   const closeCompare = useRepo((s) => s.closeCompare);
   const closeFileHistory = useRepo((s) => s.closeFileHistory);
+  const setFileHistoryMode = useRepo((s) => s.setFileHistoryMode);
   const notices = advancedNotices(changes);
 
   if (!compare && !history) return null;
@@ -57,8 +40,8 @@ export function HistoryInspectWorkspace() {
             path={history.path}
             onBack={closeFileHistory}
             onCopyPath={() => void navigator.clipboard?.writeText(history.path)}
-            onHistory={goHistory}
-            onBlame={goBlame}
+            onHistory={() => setFileHistoryMode("history")}
+            onBlame={() => setFileHistoryMode("blame")}
           />
           <AdvancedRepoBanner notices={notices} />
           {history.mode === "blame" ? <BlameView /> : <FileHistoryView onBlameRevision={blameRevision} />}

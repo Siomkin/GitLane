@@ -91,6 +91,9 @@ export interface FileHistoryState {
   selectedPath: string | null;
   selectedDiff: FileDiff | null;
   diffLoading: boolean;
+  /** Selected-revision diff failure, separate from history-list failures so a
+   * diff retry cannot blank or mislabel a successfully loaded revision list. */
+  diffError: string | null;
   blame: FileBlame | null;
   blameLoading: boolean;
   /** Blame-specific error, kept out of [`error`] so a blame failure never
@@ -99,6 +102,9 @@ export interface FileHistoryState {
   /** The revision the loaded blame is for — independent of [`selectedOid`] so
    * "blame previous revision" can target a parent without moving the list. */
   blameRevision: string | null;
+  /** Historical path paired with [`blameRevision`]. Renames can request the
+   * same revision through different paths, so revision alone is not identity. */
+  blamePath: string | null;
   /** SHA of the blame line the user picked (drives the blame inspector). */
   blameSelectedOid: string | null;
 }
@@ -552,6 +558,13 @@ export interface RepoState {
   compareRange: (base: string, head: string, title: string) => void;
   /** Open a dedicated history-inspection page for a repo-relative file. */
   openFileHistory: (path: string, mode?: "history" | "blame") => Promise<void>;
+  /** Switch the open file-history route between history and blame. Supplying a
+   * revision/path opens blame at that exact historical file identity. */
+  setFileHistoryMode: (
+    mode: "history" | "blame",
+    revision?: string | null,
+    path?: string | null,
+  ) => void;
   loadMoreFileHistory: () => Promise<void>;
   selectFileHistoryRevision: (oid: string, path?: string | null, full?: boolean) => Promise<void>;
   /** Blame `path` (defaults to the selected revision's path, so renames blame
