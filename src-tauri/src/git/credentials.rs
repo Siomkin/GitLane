@@ -6,7 +6,11 @@
 //! presence/metadata, never credential output.
 
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
+
+#[cfg(unix)]
+use std::os::unix::fs::DirBuilderExt;
 
 use serde::Serialize;
 
@@ -238,9 +242,9 @@ fn credential_input(
 }
 
 fn git_config_get_all(key: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let (mut command, _scope) = credential_git_command()?;
+    let output = command
         .args(["config", "--get-all", key])
-        .env("PATH", crate::shell::path())
         .output()
         .map_err(|e| format!("failed to launch git config: {e}"))?;
     if output.status.success() {
@@ -251,9 +255,9 @@ fn git_config_get_all(key: &str) -> Result<String, String> {
 }
 
 fn git_config_get_regexp(pattern: &str) -> Result<String, String> {
-    let output = Command::new("git")
+    let (mut command, _scope) = credential_git_command()?;
+    let output = command
         .args(["config", "--get-regexp", pattern])
-        .env("PATH", crate::shell::path())
         .output()
         .map_err(|e| format!("failed to launch git config: {e}"))?;
     if output.status.success() {
@@ -264,13 +268,11 @@ fn git_config_get_regexp(pattern: &str) -> Result<String, String> {
 }
 
 fn run_git_credential(op: &str, input: &str, use_http_path: bool) -> Result<String, String> {
-    let mut cmd = Command::new("git");
+    let (mut cmd, _scope) = credential_git_command()?;
     if use_http_path {
         cmd.args(["-c", "credential.useHttpPath=true"]);
     }
     cmd.args(["credential", op])
-        .env("PATH", crate::shell::path())
-        .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -298,12 +300,74 @@ fn run_git_credential(op: &str, input: &str, use_http_path: bool) -> Result<Stri
     }
 }
 
+struct CredentialCommandScope(PathBuf);
+
+impl Drop for CredentialCommandScope {
+    fn drop(&mut self) {
+        // Credential helpers should not write into their process directory. If
+        // one does, leave its files intact rather than deleting unknown data.
+        let _ = std::fs::remove_dir(&self.0);
+    }
+}
+
+fn create_credential_command_scope() -> Result<CredentialCommandScope, String> {
+    let temp_root = std::env::temp_dir().canonicalize().map_err(|error| {
+        format!("Could not resolve the credential helper temporary directory: {error}")
+    })?;
+    for _ in 0..8 {
+        let mut nonce = [0_u8; 16];
+        getrandom::fill(&mut nonce)
+            .map_err(|error| format!("Could not prepare the credential helper scope: {error}"))?;
+        let nonce = nonce
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let path = temp_root.join(format!(
+            "gitlane-credential-command-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        builder.mode(0o700);
+        match builder.create(&path) {
+            Ok(()) => return Ok(CredentialCommandScope(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Could not prepare the credential helper scope: {error}"
+                ));
+            }
+        }
+    }
+    Err("Could not allocate a unique credential helper scope.".to_string())
+}
+
+fn credential_git_command() -> Result<(Command, CredentialCommandScope), String> {
+    let scope = create_credential_command_scope()?;
+    let ceiling = scope
+        .0
+        .parent()
+        .ok_or_else(|| "Credential helper scope has no parent directory.".to_string())?;
+    let mut command = super::isolated_git_command();
+    command
+        .env("PATH", crate::shell::path())
+        .env("GIT_TERMINAL_PROMPT", "0")
+        // The fresh directory contains no repository, and the ceiling prevents
+        // Git from discovering local config in any temp-directory ancestor.
+        .env("GIT_CEILING_DIRECTORIES", ceiling)
+        .current_dir(&scope.0);
+    crate::shell::hide_console(&mut command);
+    Ok((command, scope))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        credential_input, sanitized_helper_labels, validate_credential_field,
-        CredentialHelperStatus,
+        credential_input, git_config_get_all, run_git_credential, sanitized_helper_labels,
+        validate_credential_field, CredentialHelperStatus,
     };
+    use crate::git::isolated_git_command;
+    use std::process::Command;
 
     #[test]
     fn helper_metadata_is_sanitized_before_serialization() {
@@ -402,5 +466,85 @@ mod tests {
             assert!(validate_credential_field("test", value).is_err());
         }
         assert!(validate_credential_field("test", "github.com:8443").is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn credential_commands_ignore_inherited_git_config() {
+        const CHILD_MARKER: &str = "GITLANE_CREDENTIAL_ENV_TEST_CHILD";
+        const POISON_MARKER: &str = "GITLANE_CREDENTIAL_ENV_TEST_MARKER";
+
+        if std::env::var_os(CHILD_MARKER).is_some() {
+            let marker = std::env::var(POISON_MARKER).expect("poison marker path");
+            let helpers = git_config_get_all("credential.helper").expect("read helper config");
+            let input = credential_input(
+                "gitlane-routing-env.invalid",
+                None,
+                "alice",
+                Some("never-store-this-test-secret"),
+            );
+            run_git_credential("approve", &input, false)
+                .expect("approve with isolated empty helper config");
+            assert!(!helpers.contains("GITLANE_CREDENTIAL_ENV_TEST_MARKER"));
+            assert!(
+                !std::path::Path::new(&marker).exists(),
+                "the inherited credential helper must never execute"
+            );
+            return;
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "gitlane-credential-env-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let marker = root.join("poisoned-helper-ran");
+        let poison = format!("!touch \"${}\"", POISON_MARKER);
+        let poisoned_repo = root.join("poisoned-cwd");
+        std::fs::create_dir(&poisoned_repo).unwrap();
+        let poisoned_temp = poisoned_repo.join("tmp");
+        std::fs::create_dir(&poisoned_temp).unwrap();
+        let init = isolated_git_command()
+            .args(["init", "-q"])
+            .current_dir(&poisoned_repo)
+            .output()
+            .expect("initialize poisoned cwd repository");
+        assert!(init.status.success());
+        let config = isolated_git_command()
+            .args(["config", "credential.helper", &poison])
+            .current_dir(&poisoned_repo)
+            .output()
+            .expect("configure poisoned local helper");
+        assert!(config.status.success());
+        let output = Command::new(std::env::current_exe().expect("current test executable"))
+            .args([
+                "--exact",
+                "git::credentials::tests::credential_commands_ignore_inherited_git_config",
+                "--nocapture",
+            ])
+            .env(CHILD_MARKER, "1")
+            .env(POISON_MARKER, &marker)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "credential.helper")
+            .env("GIT_CONFIG_VALUE_0", poison)
+            .env("TMPDIR", poisoned_temp)
+            .current_dir(poisoned_repo)
+            .output()
+            .expect("launch isolated credential-env regression child");
+
+        assert!(
+            output.status.success(),
+            "credential-env child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!marker.exists());
+        let _ = std::fs::remove_dir_all(root);
     }
 }
