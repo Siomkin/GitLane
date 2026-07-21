@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { type DestructivePreview } from "@/lib/api";
+import { type DeleteBranchPreview } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
@@ -40,7 +40,7 @@ export function DeleteWorktreeDialog() {
 /** The impact preview: `null` while loading, a fetched preview, or the error
  * string. Fail closed — the Delete button stays disabled until it resolves, so a
  * failed preview never offers a one-click destructive action (GL-42). */
-type PreviewState = { kind: "loading" } | { kind: "ready"; preview: DestructivePreview } | { kind: "error"; error: string };
+type PreviewState = { kind: "loading" } | { kind: "ready"; preview: DeleteBranchPreview } | { kind: "error"; error: string };
 
 function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   const closeDeleteWorktree = useUi((s) => s.closeDeleteWorktree);
@@ -177,7 +177,9 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
               </button>
               <button
                 type="button"
-                onClick={start}
+                onClick={() => {
+                  if (preview.kind === "ready") start(preview.preview.expectedOid);
+                }}
                 disabled={preview.kind !== "ready" || deleteWorktreeRunning}
                 className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
               >

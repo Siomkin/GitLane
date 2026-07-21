@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
+import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useRemoveWorktree } from "./useRemoveWorktree";
 
@@ -80,5 +81,30 @@ describe("useRemoveWorktree", () => {
     });
     confirm!.onConfirm();
     expect(removeWorktree).not.toHaveBeenCalled();
+  });
+
+  it("discards a probe that resolves after the same repo path was reopened", async () => {
+    let resolveProbe!: (value: unknown) => void;
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "worktree_dirty_state"
+        ? new Promise((resolve) => { resolveProbe = resolve; })
+        : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    const { result } = renderHook(() => useRemoveWorktree());
+
+    void result.current(request());
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
+    });
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "new", detached: false },
+    });
+    resolveProbe({ modified: 0, untracked: 0, ignored: 0 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useUi.getState().confirm).toBeNull();
   });
 });

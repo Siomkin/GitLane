@@ -264,13 +264,15 @@ fn run_pkce(
 
     let deadline = Instant::now() + Duration::from_secs(PKCE_TIMEOUT_SECS);
     let redirect = pkce::wait_for_redirect(&listener, deadline, cancel)?;
+    // Validate state for both success and provider-error callbacks. An unrelated
+    // local request must not be able to abort the in-flight sign-in by sending
+    // `error=...` without the unguessable state value.
+    if redirect.state.as_deref() != Some(state.as_str()) {
+        return Err("Sign-in failed a security check (state mismatch). Please try again.".into());
+    }
     if let Some(err) = redirect.error {
         let detail = redirect.error_description.unwrap_or(err);
         return Err(format!("Authorization failed: {detail}"));
-    }
-    // CSRF defence: the returned state must match the one we sent.
-    if redirect.state.as_deref() != Some(state.as_str()) {
-        return Err("Sign-in failed a security check (state mismatch). Please try again.".into());
     }
     let code = redirect
         .code

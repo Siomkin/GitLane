@@ -20,6 +20,12 @@ import {
 import { isPrForge } from "@/components/chrome/action-bar/actionBarModel";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
+import {
+  currentOpenIntent,
+  currentPublishedRepoSession,
+  openIntentIsCurrent,
+  publishedRepoSessionIsCurrent,
+} from "@/store/repoRequests";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { useTerminalAgents } from "@/store/terminalAgents";
@@ -119,9 +125,18 @@ export function CommitComposer() {
 
   const doCommit = async (): Promise<boolean> => {
     if (!canCommit) return false;
+    const repoPath = useRepo.getState().summary?.path ?? null;
+    const repoSession = currentPublishedRepoSession();
     const submitted = msg;
     const committed = await commitSelected(submitted.trim(), amend);
     if (!committed) return false;
+    if (
+      !repoPath ||
+      useRepo.getState().summary?.path !== repoPath ||
+      !publishedRepoSessionIsCurrent(repoSession)
+    ) {
+      return false;
+    }
     // Don't wipe edits (or a delivered agent draft) that landed while the
     // commit IPC was in flight — clear only the message that was committed.
     if (useUi.getState().commitMsg === submitted) setMsg("");
@@ -140,10 +155,17 @@ export function CommitComposer() {
     const repo = useRepo.getState();
     const repoPath = repo.summary?.path;
     const current = repo.summary?.headBranch;
+    const repoSession = currentPublishedRepoSession();
+    const openIntent = currentOpenIntent();
     if (!repoPath || !current) return;
     const sameCheckout = () => {
       const state = useRepo.getState();
-      return state.summary?.path === repoPath && state.summary.headBranch === current ? state : null;
+      return publishedRepoSessionIsCurrent(repoSession) &&
+        openIntentIsCurrent(openIntent) &&
+        state.summary?.path === repoPath &&
+        state.summary.headBranch === current
+        ? state
+        : null;
     };
     const finish = async (action: () => Promise<unknown>) => {
       try {
@@ -187,9 +209,18 @@ export function CommitComposer() {
    * chained push must never target that other checkout. */
   const commitThen = async (then: () => void) => {
     const before = useRepo.getState().summary;
+    const repoSession = currentPublishedRepoSession();
+    const openIntent = currentOpenIntent();
     if (!(await doCommit())) return;
     const after = useRepo.getState().summary;
-    if (after?.path === before?.path && after?.headBranch === before?.headBranch) then();
+    if (
+      publishedRepoSessionIsCurrent(repoSession) &&
+      openIntentIsCurrent(openIntent) &&
+      after?.path === before?.path &&
+      after?.headBranch === before?.headBranch
+    ) {
+      then();
+    }
   };
 
   const commitAndPush = () => commitThen(() => pushCurrentBranch());

@@ -1,7 +1,10 @@
 import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
-  DestructivePreview,
+  DeleteBranchPreview,
+  DiscardAllPreview,
+  DiscardFilePreview,
+  ForcePushPreview,
   FileBlame,
   ConflictFile,
   DiffLine,
@@ -90,6 +93,9 @@ export interface FileHistoryState {
   selectedPath: string | null;
   selectedDiff: FileDiff | null;
   diffLoading: boolean;
+  /** Selected-revision diff failure, separate from history-list failures so a
+   * diff retry cannot blank or mislabel a successfully loaded revision list. */
+  diffError: string | null;
   blame: FileBlame | null;
   blameLoading: boolean;
   /** Blame-specific error, kept out of [`error`] so a blame failure never
@@ -98,6 +104,9 @@ export interface FileHistoryState {
   /** The revision the loaded blame is for — independent of [`selectedOid`] so
    * "blame previous revision" can target a parent without moving the list. */
   blameRevision: string | null;
+  /** Historical path paired with [`blameRevision`]. Renames can request the
+   * same revision through different paths, so revision alone is not identity. */
+  blamePath: string | null;
   /** SHA of the blame line the user picked (drives the blame inspector). */
   blameSelectedOid: string | null;
 }
@@ -120,6 +129,9 @@ export interface FileEditState {
   /** Byte size the draft was baselined from — passed to `write_repo_file` as the
    * on-disk size guard, and advanced to the new size after each save. */
   baseSize: number;
+  /** Opaque exact-target lease paired with `baseSize`, advanced after each
+   * successful save so external edits/replacements are never overwritten. */
+  baseExpectedState: string;
   /** True while a save is in flight. */
   saving: boolean;
   /** Last save failure to surface (cleared on the next edit/save). */
@@ -267,9 +279,10 @@ export interface RepoState {
   /** A repository file opened read-only in the center pane, or null. */
   fileView: FileViewState | null;
   selectedFile: SelectedFile | null;
-  /** Monotonic identity of explicit file-selection requests. Unlike
-   * `selectedFile`, this changes when the user re-selects the active file so
-   * virtual review surfaces can repeat navigation to its offscreen header. */
+  /** Monotonic identity of repo-bound selection/center-route navigation. It
+   * advances across commit, WIP, working-file, repository-file, history, and
+   * compare transitions, including re-selecting the active file, so async
+   * follow-ups cannot revive a route the user has since left. */
   fileSelectionRequestId: number;
   fileDiff: FileDiff | null;
   selectedCommit: string | null;
@@ -439,7 +452,13 @@ export interface RepoState {
     name: string,
     expectedOid: string,
   ) => Promise<string>;
-  removeBranch: (name: string, force?: boolean) => Promise<string>;
+  /** Delete the exact branch tip from a preview pinned to `repoPath`. */
+  removeBranch: (
+    name: string,
+    expectedOid: string,
+    repoPath: string,
+    force?: boolean,
+  ) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
   setUpstreamFor: (branch: string, upstream: string) => Promise<string>;
@@ -481,9 +500,9 @@ export interface RepoState {
   createTagAt: (name: string, sha?: string) => Promise<string>;
   /** Create an annotated tag (with `message`) at `sha` (defaults to HEAD). */
   createAnnotatedTagAt: (name: string, message: string, sha?: string) => Promise<string>;
-  /** Delete a local tag. A copy still on origin is re-imported by fetch —
-   * pass `alsoRemote` to delete it from origin in the same operation. */
-  deleteTag: (name: string, alsoRemote?: boolean) => Promise<string>;
+  /** Delete a local tag at the exact target the caller saw. A remote copy is
+   * re-imported by fetch — pass `alsoRemote` to delete it there too. */
+  deleteTag: (name: string, expectedOid: string, alsoRemote?: boolean) => Promise<string>;
   /** Push a tag to `remote` (the default push remote when omitted). */
   pushTag: (name: string, remote?: string) => Promise<string>;
   /** Remove a linked worktree (`force` drops the dirty/locked check). */
@@ -501,7 +520,7 @@ export interface RepoState {
   /** Preview deleting `branch` (unmerged-commit warning + recovery note) for the
    * delete-branch-and-worktree dialog's configure screen. A read-shaped preview,
    * so it does not refresh. */
-  previewDeleteBranch: (branch: string) => Promise<DestructivePreview>;
+  previewDeleteBranch: (branch: string) => Promise<DeleteBranchPreview>;
   /** Remove the linked worktree holding `branch`, then delete the branch — the
    * one-step path when a branch's Delete is locked by its worktree. `repoPath` is
    * explicit (not read from the live summary) so the op stays pinned to the repo
@@ -512,14 +531,17 @@ export interface RepoState {
     branch: string,
     fromWorktreePath: string,
     repoPath: string,
+    expectedOid: string,
   ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
   deleteRemoteBranch: (remote: string, branch: string, expectedOid: string) => Promise<string>;
-  /** Force-push `branch` with `--force-with-lease` (only that branch). */
-  forcePush: (branch: string) => Promise<string>;
-  /** Discard every uncommitted working-tree change (reset --hard + clean). */
-  discardAll: () => Promise<string>;
+  /** Force-push `branch` using the exact source, route, and destination lease
+   * returned by its confirmation preview. */
+  forcePush: (branch: string, preview: ForcePushPreview) => Promise<string>;
+  /** Discard exactly the whole-worktree state approved by the destructive
+   * preview. The backend rejects if HEAD/index/worktree drifted meanwhile. */
+  discardAll: (preview: DiscardAllPreview) => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */
   createPatchAt: (sha: string) => Promise<string>;
   /** Create a worktree at `worktreePath`, then open it as a repo tab. With
@@ -540,6 +562,13 @@ export interface RepoState {
   compareRange: (base: string, head: string, title: string) => void;
   /** Open a dedicated history-inspection page for a repo-relative file. */
   openFileHistory: (path: string, mode?: "history" | "blame") => Promise<void>;
+  /** Switch the open file-history route between history and blame. Supplying a
+   * revision/path opens blame at that exact historical file identity. */
+  setFileHistoryMode: (
+    mode: "history" | "blame",
+    revision?: string | null,
+    path?: string | null,
+  ) => void;
   loadMoreFileHistory: () => Promise<void>;
   selectFileHistoryRevision: (oid: string, path?: string | null, full?: boolean) => Promise<void>;
   /** Blame `path` (defaults to the selected revision's path, so renames blame
@@ -589,7 +618,7 @@ export interface RepoState {
   revertFileEdit: () => void;
   /** Leave edit mode (discarding any draft). Callers guard unsaved changes. */
   endFileEdit: () => void;
-  /** Save the draft to disk (`write_repo_file`); keeps edit mode open. */
+  /** Save the draft with its exact-state lease; keeps edit mode open. */
   saveFileEdit: () => Promise<void>;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
@@ -608,8 +637,21 @@ export interface RepoState {
   ) => Promise<void>;
   /** Stage one changed line from an unstaged diff, or unstage one changed line from a staged diff. */
   applyLine: (path: string, staged: boolean, hunkIndex: number, lineIndex: number, line: DiffLine) => Promise<void>;
-  /** Discard a file's working-tree changes (unstaging first when `staged`). */
-  discardFile: (path: string, staged: boolean) => Promise<void>;
+  /** Preview one exact path-local discard and capture its backend state lease. */
+  previewDiscardFile: (
+    repoPath: string,
+    path: string,
+    previousPath: string | null,
+    staged: boolean,
+  ) => Promise<DiscardFilePreview>;
+  /** Execute the exact file discard approved by `previewDiscardFile`. */
+  discardFile: (
+    repoPath: string,
+    path: string,
+    previousPath: string | null,
+    staged: boolean,
+    expectedState: string,
+  ) => Promise<void>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
   commit: (summary: string, description: string, amend: boolean) => Promise<void>;

@@ -5,6 +5,10 @@ use std::io::Write;
 use std::process::{Command, ExitStatus, Output, Stdio};
 use std::sync::OnceLock;
 
+#[cfg(test)]
+use crate::git::REPOSITORY_LOCAL_ENV_VARS;
+use crate::git::{clear_repository_local_env, isolated_git_command};
+
 // Stops git's own HTTPS username/password prompts from blocking the app/dev
 // terminal. SSH and external askpass helpers have their own prompting paths.
 const GIT_TERMINAL_PROMPT_DISABLED: &str = "0";
@@ -14,7 +18,7 @@ static GIT_VERSION_CHECK: OnceLock<Result<(), String>> = OnceLock::new();
 fn ensure_supported_git() -> Result<(), String> {
     GIT_VERSION_CHECK
         .get_or_init(|| {
-            let output = Command::new("git")
+            let output = isolated_git_command()
                 .arg("--version")
                 .env("PATH", crate::shell::path())
                 .output()
@@ -56,7 +60,12 @@ fn parse_git_version(output: &str) -> Option<(u32, u32, u32)> {
 /// stable) on a failed `stash push` against a locked index. Returning the raw
 /// combined output there would surface an *empty* error to the user, so fall
 /// back to the exit status when there's nothing else to show.
-fn finish(status: ExitStatus, stdout: &str, stderr: &str, args: &[&str]) -> Result<String, String> {
+pub(super) fn finish(
+    status: ExitStatus,
+    stdout: &str,
+    stderr: &str,
+    args: &[&str],
+) -> Result<String, String> {
     let combined = format!("{stdout}{stderr}").trim().to_string();
     if status.success() {
         Ok(combined)
@@ -141,23 +150,66 @@ pub(super) fn run_git_literal_paths(repo: &str, args: &[&str]) -> Result<String,
     run_git(repo, &literal_args)
 }
 
-/// Like [`run_git`], but trailing path arguments are passed as [`OsString`] so
-/// NUL-delimited machine output can be forwarded byte-for-byte on Unix.
-pub(super) fn run_git_os_paths(
+fn scoped_git_os_output(
     repo: &str,
-    prefix_args: &[&str],
-    path_args: &[OsString],
-) -> Result<String, String> {
+    common_dir: &std::ffi::OsStr,
+    args: &[OsString],
+) -> Result<Output, String> {
     let mut cmd = git_command(repo)?;
-    cmd.args(prefix_args).args(path_args).stdin(Stdio::null());
+    // `git_command` clears every inherited repository-routing variable first.
+    // Restore only the canonical common directory captured by the caller so a
+    // mutable linked-worktree `commondir` file cannot redirect this command.
+    cmd.env("GIT_COMMON_DIR", common_dir)
+        .args(args)
+        .stdin(Stdio::null());
 
-    let output = cmd
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
+    cmd.output()
+        .map_err(|e| format!("failed to launch git: {e}"))
+}
+
+/// Run an OS-string command pinned to an already validated worktree gitdir and
+/// common directory. The caller supplies explicit `--git-dir`/`--work-tree`
+/// arguments; this helper pins the remaining linked-worktree indirection.
+pub(super) fn run_git_scoped_os(
+    repo: &str,
+    common_dir: &std::ffi::OsStr,
+    args: &[OsString],
+) -> Result<String, String> {
+    let output = scoped_git_os_output(repo, common_dir, args)?;
+
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let labels = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
 
-    finish(output.status, &stdout, &stderr, prefix_args)
+    finish(output.status, &stdout, &stderr, &label_refs)
+}
+
+/// Raw-stdout companion for NUL-delimited status/path output under the same
+/// captured repository scope.
+pub(super) fn run_git_scoped_os_stdout_raw(
+    repo: &str,
+    common_dir: &std::ffi::OsStr,
+    args: &[OsString],
+) -> Result<Vec<u8>, String> {
+    let output = scoped_git_os_output(repo, common_dir, args)?;
+    if output.status.success() {
+        return Ok(output.stdout);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let labels = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
+    match finish(output.status, &stdout, &stderr, &label_refs) {
+        Err(error) => Err(error),
+        Ok(_) => unreachable!("a failed git process cannot finish successfully"),
+    }
 }
 
 /// Like [`run_git`] but with extra environment variables — used to pass a
@@ -212,19 +264,23 @@ fn git_output(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Output
     for (k, v) in envs {
         cmd.env(k, v);
     }
+    // Keep the repository argument authoritative even if a future caller
+    // accidentally forwards one of Git's process-global routing variables.
+    clear_repository_local_env(&mut cmd);
 
     cmd.output()
         .map_err(|e| format!("failed to launch git: {e}"))
 }
 
-fn git_command(repo: &str) -> Result<Command, String> {
+pub(super) fn git_command(repo: &str) -> Result<Command, String> {
     ensure_supported_git()?;
-    let mut cmd = Command::new("git");
+    let mut cmd = isolated_git_command();
     cmd.arg("-C").arg(repo);
     // macOS GUI apps launch with a minimal PATH; use the augmented one so a
     // Homebrew git (and any credential helpers/signing tools it invokes) is found.
     cmd.env("PATH", crate::shell::path());
     cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED);
+    clear_repository_local_env(&mut cmd);
     crate::shell::hide_console(&mut cmd);
     Ok(cmd)
 }
@@ -263,11 +319,12 @@ pub(super) fn run_git_with_input(repo: &str, args: &[&str], input: &str) -> Resu
 /// most callers use the buffered [`run_git_bare`].
 pub(super) fn git_command_bare(args: &[&str]) -> Result<Command, String> {
     ensure_supported_git()?;
-    let mut cmd = Command::new("git");
+    let mut cmd = isolated_git_command();
     cmd.args(args)
         .env("PATH", crate::shell::path())
         .env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
         .stdin(Stdio::null());
+    clear_repository_local_env(&mut cmd);
     crate::shell::hide_console(&mut cmd);
     Ok(cmd)
 }
@@ -308,7 +365,11 @@ pub(super) fn run_git_env_stable_diagnostics_redacted(
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{finish, parse_git_version, run_git_env, run_git_env_redacted, run_git_stdout_raw};
+    use super::{
+        finish, git_command, git_command_bare, parse_git_version, run_git, run_git_env,
+        run_git_env_redacted, run_git_stdout_raw, REPOSITORY_LOCAL_ENV_VARS,
+    };
+    use std::ffi::OsStr;
     use std::os::unix::process::ExitStatusExt;
     use std::process::{Command, ExitStatus};
     use std::{io::Write, net::TcpListener};
@@ -412,6 +473,90 @@ mod tests {
             .expect("raw git output");
 
         assert_eq!(output, b" leading-space.txt\0");
+    }
+
+    #[test]
+    fn git_commands_clear_repository_local_environment() {
+        for command in [
+            git_command(".").expect("repository command"),
+            git_command_bare(&["--version"]).expect("bare command"),
+        ] {
+            for key in REPOSITORY_LOCAL_ENV_VARS {
+                assert!(
+                    command
+                        .get_envs()
+                        .any(|(name, value)| name == OsStr::new(key) && value.is_none()),
+                    "{key} must be removed from the git subprocess environment"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn repository_commands_ignore_inherited_repository_routing_env() {
+        const CHILD_MARKER: &str = "GITLANE_ROUTING_ENV_TEST_CHILD";
+        const REPO_A_ENV: &str = "GITLANE_ROUTING_ENV_TEST_REPO_A";
+        const REPO_B_ENV: &str = "GITLANE_ROUTING_ENV_TEST_REPO_B";
+
+        if std::env::var_os(CHILD_MARKER).is_some() {
+            let repo_a = std::env::var(REPO_A_ENV).expect("repo A path");
+            let repo_b = std::env::var(REPO_B_ENV).expect("repo B path");
+            let top = run_git(&repo_a, &["rev-parse", "--show-toplevel"])
+                .expect("-C repository remains authoritative");
+            assert_eq!(
+                std::fs::canonicalize(top).unwrap(),
+                std::fs::canonicalize(&repo_a).unwrap()
+            );
+
+            run_git(&repo_a, &["clean", "-f", "--", "approved.txt"])
+                .expect("clean the explicitly selected repository");
+            assert!(!std::path::Path::new(&repo_a).join("approved.txt").exists());
+            assert_eq!(
+                std::fs::read_to_string(std::path::Path::new(&repo_b).join("precious.txt"))
+                    .unwrap(),
+                "keep\n"
+            );
+            return;
+        }
+
+        let repo_a = TestRepo::new("gitlane-routing-env-a");
+        let repo_b = TestRepo::new("gitlane-routing-env-b");
+        for repo in [&repo_a, &repo_b] {
+            let output = git_command_bare(&["init", "-q", repo.path()])
+                .unwrap()
+                .output()
+                .expect("git init launches");
+            assert!(output.status.success(), "git init failed");
+        }
+        std::fs::write(repo_a.0.join("approved.txt"), "remove\n").unwrap();
+        std::fs::write(repo_b.0.join("precious.txt"), "keep\n").unwrap();
+
+        let output = Command::new(std::env::current_exe().expect("current test executable"))
+            .args([
+                "--exact",
+                "git::write::cli::tests::repository_commands_ignore_inherited_repository_routing_env",
+                "--nocapture",
+            ])
+            .env(CHILD_MARKER, "1")
+            .env(REPO_A_ENV, repo_a.path())
+            .env(REPO_B_ENV, repo_b.path())
+            .env("GIT_DIR", repo_b.0.join(".git"))
+            .env("GIT_WORK_TREE", &repo_b.0)
+            .env("GIT_INDEX_FILE", repo_b.0.join(".git/index"))
+            .output()
+            .expect("launch isolated routing-env regression child");
+
+        assert!(
+            output.status.success(),
+            "routing-env child failed:\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!repo_a.0.join("approved.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(repo_b.0.join("precious.txt")).unwrap(),
+            "keep\n"
+        );
     }
 
     #[test]

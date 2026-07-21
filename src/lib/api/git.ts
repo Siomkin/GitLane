@@ -26,6 +26,9 @@ export type BranchKind = (typeof BranchKind)[keyof typeof BranchKind];
 export interface RefLabel {
   name: string;
   kind: RefKind;
+  /** Exact object named by a tag ref. Unlike the containing commit id, this is
+   * the annotated-tag object oid and is used as the deletion CAS token. */
+  targetOid?: string | null;
 }
 
 /** Marks a graph node that is an in-window stash rather than a commit (see the
@@ -354,6 +357,46 @@ export interface DestructivePreview {
   warnings: string[];
 }
 
+export interface ForcePushRouteLease {
+  /** Push route resolved with Git's pushRemote / pushDefault precedence. */
+  remote: string;
+  /** Fully-qualified server-side destination, e.g. refs/heads/main. */
+  destinationRef: string;
+  /** Full oid observed in the destination's local tracking ref; null means the
+   * preview requires that destination to remain absent. */
+  destinationOid: string | null;
+  /** Opaque fingerprint of the previewed single effective push endpoint. */
+  pushEndpointToken: string;
+}
+
+export interface ForcePushPreview extends DestructivePreview, ForcePushRouteLease {
+  /** Full local branch object shown by the confirmation and used as the push
+   * source. */
+  expectedOid: string;
+}
+
+export interface DeleteBranchPreview extends DestructivePreview {
+  /** Full object id of the exact refs/heads/<branch> value previewed. */
+  expectedOid: string;
+}
+
+export interface DiscardFilePreview extends DestructivePreview {
+  /** Opaque backend fingerprint of the exact HEAD/index/worktree state shown
+   * by the confirmation. Required again by the destructive write. */
+  expectedState: string;
+}
+
+export interface DiscardAllPreview extends DestructivePreview {
+  /** Opaque backend fingerprint of the exact repository, HEAD, index, and
+   * affected worktree leaves shown by the confirmation. */
+  expectedState: string;
+  /** Symbolic branch observed by the preview, or null for detached HEAD. An
+   * unborn repository still has a branch while its commit OID remains null. */
+  expectedHeadBranch: string | null;
+  /** Commit observed by the preview, or null for an unborn repository. */
+  expectedHeadOid: string | null;
+}
+
 export interface WorktreeInfo {
   name: string;
   path: string;
@@ -585,6 +628,15 @@ export interface RepoFileContent {
   size: number;
   truncated: boolean;
   binary: boolean;
+  /** Opaque lease for the exact repo/worktree/path, leaf identity, and raw bytes
+   * represented by `text`. Omitted for truncated, binary, or lossy/non-UTF-8
+   * reads, which are display-only. */
+  expectedState?: string;
+}
+
+export interface RepoFileWriteResult {
+  size: number;
+  expectedState: string;
 }
 
 export interface FileHistoryEntry {
@@ -727,9 +779,20 @@ export const gitApi = {
       carry,
     }),
 
-  /** Remove the linked worktree at `fromWorktreePath`, then delete `branch`. */
-  deleteBranchWithWorktree: (path: string, branch: string, fromWorktreePath: string) =>
-    invoke<string>("delete_branch_with_worktree", { path, branch, fromWorktreePath }),
+  /** Remove the linked worktree at `fromWorktreePath`, then delete the exact
+   * previewed branch tip. */
+  deleteBranchWithWorktree: (
+    path: string,
+    branch: string,
+    fromWorktreePath: string,
+    expectedOid: string,
+  ) =>
+    invoke<string>("delete_branch_with_worktree", {
+      path,
+      branch,
+      fromWorktreePath,
+      expectedOid,
+    }),
 
   checkout: (path: string, target: string, detached = false) =>
     invoke<string>("checkout", { path, target, detached }),
@@ -745,8 +808,8 @@ export const gitApi = {
   createBranch: (path: string, name: string, startPoint: string, expectedOid: string) =>
     invoke<string>("create_branch", { path, name, startPoint, expectedOid }),
 
-  deleteBranch: (path: string, name: string, force = false) =>
-    invoke<string>("delete_branch", { path, name, force }),
+  deleteBranch: (path: string, name: string, expectedOid: string, force = false) =>
+    invoke<string>("delete_branch", { path, name, expectedOid, force }),
 
   listReflog: (path: string, limit?: number) =>
     invoke<ReflogEntry[]>("list_reflog", { path, limit: limit ?? null }),
@@ -760,16 +823,29 @@ export const gitApi = {
   ) => invoke<DestructivePreview>("preview_reset", { path, target, mode, source: source ?? null }),
 
   previewDiscardAll: (path: string) =>
-    invoke<DestructivePreview>("preview_discard_all", { path }),
+    invoke<DiscardAllPreview>("preview_discard_all", { path }),
+
+  previewDiscardFile: (
+    path: string,
+    file: string,
+    previousFile: string | null,
+    staged: boolean,
+  ) =>
+    invoke<DiscardFilePreview>("preview_discard_file", {
+      path,
+      file,
+      previousFile,
+      staged,
+    }),
 
   previewDeleteBranch: (path: string, branch: string) =>
-    invoke<DestructivePreview>("preview_delete_branch", { path, branch }),
+    invoke<DeleteBranchPreview>("preview_delete_branch", { path, branch }),
 
   previewDeleteRemoteBranch: (path: string, remote: string, branch: string) =>
     invoke<DestructivePreview>("preview_delete_remote_branch", { path, remote, branch }),
 
   previewForcePush: (path: string, branch: string) =>
-    invoke<DestructivePreview>("preview_force_push", { path, branch }),
+    invoke<ForcePushPreview>("preview_force_push", { path, branch }),
 
   renameBranch: (path: string, oldName: string, newName: string) =>
     invoke<string>("rename_branch", { path, old: oldName, new: newName }),
@@ -925,23 +1001,25 @@ export const gitApi = {
   createPatch: (path: string, sha: string) =>
     invoke<string>("create_patch", { path, sha }),
 
-  /** Delete a local tag. The remote copy (if any) is untouched and fetch will
-   * re-import it — use `deleteRemoteTag` to remove it from the remote too. */
-  deleteTag: (path: string, name: string) =>
-    invoke<string>("delete_tag", { path, name }),
+  /** Delete a local tag only if it still names `expectedOid`. The remote copy
+   * (if any) is untouched and fetch will re-import it — use `deleteRemoteTag`
+   * to remove it from the remote too. */
+  deleteTag: (path: string, name: string, expectedOid: string) =>
+    invoke<string>("delete_tag", { path, name, expectedOid }),
 
-  /** Delete a tag on `remote` (`git push <remote> --delete refs/tags/<name>`),
-   * defaulting to the repo's default push remote, optionally as that remote's
-   * bound auth. */
+  /** Delete a tag on `remote` with an exact ref lease, defaulting to the repo's
+   * default push remote, optionally as that remote's bound auth. */
   deleteRemoteTag: (
     path: string,
     name: string,
+    expectedOid: string,
     remote?: string | null,
     auth?: GitTransportAuthRef | null,
   ) =>
     invoke<string>("delete_remote_tag", {
       path,
       name,
+      expectedOid,
       remote: remote ?? null,
       auth: auth ?? null,
     }),
@@ -989,14 +1067,40 @@ export const gitApi = {
     auth?: GitTransportAuthRef | null,
   ) => invoke<string>("delete_remote_branch", { path, remote, branch, expectedOid, auth: auth ?? null }),
 
-  /** Force-push a specific `branch` with `--force-with-lease` (targets only that
-   * branch, never the whole push.default set), optionally as the bound auth. */
-  forcePush: (path: string, branch: string, expectedOid: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("force_push", { path, branch, expectedOid, auth: auth ?? null }),
+  /** Force-push a specific `branch` with the exact route/source/destination
+   * lease returned by previewForcePush, optionally as the bound auth. */
+  forcePush: (
+    path: string,
+    branch: string,
+    expectedOid: string,
+    route: ForcePushRouteLease,
+    auth?: GitTransportAuthRef | null,
+  ) => invoke<string>("force_push", {
+    path,
+    branch,
+    expectedOid,
+    route: {
+      remote: route.remote,
+      destinationRef: route.destinationRef,
+      destinationOid: route.destinationOid,
+      pushEndpointToken: route.pushEndpointToken,
+    },
+    auth: auth ?? null,
+  }),
 
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */
-  discardAll: (path: string) => invoke<string>("discard_all", { path }),
+  discardAll: (
+    path: string,
+    expectedState: string,
+    expectedHeadBranch: string | null,
+    expectedHeadOid: string | null,
+  ) => invoke<string>("discard_all", {
+    path,
+    expectedState,
+    expectedHeadBranch,
+    expectedHeadOid,
+  }),
 
   // ---- repository files (the Files browser) ----
 
@@ -1014,16 +1118,18 @@ export const gitApi = {
   repoFileHeadText: (path: string, file: string) =>
     invoke<string | null>("repo_file_head_text", { path, file }),
 
-  /** Save an edited worktree file (in-app editor, GL-212). `expectedSize` is the
-   * byte size the buffer was read from — the backend refuses the write if the
-   * on-disk size differs (external change / truncated read). Resolves with the
-   * new byte size. Overwrite-only; binary content/targets are refused. */
-  writeRepoFile: (path: string, file: string, content: string, expectedSize?: number) =>
-    invoke<number>("write_repo_file", {
+  /** Save an edited worktree file (in-app editor, GL-212). The size + opaque
+   * state pair identifies the exact target snapshot the draft was based on;
+   * Rust refuses same-size edits and atomic replacements too. Resolves with the
+   * next lease for sequential saves. Overwrite-only; binary targets/content are
+   * refused. */
+  writeRepoFile: (path: string, file: string, content: string, expectedSize: number, expectedState: string) =>
+    invoke<RepoFileWriteResult>("write_repo_file", {
       path,
       file,
       content,
-      expectedSize: expectedSize ?? null,
+      expectedSize,
+      expectedState,
     }),
 
   // ---- working tree / staging ----
@@ -1192,10 +1298,16 @@ export const gitApi = {
   unstageFiles: (path: string, files: string[]) =>
     invoke<string>("unstage_files", { path, files }),
 
-  /** Discard a file's working-tree changes (reverting to HEAD). Renames carry
-   * `previousFile` so both sides are restored as one logical change. */
-  discardFile: (path: string, file: string, previousFile: string | null, staged: boolean) =>
-    invoke<string>("discard_file", { path, file, previousFile, staged }),
+  /** Discard one exact previewed file state. Staged changes restore from HEAD;
+   * unstaged changes restore from the index. Renames carry `previousFile` so
+   * both sides are handled as one logical change. */
+  discardFile: (
+    path: string,
+    file: string,
+    previousFile: string | null,
+    staged: boolean,
+    expectedState: string,
+  ) => invoke<string>("discard_file", { path, file, previousFile, staged, expectedState }),
 
   stageAll: (path: string) => invoke<string>("stage_all", { path }),
 

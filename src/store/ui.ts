@@ -132,12 +132,14 @@ export interface WipMenu {
 }
 
 /** Right-click menu on a tag ref (a pill in the graph or a navigator row).
- * `sha` is the commit the tag points to, for checkout / branch / worktree. */
+ * `sha` is the peeled commit for checkout / branch / worktree; `refOid` is the
+ * exact lightweight/annotated tag object captured for compare-and-swap delete. */
 export interface TagMenu {
   x: number;
   y: number;
   name: string;
   sha: string;
+  refOid: string;
 }
 
 /** Right-click menu on a worktree row in the navigator. */
@@ -465,6 +467,9 @@ interface UiState {
   prTab: "info" | "diff" | "checks" | "commits";
   /** The "New pull request" modal raised from the PR list header. */
   createPrOpen: boolean;
+  /** Exact dialog lifetime. Incremented on every open/close and repo switch so
+   * a deferred submission from an older instance cannot close a newer form. */
+  createPrGeneration: number;
   /** Changes view: false = single-file review (default), true = stacked all-files. */
   changesAll: boolean;
 
@@ -649,7 +654,9 @@ interface UiState {
   selectPr: (num: number) => void;
   setPrTab: (tab: "info" | "diff" | "checks" | "commits") => void;
   openCreatePr: () => void;
-  closeCreatePr: () => void;
+  /** Close the current form. When `generation` is supplied, no-op unless that
+   * exact dialog instance is still current. */
+  closeCreatePr: (generation?: number) => void;
 
   /** Toggle the commit search bar; closing it clears the query. */
   toggleHistSearch: () => void;
@@ -814,6 +821,7 @@ export const useUi = create<UiState>()(
   prSelected: null,
   prTab: "info",
   createPrOpen: false,
+  createPrGeneration: 0,
   changesAll: false,
 
   histSearchOpen: false,
@@ -1032,6 +1040,11 @@ export const useUi = create<UiState>()(
   onRepoSwitched: () => {
     const activeRepoPath = useRepo.getState().summary?.path;
     set((s) => ({
+      // Every menu and drag payload is repo-bound. A switch can finish after a
+      // menu was opened while `open_repo` was still pending; retaining that
+      // payload would render repo A's subject against repo B's store actions.
+      ...noMenus,
+      draggingFrom: null,
       leftTab: "history",
       rightTab: "details",
       changesAll: false,
@@ -1039,8 +1052,27 @@ export const useUi = create<UiState>()(
       // leftover one would render the previous repo's oid against the new repo.
       stackedReview: null,
       navOpen: false,
+      // Repo-scoped windows and their payloads must disappear in this same
+      // transition. Their component-local drafts then unmount before the new
+      // repository can be targeted (settings URL, branch name/base, PR form).
+      repoSettingsOpen: false,
+      createBranchOpen: false,
+      createBranchStart: null,
+      createBranchName: null,
+      createPrOpen: false,
+      createPrGeneration: s.createPrGeneration + 1,
+      recoveryOpen: false,
+      confirm: null,
+      prompt: null,
+      // A hand-off intentionally switches to its destination while running and
+      // keeps its result dialog. Every other repo-bound worktree flow is stale.
+      handoff: s.handoffRunning ? s.handoff : null,
+      deleteWorktree: null,
+      removeDetached: null,
       reviewNotes: [],
       agentMessageOpen: false,
+      agentMessageSurfaces: [],
+      agentMessageBranch: null,
       histSearchOpen: false,
       histQuery: "",
       histFilter: "all",
@@ -1062,8 +1094,18 @@ export const useUi = create<UiState>()(
   },
   selectPr: (num) => set({ prSelected: num, prTab: "info" }),
   setPrTab: (tab) => set({ prTab: tab }),
-  openCreatePr: () => set({ createPrOpen: true }),
-  closeCreatePr: () => set({ createPrOpen: false }),
+  openCreatePr: () =>
+    set((s) =>
+      s.createPrOpen
+        ? {}
+        : { createPrOpen: true, createPrGeneration: s.createPrGeneration + 1 },
+    ),
+  closeCreatePr: (generation) =>
+    set((s) =>
+      generation !== undefined && generation !== s.createPrGeneration
+        ? {}
+        : { createPrOpen: false, createPrGeneration: s.createPrGeneration + 1 },
+    ),
 
   toggleHistSearch: () =>
     set((s) => ({ histSearchOpen: !s.histSearchOpen, histQuery: s.histSearchOpen ? "" : s.histQuery })),

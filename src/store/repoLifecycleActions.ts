@@ -16,13 +16,29 @@ import { usePulls } from "./pulls";
 import {
   flushPendingRefresh,
   graphRequestIsCurrent,
-  repoStillDisplayed,
+  metadataRequestIsCurrent,
+  remotesRequestIsCurrent,
+  repoSessionIsCurrent,
+  worktreeRequestIsCurrent,
 } from "./repoGuards";
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
   beginGraphRequest,
+  beginMetadataRequest,
+  beginPublishedRepoSession,
+  beginRemotesRequest,
+  beginTabLifetime,
+  beginWorktreeRequest,
+  claimPrPrefetch,
   claimOpenIntent,
+  endTabLifetime,
+  ensureTabLifetime,
+  markMetadataReadyForPr,
+  markRemotesReadyForPr,
   openIntentIsCurrent,
+  requestPrPrefetch,
+  tabLifetimeIsCurrent,
+  type TabLifetimeLease,
 } from "./repoRequests";
 import {
   persistRecents,
@@ -60,6 +76,33 @@ export function createRepoLifecycleActions(
       // Claim the latest open intent before doing anything that can await. A newer
       // pick supersedes this one even if our open resolves later (GL-20 review).
       const intent = claimOpenIntent();
+      const initialPaths = get().openPaths;
+      // Activating an existing tab owns that exact tab lifetime. Closing it
+      // while open_repo is pending invalidates this lease, so the completion
+      // cannot silently re-add the path. A genuinely new target has no tab
+      // lifetime until phase 2 publishes it; the global open intent still gives
+      // concurrent new opens their latest-pick ordering.
+      // Snapshot every initially-live path because open_repo can canonicalize a
+      // subdirectory/symlink pick to an already-open repository path. Once the
+      // canonical summary arrives we can then prove that exact tab survived the
+      // await, without coupling a genuinely new target to unrelated tabs.
+      const initialTabOwners = new Map(
+        initialPaths.map((openPath) => [openPath, ensureTabLifetime(openPath)]),
+      );
+      const targetOwner = initialTabOwners.get(path) ?? null;
+      // In-place switches additionally own the source tab. If the source closes
+      // while the destination is resolving, the operation no longer has a tab
+      // to replace and must stand down instead of appending the destination.
+      const replacementOwner = opts?.replaceTab
+        ? initialTabOwners.get(opts.replaceTab) ?? null
+        : null;
+      const tabOwnerIsCurrent = (owner: TabLifetimeLease | null) =>
+        owner === null ||
+        (tabLifetimeIsCurrent(owner) && get().openPaths.includes(owner.path));
+      const openOwnerIsCurrent = () =>
+        openIntentIsCurrent(intent) &&
+        tabOwnerIsCurrent(targetOwner) &&
+        tabOwnerIsCurrent(replacementOwner);
 
       // Phase 1 — open the repo. This is a cheap libgit2 metadata read and the only
       // step that can fail "this isn't a repo". Crucially it touches NO shared
@@ -74,20 +117,21 @@ export function createRepoLifecycleActions(
       } catch (e) {
         // Only surface the error if this is still the latest pick — a slow failed
         // open must not error over a repo the user has since switched to.
-        if (openIntentIsCurrent(intent)) {
+        if (openOwnerIsCurrent()) {
           // A vanished path gets the dedicated missing-repo state — tab click,
           // startup restore, and a recents open all funnel through here
           // (GL-108). Other failures keep the GL-20 behavior: error bar only,
           // the current repo untouched.
           const missing = isRepoOpenError(e) && e.kind !== "other" ? e.kind : null;
-          if (missing) await handleMissing(path, missing, () => openIntentIsCurrent(intent));
+          if (missing) await handleMissing(path, missing, openOwnerIsCurrent);
           else set({ error: errorText(e) });
         }
         return;
       }
       // A newer pick superseded us while we were opening → drop this stale open so
       // it can't publish over the repo the user landed on.
-      if (!openIntentIsCurrent(intent)) return;
+      const canonicalTargetOwner = initialTabOwners.get(summary.path) ?? null;
+      if (!openOwnerIsCurrent() || !tabOwnerIsCurrent(canonicalTargetOwner)) return;
 
       // Phase 2 — commit to the switch. Bump the generation (superseding any
       // in-flight graph request) and, in one atomic commit, publish the new summary,
@@ -105,12 +149,31 @@ export function createRepoLifecycleActions(
       let openPaths: string[];
       if (prevPaths.includes(summary.path)) {
         openPaths = prevPaths;
-      } else if (opts?.replaceTab && prevPaths.includes(opts.replaceTab)) {
+      } else if (
+        replacementOwner &&
+        opts?.replaceTab &&
+        prevPaths.includes(opts.replaceTab)
+      ) {
         openPaths = prevPaths.map((p) => (p === opts.replaceTab ? summary.path : p));
       } else {
         const at = groupedInsertIndex(prevPaths, get().tabInfoByPath, repoIdentityKey(summary));
         openPaths = [...prevPaths.slice(0, at), summary.path, ...prevPaths.slice(at)];
       }
+      const addedTarget = !prevPaths.includes(summary.path);
+      const replacedSource =
+        replacementOwner &&
+        opts?.replaceTab &&
+        opts.replaceTab !== summary.path &&
+        prevPaths.includes(opts.replaceTab) &&
+        !openPaths.includes(opts.replaceTab)
+          ? opts.replaceTab
+          : null;
+      // Rotate lifetimes before persistence/UI/watch side effects. Published
+      // repo-session guards take over after phase 2, so ending a replaced source
+      // cannot invalidate any of the destination's secondary reads.
+      if (replacedSource) endTabLifetime(replacedSource);
+      if (addedTarget) beginTabLifetime(summary.path);
+      else ensureTabLifetime(summary.path);
       const tabInfoByPath = pruneTabInfo(
         { ...get().tabInfoByPath, [summary.path]: tabInfoFromSummary(summary) },
         openPaths,
@@ -126,6 +189,34 @@ export function createRepoLifecycleActions(
       persistSession(openPaths, summary.path);
       persistTabInfo(tabInfoByPath);
       persistRecents(recents);
+      // Rotate the displayed-session identity in the same synchronous phase-2
+      // publication as the summary, including a same-path reopen.
+      const session = beginPublishedRepoSession();
+      // Claim one token per secondary-read batch. Each call in a lane shares
+      // its token so it can land independently, while a newer same-lane load or
+      // refresh suppresses every remaining completion from this batch.
+      const metadataOwner = {
+        path: summary.path,
+        session,
+        generation: beginMetadataRequest(),
+      };
+      const worktreeOwner = {
+        path: summary.path,
+        session,
+        generation: beginWorktreeRequest(),
+      };
+      const remotesOwner = {
+        path: summary.path,
+        session,
+        generation: beginRemotesRequest(),
+      };
+      const fileSelectionRequestId = get().fileSelectionRequestId + 1;
+      const maybePrefetchPulls = () => {
+        if (claimPrPrefetch(session)) {
+          void usePulls.getState().loadPullRequests(false, true);
+        }
+      };
+      requestPrPrefetch(session);
       set({
         summary,
         openPaths,
@@ -156,7 +247,9 @@ export function createRepoLifecycleActions(
         wipSelected: false,
         revealTarget: null,
         selectedFile: null,
+        fileSelectionRequestId,
         fileDiff: null,
+        diffLoading: false,
         commitFiles: [],
         // Inspection slices are repo-bound; a switch must not leave an old repo's
         // history/compare/files view mounted against the new (or null) summary.
@@ -227,7 +320,9 @@ export function createRepoLifecycleActions(
       usePulls.getState().reset();
       // Resolve this repo's bound account so the PR badge load (fired once the
       // forge is known, below) fetches as that account.
-      useAccounts.getState().syncRepoAccount(summary.path);
+      if (remotesRequestIsCurrent(get, remotesOwner)) {
+        useAccounts.getState().syncRepoAccount(summary.path);
+      }
 
       // Secondary reads don't gate the first paint, so fan them out independently
       // — each fills its slice as it lands rather than waiting behind the graph in
@@ -243,70 +338,90 @@ export function createRepoLifecycleActions(
       void api
         .listBranches(summary.path)
         .then((branches) => {
-          if (repoStillDisplayed(get, summary.path)) set({ branches });
+          if (metadataRequestIsCurrent(get, metadataOwner)) set({ branches });
         })
         .catch((e) => {
-          if (repoStillDisplayed(get, summary.path)) void surfaceOpenFailure(summary.path, e);
+          void surfaceOpenFailure(
+            summary.path,
+            e,
+            () =>
+              openIntentIsCurrent(intent) &&
+              metadataRequestIsCurrent(get, metadataOwner),
+          );
         });
       void api
         .listWorktrees(summary.path)
         .then((worktrees) => {
-          if (!repoStillDisplayed(get, summary.path)) return;
+          if (!metadataRequestIsCurrent(get, metadataOwner)) return;
           set({ worktrees });
           // Their uncommitted work is a second, per-worktree read — kicked off
           // once the list itself has landed and painted, never in front of it.
+          // It inherits this read's ownership guard: probing dirtiness for a
+          // superseded load would publish into the repo the user left.
           probeDirtyWorktrees(set, get);
         })
         .catch(() => {});
       void api
         .listStashes(summary.path)
         .then((stashes) => {
-          if (repoStillDisplayed(get, summary.path)) set({ stashes });
+          if (metadataRequestIsCurrent(get, metadataOwner)) set({ stashes });
         })
         .catch(() => {});
       // The forge drives the toolbar provider indicator (which paints early), so
       // load it alongside the other secondary reads rather than behind the graph.
       // Best-effort: a detection failure degrades to "no forge", never the error bar.
-      const forgeLoad = api
+      void api
         .repoForge(summary.path)
         .then((forge) => {
-          if (repoStillDisplayed(get, summary.path)) set({ forge });
+          if (metadataRequestIsCurrent(get, metadataOwner)) {
+            set({ forge });
+            markMetadataReadyForPr(session, metadataOwner.generation, forge !== null);
+            maybePrefetchPulls();
+          }
         })
-        .catch(() => {});
+        .catch(() => {
+          if (metadataRequestIsCurrent(get, metadataOwner)) {
+            // Phase 2 already published the terminal best-effort fallback.
+            markMetadataReadyForPr(session, metadataOwner.generation, false);
+            maybePrefetchPulls();
+          }
+        });
       // The remote list feeds the per-remote account resolution (GL-129): URL
       // usernames and any legacy binding migration need the remote names +
       // default remote, so re-sync the account slice once the list lands (the
       // early sync above ran without it).
       // Best-effort like the other secondary reads.
-      const remotesLoad = api
+      void api
         .listRemotes(summary.path)
         .then((remotes) => {
-          if (repoStillDisplayed(get, summary.path)) {
+          if (remotesRequestIsCurrent(get, remotesOwner)) {
             set({ remotes });
             useAccounts.getState().syncRepoAccount(summary.path);
+            markRemotesReadyForPr(session, remotesOwner.generation);
+            maybePrefetchPulls();
           }
         })
-        .catch(() => {});
-      void Promise.allSettled([forgeLoad, remotesLoad]).then(() => {
-        // Fire the quiet PR-badge load only once the forge is known, so the
-        // GitHub-only gate in `loadPullRequests` applies on first paint — a
-        // non-GitHub / no-remote repo then skips `gh` instead of surfacing a
-        // confusing "couldn't resolve a GitHub repository" error. Waiting on the
-        // remotes too means the load fetches as the *default remote's* bound
-        // account rather than racing the per-remote resolution (GL-129). Both
-        // are cheap libgit2 reads and PRs don't gate first paint, so the wait is
-        // free. The panel isn't shown yet; opening it does its own foreground load.
-        if (repoStillDisplayed(get, summary.path)) {
-          void usePulls.getState().loadPullRequests(false, true);
-        }
-      });
+        .catch(() => {
+          if (remotesRequestIsCurrent(get, remotesOwner)) {
+            // Phase 2 already published []; account resolution ran once against
+            // that terminal fallback before the read batch started.
+            markRemotesReadyForPr(session, remotesOwner.generation);
+            maybePrefetchPulls();
+          }
+        });
       void api
         .workingChanges(summary.path)
         .then((changes) => {
-          if (repoStillDisplayed(get, summary.path)) set({ changes });
+          if (worktreeRequestIsCurrent(get, worktreeOwner)) set({ changes });
         })
         .catch((e) => {
-          if (repoStillDisplayed(get, summary.path)) void surfaceOpenFailure(summary.path, e);
+          void surfaceOpenFailure(
+            summary.path,
+            e,
+            () =>
+              openIntentIsCurrent(intent) &&
+              worktreeRequestIsCurrent(get, worktreeOwner),
+          );
         });
       // The active operation (merge/rebase/cherry-pick/revert) gates the
       // conflict workspace. Best-effort: a detection failure degrades to "no
@@ -315,7 +430,7 @@ export function createRepoLifecycleActions(
       void api
         .operationStatus(summary.path)
         .then((status) => {
-          if (repoStillDisplayed(get, summary.path)) {
+          if (worktreeRequestIsCurrent(get, worktreeOwner)) {
             set({
               operation: mergeOperationStatus(get().operation, status),
               operationAdvisory: status.advisory || null,
@@ -371,7 +486,11 @@ export function createRepoLifecycleActions(
           void api
             .commitFiles(summary.path, selectedCommit)
             .then((commitFiles) => {
-              if (repoStillDisplayed(get, summary.path) && get().selectedCommit === selectedCommit) {
+              if (
+                repoSessionIsCurrent(get, summary.path, session) &&
+                get().fileSelectionRequestId === fileSelectionRequestId &&
+                get().selectedCommit === selectedCommit
+              ) {
                 set({ commitFiles });
               }
             })
@@ -388,16 +507,26 @@ export function createRepoLifecycleActions(
         // libgit2 message (GL-108). Re-guard after the async probe.
         const missing = await wentMissing(summary.path, e);
         if (!graphRequestIsCurrent(get, generation, summary.path)) return;
-        if (missing)
+        if (missing) {
           // `intent` (claimed at this loadRepo's start, before every await) is
           // the open-intent baseline: a competing switch bumps it, flipping the
           // token even before that switch publishes its summary/generation.
-          await handleMissing(
+          const transitioned = await handleMissing(
             summary.path,
             missing,
             () => graphRequestIsCurrent(get, generation, summary.path) && openIntentIsCurrent(intent),
           );
-        else set({ loading: false, graphLoading: false, error: errorText(e) });
+          if (!transitioned && graphRequestIsCurrent(get, generation, summary.path)) {
+            // A newer phase-1 open can suppress this missing transition without
+            // yet owning the loading flags. Release the old graph shell so a
+            // later failed pick cannot leave it stuck.
+            set({ loading: false, graphLoading: false });
+          }
+        } else if (openIntentIsCurrent(intent)) {
+          set({ loading: false, graphLoading: false, error: errorText(e) });
+        } else {
+          set({ loading: false, graphLoading: false });
+        }
         flushPendingRefresh(get);
       }
     },
@@ -434,6 +563,11 @@ export function createRepoLifecycleActions(
         // the stale tab in place (keeping its position; a no-op for a recents
         // entry that has no tab) and drop the dead recents entry — the open
         // below records the new location as active.
+        const staleWasOpen = get().openPaths.includes(stalePath);
+        const targetWasOpen = get().openPaths.includes(probe.path);
+        if (staleWasOpen) endTabLifetime(stalePath);
+        if (targetWasOpen) ensureTabLifetime(probe.path);
+        else if (staleWasOpen) beginTabLifetime(probe.path);
         useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
         migrateIdentityBindings(stalePath, probe.path);
         // The dead path may still hold a watch from before it went missing;

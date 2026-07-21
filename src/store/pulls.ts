@@ -34,6 +34,11 @@ import {
   type QueuedPrListLoad,
 } from "./pullsQueue";
 import { claimPrRequestId, ownsPrRequest } from "./pullsRequests";
+import {
+  capturePrActionContext,
+  prActionOwnerIsCurrent,
+  type PrActionOwner,
+} from "./pullsActionOwner";
 
 let nextPrListRequestId = 1;
 let nextPrChecksRequestId = 1;
@@ -684,71 +689,75 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   resolveThread: async (num, threadId, resolved) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.resolveReviewThread(path, threadId, resolved, account),
       { trackPending: false },
     );
-    await get().loadPrThreads(num, true);
-    return out;
+    await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));
+    return output;
   },
 
   replyThread: async (num, threadId, body) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.replyReviewThread(path, threadId, body, account),
       { trackPending: false },
     );
-    await get().loadPrThreads(num, true);
-    return out;
+    await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));
+    return output;
   },
 
   mergePr: async (num, method, deleteBranch) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.mergePullRequest(path, num, method, deleteBranch, account),
       { action: PR_PENDING_ACTION.Merge, prNum: num },
     );
     // State + checked-out branch can both change; reload the list and this PR.
-    await get().loadPullRequests(true);
-    await get().loadPrDetail(num, true);
-    void useRepo.getState().refresh({ prs: false });
-    return out;
+    if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return output;
+    if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
+    if (prActionOwnerIsCurrent(owner)) {
+      void useRepo.getState().refresh({ prs: false });
+    }
+    return output;
   },
 
   commentPr: async (num, body) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.commentPullRequest(path, num, body, account),
       { action: PR_PENDING_ACTION.Comment, prNum: num },
     );
-    await get().loadPrDetail(num, true);
-    return out;
+    await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true));
+    return output;
   },
 
   reviewPr: async (num, action, body) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.reviewPullRequest(path, num, action, body, account),
       { action: PR_PENDING_ACTION.Review, prNum: num, reviewAction: action },
     );
-    await get().loadPrDetail(num, true);
-    void get().loadPrChecks(num, true);
-    return out;
+    if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
+    if (prActionOwnerIsCurrent(owner)) {
+      void get().loadPrChecks(num, true);
+    }
+    return output;
   },
 
   setPrState: async (num, action) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.setPullRequestState(path, num, action, account),
       { action: PR_PENDING_ACTION.State, prNum: num, stateAction: action },
     );
-    await get().loadPullRequests(true);
-    await get().loadPrDetail(num, true);
-    return out;
+    if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return output;
+    await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true));
+    return output;
   },
 
   createPr: async (base, head, title, body, draft) => {
-    const out = await runPrAction(
+    const { output, owner } = await runPrAction(
       (path, account) => api.createPullRequest(path, base, head, title, body, draft, account),
       { action: PR_PENDING_ACTION.Create, prNum: null },
     );
-    await get().loadPullRequests(true);
-    return out;
+    await runPrActionFollowUp(owner, () => get().loadPullRequests(true));
+    return output;
   },
 }));
 
@@ -787,11 +796,13 @@ async function runPrAction(
     reviewAction?: ReviewAction;
     trackPending?: boolean;
   } = {},
-): Promise<string> {
-  const summary = useRepo.getState().summary;
-  if (!summary) throw new Error("No repository");
-  const account = useAccounts.getState().prAccountRef();
-  if (!trackPending || !action) return await body(summary.path, account);
+): Promise<{ output: string; owner: PrActionOwner }> {
+  const context = capturePrActionContext();
+  if (!context) throw new Error("No repository");
+  const { owner, account } = context;
+  if (!trackPending || !action) {
+    return { output: await body(owner.path, account), owner };
+  }
   // Write errors surface via the caller's toast, not `prError` (which is the
   // list-load error and must not be cleared/clobbered by a write op). Track the
   // action in a multiset so concurrent writes are independent: one finishing
@@ -805,7 +816,7 @@ async function runPrAction(
   };
   usePulls.setState((s) => ({ prPendingActions: [...s.prPendingActions, pendingEntry] }));
   try {
-    return await body(summary.path, account);
+    return { output: await body(owner.path, account), owner };
   } finally {
     usePulls.setState((s) => {
       const i = s.prPendingActions.findIndex((pending) => pending.id === pendingEntry.id);
@@ -814,4 +825,23 @@ async function runPrAction(
         : { prPendingActions: [...s.prPendingActions.slice(0, i), ...s.prPendingActions.slice(i + 1)] };
     });
   }
+}
+
+/** Run one repo/account-dependent follow-up for a successful server write.
+ * A stale owner makes the follow-up a no-op. If it becomes stale while awaited,
+ * its loader's own request guards suppress state publication and the caller
+ * continues with the original server output. A genuine same-owner failure still
+ * rejects so the existing error toast remains truthful. */
+async function runPrActionFollowUp(
+  owner: PrActionOwner,
+  followUp: () => Promise<unknown>,
+): Promise<boolean> {
+  if (!prActionOwnerIsCurrent(owner)) return false;
+  try {
+    await followUp();
+  } catch (error) {
+    if (!prActionOwnerIsCurrent(owner)) return false;
+    throw error;
+  }
+  return prActionOwnerIsCurrent(owner);
 }

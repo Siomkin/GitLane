@@ -8,6 +8,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false };
+const FILE_STATE = "repo-file:v1:test-state";
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -158,7 +159,13 @@ describe("FilesPanel", () => {
         content: { text: "old", size: 3, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "my edits", baseSize: 3, saving: false, error: null },
+        edit: {
+          draft: "my edits",
+          baseSize: 3,
+          baseExpectedState: FILE_STATE,
+          saving: false,
+          error: null,
+        },
       },
     });
     await useRepo.getState().reloadFileView();
@@ -248,7 +255,13 @@ describe("FilesPanel", () => {
         content: { text: "old", size: 3, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "unsaved edits", baseSize: 3, saving: false, error: null },
+        edit: {
+          draft: "unsaved edits",
+          baseSize: 3,
+          baseExpectedState: FILE_STATE,
+          saving: false,
+          error: null,
+        },
       },
     });
     useRepo.getState().requestOpenRepoFile("b.ts");
@@ -267,13 +280,13 @@ describe("FilesPanel", () => {
     useRepo.setState({
       fileView: {
         path: "a.ts",
-        content: { text: "v1", size: 2, truncated: false, binary: false },
+        content: { text: "v1", size: 2, truncated: false, binary: false, expectedState: FILE_STATE },
         loading: false,
         error: null,
-        edit: { draft: "v2", baseSize: 2, saving: false, error: null },
+        edit: { draft: "v2", baseSize: 2, baseExpectedState: FILE_STATE, saving: false, error: null },
       },
     });
-    let resolveWrite!: (n: number) => void;
+    let resolveWrite!: (result: { size: number; expectedState: string }) => void;
     invokeMock.mockImplementationOnce(() => new Promise((r) => (resolveWrite = r))); // write_repo_file
     const save = useRepo.getState().saveFileEdit();
     // The user closes and reopens the same file, then starts a fresh edit while
@@ -282,18 +295,90 @@ describe("FilesPanel", () => {
     useRepo.setState({
       fileView: {
         path: "a.ts",
-        content: { text: "external", size: 8, truncated: false, binary: false },
+        content: { text: "external", size: 8, truncated: false, binary: false, expectedState: "external-state" },
         loading: false,
         error: null,
       },
     });
     useRepo.getState().beginFileEdit();
     useRepo.getState().updateFileDraft("external edits");
-    resolveWrite(2);
+    resolveWrite({ size: 2, expectedState: "saved-state" });
     await save;
     // The old save's result must not clobber the new session.
     expect(useRepo.getState().fileView?.content?.text).toBe("external");
     expect(useRepo.getState().fileView?.edit?.draft).toBe("external edits");
+  });
+
+  it("saveFileEdit: a repo-A success can't publish into repo B at the same path", async () => {
+    useRepo.setState({
+      summary,
+      fileView: {
+        path: "same.ts",
+        content: { text: "A-old", size: 5, truncated: false, binary: false, expectedState: "state-a" },
+        loading: false,
+        error: null,
+        edit: { draft: "A-new", baseSize: 5, baseExpectedState: "state-a", saving: false, error: null },
+      },
+    });
+    let resolveWrite!: (result: { size: number; expectedState: string }) => void;
+    invokeMock.mockImplementationOnce(() => new Promise((resolve) => (resolveWrite = resolve)));
+    const save = useRepo.getState().saveFileEdit();
+
+    useRepo.setState({
+      summary: { ...summary, path: "/b", workdir: "/b" },
+      fileView: {
+        path: "same.ts",
+        content: { text: "B-old", size: 5, truncated: false, binary: false, expectedState: "state-b" },
+        loading: false,
+        error: null,
+        edit: { draft: "B-draft", baseSize: 5, baseExpectedState: "state-b", saving: false, error: null },
+      },
+    });
+    resolveWrite({ size: 5, expectedState: "state-a-next" });
+    await save;
+
+    expect(useRepo.getState().fileView?.content?.text).toBe("B-old");
+    expect(useRepo.getState().fileView?.content?.expectedState).toBe("state-b");
+    expect(useRepo.getState().fileView?.edit).toEqual({
+      draft: "B-draft",
+      baseSize: 5,
+      baseExpectedState: "state-b",
+      saving: false,
+      error: null,
+    });
+  });
+
+  it("saveFileEdit: a repo-A rejection can't publish an error into repo B", async () => {
+    useRepo.setState({
+      summary,
+      fileView: {
+        path: "same.ts",
+        content: { text: "A-old", size: 5, truncated: false, binary: false, expectedState: "state-a" },
+        loading: false,
+        error: null,
+        edit: { draft: "A-new", baseSize: 5, baseExpectedState: "state-a", saving: false, error: null },
+      },
+    });
+    let rejectWrite!: (error: Error) => void;
+    invokeMock.mockImplementationOnce(() => new Promise((_resolve, reject) => (rejectWrite = reject)));
+    const save = useRepo.getState().saveFileEdit();
+
+    useRepo.setState({
+      summary: { ...summary, path: "/b", workdir: "/b" },
+      fileView: {
+        path: "same.ts",
+        content: { text: "B-old", size: 5, truncated: false, binary: false, expectedState: "state-b" },
+        loading: false,
+        error: null,
+        edit: { draft: "B-draft", baseSize: 5, baseExpectedState: "state-b", saving: false, error: null },
+      },
+    });
+    rejectWrite(new Error("stale A lease"));
+    await save;
+
+    expect(useRepo.getState().fileView?.edit?.draft).toBe("B-draft");
+    expect(useRepo.getState().fileView?.edit?.baseExpectedState).toBe("state-b");
+    expect(useRepo.getState().fileView?.edit?.error).toBeNull();
   });
 
   it("requestOpenRepoFile is a no-op while a save is in flight", () => {
@@ -303,7 +388,7 @@ describe("FilesPanel", () => {
         content: { text: "x", size: 1, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "edited", baseSize: 1, saving: true, error: null },
+        edit: { draft: "edited", baseSize: 1, baseExpectedState: FILE_STATE, saving: true, error: null },
       },
     });
     useRepo.getState().requestOpenRepoFile("b.ts");
@@ -319,7 +404,7 @@ describe("FilesPanel", () => {
         content: { text: "x", size: 1, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "edited", baseSize: 1, saving: false, error: null },
+        edit: { draft: "edited", baseSize: 1, baseExpectedState: FILE_STATE, saving: false, error: null },
       },
     });
     // Dirty but not saving → a discard confirm is offered.
@@ -350,7 +435,7 @@ describe("FilesPanel", () => {
         content: { text: "x", size: 1, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "x", baseSize: 1, saving: false, error: null },
+        edit: { draft: "x", baseSize: 1, baseExpectedState: FILE_STATE, saving: false, error: null },
       },
     });
     // Two baseline fetches (reloadFileView refreshes the baseline while editing).

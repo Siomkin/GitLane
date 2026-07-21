@@ -1,0 +1,362 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+
+import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import type {
+  RepoGraph,
+  RepoOpenError,
+  RepoSummary,
+  WorkingChanges,
+} from "@/lib/api";
+import { useRepo } from "./repo";
+import { createInitialRepoData } from "./repoTypes";
+
+const EMPTY_CHANGES: WorkingChanges = {
+  staged: [],
+  unstaged: [],
+  conflicted: [],
+  advanced: emptyAdvancedState,
+};
+const EMPTY_GRAPH: RepoGraph = {
+  commits: [],
+  edges: [],
+  laneCount: 1,
+  head: null,
+  truncated: false,
+};
+
+const repo = (path: string, headBranch = "main"): RepoSummary => ({
+  path,
+  workdir: path,
+  headBranch,
+  headOid: null,
+  detached: false,
+});
+
+const missingError = (path: string): RepoOpenError => ({
+  kind: "missing",
+  message: `This repository can't be found at ${path}.`,
+  path,
+});
+
+const defaultInvoke = (cmd: string): Promise<unknown> => {
+  switch (cmd) {
+    case "working_changes":
+      return Promise.resolve(EMPTY_CHANGES);
+    case "commit_graph":
+      return Promise.resolve(EMPTY_GRAPH);
+    default:
+      return Promise.resolve([]);
+  }
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+const tick = () => new Promise<void>((resolve) => setTimeout(resolve));
+
+beforeEach(() => {
+  invokeMock.mockReset();
+  invokeMock.mockImplementation((cmd: string) => defaultInvoke(cmd));
+  localStorage.clear();
+  useRepo.setState(createInitialRepoData([]));
+});
+
+describe("repo store — pending tab lifetimes", () => {
+  it("does not resurrect an existing tab closed while activation resolves", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "topic" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/b") return opened.promise;
+      return defaultInvoke(cmd);
+    });
+
+    const activation = useRepo.getState().loadRepo("/b");
+    await tick();
+    await useRepo.getState().closeRepo("/b");
+    opened.resolve(repo("/b", "topic"));
+    await activation;
+    await tick();
+
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/b" });
+  });
+
+  it("does not restore a missing tab when Retry rejects after Remove", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: null,
+      missingRepo: { path: "/gone", kind: "missing" },
+      openPaths: ["/gone"],
+      recents: [
+        {
+          path: "/gone",
+          name: "gone",
+          branch: "main",
+          lastOpenedAt: 1,
+          missing: true,
+        },
+      ],
+      tabInfoByPath: {
+        "/gone": { isWorktree: false, mainPath: null, branch: "main" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/gone") return opened.promise;
+      return defaultInvoke(cmd);
+    });
+
+    const retry = useRepo.getState().loadRepo("/gone");
+    await tick();
+    await useRepo.getState().closeRepo("/gone");
+    opened.reject(missingError("/gone"));
+    await retry;
+    await tick();
+
+    expect(useRepo.getState().openPaths).toEqual([]);
+    expect(useRepo.getState().missingRepo).toBeNull();
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().error).toBeNull();
+  });
+
+  it("does not resurrect the implicit neighbour closed while its open is pending", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "topic" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/b") return opened.promise;
+      return defaultInvoke(cmd);
+    });
+
+    const closeActive = useRepo.getState().closeRepo("/a");
+    await tick();
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().openPaths).toEqual(["/b"]);
+
+    await useRepo.getState().closeRepo("/b");
+    opened.resolve(repo("/b", "topic"));
+    await closeActive;
+    await tick();
+
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().openPaths).toEqual([]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/b" });
+  });
+
+  it("cancels replaceTab when its source tab closes during phase one", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/source"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/source": { isWorktree: true, mainPath: "/a", branch: "topic" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/destination") return opened.promise;
+      return defaultInvoke(cmd);
+    });
+
+    const replacement = useRepo
+      .getState()
+      .loadRepo("/destination", { replaceTab: "/source" });
+    await tick();
+    await useRepo.getState().closeRepo("/source");
+    opened.resolve(repo("/destination", "new-topic"));
+    await replacement;
+    await tick();
+
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", {
+      path: "/destination",
+    });
+  });
+
+  it("lets a new target publish when an unrelated background tab closes", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "topic" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/c") return opened.promise;
+      return defaultInvoke(cmd);
+    });
+
+    const opening = useRepo.getState().loadRepo("/c");
+    await tick();
+    await useRepo.getState().closeRepo("/b");
+    opened.resolve(repo("/c", "new"));
+    await opening;
+    await tick();
+
+    expect(useRepo.getState().summary?.path).toBe("/c");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/c"]);
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/c" });
+  });
+
+  it("keeps the append fallback when replaceTab names a source that is already absent", async () => {
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/destination") {
+        return Promise.resolve(repo("/destination", "topic"));
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo
+      .getState()
+      .loadRepo("/destination", { replaceTab: "/already-closed" });
+
+    expect(useRepo.getState().summary?.path).toBe("/destination");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/destination"]);
+  });
+
+  it("does not resurrect an existing canonical tab opened through an alternate path", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/canonical-b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/canonical-b": { isWorktree: false, mainPath: null, branch: "topic" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/canonical-b/subdir") {
+        return opened.promise;
+      }
+      return defaultInvoke(cmd);
+    });
+
+    const activation = useRepo.getState().loadRepo("/canonical-b/subdir");
+    await tick();
+    await useRepo.getState().closeRepo("/canonical-b");
+    opened.resolve(repo("/canonical-b", "topic"));
+    await activation;
+
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", {
+      path: "/canonical-b",
+    });
+  });
+
+  it("allows only the newer load to publish after a same-path close and reopen", async () => {
+    const firstOpen = deferred<RepoSummary>();
+    const secondOpen = deferred<RepoSummary>();
+    let bOpenCalls = 0;
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "before" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/b") {
+        bOpenCalls += 1;
+        return bOpenCalls === 1 ? firstOpen.promise : secondOpen.promise;
+      }
+      return defaultInvoke(cmd);
+    });
+
+    const oldActivation = useRepo.getState().loadRepo("/b");
+    await tick();
+    await useRepo.getState().closeRepo("/b");
+    const reopened = useRepo.getState().loadRepo("/b");
+    await tick();
+
+    secondOpen.resolve(repo("/b", "fresh"));
+    await reopened;
+    firstOpen.resolve(repo("/b", "stale"));
+    await oldActivation;
+    await tick();
+
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(useRepo.getState().summary?.headBranch).toBe("fresh");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+  });
+
+  it("drops an old refreshTabInfo result after same-path close and reopen", async () => {
+    const statusProbe = deferred<
+      Array<{
+        path: string;
+        exists: boolean;
+        branch: string;
+        isWorktree: boolean;
+        mainPath: string | null;
+      }>
+    >();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "before" },
+      },
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/b") {
+        return Promise.resolve(repo("/b", "fresh"));
+      }
+      return defaultInvoke(cmd);
+    });
+
+    const oldRefresh = useRepo.getState().refreshTabInfo("/b");
+    await tick();
+    await useRepo.getState().closeRepo("/b");
+    await useRepo.getState().loadRepo("/b");
+
+    statusProbe.resolve([
+      {
+        path: "/b",
+        exists: true,
+        branch: "stale",
+        isWorktree: false,
+        mainPath: null,
+      },
+    ]);
+    await oldRefresh;
+
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("fresh");
+  });
+});

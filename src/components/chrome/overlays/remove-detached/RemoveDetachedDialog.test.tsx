@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { RepoSummary, WorktreeDirtyState, WorktreeInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { RemoveDetachedDialog } from "./RemoveDetachedDialog";
@@ -140,6 +141,32 @@ describe("RemoveDetachedDialog", () => {
     );
     expect(removeWorktree).toHaveBeenCalledTimes(1);
     expect(removeWorktree).toHaveBeenCalledWith("/work/a", false);
+  });
+
+  it("stops the sweep when the same repo path is reopened mid-run", async () => {
+    let resolveFirst!: (msg: string) => void;
+    const removeWorktree = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<string>((res) => { resolveFirst = res; }))
+      .mockResolvedValue("Removed");
+    useRepo.setState({ summary: summary("/repo"), removeWorktree });
+    open([a, b]);
+    render(<RemoveDetachedDialog />);
+
+    await clickRemove();
+    await waitFor(() => expect(removeWorktree).toHaveBeenCalledTimes(1));
+    act(() => {
+      beginPublishedRepoSession();
+      useRepo.setState({ summary: summary("/other") });
+      beginPublishedRepoSession();
+      useRepo.setState({ summary: summary("/repo") });
+    });
+    resolveFirst("Removed");
+
+    await waitFor(() =>
+      expect(screen.getByText(/Removed 1 of 2 detached worktrees — Repository changed/)).toBeInTheDocument(),
+    );
+    expect(removeWorktree).toHaveBeenCalledTimes(1);
   });
 
   it("blocks a second sweep while one is already running", async () => {

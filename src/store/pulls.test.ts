@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { PR_PENDING_ACTION, usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
+import { beginPublishedRepoSession } from "./repoRequests";
 import { summaryToPr } from "@/lib/prs";
 import {
   ForgeKind,
@@ -42,6 +43,9 @@ const account = (accountId: string): GithubAccountRef => ({
   accountId,
   login: `user-${accountId}`,
 });
+
+const realRepoRefresh = useRepo.getState().refresh;
+const realLoadPrDetail = usePulls.getState().loadPrDetail;
 
 const forge = (over: Partial<RepoForge>): RepoForge => ({
   hasRemote: true,
@@ -82,7 +86,8 @@ function deferred<T>() {
 beforeEach(() => {
   invokeMock.mockReset();
   usePulls.getState().reset();
-  useRepo.setState({ summary: SUMMARY, forge: forge({}) });
+  usePulls.setState({ loadPrDetail: realLoadPrDetail });
+  useRepo.setState({ summary: SUMMARY, forge: forge({}), refresh: realRepoRefresh });
   useAccounts.setState({ repoAccountId: null, repoAccountRef: null });
 });
 
@@ -850,6 +855,233 @@ describe("pulls PR list refresh coalescing", () => {
 
     prefetch.resolve([prSummary(7)]);
     await load;
+  });
+});
+
+describe("create PR follow-up ownership", () => {
+  it("does not refresh repo B when repo A's create finishes after a switch", async () => {
+    beginPublishedRepoSession();
+    const create = deferred<string>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request") return create.promise;
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const pending = usePulls.getState().createPr("main", "feat/x", "Repo A PR", "", false);
+    expect(invokeMock).toHaveBeenCalledWith(
+      "create_pull_request",
+      expect.objectContaining({ path: "/repo", title: "Repo A PR" }),
+    );
+
+    usePulls.getState().reset();
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: OTHER_SUMMARY });
+    const repoBPr = summaryToPr(prSummary(42, { title: "Repo B marker" }));
+    usePulls.setState({ pullRequests: [repoBPr], prError: "repo-b-marker" });
+
+    create.resolve("https://github.com/o/r/pull/99");
+    await expect(pending).resolves.toBe("https://github.com/o/r/pull/99");
+
+    expect(invokeMock.mock.calls.filter(([command]) => command === "list_pull_requests")).toEqual([]);
+    expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
+    expect(usePulls.getState().prError).toBe("repo-b-marker");
+  });
+
+  it("does not refresh a reopened same-path repository session", async () => {
+    beginPublishedRepoSession();
+    const create = deferred<string>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request") return create.promise;
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const pending = usePulls.getState().createPr("main", "feat/x", "Old session PR", "", false);
+
+    usePulls.getState().reset();
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: { ...SUMMARY } });
+    const reopenedPr = summaryToPr(prSummary(43, { title: "Reopened session marker" }));
+    usePulls.setState({ pullRequests: [reopenedPr], prError: "reopened-marker" });
+
+    create.resolve("https://github.com/o/r/pull/100");
+    await expect(pending).resolves.toBe("https://github.com/o/r/pull/100");
+
+    expect(invokeMock.mock.calls.filter(([command]) => command === "list_pull_requests")).toEqual([]);
+    expect(usePulls.getState().pullRequests).toEqual([reopenedPr]);
+    expect(usePulls.getState().prError).toBe("reopened-marker");
+  });
+
+  it("does not refresh under a different bound account", async () => {
+    beginPublishedRepoSession();
+    const create = deferred<string>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request") return create.promise;
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const pending = usePulls.getState().createPr("main", "feat/x", "Account A PR", "", false);
+    useAccounts.setState({ repoAccountRef: account("22") });
+
+    create.resolve("https://github.com/o/r/pull/101");
+    await expect(pending).resolves.toBe("https://github.com/o/r/pull/101");
+
+    expect(invokeMock.mock.calls.filter(([command]) => command === "list_pull_requests")).toEqual([]);
+  });
+});
+
+describe("PR write follow-up ownership", () => {
+  const switchToOtherRepo = () => {
+    usePulls.getState().reset();
+    beginPublishedRepoSession();
+    useRepo.setState({
+      summary: OTHER_SUMMARY,
+      forge: forge({ webUrl: "https://github.com/o/other" }),
+    });
+  };
+
+  it.each([
+    {
+      label: "reply",
+      command: "reply_review_thread",
+      run: () => usePulls.getState().replyThread(7, "thread-1", "fixed"),
+    },
+    {
+      label: "resolve",
+      command: "resolve_review_thread",
+      run: () => usePulls.getState().resolveThread(7, "thread-1", true),
+    },
+    {
+      label: "comment",
+      command: "comment_pull_request",
+      run: () => usePulls.getState().commentPr(7, "looks good"),
+    },
+  ])("returns the $label server output without refreshing repo B", async ({ command, run }) => {
+    beginPublishedRepoSession();
+    const serverWrite = deferred<string>();
+    invokeMock.mockImplementation((actual: string) => {
+      if (actual === command) return serverWrite.promise;
+      return Promise.reject(new Error(`Unexpected command: ${actual}`));
+    });
+
+    const pending = run();
+    switchToOtherRepo();
+    const repoBThread = { id: "repo-b-thread" } as never;
+    const repoBPr = summaryToPr(prSummary(91, { title: "Repo B marker" }));
+    usePulls.setState({
+      pullRequests: [repoBPr],
+      prThreads: { 7: [repoBThread] },
+      prError: "repo-b-marker",
+    });
+
+    serverWrite.resolve(`${command} ok`);
+    await expect(pending).resolves.toBe(`${command} ok`);
+
+    expect(invokeMock.mock.calls.map(([actual]) => actual)).toEqual([command]);
+    expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
+    expect(usePulls.getState().prThreads[7]).toEqual([repoBThread]);
+    expect(usePulls.getState().prError).toBe("repo-b-marker");
+  });
+
+  it("stops a review after its detail follow-up when the account changes", async () => {
+    beginPublishedRepoSession();
+    const detail = deferred<unknown>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "review_pull_request") return Promise.resolve("review ok");
+      if (command === "pull_request_detail") return detail.promise;
+      if (command === "pull_request_checks") {
+        return Promise.reject(new Error("stale checks must not start"));
+      }
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const pending = usePulls.getState().reviewPr(7, "approve", "ship it");
+    await vi.waitFor(() =>
+      expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_detail")).toBe(true),
+    );
+
+    useAccounts.setState({ repoAccountRef: account("33") });
+    detail.resolve({});
+    await expect(pending).resolves.toBe("review ok");
+
+    expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_checks")).toBe(false);
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+  });
+
+  it("preserves a same-owner follow-up failure after the server write succeeds", async () => {
+    beginPublishedRepoSession();
+    const loadPrDetail = vi.fn().mockRejectedValue(new Error("detail refresh failed"));
+    try {
+      usePulls.setState({ loadPrDetail });
+      invokeMock.mockImplementation((command: string) => {
+        if (command === "comment_pull_request") return Promise.resolve("comment ok");
+        return Promise.reject(new Error(`Unexpected command: ${command}`));
+      });
+
+      await expect(usePulls.getState().commentPr(7, "looks good")).rejects.toThrow(
+        "detail refresh failed",
+      );
+      expect(loadPrDetail).toHaveBeenCalledWith(7, true);
+    } finally {
+      usePulls.setState({ loadPrDetail: realLoadPrDetail });
+    }
+  });
+
+  it("returns state output when a queued force refresh is canceled after server success", async () => {
+    beginPublishedRepoSession();
+    const prefetch = deferred<PullRequestSummary[]>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "list_pull_requests") return prefetch.promise;
+      if (command === "set_pull_request_state") return Promise.resolve("state ok");
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const prefetchLoad = usePulls.getState().loadPullRequests(false, true);
+    const pending = usePulls.getState().setPrState(7, "close");
+    await vi.waitFor(() => expect(usePulls.getState().prsRefreshQueued).not.toBeNull());
+
+    switchToOtherRepo();
+    const repoBPr = summaryToPr(prSummary(92, { title: "Repo B after cancel" }));
+    usePulls.setState({ pullRequests: [repoBPr], prError: "repo-b-marker" });
+
+    await expect(pending).resolves.toBe("state ok");
+    expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_detail")).toBe(false);
+    expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
+    expect(usePulls.getState().prError).toBe("repo-b-marker");
+
+    prefetch.resolve([prSummary(7)]);
+    await prefetchLoad;
+    expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
+  });
+
+  it("stops merge follow-ups when the repo switches during the list reload", async () => {
+    beginPublishedRepoSession();
+    const list = deferred<PullRequestSummary[]>();
+    const refresh = vi.fn().mockResolvedValue(true);
+    useRepo.setState({ refresh });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "merge_pull_request") return Promise.resolve("merge ok");
+      if (command === "list_pull_requests") return list.promise;
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const pending = usePulls.getState().mergePr(7, "squash", true);
+    await vi.waitFor(() =>
+      expect(invokeMock.mock.calls.some(([command]) => command === "list_pull_requests")).toBe(true),
+    );
+
+    switchToOtherRepo();
+    const repoBPr = summaryToPr(prSummary(93, { title: "Repo B during merge refresh" }));
+    usePulls.setState({ pullRequests: [repoBPr], prError: "repo-b-marker" });
+    list.resolve([prSummary(7)]);
+
+    await expect(pending).resolves.toBe("merge ok");
+    expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_detail")).toBe(false);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
+    expect(usePulls.getState().prError).toBe("repo-b-marker");
   });
 });
 

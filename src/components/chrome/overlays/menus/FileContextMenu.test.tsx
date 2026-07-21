@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { emptyChanges } from "@/store/repoTypes";
@@ -9,12 +9,14 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const realRequestOpenRepoFile = useRepo.getState().requestOpenRepoFile;
+const realDiscardFile = useRepo.getState().discardFile;
 
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue({ text: "hi", size: 2, truncated: false, binary: false });
   useRepo.setState({
     requestOpenRepoFile: realRequestOpenRepoFile,
+    discardFile: realDiscardFile,
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
     changes: emptyChanges,
     fileView: null,
@@ -40,6 +42,68 @@ describe("FileContextMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Open file" }));
     expect(requestOpenRepoFile).toHaveBeenCalledWith("src/App.tsx");
     expect(useUi.getState().fileMenu).toBeNull();
+  });
+
+  it("previews the exact file state and forwards its guard on confirmation", async () => {
+    const discardFile = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      discardFile,
+      changes: {
+        ...emptyChanges,
+        unstaged: [
+          {
+            path: "src/App.tsx",
+            previousPath: "src/OldApp.tsx",
+            status: "R",
+            add: 1,
+            del: 1,
+            binary: false,
+          },
+        ],
+      },
+    });
+    invokeMock.mockResolvedValueOnce({
+      summary: "Discard unstaged changes in src/App.tsx",
+      details: ["Staged content will be preserved."],
+      warnings: ["Unstaged edits are not recoverable."],
+      expectedState: "discard-state-v1",
+    });
+    openMenu();
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Discard changes" }));
+
+    expect(useUi.getState().fileMenu).toBeNull();
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    expect(invokeMock).toHaveBeenCalledWith("preview_discard_file", {
+      path: "/r",
+      file: "src/App.tsx",
+      previousFile: "src/OldApp.tsx",
+      staged: false,
+    });
+
+    useUi.getState().confirm!.onConfirm();
+    expect(discardFile).toHaveBeenCalledWith(
+      "/r",
+      "src/App.tsx",
+      "src/OldApp.tsx",
+      false,
+      "discard-state-v1",
+    );
+  });
+
+  it("fails closed when the file-state preview cannot be read", async () => {
+    const discardFile = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ discardFile });
+    invokeMock.mockRejectedValueOnce(new Error("status unavailable"));
+    openMenu();
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Discard changes" }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("preview_discard_file", expect.anything()));
+    expect(useUi.getState().confirm).toBeNull();
+    expect(discardFile).not.toHaveBeenCalled();
   });
 
   it("shows a copy-only menu for a directory — no open/history/discard", () => {

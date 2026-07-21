@@ -11,6 +11,7 @@
 mod branches;
 mod cli;
 mod conflict_resolution;
+mod discard_all;
 mod files;
 mod head;
 mod identity;
@@ -39,23 +40,36 @@ pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
     reconflict_file, resolve_conflict_file, skip_operation,
 };
+pub use discard_all::{discard_all, preview_discard_all};
+#[cfg(test)]
+pub(crate) use discard_all::{
+    set_discard_all_after_cleanup_test_hook, set_discard_all_after_first_clean_batch_test_hook,
+    set_discard_all_after_tracked_scope_validation_test_hook,
+    set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
+    set_discard_all_capture_test_hook, start_discard_all_fingerprint_byte_count,
+    take_discard_all_fingerprint_byte_count,
+};
+#[cfg(test)]
+pub(crate) use files::set_before_replace_test_hook;
 pub use files::write_repo_file;
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use recovery::{
-    preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_force_push,
-    preview_reset, reflog_entries,
+    preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
+    reflog_entries,
 };
 pub use remotes::{
     add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
     fetch, force_push, publish_branch, publish_remote, pull_branch, push_branch, push_tag,
-    remove_remote, set_remote_url, set_remote_username,
+    remove_remote, set_remote_url, set_remote_username, validate_force_push_route,
 };
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
+#[cfg(test)]
+pub(crate) use staging::set_discard_capture_test_hook;
 pub use staging::{
-    apply_hunk, apply_line, commit_expected, discard_all, discard_file, squash_commits, stage_all,
-    stage_file, stage_files, unstage_all, unstage_file, unstage_files,
+    apply_hunk, apply_line, commit_expected, discard_file, preview_discard_file, squash_commits,
+    stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files,
 };
 #[cfg(test)]
 pub use stashes::{stash, stash_apply, stash_pop};

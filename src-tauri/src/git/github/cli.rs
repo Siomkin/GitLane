@@ -74,13 +74,23 @@ struct GhAuthAccountStatus {
 /// Run `gh <args...>` in `workdir`. When `token` is set it is exported as the
 /// auth token, pinning the call to a specific account. Returns stdout on
 /// success or a readable error (including the gh-not-installed case).
-pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Result<String, String> {
+fn gh_command(workdir: &str, args: &[&str]) -> Command {
     let mut cmd = Command::new("gh");
     cmd.current_dir(workdir).args(args);
     // macOS GUI apps launch with a minimal PATH that excludes Homebrew's
     // `/opt/homebrew/bin`, where `gh` typically lives. Use the augmented PATH so
     // the binary is found regardless of how the app was started.
     cmd.env("PATH", crate::shell::path());
+    // gh infers repository/host context from cwd. Inherited GIT_DIR and its
+    // siblings would override that directory and could route an authenticated
+    // command to another repository or provider host.
+    crate::git::clear_repository_local_env(&mut cmd);
+    crate::shell::hide_console(&mut cmd);
+    cmd
+}
+
+pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Result<String, String> {
+    let mut cmd = gh_command(workdir, args);
     if let Some(t) = token {
         // gh reads GH_TOKEN for github.com / *.ghe.com hosts and
         // GH_ENTERPRISE_TOKEN for GitHub Enterprise Server hosts, consulting only
@@ -91,7 +101,6 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
         cmd.env("GH_TOKEN", t);
         cmd.env("GH_ENTERPRISE_TOKEN", t);
     }
-    crate::shell::hide_console(&mut cmd);
 
     let output = cmd.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -355,6 +364,20 @@ pub(super) fn accounts() -> Result<Vec<GithubAccount>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn gh_commands_clear_repository_local_environment() {
+        let command = gh_command(".", &["version"]);
+        for key in crate::git::REPOSITORY_LOCAL_ENV_VARS {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(name, value)| name == OsStr::new(key) && value.is_none()),
+                "{key} must be removed from the gh subprocess environment"
+            );
+        }
+    }
 
     #[test]
     fn parses_gh_version_from_standard_output() {

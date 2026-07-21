@@ -20,13 +20,14 @@ use watcher::WatcherState;
 
 use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
-    CredentialHelperStatus, CredentialSaveResult, DeleteWorktreeProgressEvent, DestructivePreview,
-    FileBlame, FileChange, FileDiff, FileHistoryPage, ForgeAccount, ForgeAuthStatus,
-    GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent,
-    HistorySearchPage, HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck,
-    PrCommitList, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary,
-    RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoForge, RepoGraph,
-    RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
+    CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview, DeleteWorktreeProgressEvent,
+    DestructivePreview, DiscardAllPreview, DiscardFilePreview, FileBlame, FileChange, FileDiff,
+    FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
+    GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
+    HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
+    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
+    ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge,
+    RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
     WorkingChanges, WorktreeInfo,
 };
 
@@ -182,6 +183,7 @@ async fn delete_branch_with_worktree(
     path: String,
     branch: String,
     from_worktree_path: String,
+    expected_oid: String,
 ) -> Result<String, String> {
     use tauri::Emitter;
     blocking(move || {
@@ -189,6 +191,7 @@ async fn delete_branch_with_worktree(
             &path,
             &branch,
             &from_worktree_path,
+            &expected_oid,
             // Forward each phase to the webview so the delete dialog can tick its
             // checklist live; a lost event only degrades the progress UI.
             &|step| {
@@ -229,8 +232,13 @@ async fn create_branch(
 }
 
 #[tauri::command]
-async fn delete_branch(path: String, name: String, force: bool) -> Result<String, String> {
-    blocking(move || git::write::delete_branch(&path, &name, force)).await
+async fn delete_branch(
+    path: String,
+    name: String,
+    expected_oid: String,
+    force: bool,
+) -> Result<String, String> {
+    blocking(move || git::write::delete_branch(&path, &name, &expected_oid, force)).await
 }
 
 #[tauri::command]
@@ -254,12 +262,15 @@ async fn preview_reset(
 }
 
 #[tauri::command]
-async fn preview_discard_all(path: String) -> Result<DestructivePreview, String> {
+async fn preview_discard_all(path: String) -> Result<DiscardAllPreview, String> {
     blocking(move || git::write::preview_discard_all(&path)).await
 }
 
 #[tauri::command]
-async fn preview_delete_branch(path: String, branch: String) -> Result<DestructivePreview, String> {
+async fn preview_delete_branch(
+    path: String,
+    branch: String,
+) -> Result<DeleteBranchPreview, String> {
     blocking(move || git::write::preview_delete_branch(&path, &branch)).await
 }
 
@@ -273,7 +284,7 @@ async fn preview_delete_remote_branch(
 }
 
 #[tauri::command]
-async fn preview_force_push(path: String, branch: String) -> Result<DestructivePreview, String> {
+async fn preview_force_push(path: String, branch: String) -> Result<ForcePushPreview, String> {
     blocking(move || git::write::preview_force_push(&path, &branch)).await
 }
 
@@ -518,8 +529,8 @@ async fn create_patch(path: String, sha: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn delete_tag(path: String, name: String) -> Result<String, String> {
-    blocking(move || git::write::delete_tag(&path, &name)).await
+async fn delete_tag(path: String, name: String, expected_oid: String) -> Result<String, String> {
+    blocking(move || git::write::delete_tag(&path, &name, &expected_oid)).await
 }
 
 /// Push a tag to `remote` (the default push remote when not given), optionally
@@ -556,6 +567,7 @@ async fn push_tag(
 async fn delete_remote_tag(
     path: String,
     name: String,
+    expected_oid: String,
     remote: Option<String>,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
@@ -569,7 +581,7 @@ async fn delete_remote_tag(
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::delete_remote_tag(&path, &remote, &name, &cred)
+        git::write::delete_remote_tag(&path, &remote, &name, &expected_oid, &cred)
     })
     .await
 }
@@ -634,28 +646,48 @@ async fn force_push(
     path: String,
     branch: String,
     expected_oid: String,
+    route: git::types::ForcePushRouteLease,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let remote = git::write::branch_push_remote(&path, &branch);
-        let cred = if remote == "." {
+        git::write::validate_force_push_route(
+            &path,
+            &branch,
+            &route.remote,
+            &route.destination_ref,
+            &route.push_endpoint_token,
+        )?;
+        let cred = if route.remote == "." {
             git::transport_auth::TransportCredential::None
         } else {
             git::transport_auth::credential_for_remote(
                 &path,
-                &remote,
+                &route.remote,
                 git::transport_auth::RemoteTransportDirection::Push,
                 auth.as_ref(),
             )?
         };
-        git::write::force_push(&path, &branch, &expected_oid, &cred)
+        git::write::force_push(&path, &branch, &expected_oid, &route, &cred)
     })
     .await
 }
 
 #[tauri::command]
-async fn discard_all(path: String) -> Result<String, String> {
-    blocking(move || git::write::discard_all(&path)).await
+async fn discard_all(
+    path: String,
+    expected_state: String,
+    expected_head_branch: Option<String>,
+    expected_head_oid: Option<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::discard_all(
+            &path,
+            &expected_state,
+            expected_head_branch.as_deref(),
+            expected_head_oid.as_deref(),
+        )
+    })
+    .await
 }
 
 // ---- repository files (the Files browser) ----
@@ -694,17 +726,21 @@ async fn repo_file_head_text(path: String, file: String) -> Result<Option<String
 }
 
 /// Save an edited worktree file back to disk for the in-app file editor. A
-/// guarded, atomic write (overwrite-only, binary + size-match refusals, temp +
-/// rename) that runs on the blocking pool like the read; resolves with the new
-/// byte size.
+/// guarded, atomic write (overwrite-only, binary + exact-state refusals, temp +
+/// rename) that runs on the blocking pool like the read; resolves with the next
+/// exact-state lease for sequential saves.
 #[tauri::command]
 async fn write_repo_file(
     path: String,
     file: String,
     content: String,
-    expected_size: Option<u64>,
-) -> Result<u64, String> {
-    blocking(move || git::write::write_repo_file(&path, &file, &content, expected_size)).await
+    expected_size: u64,
+    expected_state: String,
+) -> Result<RepoFileWriteResult, String> {
+    blocking(move || {
+        git::write::write_repo_file(&path, &file, &content, expected_size, &expected_state)
+    })
+    .await
 }
 
 // ---- working tree / staging ----
@@ -929,13 +965,36 @@ async fn unstage_files(path: String, files: Vec<String>) -> Result<String, Strin
 }
 
 #[tauri::command]
+async fn preview_discard_file(
+    path: String,
+    file: String,
+    previous_file: Option<String>,
+    staged: bool,
+) -> Result<DiscardFilePreview, String> {
+    blocking(move || {
+        git::write::preview_discard_file(&path, &file, previous_file.as_deref(), staged)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn discard_file(
     path: String,
     file: String,
     previous_file: Option<String>,
     staged: bool,
+    expected_state: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::discard_file(&path, &file, previous_file.as_deref(), staged)).await
+    blocking(move || {
+        git::write::discard_file(
+            &path,
+            &file,
+            previous_file.as_deref(),
+            staged,
+            &expected_state,
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2012,6 +2071,7 @@ pub fn run() {
             apply_line,
             stage_files,
             unstage_files,
+            preview_discard_file,
             discard_file,
             stage_all,
             unstage_all,

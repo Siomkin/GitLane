@@ -56,7 +56,12 @@ export function BlameView() {
               <p className="text-[13px] font-medium text-neutral-600 dark:text-neutral-300">Couldn't compute blame</p>
               <p className="max-w-full truncate text-[12px]">{history.blameError}</p>
               <button type="button"
-                onClick={() => void loadFileBlame(history.blameRevision ?? history.selectedOid, history.selectedPath)}
+                onClick={() =>
+                  void loadFileBlame(
+                    history.blameRevision ?? history.selectedOid,
+                    history.blamePath ?? history.selectedPath,
+                  )
+                }
                 className="mt-1 h-8 rounded-lg bg-[color:var(--accent)] px-3.5 text-[12px] font-semibold text-white hover:brightness-110"
               >
                 Retry

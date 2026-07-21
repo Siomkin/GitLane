@@ -18,11 +18,14 @@ import type {
   CommitNode,
   RepoForge,
   RepoGraph,
+  RecentStatus,
   RepoSummary,
   StashEntry,
   WorkingChanges,
   WorktreeInfo,
 } from "@/lib/api";
+
+const realRefresh = useRepo.getState().refresh;
 
 // A minimal summary so actions that require an open repo proceed.
 const summary: RepoSummary = {
@@ -90,6 +93,7 @@ beforeEach(() => {
     graphLimit: 2_000,
     loadingMoreHistory: false,
     fetchingPath: null,
+    refresh: realRefresh,
   });
 });
 
@@ -214,7 +218,9 @@ describe("repo store — discardFile", () => {
       }
     });
 
-    await useRepo.getState().discardFile("src/a.ts", false);
+    await useRepo
+      .getState()
+      .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
 
     expect(useRepo.getState().selectedFile).toEqual({ path: "src/a.ts", source: "staged" });
     expect(invokeMock).toHaveBeenCalledWith("discard_file", {
@@ -222,6 +228,7 @@ describe("repo store — discardFile", () => {
       file: "src/a.ts",
       previousFile: null,
       staged: false,
+      expectedState: "discard-state-v1",
     });
   });
 
@@ -252,9 +259,81 @@ describe("repo store — discardFile", () => {
       }
     });
 
-    await useRepo.getState().discardFile("src/a.ts", false);
+    await useRepo
+      .getState()
+      .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
 
     expect(useRepo.getState().selectedFile).toBeNull();
+  });
+
+  it("does not refresh or reselect another repo when an old discard finishes late", async () => {
+    const pending = deferred<string>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "discard_file" ? pending.promise : defaultInvoke(cmd),
+    );
+    useRepo.setState({
+      summary,
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
+    });
+
+    const discard = useRepo
+      .getState()
+      .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
+    await Promise.resolve();
+    const nextSummary: RepoSummary = {
+      path: "/other",
+      workdir: "/other",
+      headBranch: "main",
+      headOid: "other-head",
+      detached: false,
+    };
+    useRepo.setState({
+      summary: nextSummary,
+      selectedFile: { path: "src/b.ts", source: "unstaged" },
+    });
+
+    pending.resolve("Discarded changes in src/a.ts");
+    await discard;
+
+    expect(useRepo.getState().summary).toBe(nextSummary);
+    expect(useRepo.getState().selectedFile).toEqual({
+      path: "src/b.ts",
+      source: "unstaged",
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", expect.anything());
+  });
+
+  it("does not publish an old repo's late discard error over the active repo", async () => {
+    const pending = deferred<string>();
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "discard_file" ? pending.promise : defaultInvoke(cmd),
+    );
+
+    try {
+      const discard = useRepo
+        .getState()
+        .discardFile("/repo", "src/a.ts", null, false, "discard-state-v1");
+      await Promise.resolve();
+      useRepo.setState({
+        summary: {
+          path: "/other",
+          workdir: "/other",
+          headBranch: "main",
+          headOid: "other-head",
+          detached: false,
+        },
+      });
+
+      pending.reject(new Error("repo A changed"));
+      await discard;
+
+      expect(showToast).not.toHaveBeenCalled();
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
   });
 });
 
@@ -812,6 +891,54 @@ describe("repo store — captured write subjects", () => {
       startPoint: "refs/heads/feature",
       expectedOid: "2222222",
     });
+  });
+
+  it("deletes a branch with the previewed oid and repository path", async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ refresh });
+    invokeMock.mockResolvedValue("Deleted feature");
+
+    await useRepo
+      .getState()
+      .removeBranch("feature", "2222222", "/repo", true);
+
+    expect(invokeMock).toHaveBeenCalledWith("delete_branch", {
+      path: "/repo",
+      name: "feature",
+      expectedOid: "2222222",
+      force: true,
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a branch-delete confirmation captured for a different active repo", async () => {
+    useRepo.setState({ summary: { ...summary, path: "/other", workdir: "/other" } });
+
+    await expect(
+      useRepo.getState().removeBranch("feature", "2222222", "/repo", true),
+    ).rejects.toThrow("Repository changed");
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_branch", expect.anything());
+  });
+
+  it("does not refresh a newly-active repo when it switches during branch deletion", async () => {
+    const pending = deferred<string>();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ refresh });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "delete_branch" ? pending.promise : defaultInvoke(cmd),
+    );
+
+    const deletion = useRepo
+      .getState()
+      .removeBranch("feature", "2222222", "/repo", true);
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("delete_branch", expect.anything()),
+    );
+    useRepo.setState({ summary: { ...summary, path: "/other", workdir: "/other" } });
+    pending.resolve("Deleted feature");
+
+    await expect(deletion).resolves.toBe("Deleted feature");
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("attaches a branch to the captured detached worktree HEAD", async () => {
@@ -1586,7 +1713,7 @@ describe("repo store — hand-off overlay lifecycle", () => {
     const move = useRepo
       .getState()
       .moveBranchToWorktree("feature", "/repo-feature", "/repo", true);
-    useRepo.setState({ openPaths: [], summary: null });
+    await useRepo.getState().closeRepo("/repo");
     slowMove.resolve("Moved feature to repo");
 
     await expect(move).resolves.toBe("Moved feature to repo");
@@ -1757,6 +1884,36 @@ describe("repo store — loadRepo failed open", () => {
 });
 
 describe("repo store — loadRepo progressive open", () => {
+  it("clears a repo-bound menu opened while the next repo is still resolving", async () => {
+    const nextSummary: RepoSummary = {
+      path: "/other",
+      workdir: "/other",
+      headBranch: "main",
+      headOid: null,
+      detached: false,
+    };
+    const opened = deferred<RepoSummary>();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return opened.promise;
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const switching = useRepo.getState().loadRepo("/other");
+    await Promise.resolve();
+    // The old repo remains interactive during phase one. This payload is valid
+    // there, but must not survive the atomic publication of `/other`.
+    useUi.setState({
+      fileMenu: { x: 10, y: 10, path: "shared.txt", discard: { staged: false } },
+    });
+
+    opened.resolve(nextSummary);
+    await switching;
+
+    expect(useRepo.getState().summary).toBe(nextSummary);
+    expect(useUi.getState().fileMenu).toBeNull();
+  });
+
   it("resets stale PR state before the commit graph resolves", async () => {
     // A previous repo's PRs are still in the store when a new open begins.
     usePulls.setState({
@@ -2674,7 +2831,7 @@ describe("repo store — deleteTag", () => {
       },
     });
 
-    const msg = await useRepo.getState().deleteTag("v1", true);
+    const msg = await useRepo.getState().deleteTag("v1", "tag-object-1", true);
 
     expect(order).toEqual(["remote", "local"]);
     expect(msg).toBe("Deleted tag v1 (local and origin)");
@@ -2686,7 +2843,9 @@ describe("repo store — deleteTag", () => {
       delete_remote_tag: () => Promise.reject(new Error("auth failed")),
     });
 
-    await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow("auth failed");
+    await expect(useRepo.getState().deleteTag("v1", "tag-object-1", true)).rejects.toThrow(
+      "auth failed",
+    );
     expect(invokeMock).not.toHaveBeenCalledWith("delete_tag", expect.anything());
   });
 
@@ -2697,7 +2856,7 @@ describe("repo store — deleteTag", () => {
       delete_tag: () => Promise.reject(new Error("ref locked")),
     });
 
-    await expect(useRepo.getState().deleteTag("v1", true)).rejects.toThrow(
+    await expect(useRepo.getState().deleteTag("v1", "tag-object-1", true)).rejects.toThrow(
       /on origin, but the local delete failed/,
     );
     // runOp only refreshes on success, so the catch path re-syncs quietly
@@ -2709,9 +2868,13 @@ describe("repo store — deleteTag", () => {
     useRepo.setState({ summary });
     stubTagInvokes({ delete_tag: () => Promise.resolve("ok") });
 
-    await useRepo.getState().deleteTag("v1");
+    await useRepo.getState().deleteTag("v1", "tag-object-1");
 
-    expect(invokeMock).toHaveBeenCalledWith("delete_tag", { path: "/repo", name: "v1" });
+    expect(invokeMock).toHaveBeenCalledWith("delete_tag", {
+      path: "/repo",
+      name: "v1",
+      expectedOid: "tag-object-1",
+    });
     expect(invokeMock).not.toHaveBeenCalledWith("delete_remote_tag", expect.anything());
   });
 });
@@ -3206,6 +3369,345 @@ describe("repo store — openWorktree", () => {
   });
 });
 
+describe("repo store — read request ownership", () => {
+  const changed = (path: string): WorkingChanges => ({
+    staged: [],
+    unstaged: [{ path, status: "M", add: 1, del: 0, binary: false }],
+    conflicted: [],
+    advanced: emptyAdvancedState,
+  });
+  const operationNone = { kind: "none", canSkip: false, conflicts: [] };
+
+  it("keeps the newest of two overlapping quiet worktree refreshes", async () => {
+    const oldChanges = deferred<WorkingChanges>();
+    let calls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "working_changes") {
+        calls += 1;
+        return calls === 1 ? oldChanges.promise : Promise.resolve(changed("new.ts"));
+      }
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, loading: false, error: null, changes: EMPTY_CHANGES });
+
+    const stale = useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+    await expect(
+      useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" }),
+    ).resolves.toBe(true);
+    oldChanges.resolve(changed("old.ts"));
+
+    await expect(stale).resolves.toBe(false);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("new.ts");
+  });
+
+  it("lets a newer worktree refresh win while an older full refresh still publishes graph metadata", async () => {
+    const oldChanges = deferred<WorkingChanges>();
+    const freshGraph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "fresh" })],
+      head: "fresh",
+    };
+    const freshBranches: BranchInfo[] = [
+      { name: "fresh", kind: "local", target: "fresh", isHead: true, upstream: null, remote: null },
+    ];
+    let changesCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(freshGraph);
+      if (cmd === "list_branches") return Promise.resolve(freshBranches);
+      if (cmd === "working_changes") {
+        changesCalls += 1;
+        return changesCalls === 1 ? oldChanges.promise : Promise.resolve(changed("new.ts"));
+      }
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, graph: emptyGraph, loading: false, changes: EMPTY_CHANGES });
+
+    const full = useRepo.getState().refresh({ quiet: true, prs: false });
+    await vi.waitFor(() => expect(changesCalls).toBe(1));
+    await useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+    oldChanges.resolve(changed("old.ts"));
+    await full;
+
+    expect(useRepo.getState().graph).toEqual(freshGraph);
+    expect(useRepo.getState().branches).toEqual(freshBranches);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("new.ts");
+  });
+
+  it("lets a newer full refresh win over an older worktree refresh", async () => {
+    const oldChanges = deferred<WorkingChanges>();
+    let changesCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      if (cmd === "working_changes") {
+        changesCalls += 1;
+        return changesCalls === 1 ? oldChanges.promise : Promise.resolve(changed("full.ts"));
+      }
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, graph: emptyGraph, loading: false, changes: EMPTY_CHANGES });
+
+    const stale = useRepo.getState().refresh({ quiet: true, prs: false, scope: "worktree" });
+    await useRepo.getState().refresh({ quiet: true, prs: false });
+    oldChanges.resolve(changed("old.ts"));
+
+    await expect(stale).resolves.toBe(false);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("full.ts");
+  });
+
+  it("keeps a load-more graph while the superseded full refresh publishes its independent lanes", async () => {
+    const fullGraph = deferred<RepoGraph>();
+    const pagedGraph: RepoGraph = { ...emptyGraph, head: "paged", truncated: false };
+    const freshBranches: BranchInfo[] = [
+      { name: "lane", kind: "local", target: "lane", isHead: true, upstream: null, remote: null },
+    ];
+    invokeMock.mockImplementation((cmd: string, args: { limit?: number }) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") {
+        return args.limit === 4_000 ? Promise.resolve(pagedGraph) : fullGraph.promise;
+      }
+      if (cmd === "list_branches") return Promise.resolve(freshBranches);
+      if (cmd === "working_changes") return Promise.resolve(changed("lane.ts"));
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({
+      summary,
+      graph: { ...emptyGraph, truncated: true },
+      graphLimit: 2_000,
+      loading: false,
+      loadingMoreHistory: false,
+      branches: [],
+      changes: EMPTY_CHANGES,
+    });
+
+    const full = useRepo.getState().refresh({ quiet: true, prs: false });
+    await vi.waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_graph", { path: "/repo", limit: 2_000 }),
+    );
+    await useRepo.getState().loadMoreHistory();
+    fullGraph.resolve({ ...emptyGraph, head: "stale-full" });
+    await full;
+
+    expect(useRepo.getState().graph).toEqual(pagedGraph);
+    expect(useRepo.getState().branches).toEqual(freshBranches);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("lane.ts");
+  });
+
+  it("publishes successful secondary lanes when the current graph read rejects", async () => {
+    const oldGraph: RepoGraph = { ...emptyGraph, head: "old" };
+    const freshBranches: BranchInfo[] = [
+      { name: "fresh", kind: "local", target: "fresh", isHead: true, upstream: null, remote: null },
+    ];
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.reject(new Error("graph failed"));
+      if (cmd === "list_branches") return Promise.resolve(freshBranches);
+      if (cmd === "working_changes") return Promise.resolve(changed("fresh.ts"));
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, graph: oldGraph, loading: false, error: null, branches: [], changes: EMPTY_CHANGES });
+
+    await expect(useRepo.getState().refresh({ quiet: true, prs: false })).resolves.toBe(false);
+
+    expect(useRepo.getState().graph).toBe(oldGraph);
+    expect(useRepo.getState().branches).toEqual(freshBranches);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("fresh.ts");
+    expect(useRepo.getState().error).toContain("graph failed");
+  });
+
+  it("keeps old metadata but publishes graph and worktree when branches reject", async () => {
+    const oldBranches: BranchInfo[] = [
+      { name: "old", kind: "local", target: "old", isHead: true, upstream: null, remote: null },
+    ];
+    const freshGraph: RepoGraph = { ...emptyGraph, head: "fresh" };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(freshGraph);
+      if (cmd === "list_branches") return Promise.reject(new Error("branches failed"));
+      if (cmd === "working_changes") return Promise.resolve(changed("fresh.ts"));
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, graph: emptyGraph, loading: false, error: null, branches: oldBranches, changes: EMPTY_CHANGES });
+
+    await expect(useRepo.getState().refresh({ quiet: true, prs: false })).resolves.toBe(false);
+
+    expect(useRepo.getState().graph).toEqual(freshGraph);
+    expect(useRepo.getState().branches).toBe(oldBranches);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("fresh.ts");
+    expect(useRepo.getState().error).toContain("branches failed");
+  });
+
+  it("keeps only the newest reflog completion and error state", async () => {
+    const stale = deferred<never[]>();
+    let calls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_reflog") {
+        calls += 1;
+        return calls === 1 ? stale.promise : Promise.resolve([]);
+      }
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, reflogEntries: [], reflogLoading: false, reflogError: "old" });
+
+    const oldLoad = useRepo.getState().loadReflog();
+    await useRepo.getState().loadReflog();
+    stale.reject(new Error("stale reflog error"));
+    await oldLoad;
+
+    expect(useRepo.getState().reflogEntries).toEqual([]);
+    expect(useRepo.getState().reflogLoading).toBe(false);
+    expect(useRepo.getState().reflogError).toBeNull();
+  });
+
+  it("suppresses old same-path load secondary results after a reopen", async () => {
+    const oldBranches = deferred<BranchInfo[]>();
+    const oldChanges = deferred<WorkingChanges>();
+    const freshBranches: BranchInfo[] = [
+      { name: "fresh", kind: "local", target: "fresh", isHead: true, upstream: null, remote: null },
+    ];
+    let branchCalls = 0;
+    let changesCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      if (cmd === "list_branches") {
+        branchCalls += 1;
+        return branchCalls === 1 ? oldBranches.promise : Promise.resolve(freshBranches);
+      }
+      if (cmd === "working_changes") {
+        changesCalls += 1;
+        return changesCalls === 1 ? oldChanges.promise : Promise.resolve(changed("fresh.ts"));
+      }
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({ summary, openPaths: ["/repo"], loading: false, branches: [], changes: EMPTY_CHANGES });
+
+    await useRepo.getState().loadRepo("/repo");
+    await useRepo.getState().loadRepo("/repo");
+    oldBranches.resolve([
+      { name: "stale", kind: "local", target: "stale", isHead: true, upstream: null, remote: null },
+    ]);
+    oldChanges.resolve(changed("stale.ts"));
+    await Promise.resolve();
+
+    expect(useRepo.getState().branches).toEqual(freshBranches);
+    expect(useRepo.getState().changes.unstaged[0]?.path).toBe("fresh.ts");
+  });
+
+  it("prefetches PRs once the winning forge and superseding manual remotes are both ready", async () => {
+    const forge = deferred<RepoForge>();
+    const staleRemotes = deferred<never[]>();
+    const remote = {
+      name: "origin",
+      fetchUrl: "https://github.com/o/r.git",
+      pushUrl: "https://github.com/o/r.git",
+      isDefault: true,
+    };
+    let remoteCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(summary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      if (cmd === "working_changes") return Promise.resolve(EMPTY_CHANGES);
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge") return forge.promise;
+      if (cmd === "list_remotes") {
+        remoteCalls += 1;
+        return remoteCalls === 1 ? staleRemotes.promise : Promise.resolve([remote]);
+      }
+      return defaultInvoke(cmd);
+    });
+    const realLoadPullRequests = usePulls.getState().loadPullRequests;
+    const loadPullRequests = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests });
+    useRepo.setState({ summary, openPaths: ["/repo"], loading: false, remotes: [] });
+
+    try {
+      await useRepo.getState().loadRepo("/repo");
+      await useRepo.getState().listRemotes();
+      staleRemotes.resolve([]);
+      forge.resolve({
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: "https://github.com/o/r",
+      });
+      await vi.waitFor(() => expect(loadPullRequests).toHaveBeenCalledTimes(1));
+    } finally {
+      usePulls.setState({ loadPullRequests: realLoadPullRequests });
+    }
+  });
+
+  it("invalidates a foreground selection missing from the refreshed graph and loads the fallback", async () => {
+    const probe = deferred<RepoSummary>();
+    const staleBFiles = deferred<unknown[]>();
+    const graphA: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a" })],
+      head: "a",
+    };
+    const filesA = [{ path: "a.ts", status: "M", add: 1, del: 0, binary: false }];
+    let openCalls = 0;
+    invokeMock.mockImplementation((cmd: string, args: { oid?: string }) => {
+      if (cmd === "open_repo") {
+        openCalls += 1;
+        return openCalls === 1 ? Promise.resolve(summary) : probe.promise;
+      }
+      if (cmd === "commit_graph") return Promise.resolve(graphA);
+      if (cmd === "list_branches") return Promise.resolve([]);
+      if (cmd === "working_changes") return Promise.reject(new Error("status failed"));
+      if (cmd === "operation_status") return Promise.resolve(operationNone);
+      if (cmd === "repo_forge")
+        return Promise.resolve({ hasRemote: false, kind: null, forge: null, host: null, webUrl: null });
+      if (cmd === "commit_files") return args.oid === "b" ? staleBFiles.promise : Promise.resolve(filesA);
+      return defaultInvoke(cmd);
+    });
+    useRepo.setState({
+      summary,
+      graph: { ...emptyGraph, commits: [node({ id: "b" })], head: "b" },
+      selectedCommit: "b",
+      selectedCommits: ["b"],
+      selectionAnchor: "b",
+      commitFiles: [],
+      loading: false,
+      error: null,
+    });
+
+    const full = useRepo.getState().refresh({ quiet: true, prs: false });
+    await vi.waitFor(() => expect(openCalls).toBe(2));
+    const staleSelection = useRepo.getState().selectCommitMulti("b", {});
+    probe.resolve(summary);
+    await full;
+    staleBFiles.resolve([{ path: "b.ts", status: "M", add: 9, del: 0, binary: false }]);
+    await staleSelection;
+    await vi.waitFor(() => expect(useRepo.getState().commitFiles).toEqual(filesA));
+
+    expect(useRepo.getState().selectedCommit).toBe("a");
+    expect(useRepo.getState().selectedCommits).toEqual(["a"]);
+    expect(useRepo.getState().diffLoading).toBe(false);
+  });
+});
+
 describe("repo store — merged selection (GL-69)", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -3377,6 +3879,65 @@ describe("repo store — merged selection (GL-69)", () => {
     const diff = useRepo.getState().selectionDiff!;
     expect(diff.commits).toEqual(["a", "b", "c"]);
     expect(diff.files).toEqual(filesABC); // the stale [a,b] result was discarded
+  });
+
+  it("publishes only the newest union across an A-B-away-A-B cycle", async () => {
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a" }), node({ id: "b" }), node({ id: "c" })],
+      head: "a",
+    };
+    useRepo.setState({ graph, selectedCommit: null, selectedCommits: [], selectionAnchor: null, selectionDiff: null });
+    const oldUnion = deferred<unknown>();
+    const oldFiles = [{ path: "old.ts", status: "M", add: 1, del: 0, binary: false }];
+    const newFiles = [{ path: "new.ts", status: "A", add: 2, del: 0, binary: false }];
+    let calls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "selection_diff") {
+        calls += 1;
+        return calls === 1 ? oldUnion.promise : Promise.resolve(newFiles);
+      }
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().selectCommitMulti("a", {});
+    const stale = useRepo.getState().selectCommitMulti("b", { additive: true });
+    await useRepo.getState().selectCommitMulti("c", {});
+    await useRepo.getState().selectCommitMulti("a", {});
+    await useRepo.getState().selectCommitMulti("b", { additive: true });
+    oldUnion.resolve(oldFiles);
+    await stale;
+
+    expect(useRepo.getState().selectionDiff?.commits).toEqual(["a", "b"]);
+    expect(useRepo.getState().selectionDiff?.files).toEqual(newFiles);
+  });
+
+  it("publishes only the newest single-commit files across A-B-A", async () => {
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a" }), node({ id: "b" })],
+      head: "a",
+    };
+    const oldA = deferred<unknown[]>();
+    const filesB = [{ path: "b.ts", status: "M", add: 1, del: 0, binary: false }];
+    const filesA = [{ path: "new-a.ts", status: "M", add: 2, del: 0, binary: false }];
+    let aCalls = 0;
+    invokeMock.mockImplementation((cmd: string, args: { oid?: string }) => {
+      if (cmd !== "commit_files") return defaultInvoke(cmd);
+      if (args.oid === "b") return Promise.resolve(filesB);
+      aCalls += 1;
+      return aCalls === 1 ? oldA.promise : Promise.resolve(filesA);
+    });
+    useRepo.setState({ graph, selectedCommit: null, selectedCommits: [], selectionAnchor: null, commitFiles: [] });
+
+    const stale = useRepo.getState().selectCommitMulti("a", {});
+    await useRepo.getState().selectCommitMulti("b", {});
+    await useRepo.getState().selectCommitMulti("a", {});
+    oldA.resolve([{ path: "old-a.ts", status: "M", add: 9, del: 0, binary: false }]);
+    await stale;
+
+    expect(useRepo.getState().selectedCommit).toBe("a");
+    expect(useRepo.getState().commitFiles).toEqual(filesA);
   });
 
   it("selectFile ignores a stale union diff after the selection set changes", async () => {
@@ -3683,6 +4244,418 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     await useRepo.getState().restoreSession();
 
     expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/dead-wt" });
+  });
+
+  it("preserves a background-tab close while the startup probe is pending", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return statusProbe.promise;
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    await useRepo.getState().closeRepo("/b");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "open_repo" && (args as { path?: string })?.path === "/a",
+      ),
+    ).toHaveLength(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("watch_repo", { path: "/b" });
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not reopen the persisted tab over a newer pending user open", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    const openedC = deferred<RepoSummary>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/c") return openedC.promise;
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    const openingC = useRepo.getState().loadRepo("/c");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().summary).toBeNull();
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toEqual([
+      ["open_repo", { path: "/c" }],
+    ]);
+
+    openedC.resolve({
+      ...aliveSummary,
+      path: "/c",
+      workdir: "/c",
+      headBranch: "fresh",
+    });
+    await openingC;
+
+    expect(useRepo.getState().summary?.path).toBe("/c");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b", "/c"]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/c");
+  });
+
+  it("does not prune an existing worktree while its newer activation is pending", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    const openedB = deferred<RepoSummary>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: true, mainPath: "/a", branch: "topic" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/b") return openedB.promise;
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    const activatingB = useRepo.getState().loadRepo("/b");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    // The startup result is stale relative to the user's phase-1 activation.
+    // Its unchanged lifetime/info cannot distinguish that target, so the newer
+    // global open intent makes restore's destructive pruning stand down.
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(0);
+
+    openedB.resolve({
+      ...aliveSummary,
+      path: "/b",
+      workdir: "/b",
+      headBranch: "fresh",
+      isWorktree: true,
+      mainPath: "/a",
+    });
+    await activatingB;
+
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("fresh");
+  });
+
+  it("keeps newer metadata published within the same tab lifetime", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: true, mainPath: "/a", branch: "old" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation(
+      (cmd: string, args?: { path?: string; paths?: string[] }) => {
+        if (cmd === "recents_status" && args?.paths?.length === 2) {
+          return statusProbe.promise;
+        }
+        if (cmd === "recents_status" && args?.paths?.[0] === "/b") {
+          return Promise.resolve([
+            {
+              path: "/b",
+              exists: true,
+              branch: "fresh",
+              isWorktree: true,
+              mainPath: "/a",
+            },
+          ]);
+        }
+        if (cmd === "open_repo") return Promise.resolve(aliveSummary);
+        if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+        return defaultInvoke(cmd);
+      },
+    );
+
+    const restoring = useRepo.getState().restoreSession();
+    // refreshTabInfo replaces the metadata object without closing the tab, so
+    // its lifetime deliberately stays the same as restore's captured lease.
+    await useRepo.getState().refreshTabInfo("/b");
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("fresh");
+
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().tabInfoByPath["/b"]).toEqual({
+      isWorktree: true,
+      mainPath: "/a",
+      branch: "fresh",
+    });
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("preserves a live reorder and completed user open during the startup probe", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/c") {
+        return Promise.resolve({
+          ...aliveSummary,
+          path: "/c",
+          workdir: "/c",
+          headBranch: "fresh",
+        });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    useRepo.getState().reorderOpenPaths(1, 0);
+    await useRepo.getState().loadRepo("/c");
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/a", "/c"]);
+
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/a", "/c"]);
+    expect(useRepo.getState().summary?.path).toBe("/c");
+    expect(useRepo.getState().tabInfoByPath["/c"]?.branch).toBe("fresh");
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
+      "/b",
+      "/a",
+      "/c",
+    ]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/c");
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "open_repo" && (args as { path?: string })?.path === "/a",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("ignores a stale missing result after the same path closes and reopens", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: true, mainPath: "/a", branch: "stale" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path === "/b") {
+        return Promise.resolve({
+          ...aliveSummary,
+          path: "/b",
+          workdir: "/b",
+          headBranch: "fresh",
+          isWorktree: true,
+          mainPath: "/a",
+        });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    await useRepo.getState().closeRepo("/b");
+    await useRepo.getState().loadRepo("/b");
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/b", exists: false, branch: null, isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(useRepo.getState().tabInfoByPath["/b"]).toEqual({
+      isWorktree: true,
+      mainPath: "/a",
+      branch: "fresh",
+    });
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
+    expect(
+      invokeMock.mock.calls.filter(
+        ([cmd, args]) => cmd === "unwatch_repo" && (args as { path?: string })?.path === "/b",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reconciles an unchanged restore once: prune dead, watch background, open last", async () => {
+    useRepo.setState({
+      openPaths: ["/a", "/dead-wt", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "old-main" },
+        "/dead-wt": { isWorktree: true, mainPath: "/a", branch: "gone" },
+        "/b": { isWorktree: false, mainPath: null, branch: "old-dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+            { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+          ]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    const duplicate = useRepo.getState().restoreSession();
+    await Promise.all([restoring, duplicate]);
+    await Promise.resolve();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("dev");
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "recents_status")).toHaveLength(1);
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toHaveLength(1);
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/b" });
+    expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/a" });
+    expect(invokeMock).toHaveBeenCalledWith("unwatch_repo", { path: "/dead-wt" });
+  });
+
+  it("heals a pruned last tab to the first survivor in the live reordered strip", async () => {
+    const statusProbe = deferred<RecentStatus[]>();
+    useRepo.setState({
+      openPaths: ["/a", "/dead-wt", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/dead-wt": { isWorktree: true, mainPath: "/a", branch: "gone" },
+        "/b": { isWorktree: false, mainPath: null, branch: "dev" },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/dead-wt");
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "recents_status") return statusProbe.promise;
+      if (cmd === "open_repo" && args?.path) {
+        return Promise.resolve({
+          ...aliveSummary,
+          path: args.path,
+          workdir: args.path,
+          headBranch: args.path === "/b" ? "dev" : "main",
+        });
+      }
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    const restoring = useRepo.getState().restoreSession();
+    useRepo.getState().reorderOpenPaths(2, 0);
+    statusProbe.resolve([
+      { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+      { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },
+      { path: "/b", exists: true, branch: "dev", isWorktree: false, mainPath: null },
+    ]);
+    await restoring;
+
+    expect(useRepo.getState().openPaths).toEqual(["/b", "/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toEqual([
+      ["open_repo", { path: "/b" }],
+    ]);
+  });
+
+  it("restores a lastPath-only partial session as a new tab", async () => {
+    useRepo.setState({
+      openPaths: [],
+      tabInfoByPath: {},
+      sessionRestorePhase: SESSION_RESTORE_PHASE.Pending,
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "open_repo") return Promise.resolve(aliveSummary);
+      if (cmd === "commit_graph") return Promise.resolve(emptyGraph);
+      return defaultInvoke(cmd);
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(useRepo.getState().openPaths).toEqual(["/a"]);
+    expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
+    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "open_repo")).toHaveLength(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("recents_status", expect.anything());
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
   });
 
   it("claims startup restoration once while it is in flight", async () => {

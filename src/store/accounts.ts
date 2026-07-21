@@ -1189,6 +1189,17 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // shape. When the default remote is an https URL, also write the username
     // there so git pushes agree with the PR tab.
     const account = get().accounts.find((a) => a.id === id) ?? null;
+    const remotes = useRepo.getState().remotes;
+    const defaultRemote = remotes.find((r) => r.isDefault);
+    if (defaultRemote && !detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl).ssh) {
+      // For an HTTPS default remote, git config is the source of truth for both
+      // transport and the PR account. Let setRemoteAccount perform the remote
+      // mutation first and persist/publish only after it succeeds; otherwise a
+      // failed URL write would leave the PR surface on a different account from
+      // pushes and pulls.
+      await get().setRemoteAccount(defaultRemote.name, id);
+      return;
+    }
     const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
     if (key) {
       const bindings = readBindings();
@@ -1199,12 +1210,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       writeBindings(bindings);
     }
     set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
-    const remotes = useRepo.getState().remotes;
-    const defaultRemote = remotes.find((r) => r.isDefault);
-    if (defaultRemote && !detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl).ssh) {
-      await get().setRemoteAccount(defaultRemote.name, id);
-      return;
-    }
     if (account) {
       useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
     }

@@ -3,6 +3,7 @@ import type { FileChange, WorkingChanges } from "./api";
 import {
   advancedFileGuard,
   advancedNotices,
+  discardAllGuardMessage,
   emptyAdvancedState,
   fileWriteGuard,
   guardedAdvancedWriteMessage,
@@ -235,7 +236,7 @@ describe("advancedRepoState", () => {
     expect(fileWriteGuard(changes.unstaged[0], changes)).toBeNull();
   });
 
-  it("does not block writes only because repo-level notices are present", () => {
+  it("allows in-cone writes but blocks whole-tree discard in sparse checkout", () => {
     const changes: WorkingChanges = {
       staged: [],
       unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false }],
@@ -249,6 +250,22 @@ describe("advancedRepoState", () => {
 
     expect(fileWriteGuard(changes.unstaged[0], changes)).toBeNull();
     expect(guardedAdvancedWriteMessage(changes)).toBeNull();
+    expect(discardAllGuardMessage(changes)).toBe(
+      "Sparse checkout is enabled. Disable sparse checkout before using Discard all, or use the terminal.",
+    );
+  });
+
+  it("blocks whole-tree discard before the first commit", () => {
+    const changes: WorkingChanges = {
+      staged: [{ path: "first.txt", status: "A", add: 1, del: 0, binary: false }],
+      unstaged: [],
+      conflicted: [],
+      advanced: emptyAdvancedState,
+    };
+
+    expect(discardAllGuardMessage(changes, true)).toBe(
+      "Discard all is unavailable before the first commit. Unstage or remove files individually, or use the terminal.",
+    );
   });
 
   it("keeps LFS issues informational unless a file has an explicit guard", () => {

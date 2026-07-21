@@ -5,17 +5,28 @@
 // fetch lives here instead of being duplicated across the two action modules.
 
 import { api } from "@/lib/api";
+import { repoSessionIsCurrent } from "./repoGuards";
+import { currentPublishedRepoSession } from "./repoRequests";
 import type { RepoGet, RepoSet } from "./repoTypes";
+
+let selectionUnionGeneration = 0;
 
 /** True when the live `selectionDiff` still targets exactly `commits` in `repo`.
  * Compared as a **set**, not by order: the union is order-independent (the
  * backend re-sorts by ancestry), and `refresh` can re-publish the same set in a
  * different order — an order-sensitive check would make this in-flight fetch bail
  * and leave the inspector stuck on `loading: true`. */
-function stillTargets(get: RepoGet, repoPath: string, commits: string[]): boolean {
+function stillTargets(
+  get: RepoGet,
+  repoPath: string,
+  repoSession: number,
+  generation: number,
+  commits: string[],
+): boolean {
   const cur = get().selectionDiff;
   return (
-    get().summary?.path === repoPath &&
+    generation === selectionUnionGeneration &&
+    repoSessionIsCurrent(get, repoPath, repoSession) &&
     !!cur &&
     cur.commits.length === commits.length &&
     cur.commits.every((id) => commits.includes(id))
@@ -35,12 +46,14 @@ export async function loadSelectionUnion(
   repoPath: string,
   commits: string[],
 ): Promise<void> {
+  const generation = ++selectionUnionGeneration;
+  const repoSession = currentPublishedRepoSession();
   try {
     const files = await api.selectionDiff(repoPath, commits);
-    if (!stillTargets(get, repoPath, commits)) return;
+    if (!stillTargets(get, repoPath, repoSession, generation, commits)) return;
     set((s) => (s.selectionDiff ? { selectionDiff: { ...s.selectionDiff, files, loading: false } } : {}));
   } catch (e) {
-    if (!stillTargets(get, repoPath, commits)) return;
+    if (!stillTargets(get, repoPath, repoSession, generation, commits)) return;
     set((s) =>
       s.selectionDiff ? { selectionDiff: { ...s.selectionDiff, loading: false, error: String(e) } } : {},
     );

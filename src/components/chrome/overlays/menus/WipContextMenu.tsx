@@ -1,4 +1,5 @@
 import {
+  discardAllGuardMessage,
   fileWriteGuard,
   findGuardedFile,
   guardedAdvancedWriteMessage,
@@ -16,7 +17,8 @@ export function WipContextMenu() {
   const menu = useUi((s) => s.wipMenu);
   const close = useUi((s) => s.closeOverlays);
   const openCommit = useUi((s) => s.openCommit);
-  const repoPath = useRepo((s) => s.summary?.path ?? null);
+  const summary = useRepo((s) => s.summary);
+  const repoPath = summary?.path ?? null;
   const changes = useRepo((s) => s.changes);
   const stageAll = useRepo((s) => s.stageAll);
   const unstageAll = useRepo((s) => s.unstageAll);
@@ -29,6 +31,7 @@ export function WipContextMenu() {
   const stageAllGuard = fileWriteGuard(findGuardedFile(changes.unstaged, changes), changes);
   const unstageAllGuard = fileWriteGuard(findGuardedFile(changes.staged, changes), changes);
   const bulkGuard = guardedAdvancedWriteMessage(changes);
+  const discardGuard = discardAllGuardMessage(changes, summary?.unborn === true);
 
   const items: MenuItem[] = [
     { label: "Commit…", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); openCommit(); } },
@@ -65,8 +68,8 @@ export function WipContextMenu() {
     label: "Discard all changes",
     icon: <TrashIcon className="h-4 w-4" />,
     danger: true,
-    disabled: !!bulkGuard,
-    disabledReason: bulkGuard ?? undefined,
+    disabled: !!discardGuard,
+    disabledReason: discardGuard ?? undefined,
     sep: true,
     onClick: discardAllChanges,
   });

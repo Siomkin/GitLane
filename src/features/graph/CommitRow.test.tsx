@@ -281,11 +281,20 @@ describe("CommitRow ref pills", () => {
     expect(useUi.getState().commitMenu).toBeNull();
   });
 
-  it("opens the tag menu from a tag pill, targeting this row's commit", () => {
-    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "v1.0", kind: "tag" }] })} />);
+  it("opens the tag menu from a tag pill with its peeled commit and exact ref target", () => {
+    render(
+      <CommitRow
+        {...baseProps}
+        commit={commit({ refs: [{ name: "v1.0", kind: "tag", targetOid: "tag-object-1" }] })}
+      />,
+    );
     fireEvent.contextMenu(screen.getByText("v1.0"));
 
-    expect(useUi.getState().tagMenu).toMatchObject({ name: "v1.0", sha: "c1" });
+    expect(useUi.getState().tagMenu).toMatchObject({
+      name: "v1.0",
+      sha: "c1",
+      refOid: "tag-object-1",
+    });
     expect(useUi.getState().commitMenu).toBeNull();
   });
 

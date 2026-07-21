@@ -6,11 +6,10 @@
 //! The text read serves the read-only file viewer; binary and oversized files
 //! come back as flags, never as raw bytes.
 
-use std::collections::BTreeSet;
-use std::io::Read;
-
 use git2::Status;
+use std::collections::BTreeSet;
 
+use crate::git::file_state;
 use crate::git::read::open;
 use crate::git::types::RepoFileContent;
 use crate::git::worktree_fs::open_regular_worktree_file;
@@ -72,19 +71,21 @@ pub fn repo_file_text(
     let workdir = repo
         .workdir()
         .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?;
+    let state_scope = file_state::FileStateScope::capture(&repo, workdir, file)
+        .map_err(|e| git2::Error::from_str(&format!("capture {file} scope: {e}")))?;
     let mut opened = open_regular_worktree_file(workdir, file)
         .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
 
     let cap = max_bytes.map_or(MAX_TEXT_BYTES, |m| m.min(MAX_TEXT_BYTES));
-    let size = opened.len();
-    let truncated = size > cap;
-
-    let mut bytes = Vec::with_capacity(size.min(cap) as usize);
-    opened
-        .reader()
-        .take(cap)
-        .read_to_end(&mut bytes)
+    // Even a display-only truncated read gets a one-byte bounded probe plus
+    // descriptor/path coherence checks. Its flags and prefix therefore belong
+    // to one stable leaf, while only a complete lossless read receives a lease.
+    let snapshot = opened
+        .read_prefix_coherent(cap as usize)
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
+    let size = snapshot.size;
+    let truncated = snapshot.truncated;
+    let bytes = snapshot.bytes;
 
     if bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
         return Ok(RepoFileContent {
@@ -92,16 +93,26 @@ pub fn repo_file_text(
             size,
             truncated: false,
             binary: true,
+            expected_state: None,
         });
     }
 
+    let lossless_text = (!truncated && !bytes.contains(&0))
+        .then(|| std::str::from_utf8(&bytes).ok())
+        .flatten();
+    let expected_state =
+        lossless_text.map(|_| file_state::expected_state(&state_scope, snapshot.identity, &bytes));
+
     Ok(RepoFileContent {
         // Lossy: a truncated read can split a multi-byte character at the cap;
-        // the replacement char beats failing the whole view.
+        // or a non-NUL file may not be UTF-8. The replacement character beats
+        // failing the whole read, but no state lease is returned in either case
+        // so this display-only text can never be written back destructively.
         text: Some(String::from_utf8_lossy(&bytes).into_owned()),
         size,
         truncated,
         binary: false,
+        expected_state,
     })
 }
 

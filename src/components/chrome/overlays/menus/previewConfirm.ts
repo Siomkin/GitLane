@@ -1,5 +1,11 @@
 import type { DestructivePreview } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import {
+  currentOpenIntent,
+  currentPublishedRepoSession,
+  openIntentIsCurrent,
+  publishedRepoSessionIsCurrent,
+} from "@/store/repoRequests";
 import { useUi, type ConfirmRequest } from "@/store/ui";
 
 export type ConfirmFn = (req: ConfirmRequest) => void;
@@ -17,7 +23,7 @@ export type HeadPrecondition = {
 // runs against the now-active repo — a cross-repo destructive action. GL-42 review.
 let previewToken = 0;
 
-export const previewConfirm = async ({
+export const previewConfirm = async <T extends DestructivePreview>({
   requestConfirm,
   title,
   message,
@@ -32,16 +38,21 @@ export const previewConfirm = async ({
   message: string;
   confirmLabel: string;
   danger?: boolean;
-  preview: () => Promise<DestructivePreview>;
-  onConfirm: () => void;
+  preview: () => Promise<T>;
+  onConfirm: (preview: T) => void;
   headPrecondition?: HeadPrecondition;
 }) => {
   // Local, disposable preview read: it only enriches this confirmation modal
   // and does not become shared repo state, so it stays at the UI boundary.
   const token = ++previewToken;
   const repoAtClick = useRepo.getState().summary?.path ?? null;
+  const openIntentAtClick = currentOpenIntent();
+  const repoSessionAtClick = currentPublishedRepoSession();
   const isCurrent = () =>
-    token === previewToken && useRepo.getState().summary?.path === repoAtClick;
+    token === previewToken &&
+    openIntentIsCurrent(openIntentAtClick) &&
+    useRepo.getState().summary?.path === repoAtClick &&
+    publishedRepoSessionIsCurrent(repoSessionAtClick);
   const headStillMatches = () => {
     if (!headPrecondition) return true;
     const summary = useRepo.getState().summary;
@@ -52,6 +63,8 @@ export const previewConfirm = async ({
   };
   const showStaleHeadToast = () =>
     useUi.getState().showToast("HEAD changed; preview the reset again before confirming.", "error");
+  const showStaleRepoToast = () =>
+    useUi.getState().showToast("Repository changed; preview the action again before confirming.", "error");
   // Destructive previews are launched from transient menus. Close the originating
   // menu before awaiting so a slow preview cannot resurrect a confirm after the
   // user dismisses that menu.
@@ -71,11 +84,15 @@ export const previewConfirm = async ({
       confirmLabel,
       danger,
       onConfirm: () => {
+        if (!isCurrent()) {
+          showStaleRepoToast();
+          return;
+        }
         if (!headStillMatches()) {
           showStaleHeadToast();
           return;
         }
-        onConfirm();
+        onConfirm(impact);
       },
     });
   } catch (e) {

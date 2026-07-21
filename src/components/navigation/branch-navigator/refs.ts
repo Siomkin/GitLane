@@ -36,6 +36,8 @@ export function pinKey(kind: RowKind, name: string): string {
 export interface RefItem {
   name: string;
   oid?: string;
+  /** Exact tag-ref target used only by the destructive tag menu. */
+  refOid?: string;
 }
 
 /** Map every ref name (branch / remote / tag) to the oid of the commit it sits on,
@@ -60,7 +62,7 @@ export function collectTags(commits: CommitNode[]): RefItem[] {
     for (const ref of commit.refs) {
       if (ref.kind === RefKind.Tag && !seen.has(ref.name)) {
         seen.add(ref.name);
-        out.push({ name: ref.name, oid: commit.id });
+        out.push({ name: ref.name, oid: commit.id, refOid: ref.targetOid ?? commit.id });
       }
     }
   }

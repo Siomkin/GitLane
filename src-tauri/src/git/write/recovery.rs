@@ -2,11 +2,11 @@
 
 use std::collections::HashSet;
 
-use crate::git::types::{DestructivePreview, ReflogEntry};
+use crate::git::types::{DeleteBranchPreview, DestructivePreview, ForcePushPreview, ReflogEntry};
 
 use super::cli::{run_git, run_git_allow_exit_codes, run_git_stdout_raw};
 use super::operands::ensure_operand;
-use super::remotes::push_target;
+use super::remotes::{push_destination, push_endpoint_token};
 
 /// Recent reflog entries for HEAD and local branches. Uses `git log -g` rather
 /// than libgit2 because the CLI's reflog selectors (`HEAD@{1}`) are exactly what
@@ -216,51 +216,7 @@ pub fn preview_reset(
     })
 }
 
-pub fn preview_discard_all(repo: &str) -> Result<DestructivePreview, String> {
-    // Fail closed: read status directly (not the lossy `status_lines`) so a stale
-    // or inaccessible repo errors out instead of rendering a misleading "working
-    // tree is already clean" before a discard. GL-42 review.
-    let status = limited_lines(
-        run_git(repo, &["status", "--porcelain=v1", "--untracked-files=all"])?,
-        16,
-    );
-    let mut details = Vec::new();
-    if status.is_empty() {
-        details.push("The working tree is already clean.".to_string());
-    } else {
-        details.push(format!(
-            "Files that will be reset or removed: {}",
-            status.join("; ")
-        ));
-    }
-    let nested_repos = super::staging::nested_untracked_repo_labels(repo)?;
-    if !nested_repos.is_empty() {
-        details.push(format!(
-            "Nested Git repositories that will be preserved: {}",
-            nested_repos.join(", ")
-        ));
-    }
-    let mut warnings = vec![
-        "Tracked edits may be recoverable only if they were previously committed or stashed."
-            .to_string(),
-        "Untracked files Git can remove are not recoverable from the reflog; empty directories are preserved."
-            .to_string(),
-    ];
-    if !nested_repos.is_empty() {
-        warnings.push(
-            "Nested Git repositories are protected and will remain after other changes are discarded."
-                .to_string(),
-        );
-    }
-    Ok(DestructivePreview {
-        summary: "Discard every staged, unstaged, and removable untracked working-tree change"
-            .to_string(),
-        details,
-        warnings,
-    })
-}
-
-pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
+pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DeleteBranchPreview, String> {
     ensure_operand(branch)?;
     // Fail closed on a missing branch (consistent with preview_reset): otherwise
     // the impact reads soft-fail to "unknown"/empty and the dialog looks fine for
@@ -268,12 +224,30 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
     // Use the fully-qualified ref for impact reads: a bare name resolves a same-
     // named tag before the branch (git ref precedence), so it could compute the
     // wrong impact while `git branch -D` deletes the branch. GL-42 review.
-    let branch_ref = format!("refs/heads/{branch}");
+    let branch_ref = super::branches::checked_branch_ref(repo, branch)?;
+    // The lease currently models a direct local ref plus its exact object id.
+    // Reject symbolic local refs rather than previewing one representation and
+    // later deleting a same-target replacement with different semantics.
+    super::branches::ensure_branch_ref_is_direct(repo, branch)?;
+    // Keep the impact preview commit-specific. The raw ref oid below is the CAS
+    // lease, while this peeled check rejects a malformed/non-commit heads ref.
     run_git(
         repo,
         &["rev-parse", "--verify", &format!("{branch_ref}^{{commit}}")],
     )?;
-    let tip = rev_parse_short(repo, &branch_ref).unwrap_or_else(|| "unknown".to_string());
+    let expected_oid = run_git(repo, &["rev-parse", "--verify", &branch_ref])?
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if expected_oid.is_empty() {
+        return Err(format!("Could not resolve {branch_ref}"));
+    }
+    // Every impact read is pinned to the captured object, not the live ref. A
+    // concurrent A -> B -> A move must not let the dialog show B's commits while
+    // carrying an A lease that can later succeed.
+    let tip = rev_parse_short(repo, &expected_oid).unwrap_or_else(|| "unknown".to_string());
     let unmerged = limited_lines(
         run_git(
             repo,
@@ -281,7 +255,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
                 "log",
                 "--oneline",
                 "--max-count=8",
-                &format!("HEAD..{branch_ref}"),
+                &format!("HEAD..{expected_oid}"),
             ],
         )
         .unwrap_or_default(),
@@ -296,12 +270,13 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DestructivePrev
             unmerged.join("; ")
         ));
     }
-    Ok(DestructivePreview {
+    Ok(DeleteBranchPreview {
         summary: format!("Delete local branch {branch}"),
         details,
         warnings: vec![
             "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.".to_string(),
         ],
+        expected_oid,
     })
 }
 
@@ -327,67 +302,91 @@ pub fn preview_delete_remote_branch(
     })
 }
 
-pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview, String> {
+pub fn preview_force_push(repo: &str, branch: &str) -> Result<ForcePushPreview, String> {
     ensure_operand(branch)?;
     // Fail closed if the local branch is gone (stale menu / concurrent delete),
     // and use the qualified ref for rev reads so a same-named tag can't be
-    // resolved instead. Config reads (push_target/branch_upstream) still take the
-    // short branch name, since git config is keyed by it. GL-42 review.
+    // resolved instead. Config reads still take the short branch name, since git
+    // config is keyed by it. GL-42 review.
     let branch_ref = format!("refs/heads/{branch}");
-    run_git(
+    let expected_oid = run_git(
         repo,
         &["rev-parse", "--verify", &format!("{branch_ref}^{{commit}}")],
-    )?;
-    let (remote, refspec) = push_target(repo, branch);
-    let upstream = branch_upstream(repo, branch).unwrap_or_else(|| {
-        pushed_branch_name(&refspec)
-            .map(|name| format!("refs/remotes/{remote}/{name}"))
-            .unwrap_or_else(|| format!("refs/remotes/{remote}/{branch}"))
-    });
-    // `upstream` is derived from git config (remote name / `%(upstream)`), not from
-    // a guarded UI operand, yet it flows unquoted into the `git log` rev-ranges
-    // below. A config value beginning with `-` would be parsed as an option, so
-    // apply the same dash-guard used for user operands. GL-42.
-    ensure_operand(&upstream)?;
-    // Short form for display only; reads/ranges use the fully-qualified ref so a
-    // same-named local branch/tag can't shadow the remote-tracking ref. GL-42.
-    let upstream_display = upstream
+    )?
+    .trim()
+    .to_string();
+    if expected_oid.is_empty() {
+        return Err(format!(
+            "Could not resolve local branch '{branch}' to a commit."
+        ));
+    }
+
+    let (remote, destination_ref) = push_destination(repo, branch);
+    ensure_operand(&remote)?;
+    ensure_operand(&destination_ref)?;
+    let push_endpoint_token = push_endpoint_token(repo, &remote)?;
+    // Force-push is a branch operation. Reject a hostile/mistaken merge config
+    // that points at another namespace even for Git's local `.` remote; without
+    // this, refs/tags/* could be force-updated through the branch menu.
+    let destination_branch = destination_ref
+        .strip_prefix("refs/heads/")
+        .ok_or_else(|| format!("Unsupported force-push destination {destination_ref}."))?;
+    let destination_tracking_ref = if remote == "." {
+        destination_ref.clone()
+    } else {
+        format!("refs/remotes/{remote}/{destination_branch}")
+    };
+    ensure_operand(&destination_tracking_ref)?;
+    let destination_oid = rev_parse_optional(repo, &destination_tracking_ref)?;
+
+    // Use the captured object ids for the impact ranges rather than mutable refs;
+    // a concurrent fetch can move the remote-tracking ref while the preview is
+    // being assembled, but it must not change either the dialog or its lease.
+    let (remote_only, local_only) = match destination_oid.as_deref() {
+        Some(destination_oid) => (
+            limited_lines(
+                run_git(
+                    repo,
+                    &[
+                        "log",
+                        "--oneline",
+                        "--max-count=8",
+                        &format!("{expected_oid}..{destination_oid}"),
+                    ],
+                )
+                .unwrap_or_default(),
+                8,
+            ),
+            limited_lines(
+                run_git(
+                    repo,
+                    &[
+                        "log",
+                        "--oneline",
+                        "--max-count=8",
+                        &format!("{destination_oid}..{expected_oid}"),
+                    ],
+                )
+                .unwrap_or_default(),
+                8,
+            ),
+        ),
+        None => (Vec::new(), Vec::new()),
+    };
+    let local_tip = short_oid(&expected_oid);
+    let destination_tip = destination_oid
+        .as_deref()
+        .map(short_oid)
+        .unwrap_or_else(|| "absent locally".to_string());
+    let tracking_display = destination_tracking_ref
         .strip_prefix("refs/remotes/")
-        .or_else(|| upstream.strip_prefix("refs/heads/"))
-        .unwrap_or(upstream.as_str())
-        .to_string();
-    let local_tip = rev_parse_short(repo, &branch_ref).unwrap_or_else(|| "unknown".to_string());
-    let remote_tip =
-        rev_parse_short(repo, &upstream).unwrap_or_else(|| "unknown locally".to_string());
-    let remote_only = limited_lines(
-        run_git(
-            repo,
-            &[
-                "log",
-                "--oneline",
-                "--max-count=8",
-                &format!("{branch_ref}..{upstream}"),
-            ],
-        )
-        .unwrap_or_default(),
-        8,
-    );
-    let local_only = limited_lines(
-        run_git(
-            repo,
-            &[
-                "log",
-                "--oneline",
-                "--max-count=8",
-                &format!("{upstream}..{branch_ref}"),
-            ],
-        )
-        .unwrap_or_default(),
-        8,
-    );
+        .or_else(|| destination_tracking_ref.strip_prefix("refs/heads/"))
+        .unwrap_or(destination_tracking_ref.as_str());
     let mut details = vec![
-        format!("Pushes local {branch} ({local_tip}) to {remote} using refspec {refspec}."),
-        format!("Local tracking comparison target: {upstream_display} ({remote_tip})."),
+        format!(
+            "Pushes local {branch} ({local_tip}) to {remote} at {destination_ref} using refspec {expected_oid}:{destination_ref}."
+        ),
+        format!("Push-destination tracking snapshot: {tracking_display} ({destination_tip})."),
     ];
     if !local_only.is_empty() {
         details.push(format!(
@@ -396,7 +395,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview
         ));
     }
     let mut warnings = vec![
-        "--force-with-lease aborts if the remote moved since the local tracking ref was updated."
+        "--force-with-lease aborts if the remote destination no longer matches this preview."
             .to_string(),
     ];
     if remote_only.is_empty() {
@@ -407,11 +406,25 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<DestructivePreview
             remote_only.join("; ")
         ));
     }
-    Ok(DestructivePreview {
+    Ok(ForcePushPreview {
         summary: format!("Force-push {branch} with lease"),
         details,
         warnings,
+        expected_oid,
+        remote,
+        destination_ref,
+        destination_oid,
+        push_endpoint_token,
     })
+}
+
+fn rev_parse_optional(repo: &str, revision: &str) -> Result<Option<String>, String> {
+    ensure_operand(revision)?;
+    let oid =
+        run_git_allow_exit_codes(repo, &["rev-parse", "--verify", "--quiet", revision], &[1])?
+            .trim()
+            .to_string();
+    Ok((!oid.is_empty()).then_some(oid))
 }
 
 fn short_oid(oid: &str) -> String {
@@ -484,28 +497,4 @@ fn reflog_selector_timestamp(selector: &str) -> Option<i64> {
     let start = selector.rfind("@{")? + 2;
     let end = selector[start..].find('}')? + start;
     selector[start..end].parse().ok()
-}
-
-/// The fully-qualified upstream ref (e.g. `refs/remotes/origin/main`) of a local
-/// branch, or `None` if it has no upstream. The full form (not `%(upstream:short)`)
-/// is used so impact reads can't be shadowed by a same-named local branch/tag.
-fn branch_upstream(repo: &str, branch: &str) -> Option<String> {
-    run_git(
-        repo,
-        &[
-            "for-each-ref",
-            "--format=%(upstream)",
-            &format!("refs/heads/{branch}"),
-        ],
-    )
-    .ok()
-    .map(|s| s.trim().to_string())
-    .filter(|s| !s.is_empty())
-}
-
-fn pushed_branch_name(refspec: &str) -> Option<&str> {
-    // The destination side of a `src:dst` refspec, or the whole spec when there's
-    // no colon; with any `refs/heads/` prefix stripped.
-    let dst = refspec.split(':').nth(1).unwrap_or(refspec);
-    Some(dst.strip_prefix("refs/heads/").unwrap_or(dst))
 }

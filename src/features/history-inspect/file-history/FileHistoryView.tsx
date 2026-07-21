@@ -71,6 +71,11 @@ export function FileHistoryView({
                     onSelect={() => void selectRevision(entry.oid, entry.path)}
                   />
                 ))}
+                {history.error && (
+                  <div className="mx-1 mt-1 rounded-md bg-rose-500/[0.08] px-2 py-1.5 text-[11.5px] text-rose-600 dark:text-rose-300">
+                    {history.error}
+                  </div>
+                )}
                 {history.hasMore && (
                   <button
                     type="button"
@@ -115,7 +120,7 @@ export function FileHistoryView({
           <DiffPane
             loading={history.diffLoading}
             diff={history.selectedDiff}
-            error={history.error}
+            error={history.diffError}
             emptyLabel="Select a revision."
             onShowFull={
               history.selectedOid

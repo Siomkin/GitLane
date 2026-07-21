@@ -8,6 +8,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
+import {
+  currentOpenIntent,
+  currentPublishedRepoSession,
+  openIntentIsCurrent,
+  publishedRepoSessionIsCurrent,
+} from "@/store/repoRequests";
 import type { WorktreeInfo } from "@/lib/api";
 import { useUi } from "@/store/ui";
 import { removeDetachedSummary, type RemoveOutcome } from "./steps";
@@ -67,6 +73,12 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
     // place, mirroring useDeleteWorktreeRun's repoAtStart guard. Kept as the raw
     // (possibly undefined) path so the divergence check compares like-for-like.
     const repoAtStart = useRepo.getState().summary?.path;
+    const openIntentAtStart = currentOpenIntent();
+    const repoSessionAtStart = currentPublishedRepoSession();
+    const startingRepoIsCurrent = () =>
+      useRepo.getState().summary?.path === repoAtStart &&
+      openIntentIsCurrent(openIntentAtStart) &&
+      publishedRepoSessionIsCurrent(repoSessionAtStart);
     void (async () => {
       const acc: RemoveOutcome[] = [];
       let firstError: string | null = null;
@@ -78,7 +90,7 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
       // would turn that backstop into silent data loss; the per-row menu is where
       // a forced removal belongs, because it names what is being discarded.
       for (let i = 0; i < targets.length; i++) {
-        if (useRepo.getState().summary?.path !== repoAtStart) {
+        if (!startingRepoIsCurrent()) {
           // Repo switched under us — record the untouched remainder as failures
           // so the checklist completes instead of stranding rows as "pending".
           for (; i < targets.length; i++) acc.push("fail");

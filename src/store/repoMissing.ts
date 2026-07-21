@@ -9,11 +9,12 @@ import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
 import { trimTrailingSlash } from "@/lib/worktrees";
 import { usePulls } from "./pulls";
 import {
+  beginTabLifetime,
   beginGraphRequest,
-  currentOpenIntent,
-  openIntentIsCurrent,
+  beginPublishedRepoSession,
+  endTabLifetime,
+  ensureTabLifetime,
 } from "./repoRequests";
-import { repoStillDisplayed } from "./repoGuards";
 import { unwatchRepo } from "./repoWatchQueue";
 import {
   persistRecents,
@@ -72,11 +73,15 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // Supersede any in-flight graph request; dropping the summary below also
     // fails every summary-path guard, so nothing stale can publish after this.
     beginGraphRequest();
-    const openPaths = get().openPaths.includes(path)
+    const wasOpen = get().openPaths.includes(path);
+    const openPaths = wasOpen
       ? get().openPaths
       : [...get().openPaths, path];
+    if (wasOpen) ensureTabLifetime(path);
+    else beginTabLifetime(path);
     persistSession(openPaths, path);
     const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
+    beginPublishedRepoSession();
     set({
       missingRepo: { path, kind },
       summary: null,
@@ -134,6 +139,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
   const retireDeadWorktreeTab = (path: string) => {
     const remaining = get().openPaths.filter((p) => p !== path);
     if (remaining.length === get().openPaths.length) return; // already gone
+    endTabLifetime(path);
     const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
     const recents = get().recents.filter((r) => r.path !== path);
     // `summary` is the still-displayed repo here; keep it active (falling back
@@ -158,7 +164,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     path: string,
     info: TabInfo,
     isCurrent: () => boolean,
-  ) => {
+  ): Promise<boolean> => {
     // The dead worktree stops being watched whichever branch handles its tab.
     void unwatchRepo(path);
 
@@ -166,7 +172,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // repo is displayed): just retire its tab and leave the active repo as is.
     if (get().summary?.path !== path) {
       retireDeadWorktreeTab(path);
-      return;
+      return true;
     }
 
     // Fallback order: the parent/main repo (known and available), then the
@@ -208,7 +214,12 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // When a newer operation owns the store, stand down without mutating shared
     // state or reloading; let it publish. The dead worktree tab self-heals on
     // its next activation (the store's usual async-ownership model).
-    if (!isCurrent()) return;
+    if (!isCurrent()) return false;
+
+    // The ownership check above is the removed tab's final use. End its
+    // lifetime before changing persistence/store state so stale same-path
+    // activations and label probes cannot publish into a later reopen.
+    endTabLifetime(path);
 
     // Supersede any in-flight graph read for the dead worktree; clearing the
     // summary below also fails every summary-path guard, so nothing stale can
@@ -227,6 +238,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       persistSession(remaining, target);
       persistTabInfo(prunedInfo);
       persistRecents(recents);
+      beginPublishedRepoSession();
       set({
         openPaths: remaining,
         tabInfoByPath: prunedInfo,
@@ -239,7 +251,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
         error: null,
       });
       await get().loadRepo(target);
-      return;
+      return true;
     }
 
     // Nothing safe to land on (no available parent, no other tab) → the
@@ -248,6 +260,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     persistSession(remaining, null);
     persistTabInfo(prunedInfo);
     persistRecents(recents);
+    beginPublishedRepoSession();
     set({
       openPaths: remaining,
       tabInfoByPath: prunedInfo,
@@ -296,6 +309,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     useUi.getState().closeHandoff();
     useUi.getState().closeDeleteWorktree();
     useUi.getState().closeRemoveDetached();
+    return true;
   };
 
   // Route a vanished path (GL-108 + GL-126). A removed linked worktree falls
@@ -311,7 +325,8 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     path: string,
     kind: MissingRepoState["kind"],
     isCurrent: () => boolean,
-  ) => {
+  ): Promise<boolean> => {
+    if (!isCurrent()) return false;
     const info = get().tabInfoByPath[path];
     const summary = get().summary;
     const activeIsThisWorktree = summary?.path === path && summary.isWorktree === true;
@@ -323,31 +338,29 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
             mainPath: info?.mainPath ?? summary?.mainPath ?? null,
             branch: info?.branch ?? summary?.headBranch ?? null,
           };
-      await fallbackFromRemovedWorktree(path, wtInfo, isCurrent);
-      return;
+      return fallbackFromRemovedWorktree(path, wtInfo, isCurrent);
     }
     enterMissingState(path, kind);
+    return true;
   };
 
   // Route a failed secondary read for the displayed repo: a vanished path gets
   // the missing-repo state (or the worktree fallback), anything else the global
   // error bar. Re-guarded after the async presence probe so a repo switch in
   // that window wins.
-  const surfaceOpenFailure = async (path: string, e: unknown) => {
-    // Capture the open intent before the async classify probe: a repo switch
-    // begun during it claims a newer intent before publishing, so fold this into
-    // the ownership token handed to the worktree fallback (which would otherwise
-    // steal focus back on the parent-already-open path).
-    const entryIntent = currentOpenIntent();
+  const surfaceOpenFailure = async (
+    path: string,
+    e: unknown,
+    isCurrent: () => boolean,
+  ) => {
+    if (!isCurrent()) return;
     const kind = await wentMissing(path, e);
-    if (!repoStillDisplayed(get, path)) return;
-    if (kind)
-      await handleMissing(
-        path,
-        kind,
-        () => openIntentIsCurrent(entryIntent) && repoStillDisplayed(get, path),
-      );
-    else set({ error: errorText(e) });
+    // The originating read owns this callback. Re-check it after the async
+    // presence probe: capturing a fresh token here would let an old failure
+    // masquerade as part of a newer same-path session/request.
+    if (!isCurrent()) return;
+    if (kind) await handleMissing(path, kind, isCurrent);
+    else if (isCurrent()) set({ error: errorText(e) });
   };
 
   return { wentMissing, handleMissing, surfaceOpenFailure };

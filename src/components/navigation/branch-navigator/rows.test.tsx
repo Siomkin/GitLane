@@ -72,10 +72,14 @@ describe("BranchRow", () => {
   });
 
   it("routes a tag row's right-click to the tag menu, keyed on the tagged oid", () => {
-    render(<BranchRow name="v1.0" kind="tag" oid="tag123" />);
+    render(<BranchRow name="v1.0" kind="tag" oid="commit123" refOid="tag123" />);
     fireEvent.contextMenu(screen.getByText("v1.0"));
 
-    expect(useUi.getState().tagMenu).toMatchObject({ name: "v1.0", sha: "tag123" });
+    expect(useUi.getState().tagMenu).toMatchObject({
+      name: "v1.0",
+      sha: "commit123",
+      refOid: "tag123",
+    });
     expect(useUi.getState().contextMenu).toBeNull();
   });
 

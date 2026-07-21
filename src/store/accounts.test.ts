@@ -532,6 +532,58 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     expect(identityCmds(invokeMock.mock.calls)).toHaveLength(0);
   });
 
+  it("does not publish a PR account when the default HTTPS remote update fails", async () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({ [path]: { version: 2, unbound: true } }),
+    );
+    useRepo.setState({ summary, remotes: [origin] });
+    const loadPrs = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests: loadPrs });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "set_remote_username") throw new Error("remote config is read-only");
+      return null;
+    });
+
+    await useAccounts.getState().setRepoAccount(account.id);
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(useAccounts.getState().repoAccountId).toBeNull();
+    expect(useAccounts.getState().repoAccountRef).toBeNull();
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path]).toEqual({
+      version: 2,
+      unbound: true,
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+    expect(loadPrs).not.toHaveBeenCalled();
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain(
+      "remote config is read-only",
+    );
+  });
+
+  it("does not clear the PR account when stripping the HTTPS username fails", async () => {
+    localStorage.setItem(
+      "gitlane.repoAccounts",
+      JSON.stringify({ [path]: { version: 2, ...account.ref } }),
+    );
+    useAccounts.setState({ repoAccountId: account.id, repoAccountRef: account.ref });
+    useRepo.setState({ summary, remotes: [originWithUser] });
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "set_remote_username") throw new Error("cannot rewrite remote");
+      return null;
+    });
+
+    await useAccounts.getState().setRepoAccount(null);
+
+    expect(useAccounts.getState().repoAccountId).toBe(account.id);
+    expect(useAccounts.getState().repoAccountRef).toEqual(account.ref);
+    expect(JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path]).toEqual({
+      version: 2,
+      ...account.ref,
+    });
+    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
+  });
+
   it("clearing the default remote strips the URL username and clears the legacy PR binding", async () => {
     localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: { version: 2, ...account.ref } }));
     useRepo.setState({ summary, remotes: [originWithUser, bucket] });

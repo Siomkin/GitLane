@@ -8,6 +8,8 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const SUMMARY = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false };
+const FILE_STATE_1 = "repo-file:v1:test-state-1";
+const FILE_STATE_2 = "repo-file:v1:test-state-2";
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -53,6 +55,21 @@ describe("RepoFileWorkspace — read-only", () => {
     });
     render(<RepoFileWorkspace />);
     expect(screen.getByText(/Large file — showing the first/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("keeps valid-looking text display-only when Rust withheld its state lease", () => {
+    useRepo.setState({
+      fileView: {
+        path: "lossy.txt",
+        content: { text: "looks readable", size: 14, truncated: false, binary: false },
+        loading: false,
+        error: null,
+      },
+    });
+    render(<RepoFileWorkspace />);
+    expect(screen.getByText("looks")).toBeInTheDocument();
+    expect(screen.getByText("readable")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
@@ -105,15 +122,21 @@ describe("RepoFileWorkspace — editing", () => {
       summary: SUMMARY,
       fileView: {
         path: "src/a.ts",
-        content: { text: "const x = 1\n", size: 12, truncated: false, binary: false },
+        content: {
+          text: "const x = 1\n",
+          size: 12,
+          truncated: false,
+          binary: false,
+          expectedState: FILE_STATE_1,
+        },
         loading: false,
         error: null,
       },
     });
 
-  it("edits and saves, passing the on-disk size guard and clearing dirty", async () => {
+  it("edits and saves, passing and advancing the exact-state lease", async () => {
     openEditable();
-    invokeMock.mockResolvedValue(16); // new byte size
+    invokeMock.mockResolvedValue({ size: 16, expectedState: FILE_STATE_2 });
     render(<RepoFileWorkspace />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -132,12 +155,62 @@ describe("RepoFileWorkspace — editing", () => {
         file: "src/a.ts",
         content: "const x = 100\n",
         expectedSize: 12,
+        expectedState: FILE_STATE_1,
       }),
     );
     // After the save the draft is the clean baseline again → dirty clears.
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
     expect(useRepo.getState().fileView?.content?.text).toBe("const x = 100\n");
     expect(useRepo.getState().fileView?.content?.size).toBe(16);
+    expect(useRepo.getState().fileView?.content?.expectedState).toBe(FILE_STATE_2);
+    expect(useRepo.getState().fileView?.edit?.baseExpectedState).toBe(FILE_STATE_2);
+  });
+
+  it("uses the returned lease for a sequential save", async () => {
+    openEditable();
+    let saves = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "repo_file_head_text") return Promise.resolve(null);
+      if (cmd === "write_repo_file") {
+        saves++;
+        return Promise.resolve(
+          saves === 1
+            ? { size: 12, expectedState: FILE_STATE_2 }
+            : { size: 12, expectedState: "repo-file:v1:test-state-3" },
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+    useRepo.getState().beginFileEdit();
+    useRepo.getState().updateFileDraft("const x = 2\n");
+    await useRepo.getState().saveFileEdit();
+    useRepo.getState().updateFileDraft("const x = 3\n");
+    await useRepo.getState().saveFileEdit();
+
+    expect(invokeMock).toHaveBeenLastCalledWith("write_repo_file", {
+      path: "/r",
+      file: "src/a.ts",
+      content: "const x = 3\n",
+      expectedSize: 12,
+      expectedState: FILE_STATE_2,
+    });
+  });
+
+  it("keeps the dirty draft and surfaces the error when the lease is stale", async () => {
+    openEditable();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "repo_file_head_text") return Promise.resolve(null);
+      if (cmd === "write_repo_file") return Promise.reject(new Error("file changed on disk; reload before saving"));
+      return Promise.resolve(undefined);
+    });
+    useRepo.getState().beginFileEdit();
+    useRepo.getState().updateFileDraft("precious local draft\n");
+    await useRepo.getState().saveFileEdit();
+
+    expect(useRepo.getState().fileView?.edit?.draft).toBe("precious local draft\n");
+    expect(useRepo.getState().fileView?.content?.text).toBe("const x = 1\n");
+    expect(useRepo.getState().fileView?.edit?.saving).toBe(false);
+    expect(useRepo.getState().fileView?.edit?.error).toContain("file changed on disk");
   });
 
   it("confirms before closing with unsaved changes", () => {
@@ -169,7 +242,7 @@ describe("RepoFileWorkspace — editing", () => {
 
   it("freezes the textarea while a save is in flight", async () => {
     openEditable();
-    let resolveWrite!: (n: number) => void;
+    let resolveWrite!: (result: { size: number; expectedState: string }) => void;
     // Command-aware: the baseline read fired by entering edit must not consume
     // the write's one-shot mock.
     invokeMock.mockImplementation((cmd: string) => {
@@ -188,7 +261,7 @@ describe("RepoFileWorkspace — editing", () => {
     await waitFor(() => expect(textarea).toHaveAttribute("readonly"));
     expect(screen.getByRole("button", { name: "Done" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Close file" })).toBeDisabled();
-    resolveWrite(11);
+    resolveWrite({ size: 11, expectedState: FILE_STATE_2 });
     await waitFor(() => expect(textarea).not.toHaveAttribute("readonly"));
   });
 
@@ -200,7 +273,13 @@ describe("RepoFileWorkspace — editing", () => {
         content: { text: "a\nb\nc\n", size: 6, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "a\nB!\nc\n", baseSize: 6, saving: false, error: null },
+        edit: {
+          draft: "a\nB!\nc\n",
+          baseSize: 6,
+          baseExpectedState: FILE_STATE_1,
+          saving: false,
+          error: null,
+        },
         baseline: "a\nb\nc\n",
       },
     });
@@ -217,7 +296,13 @@ describe("RepoFileWorkspace — editing", () => {
         content: { text: "a\nb\n", size: 4, truncated: false, binary: false },
         loading: false,
         error: null,
-        edit: { draft: "a\nb\n", baseSize: 4, saving: false, error: null },
+        edit: {
+          draft: "a\nb\n",
+          baseSize: 4,
+          baseExpectedState: FILE_STATE_1,
+          saving: false,
+          error: null,
+        },
         baseline: "a\nb\n",
       },
     });

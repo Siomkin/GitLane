@@ -30,6 +30,7 @@ const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
 const realRebaseOnto = useRepo.getState().rebaseOnto;
 const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realMergeInto = useRepo.getState().mergeInto;
+const realForcePush = useRepo.getState().forcePush;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -39,7 +40,15 @@ beforeEach(() => {
     // so only the tests that care about dirtiness opt into it.
     if (cmd === "worktree_dirty_state") return Promise.resolve({ modified: 0, untracked: 0 });
     if (cmd.startsWith("preview_")) {
-      return Promise.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: ["Recovery warning"] });
+      return Promise.resolve({
+        summary: "Impact summary",
+        details: ["Affected path"],
+        warnings: ["Recovery warning"],
+        expectedOid: "branch-preview-oid",
+        expectedState: "discard-all-state-v1",
+        expectedHeadBranch: "main",
+        expectedHeadOid: "head",
+      });
     }
     return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
   });
@@ -61,6 +70,7 @@ beforeEach(() => {
     rebaseOnto: realRebaseOnto,
     resetBranchTo: realResetBranchTo,
     mergeInto: realMergeInto,
+    forcePush: realForcePush,
   });
   useUi.setState({
     wipMenu: null,
@@ -159,6 +169,30 @@ describe("WipContextMenu", () => {
     expect(screen.getAllByText("Submodule: modified files inside submodule. Use the terminal for submodule updates.")).toHaveLength(3);
   });
 
+  it("blocks only Discard all for an in-cone sparse change", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [file("src/a.ts")],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        },
+      },
+    });
+    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    render(<WipContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Stash all changes" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Discard all changes" })).toBeDisabled();
+    expect(screen.getByText(
+      "Sparse checkout is enabled. Disable sparse checkout before using Discard all, or use the terminal.",
+    )).toBeInTheDocument();
+  });
+
   it("shows Unstage all only when there are staged files", () => {
     useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
@@ -172,6 +206,9 @@ describe("WipContextMenu", () => {
       summary: string;
       details: string[];
       warnings: string[];
+      expectedState: string;
+      expectedHeadBranch: string | null;
+      expectedHeadOid: string | null;
     }>();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "preview_discard_all") return pending.promise;
@@ -189,14 +226,23 @@ describe("WipContextMenu", () => {
     await waitFor(() => expect(useUi.getState().wipMenu).toBeNull());
     expect(useUi.getState().confirm).toBeNull();
 
-    pending.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: [] });
+    pending.resolve({
+      summary: "Impact summary",
+      details: ["Affected path"],
+      warnings: [],
+      expectedState: "discard-all-state-v1",
+      expectedHeadBranch: "main",
+      expectedHeadOid: "head",
+    });
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
   });
 });
 
 describe("TagContextMenu", () => {
   it("offers checkout / push / create / copy / delete for a tag", () => {
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234" } });
+    useUi.setState({
+      tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
+    });
     render(<TagContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Checkout tag (detached)" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Push tag to origin" })).toBeInTheDocument();
@@ -210,22 +256,34 @@ describe("TagContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Worktree from tag…" })).toBeInTheDocument();
   });
 
-  it("routes the everywhere-delete through deleteTag(name, true) after confirm", async () => {
+  it("routes the everywhere-delete with the exact tag target after confirm", async () => {
     const deleteTag = vi.fn().mockResolvedValue("Deleted tag v1.0.0 (local and origin)");
     useRepo.setState({ deleteTag });
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234" } });
+    useUi.setState({
+      tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
+    });
     render(<TagContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete from local and origin" }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     confirm!.onConfirm();
-    await waitFor(() => expect(deleteTag).toHaveBeenCalledWith("v1.0.0", true));
+    await waitFor(() =>
+      expect(deleteTag).toHaveBeenCalledWith("v1.0.0", "tag-object-1", true),
+    );
   });
 
   // A branch and a tag can share a short name, so the operations must reference
   // the peeled commit sha — never the ambiguous tag name.
   it("uses the tag sha (not its name) as the create-branch start point", () => {
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234deadbeef" } });
+    useUi.setState({
+      tagMenu: {
+        x: 10,
+        y: 10,
+        name: "v1.0.0",
+        sha: "abc1234deadbeef",
+        refOid: "tag-object-1",
+      },
+    });
     render(<TagContextMenu />);
     openGroup("Create");
     fireEvent.click(screen.getByRole("menuitem", { name: "Branch from here…" }));
@@ -236,7 +294,15 @@ describe("TagContextMenu", () => {
   it("uses the tag sha (not its name) as the create-worktree reference", async () => {
     const createWorktreeAt = vi.fn().mockResolvedValue("created");
     useRepo.setState({ createWorktreeAt });
-    useUi.setState({ tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234deadbeef" } });
+    useUi.setState({
+      tagMenu: {
+        x: 10,
+        y: 10,
+        name: "v1.0.0",
+        sha: "abc1234deadbeef",
+        refOid: "tag-object-1",
+      },
+    });
     render(<TagContextMenu />);
     openGroup("Create");
     fireEvent.click(screen.getByRole("menuitem", { name: "Worktree from tag…" }));
@@ -252,12 +318,15 @@ describe("TagContextMenu", () => {
 });
 
 describe("navigator tag row", () => {
-  it("opens the tag menu carrying the tagged commit sha", () => {
-    render(<BranchRow name="v2.3.4" kind="tag" oid="deadbeefcafe" />);
+  it("opens the tag menu carrying the peeled commit and exact ref target", () => {
+    render(
+      <BranchRow name="v2.3.4" kind="tag" oid="deadbeefcafe" refOid="tag-object-2" />,
+    );
     fireEvent.contextMenu(screen.getByText("v2.3.4"));
     const menu = useUi.getState().tagMenu;
     expect(menu?.name).toBe("v2.3.4");
     expect(menu?.sha).toBe("deadbeefcafe");
+    expect(menu?.refOid).toBe("tag-object-2");
   });
 });
 
@@ -514,6 +583,50 @@ describe("BranchContextMenu", () => {
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
+  });
+
+  it("confirms force-push with the exact route and lease returned by its preview", async () => {
+    const preview = {
+      summary: "Force-push main with lease",
+      details: ["Pushes main to fork at refs/heads/main."],
+      warnings: ["The destination must still match the preview."],
+      expectedOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      remote: "fork",
+      destinationRef: "refs/heads/main",
+      destinationOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      pushEndpointToken: "endpoint-token",
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "preview_force_push") return Promise.resolve(preview);
+      if (cmd === "can_fast_forward") return Promise.resolve(false);
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+    const forcePush = vi.fn().mockResolvedValue("Force-pushed main (with lease)");
+    useRepo.setState({
+      summary: {
+        path: "/work/repo",
+        workdir: "/work/repo",
+        headBranch: "main",
+        headOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        detached: false,
+      },
+      branches: [{ ...localBranch("main"), isHead: true }],
+      forcePush,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+
+    render(<BranchContextMenu />);
+    openGroup("Danger zone");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Force push (with lease)…" }));
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("preview_force_push", {
+      path: "/work/repo",
+      branch: "main",
+    }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    useUi.getState().confirm!.onConfirm();
+
+    await waitFor(() => expect(forcePush).toHaveBeenCalledWith("main", preview));
   });
 
   it("opens the publish prompt for a non-current branch without an upstream", async () => {
@@ -888,7 +1001,37 @@ describe("BranchContextMenu", () => {
     expect(confirm?.details).toContain("Impact summary");
     expect(confirm?.warnings).toContain("Recovery warning");
     confirm!.onConfirm();
-    await waitFor(() => expect(removeBranch).toHaveBeenCalledWith("feature", true));
+    await waitFor(() =>
+      expect(removeBranch).toHaveBeenCalledWith(
+        "feature",
+        "branch-preview-oid",
+        "/work/repo",
+        true,
+      ),
+    );
+  });
+
+  it("does not run a captured branch-delete confirmation after switching repos", async () => {
+    const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      branches: [localBranch("feature")],
+      removeBranch,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    openGroup("Danger zone");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    const confirm = useUi.getState().confirm!;
+
+    useRepo.setState({
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "other", detached: false },
+    });
+    confirm.onConfirm();
+
+    expect(removeBranch).not.toHaveBeenCalled();
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/Repository changed/i);
   });
 
   it("does not open a reset confirmation if HEAD changes while the preview is pending", async () => {

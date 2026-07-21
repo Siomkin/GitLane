@@ -58,8 +58,9 @@ cap-fs-ext = "4.0.2"
 # `HttpTransport` trait so the flow state machines unit-test against a mock.
 # `ureq` is blocking (fits the existing `blocking()` subprocess pattern), pulls a
 # small tree, and uses rustls so we never link a system TLS library. `sha2` +
-# `getrandom` back the PKCE code-verifier/challenge and the CSRF `state`; base64
-# (above) provides the base64url encoding.
+# `getrandom` back the PKCE code-verifier/challenge and the CSRF `state`; sha2
+# also fingerprints file-discard preconditions without retaining content, and
+# base64 (above) provides the compact opaque encodings.
 ureq = { version = "2", default-features = false, features = ["tls"] }
 sha2 = "0.11"
 getrandom = "0.4"

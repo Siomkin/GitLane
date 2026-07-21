@@ -1,5 +1,7 @@
 import { api } from "@/lib/api";
 import { invalidateFileDiffReconciles } from "./repoFileDiff";
+import { repoSessionIsCurrent } from "./repoGuards";
+import { currentPublishedRepoSession } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { computeSelection } from "./selection";
 import { useUi } from "./ui";
@@ -32,6 +34,7 @@ export function createRepoSelectionActions(
   | "clearSelectedFile"
   | "compareRange"
   | "openFileHistory"
+  | "setFileHistoryMode"
   | "loadMoreFileHistory"
   | "selectFileHistoryRevision"
   | "loadFileBlame"
@@ -44,6 +47,36 @@ export function createRepoSelectionActions(
   | "swapCompare"
   | "closeCompare"
 > {
+  // File-history routes have three independent response lanes. Visible
+  // path/revision values are not sufficient ownership keys: same-path retries,
+  // preview -> full for one oid, and A -> B -> A can all make an old request's
+  // subject visible again. Latest-start generations plus the published repo
+  // session make those ABA cycles unambiguous.
+  let fileHistoryListGeneration = 0;
+  let fileHistoryDiffGeneration = 0;
+  let fileHistoryBlameGeneration = 0;
+  const claimFileHistoryList = () => ++fileHistoryListGeneration;
+  const claimFileHistoryDiff = () => ++fileHistoryDiffGeneration;
+  const claimFileHistoryBlame = () => ++fileHistoryBlameGeneration;
+  const invalidateFileHistory = () => {
+    fileHistoryListGeneration += 1;
+    fileHistoryDiffGeneration += 1;
+    fileHistoryBlameGeneration += 1;
+  };
+
+  // Compare endpoints are not a sufficient response owner: two background
+  // refreshes can target the same base/head, and two full-diff requests can
+  // target the same selected path. Keep independent latest-start generations
+  // for the file-list/totals read and the selected-file diff read.
+  let compareListGeneration = 0;
+  let compareDiffGeneration = 0;
+  const claimCompareList = () => ++compareListGeneration;
+  const claimCompareDiff = () => ++compareDiffGeneration;
+  const invalidateCompare = () => {
+    compareListGeneration += 1;
+    compareDiffGeneration += 1;
+  };
+
   return {
     selectCommit: async (id) => get().selectCommitMulti(id ?? "", {}),
 
@@ -68,7 +101,10 @@ export function createRepoSelectionActions(
       // through to "history" once none of them outranks the tab. A *working*
       // file selection is kept — it doesn't outrank the graph (the inspector
       // shows it); only a committed file's review takes over the center pane.
+      invalidateFileHistory();
       set((s) => ({
+        fileSelectionRequestId: s.fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: null,
         fileHistory: null,
         fileView: null,
@@ -97,8 +133,11 @@ export function createRepoSelectionActions(
       // diff across the whole selection (GL-68/GL-69): the net change per file,
       // for any selection (contiguous or not — the backend composes it).
       const multi = selectedCommits.length > 1;
+      const fileSelectionRequestId = get().fileSelectionRequestId + 1;
 
       set({
+        fileSelectionRequestId,
+        diffLoading: false,
         selectedCommit: focus,
         selectedCommits,
         selectionAnchor: anchor,
@@ -124,11 +163,15 @@ export function createRepoSelectionActions(
 
       if (!focus) return;
       const repoPath = summary.path;
+      const repoSession = currentPublishedRepoSession();
       // Don't let a single-commit fetch publish into a newer selection or a
       // different repo (a slow reject after a repo switch must not flash a stale
       // error onto the new repo's view).
       const fresh = () =>
-        get().summary?.path === repoPath && !get().selectionDiff && get().selectedCommit === focus;
+        repoSessionIsCurrent(get, repoPath, repoSession) &&
+        get().fileSelectionRequestId === fileSelectionRequestId &&
+        !get().selectionDiff &&
+        get().selectedCommit === focus;
       set({ diffLoading: true });
       try {
         const files = await api.commitFiles(repoPath, focus);
@@ -145,7 +188,9 @@ export function createRepoSelectionActions(
     // Select the WIP node — like selecting a commit, but it inspects the working
     // changes in the right panel instead of opening the changes/review view.
     selectWip: () =>
-      set({
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         wipSelected: true,
         fileHistory: null,
         compare: null,
@@ -157,7 +202,7 @@ export function createRepoSelectionActions(
         selectedFile: null,
         fileDiff: null,
         commitFiles: [],
-      }),
+      })),
 
     ensureWorkingFileSelection: () => {
       const { changes, selectedFile } = get();
@@ -263,7 +308,13 @@ export function createRepoSelectionActions(
       }
     },
 
-    clearSelectedFile: () => set({ selectedFile: null, fileDiff: null, diffLoading: false }),
+    clearSelectedFile: () =>
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        selectedFile: null,
+        fileDiff: null,
+        diffLoading: false,
+      })),
 
     compareRange: (base, head, title) => {
       useUi.getState().openRangeReview(base, head, title);
@@ -273,12 +324,20 @@ export function createRepoSelectionActions(
       const { summary } = get();
       if (!summary) return;
       const requestPath = path;
-      // Stale-response guard token: a repo switch mid-request must not let this
-      // response publish into a different repo (the path/oid checks alone can
-      // collide when both repos share a relative path).
       const repoPath = summary.path;
-      const fresh = () => get().summary?.path === repoPath && get().fileHistory?.path === requestPath;
+      const session = currentPublishedRepoSession();
+      const generation = claimFileHistoryList();
+      // A new history route invalidates every child request from the prior
+      // route, even when it opens the same relative path again.
+      fileHistoryDiffGeneration += 1;
+      fileHistoryBlameGeneration += 1;
+      const fresh = () =>
+        generation === fileHistoryListGeneration &&
+        repoSessionIsCurrent(get, repoPath, session) &&
+        get().fileHistory?.path === requestPath;
       set({
+        fileSelectionRequestId: get().fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: null,
         fileView: null,
         fileHistory: {
@@ -295,10 +354,12 @@ export function createRepoSelectionActions(
           selectedPath: null,
           selectedDiff: null,
           diffLoading: false,
+          diffError: null,
           blame: null,
           blameLoading: mode === "blame",
           blameError: null,
           blameRevision: null,
+          blamePath: null,
           blameSelectedOid: null,
         },
         error: null,
@@ -319,8 +380,12 @@ export function createRepoSelectionActions(
             : null,
         }));
         const first = page.entries[0];
-        if (first) void get().selectFileHistoryRevision(first.oid, first.path);
-        if (mode === "blame") void get().loadFileBlame(first?.oid ?? null);
+        if (first && fresh()) void get().selectFileHistoryRevision(first.oid, first.path);
+        // Consult the live mode, not the mode captured before the history read.
+        // A user may switch modes while this initial page is in flight.
+        if (fresh() && get().fileHistory?.mode === "blame") {
+          void get().loadFileBlame(first?.oid ?? null, first?.path ?? requestPath);
+        }
       } catch (e) {
         if (!fresh()) return;
         set((state) => ({
@@ -331,14 +396,66 @@ export function createRepoSelectionActions(
       }
     },
 
+    setFileHistoryMode: (mode, revision, pathOverride) => {
+      const current = get().fileHistory;
+      if (!current) return;
+      if (mode === "history") {
+        set((state) =>
+          state.fileHistory
+            ? {
+                fileHistory: {
+                  ...state.fileHistory,
+                  mode,
+                  // Direct-to-blame opens paint a placeholder spinner while
+                  // the history page resolves. It owns no blame request yet.
+                  ...(state.fileHistory.loading && state.fileHistory.blameRevision === null
+                    ? { blameLoading: false }
+                    : {}),
+                },
+              }
+            : {},
+        );
+        return;
+      }
+
+      const blameRevision = revision === undefined ? current.selectedOid : revision;
+      const blamePath = pathOverride ?? current.selectedPath ?? current.path;
+      const targetChanged =
+        current.blameRevision !== blameRevision || current.blamePath !== blamePath;
+      set((state) =>
+        state.fileHistory
+          ? {
+              fileHistory: {
+                ...state.fileHistory,
+                mode,
+                ...(state.fileHistory.loading ? { blameLoading: true } : {}),
+              },
+            }
+          : {},
+      );
+      // The initial list chooses the first revision and starts blame once it
+      // lands. Until then there is no stable revision to request here.
+      if (current.loading) return;
+      if (targetChanged || (!current.blameLoading && current.blameRevision === null)) {
+        void get().loadFileBlame(blameRevision, blamePath);
+      }
+    },
+
     loadMoreFileHistory: async () => {
       const { summary, fileHistory } = get();
       if (!summary || !fileHistory || fileHistory.loadingMore || !fileHistory.hasMore) return;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
-      const fresh = () => get().summary?.path === repoPath && get().fileHistory?.path === requestPath;
+      const session = currentPublishedRepoSession();
+      const generation = claimFileHistoryList();
+      const fresh = () =>
+        generation === fileHistoryListGeneration &&
+        repoSessionIsCurrent(get, repoPath, session) &&
+        get().fileHistory?.path === requestPath;
       set((state) => ({
-        fileHistory: state.fileHistory ? { ...state.fileHistory, loadingMore: true } : null,
+        fileHistory: state.fileHistory
+          ? { ...state.fileHistory, loadingMore: true, error: null }
+          : null,
       }));
       try {
         const page = await api.fileHistory(repoPath, requestPath, fileHistory.nextOffset, 100);
@@ -371,15 +488,20 @@ export function createRepoSelectionActions(
       const filePath = pathOverride ?? fileHistory.path;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
+      const session = currentPublishedRepoSession();
+      const generation = claimFileHistoryDiff();
       const fresh = () => {
         const current = get().fileHistory;
         return (
-          get().summary?.path === repoPath &&
+          generation === fileHistoryDiffGeneration &&
+          repoSessionIsCurrent(get, repoPath, session) &&
           current?.path === requestPath &&
           current.selectedOid === oid
         );
       };
       set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: state.fileHistory
           ? {
               ...state.fileHistory,
@@ -387,7 +509,7 @@ export function createRepoSelectionActions(
               selectedPath: filePath,
               selectedDiff: null,
               diffLoading: true,
-              error: null,
+              diffError: null,
             }
           : null,
       }));
@@ -403,7 +525,7 @@ export function createRepoSelectionActions(
         if (!fresh()) return;
         set((state) => ({
           fileHistory: state.fileHistory
-            ? { ...state.fileHistory, diffLoading: false, error: String(e) }
+            ? { ...state.fileHistory, diffLoading: false, diffError: String(e) }
             : null,
         }));
       }
@@ -414,6 +536,8 @@ export function createRepoSelectionActions(
       if (!summary || !fileHistory) return;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
+      const session = currentPublishedRepoSession();
+      const generation = claimFileHistoryBlame();
       const blameRevision = revision ?? fileHistory.selectedOid;
       // Blame the path the file had at the target revision (renames change it),
       // falling back to the current path when no historical path is known.
@@ -421,9 +545,11 @@ export function createRepoSelectionActions(
       const fresh = () => {
         const current = get().fileHistory;
         return (
-          get().summary?.path === repoPath &&
+          generation === fileHistoryBlameGeneration &&
+          repoSessionIsCurrent(get, repoPath, session) &&
           current?.path === requestPath &&
-          current.blameRevision === blameRevision
+          current.blameRevision === blameRevision &&
+          current.blamePath === blamePath
         );
       };
       set((state) => ({
@@ -433,6 +559,7 @@ export function createRepoSelectionActions(
               blameLoading: true,
               blameError: null,
               blameRevision,
+              blamePath,
               blameSelectedOid: null,
             }
           : null,
@@ -457,22 +584,43 @@ export function createRepoSelectionActions(
 
     selectBlameLine: (oid) =>
       set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: state.fileHistory
           ? { ...state.fileHistory, blameSelectedOid: oid }
           : null,
       })),
 
-    closeFileHistory: () => set({ fileHistory: null }),
+    closeFileHistory: () => {
+      invalidateFileHistory();
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
+        fileHistory: null,
+      }));
+    },
 
     openCompare: async ({ base, head, baseLabel, headLabel, scope, title }) => {
       const { summary } = get();
       if (!summary) return;
       const repoPath = summary.path;
+      const generation = claimCompareList();
+      invalidateFileHistory();
+      // A new comparison invalidates any selected-file diff from the previous
+      // route, including an A -> B -> A endpoint cycle.
+      compareDiffGeneration += 1;
       const fresh = () => {
         const cur = get().compare;
-        return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
+        return (
+          generation === compareListGeneration &&
+          get().summary?.path === repoPath &&
+          cur?.base === base &&
+          cur.head === head
+        );
       };
       set({
+        fileSelectionRequestId: get().fileSelectionRequestId + 1,
+        diffLoading: false,
         fileHistory: null,
         fileView: null,
         compare: {
@@ -515,7 +663,7 @@ export function createRepoSelectionActions(
             : null,
         }));
         const first = result.files[0];
-        if (first) void get().selectCompareFile(first.path);
+        if (first && fresh()) void get().selectCompareFile(first.path);
       } catch (e) {
         if (!fresh()) return;
         set((state) => ({
@@ -529,9 +677,11 @@ export function createRepoSelectionActions(
       if (!summary || !compare) return;
       const { base, head } = compare;
       const repoPath = summary.path;
+      const generation = claimCompareDiff();
       const fresh = () => {
         const cur = get().compare;
         return (
+          generation === compareDiffGeneration &&
           get().summary?.path === repoPath &&
           cur?.base === base &&
           cur.head === head &&
@@ -539,8 +689,17 @@ export function createRepoSelectionActions(
         );
       };
       set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
         compare: state.compare
-          ? { ...state.compare, selectedPath: path, selectedDiff: null, diffLoading: true, diffError: null }
+          ? {
+              ...state.compare,
+              selectedPath: path,
+              selectedDiff:
+                state.compare.selectedPath === path ? state.compare.selectedDiff : null,
+              diffLoading: true,
+              diffError: null,
+            }
           : null,
       }));
       try {
@@ -566,9 +725,24 @@ export function createRepoSelectionActions(
       if (!summary || !compare) return;
       const { base, head } = compare;
       const repoPath = summary.path;
+      const generation = claimCompareList();
+      // The refreshed file list defines the selected diff's snapshot too. Stop
+      // an older diff from landing while this newer list read is still pending.
+      compareDiffGeneration += 1;
+      // The invalidated diff can no longer clear its own spinner. Keep the last
+      // good diff visible while the list refresh runs; a winning list result
+      // starts a fresh selected-file request (and spinner) below.
+      set((state) => ({
+        compare: state.compare ? { ...state.compare, diffLoading: false } : null,
+      }));
       const fresh = () => {
         const cur = get().compare;
-        return get().summary?.path === repoPath && cur?.base === base && cur.head === head;
+        return (
+          generation === compareListGeneration &&
+          get().summary?.path === repoPath &&
+          cur?.base === base &&
+          cur.head === head
+        );
       };
       try {
         const result = await api.compareRefs(repoPath, base, head);
@@ -592,32 +766,10 @@ export function createRepoSelectionActions(
         const selectedPath = get().compare?.selectedPath ?? null;
         const stillThere = selectedPath && result.files.some((f) => f.path === selectedPath);
         if (stillThere) {
-          // Ref-to-ref comparisons are pinned to immutable commits: if the file
-          // set and totals came back byte-identical, the selected file's diff
-          // can't have changed, so skip re-fetching it. Working-tree compares
-          // (head === null) can change content without moving line counts, so
-          // they always re-fetch to stay truthful.
-          const unchanged =
-            head !== null &&
-            result.add === compare.add &&
-            result.del === compare.del &&
-            result.ahead === compare.ahead &&
-            result.behind === compare.behind &&
-            result.files.length === compare.files.length &&
-            result.files.every((f, i) => {
-              const prev = compare.files[i];
-              return (
-                !!prev &&
-                prev.path === f.path &&
-                prev.status === f.status &&
-                prev.add === f.add &&
-                prev.del === f.del
-              );
-            });
-          if (!(unchanged && get().compare?.selectedDiff)) {
-            // Re-fetch the selected file's diff so it reflects the new endpoint state.
-            void get().selectCompareFile(selectedPath);
-          }
+          // Endpoints may be moving branch/ref names, not immutable object ids;
+          // equal file stats do not prove equal content. Every winning refresh
+          // therefore re-fetches the selected diff.
+          if (fresh()) void get().selectCompareFile(selectedPath);
         } else if (!selectedPath) {
           // Nothing selected (or selection cleared): land on the first file if any.
           const first = result.files[0]?.path ?? null;
@@ -658,6 +810,13 @@ export function createRepoSelectionActions(
       });
     },
 
-    closeCompare: () => set({ compare: null }),
+    closeCompare: () => {
+      invalidateCompare();
+      set((state) => ({
+        fileSelectionRequestId: state.fileSelectionRequestId + 1,
+        diffLoading: false,
+        compare: null,
+      }));
+    },
   };
 }

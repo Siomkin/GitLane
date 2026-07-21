@@ -1,9 +1,11 @@
 import { fileWriteGuard } from "@/lib/advancedRepoState";
+import type { DiscardFilePreview } from "@/lib/api";
 import { basename } from "@/lib/paths";
 import { ClockIcon, CopyIcon, FileTextIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
+import { previewConfirm } from "./previewConfirm";
 
 export function FileContextMenu() {
   const menu = useUi((s) => s.fileMenu);
@@ -12,7 +14,9 @@ export function FileContextMenu() {
   const discardFile = useRepo((s) => s.discardFile);
   const openFileHistory = useRepo((s) => s.openFileHistory);
   const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
+  const previewDiscardFile = useRepo((s) => s.previewDiscardFile);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
+  const repoPath = useRepo((s) => s.summary?.path ?? null);
   const changes = useRepo((s) => s.changes);
   if (!menu) return null;
 
@@ -71,6 +75,9 @@ export function FileContextMenu() {
   // Discard is a working-tree op — only offered on working-changes rows.
   if (discard) {
     const { staged } = discard;
+    const bucket = staged ? changes.staged : changes.unstaged;
+    const entry = bucket.find((file) => file.path === path);
+    const previousFile = entry?.status === "R" ? entry.previousPath ?? null : null;
     items.push({
       label: staged ? "Unstage & discard changes" : "Discard changes",
       icon: <TrashIcon className="h-4 w-4" />,
@@ -79,13 +86,22 @@ export function FileContextMenu() {
       disabledReason: fileGuard ?? undefined,
       sep: true,
       onClick: () =>
-        requestConfirm({
+        void previewConfirm<DiscardFilePreview>({
+          requestConfirm,
           title: `Discard changes to ${fileName}?`,
           message:
             "The file's working-tree changes will be permanently reverted. This can't be undone.",
           confirmLabel: staged ? "Unstage & discard" : "Discard changes",
           danger: true,
-          onConfirm: () => void discardFile(path, staged),
+          preview: () =>
+            repoPath
+              ? previewDiscardFile(repoPath, path, previousFile, staged)
+              : Promise.reject(new Error("No repository")),
+          onConfirm: (preview) => {
+            if (repoPath) {
+              void discardFile(repoPath, path, previousFile, staged, preview.expectedState);
+            }
+          },
         }),
     });
   }

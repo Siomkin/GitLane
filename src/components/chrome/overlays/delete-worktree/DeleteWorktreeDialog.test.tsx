@@ -27,6 +27,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { DeleteWorktreeDialog } from "./DeleteWorktreeDialog";
 import { useRepo } from "@/store/repo";
+import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 
@@ -39,6 +40,7 @@ const preview = {
   warnings: [
     "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.",
   ],
+  expectedOid: "feature-preview-oid",
 };
 
 /** Wire the IPC mock: a preview plus a controllable delete. */
@@ -140,6 +142,29 @@ describe("DeleteWorktreeDialog", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("does not refresh a reopened same-path repo session after the delete resolves", async () => {
+    const del = arm();
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ summary: { path: "/work/repo" } as never, refresh: refresh as never });
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    const button = await screen.findByRole("button", { name: "Delete anyway" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+
+    fireEvent.click(button);
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+    // A -> B -> A has the same displayed path at settlement, but it is a new
+    // published session and must not inherit the old dialog's refresh.
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: { path: "/work/other" } as never });
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: { path: "/work/repo" } as never });
+
+    await act(async () => del.resolve("Deleted feature and its worktree"));
+
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
   it("pins the delete to the starting repo when a switch lands during listener setup", async () => {
     const del = arm();
     useRepo.setState({
@@ -170,7 +195,11 @@ describe("DeleteWorktreeDialog", () => {
     // The delete targets the repo the dialog started on (/work/repo), never the
     // now-active /work/other.
     const call = invokeMock.mock.calls.find(([cmd]) => cmd === "delete_branch_with_worktree");
-    expect(call?.[1]).toMatchObject({ path: "/work/repo", branch: "feature" });
+    expect(call?.[1]).toMatchObject({
+      path: "/work/repo",
+      branch: "feature",
+      expectedOid: "feature-preview-oid",
+    });
     await act(async () => del.resolve("Deleted feature and its worktree"));
   });
 

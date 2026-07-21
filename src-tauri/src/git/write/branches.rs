@@ -1,10 +1,15 @@
 //! Branch, tag, patch, sequencer, and reset operations.
 
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
+use std::process::{Child, ChildStdin, ChildStdout, Stdio};
+use std::time::{Duration, Instant};
 
-use super::cli::{run_git, run_git_env_stable_diagnostics, run_git_with_input};
+use super::cli::{
+    finish, git_command, run_git, run_git_allow_exit_codes, run_git_env_stable_diagnostics,
+    run_git_with_input,
+};
 use super::head::{
     checkout_expected_branch, current_branch, ensure_commit_exists, ensure_expected_branch_tip,
     ensure_expected_head, ensure_revision_at, switch_branch, switch_detached,
@@ -245,11 +250,316 @@ pub fn create_branch(
     run_git(repo, &["branch", name, start_point])
 }
 
-/// Delete a local branch. `force` maps to `-D` (drops the merged-safety check).
-pub fn delete_branch(repo: &str, name: &str, force: bool) -> Result<String, String> {
+/// A prepared compare-and-swap deletion of one exact local branch ref.
+///
+/// `git update-ref --stdin` holds the ref lock between `prepare` and `commit`.
+/// The combined worktree flow uses that window to prove the previewed tip is
+/// still current *before* removing the checkout that owns it. Direct deletion
+/// uses the same primitive so it can reject a same-target symbolic ref while
+/// the ref is locked, rather than letting `--no-deref` delete a representation
+/// the preview did not describe.
+pub(super) struct PreparedBranchDeletion {
+    child: Child,
+    input: Option<ChildStdin>,
+    output: BufReader<ChildStdout>,
+    finished: bool,
+}
+
+impl PreparedBranchDeletion {
+    fn send(&mut self, command: &str) -> Result<(), String> {
+        let input = self
+            .input
+            .as_mut()
+            .ok_or_else(|| "The branch deletion transaction is already closed.".to_string())?;
+        input
+            .write_all(command.as_bytes())
+            .and_then(|_| input.flush())
+            .map_err(|error| format!("Could not write the branch deletion transaction: {error}"))
+    }
+
+    fn expect(&mut self, expected: &str) -> Result<(), String> {
+        let mut line = String::new();
+        match self.output.read_line(&mut line) {
+            Ok(0) => Err(self.closed_early(expected)),
+            Ok(_) if line.trim_end() == expected => Ok(()),
+            Ok(_) => Err(format!(
+                "Git returned an unexpected branch deletion response: {}",
+                line.trim_end()
+            )),
+            Err(error) => Err(format!(
+                "Could not read the branch deletion transaction: {error}"
+            )),
+        }
+    }
+
+    fn closed_early(&mut self, expected: &str) -> String {
+        self.input.take();
+        let status = self.child.wait();
+        let mut stderr = String::new();
+        if let Some(mut pipe) = self.child.stderr.take() {
+            let _ = pipe.read_to_string(&mut stderr);
+        }
+        self.finished = true;
+        let detail = crate::redact::redact_secrets(stderr.trim());
+        if detail.is_empty() {
+            match status {
+                Ok(status) => format!(
+                    "Git closed the branch deletion transaction before {expected} ({status})."
+                ),
+                Err(error) => {
+                    format!("Git closed the branch deletion transaction before {expected}: {error}")
+                }
+            }
+        } else {
+            detail
+        }
+    }
+
+    fn finish(mut self, command: &'static str, response: &'static str) -> Result<(), String> {
+        self.send(command)?;
+        self.expect(response)?;
+        self.input.take();
+
+        let mut stdout = String::new();
+        self.output.read_to_string(&mut stdout).map_err(|error| {
+            format!("Could not finish the branch deletion transaction: {error}")
+        })?;
+        let mut stderr = String::new();
+        if let Some(mut pipe) = self.child.stderr.take() {
+            pipe.read_to_string(&mut stderr)
+                .map_err(|error| format!("Could not read Git's branch deletion error: {error}"))?;
+        }
+        let status = self.child.wait().map_err(|error| {
+            format!("Could not wait for the branch deletion transaction: {error}")
+        })?;
+        self.finished = true;
+        finish(status, &stdout, &stderr, &["update-ref", "--stdin"]).map(|_| ())
+    }
+
+    pub(super) fn commit(self) -> Result<(), String> {
+        self.finish("commit\n", "commit: ok")
+    }
+
+    pub(super) fn abort(self) -> Result<(), String> {
+        self.finish("abort\n", "abort: ok")
+    }
+}
+
+impl Drop for PreparedBranchDeletion {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        if let Some(mut input) = self.input.take() {
+            let _ = input.write_all(b"abort\n");
+            let _ = input.flush();
+        }
+        // Closing stdin lets update-ref consume the abort and remove its lock.
+        // Give that graceful path a bounded window before killing a genuinely
+        // stuck child; an immediate SIGKILL can win before Git unlinks the ref
+        // lock it acquired during `prepare`.
+        let deadline = Instant::now() + Duration::from_millis(250);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => {
+                    self.finished = true;
+                    return;
+                }
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Ok(None) | Err(_) => break,
+            }
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.finished = true;
+    }
+}
+
+pub(super) fn checked_branch_ref(repo: &str, name: &str) -> Result<String, String> {
     ensure_operand(name)?;
-    let flag = if force { "-D" } else { "-d" };
-    run_git(repo, &["branch", flag, name])
+    let branch_ref = format!("refs/heads/{name}");
+    // The transaction protocol is line-delimited. Validate the fully-qualified
+    // ref before interpolation so control characters and invalid ref syntax can
+    // never become a second update-ref command.
+    run_git(repo, &["check-ref-format", "--branch", name])?;
+    run_git(repo, &["check-ref-format", &branch_ref])?;
+    Ok(branch_ref)
+}
+
+fn ensure_canonical_object_id(repo: &str, oid: &str) -> Result<(), String> {
+    let format = run_git(repo, &["rev-parse", "--show-object-format"])?;
+    let length = match format.lines().next().unwrap_or("").trim() {
+        "sha1" => 40,
+        "sha256" => 64,
+        other => return Err(format!("Unsupported Git object format {other:?}.")),
+    };
+    if oid.len() != length
+        || !oid
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(
+            "The expected branch oid is not a canonical full object id. Refresh and try again."
+                .to_string(),
+        );
+    }
+    // A canonical-looking but nonexistent object is not a preview lease.
+    run_git(repo, &["cat-file", "-e", &format!("{oid}^{{object}}")]).map(|_| ())
+}
+
+pub(super) fn prepare_branch_deletion(
+    repo: &str,
+    name: &str,
+    expected_oid: &str,
+) -> Result<PreparedBranchDeletion, String> {
+    let branch_ref = checked_branch_ref(repo, name)?;
+    ensure_canonical_object_id(repo, expected_oid)?;
+
+    let mut command = git_command(repo)?;
+    command
+        .args([
+            "update-ref",
+            "-m",
+            "delete branch with exact tip",
+            "--stdin",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Could not start the branch deletion transaction: {error}"))?;
+    let input = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Git did not open the branch deletion transaction input.".to_string())?;
+    let output = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Git did not open the branch deletion transaction output.".to_string())?;
+    let mut transaction = PreparedBranchDeletion {
+        child,
+        input: Some(input),
+        output: BufReader::new(output),
+        finished: false,
+    };
+    transaction.send("start\n")?;
+    transaction.expect("start: ok")?;
+    // In update-ref's stdin protocol `option no-deref` applies to the next ref
+    // command only. Keep it adjacent to `delete`; a command-line `--no-deref`
+    // does not express that per-command guarantee on every supported Git.
+    transaction.send(&format!(
+        "option no-deref\ndelete {branch_ref} {expected_oid}\nprepare\n"
+    ))?;
+    transaction.expect("prepare: ok")?;
+    Ok(transaction)
+}
+
+pub(super) fn ensure_branch_ref_is_direct(repo: &str, name: &str) -> Result<(), String> {
+    let branch_ref = checked_branch_ref(repo, name)?;
+    let symbolic_target =
+        run_git_allow_exit_codes(repo, &["symbolic-ref", "--quiet", &branch_ref], &[1])?;
+    if symbolic_target.trim().is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{branch_ref} became a symbolic ref. Refresh and preview the deletion again."
+        ))
+    }
+}
+
+pub(super) fn ensure_branch_not_checked_out(repo: &str, name: &str) -> Result<(), String> {
+    if let Some(owner) = super::worktrees::worktrees(repo)?
+        .into_iter()
+        .find(|worktree| worktree.branch.as_deref() == Some(name))
+    {
+        return Err(format!(
+            "Cannot delete branch {name}: it is checked out at {}.",
+            owner.path
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_branch_merged(repo: &str, name: &str, expected_oid: &str) -> Result<(), String> {
+    let branch_ref = format!("refs/heads/{name}");
+    let upstream = run_git(
+        repo,
+        &[
+            "for-each-ref",
+            "--format=%(upstream)",
+            "--count=1",
+            &branch_ref,
+        ],
+    )?;
+    let destination = upstream.lines().next().unwrap_or("").trim();
+    let destination = if destination.is_empty() {
+        "HEAD"
+    } else {
+        destination
+    };
+    if run_git(
+        repo,
+        &["merge-base", "--is-ancestor", expected_oid, destination],
+    )
+    .is_err()
+    {
+        return Err(format!(
+            "The branch {name} is not fully merged into {destination}. Use force delete to remove it."
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn cleanup_deleted_branch_config(repo: &str, name: &str) -> Result<(), String> {
+    ensure_operand(name)?;
+    run_git_allow_exit_codes(
+        repo,
+        &[
+            "config",
+            "--local",
+            "--remove-section",
+            &format!("branch.{name}"),
+        ],
+        &[128],
+    )
+    .map(|_| ())
+}
+
+pub(super) fn deleted_branch_message(repo: &str, name: &str) -> String {
+    match cleanup_deleted_branch_config(repo, name) {
+        Ok(()) => format!("Deleted {name}"),
+        Err(error) => {
+            format!("Deleted {name}, but its local branch settings could not be removed: {error}")
+        }
+    }
+}
+
+/// Delete the exact local branch ref the caller previewed. `force=false`
+/// preserves `git branch -d`'s merged-safety check; either mode refuses a
+/// checked-out branch and uses a prepared compare-and-swap ref transaction.
+pub fn delete_branch(
+    repo: &str,
+    name: &str,
+    expected_oid: &str,
+    force: bool,
+) -> Result<String, String> {
+    checked_branch_ref(repo, name)?;
+    ensure_canonical_object_id(repo, expected_oid)?;
+    if !force {
+        ensure_branch_merged(repo, name, expected_oid)?;
+    }
+
+    let deletion = prepare_branch_deletion(repo, name, expected_oid)?;
+    ensure_branch_ref_is_direct(repo, name)?;
+    ensure_branch_not_checked_out(repo, name)?;
+    deletion.commit()?;
+    // The ref commit is authoritative. Config cleanup is a secondary hygiene
+    // step and must not turn a completed destructive mutation into a reported
+    // total failure; preserve the success while surfacing a qualified warning.
+    Ok(deleted_branch_message(repo, name))
 }
 
 /// Rename a branch.
@@ -835,12 +1145,16 @@ pub fn reset_branch(
     reset(repo, target_oid, mode)
 }
 
-/// Delete a local tag (`git tag -d <name>`). The tag ref is removed locally
-/// only; the remote copy (if any) is untouched — that's
+/// Delete a local tag only when it still points at `expected_oid`. `update-ref`
+/// performs the comparison and deletion atomically, so a tag moved after the
+/// UI opened its confirmation cannot be erased accidentally. The tag ref is
+/// removed locally only; the remote copy (if any) is untouched — that's
 /// [`super::delete_remote_tag`], and while the tag still exists on a remote the
 /// next Fetch's `refs/tags/*` import brings it back.
-pub fn delete_tag(repo: &str, name: &str) -> Result<String, String> {
+pub fn delete_tag(repo: &str, name: &str, expected_oid: &str) -> Result<String, String> {
     ensure_operand(name)?;
-    run_git(repo, &["tag", "-d", name])?;
+    ensure_operand(expected_oid)?;
+    let reference = format!("refs/tags/{name}");
+    run_git(repo, &["update-ref", "-d", &reference, expected_oid])?;
     Ok(format!("Deleted tag {name}"))
 }

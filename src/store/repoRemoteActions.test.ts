@@ -16,10 +16,20 @@ const summary: RepoSummary = {
   detached: false,
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue("");
-  useRepo.setState({ summary: null });
+  useRepo.setState({ summary: null, remotes: [] });
 });
 
 describe("repoRemoteActions", () => {
@@ -78,5 +88,53 @@ describe("repoRemoteActions", () => {
     );
     await listRemotes();
     expect(invokeMock).toHaveBeenCalledWith("list_remotes", { path: "/other" });
+  });
+
+  it("publishes and returns only the latest overlapping remote list", async () => {
+    useRepo.setState({ summary, remotes: [] });
+    const slow = deferred<never[]>();
+    const newest = [{
+      name: "upstream",
+      fetchUrl: "https://example.com/new.git",
+      pushUrl: "https://example.com/new.git",
+      isDefault: true,
+    }];
+    let calls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd !== "list_remotes") return Promise.resolve("");
+      calls += 1;
+      return calls === 1 ? slow.promise : Promise.resolve(newest);
+    });
+
+    const oldLoad = useRepo.getState().listRemotes();
+    await expect(useRepo.getState().listRemotes()).resolves.toEqual(newest);
+    slow.resolve([]);
+
+    await expect(oldLoad).resolves.toEqual(newest);
+    expect(useRepo.getState().remotes).toEqual(newest);
+  });
+
+  it("neutralizes a stale remote-list rejection after a newer success", async () => {
+    useRepo.setState({ summary, remotes: [] });
+    const slow = deferred<never[]>();
+    const newest = [{
+      name: "origin",
+      fetchUrl: "https://example.com/new.git",
+      pushUrl: "https://example.com/new.git",
+      isDefault: true,
+    }];
+    let calls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd !== "list_remotes") return Promise.resolve("");
+      calls += 1;
+      return calls === 1 ? slow.promise : Promise.resolve(newest);
+    });
+
+    const stale = useRepo.getState().listRemotes();
+    await useRepo.getState().listRemotes();
+    slow.reject(new Error("old remote failure"));
+
+    await expect(stale).resolves.toEqual(newest);
+    expect(useRepo.getState().remotes).toEqual(newest);
   });
 });

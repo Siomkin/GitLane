@@ -28,6 +28,19 @@ beforeEach(() => {
     terminalExpanded: false,
     commitMsg: "",
     agentCommitDraft: null,
+    repoSettingsOpen: false,
+    createBranchOpen: false,
+    createBranchStart: null,
+    createBranchName: null,
+    createPrOpen: false,
+    createPrGeneration: 0,
+    recoveryOpen: false,
+    confirm: null,
+    prompt: null,
+    handoff: null,
+    handoffRunning: false,
+    deleteWorktree: null,
+    removeDetached: null,
   });
   useTerminals.setState({ byRepo: {} });
   useRepo.setState({ summary: null });
@@ -71,7 +84,7 @@ describe("view-tab transitions", () => {
     expect(useUi.getState().leftTab).toBe("pulls");
   });
 
-  it("onRepoSwitched resets the view, history filters, notes, and transient chrome", () => {
+  it("onRepoSwitched atomically clears repo-bound views, dialogs, drafts, and chrome", () => {
     useUi.setState({
       leftTab: "changes",
       changesAll: true,
@@ -79,6 +92,20 @@ describe("view-tab transitions", () => {
       // render the previous repo's oid against the new repo.
       stackedReview: { oid: "abc123", title: "Old repo commit" },
       navOpen: true,
+      draggingFrom: { name: "old-branch", kind: "local" },
+      actionMenu: {
+        x: 1,
+        y: 2,
+        from: { name: "old-branch", kind: "local" },
+        to: { kind: "commit", sha: "old-oid", shortSha: "old" },
+      },
+      contextMenu: { x: 1, y: 2, branch: "old-branch", isCurrent: false },
+      commitMenu: { x: 1, y: 2, sha: "old-oid", shortSha: "old" },
+      stashMenu: { x: 1, y: 2, oid: "old-stash", message: "old stash" },
+      fileMenu: { x: 1, y: 2, path: "shared.txt", discard: { staged: false } },
+      wipMenu: { x: 1, y: 2 },
+      tagMenu: { x: 1, y: 2, name: "v1", sha: "old-oid", refOid: "old-tag-oid" },
+      worktreeMenu: { x: 1, y: 2, path: "/old-wt", name: "old-wt", isMain: false },
       reviewNotes: [
         {
           id: "work#a.ts#R1-R1",
@@ -106,6 +133,31 @@ describe("view-tab transitions", () => {
         repoPath: "/old-repo",
         startedAt: 1,
       },
+      repoSettingsOpen: true,
+      createBranchOpen: true,
+      createBranchStart: "old-base-oid",
+      createBranchName: "old-branch-name",
+      createPrOpen: true,
+      createPrGeneration: 41,
+      recoveryOpen: true,
+      confirm: { title: "Reset old repo?", onConfirm: () => {} },
+      prompt: { title: "Old repo tag", onSubmit: () => {} },
+      handoff: { branch: "old-branch", sourcePath: "/old-repo", sourceChanges: 1 },
+      handoffRunning: false,
+      deleteWorktree: { branch: "old-branch", worktreePath: "/old-worktree" },
+      removeDetached: {
+        targets: [
+          {
+            name: "old-detached",
+            path: "/old-detached",
+            branch: null,
+            head: "old-detached-oid",
+            isMain: false,
+            locked: false,
+            prunable: false,
+          },
+        ],
+      },
     });
 
     useUi.getState().onRepoSwitched();
@@ -115,6 +167,17 @@ describe("view-tab transitions", () => {
     expect(s.changesAll).toBe(false);
     expect(s.stackedReview).toBeNull();
     expect(s.navOpen).toBe(false);
+    expect(s.draggingFrom).toBeNull();
+    expect(s).toMatchObject({
+      actionMenu: null,
+      contextMenu: null,
+      commitMenu: null,
+      stashMenu: null,
+      fileMenu: null,
+      wipMenu: null,
+      tagMenu: null,
+      worktreeMenu: null,
+    });
     expect(s.reviewNotes).toEqual([]);
     expect(s.agentMessageOpen).toBe(false);
     expect(s.histSearchOpen).toBe(false);
@@ -124,6 +187,28 @@ describe("view-tab transitions", () => {
     expect(s.onboardingOpen).toBe(false);
     expect(s.commitMsg).toBe("");
     expect(s.agentCommitDraft).toBeNull();
+    expect(s.repoSettingsOpen).toBe(false);
+    expect(s.createBranchOpen).toBe(false);
+    expect(s.createBranchStart).toBeNull();
+    expect(s.createBranchName).toBeNull();
+    expect(s.createPrOpen).toBe(false);
+    expect(s.createPrGeneration).toBe(42);
+    expect(s.recoveryOpen).toBe(false);
+    expect(s.confirm).toBeNull();
+    expect(s.prompt).toBeNull();
+    expect(s.handoff).toBeNull();
+    expect(s.deleteWorktree).toBeNull();
+    expect(s.removeDetached).toBeNull();
+  });
+
+  it("keeps an in-flight handoff through its intentional destination switch", () => {
+    const handoff = { branch: "feature", sourcePath: "/source", sourceChanges: 1 };
+    useUi.setState({ handoff, handoffRunning: true });
+
+    useUi.getState().onRepoSwitched();
+
+    expect(useUi.getState().handoff).toEqual(handoff);
+    useUi.setState({ handoff: null, handoffRunning: false });
   });
 
   it("keeps terminal visibility scoped to each repository", () => {
