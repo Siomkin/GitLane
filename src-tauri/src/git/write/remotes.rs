@@ -172,15 +172,10 @@ fn configured_push_urls(repo: &str, name: &str) -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// Resolve exactly one effective push endpoint for a remote and return it with
-/// an opaque digest safe to carry across IPC. `remote get-url --push --all`
-/// applies Git's URL rewrite rules, so this captures the target the transport
-/// would really contact rather than merely hashing raw config text.
-///
-/// Force-push fails closed on multi-push remotes: one refspec would otherwise be
-/// sent to every configured push URL. Credential-bearing URLs are rejected so a
-/// secret never enters process argv or influences an IPC token.
-pub(super) fn push_endpoint_token(repo: &str, remote: &str) -> Result<String, String> {
+/// Resolve exactly one effective push endpoint. `remote get-url --push --all`
+/// applies Git's URL rewrite rules, so this is the target the transport would
+/// really contact rather than merely the raw configured value.
+fn push_endpoint(repo: &str, remote: &str) -> Result<String, String> {
     ensure_operand(remote)?;
     let endpoint = if remote == "." {
         ".".to_string()
@@ -215,6 +210,14 @@ pub(super) fn push_endpoint_token(repo: &str, remote: &str) -> Result<String, St
     };
     ensure_operand(&endpoint)?;
     ensure_url_has_no_credentials(&endpoint)?;
+    Ok(endpoint)
+}
+
+/// Return an opaque digest of the one effective push endpoint, safe to carry
+/// across IPC. Force-push fails closed on multi-push remotes: one refspec would
+/// otherwise be sent to every configured push URL.
+pub(super) fn push_endpoint_token(repo: &str, remote: &str) -> Result<String, String> {
+    let endpoint = push_endpoint(repo, remote)?;
 
     let mut digest = Sha256::new();
     digest.update(b"gitlane-force-push-endpoint-v1\0");
@@ -747,10 +750,18 @@ pub fn delete_remote_tag(
         }
         Err(output) => {
             // File transports report an already-absent leased ref as a generic
-            // stale-info rejection. Confirm absence directly before treating
-            // that desired end state as success. A moved ref produces output
-            // here and therefore preserves the original lease failure.
-            match run_transport(repo, cred, &["ls-remote", "--refs", remote, &destination]) {
+            // stale-info rejection. Confirm absence on the same effective push
+            // endpoint before treating that desired end state as success. A
+            // moved ref produces output here and therefore preserves the
+            // original lease failure.
+            let probe = push_endpoint(repo, remote).and_then(|endpoint| {
+                run_transport(
+                    repo,
+                    cred,
+                    &["ls-remote", "--refs", &endpoint, &destination],
+                )
+            });
+            match probe {
                 Ok(found) if found.trim().is_empty() => {
                     Ok(format!("Tag {name} was not on {remote}"))
                 }

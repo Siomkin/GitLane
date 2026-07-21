@@ -1068,12 +1068,14 @@ fn pull_branch_rejects_a_checkout_that_lands_during_fetch() {
     seed.git_ok(&["push", "-q", "origin", "main"]);
 
     let marker = remote.0.join("fetch-started");
+    let release = remote.0.join("allow-fetch");
     let helper = remote.0.join("slow-upload-pack.sh");
     std::fs::write(
         &helper,
         format!(
-            "#!/bin/sh\ntouch '{}'\nsleep 1\nexec git-upload-pack \"$1\"\n",
-            marker.display()
+            "#!/bin/sh\ntouch '{}'\nattempt=0\nwhile [ ! -e '{}' ] && [ \"$attempt\" -lt 200 ]; do\n  attempt=$((attempt + 1))\n  sleep 0.05\ndone\nexec git-upload-pack \"$1\"\n",
+            marker.display(),
+            release.display()
         ),
     )
     .unwrap();
@@ -1096,14 +1098,18 @@ fn pull_branch_rejects_a_checkout_that_lands_during_fetch() {
             &TransportCredential::None,
         )
     });
-    for _ in 0..100 {
+    for _ in 0..500 {
         if marker.exists() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert!(marker.exists(), "the delayed fetch did not start");
+    if !marker.exists() {
+        let early = pull.join().expect("pull thread joins after early exit");
+        panic!("the delayed fetch did not start; pull completed first: {early:?}");
+    }
     client.git_ok(&["checkout", "-q", "wrong"]);
+    std::fs::write(&release, b"").expect("release delayed fetch");
 
     let error = pull
         .join()
@@ -2175,6 +2181,39 @@ fn delete_remote_tag_refuses_to_remove_a_tag_moved_after_confirmation() {
     .expect_err("stale confirmation must not delete the moved remote tag");
 
     assert_eq!(rev_parse(&remote, "refs/tags/v1"), moved);
+}
+
+#[test]
+fn delete_remote_tag_checks_absence_on_the_push_endpoint() {
+    let repo = repo_with_file("delete-remote-tag-pushurl", "a.txt", b"one\n");
+    repo.git_ok(&["tag", "--no-sign", "v1"]);
+    let expected = rev_parse(&repo, "refs/tags/v1");
+
+    let fetch_remote = TempRepo::new("delete-remote-tag-fetch-url");
+    fetch_remote.git_ok(&["init", "-q", "--bare"]);
+    let push_remote = TempRepo::new("delete-remote-tag-push-url");
+    push_remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", fetch_remote.path()]);
+    repo.git_ok(&["remote", "set-url", "--push", "origin", push_remote.path()]);
+    repo.git_ok(&["push", "-q", "origin", "refs/tags/v1"]);
+
+    std::fs::write(repo.0.join("a.txt"), b"two\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "second"]);
+    repo.git_ok(&["tag", "--no-sign", "-f", "v1"]);
+    let moved = rev_parse(&repo, "refs/tags/v1");
+    repo.git_ok(&["push", "-q", "--force", "origin", "refs/tags/v1"]);
+
+    delete_remote_tag(
+        repo.path(),
+        "origin",
+        "v1",
+        &expected,
+        &TransportCredential::None,
+    )
+    .expect_err("an absent fetch URL must not hide a stale tag on the push URL");
+
+    assert_eq!(rev_parse(&push_remote, "refs/tags/v1"), moved);
 }
 
 #[test]

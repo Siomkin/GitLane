@@ -78,11 +78,19 @@ static GLAB_PRESENT: OnceLock<bool> = OnceLock::new();
 /// The single `glab` subprocess site (the GitLab analogue of `run_gh`). Runs
 /// `glab <args>` in `workdir` with the augmented PATH macOS GUI apps need, and
 /// returns stdout on success or a readable, secret-redacted error.
-pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, String> {
+fn glab_command(workdir: &str, args: &[&str]) -> Command {
     let mut cmd = Command::new("glab");
     cmd.current_dir(workdir).args(args);
     cmd.env("PATH", crate::shell::path());
+    // glab resolves repository and authenticated host from cwd. Keep inherited
+    // Git routing variables from redirecting that lookup to another checkout.
+    crate::git::clear_repository_local_env(&mut cmd);
     crate::shell::hide_console(&mut cmd);
+    cmd
+}
+
+pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, String> {
+    let mut cmd = glab_command(workdir, args);
 
     let output = cmd.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -327,6 +335,20 @@ fn gitlab_message(body: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::git::oauth::http::{testing::MockTransport, DEFAULT_RESPONSE_LIMIT};
+    use std::ffi::OsStr;
+
+    #[test]
+    fn glab_commands_clear_repository_local_environment() {
+        let command = glab_command(".", &["--version"]);
+        for key in crate::git::REPOSITORY_LOCAL_ENV_VARS {
+            assert!(
+                command
+                    .get_envs()
+                    .any(|(name, value)| name == OsStr::new(key) && value.is_none()),
+                "{key} must be removed from the glab subprocess environment"
+            );
+        }
+    }
 
     #[test]
     fn ordinary_json_can_exceed_the_oauth_response_limit() {
