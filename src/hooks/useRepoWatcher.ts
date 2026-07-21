@@ -32,7 +32,14 @@ export function useRepoWatcher(refresh: RefreshFn) {
     const resync = () => {
       if (document.hidden) return;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void refresh({ prs: false, quiet: true }), 150);
+      timer = setTimeout(() => {
+        void refresh({ prs: false, quiet: true });
+        // Coming back to the window is the one moment that's real evidence a
+        // *sibling* worktree moved — the user was plausibly just working in one.
+        // The watcher can't see them (it watches only the open worktree), so
+        // this is what keeps the graph's dirty dots honest.
+        useRepo.getState().refreshWorktreeDirty();
+      }, 150);
     };
     window.addEventListener("focus", resync);
     document.addEventListener("visibilitychange", resync);

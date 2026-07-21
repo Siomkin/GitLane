@@ -593,6 +593,16 @@ async fn worktree_dirty_state(
     blocking(move || git::write::worktree_dirty_state(&worktree_path)).await
 }
 
+/// Whether a linked worktree currently holds uncommitted work — one bit for the
+/// graph's dirty dot, so a branch checked out in another worktree reads as
+/// having unsaved work without opening it. A cheaper probe than
+/// `worktree_dirty_state` (no ignored pass, untracked directories collapsed);
+/// like it, it costs a `git status` and so never rides the worktree-list refresh.
+#[tauri::command]
+async fn worktree_is_dirty(worktree_path: String) -> Result<bool, String> {
+    blocking(move || git::write::worktree_is_dirty(&worktree_path)).await
+}
+
 /// Delete `branch` on `remote`, optionally pinned to that remote's bound
 /// GitHub account. Token is resolved server-side.
 #[tauri::command]
@@ -1975,6 +1985,7 @@ pub fn run() {
             push_tag,
             remove_worktree,
             worktree_dirty_state,
+            worktree_is_dirty,
             delete_remote_branch,
             force_push,
             discard_all,

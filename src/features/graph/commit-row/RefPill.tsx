@@ -3,17 +3,18 @@ import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
-import { useBranchWorktreeName } from "./useBranchWorktreeName";
+import { useBranchWorktree } from "./useBranchWorktree";
 import { refPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";
+import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
 
 export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current: boolean; targetSha: string }) {
   const openContextMenu = useUi((state) => state.openContextMenu);
   const openTagMenu = useUi((state) => state.openTagMenu);
   const checkoutBranch = useRepo((state) => state.checkoutBranch);
   const checkoutRemoteBranch = useRepo((state) => state.checkoutRemoteBranch);
-  const worktreeName = useBranchWorktreeName(refLabel.name, refLabel.kind === RefKind.Branch && !current);
-  const model = refPillModel(refLabel, current, worktreeName);
+  const worktree = useBranchWorktree(refLabel.name, refLabel.kind === RefKind.Branch && !current);
+  const model = refPillModel(refLabel, current, worktree?.name ?? null, worktree?.dirty ?? false);
   const name = refLabel.name;
   // The pill is nested in a droppable commit row, so stop drag events bubbling.
   const { isDropTarget, dndProps } = useBranchRefDrag(
@@ -67,6 +68,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
     >
       <PillGlyph icon={model.icon} />
       <span className="truncate">{name}</span>
+      {model.dirty && <WorktreeDirtyDot />}
     </span>
   );
 }

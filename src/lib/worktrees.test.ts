@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { RepoSummary, WorktreeInfo } from "@/lib/api";
 import {
   activeWorktree,
+  dirtyProbeCandidates,
   isActiveWorktreePath,
   isAgentManagedWorktree,
   isDetachedWorktree,
@@ -44,6 +45,31 @@ describe("isActiveWorktreePath", () => {
   it("returns false for a different path and for a null summary", () => {
     expect(isActiveWorktreePath(summary(), "/elsewhere")).toBe(false);
     expect(isActiveWorktreePath(null, "/repo")).toBe(false);
+  });
+});
+
+describe("dirtyProbeCandidates", () => {
+  it("skips the open worktree — the WIP row already shows its uncommitted work", () => {
+    const open = summary({ workdir: "/repo-wt-feature", path: "/repo-wt-feature" });
+    expect(dirtyProbeCandidates([main, linked, detachedLinked], open)).toEqual([
+      "/repo",
+      "/repo-wt-detached",
+    ]);
+  });
+
+  it("probes both branch and detached worktrees — each gets a pill in the graph", () => {
+    expect(dirtyProbeCandidates([main, linked, detachedLinked], summary())).toEqual([
+      "/repo-wt-feature",
+      "/repo-wt-detached",
+    ]);
+  });
+
+  it("skips bare and prunable entries, which have no working tree to be dirty", () => {
+    const bare = wt({ name: "bare", path: "/bare", isMain: false, bare: true });
+    const gone = wt({ name: "gone", path: "/gone", isMain: false, prunable: true });
+    expect(dirtyProbeCandidates([main, bare, gone, linked], summary())).toEqual([
+      "/repo-wt-feature",
+    ]);
   });
 });
 

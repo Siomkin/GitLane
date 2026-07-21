@@ -134,6 +134,27 @@ export function removableDetachedWorktrees(
   );
 }
 
+/** The worktrees whose uncommitted work the graph's dirty dot needs probed, as
+ * paths in list order.
+ *
+ * Only the worktrees the graph can actually dot: a branch pill wears the dot
+ * when its branch is checked out in *another* worktree, and a detached worktree
+ * pill is likewise only drawn for another worktree — the open one's dirty state
+ * is already the WIP row sitting at the top of the same graph, so probing it
+ * would spend a `git status` to duplicate a fact the working-changes snapshot
+ * already carries. Bare and prunable entries have no working tree to be dirty.
+ *
+ * Each path here costs a `git status` (see `worktree_is_dirty`), so keeping this
+ * set minimal is the whole performance story of the indicator. */
+export function dirtyProbeCandidates(
+  worktrees: WorktreeInfo[],
+  summary: RepoSummary | null,
+): string[] {
+  return worktrees
+    .filter((wt) => !wt.bare && !wt.prunable && !isActiveWorktreePath(summary, wt.path))
+    .map((wt) => wt.path);
+}
+
 /** What the toolbar's worktree indicator should show.
  * - `active`: the open repo is itself a linked worktree → name it + its path.
  *   This is the only state worth a permanent toolbar chip — it's the "you are

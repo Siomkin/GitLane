@@ -8,6 +8,9 @@ export interface DetachedWorktreeAt {
   name: string;
   path: string;
   isMain: boolean;
+  /** The worktree holds uncommitted work — the pill trails an amber dot.
+   * Best-effort: false until the probe lands (see `repoWorktreeDirty.ts`). */
+  dirty: boolean;
 }
 
 /** Detached worktrees (checked out to a commit, no branch) whose HEAD sits on
@@ -30,7 +33,12 @@ export function useDetachedWorktreesAt(commitId: string): DetachedWorktreeAt[] {
           wt.head === commitId &&
           !isActiveWorktreePath(s.summary, wt.path),
       )
-      .map((wt) => ({ name: worktreeName(wt, s.worktrees), path: wt.path, isMain: wt.isMain }));
+      .map((wt) => ({
+        name: worktreeName(wt, s.worktrees),
+        path: wt.path,
+        isMain: wt.isMain,
+        dirty: s.dirtyWorktrees.includes(wt.path),
+      }));
     return entries.length > 0 ? JSON.stringify(entries) : "";
   });
   return useMemo(() => (json === "" ? [] : (JSON.parse(json) as DetachedWorktreeAt[])), [json]);

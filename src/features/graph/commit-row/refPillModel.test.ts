@@ -34,6 +34,23 @@ describe("refPillModel", () => {
     expect(refPillModel(ref("branch"), false, null).title).toBeUndefined();
   });
 
+  it("dots a branch whose other worktree is dirty, and says so in the tooltip", () => {
+    const dirty = refPillModel(ref("branch"), false, "repo-feature", true);
+    expect(dirty.dirty).toBe(true);
+    expect(dirty.title).toBe("Checked out in worktree: repo-feature — uncommitted changes");
+    expect(refPillModel(ref("branch"), false, "repo-feature", false).dirty).toBe(false);
+  });
+
+  it("never dots a pill that isn't standing in for another worktree", () => {
+    // `worktreeDirty` describes that worktree, so with no worktree there is
+    // nothing for it to describe — the current branch's own uncommitted work is
+    // the WIP row, and tags/remotes aren't checkouts at all.
+    expect(refPillModel(ref("branch"), false, null, true).dirty).toBe(false);
+    expect(refPillModel(ref("branch", "main"), true, "wt", true).dirty).toBe(false);
+    expect(refPillModel(ref("tag", "v1"), false, "wt", true).dirty).toBe(false);
+    expect(refPillModel(ref("remote", "origin/x"), false, "wt", true).dirty).toBe(false);
+  });
+
   it("never leaks the worktree tooltip to current branches, tags, or remotes", () => {
     // In the app the hook's enabled-gate keeps worktreeName null for these;
     // the pure model must be safe for arbitrary callers too.
@@ -88,6 +105,22 @@ describe("combinedRefPillModel", () => {
     const two = combinedRefPillModel("main", 2, false, null);
     expect(two.remoteLabel).toBe("2 remotes");
     expect(two.title).toBe("main — local + 2 remotes in sync (click to split)");
+  });
+
+  it("dots the collapsed pill for a dirty other worktree, naming it in the tooltip", () => {
+    const dirty = combinedRefPillModel("feature", 1, false, "repo-feature", true);
+    expect(dirty.dirty).toBe(true);
+    expect(dirty.title).toBe(
+      "feature — local + 1 remote in sync (click to split), checked out in worktree: repo-feature — uncommitted changes",
+    );
+    const clean = combinedRefPillModel("feature", 1, false, "repo-feature", false);
+    expect(clean.dirty).toBe(false);
+    expect(clean.title).toBe(
+      "feature — local + 1 remote in sync (click to split), checked out in worktree: repo-feature",
+    );
+    // Current is the open worktree — its WIP row owns that story.
+    expect(combinedRefPillModel("main", 1, true, "wt", true).dirty).toBe(false);
+    expect(combinedRefPillModel("feature", 1, false, null, true).dirty).toBe(false);
   });
 
   it("styles current with the accent and everything else as a plain card", () => {

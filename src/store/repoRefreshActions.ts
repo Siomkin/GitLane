@@ -23,6 +23,7 @@ import {
 } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { persistTabInfo } from "./repoSession";
+import { probeDirtyWorktrees } from "./repoWorktreeDirty";
 import { useUi } from "./ui";
 import { GRAPH_PAGE_SIZE, type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
 
@@ -31,11 +32,17 @@ export function createRepoRefreshActions(
   get: RepoGet,
 ): Pick<
   RepoState,
-  "refresh" | "loadMoreHistory" | "loadReflog" | "searchHistory" | "suggestTreePaths"
+  | "refresh"
+  | "refreshWorktreeDirty"
+  | "loadMoreHistory"
+  | "loadReflog"
+  | "searchHistory"
+  | "suggestTreePaths"
 > {
   const { wentMissing, handleMissing } = createMissingRepoHandlers(set, get);
 
   return {
+    refreshWorktreeDirty: () => probeDirtyWorktrees(set, get, { force: true }),
     searchHistory: async (query) => {
       const repoPath = get().summary?.path;
       if (!repoPath) return { results: [], truncated: false, workTruncated: false };
@@ -258,6 +265,10 @@ export function createRepoRefreshActions(
         // See the worktree-scope path above: a clean tree leaves the changes view.
         if (noWip) useUi.getState().onWorkingTreeClean();
         persistTabInfo(get().tabInfoByPath);
+        // Pick up a worktree that appeared or vanished (the dirty dot's probe
+        // fires on that, not on every refresh — this refresh is our own commit
+        // or checkout, which can't have dirtied someone else's checkout).
+        probeDirtyWorktrees(set, get);
         // The remote list may have changed (terminal `git remote add/remove`),
         // which changes what the per-remote bindings resolve to — re-sync before
         // the PR reload below so it fetches as the right account (GL-129).

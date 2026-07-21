@@ -972,6 +972,13 @@ export const gitApi = {
   worktreeDirtyState: (worktreePath: string) =>
     invoke<WorktreeDirtyState>("worktree_dirty_state", { worktreePath }),
 
+  /** Whether a linked worktree currently holds uncommitted work — the single bit
+   * behind the graph's dirty dot. Cheaper than `worktreeDirtyState` (no ignored
+   * pass, untracked directories collapsed) because the dot needs no counts; it
+   * is still a `git status`, so callers probe off the refresh path. */
+  worktreeIsDirty: (worktreePath: string) =>
+    invoke<boolean>("worktree_is_dirty", { worktreePath }),
+
   /** Delete `branch` on `remote` (`git push <remote> --delete`), optionally as
    * the repo's bound auth. `branch` is the short name (no `remote/` prefix). */
   deleteRemoteBranch: (
