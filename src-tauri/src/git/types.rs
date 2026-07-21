@@ -510,6 +510,21 @@ pub struct DiscardFilePreview {
     pub expected_state: String,
 }
 
+/// Whole-worktree discard impact plus the exact repository, HEAD, index, and
+/// affected-leaf snapshot the later write must still observe. The opaque state
+/// commits to raw path bytes and file fingerprints; the explicit HEAD fields
+/// make the user-visible subject inspectable across IPC as well.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardAllPreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+    pub expected_state: String,
+    pub expected_head_branch: Option<String>,
+    pub expected_head_oid: Option<String>,
+}
+
 /// Per-path advanced repository state that would be misleading as a plain file
 /// change.
 #[derive(Debug, Clone, Serialize)]

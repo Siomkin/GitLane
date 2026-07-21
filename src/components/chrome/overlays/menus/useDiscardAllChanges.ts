@@ -28,6 +28,6 @@ export function useDiscardAllChanges(repoPath: string | null): () => void {
         repoPath
           ? api.previewDiscardAll(repoPath)
           : Promise.reject(new Error("No repository")),
-      onConfirm: () => void run(() => discardAll()),
+      onConfirm: (preview) => void run(() => discardAll(preview)),
     });
 }

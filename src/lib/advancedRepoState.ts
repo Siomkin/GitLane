@@ -90,6 +90,23 @@ export const guardedAdvancedWriteMessage = (changes: WorkingChanges): string | n
   return null;
 };
 
+/** Whole-tree discard needs a committed restore tree and cannot preserve
+ * sparse-index entries safely. Keep this
+ * stricter than ordinary stage/stash guards, which intentionally allow writes
+ * to visible paths inside the sparse checkout. */
+export const discardAllGuardMessage = (
+  changes: WorkingChanges,
+  unborn = false,
+): string | null => {
+  if (unborn) {
+    return "Discard all is unavailable before the first commit. Unstage or remove files individually, or use the terminal.";
+  }
+  if (advancedState(changes).sparseCheckout.enabled) {
+    return "Sparse checkout is enabled. Disable sparse checkout before using Discard all, or use the terminal.";
+  }
+  return guardedAdvancedWriteMessage(changes);
+};
+
 const pathIsInSparseCheckout = (path: string, patterns: string[]): boolean => {
   if (patterns.length === 0) return true;
   let included = false;

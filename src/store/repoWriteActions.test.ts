@@ -9,6 +9,7 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type {
   BranchInfo,
   CommitNode,
+  DiscardAllPreview,
   ForcePushPreview,
   GitTransportAuthRef,
   GithubAccountRef,
@@ -46,6 +47,14 @@ const FORCE_PUSH_PREVIEW: ForcePushPreview = {
   destinationRef: "refs/heads/review/feat",
   destinationOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   pushEndpointToken: "endpoint-token",
+};
+const DISCARD_ALL_PREVIEW: DiscardAllPreview = {
+  summary: "Discard all changes with lease",
+  details: ["src/a.ts"],
+  warnings: ["Untracked files cannot be recovered"],
+  expectedState: "discard-all-state-v1",
+  expectedHeadBranch: "main",
+  expectedHeadOid: HEAD_OID,
 };
 
 // Valid shapes for the reads a post-action refresh performs (GL-57 seam validation).
@@ -822,6 +831,96 @@ describe("tags — explicit or default remote, with its account", () => {
       auth: ghAuth(alice),
     });
     expect(message).toBe("Deleted tag v1.0.0 (local and origin)");
+  });
+});
+
+describe("discard all — exact preview lease and partial-failure recovery", () => {
+  const dirtyChanges: WorkingChanges = {
+    staged: [],
+    unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+    conflicted: [],
+    advanced: emptyAdvancedState,
+  };
+
+  it("passes every preview lease field to the destructive IPC", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "discard_all" ? Promise.resolve("Discarded all changes") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().discardAll(DISCARD_ALL_PREVIEW);
+
+    expect(invokeMock).toHaveBeenCalledWith("discard_all", {
+      path: "/repo",
+      expectedState: "discard-all-state-v1",
+      expectedHeadBranch: "main",
+      expectedHeadOid: HEAD_OID,
+    });
+  });
+
+  it("rejects an in-cone sparse checkout before destructive IPC", async () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        },
+      },
+    });
+
+    await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toThrow(
+      "Sparse checkout is enabled. Disable sparse checkout before using Discard all, or use the terminal.",
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("discard_all", expect.anything());
+  });
+
+  it("rejects an unborn repository before destructive IPC", async () => {
+    useRepo.setState({
+      summary: { ...useRepo.getState().summary!, headOid: null, unborn: true },
+      changes: dirtyChanges,
+    });
+
+    await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toThrow(
+      "Discard all is unavailable before the first commit. Unstage or remove files individually, or use the terminal.",
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("discard_all", expect.anything());
+  });
+
+  it("refreshes state after the backend reports a post-clean failure", async () => {
+    const postCleanError =
+      "Untracked cleanup completed, but tracked changes could not be reset: reset failed";
+    useRepo.setState({ changes: dirtyChanges });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "discard_all") return Promise.reject(postCleanError);
+      return refreshInvoke(cmd);
+    });
+
+    await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toBe(postCleanError);
+
+    expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
+    expect(useRepo.getState().changes).toEqual(EMPTY_CHANGES);
+  });
+
+  it("preserves a stale-precondition error even if its reconciliation refresh rejects", async () => {
+    const staleError =
+      "Working tree changed after the confirmation opened. Refresh and try again.";
+    const refreshError = new Error("refresh contract failure");
+    const realRefresh = useRepo.getState().refresh;
+    const refresh = vi.fn().mockRejectedValue(refreshError);
+    useRepo.setState({ refresh });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "discard_all" ? Promise.reject(staleError) : refreshInvoke(cmd),
+    );
+
+    try {
+      await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toBe(staleError);
+      expect(refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      useRepo.setState({ refresh: realRefresh });
+    }
   });
 });
 

@@ -21,9 +21,9 @@ use watcher::WatcherState;
 use git::types::{
     BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
     CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview, DeleteWorktreeProgressEvent,
-    DestructivePreview, DiscardFilePreview, FileBlame, FileChange, FileDiff, FileHistoryPage,
-    ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef, GithubAccount,
-    GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
+    DestructivePreview, DiscardAllPreview, DiscardFilePreview, FileBlame, FileChange, FileDiff,
+    FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
+    GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
     HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
     ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
     ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge,
@@ -262,7 +262,7 @@ async fn preview_reset(
 }
 
 #[tauri::command]
-async fn preview_discard_all(path: String) -> Result<DestructivePreview, String> {
+async fn preview_discard_all(path: String) -> Result<DiscardAllPreview, String> {
     blocking(move || git::write::preview_discard_all(&path)).await
 }
 
@@ -685,8 +685,21 @@ async fn force_push(
 }
 
 #[tauri::command]
-async fn discard_all(path: String) -> Result<String, String> {
-    blocking(move || git::write::discard_all(&path)).await
+async fn discard_all(
+    path: String,
+    expected_state: String,
+    expected_head_branch: Option<String>,
+    expected_head_oid: Option<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::discard_all(
+            &path,
+            &expected_state,
+            expected_head_branch.as_deref(),
+            expected_head_oid.as_deref(),
+        )
+    })
+    .await
 }
 
 // ---- repository files (the Files browser) ----

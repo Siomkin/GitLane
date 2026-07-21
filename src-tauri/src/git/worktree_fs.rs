@@ -38,7 +38,10 @@ pub(crate) enum WorktreeLeafFingerprint {
         mode: u64,
         target: Vec<u8>,
     },
-    Other,
+    Other {
+        mode: u64,
+        kind: u8,
+    },
 }
 
 /// Cheap pathname observation retained while another leaf is being streamed.
@@ -59,6 +62,30 @@ pub(crate) struct WorktreeFileIdentity {
     pub(crate) inode: u64,
     pub(crate) mode: u64,
     pub(crate) len: u64,
+}
+
+/// Stable filesystem incarnation for a repository/worktree directory. Device
+/// and inode (or their cap-std platform equivalents) distinguish a replacement
+/// recreated at the same pathname from the directory the preview inspected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct WorktreeDirectoryIdentity {
+    pub(crate) device: u64,
+    pub(crate) inode: u64,
+}
+
+pub(crate) fn worktree_directory_identity(path: &Path) -> io::Result<WorktreeDirectoryIdentity> {
+    let dir = Dir::open_ambient_dir(path, cap_std::ambient_authority())?;
+    let metadata = dir.dir_metadata()?;
+    if !metadata.is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("refusing non-directory repository scope: {path:?}"),
+        ));
+    }
+    Ok(WorktreeDirectoryIdentity {
+        device: CapMetadataExt::dev(&metadata),
+        inode: CapMetadataExt::ino(&metadata),
+    })
 }
 
 pub(crate) struct CoherentWorktreeRead {
@@ -362,6 +389,13 @@ fn changed_while_fingerprinting(file: &str) -> io::Error {
     )
 }
 
+fn changed_path_while_fingerprinting(file: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::WouldBlock,
+        format!("worktree file changed while it was being inspected: {file:?}"),
+    )
+}
+
 #[cfg(unix)]
 fn metadata_mode(metadata: &Metadata) -> u64 {
     metadata.mode() as u64
@@ -457,7 +491,36 @@ pub(crate) fn fingerprint_worktree_leaf(
     workdir: &Path,
     file: &str,
 ) -> io::Result<(WorktreeLeafFingerprint, WorktreeLeafObservation)> {
-    let (parent, name) = match open_parent(workdir, file) {
+    fingerprint_worktree_leaf_path(workdir, Path::new(file))
+}
+
+/// Path-native variant used by whole-tree destructive leases. Git paths are
+/// byte strings on Unix, so forcing them through `str` would corrupt or reject
+/// a non-UTF-8 untracked filename before the confirmation can protect it.
+pub(crate) fn fingerprint_worktree_leaf_path(
+    workdir: &Path,
+    file: &Path,
+) -> io::Result<(WorktreeLeafFingerprint, WorktreeLeafObservation)> {
+    fingerprint_worktree_leaf_path_inner(workdir, file, None)
+}
+
+/// Bounded-content companion for whole-tree leases. The limit is enforced on
+/// bytes actually read, so a file that grows after metadata preflight cannot
+/// turn a destructive confirmation into an unbounded stream.
+pub(crate) fn fingerprint_worktree_leaf_path_bounded(
+    workdir: &Path,
+    file: &Path,
+    max_regular_bytes: u64,
+) -> io::Result<(WorktreeLeafFingerprint, WorktreeLeafObservation)> {
+    fingerprint_worktree_leaf_path_inner(workdir, file, Some(max_regular_bytes))
+}
+
+fn fingerprint_worktree_leaf_path_inner(
+    workdir: &Path,
+    file: &Path,
+    max_regular_bytes: Option<u64>,
+) -> io::Result<(WorktreeLeafFingerprint, WorktreeLeafObservation)> {
+    let (parent, name) = match open_parent_path(workdir, file) {
         Ok(value) => value,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Ok((
@@ -488,15 +551,23 @@ pub(crate) fn fingerprint_worktree_leaf(
         let mut opened = open_leaf_nofollow(&parent, &name)?;
         let opened_before = opened.metadata()?;
         if !same_observed_state(&before, &opened_before) {
-            return Err(changed_while_fingerprinting(file));
+            return Err(changed_path_while_fingerprinting(file));
         }
 
         let mut digest = Sha256::new();
         let mut buffer = [0_u8; 64 * 1024];
+        let mut total_read = 0u64;
         loop {
             let read = opened.read(&mut buffer)?;
             if read == 0 {
                 break;
+            }
+            total_read = total_read.saturating_add(read as u64);
+            if max_regular_bytes.is_some_and(|limit| total_read > limit) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("worktree content exceeded the bounded fingerprint limit: {file:?}"),
+                ));
             }
             digest.update(&buffer[..read]);
         }
@@ -506,7 +577,7 @@ pub(crate) fn fingerprint_worktree_leaf(
         if !same_observed_state(&opened_before, &opened_after)
             || !same_observed_state(&opened_after, &current)
         {
-            return Err(changed_while_fingerprinting(file));
+            return Err(changed_path_while_fingerprinting(file));
         }
         return Ok((
             WorktreeLeafFingerprint::Regular {
@@ -525,7 +596,7 @@ pub(crate) fn fingerprint_worktree_leaf(
         let target = parent.read_link_contents(&name)?;
         let current = parent.symlink_metadata(&name)?;
         if !same_observed_state(&before, &current) {
-            return Err(changed_while_fingerprinting(file));
+            return Err(changed_path_while_fingerprinting(file));
         }
         let target = path_bytes(&target);
         return Ok((
@@ -540,13 +611,53 @@ pub(crate) fn fingerprint_worktree_leaf(
         ));
     }
 
+    let kind = if before.is_dir() { 1 } else { 2 };
     Ok((
-        WorktreeLeafFingerprint::Other,
+        WorktreeLeafFingerprint::Other {
+            mode: metadata_mode(&before),
+            kind,
+        },
         WorktreeLeafObservation {
             metadata: Some(before),
             symlink_target: None,
         },
     ))
+}
+
+/// Return the logical byte length of a regular leaf without following any
+/// ancestor or final-component symlink. Whole-tree destructive previews use
+/// this for a bounded-I/O preflight before streaming content fingerprints.
+pub(crate) fn worktree_regular_leaf_size_path(
+    workdir: &Path,
+    file: &Path,
+) -> io::Result<Option<u64>> {
+    let (parent, name) = match open_parent_path(workdir, file) {
+        Ok(value) => value,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    match parent.symlink_metadata(&name) {
+        Ok(metadata) if metadata.is_file() => Ok(Some(metadata.len())),
+        Ok(_) => Ok(None),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// Check whether a worktree leaf is absent without following any ancestor or
+/// final-component symlink. This is intentionally metadata-only so cleanup
+/// verification cannot stream a concurrently recreated large file.
+pub(crate) fn worktree_leaf_is_missing_path(workdir: &Path, file: &Path) -> io::Result<bool> {
+    let (parent, name) = match open_parent_path(workdir, file) {
+        Ok(value) => value,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
+        Err(error) => return Err(error),
+    };
+    match parent.symlink_metadata(&name) {
+        Ok(_) => Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(error),
+    }
 }
 
 /// Confirm that a previously fingerprinted path still names the same leaf and
@@ -558,7 +669,16 @@ pub(crate) fn validate_worktree_leaf_observation(
     file: &str,
     expected: &WorktreeLeafObservation,
 ) -> io::Result<bool> {
-    let (parent, name) = match open_parent(workdir, file) {
+    validate_worktree_leaf_observation_path(workdir, Path::new(file), expected)
+}
+
+/// Path-native companion to [`fingerprint_worktree_leaf_path`].
+pub(crate) fn validate_worktree_leaf_observation_path(
+    workdir: &Path,
+    file: &Path,
+    expected: &WorktreeLeafObservation,
+) -> io::Result<bool> {
+    let (parent, name) = match open_parent_path(workdir, file) {
         Ok(value) => value,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             return Ok(expected.metadata.is_none());
@@ -628,9 +748,12 @@ pub(crate) fn read_regular_worktree_file_bounded(
 }
 
 fn open_parent(workdir: &Path, file: &str) -> io::Result<(Dir, OsString)> {
-    let rel = Path::new(file);
+    open_parent_path(workdir, Path::new(file))
+}
+
+fn open_parent_path(workdir: &Path, rel: &Path) -> io::Result<(Dir, OsString)> {
     if rel.is_absolute() {
-        return Err(unsafe_path(file));
+        return Err(unsafe_path(rel));
     }
 
     let mut names = Vec::new();
@@ -639,11 +762,11 @@ fn open_parent(workdir: &Path, file: &str) -> io::Result<(Dir, OsString)> {
             Component::Normal(name) => names.push(name.to_os_string()),
             Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
-                return Err(unsafe_path(file));
+                return Err(unsafe_path(rel));
             }
         }
     }
-    let name = names.pop().ok_or_else(|| unsafe_path(file))?;
+    let name = names.pop().ok_or_else(|| unsafe_path(rel))?;
 
     let mut parent = Dir::open_ambient_dir(workdir, cap_std::ambient_authority())?;
     for component in names {
@@ -652,7 +775,7 @@ fn open_parent(workdir: &Path, file: &str) -> io::Result<(Dir, OsString)> {
     Ok((parent, name))
 }
 
-fn unsafe_path(file: &str) -> io::Error {
+fn unsafe_path(file: &Path) -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidInput,
         format!("refusing unsafe path outside the worktree: {file:?}"),
@@ -661,7 +784,10 @@ fn unsafe_path(file: &str) -> io::Error {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::{open_leaf_nofollow, open_regular_worktree_file, read_regular_worktree_file};
+    use super::{
+        fingerprint_worktree_leaf_path_bounded, open_leaf_nofollow, open_regular_worktree_file,
+        read_regular_worktree_file,
+    };
     use cap_std::fs::Dir;
     use std::ffi::OsString;
     use std::os::unix::fs::symlink;
@@ -710,6 +836,25 @@ mod tests {
         let opened = open_leaf_nofollow(&parent, &OsString::from("leaf")).unwrap();
 
         assert!(!opened.metadata().unwrap().is_file());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn bounded_fingerprint_rejects_content_over_the_actual_read_limit() {
+        let root = std::env::temp_dir().join(format!(
+            "gitlane-worktree-bounded-fingerprint-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("large.bin"), vec![0_u8; 2_048]).unwrap();
+
+        let error =
+            fingerprint_worktree_leaf_path_bounded(&root, std::path::Path::new("large.bin"), 1_024)
+                .err()
+                .expect("content over the byte limit must fail");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

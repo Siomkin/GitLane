@@ -1,6 +1,5 @@
 //! Working-tree staging, discard, and commit writes.
 
-use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -8,7 +7,7 @@ use git2::{Status, StatusOptions};
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::ffi::OsStrExt;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 
@@ -18,9 +17,7 @@ use crate::git::worktree_fs::{
     WorktreeLeafObservation,
 };
 
-use super::cli::{
-    run_git, run_git_literal_paths, run_git_os_paths, run_git_stdout_raw, run_git_with_input,
-};
+use super::cli::{run_git, run_git_literal_paths, run_git_with_input};
 
 /// Stage one literal repository path (also stages deletions).
 pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
@@ -874,7 +871,7 @@ fn hash_worktree_fingerprint(
             state.update(mode.to_le_bytes());
             hash_field(state, &target);
         }
-        WorktreeLeafFingerprint::Other => {
+        WorktreeLeafFingerprint::Other { .. } => {
             return Err(format!(
                 "Refusing to discard non-file worktree path {file}. Use the terminal for this repository state."
             ));
@@ -1239,200 +1236,5 @@ pub fn squash_commits(
             }
             Err(error)
         }
-    }
-}
-
-fn bytes_to_os_string(bytes: &[u8]) -> Result<OsString, String> {
-    #[cfg(unix)]
-    {
-        Ok(OsString::from_vec(bytes.to_vec()))
-    }
-    #[cfg(not(unix))]
-    {
-        String::from_utf8(bytes.to_vec())
-            .map(OsString::from)
-            .map_err(|_| {
-                "Untracked cleanup cannot handle a repository path that is not valid UTF-8 on this platform".to_string()
-            })
-    }
-}
-
-fn parse_nul_delimited_paths(output: &[u8]) -> Result<Vec<OsString>, String> {
-    output
-        .split(|&byte| byte == 0)
-        .filter(|path| !path.is_empty())
-        .map(bytes_to_os_string)
-        .collect()
-}
-
-fn path_arg_bytes(path: &OsString) -> usize {
-    path.as_os_str().as_encoded_bytes().len()
-}
-
-/// Return untracked cleanup candidates Git reports as working-tree files.
-/// Ordinary directory rollups are deliberately avoided. With explicit
-/// pathspecs, `git clean` affects only matching untracked paths and `-d` is
-/// irrelevant; the single `-f` also keeps nested Git repositories protected.
-fn untracked_paths(repo: &str) -> Result<Vec<OsString>, String> {
-    let output = run_git_stdout_raw(repo, &["ls-files", "--others", "--exclude-standard", "-z"])?;
-    parse_nul_delimited_paths(&output)
-}
-
-// Stay comfortably below macOS's ARG_MAX and Windows' smaller command-line
-// limit after accounting for fixed arguments. The count cap also keeps each
-// cleanup invocation cheap when paths are very short.
-#[cfg(not(windows))]
-const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
-#[cfg(windows)]
-const CLEAN_PATH_BATCH_MAX_BYTES: usize = 24 * 1024;
-pub(super) const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
-
-#[derive(Debug)]
-struct UntrackedCleanup {
-    removed_any: bool,
-    preserved_nested_repos: Vec<OsString>,
-}
-
-fn is_nested_git_repository(repo: &str, path: &OsStr) -> bool {
-    let candidate = Path::new(repo).join(path);
-    std::fs::symlink_metadata(&candidate)
-        .map(|metadata| metadata.file_type().is_dir())
-        .unwrap_or(false)
-        && candidate.join(".git").exists()
-}
-
-fn partition_untracked_paths(repo: &str, paths: Vec<OsString>) -> (Vec<OsString>, Vec<OsString>) {
-    paths
-        .into_iter()
-        .partition(|path| !is_nested_git_repository(repo, path))
-}
-
-pub(super) fn nested_untracked_repo_labels(repo: &str) -> Result<Vec<String>, String> {
-    let (_, nested_repos) = partition_untracked_paths(repo, untracked_paths(repo)?);
-    Ok(nested_repos
-        .into_iter()
-        .map(|path| path.to_string_lossy().into_owned())
-        .collect())
-}
-
-/// Remove only untracked paths Git reports, rather than letting an unscoped
-/// `git clean -fd` also delete unrelated empty directories that never appear in
-/// status or the discard preview.
-fn clean_untracked_paths(repo: &str) -> Result<UntrackedCleanup, String> {
-    let (paths, _) = partition_untracked_paths(repo, untracked_paths(repo)?);
-    let removed_any = !paths.is_empty();
-
-    let mut start = 0;
-    while start < paths.len() {
-        let mut end = start;
-        let mut bytes = 0;
-        while end < paths.len() && end - start < CLEAN_PATH_BATCH_MAX_ARGS {
-            let next_bytes = path_arg_bytes(&paths[end]) + 1;
-            if end > start && bytes + next_bytes > CLEAN_PATH_BATCH_MAX_BYTES {
-                break;
-            }
-            bytes += next_bytes;
-            end += 1;
-        }
-
-        // `--` stops option parsing but does not disable pathspec magic. Pin
-        // literal semantics so a real filename such as `:(` cannot fail or
-        // expand into a broader cleanup pattern. File pathspecs leave their
-        // directory shells, while nested repositories remain protected because
-        // Git requires a second `-f` to remove them.
-        run_git_os_paths(
-            repo,
-            &["--literal-pathspecs", "clean", "-f", "--"],
-            &paths[start..end],
-        )
-        .map_err(|error| {
-            format!(
-                "Untracked cleanup could not finish; some files may already have been removed: {error}"
-            )
-        })?;
-        start = end;
-    }
-
-    // Verify only the paths this cleanup was asked to remove. Files created
-    // concurrently (editor temp files, build artifacts, Finder's .DS_Store)
-    // are not a cleanup failure and must not abort the discard.
-    let (remaining, preserved_nested_repos) =
-        partition_untracked_paths(repo, untracked_paths(repo)?);
-    let requested: std::collections::HashSet<&OsString> = paths.iter().collect();
-    if remaining.iter().any(|path| requested.contains(path)) {
-        return Err("Untracked cleanup did not remove every reported path".to_string());
-    }
-
-    Ok(UntrackedCleanup {
-        removed_any,
-        preserved_nested_repos,
-    })
-}
-
-fn discard_all_message(cleanup: &UntrackedCleanup) -> String {
-    if cleanup.preserved_nested_repos.is_empty() {
-        return "Discarded all changes".to_string();
-    }
-    let paths = cleanup
-        .preserved_nested_repos
-        .iter()
-        .map(|path| path.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "Discarded tracked and removable untracked changes; preserved nested Git repositories: {paths}"
-    )
-}
-
-/// Discard *all* uncommitted changes: remove reported untracked paths and reset
-/// tracked files to HEAD.
-/// Irreversible — the frontend gates this behind a confirmation.
-///
-/// An unborn repo (no HEAD yet) has no commit to reset to, but staged "added"
-/// files are tracked in the *index*. Empty the index first (`git read-tree
-/// --empty`) so those files become untracked and can be cleaned through the
-/// same explicitly-scoped path list.
-pub fn discard_all(repo: &str) -> Result<String, String> {
-    let cleanup = if has_head(repo) {
-        // Clean first so a permission failure cannot discard tracked edits and
-        // then report the overall operation as failed.
-        let cleanup = clean_untracked_paths(repo)?;
-        run_git(repo, &["reset", "--hard", "HEAD"]).map_err(|error| {
-            if cleanup.removed_any {
-                format!(
-                    "Untracked cleanup completed, but tracked changes could not be reset: {error}"
-                )
-            } else if !cleanup.preserved_nested_repos.is_empty() {
-                format!(
-                    "Nested Git repositories were preserved, but tracked changes could not be reset: {error}"
-                )
-            } else {
-                error
-            }
-        })?;
-        cleanup
-    } else {
-        run_git(repo, &["read-tree", "--empty"])?;
-        clean_untracked_paths(repo).map_err(|error| {
-            format!("The index was cleared, but untracked cleanup could not finish: {error}")
-        })?
-    };
-    Ok(discard_all_message(&cleanup))
-}
-
-#[cfg(test)]
-mod untracked_path_tests {
-    use super::parse_nul_delimited_paths;
-    #[cfg(unix)]
-    use std::os::unix::ffi::OsStrExt;
-
-    #[test]
-    #[cfg(unix)]
-    fn parse_nul_delimited_paths_preserves_non_utf8_bytes() {
-        let raw = b"good.txt\0untracked\xff.txt\0";
-        let paths = parse_nul_delimited_paths(raw).expect("parse");
-        assert_eq!(paths.len(), 2);
-        assert_eq!(paths[0].as_os_str().as_bytes(), b"good.txt");
-        assert_eq!(paths[1].as_os_str().as_bytes(), b"untracked\xff.txt");
     }
 }

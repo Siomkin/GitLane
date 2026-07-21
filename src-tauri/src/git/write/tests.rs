@@ -6,7 +6,7 @@ use super::remotes::{
     is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection,
     push_endpoint_token, push_target_at,
 };
-use super::staging::{apply_hunk_patch, patch_diff_args, CLEAN_PATH_BATCH_MAX_ARGS};
+use super::staging::{apply_hunk_patch, patch_diff_args};
 use super::worktrees::is_porcelain_record;
 use super::{
     abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
@@ -20,12 +20,16 @@ use super::{
     preview_discard_all, preview_discard_file, preview_force_push, preview_reset, publish_branch,
     publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries,
     remove_worktree, reset, reset_branch, resolve_conflict_file, revert, revert_many, revert_onto,
-    set_before_replace_test_hook, set_discard_capture_test_hook, set_remote_url,
+    set_before_replace_test_hook, set_discard_all_after_cleanup_test_hook,
+    set_discard_all_after_first_clean_batch_test_hook,
+    set_discard_all_after_tracked_scope_validation_test_hook,
+    set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
+    set_discard_all_capture_test_hook, set_discard_capture_test_hook, set_remote_url,
     set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
-    stage_file, stage_files, stash, stash_apply, stash_apply_index_onto, stash_apply_onto,
-    stash_branch, stash_drop, stash_expected, stash_list, stash_pop, stash_pop_onto, unstage_all,
-    unstage_file, unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees,
-    write_repo_file,
+    stage_file, stage_files, start_discard_all_fingerprint_byte_count, stash, stash_apply,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_pop, stash_pop_onto, take_discard_all_fingerprint_byte_count, unstage_all, unstage_file,
+    unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
 use crate::git::transport_auth::{
@@ -36,6 +40,18 @@ use crate::git::worktree_fs::set_after_guarded_rename_test_hook;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
+
+const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
+
+fn discard_all_previewed(repo: &str) -> Result<String, String> {
+    let preview = preview_discard_all(repo)?;
+    discard_all(
+        repo,
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+}
 
 #[test]
 fn rejects_dash_prefixed_operands() {
@@ -2330,67 +2346,955 @@ fn missing_remote_ref_rejection_is_recognized() {
 }
 
 #[test]
-fn discard_all_clears_staged_files_in_unborn_repo() {
-    let repo = TempRepo::new("discard");
-    repo.git(&["init", "-q"]);
-    // Stage a file *before any commit* — the regression case: with no HEAD,
-    // `reset --hard` is skipped, and the file is tracked in the index so a
-    // plain `git clean` would leave it behind.
+fn discard_all_preview_rejects_an_unborn_repository() {
+    let repo = TempRepo::new("discard-unborn");
+    repo.git_ok(&["init", "-q"]);
     std::fs::write(repo.0.join("staged.txt"), b"hello").unwrap();
-    repo.git(&["add", "staged.txt"]);
+    repo.git_ok(&["add", "staged.txt"]);
 
-    let result = discard_all(repo.path());
-    assert!(result.is_ok(), "discard_all failed: {result:?}");
+    let error = preview_discard_all(repo.path())
+        .expect_err("an unborn repository has no safe committed restore tree");
 
-    // Both the worktree copy and the index entry must be gone.
-    assert!(
-        !repo.0.join("staged.txt").exists(),
-        "worktree file survived discard"
+    assert!(error.contains("unavailable before the first commit"));
+    assert!(repo.0.join("staged.txt").exists());
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["ls-files", "--cached"]).stdout).trim(),
+        "staged.txt"
     );
-    let status = repo.git(&["status", "--porcelain"]);
-    let out = String::from_utf8_lossy(&status.stdout);
+}
+
+#[test]
+fn discard_all_rejects_worktree_drift_before_mutating() {
+    let repo = repo_with_file("discard-stale", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "previewed edit\n").unwrap();
+    std::fs::write(repo.0.join("approved.txt"), "approved\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+
+    std::fs::write(repo.0.join("new-after-preview.txt"), "new\n").unwrap();
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("new worktree state must stale the lease");
+
+    assert!(error.contains("changed after this confirmation"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "previewed edit\n"
+    );
+    assert!(repo.0.join("approved.txt").exists());
+    assert!(repo.0.join("new-after-preview.txt").exists());
+}
+
+#[test]
+fn discard_all_keeps_untracked_files_created_after_final_validation() {
+    let repo = repo_with_file("discard-late-untracked", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::write(repo.0.join("approved.txt"), "approved\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let late = repo.0.join("late.txt");
+    let late_for_hook = late.clone();
+    set_discard_all_after_validation_test_hook(move || {
+        std::fs::write(late_for_hook, "late\n").unwrap();
+    });
+
+    discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("discard approved state");
+
+    assert!(!repo.0.join("approved.txt").exists());
+    assert_eq!(std::fs::read_to_string(late).unwrap(), "late\n");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+}
+
+#[test]
+fn discard_all_normalizes_an_approved_untracked_copy_at_a_staged_delete() {
+    let repo = repo_with_file("discard-delete-recreated", "victim.txt", b"base\n");
+    repo.git_ok(&["rm", "-q", "victim.txt"]);
+    std::fs::write(repo.0.join("victim.txt"), "replacement\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview staged delete and replacement");
+
+    discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("clean replacement then restore tracked file");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("victim.txt")).unwrap(),
+        "base\n"
+    );
+    assert!(String::from_utf8_lossy(
+        &repo
+            .git(&["status", "--porcelain", "--untracked-files=all"])
+            .stdout
+    )
+    .trim()
+    .is_empty());
+}
+
+#[test]
+fn discard_all_rejects_an_ignored_replacement_at_a_staged_delete() {
+    let repo = repo_with_file(
+        "discard-delete-ignored-replacement",
+        "victim.txt",
+        b"base\n",
+    );
+    std::fs::write(repo.0.join(".gitignore"), "victim.txt\n").unwrap();
+    repo.git_ok(&["add", ".gitignore"]);
+    repo.git_ok(&["commit", "-q", "-m", "ignore victim"]);
+    repo.git_ok(&["rm", "-q", "victim.txt"]);
+    std::fs::write(repo.0.join("victim.txt"), "precious ignored replacement\n").unwrap();
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("an ignored replacement must not be silently reset");
+
     assert!(
-        out.trim().is_empty(),
-        "repo not clean after discard: {out:?}"
+        error.contains("staged for deletion") && error.contains("unapproved replacement"),
+        "unexpected refusal: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("victim.txt")).unwrap(),
+        "precious ignored replacement\n"
     );
 }
 
 #[cfg(unix)]
 #[test]
-fn discard_all_reports_an_emptied_unborn_index_when_cleanup_fails() {
-    use std::os::unix::fs::PermissionsExt;
+fn discard_all_rejects_an_ignored_symlink_at_a_staged_delete() {
+    use std::os::unix::fs::symlink;
 
-    let repo = TempRepo::new("discard-unborn-clean-failure");
-    repo.git_ok(&["init", "-q"]);
-    std::fs::create_dir(repo.0.join("blocked")).unwrap();
-    std::fs::write(repo.0.join("blocked/staged.txt"), "new\n").unwrap();
-    repo.git_ok(&["add", "blocked/staged.txt"]);
-    std::fs::set_permissions(
-        repo.0.join("blocked"),
-        std::fs::Permissions::from_mode(0o555),
+    let repo = repo_with_file("discard-delete-ignored-symlink", "victim.txt", b"base\n");
+    std::fs::write(repo.0.join(".gitignore"), "victim.txt\n").unwrap();
+    repo.git_ok(&["add", ".gitignore"]);
+    repo.git_ok(&["commit", "-q", "-m", "ignore victim"]);
+    repo.git_ok(&["rm", "-q", "victim.txt"]);
+    symlink("precious-target", repo.0.join("victim.txt")).unwrap();
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("an ignored symlink must not be silently reset");
+
+    assert!(error.contains("staged for deletion"));
+    assert_eq!(
+        std::fs::read_link(repo.0.join("victim.txt")).unwrap(),
+        PathBuf::from("precious-target")
+    );
+}
+
+#[test]
+fn discard_all_confirmation_reuses_tracked_content_fingerprints() {
+    let repo = repo_with_file("discard-reuse-fingerprints", "tracked.bin", b"base\n");
+    let edited = vec![b'x'; 512 * 1024];
+    std::fs::write(repo.0.join("tracked.bin"), &edited).unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+
+    start_discard_all_fingerprint_byte_count();
+    discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("discard previewed edit");
+    let fingerprinted = take_discard_all_fingerprint_byte_count();
+
+    assert_eq!(
+        fingerprinted,
+        4 * edited.len() as u64,
+        "confirmation should hash two stable captures and two post-clean captures"
+    );
+}
+
+#[test]
+fn discard_all_reports_when_cleanup_ran_but_a_path_reappeared() {
+    let repo = repo_with_file("discard-clean-reappeared", "tracked.txt", b"base\n");
+    let approved = repo.0.join("approved.txt");
+    std::fs::write(&approved, "approved\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let approved_for_hook = approved.clone();
+    set_discard_all_after_first_clean_batch_test_hook(move || {
+        std::fs::write(approved_for_hook, "precious late content\n").unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("a recreated path must stop the reset");
+
+    assert!(
+        error.contains("cleanup ran") && error.contains("did not remove"),
+        "unexpected post-clean diagnostic: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(approved).unwrap(),
+        "precious late content\n"
+    );
+}
+
+#[test]
+fn discard_all_preserves_a_staged_delete_path_recreated_after_cleanup() {
+    let repo = repo_with_file("discard-delete-late-recreate", "victim.txt", b"base\n");
+    repo.git_ok(&["rm", "-q", "victim.txt"]);
+    std::fs::write(repo.0.join("victim.txt"), "approved replacement\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let victim = repo.0.join("victim.txt");
+    let victim_for_hook = victim.clone();
+    set_discard_all_after_cleanup_test_hook(move || {
+        std::fs::write(victim_for_hook, "precious late replacement\n").unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("a recreated overlap must stop reset");
+
+    assert!(error.contains("cleanup completed") && error.contains("recreated before reset"));
+    assert_eq!(
+        std::fs::read_to_string(victim).unwrap(),
+        "precious late replacement\n"
+    );
+}
+
+#[test]
+fn discard_all_revalidates_each_cleanup_batch() {
+    let repo = repo_with_file("discard-clean-batch-race", "tracked.txt", b"base\n");
+    for index in 0..=CLEAN_PATH_BATCH_MAX_ARGS {
+        std::fs::write(repo.0.join(format!("batch-{index:04}.txt")), "approved\n").unwrap();
+    }
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let late_batch_path = repo
+        .0
+        .join(format!("batch-{CLEAN_PATH_BATCH_MAX_ARGS:04}.txt"));
+    let late_for_hook = late_batch_path.clone();
+    set_discard_all_after_first_clean_batch_test_hook(move || {
+        std::fs::write(late_for_hook, "precious late content\n").unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("later cleanup batch must revalidate its files");
+
+    assert!(error.contains("partially completed") && error.contains("changed before its cleanup"));
+    assert!(!repo.0.join("batch-0000.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(late_batch_path).unwrap(),
+        "precious late content\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn discard_all_reports_partial_cleanup_before_a_later_validation_error() {
+    use std::os::unix::fs::symlink;
+
+    let repo = repo_with_file("discard-clean-batch-io", "tracked.txt", b"base\n");
+    for index in 0..CLEAN_PATH_BATCH_MAX_ARGS {
+        std::fs::write(repo.0.join(format!("batch-{index:04}.txt")), "approved\n").unwrap();
+    }
+    let late_parent = repo.0.join("z-late");
+    std::fs::create_dir(&late_parent).unwrap();
+    std::fs::write(late_parent.join("target.txt"), "approved\n").unwrap();
+    let outside = TempRepo::new("discard-clean-batch-io-outside");
+    std::fs::write(outside.0.join("target.txt"), "precious outside\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let late_parent_for_hook = late_parent.clone();
+    let outside_for_hook = outside.0.clone();
+    set_discard_all_after_first_clean_batch_test_hook(move || {
+        std::fs::remove_dir_all(&late_parent_for_hook).unwrap();
+        symlink(outside_for_hook, late_parent_for_hook).unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("an unreadable later path must stop its cleanup batch");
+
+    assert!(
+        error.contains("partially completed")
+            && error.contains("could not be rechecked before its cleanup batch"),
+        "unexpected partial-clean diagnostic: {error}"
+    );
+    assert!(!repo.0.join("batch-0000.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(outside.0.join("target.txt")).unwrap(),
+        "precious outside\n"
+    );
+}
+
+#[test]
+fn discard_all_works_in_a_linked_worktree_without_touching_its_main_checkout() {
+    let main = repo_with_file("discard-linked-normal", "tracked.txt", b"base\n");
+    main.git_ok(&["branch", "feature"]);
+    let linked = TempRepo::new("discard-linked-normal-worktree");
+    std::fs::remove_dir_all(&linked.0).unwrap();
+    main.git_ok(&["worktree", "add", "-q", linked.path(), "feature"]);
+    std::fs::write(linked.0.join("tracked.txt"), "linked edit\n").unwrap();
+    std::fs::write(linked.0.join("untracked.txt"), "remove\n").unwrap();
+
+    discard_all_previewed(linked.path()).expect("discard linked-worktree changes");
+
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+    assert!(!linked.0.join("untracked.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(main.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+    main.git_ok(&["worktree", "remove", "--force", linked.path()]);
+}
+
+#[test]
+fn discard_all_rejects_a_linked_worktree_gitfile_retarget_before_reset() {
+    let main = repo_with_file("discard-linked-gitfile", "tracked.txt", b"base\n");
+    main.git_ok(&["branch", "feature"]);
+    let linked = TempRepo::new("discard-linked-gitfile-worktree");
+    std::fs::remove_dir_all(&linked.0).unwrap();
+    main.git_ok(&["worktree", "add", "-q", linked.path(), "feature"]);
+    let decoy = repo_with_file("discard-linked-gitfile-decoy", "tracked.txt", b"decoy\n");
+    std::fs::write(linked.0.join("tracked.txt"), "approved linked edit\n").unwrap();
+    let preview = preview_discard_all(linked.path()).expect("preview linked edit");
+    let gitfile = linked.0.join(".git");
+    let original_gitfile = std::fs::read(&gitfile).unwrap();
+    let gitfile_for_hook = gitfile.clone();
+    let decoy_gitdir = decoy.0.join(".git").canonicalize().unwrap();
+    set_discard_all_before_tracked_reset_test_hook(move || {
+        std::fs::write(
+            gitfile_for_hook,
+            format!("gitdir: {}\n", decoy_gitdir.display()),
+        )
+        .unwrap();
+    });
+
+    let result = discard_all(
+        linked.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    );
+    std::fs::write(&gitfile, original_gitfile).unwrap();
+    let error = result.expect_err("retargeted gitfile must invalidate the captured scope");
+
+    assert!(
+        error.contains("working tree changed after this confirmation"),
+        "unexpected scope error: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("tracked.txt")).unwrap(),
+        "approved linked edit\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(decoy.0.join("tracked.txt")).unwrap(),
+        "decoy\n"
+    );
+    main.git_ok(&["worktree", "remove", "--force", linked.path()]);
+}
+
+#[test]
+fn discard_all_scoped_reset_cannot_be_redirected_after_final_validation() {
+    let main = repo_with_file("discard-linked-scoped-reset", "tracked.txt", b"base\n");
+    main.git_ok(&["branch", "feature"]);
+    let linked = TempRepo::new("discard-linked-scoped-reset-worktree");
+    std::fs::remove_dir_all(&linked.0).unwrap();
+    main.git_ok(&["worktree", "add", "-q", linked.path(), "feature"]);
+    let decoy = repo_with_file(
+        "discard-linked-scoped-reset-decoy",
+        "tracked.txt",
+        b"decoy\n",
+    );
+    std::fs::write(linked.0.join("tracked.txt"), "approved linked edit\n").unwrap();
+    let preview = preview_discard_all(linked.path()).expect("preview linked edit");
+    let gitfile = linked.0.join(".git");
+    let original_gitfile = std::fs::read(&gitfile).unwrap();
+    let gitfile_for_hook = gitfile.clone();
+    let decoy_gitdir = decoy.0.join(".git").canonicalize().unwrap();
+    set_discard_all_after_tracked_scope_validation_test_hook(move || {
+        std::fs::write(
+            gitfile_for_hook,
+            format!("gitdir: {}\n", decoy_gitdir.display()),
+        )
+        .unwrap();
+    });
+
+    let result = discard_all(
+        linked.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    );
+    std::fs::write(&gitfile, original_gitfile).unwrap();
+    let error = result.expect_err("the post-reset scope check must report the retarget");
+
+    assert!(
+        error.contains("tracked changes were reset") && error.contains("scope or HEAD changed"),
+        "unexpected post-reset diagnostic: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("tracked.txt")).unwrap(),
+        "base\n",
+        "the reset must remain bound to the approved linked worktree"
+    );
+    assert_eq!(
+        std::fs::read_to_string(decoy.0.join("tracked.txt")).unwrap(),
+        "decoy\n",
+        "the retargeted repository must not be mutated"
+    );
+    main.git_ok(&["worktree", "remove", "--force", linked.path()]);
+}
+
+#[test]
+fn discard_all_exact_tree_restore_ignores_a_final_commondir_retarget() {
+    let main = repo_with_file("discard-linked-scoped-common", "tracked.txt", b"base\n");
+    main.git_ok(&["branch", "feature"]);
+    main.git_ok(&["checkout", "-q", "-b", "other"]);
+    std::fs::write(main.0.join("tracked.txt"), "other branch\n").unwrap();
+    main.git_ok(&["add", "tracked.txt"]);
+    main.git_ok(&["commit", "-q", "-m", "other content"]);
+    let other_oid = rev_parse(&main, "HEAD");
+    main.git_ok(&["checkout", "-q", "main"]);
+    let linked = TempRepo::new("discard-linked-scoped-common-worktree");
+    std::fs::remove_dir_all(&linked.0).unwrap();
+    main.git_ok(&["worktree", "add", "-q", linked.path(), "feature"]);
+    let decoy = repo_with_file(
+        "discard-linked-scoped-common-decoy",
+        "tracked.txt",
+        b"decoy\n",
+    );
+    std::fs::create_dir_all(decoy.0.join(".git/refs/heads")).unwrap();
+    std::fs::write(
+        decoy.0.join(".git/refs/heads/feature"),
+        format!("{other_oid}\n"),
     )
     .unwrap();
+    std::fs::write(linked.0.join("tracked.txt"), "approved linked edit\n").unwrap();
+    let preview = preview_discard_all(linked.path()).expect("preview linked edit");
+    let gitfile = std::fs::read_to_string(linked.0.join(".git")).unwrap();
+    let linked_gitdir = PathBuf::from(
+        gitfile
+            .trim()
+            .strip_prefix("gitdir: ")
+            .expect("linked worktree gitfile"),
+    );
+    let commondir_file = linked_gitdir.join("commondir");
+    let original_commondir = std::fs::read(&commondir_file).unwrap();
+    let commondir_for_hook = commondir_file.clone();
+    let decoy_common = decoy.0.join(".git").canonicalize().unwrap();
+    set_discard_all_after_tracked_scope_validation_test_hook(move || {
+        std::fs::write(commondir_for_hook, format!("{}\n", decoy_common.display())).unwrap();
+    });
 
-    let result = discard_all(repo.path());
+    let result = discard_all(
+        linked.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    );
+    std::fs::write(&commondir_file, original_commondir).unwrap();
+    let error = result.expect_err("the post-restore lease check must report the retarget");
 
-    std::fs::set_permissions(
-        repo.0.join("blocked"),
-        std::fs::Permissions::from_mode(0o755),
+    assert!(
+        error.contains("reset to the previewed commit") && error.contains("scope or HEAD changed"),
+        "unexpected post-restore diagnostic: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("tracked.txt")).unwrap(),
+        "base\n",
+        "a retargeted branch ref must not select the restored tree"
+    );
+    assert_eq!(
+        std::fs::read_to_string(decoy.0.join(".git/refs/heads/feature")).unwrap(),
+        format!("{other_oid}\n"),
+        "restoring the worktree must not update a retargeted branch ref"
+    );
+    main.git_ok(&["worktree", "remove", "--force", linked.path()]);
+}
+
+#[test]
+fn discard_all_exact_tree_restore_ignores_a_final_head_retarget() {
+    let repo = repo_with_file("discard-scoped-head", "tracked.txt", b"base\n");
+    repo.git_ok(&["checkout", "-q", "-b", "other"]);
+    std::fs::write(repo.0.join("tracked.txt"), "other branch\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "other content"]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("tracked.txt"), "approved main edit\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview main edit");
+    let head_file = repo.0.join(".git/HEAD");
+    let original_head = std::fs::read(&head_file).unwrap();
+    let head_for_hook = head_file.clone();
+    set_discard_all_after_tracked_scope_validation_test_hook(move || {
+        std::fs::write(head_for_hook, "ref: refs/heads/other\n").unwrap();
+    });
+
+    let result = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    );
+    std::fs::write(&head_file, original_head).unwrap();
+    let error = result.expect_err("the post-restore lease check must report the HEAD retarget");
+
+    assert!(
+        error.contains("reset to the previewed commit") && error.contains("scope or HEAD changed"),
+        "unexpected post-restore diagnostic: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n",
+        "a retargeted HEAD must not select the restored tree"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
+        "main"
+    );
+}
+
+#[test]
+fn discard_all_preview_rejects_active_replace_refs() {
+    let repo = repo_with_file("discard-replace-active", "tracked.txt", b"base\n");
+    let base_oid = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "-b", "replacement"]);
+    std::fs::write(repo.0.join("tracked.txt"), "replacement tree\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "replacement content"]);
+    let replacement_oid = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "main"]);
+    repo.git_ok(&["replace", &base_oid, &replacement_oid]);
+    std::fs::write(repo.0.join("tracked.txt"), "approved edit\n").unwrap();
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("replacement refs can redirect trees and blobs below HEAD");
+
+    assert!(error.contains("replacement refs are active"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "approved edit\n"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/main"), base_oid);
+    assert_eq!(
+        rev_parse(&repo, &format!("refs/replace/{base_oid}")),
+        replacement_oid
+    );
+}
+
+#[test]
+fn discard_all_preview_rejects_tree_subtree_and_blob_replace_refs() {
+    let repo = TempRepo::new("discard-replace-noncommit");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::create_dir(repo.0.join("dir")).unwrap();
+    std::fs::write(repo.0.join("dir/tracked.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "dir/tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "replacement"]);
+    std::fs::write(repo.0.join("dir/tracked.txt"), "replacement\n").unwrap();
+    repo.git_ok(&["add", "dir/tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "replacement"]);
+
+    let replacements = [
+        (
+            rev_parse(&repo, "main^{tree}"),
+            rev_parse(&repo, "replacement^{tree}"),
+        ),
+        (
+            rev_parse(&repo, "main:dir"),
+            rev_parse(&repo, "replacement:dir"),
+        ),
+        (
+            rev_parse(&repo, "main:dir/tracked.txt"),
+            rev_parse(&repo, "replacement:dir/tracked.txt"),
+        ),
+    ];
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("dir/tracked.txt"), "approved edit\n").unwrap();
+
+    for (original, replacement) in replacements {
+        repo.git_ok(&["replace", &original, &replacement]);
+        let error = preview_discard_all(repo.path())
+            .expect_err("all replacement-object types must fail closed");
+        assert!(error.contains("replacement refs are active"));
+        repo.git_ok(&["replace", "-d", &original]);
+    }
+
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("dir/tracked.txt")).unwrap(),
+        "approved edit\n"
+    );
+}
+
+#[test]
+fn discard_all_exact_tree_restore_ignores_a_final_replace_ref() {
+    let repo = repo_with_file("discard-replace-late", "tracked.txt", b"base\n");
+    let base_oid = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "-b", "replacement"]);
+    std::fs::write(repo.0.join("tracked.txt"), "replacement tree\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "replacement content"]);
+    let replacement_oid = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["checkout", "-q", "main"]);
+    std::fs::write(repo.0.join("tracked.txt"), "approved edit\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview main edit");
+    let replace_ref = repo.0.join(format!(".git/refs/replace/{base_oid}"));
+    let replace_ref_for_hook = replace_ref.clone();
+    set_discard_all_after_tracked_scope_validation_test_hook(move || {
+        std::fs::create_dir_all(replace_ref_for_hook.parent().unwrap()).unwrap();
+        std::fs::write(replace_ref_for_hook, format!("{replacement_oid}\n")).unwrap();
+    });
+
+    let result = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    );
+    std::fs::remove_file(&replace_ref).unwrap();
+    let error = result.expect_err("the post-restore lease check must report the replace ref");
+
+    assert!(
+        error.contains("reset to the previewed commit") && error.contains("scope or HEAD changed"),
+        "unexpected post-restore diagnostic: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n",
+        "a late replace ref must not select the restored tree"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/main"), base_oid);
+}
+
+#[test]
+fn discard_all_rejects_a_linked_worktree_commondir_retarget_before_reset() {
+    let main = repo_with_file("discard-linked-common", "tracked.txt", b"base\n");
+    main.git_ok(&["branch", "feature"]);
+    let linked = TempRepo::new("discard-linked-common-worktree");
+    std::fs::remove_dir_all(&linked.0).unwrap();
+    main.git_ok(&["worktree", "add", "-q", linked.path(), "feature"]);
+    let decoy = repo_with_file("discard-linked-common-decoy", "tracked.txt", b"decoy\n");
+    std::fs::write(linked.0.join("tracked.txt"), "approved linked edit\n").unwrap();
+    let preview = preview_discard_all(linked.path()).expect("preview linked edit");
+    let gitfile = std::fs::read_to_string(linked.0.join(".git")).unwrap();
+    let linked_gitdir = PathBuf::from(
+        gitfile
+            .trim()
+            .strip_prefix("gitdir: ")
+            .expect("linked worktree gitfile"),
+    );
+    let commondir_file = linked_gitdir.join("commondir");
+    let original_commondir = std::fs::read(&commondir_file).unwrap();
+    let commondir_for_hook = commondir_file.clone();
+    let decoy_common = decoy.0.join(".git").canonicalize().unwrap();
+    set_discard_all_before_tracked_reset_test_hook(move || {
+        std::fs::write(commondir_for_hook, format!("{}\n", decoy_common.display())).unwrap();
+    });
+
+    let result = discard_all(
+        linked.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    );
+    std::fs::write(&commondir_file, original_commondir).unwrap();
+    let error = result.expect_err("retargeted commondir must invalidate the captured scope");
+
+    assert!(
+        error.contains("working tree changed after this confirmation"),
+        "unexpected scope error: {error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("tracked.txt")).unwrap(),
+        "approved linked edit\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(decoy.0.join("tracked.txt")).unwrap(),
+        "decoy\n"
+    );
+    main.git_ok(&["worktree", "remove", "--force", linked.path()]);
+}
+
+#[test]
+fn discard_all_preserves_tracked_edits_created_after_cleanup() {
+    let repo = repo_with_file("discard-late-tracked", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "previewed edit\n").unwrap();
+    std::fs::write(repo.0.join("approved.txt"), "approved\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let tracked = repo.0.join("tracked.txt");
+    let tracked_for_hook = tracked.clone();
+    set_discard_all_after_cleanup_test_hook(move || {
+        std::fs::write(tracked_for_hook, "late edit\n").unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
     )
-    .unwrap();
-    let error = result.expect_err("unwritable parent should block cleanup");
-    assert!(
-        error.contains("The index was cleared, but untracked cleanup could not finish"),
-        "unexpected partial-failure diagnostic: {error}"
+    .expect_err("late tracked edit must stop reset");
+
+    assert!(error.contains("cleanup completed") && error.contains("tracked edits were preserved"));
+    assert!(!repo.0.join("approved.txt").exists());
+    assert_eq!(std::fs::read_to_string(tracked).unwrap(), "late edit\n");
+}
+
+#[test]
+fn discard_all_preserves_state_after_a_head_switch_during_cleanup() {
+    let repo = repo_with_file("discard-late-head-switch", "tracked.txt", b"base\n");
+    repo.git_ok(&["branch", "other"]);
+    std::fs::write(repo.0.join("tracked.txt"), "previewed edit\n").unwrap();
+    std::fs::write(repo.0.join("approved.txt"), "approved\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let repo_for_hook = repo.0.clone();
+    set_discard_all_after_cleanup_test_hook(move || {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo_for_hook)
+            .args(["switch", "-q", "other"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("HEAD drift must stop reset");
+
+    assert!(error.contains("cleanup completed"));
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
+        "other"
     );
-    assert!(
-        repo.0.join("blocked/staged.txt").exists(),
-        "failed cleanup should leave the worktree file in place"
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "previewed edit\n"
     );
-    let cached = repo.git(&["ls-files", "--cached"]);
-    assert!(
-        String::from_utf8_lossy(&cached.stdout).trim().is_empty(),
-        "the diagnostic promises that the unborn index was cleared"
+    assert!(!repo.0.join("approved.txt").exists());
+}
+
+#[test]
+fn discard_all_preview_rejects_assume_unchanged_files() {
+    let repo = repo_with_file("discard-assume-unchanged", "tracked.txt", b"base\n");
+    repo.git_ok(&["update-index", "--assume-unchanged", "tracked.txt"]);
+    std::fs::write(repo.0.join("tracked.txt"), "hidden edit\n").unwrap();
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("hidden tracked changes cannot be safely previewed");
+
+    assert!(error.contains("assume-unchanged"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "hidden edit\n"
+    );
+}
+
+#[test]
+fn discard_all_preview_rejects_skip_worktree_files() {
+    let repo = repo_with_file("discard-skip-worktree", "tracked.txt", b"base\n");
+    repo.git_ok(&["update-index", "--skip-worktree", "tracked.txt"]);
+    std::fs::write(repo.0.join("tracked.txt"), "hidden edit\n").unwrap();
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("skip-worktree changes cannot be safely previewed");
+
+    assert!(error.contains("skip-worktree"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "hidden edit\n"
+    );
+}
+
+#[test]
+fn discard_all_preview_rejects_ignored_directory_obstructions() {
+    let repo = repo_with_file("discard-obstruction", "victim", b"base\n");
+    std::fs::write(repo.0.join(".gitignore"), "victim/\n").unwrap();
+    repo.git_ok(&["add", ".gitignore"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "ignore obstruction"]);
+    repo.git_ok(&["rm", "-q", "victim"]);
+    std::fs::create_dir(repo.0.join("victim")).unwrap();
+    std::fs::write(repo.0.join("victim/secret"), "keep\n").unwrap();
+
+    let error =
+        preview_discard_all(repo.path()).expect_err("reset would erase an ignored descendant");
+
+    assert!(error.contains("non-file worktree path victim"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("victim/secret")).unwrap(),
+        "keep\n"
+    );
+}
+
+#[test]
+fn discard_all_preview_rejects_an_unstable_capture() {
+    let repo = repo_with_file("discard-unstable-preview", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "first edit\n").unwrap();
+    let tracked = repo.0.join("tracked.txt");
+    set_discard_all_capture_test_hook(move || {
+        std::fs::write(tracked, "second edit\n").unwrap();
+    });
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("a preview assembled from two states must fail closed");
+
+    assert!(error.contains("changed while GitLane was preparing"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "second edit\n"
+    );
+}
+
+#[test]
+fn discard_all_preview_bounds_large_content_fingerprinting() {
+    let repo = repo_with_file("discard-large-sparse", "tracked.txt", b"base\n");
+    let sparse = std::fs::File::create(repo.0.join("huge.bin")).unwrap();
+    sparse.set_len(257 * 1024 * 1024).unwrap();
+
+    let error =
+        preview_discard_all(repo.path()).expect_err("oversized safety inspection must fail fast");
+
+    assert!(error.contains("more than 256 MiB") && error.contains("terminal"));
+    assert_eq!(
+        std::fs::metadata(repo.0.join("huge.bin")).unwrap().len(),
+        257 * 1024 * 1024
+    );
+}
+
+#[test]
+fn discard_all_preview_counts_overlapping_file_content_once() {
+    let repo = repo_with_file("discard-overlap-budget", "victim.bin", b"base\n");
+    repo.git_ok(&["rm", "-q", "victim.bin"]);
+    let replacement = std::fs::File::create(repo.0.join("victim.bin")).unwrap();
+    replacement.set_len(129 * 1024 * 1024).unwrap();
+
+    let preview = preview_discard_all(repo.path())
+        .expect("one overlapping file below the unique-content cap must preview");
+
+    assert!(preview.expected_state.starts_with("v1:"));
+    assert_eq!(
+        std::fs::metadata(repo.0.join("victim.bin")).unwrap().len(),
+        129 * 1024 * 1024
+    );
+}
+
+#[test]
+fn discard_all_rejects_a_submodule_dirtied_before_reset() {
+    let submodule = repo_with_file("discard-submodule-source", "nested.txt", b"nested base\n");
+    let repo = repo_with_file("discard-submodule-parent", "tracked.txt", b"base\n");
+    repo.git_ok(&[
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        "-q",
+        submodule.path(),
+        "nested",
+    ]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-am", "add submodule"]);
+    repo.git_ok(&["config", "submodule.recurse", "true"]);
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::write(repo.0.join("approved.txt"), "approved\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview clean submodule");
+    let nested_file = repo.0.join("nested/nested.txt");
+    let nested_for_hook = nested_file.clone();
+    set_discard_all_after_cleanup_test_hook(move || {
+        std::fs::write(nested_for_hook, "late nested edit\n").unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("late submodule state must stop the superproject reset");
+
+    assert!(error.contains("tracked state could not be rechecked"));
+    assert!(!repo.0.join("approved.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "changed\n",
+        "the superproject edit must survive the rejected reset"
+    );
+    assert_eq!(
+        std::fs::read_to_string(nested_file).unwrap(),
+        "late nested edit\n",
+        "user config must not make reset recurse into the submodule"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn discard_all_uses_the_validated_worktree_when_repo_symlink_is_repointed() {
+    use std::os::unix::fs::symlink;
+
+    let approved = repo_with_file("discard-symlink-approved", "tracked.txt", b"base\n");
+    std::fs::write(approved.0.join("tracked.txt"), "approved edit\n").unwrap();
+    std::fs::write(approved.0.join("approved-untracked.txt"), "remove\n").unwrap();
+    let other = repo_with_file("discard-symlink-other", "tracked.txt", b"other base\n");
+    std::fs::write(other.0.join("tracked.txt"), "precious other edit\n").unwrap();
+    std::fs::write(other.0.join("precious.txt"), "keep\n").unwrap();
+    let holder = TempRepo::new("discard-symlink-holder");
+    let link = holder.0.join("repo");
+    symlink(&approved.0, &link).unwrap();
+    let link_arg = link.to_string_lossy().into_owned();
+    let preview = preview_discard_all(&link_arg).expect("preview through symlink");
+    let link_for_hook = link.clone();
+    let other_for_hook = other.0.clone();
+    set_discard_all_after_validation_test_hook(move || {
+        std::fs::remove_file(&link_for_hook).unwrap();
+        symlink(other_for_hook, link_for_hook).unwrap();
+    });
+
+    discard_all(
+        &link_arg,
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("operate on the captured worktree");
+
+    assert_eq!(
+        std::fs::read_to_string(approved.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+    assert!(!approved.0.join("approved-untracked.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(other.0.join("tracked.txt")).unwrap(),
+        "precious other edit\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(other.0.join("precious.txt")).unwrap(),
+        "keep\n"
     );
 }
 
@@ -2409,7 +3313,7 @@ fn discard_all_preserves_empty_untracked_directories() {
     std::fs::write(repo.0.join("untracked-dir/file.txt"), "new\n").unwrap();
     std::fs::create_dir(repo.0.join("empty-dir")).unwrap();
 
-    discard_all(repo.path()).expect("discard_all");
+    discard_all_previewed(repo.path()).expect("discard_all");
 
     assert_eq!(
         std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
@@ -2445,7 +3349,7 @@ fn discard_all_preserves_nested_empty_directories_inside_cleaned_trees() {
     std::fs::create_dir_all(repo.0.join("untracked-dir/empty-nested")).unwrap();
     std::fs::write(repo.0.join("untracked-dir/file.txt"), "new\n").unwrap();
 
-    discard_all(repo.path()).expect("discard_all");
+    discard_all_previewed(repo.path()).expect("discard_all");
 
     assert!(!repo.0.join("untracked-dir/file.txt").exists());
     assert!(
@@ -2463,7 +3367,8 @@ fn discard_all_preserves_nested_git_repositories_and_resets_other_changes() {
     repo.git_ok(&["-C", "nested", "init", "-q"]);
     std::fs::write(repo.0.join("nested/file.txt"), "nested\n").unwrap();
 
-    let result = discard_all(repo.path()).expect("nested repositories are a protected exception");
+    let result =
+        discard_all_previewed(repo.path()).expect("nested repositories are a protected exception");
 
     assert!(
         result.contains("preserved nested Git repositories") && result.contains("nested/"),
@@ -2485,18 +3390,177 @@ fn discard_all_preserves_nested_git_repositories_and_resets_other_changes() {
 }
 
 #[test]
+fn discard_all_preserves_a_nested_repository_created_after_confirmation() {
+    let repo = repo_with_file("discard-late-nested-repo", "tracked.txt", b"base\n");
+    std::fs::create_dir(repo.0.join("nested")).unwrap();
+    std::fs::write(repo.0.join("nested/approved.txt"), "keep\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview ordinary untracked file");
+    let nested_for_hook = repo.0.join("nested");
+    set_discard_all_after_validation_test_hook(move || {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&nested_for_hook)
+            .args(["init", "-q"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("a newly nested repository must stop cleanup");
+
+    assert!(error.contains("now inside nested Git repository"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("nested/approved.txt")).unwrap(),
+        "keep\n"
+    );
+    assert!(repo.0.join("nested/.git").is_dir());
+}
+
+#[test]
+fn discard_all_preserves_tracked_files_wrapped_in_a_nested_repo_after_confirmation() {
+    let repo = TempRepo::new("discard-late-nested-tracked");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::create_dir(repo.0.join("nested")).unwrap();
+    std::fs::write(repo.0.join("nested/tracked.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "nested/tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "seed"]);
+    std::fs::write(repo.0.join("nested/tracked.txt"), "approved edit\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview tracked edit");
+    let nested_for_hook = repo.0.join("nested");
+    set_discard_all_after_cleanup_test_hook(move || {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(&nested_for_hook)
+            .args(["init", "-q"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("a newly nested repository must stop the parent reset");
+
+    assert!(error.contains("now inside nested Git repository"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("nested/tracked.txt")).unwrap(),
+        "approved edit\n"
+    );
+    assert!(repo.0.join("nested/.git").is_dir());
+}
+
+#[test]
+fn discard_all_preserves_nested_bare_git_repositories() {
+    let repo = repo_with_file("discard-nested-bare-repo", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
+    std::fs::write(repo.0.join("ordinary.txt"), "remove\n").unwrap();
+    std::fs::create_dir(repo.0.join("nested.git")).unwrap();
+    repo.git_ok(&["-C", "nested.git", "init", "--bare", "-q"]);
+
+    let preview = preview_discard_all(repo.path()).expect("preview nested bare repository");
+    assert!(preview
+        .details
+        .iter()
+        .any(|line| line.contains("Nested Git repositories") && line.contains("nested.git")));
+    assert!(!preview
+        .details
+        .iter()
+        .filter(|line| line.starts_with("Files that will be reset or removed:"))
+        .any(|line| line.contains("nested.git/")));
+    discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("preserve nested bare repository");
+
+    assert!(repo.0.join("nested.git/HEAD").is_file());
+    assert!(repo.0.join("nested.git/objects").is_dir());
+    assert!(!repo.0.join("ordinary.txt").exists());
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+}
+
+#[test]
+fn discard_all_rejects_staged_nested_bare_repository_metadata() {
+    let repo = repo_with_file("discard-staged-nested-bare", "tracked.txt", b"base\n");
+    std::fs::create_dir(repo.0.join("nested.git")).unwrap();
+    repo.git_ok(&["-C", "nested.git", "init", "--bare", "-q"]);
+    repo.git_ok(&["add", "nested.git/HEAD", "nested.git/config"]);
+
+    let error = preview_discard_all(repo.path())
+        .expect_err("parent reset must not delete staged bare-repository metadata");
+
+    assert!(error.contains("Nested Git repository nested.git"));
+    assert!(repo.0.join("nested.git/HEAD").is_file());
+    assert!(repo.0.join("nested.git/config").is_file());
+}
+
+#[cfg(unix)]
+#[test]
+fn discard_all_preserves_directories_with_dangling_git_markers() {
+    use std::os::unix::fs::symlink;
+
+    let repo = repo_with_file("discard-dangling-git-marker", "tracked.txt", b"base\n");
+    std::fs::create_dir(repo.0.join("nested")).unwrap();
+    symlink("missing-gitdir", repo.0.join("nested/.git")).unwrap();
+    std::fs::write(repo.0.join("nested/precious"), "keep\n").unwrap();
+
+    let preview = preview_discard_all(repo.path()).expect("preview protected marker");
+    assert!(preview
+        .details
+        .iter()
+        .any(|line| line.contains("Nested Git repositories") && line.contains("nested")));
+    assert!(!preview
+        .details
+        .iter()
+        .filter(|line| line.starts_with("Files that will be reset or removed:"))
+        .any(|line| line.contains("nested/precious")));
+    discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("preserve marker directory");
+
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("nested/precious")).unwrap(),
+        "keep\n"
+    );
+    assert!(std::fs::symlink_metadata(repo.0.join("nested/.git")).is_ok());
+}
+
+#[test]
 fn discard_all_reports_when_reset_fails_after_untracked_cleanup() {
     let repo = repo_with_file("discard-reset-failure", "tracked.txt", b"base\n");
     std::fs::write(repo.0.join("tracked.txt"), "changed\n").unwrap();
     std::fs::write(repo.0.join("untracked.txt"), "new\n").unwrap();
     std::fs::write(repo.0.join(".git/index.lock"), "locked\n").unwrap();
 
-    let result = discard_all(repo.path());
+    let result = discard_all_previewed(repo.path());
 
     std::fs::remove_file(repo.0.join(".git/index.lock")).unwrap();
     let error = result.expect_err("the index lock should block reset");
     assert!(
-        error.contains("Untracked cleanup completed, but tracked changes could not be reset"),
+        error.contains(
+            "Approved untracked cleanup completed, but tracked changes could not be reset"
+        ),
         "unexpected partial-failure diagnostic: {error}"
     );
     assert!(
@@ -2517,7 +3581,7 @@ fn discard_all_cleans_untracked_paths_across_argument_batches() {
         std::fs::write(repo.0.join(format!("untracked-{index}.txt")), "new\n").unwrap();
     }
 
-    discard_all(repo.path()).expect("discard_all");
+    discard_all_previewed(repo.path()).expect("discard_all");
 
     let status = repo.git(&["status", "--porcelain", "--untracked-files=all"]);
     assert!(
@@ -2532,7 +3596,7 @@ fn discard_all_preserves_leading_whitespace_in_untracked_paths() {
     let path = repo.0.join(" leading-space.txt");
     std::fs::write(&path, "new\n").unwrap();
 
-    discard_all(repo.path()).expect("discard_all");
+    discard_all_previewed(repo.path()).expect("discard_all");
 
     assert!(
         !path.exists(),
@@ -2547,7 +3611,7 @@ fn discard_all_treats_pathspec_magic_as_a_literal_filename() {
     let path = repo.0.join(":(");
     std::fs::write(&path, "new\n").unwrap();
 
-    discard_all(repo.path()).expect("discard_all");
+    discard_all_previewed(repo.path()).expect("discard_all");
 
     assert!(
         !path.exists(),
@@ -2565,7 +3629,7 @@ fn discard_all_removes_non_utf8_untracked_paths() {
     let path = OsStr::from_bytes(b"untracked\xff.txt");
     std::fs::write(repo.0.join(path), b"new\n").unwrap();
 
-    discard_all(repo.path()).expect("discard_all");
+    discard_all_previewed(repo.path()).expect("discard_all");
 
     assert!(
         !repo.0.join(path).exists(),

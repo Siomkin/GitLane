@@ -1,5 +1,10 @@
 import { api, BranchKind, type FileChange, type RepoSummary } from "@/lib/api";
-import { fileWriteGuard, findGuardedFile, guardedAdvancedWriteMessage } from "@/lib/advancedRepoState";
+import {
+  discardAllGuardMessage,
+  fileWriteGuard,
+  findGuardedFile,
+  guardedAdvancedWriteMessage,
+} from "@/lib/advancedRepoState";
 import { splitCommitMessage } from "@/lib/commitMessage";
 import { friendlyGitError } from "@/lib/gitError";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
@@ -143,11 +148,28 @@ function commitSetIsCurrent(get: RepoGet, commits: string[]): boolean {
 async function runOp(
   get: RepoGet,
   body: (summary: RepoSummary, owner: RepoWriteOwner) => Promise<string>,
+  opts?: { refreshOnError?: boolean },
 ): Promise<string> {
   const { summary } = get();
   if (!summary) throw new Error("No repository");
   const owner = captureOwner(summary);
-  const message = await body(summary, owner);
+  let message: string;
+  try {
+    message = await body(summary, owner);
+  } catch (error) {
+    if (opts?.refreshOnError) {
+      // Some guarded writes can fail after a partial mutation. Refresh the
+      // originating repo, but always rethrow the backend's actionable error —
+      // a secondary refresh failure must not replace the operation outcome.
+      try {
+        await refreshIfCurrent(get, owner);
+      } catch {
+        // `refresh` currently reports failure as `false`, but keep this boundary
+        // fail-safe if that contract ever regresses or a test double rejects.
+      }
+    }
+    throw error;
+  }
   await refreshIfCurrent(get, owner);
   return message;
 }
@@ -966,10 +988,27 @@ export function createRepoWriteActions(
         return `Force-pushed ${branch} (with lease)`;
       }),
 
-    discardAll: () => {
-      const guard = guardedAdvancedWriteMessage(get().changes);
+    discardAll: (preview) => {
+      const state = get();
+      const guard = discardAllGuardMessage(state.changes, state.summary?.unborn === true);
       if (guard) return Promise.reject(new Error(guard));
-      return runOp(get, async (summary) => api.discardAll(summary.path));
+      return runOp(
+        get,
+        async (summary) =>
+          api.discardAll(
+            summary.path,
+            preview.expectedState,
+            preview.expectedHeadBranch,
+            preview.expectedHeadOid,
+          ),
+        // Untracked cleanup happens before the tracked reset. If that second
+        // phase fails, the backend rejects after changing the worktree; refresh
+        // on every guarded discard error so both partial failures and stale
+        // preconditions leave the UI truthful while preserving the error text.
+        // A stale lease is itself evidence that repository state drifted, so the
+        // extra read is useful reconciliation rather than merely error cleanup.
+        { refreshOnError: true },
+      );
     },
 
     createWorktreeAt: async (worktreePath, reference, newBranch) => {

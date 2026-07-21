@@ -2,6 +2,7 @@ import type { StoreApi } from "zustand";
 import type {
   BranchInfo,
   DeleteBranchPreview,
+  DiscardAllPreview,
   DiscardFilePreview,
   ForcePushPreview,
   FileBlame,
@@ -538,8 +539,9 @@ export interface RepoState {
   /** Force-push `branch` using the exact source, route, and destination lease
    * returned by its confirmation preview. */
   forcePush: (branch: string, preview: ForcePushPreview) => Promise<string>;
-  /** Discard every uncommitted working-tree change (reset --hard + clean). */
-  discardAll: () => Promise<string>;
+  /** Discard exactly the whole-worktree state approved by the destructive
+   * preview. The backend rejects if HEAD/index/worktree drifted meanwhile. */
+  discardAll: (preview: DiscardAllPreview) => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */
   createPatchAt: (sha: string) => Promise<string>;
   /** Create a worktree at `worktreePath`, then open it as a repo tab. With

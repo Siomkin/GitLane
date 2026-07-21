@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import type { DestructivePreview, FileChange } from "@/lib/api";
+import type { DiscardAllPreview, FileChange } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -246,7 +246,14 @@ describe("FileContextMenu", () => {
 // The header exposes a whole-tree "Discard all" beside "review all →", reusing
 // the WIP menu's preview → confirm → run flow so the destructive path is shared.
 describe("WorkingInspector — discard all", () => {
-  const preview: DestructivePreview = { summary: "Discards 1 file", details: [], warnings: [] };
+  const preview: DiscardAllPreview = {
+    summary: "Discards 1 file",
+    details: [],
+    warnings: [],
+    expectedState: "discard-all-state-v1",
+    expectedHeadBranch: "main",
+    expectedHeadOid: "c1",
+  };
 
   beforeEach(() => {
     invokeMock.mockReset();
@@ -278,7 +285,12 @@ describe("WorkingInspector — discard all", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("discard_all", expect.anything());
 
     act(() => req.onConfirm());
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("discard_all", { path: "/r" }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("discard_all", {
+      path: "/r",
+      expectedState: "discard-all-state-v1",
+      expectedHeadBranch: "main",
+      expectedHeadOid: "c1",
+    }));
   });
 
   it("hides Discard all when the working tree is clean", () => {
@@ -315,20 +327,20 @@ describe("WorkingInspector — discard all", () => {
   it("disables Discard all when a bulk write is guarded", () => {
     const requestConfirm = vi.fn();
     useUi.setState({ requestConfirm });
-    // A file outside the sparse checkout makes the shared advanced-write guard
-    // non-null, so the whole-tree discard is blocked with an explanatory title.
+    // Ordinary writes are allowed for this in-cone path, but whole-tree discard
+    // cannot safely preserve the repository's skip-worktree entries.
     useRepo.setState({
       changes: {
         staged: [],
-        unstaged: [staged("docs/hidden.txt")],
+        unstaged: [staged("src/a.ts")],
         conflicted: [],
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
         },
       },
-      selectedFile: { path: "docs/hidden.txt", source: "unstaged" },
+      selectedFile: { path: "src/a.ts", source: "unstaged" },
     });
 
     render(<WorkingInspector onOpenChanges={() => {}} />);
@@ -336,11 +348,42 @@ describe("WorkingInspector — discard all", () => {
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute(
       "title",
-      "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+      "Sparse checkout is enabled. Disable sparse checkout before using Discard all, or use the terminal.",
     );
 
     fireEvent.click(button);
     expect(invokeMock).not.toHaveBeenCalledWith("preview_discard_all", expect.anything());
     expect(requestConfirm).not.toHaveBeenCalled();
+  });
+
+  it("disables Discard all before the first commit", () => {
+    const requestConfirm = vi.fn();
+    useUi.setState({ requestConfirm });
+    useRepo.setState({
+      summary: {
+        path: "/r",
+        workdir: "/r",
+        headBranch: "main",
+        headOid: null,
+        detached: false,
+        unborn: true,
+      },
+      changes: {
+        staged: [staged("first.txt")],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "first.txt", source: "staged" },
+    });
+
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+    const button = screen.getByRole("button", { name: "Discard all changes" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      "Discard all is unavailable before the first commit. Unstage or remove files individually, or use the terminal.",
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("preview_discard_all", expect.anything());
   });
 });

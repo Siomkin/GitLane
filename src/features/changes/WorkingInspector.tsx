@@ -2,9 +2,9 @@ import { useEffect, type MouseEvent } from "react";
 import type { FileChange, WorkingChanges } from "@/lib/api";
 import {
   advancedNotices,
+  discardAllGuardMessage,
   fileWriteGuard,
   findGuardedFile,
-  guardedAdvancedWriteMessage,
 } from "@/lib/advancedRepoState";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
@@ -41,10 +41,9 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const stageAllBlocked = fileWriteGuard(unstagedGuarded, changes);
   const unstageAllBlocked = fileWriteGuard(stagedGuarded, changes);
   const discardAllChanges = useDiscardAllChanges(summary?.path ?? null);
-  // Discard clears the whole working tree, so it shares the WIP menu's bulk
-  // guard — the same sparse-checkout / submodule advanced-write block that
-  // gates staging — rather than a single per-file stage guard.
-  const discardAllBlocked = guardedAdvancedWriteMessage(changes);
+  // Whole-tree discard is stricter than staging/stashing: even an in-cone
+  // sparse edit is unsafe because the backend must preserve skip-worktree bits.
+  const discardAllBlocked = discardAllGuardMessage(changes, summary?.unborn === true);
   // Unmerged paths whose owning operation isn't currently driving the conflict
   // workspace (e.g. `git am`/`bisect`, or a transient detection failure). Shown
   // read-only here so they never vanish from the UI — resolution still happens

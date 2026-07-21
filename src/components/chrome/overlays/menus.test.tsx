@@ -40,7 +40,15 @@ beforeEach(() => {
     // so only the tests that care about dirtiness opt into it.
     if (cmd === "worktree_dirty_state") return Promise.resolve({ modified: 0, untracked: 0 });
     if (cmd.startsWith("preview_")) {
-      return Promise.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: ["Recovery warning"], expectedOid: "branch-preview-oid" });
+      return Promise.resolve({
+        summary: "Impact summary",
+        details: ["Affected path"],
+        warnings: ["Recovery warning"],
+        expectedOid: "branch-preview-oid",
+        expectedState: "discard-all-state-v1",
+        expectedHeadBranch: "main",
+        expectedHeadOid: "head",
+      });
     }
     return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
   });
@@ -161,6 +169,30 @@ describe("WipContextMenu", () => {
     expect(screen.getAllByText("Submodule: modified files inside submodule. Use the terminal for submodule updates.")).toHaveLength(3);
   });
 
+  it("blocks only Discard all for an in-cone sparse change", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [file("src/a.ts")],
+        conflicted: [],
+        advanced: {
+          submodules: [],
+          lfs: { detected: false, installed: null, issues: [], patterns: [] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        },
+      },
+    });
+    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    render(<WipContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Stash all changes" })).toBeEnabled();
+    expect(screen.getByRole("menuitem", { name: "Discard all changes" })).toBeDisabled();
+    expect(screen.getByText(
+      "Sparse checkout is enabled. Disable sparse checkout before using Discard all, or use the terminal.",
+    )).toBeInTheDocument();
+  });
+
   it("shows Unstage all only when there are staged files", () => {
     useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState } });
     useUi.setState({ wipMenu: { x: 10, y: 10 } });
@@ -174,6 +206,9 @@ describe("WipContextMenu", () => {
       summary: string;
       details: string[];
       warnings: string[];
+      expectedState: string;
+      expectedHeadBranch: string | null;
+      expectedHeadOid: string | null;
     }>();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "preview_discard_all") return pending.promise;
@@ -191,7 +226,14 @@ describe("WipContextMenu", () => {
     await waitFor(() => expect(useUi.getState().wipMenu).toBeNull());
     expect(useUi.getState().confirm).toBeNull();
 
-    pending.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: [] });
+    pending.resolve({
+      summary: "Impact summary",
+      details: ["Affected path"],
+      warnings: [],
+      expectedState: "discard-all-state-v1",
+      expectedHeadBranch: "main",
+      expectedHeadOid: "head",
+    });
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
   });
 });

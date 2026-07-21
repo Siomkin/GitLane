@@ -383,6 +383,17 @@ export interface DiscardFilePreview extends DestructivePreview {
   expectedState: string;
 }
 
+export interface DiscardAllPreview extends DestructivePreview {
+  /** Opaque backend fingerprint of the exact repository, HEAD, index, and
+   * affected worktree leaves shown by the confirmation. */
+  expectedState: string;
+  /** Symbolic branch observed by the preview, or null for detached HEAD. An
+   * unborn repository still has a branch while its commit OID remains null. */
+  expectedHeadBranch: string | null;
+  /** Commit observed by the preview, or null for an unborn repository. */
+  expectedHeadOid: string | null;
+}
+
 export interface WorktreeInfo {
   name: string;
   path: string;
@@ -809,7 +820,7 @@ export const gitApi = {
   ) => invoke<DestructivePreview>("preview_reset", { path, target, mode, source: source ?? null }),
 
   previewDiscardAll: (path: string) =>
-    invoke<DestructivePreview>("preview_discard_all", { path }),
+    invoke<DiscardAllPreview>("preview_discard_all", { path }),
 
   previewDiscardFile: (
     path: string,
@@ -1077,7 +1088,17 @@ export const gitApi = {
 
   /** Discard every uncommitted change: reset tracked files to HEAD and remove
    * untracked files/dirs. Irreversible. */
-  discardAll: (path: string) => invoke<string>("discard_all", { path }),
+  discardAll: (
+    path: string,
+    expectedState: string,
+    expectedHeadBranch: string | null,
+    expectedHeadOid: string | null,
+  ) => invoke<string>("discard_all", {
+    path,
+    expectedState,
+    expectedHeadBranch,
+    expectedHeadOid,
+  }),
 
   // ---- repository files (the Files browser) ----
 
