@@ -16,12 +16,15 @@ use serde::Deserialize;
 
 use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
+use super::super::bounded_output::{
+    self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
+};
 use super::super::domain::GithubError;
 
 /// GitLab's MR `/diffs` endpoint can return up to 100 full file patches per
 /// page. Ordinary provider JSON has its own bounded allowance, but raw patch
 /// bodies still need the larger explicit ceiling shared with Bitbucket diffs.
-pub(super) const DIFF_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
+pub(super) const DIFF_RESPONSE_LIMIT: usize = DIFF_STDOUT_LIMIT;
 
 /// The write verbs the operations need beyond GET.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,24 +93,45 @@ fn glab_command(workdir: &str, args: &[&str]) -> Command {
 }
 
 pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, String> {
+    run_glab_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
+}
+
+pub fn run_glab_with_limit(
+    workdir: &str,
+    args: &[&str],
+    stdout_limit: usize,
+) -> Result<String, String> {
     let mut cmd = glab_command(workdir, args);
 
-    let output = cmd.output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            GLAB_NOT_FOUND.to_string()
-        } else {
-            format!("failed to launch glab: {e}")
-        }
-    })?;
+    let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
+        .map_err(map_glab_capture_error)?;
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    finish_glab_output(output)
+}
+
+fn finish_glab_output(output: BoundedOutput) -> Result<String, String> {
+    finish_glab_bytes(output.status.success(), &output.stdout, &output.stderr)
+}
+
+fn finish_glab_bytes(success: bool, stdout: &[u8], stderr: &[u8]) -> Result<String, String> {
+    if success {
+        Ok(String::from_utf8_lossy(stdout).to_string())
     } else {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(stdout);
+        let stderr = String::from_utf8_lossy(stderr);
         Err(crate::redact::redact_secrets(
             format!("{stdout}{stderr}").trim(),
         ))
+    }
+}
+
+fn map_glab_capture_error(error: CaptureError) -> String {
+    match error {
+        CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            GLAB_NOT_FOUND.to_string()
+        }
+        CaptureError::Spawn(source) => format!("failed to launch glab: {source}"),
+        other => format!("glab {other}"),
     }
 }
 
@@ -145,11 +169,30 @@ impl GlabCli {
     fn run(&self, operation: &'static str, args: &[&str]) -> Result<String, GithubError> {
         run_glab(&self.workdir, args).map_err(|err| map_glab_error(operation, err))
     }
+
+    fn run_with_limit(
+        &self,
+        operation: &'static str,
+        args: &[&str],
+        stdout_limit: usize,
+    ) -> Result<String, GithubError> {
+        run_glab_with_limit(&self.workdir, args, stdout_limit)
+            .map_err(|err| map_glab_error(operation, err))
+    }
 }
 
 impl GitlabApi for GlabCli {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
         self.run(operation, &["api", path])
+    }
+
+    fn get_with_limit(
+        &self,
+        operation: &'static str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        self.run_with_limit(operation, &["api", path], max_bytes)
     }
 
     fn send(
@@ -379,6 +422,33 @@ mod tests {
                 "{key} must be removed from the glab subprocess environment"
             );
         }
+    }
+
+    #[test]
+    fn missing_glab_copy_is_preserved() {
+        let error = map_glab_capture_error(CaptureError::Spawn(std::io::Error::from(
+            std::io::ErrorKind::NotFound,
+        )));
+        assert_eq!(error, GLAB_NOT_FOUND);
+    }
+
+    #[test]
+    fn bounded_glab_finish_preserves_lossy_and_stream_order_semantics() {
+        assert_eq!(
+            finish_glab_bytes(true, b"ok\xff", b"ignored stderr").unwrap(),
+            "ok\u{fffd}"
+        );
+
+        let error = finish_glab_bytes(
+            false,
+            b" stdout first\n",
+            b"stderr https://alice:secret@example.test/repo\xff \n",
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "stdout first\nstderr https://alice:***@example.test/repo\u{fffd}"
+        );
     }
 
     #[test]

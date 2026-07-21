@@ -9,6 +9,8 @@
 //!
 //! The module is split by responsibility:
 //!
+//! - [`bounded_output`] — concurrent hard-bounded stdout/stderr capture shared
+//!   by provider CLI transports.
 //! - [`cli`] — the single `gh` subprocess site (`run_gh`), account/token
 //!   discovery, and repo identity resolution.
 //! - [`dto`] — private `gh`/GraphQL response shapes and their conversions into
@@ -23,6 +25,7 @@
 //! `cli`/`dto` and the output types — never on each other or on this facade.
 
 mod bitbucket;
+mod bounded_output;
 mod cli;
 mod diff;
 mod domain;

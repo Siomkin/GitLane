@@ -12,6 +12,9 @@ use serde::Deserialize;
 
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
+use super::bounded_output::{
+    self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT,
+};
 use super::domain::{normalize_host, GithubError, GithubRepository, GH_PROVIDER};
 use super::dto::GhUser;
 
@@ -90,6 +93,15 @@ fn gh_command(workdir: &str, args: &[&str]) -> Command {
 }
 
 pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Result<String, String> {
+    run_gh_with_limit(workdir, args, token, DEFAULT_STDOUT_LIMIT)
+}
+
+pub(super) fn run_gh_with_limit(
+    workdir: &str,
+    args: &[&str],
+    token: Option<&str>,
+    stdout_limit: usize,
+) -> Result<String, String> {
     let mut cmd = gh_command(workdir, args);
     if let Some(t) = token {
         // gh reads GH_TOKEN for github.com / *.ghe.com hosts and
@@ -102,23 +114,36 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
         cmd.env("GH_ENTERPRISE_TOKEN", t);
     }
 
-    let output = cmd.output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
-        } else {
-            format!("failed to launch gh: {e}")
-        }
-    })?;
+    let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
+        .map_err(map_gh_capture_error)?;
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    finish_gh_output(output)
+}
+
+fn finish_gh_output(output: BoundedOutput) -> Result<String, String> {
+    finish_gh_bytes(output.status.success(), &output.stdout, &output.stderr)
+}
+
+fn finish_gh_bytes(success: bool, stdout: &[u8], stderr: &[u8]) -> Result<String, String> {
+    if success {
+        Ok(String::from_utf8_lossy(stdout).to_string())
     } else {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(stdout);
+        let stderr = String::from_utf8_lossy(stderr);
         // Scrub any credential a remote URL in gh's output might carry.
         Err(crate::redact::redact_secrets(
             format!("{stdout}{stderr}").trim(),
         ))
+    }
+}
+
+fn map_gh_capture_error(error: CaptureError) -> String {
+    match error {
+        CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
+        }
+        CaptureError::Spawn(source) => format!("failed to launch gh: {source}"),
+        other => format!("gh {other}"),
     }
 }
 
@@ -377,6 +402,36 @@ mod tests {
                 "{key} must be removed from the gh subprocess environment"
             );
         }
+    }
+
+    #[test]
+    fn missing_gh_copy_is_preserved() {
+        let error = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
+            std::io::ErrorKind::NotFound,
+        )));
+        assert_eq!(
+            error,
+            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests."
+        );
+    }
+
+    #[test]
+    fn bounded_finish_preserves_lossy_and_stream_order_semantics() {
+        assert_eq!(
+            finish_gh_bytes(true, b"ok\xff", b"ignored stderr").unwrap(),
+            "ok\u{fffd}"
+        );
+
+        let error = finish_gh_bytes(
+            false,
+            b" stdout first\n",
+            b"stderr https://alice:secret@example.test/repo\xff \n",
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "stdout first\nstderr https://alice:***@example.test/repo\u{fffd}"
+        );
     }
 
     #[test]
