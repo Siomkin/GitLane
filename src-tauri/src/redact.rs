@@ -72,6 +72,112 @@ pub fn redact_secrets(text: &str) -> String {
     out
 }
 
+/// Redact URL-carried credentials, then replace the exact active secret values
+/// supplied by the caller. This companion is for boundaries that still hold a
+/// live credential (for example a provider REST client): a server or transport
+/// error may echo a request header or raw token even though the credential never
+/// appeared in the URL.
+///
+/// Each byte of an active value may appear literally or as a case-insensitive
+/// `%HH` escape, and a space may use form encoding's `+`. Matching byte by byte
+/// catches mixed raw/encoded echoes without generating a finite list of variants;
+/// it also covers escaped Base64 padding (`=` -> `%3D`).
+///
+/// Empty values are deliberately ignored. Replacing `""` would insert the
+/// redaction marker between every character and derived forms such as a bare
+/// `"Bearer "` are not credentials when no token is active.
+pub fn redact_secrets_with_values(text: &str, active_secrets: &[&str]) -> String {
+    let mut redacted = redact_secrets(text);
+    for secret in active_secrets {
+        if !secret.is_empty() {
+            redacted = redact_active_value(&redacted, secret);
+        }
+    }
+    redacted
+}
+
+fn redact_active_value(text: &str, secret: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut cursor = 0;
+    while cursor < text.len() {
+        if let Some(end) = encoded_value_end(text, cursor, secret) {
+            out.push_str("***");
+            cursor = end;
+        } else {
+            let ch = text[cursor..]
+                .chars()
+                .next()
+                .expect("cursor is before the end of valid UTF-8");
+            out.push(ch);
+            cursor += ch.len_utf8();
+        }
+    }
+    out
+}
+
+/// Return the end of an exact active-value representation beginning at `start`.
+///
+/// Multiple states matter when the secret itself contains `%`: `%25` could be
+/// either a literal prefix or the encoded form of `%`. Retaining both candidates
+/// avoids choosing the wrong interpretation before the rest of the value proves
+/// which one is valid.
+fn encoded_value_end(text: &str, start: usize, secret: &str) -> Option<usize> {
+    let input = text.as_bytes();
+    let first = *secret.as_bytes().first()?;
+    let starts_literal = input.get(start) == Some(&first);
+    let starts_form_space = first == b' ' && input.get(start) == Some(&b'+');
+    let starts_encoded = input.get(start) == Some(&b'%')
+        && start + 2 < input.len()
+        && hex_value(input[start + 1])
+            .zip(hex_value(input[start + 2]))
+            .map(|(high, low)| high << 4 | low)
+            == Some(first);
+    if !starts_literal && !starts_form_space && !starts_encoded {
+        return None;
+    }
+
+    let mut positions = vec![start];
+
+    for secret_byte in secret.bytes() {
+        let mut next = Vec::with_capacity(positions.len() * 2);
+        for position in positions {
+            if input.get(position) == Some(&secret_byte) {
+                next.push(position + 1);
+            }
+            if secret_byte == b' ' && input.get(position) == Some(&b'+') {
+                next.push(position + 1);
+            }
+            if input.get(position) == Some(&b'%') && position + 2 < input.len() {
+                let high = hex_value(input[position + 1]);
+                let low = hex_value(input[position + 2]);
+                if high.zip(low).map(|(high, low)| high << 4 | low) == Some(secret_byte) {
+                    next.push(position + 3);
+                }
+            }
+        }
+        next.sort_unstable();
+        next.dedup();
+        if next.is_empty() {
+            return None;
+        }
+        positions = next;
+    }
+
+    positions
+        .into_iter()
+        .filter(|end| text.is_char_boundary(*end))
+        .max()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 /// Provider token prefixes that identify a credential placed in a URL's
 /// username slot. Both GitHub and GitLab accept `https://<token>@host/…`, so
 /// these must never be treated as an account selector.
@@ -173,7 +279,7 @@ fn is_authority_delimiter(c: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_secretlike_username, redact_secrets};
+    use super::{is_secretlike_username, redact_secrets, redact_secrets_with_values};
 
     #[test]
     fn redacts_password_userinfo_but_keeps_username() {
@@ -287,5 +393,56 @@ mod tests {
         // scp-like SSH has no "://" and no password — left as-is.
         let text = "git@github.com:owner/repo.git";
         assert_eq!(redact_secrets(text), text);
+    }
+
+    #[test]
+    fn active_values_are_redacted_after_url_credentials() {
+        let text = "request https://alice:url-secret@example.test/path used Bearer live-secret";
+        assert_eq!(
+            redact_secrets_with_values(text, &["Bearer live-secret", "live-secret"]),
+            "request https://alice:***@example.test/path used ***"
+        );
+    }
+
+    #[test]
+    fn empty_active_values_do_not_change_text() {
+        let text = "Bearer authentication failed";
+        assert_eq!(redact_secrets_with_values(text, &[""]), text);
+    }
+
+    #[test]
+    fn active_values_match_mixed_url_and_form_encoding() {
+        let secret = "a b=Z+%25";
+        let text = concat!(
+            "raw=a b=Z+%25 ",
+            "percent=a%20b%3d%5A%2b%2525 ",
+            "form=a+b%3DZ%2B%2525 ",
+            "near_miss=a+b%3Db%2B%2525 ",
+            "mixed=a+b=%5A+%2525"
+        );
+        let redacted = redact_secrets_with_values(text, &[secret]);
+
+        assert_eq!(
+            redacted,
+            concat!(
+                "raw=*** ",
+                "percent=*** ",
+                "form=*** ",
+                "near_miss=a+b%3Db%2B%2525 ",
+                "mixed=***"
+            )
+        );
+    }
+
+    #[test]
+    fn active_values_redact_encoded_base64_padding() {
+        let payload = "YWxpY2U6dG9rZW4=";
+        assert_eq!(
+            redact_secrets_with_values(
+                "payload=YWxpY2U6dG9rZW4%3d again=YWxpY2U6dG9rZW4%3D",
+                &[payload]
+            ),
+            "payload=*** again=***"
+        );
     }
 }

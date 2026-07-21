@@ -98,8 +98,8 @@ export default [
   },
   // Documented boundary sites that legitimately import the `api` object: the PTY
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
-  // and controller never touch `api`, GL-177) and the context-menu probe /
-  // destructive-preview reads in the menus folder module (GL-156), including the
+  // and controller never touch `api`, GL-177) and the context-menu probes /
+  // destructive-preview reads in the menus folder module (GL-156/GL-319), including the
   // shared discard-all hook that owns the `previewDiscardAll` read (GL-236) and
   // the shared remove-worktree hook that owns the `worktreeDirtyState` read
   // (GL-296), and the bulk sweep's preview probe over every candidate (GL-297)
@@ -109,6 +109,7 @@ export default [
       "src/features/terminal/panes/useTerminalPanes.ts",
       "src/components/chrome/overlays/menus/ActionMenu.tsx",
       "src/components/chrome/overlays/menus/BranchContextMenu.tsx",
+      "src/components/chrome/overlays/menus/useBranchFastForwardProbe.ts",
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
       "src/components/chrome/overlays/menus/useDiscardAllChanges.ts",
       "src/components/chrome/overlays/menus/useRemoveWorktree.ts",

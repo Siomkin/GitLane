@@ -103,19 +103,51 @@ impl<'a> RestClient<'a> {
         }
     }
 
+    fn redact_error_text(&self, text: &str) -> String {
+        if self.token.is_empty() {
+            return crate::redact::redact_secrets_with_values(text, &[]);
+        }
+
+        let auth = self.auth_header();
+        let header = format!("Authorization: {auth}");
+        let payload = auth.strip_prefix("Basic ").unwrap_or("");
+        crate::redact::redact_secrets_with_values(
+            text,
+            &[header.as_str(), auth.as_str(), payload, self.token.as_str()],
+        )
+    }
+
+    /// Preserve the category chosen from the original status/detail and redact
+    /// only the message that can escape through GithubError and IPC.
+    fn redact_error(&self, error: GithubError) -> GithubError {
+        match error {
+            GithubError::Network(message) => GithubError::Network(self.redact_error_text(&message)),
+            GithubError::InvalidResponse(message) => {
+                GithubError::InvalidResponse(self.redact_error_text(&message))
+            }
+            GithubError::CommandFailed(message) => {
+                GithubError::CommandFailed(self.redact_error_text(&message))
+            }
+            other => other,
+        }
+    }
+
     fn finish(&self, operation: &'static str, result: HttpResult) -> Result<String, GithubError> {
         match result {
             Ok(resp) if resp.is_success() => Ok(resp.body),
-            Ok(resp) => Err(map_http_error(operation, &self.host, resp.status, &resp.body)),
+            Ok(resp) => {
+                let error = map_http_error(operation, &self.host, resp.status, &resp.body);
+                Err(self.redact_error(error))
+            }
             Err(HttpError::ResponseTooLarge { limit }) => Err(GithubError::InvalidResponse(
                 format!(
                     "Bitbucket {operation} exceeded the {limit}-byte response limit; the partial response was discarded."
                 ),
             )),
-            // A transport failure message may quote the request URL (never a
-            // secret — the token rides in a header), but redact defensively.
+            // A transport adapter may echo its headers. Scrub the active bearer
+            // or Basic credential as well as any URL-carried credential.
             Err(HttpError::Transport(err)) => {
-                Err(GithubError::Network(crate::redact::redact_secrets(&err)))
+                Err(GithubError::Network(self.redact_error_text(&err)))
             }
         }
     }
@@ -383,5 +415,145 @@ mod tests {
             }
             other => panic!("expected typed invalid response, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn basic_rest_errors_redact_token_header_payload_and_url_credentials() {
+        let token = "bitbucket-app-password";
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "bitbucket.org", "alice", token);
+        let payload = base64::engine::general_purpose::STANDARD.encode(format!("alice:{token}"));
+        let auth = format!("Basic {payload}");
+        let header = format!("Authorization: {auth}");
+        let json = format!(
+            r#"{{"error":{{"message":"token={token}; auth={auth}; header={header}; payload={payload}; url=https://alice:url-secret@bitbucket.org/a/b"}}}}"#
+        );
+
+        let response = client.finish("detail", MockTransport::ok(404, &json));
+        let Err(GithubError::CommandFailed(message)) = response else {
+            panic!("expected command failure");
+        };
+        for secret in [
+            token,
+            auth.as_str(),
+            header.as_str(),
+            payload.as_str(),
+            "url-secret",
+        ] {
+            assert!(!message.contains(secret), "leaked {secret:?}: {message}");
+        }
+        assert!(
+            message.contains("https://alice:***@bitbucket.org/a/b"),
+            "{message}"
+        );
+
+        // Drive the text endpoint through its real transport seam. A non-JSON
+        // error body keeps the existing generic category/message and cannot
+        // expose echoed headers.
+        let text = format!("upstream echoed {header} payload={payload}");
+        let text_http = MockTransport::new(vec![MockTransport::ok(500, &text)]);
+        let text_client = RestClient::new(&text_http, "bitbucket.org", "alice", token);
+        let Err(GithubError::CommandFailed(message)) =
+            text_client.get_text("pull request diff", "repositories/a/b/pullrequests/1/diff")
+        else {
+            panic!("expected command failure");
+        };
+        for secret in [token, auth.as_str(), payload.as_str()] {
+            assert!(!message.contains(secret), "leaked {secret:?}: {message}");
+        }
+        assert_eq!(text_http.requests.lock().unwrap()[0].method, "GET");
+        assert_eq!(
+            text_http.requests.lock().unwrap()[0]
+                .headers
+                .iter()
+                .find(|(key, _)| key == "Accept")
+                .map(|(_, value)| value.as_str()),
+            Some("text/plain")
+        );
+
+        let transport = format!("request failed with {header} payload={payload}");
+        let Err(GithubError::Network(message)) =
+            client.finish("detail", Err(HttpError::Transport(transport)))
+        else {
+            panic!("expected network failure");
+        };
+        for secret in [token, auth.as_str(), header.as_str(), payload.as_str()] {
+            assert!(!message.contains(secret), "leaked {secret:?}: {message}");
+        }
+    }
+
+    #[test]
+    fn basic_rest_errors_redact_encoded_token_auth_and_padded_payload() {
+        let token = "bit bucket=Z!";
+        let encoded_token = "bit+bucket%3d%5A%21";
+        let payload = "YWxpY2U6Yml0IGJ1Y2tldD1aIQ==";
+        let encoded_payload = "YWxpY2U6Yml0IGJ1Y2tldD1aIQ%3d%3D";
+        let encoded_auth = "Basic+YWxpY2U6Yml0IGJ1Y2tldD1aIQ%3D%3d";
+        let encoded_header = "Authorization%3a+Basic%20YWxpY2U6Yml0IGJ1Y2tldD1aIQ=%3D";
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "bitbucket.org", "alice", token);
+        assert_eq!(
+            client.auth_header(),
+            format!("Basic {payload}"),
+            "fixture must cover the client's exact padded Basic payload"
+        );
+        let body = format!(
+            r#"{{"error":{{"message":"https://{encoded_token}@bitbucket.org/a/b?token={encoded_token}&payload={encoded_payload}&auth={encoded_auth}&header={encoded_header}"}}}}"#
+        );
+
+        let error = client
+            .finish("detail", MockTransport::ok(404, &body))
+            .expect_err("encoded credential echo must fail");
+        assert!(matches!(error, GithubError::CommandFailed(_)));
+
+        let debug = format!("{error:?}");
+        let ipc = error.to_ipc_string();
+        for exposed in [
+            token,
+            encoded_token,
+            payload,
+            encoded_payload,
+            encoded_auth,
+            encoded_header,
+        ] {
+            assert!(
+                !debug.contains(exposed),
+                "debug leaked {exposed:?}: {debug}"
+            );
+            assert!(!ipc.contains(exposed), "IPC leaked {exposed:?}: {ipc}");
+        }
+        assert!(ipc.contains("https://***@bitbucket.org/a/b"), "{ipc}");
+    }
+
+    #[test]
+    fn bearer_rest_errors_are_redacted_and_scope_categorization_is_unchanged() {
+        // The active secret itself contains "scope". The 403 upgrade must inspect
+        // that original detail before redaction removes the token from the outward
+        // message, otherwise the re-authorization guidance would be lost.
+        let token = "required-scope-secret";
+        let http = MockTransport::new(vec![]);
+        let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, token);
+        let body = format!(r#"{{"error":{{"message":"{token}"}}}}"#);
+        let response = client.finish("approve", MockTransport::ok(403, &body));
+        let Err(GithubError::CommandFailed(message)) = response else {
+            panic!("expected categorized scope failure");
+        };
+        assert!(!message.contains(token), "{message}");
+        assert!(message.contains("Re-authorize"), "{message}");
+
+        let empty = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "");
+        let response = empty.finish(
+            "detail",
+            MockTransport::ok(
+                404,
+                r#"{"error":{"message":"Bearer authentication failed"}}"#,
+            ),
+        );
+        assert_eq!(
+            response,
+            Err(GithubError::CommandFailed(
+                "Bearer authentication failed".to_string()
+            ))
+        );
     }
 }

@@ -1,15 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, BranchKind } from "@/lib/api";
+import { api } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
-import { findOtherBranchWorktree } from "@/lib/graphActions";
-import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { validateBranchName } from "@/lib/refName";
-import {
-  handoffDestinationHere,
-  handoffDestinationOptions,
-  handoffSourceValid,
-  startWorktreeHandoff,
-} from "@/lib/worktreeHandoff";
+import { startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -30,6 +22,11 @@ import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overl
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCompareBranch, promptCreateWorktree } from "./prompts";
 import { confirmRebase } from "./rebaseConfirm";
+import {
+  deriveBranchContextMenuPolicy,
+  MAIN_WORKTREE_DELETE_DISABLED_REASON,
+} from "./branchContextMenuPolicy";
+import { useBranchFastForwardProbe } from "./useBranchFastForwardProbe";
 
 export function BranchContextMenu() {
   const menu = useUi((s) => s.contextMenu);
@@ -71,61 +68,58 @@ export function BranchContextMenu() {
   const requestRemoveWorktree = useRemoveWorktree();
   const run = useBranchOp();
 
-  // Can the current branch fast-forward to this one? (branch is a descendant of
-  // cur). Probed async like the drag-drop ActionMenu so the FF item only shows
-  // when it would actually succeed.
-  const branch = menu?.branch ?? null;
-  const [canFf, setCanFf] = useState(false);
-  useEffect(() => {
-    setCanFf(false);
-    if (!repoPath || !branch || !cur || branch === cur) return;
-    // The menu payload carries only the display name, so a local/remote pair
-    // sharing it is unresolvable here — fail closed (no FF offer) like the
-    // store's revisionSnapshot does, instead of probing whichever ref happens
-    // to come first in the list.
-    const targetMatches = branches.filter((candidate) => candidate.name === branch);
-    const targetOid = targetMatches.length === 1 ? targetMatches[0].target : null;
-    const currentOid = branches.find(
-      (candidate) => candidate.kind === BranchKind.Local && candidate.name === cur,
-    )?.target;
-    if (!targetOid || !currentOid) return;
-    let alive = true;
-    api
-      .canFastForward(repoPath, targetOid, currentOid)
-      .then((ok) => alive && setCanFf(ok))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [repoPath, branch, branches, cur]);
+  const policy = menu
+    ? deriveBranchContextMenuPolicy({
+        branch: menu.branch,
+        isCurrent: menu.isCurrent,
+        currentBranch: cur,
+        branches,
+        worktrees,
+        workdir,
+      })
+    : null;
+  // Can the current branch fast-forward to this one? The hook keys the answer to
+  // this exact menu opening, repository, and oid pair so delayed reads fail closed.
+  const canFf = useBranchFastForwardProbe({
+    owner: menu,
+    repoPath,
+    targetOid: policy?.targetOid ?? null,
+    currentOid: policy?.currentOid ?? null,
+    enabled: policy?.canIntegrateIntoCurrent ?? false,
+  });
 
-  if (!menu) return null;
+  if (!menu || !policy) return null;
 
   const { isCurrent } = menu;
   const b = menu.branch;
-  // Resolve the menu's ref only on a UNIQUE display-name match. The payload
-  // carries no kind, so a local/remote pair sharing the name is unresolvable —
-  // leave `info` unset and every tip/kind-derived action (reset to tip,
-  // cherry-pick tip, tag here, local-only mutations) fails closed with it,
-  // matching the FF probe above and the store's revisionSnapshot.
-  const infoMatches = branches.filter((x) => x.name === b);
-  const info = infoMatches.length === 1 ? infoMatches[0] : undefined;
-  const tip = info?.target ?? null;
-  const tipShort = tip ? tip.slice(0, 7) : null;
-  const upstream = info?.upstream ?? null;
-  const existingWt = findOtherBranchWorktree(worktrees, b, workdir);
-  // The full info for that worktree (findOtherBranchWorktree returns the leaner
-  // WorktreeRef), so we know whether it's the main worktree — git refuses to
-  // remove that one, so "Remove worktree" is only offered for linked ones.
-  const existingWtInfo = existingWt ? worktrees.find((w) => w.path === existingWt.path) : null;
+  const {
+    info,
+    tip,
+    tipShort,
+    upstream,
+    existingWorktree: existingWt,
+    existingWorktreeInfo: existingWtInfo,
+    needsPublishPrompt,
+    canIntegrateIntoCurrent,
+    isLocal,
+    isRemote,
+    remoteCheckout,
+    remoteCheckoutHasLocal,
+    aheadBehind,
+    worktreeCheckedOut: wtCheckedOut,
+    worktreeRef: wtRef,
+    handoffHere,
+    canHandOff,
+    canRemoveWorktree,
+    localDeleteMode,
+    remoteDeleteTarget,
+  } = policy;
 
   const act = (op: () => Promise<string>) => {
     close();
     void run(op);
   };
 
-  const needsPublishPrompt =
-    info?.sync?.status === "noUpstream" || info?.sync?.status === "staleUpstream";
   const resetHeadPrecondition = { branch: cur, oid: headOid };
   const promptPublishBranch = () =>
     requestPrompt({
@@ -143,26 +137,6 @@ export function BranchContextMenu() {
     }
     act(() => pushBranch(b));
   };
-
-  // Remote-tracking refs (origin/…) reach this same menu, but local-only
-  // mutations (push the ref, set its upstream, rename/delete it) are nonsensical
-  // there — gate those on `isLocal`. Integrate/worktree/reset/tag actions stay,
-  // since "reset cur to origin/main" etc. are exactly what you want on a remote.
-  // `isLocal` is a POSITIVE check so an unresolved ref (missing from the branches
-  // store) fails closed — local-only mutations hide rather than show on a remote.
-  const isLocal = info?.kind === BranchKind.Local;
-  const isRemote = info?.kind === BranchKind.Remote;
-  const remoteCheckout = remoteTrackingCheckoutCandidate(b, branches);
-  const remoteCheckoutHasLocal = remoteCheckout
-    ? branches.some((candidate) =>
-        candidate.kind === BranchKind.Local && candidate.name === remoteCheckout.branch)
-    : false;
-  const sync = info?.sync ?? null;
-  const aheadBehind = sync && sync.upstream ? `↑${sync.ahead} ↓${sync.behind}` : null;
-  // `git worktree add <path> <branch>` errors if <branch> is already checked out
-  // anywhere; create the worktree detached at the tip in that case.
-  const wtCheckedOut = isCurrent || worktrees.some((w) => w.branch === b);
-  const wtRef = wtCheckedOut && tip ? tip : b;
 
   // The branch is named once, here — rows below never repeat it.
   const heading = (
@@ -206,11 +180,10 @@ export function BranchContextMenu() {
     // That matters most when the holder is a stale agent scratch worktree the
     // user never wants to open. Runs through the hand-off dialog with the open
     // worktree preselected, so the multi-step move stays confirmable + visible.
-    const here = handoffDestinationHere(worktrees, existingWt.path, workdir);
     // A prunable holder (its directory is gone) can't run the hand-off's
     // detach step — git would fail inside the missing worktree, so don't
     // offer a dead click.
-    if (isLocal && here && handoffSourceValid(worktrees, existingWt.path)) {
+    if (handoffHere) {
       top.push({
         label: "Check out here…",
         icon: <CheckIcon className="h-4 w-4" />,
@@ -223,7 +196,7 @@ export function BranchContextMenu() {
             // The branch lives in another worktree, not the open repo, so its
             // uncommitted state isn't known here — carry conditionally.
             sourceChanges: null,
-            destPath: here.value,
+            destPath: handoffHere.value,
             openHandoff,
             onNoDestinations: () => showToast("No worktree to check out into.", "error"),
           });
@@ -263,7 +236,7 @@ export function BranchContextMenu() {
     }
     groups.push({ label: "Create", icon: <PlusIcon className="h-4 w-4" />, submenu: children });
   }
-  if (!isCurrent && cur) {
+  if (canIntegrateIntoCurrent && cur) {
     const children: MenuItem[] = [];
     if (canFf) children.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
     children.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
@@ -304,12 +277,7 @@ export function BranchContextMenu() {
       // Only offer the hand-off when the source can still run the detach step
       // (not prunable) and a valid destination actually exists (bare / prunable
       // worktrees are filtered out), so it's never a dead click.
-      if (
-        isLocal &&
-        !isCurrent &&
-        handoffSourceValid(worktrees, existingWt.path) &&
-        handoffDestinationOptions(worktrees, existingWt.path).length > 0
-      ) {
+      if (canHandOff) {
         children.push({
           label: "Hand off to…",
           onClick: () =>
@@ -326,7 +294,7 @@ export function BranchContextMenu() {
         });
       }
       children.push(newWorktree);
-      if (!existingWtInfo?.isMain) {
+      if (canRemoveWorktree) {
         children.push({
           label: "Remove worktree",
           danger: true,
@@ -392,23 +360,17 @@ export function BranchContextMenu() {
       sep: danger.length > 0,
       onClick: () => requestPrompt({ title: `Set upstream for ${b}`, message: "Remote-tracking ref to track (must already exist).", placeholder: "origin/branch", defaultValue: upstream ?? `origin/${b}`, confirmLabel: "Set upstream", onSubmit: (up) => void run(() => setUpstreamFor(b, up)) }),
     });
-    if (!isCurrent && existingWt && !existingWtInfo?.isMain) {
+    if (localDeleteMode === "branch-and-worktree" && existingWt) {
       danger.push({ label: `Delete ${b} & worktree…`, danger: true, onClick: () => { close(); openDeleteWorktree({ branch: b, worktreePath: existingWt.path }); } });
-    } else if (!isCurrent && existingWt) {
-      danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: "Checked out in the main worktree." });
-    } else if (!isCurrent) {
+    } else if (localDeleteMode === "blocked-main-worktree") {
+      danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: MAIN_WORKTREE_DELETE_DISABLED_REASON });
+    } else if (localDeleteMode === "branch") {
       danger.push({ label: `Delete ${b}`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b}?`, message: "The branch ref will be removed. Unmerged commits may be lost.", confirmLabel: "Delete branch", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: (impact) => void run(() => removeBranch(b, impact.expectedOid, repoPath ?? "", true)) }) });
     }
   }
-  if (isRemote) {
-    // The backend attributes each remote branch to its remote (matched against
-    // the known remote list), so use that rather than splitting on the first `/`
-    // — a slash-containing remote name would otherwise target the wrong remote.
-    const remote = info?.remote ?? null;
-    const remoteBranch = remote && b.startsWith(`${remote}/`) ? b.slice(remote.length + 1) : null;
-    if (remote && remoteBranch && tip) {
-      danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
-    }
+  if (remoteDeleteTarget && tip) {
+    const { remote, branch: remoteBranch } = remoteDeleteTarget;
+    danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
   }
 
   // Assemble with a separator at each section boundary.

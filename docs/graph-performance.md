@@ -62,7 +62,9 @@ Use a production Tauri build and the webview performance/memory tools.
 The deterministic structural tests provide a CI guard independent of hardware:
 
 - TanStack Virtual owns row-range, scroll, and resize calculation.
-- `graphViewport.test.ts` verifies graph-edge clipping at canvas boundaries.
+- `graphViewport.test.ts` verifies graph-edge clipping at canvas boundaries;
+  `graphPaintIndex.test.ts` verifies bounded commit/edge/connector selection at
+  2,000 / 10,000 / 50,000 rows.
 - `HistoryWorkspace.test.tsx` proves a 10,000-commit graph mounts a bounded
   TanStack Virtual row window and moves it across virtual boundaries.
 - `repoWatcher.test.ts` and Rust watcher tests prove worktree-only events cannot
@@ -129,10 +131,12 @@ These figures establish bounded memory independent of total history height.
 Browser FPS/input/heap traces remain hardware-observed checks using the
 procedure above; the deterministic tests enforce the structural part in CI.
 
-## Next profiling step
+## Completed paint indexing
 
-The canvas paints only visible commit nodes, but it still scans every loaded
-edge before applying the cheap viewport intersection check. If upper-size
-merge-heavy scroll traces exceed the frame budget, index edges by row range so
-each repaint visits only the visible buckets. Keep the current linear scan
-until measurements justify the added indexing and invalidation complexity.
+GL-315 removes the remaining full graph/connector scan from bounded-canvas
+repaints. A memoized visual-row index uses binary bounds for commit nodes and a
+balanced interval tree for edges and synthetic stash connectors. Each
+interval has one tree owner (long edges are not copied into every crossed row),
+and viewport queries visit index depth plus returned crossings while preserving
+the backend arrays' original paint order. Deterministic 2,000 / 10,000 / 50,000
+row tests enforce those structural bounds without runtime profiling timers.

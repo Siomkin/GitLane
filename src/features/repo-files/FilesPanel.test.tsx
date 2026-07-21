@@ -1,16 +1,30 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { FilesPanel } from "./FilesPanel";
 
-const invokeMock = vi.hoisted(() => vi.fn());
+const { buildFileTreeMock, invokeMock } = vi.hoisted(() => ({
+  buildFileTreeMock: vi.fn(),
+  invokeMock: vi.fn(),
+}));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+vi.mock("./tree", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./tree")>();
+  return {
+    ...actual,
+    buildFileTree: (...args: Parameters<typeof actual.buildFileTree>) => {
+      buildFileTreeMock(...args);
+      return actual.buildFileTree(...args);
+    },
+  };
+});
 
 const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false };
 const FILE_STATE = "repo-file:v1:test-state";
 
 beforeEach(() => {
+  buildFileTreeMock.mockClear();
   invokeMock.mockReset();
   // The change-gutter baseline read fires (fire-and-forget) after every file
   // open/reload; default it to "no baseline" so it never consumes the content
@@ -64,6 +78,31 @@ describe("FilesPanel", () => {
     });
     expect(screen.getByText("src/deep/Match.tsx")).toBeInTheDocument();
     expect(screen.queryByText("other.ts")).not.toBeInTheDocument();
+  });
+
+  it("rebuilds path structure only when the files array reference changes", () => {
+    const files = ["README.md", "src/App.tsx"];
+    useRepo.setState({ repoFiles: { files, loading: false, error: null } });
+    render(<FilesPanel />);
+
+    expect(buildFileTreeMock).toHaveBeenCalledTimes(1);
+    expect(buildFileTreeMock).toHaveBeenLastCalledWith(files);
+
+    fireEvent.click(screen.getByText("src"));
+    fireEvent.change(screen.getByLabelText("Filter repository files"), {
+      target: { value: "app" },
+    });
+    fireEvent.change(screen.getByLabelText("Filter repository files"), {
+      target: { value: "" },
+    });
+    expect(buildFileTreeMock).toHaveBeenCalledTimes(1);
+
+    const replacement = [...files];
+    act(() => {
+      useRepo.setState({ repoFiles: { files: replacement, loading: false, error: null } });
+    });
+    expect(buildFileTreeMock).toHaveBeenCalledTimes(2);
+    expect(buildFileTreeMock).toHaveBeenLastCalledWith(replacement);
   });
 
   it("ignores a superseded listing response resolved out of order", async () => {

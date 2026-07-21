@@ -8,15 +8,32 @@ contract that governs every command and are not repeated here.
 
 ## 1. Engine specifics — how each side of the split is implemented
 
-- **All shelling-out goes through the `run_git` / `run_git_env` / `run_gh` helpers**
-  (`write/cli.rs`, `github/cli.rs`) — never `Command::new("git")` ad hoc. `run_gh` is the
-  only place under `git/github/` that constructs a `gh` subprocess. Tauri GitHub commands
+- **All shelling-out goes through the `run_git` / `run_git_env` / `run_gh` / `run_glab`
+  helpers** (`write/cli.rs`, `github/cli.rs`, `github/gitlab/transport.rs`) — never
+  `Command::new("git")` ad hoc. `run_gh` is the only place under `git/github/` that
+  constructs a `gh` subprocess. Tauri GitHub commands
   enter through `GithubService`, which dispatches to `GhProvider`; do not call `prs`,
   `threads`, `diff`, or `cli` directly from `lib.rs`. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
-- **Combine stdout+stderr** and return it trimmed: `Ok` on success, `Err` on non-zero exit,
-  so the UI can surface git's own message verbatim.
+- **Provider CLI output is hard-bounded while it is read.** `gh` and `glab` use
+  `github/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
+  drain can deadlock on a full pipe), with 4 MiB stdout for ordinary JSON/mutations,
+  32 MiB for diffs, and 1 MiB stderr. Do not replace this with unbounded
+  `Command::output` or a size check performed after capture. Teardown owns only the
+  direct child; process-tree management is out of scope, so a descendant that inherits
+  a pipe can delay EOF after that child exits.
+- **The two streams overflow differently, on purpose.** stdout is the payload a parser
+  consumes, so overflow (or any reader failure) kills and reaps the child and discards
+  all partial output — a truncated body must never reach a caller. stderr is diagnostics
+  that success discards outright, so overflow keeps the bounded prefix and lets the child
+  finish: a verbose-but-successful CLI (`GH_DEBUG=api` alone can pass 1 MiB) must not fail
+  an operation whose stdout arrived complete. Excess past `STDERR_DRAIN_CEILING` is a
+  runaway and escalates to the stdout behaviour. A truncated stderr that reaches a failure
+  message is disclosed (`stderr_truncated_notice`), never silently clipped.
+- **Provider CLI success returns stdout only, untrimmed.** On a non-zero exit, concatenate
+  stdout then stderr and trim the combined text before returning the error, so existing
+  provider parsing and user-facing error copy remain unchanged.
 - **One subprocess per logical operation when git supports it** (e.g. `cherry-pick A B C`),
   not a client-side loop — git stops cleanly on the first conflict instead of leaving a
   half-applied mess. Guard empty inputs (`return Err("no commits…")`).

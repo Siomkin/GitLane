@@ -12,6 +12,9 @@ use serde::Deserialize;
 
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
+use super::bounded_output::{
+    self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT,
+};
 use super::domain::{normalize_host, GithubError, GithubRepository, GH_PROVIDER};
 use super::dto::GhUser;
 
@@ -90,6 +93,15 @@ fn gh_command(workdir: &str, args: &[&str]) -> Command {
 }
 
 pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Result<String, String> {
+    run_gh_with_limit(workdir, args, token, DEFAULT_STDOUT_LIMIT)
+}
+
+pub(super) fn run_gh_with_limit(
+    workdir: &str,
+    args: &[&str],
+    token: Option<&str>,
+    stdout_limit: usize,
+) -> Result<String, String> {
     let mut cmd = gh_command(workdir, args);
     if let Some(t) = token {
         // gh reads GH_TOKEN for github.com / *.ghe.com hosts and
@@ -102,23 +114,61 @@ pub(super) fn run_gh(workdir: &str, args: &[&str], token: Option<&str>) -> Resul
         cmd.env("GH_ENTERPRISE_TOKEN", t);
     }
 
-    let output = cmd.output().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
-        } else {
-            format!("failed to launch gh: {e}")
-        }
-    })?;
+    let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
+        .map_err(map_gh_capture_error)?;
 
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    finish_gh_output(output, token)
+}
+
+fn finish_gh_output(output: BoundedOutput, token: Option<&str>) -> Result<String, String> {
+    finish_gh_bytes(
+        output.status.success(),
+        &output.stdout,
+        &output.stderr,
+        output.stderr_truncated,
+        token,
+    )
+}
+
+fn finish_gh_bytes(
+    success: bool,
+    stdout: &[u8],
+    stderr: &[u8],
+    stderr_truncated: bool,
+    token: Option<&str>,
+) -> Result<String, String> {
+    if success {
+        // Only stdout is returned, and it is the payload a parser consumes —
+        // never rewrite it. gh puts diagnostics on stderr, which success drops.
+        Ok(String::from_utf8_lossy(stdout).to_string())
     } else {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // Scrub any credential a remote URL in gh's output might carry.
-        Err(crate::redact::redact_secrets(
-            format!("{stdout}{stderr}").trim(),
+        let stdout = String::from_utf8_lossy(stdout);
+        let stderr = String::from_utf8_lossy(stderr);
+        let mut combined = format!("{stdout}{stderr}").trim().to_string();
+        // Say so rather than passing a clipped tail off as gh's whole message.
+        if stderr_truncated {
+            combined.push_str(&bounded_output::stderr_truncated_notice());
+        }
+        // Scrub any credential a remote URL in gh's output might carry, plus the
+        // token this invocation exported as GH_TOKEN. gh can echo its own
+        // request headers (`GH_DEBUG=api`), and the REST clients already scrub
+        // their active credential the same way (GL-320) — the CLI holds the very
+        // same secret, so it must not be the weaker boundary. An absent token is
+        // the empty string, which `redact_secrets_with_values` ignores.
+        Err(crate::redact::redact_secrets_with_values(
+            &combined,
+            &[token.unwrap_or_default()],
         ))
+    }
+}
+
+fn map_gh_capture_error(error: CaptureError) -> String {
+    match error {
+        CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
+        }
+        CaptureError::Spawn(source) => format!("failed to launch gh: {source}"),
+        other => format!("gh {other}"),
     }
 }
 
@@ -377,6 +427,79 @@ mod tests {
                 "{key} must be removed from the gh subprocess environment"
             );
         }
+    }
+
+    #[test]
+    fn missing_gh_copy_is_preserved() {
+        let error = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
+            std::io::ErrorKind::NotFound,
+        )));
+        assert_eq!(
+            error,
+            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests."
+        );
+    }
+
+    #[test]
+    fn bounded_finish_preserves_lossy_and_stream_order_semantics() {
+        assert_eq!(
+            finish_gh_bytes(true, b"ok\xff", b"ignored stderr", false, None).unwrap(),
+            "ok\u{fffd}"
+        );
+
+        let error = finish_gh_bytes(
+            false,
+            b" stdout first\n",
+            b"stderr https://alice:secret@example.test/repo\xff \n",
+            false,
+            None,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "stdout first\nstderr https://alice:***@example.test/repo\u{fffd}"
+        );
+    }
+
+    #[test]
+    fn truncated_diagnostics_are_disclosed_but_never_shown_on_success() {
+        // Truncation must not silently pass a clipped tail off as the whole
+        // message; on success stderr is unread, so it stays invisible.
+        assert_eq!(
+            finish_gh_bytes(true, b"payload", b"clipped trace", true, None).unwrap(),
+            "payload"
+        );
+
+        let error = finish_gh_bytes(false, b"", b"partial trace", true, None).unwrap_err();
+        assert_eq!(
+            error,
+            format!("partial trace{}", bounded_output::stderr_truncated_notice())
+        );
+    }
+
+    #[test]
+    fn failures_scrub_the_token_this_invocation_exported() {
+        // gh holds the same secret the REST clients scrub (GL-320), and a debug
+        // trace can echo it back through stderr as a request header.
+        let token = "ghp_live_secret";
+        let error = finish_gh_bytes(
+            false,
+            b"",
+            format!("GET /repos: Authorization: token {token}\nauth=ghp_live%5Fsecret").as_bytes(),
+            false,
+            Some(token),
+        )
+        .unwrap_err();
+        assert!(!error.contains(token), "{error}");
+        assert!(!error.contains("ghp_live%5Fsecret"), "{error}");
+        assert!(error.contains("GET /repos"), "{error}");
+
+        // Success returns the payload untouched — rewriting stdout would corrupt
+        // a body the caller is about to parse.
+        assert_eq!(
+            finish_gh_bytes(true, token.as_bytes(), b"", false, Some(token)).unwrap(),
+            token
+        );
     }
 
     #[test]

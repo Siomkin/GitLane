@@ -12,7 +12,8 @@
 //! as inert — folded `Subject:` continuations and diffstat rows start with a
 //! space and would otherwise read as hunk context.
 
-use super::cli::{repo_selector, run_gh};
+use super::bounded_output::DIFF_STDOUT_LIMIT;
+use super::cli::{repo_selector, run_gh_with_limit};
 use super::domain::GithubRepository;
 use crate::git::types::FileDiff;
 
@@ -40,7 +41,7 @@ pub fn pr_diff(
     // `--patch` forces the full patch body (not a name-only summary) and
     // `--color never` strips ANSI so the parser sees a clean git patch.
     let args = pr_diff_args(&repo, &num);
-    let raw = run_gh(workdir, &args, token)?;
+    let raw = run_gh_with_limit(workdir, &args, token, DIFF_STDOUT_LIMIT)?;
     Ok(parse_unified_diff(&raw))
 }
 

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { buildFileRows, filterFiles } from "./tree";
+import { buildFileTree, filterFiles, flattenFileTree } from "./tree";
 import { DirRow, FileRow } from "./rows";
 
 /** How many filter matches render before the "+N more" footer — an unbounded
  * match list (e.g. a one-letter query in a huge repo) would stall the panel. */
 const MAX_FILTER_MATCHES = 300;
+const EMPTY_FILES: string[] = [];
 
 /** Right-panel Files tab: the repository file tree with a path filter. Rows
  * open a read-only view of the file in the center pane. */
@@ -32,13 +33,13 @@ export function FilesPanel() {
     setQuery("");
   }, [repoPath]);
 
-  const filesOrNull = repoFiles?.files;
-  const files = useMemo(() => filesOrNull ?? [], [filesOrNull]);
+  const files = repoFiles?.files ?? EMPTY_FILES;
+  const tree = useMemo(() => buildFileTree(files), [files]);
   const filtering = query.trim() !== "";
   const matches = useMemo(() => filterFiles(files, query), [files, query]);
   const rows = useMemo(
-    () => (filtering ? [] : buildFileRows(files, expanded)),
-    [filtering, files, expanded],
+    () => (filtering ? [] : flattenFileTree(tree, expanded)),
+    [filtering, tree, expanded],
   );
 
   return (

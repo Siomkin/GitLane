@@ -4,6 +4,7 @@ import type { PullRequest, PrAuthor } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import * as prState from "./prState";
 import { LeftPanel } from "./LeftPanel";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
@@ -56,6 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -91,5 +93,27 @@ describe("LeftPanel pull request list", () => {
 
     expect(screen.getByText("Updated 3s ago")).toBeInTheDocument();
     expect(usePulls.getState().loadPullRequests).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not rerender pull request rows when the timestamp ticks", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    usePulls.setState({
+      pullRequests: [pr()],
+      prsFetchedAt: Date.now(),
+    });
+    const stateViewSpy = vi.spyOn(prState, "stateView");
+
+    render(<LeftPanel />);
+
+    expect(stateViewSpy).toHaveBeenCalledTimes(1);
+    stateViewSpy.mockClear();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.getByText("Updated 1s ago")).toBeInTheDocument();
+    expect(stateViewSpy).not.toHaveBeenCalled();
   });
 });

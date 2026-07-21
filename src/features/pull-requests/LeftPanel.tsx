@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { cn } from "@/lib/cn";
-import { relativeSince, selectVisiblePrs } from "@/lib/prs";
+import { selectVisiblePrs } from "@/lib/prs";
 import { ForgeKind } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
 import { PlusIcon } from "@/components/ui/icons";
 import { stateView } from "./prState";
+import { PrUpdatedStatus } from "./PrUpdatedStatus";
 
 // Docked sidebar for PR mode. The branch navigator that used to share this panel
 // now floats from the "Checked out" trigger (see BranchNavigator), so in history
@@ -50,20 +51,11 @@ function PullRequestsPanel() {
       state.forge.kind !== ForgeKind.GitLab &&
       state.forge.kind !== ForgeKind.Bitbucket,
   );
-  const [now, setNow] = useState(() => Date.now());
-
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
   useEffect(() => {
     void loadPullRequests();
   }, [loadPullRequests]);
-
-  useEffect(() => {
-    if (!prsFetchedAt) return;
-    setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [prsFetchedAt]);
 
   const visible = selectVisiblePrs(pullRequests, prFilter);
 
@@ -87,13 +79,7 @@ function PullRequestsPanel() {
           ))}
         </div>
         <div className="flex items-center justify-between gap-2 text-[11px] text-neutral-400">
-          <span>
-            {prsLoading
-              ? "Updating…"
-              : prsFetchedAt
-                ? `Updated ${relativeSince(prsFetchedAt, now)} ago`
-                : "Not loaded"}
-          </span>
+          <PrUpdatedStatus loading={prsLoading} fetchedAt={prsFetchedAt} />
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={openCreatePr}

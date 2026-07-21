@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
@@ -7,8 +7,8 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { BranchRow } from "@/components/navigation/branch-navigator/rows";
 import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
-// BranchContextMenu probes `api.canFastForward` (→ invoke) from an effect when a
-// branch other than HEAD is selected, so the IPC boundary must be mocked. Reject
+// useBranchFastForwardProbe calls `api.canFastForward` (→ invoke) while a branch
+// other than HEAD is selected, so the IPC boundary must be mocked. Reject
 // any other command so a stray invoke fails loudly instead of silently resolving.
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -472,6 +472,54 @@ describe("BranchContextMenu", () => {
     );
     openGroup("Integrate into current");
     expect(screen.getByRole("menuitem", { name: "Fast-forward to feature" })).toBeInTheDocument();
+  });
+
+  it("stops probing and hides integration when live HEAD moves onto the open menu branch", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "branch-b", headOid: "bbbbbbb", detached: false },
+      branches: [
+        { ...localBranch("branch-a"), target: "aaaaaaa" },
+        { ...localBranch("branch-b"), target: "bbbbbbb", isHead: true },
+      ],
+    });
+    const opening = { x: 10, y: 10, branch: "branch-a", isCurrent: false };
+    useUi.setState({ contextMenu: opening });
+    render(<BranchContextMenu />);
+
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("can_fast_forward", {
+      path: "/work/repo",
+      from: "aaaaaaa",
+      to: "bbbbbbb",
+    }));
+    openGroup("Integrate into current");
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: "Fast-forward to branch-a" })).toBeInTheDocument(),
+    );
+
+    act(() => {
+      useRepo.setState({
+        summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "branch-a", headOid: "aaaaaaa", detached: false },
+        branches: [
+          { ...localBranch("branch-a"), target: "aaaaaaa", isHead: true },
+          { ...localBranch("branch-b"), target: "bbbbbbb" },
+        ],
+      });
+    });
+
+    expect(useUi.getState().contextMenu).toBe(opening);
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitem", { name: "Fast-forward to branch-a" })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("menuitem", { name: "Integrate into current" })).not.toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("can_fast_forward", {
+      path: "/work/repo",
+      from: "aaaaaaa",
+      to: "aaaaaaa",
+    });
   });
 
   it("hides tip-derived actions when local and remote refs share a display name", () => {
