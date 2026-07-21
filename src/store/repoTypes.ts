@@ -358,6 +358,12 @@ export interface RepoState {
     quiet?: boolean;
     scope?: "all" | "worktree";
   }) => Promise<boolean>;
+  /** Re-probe which other worktrees hold uncommitted work (the graph's dirty
+   * dot), treating the caller as evidence the answer moved — the window
+   * regaining focus, after the user was plausibly working in one of them.
+   * Ordinary refreshes don't need this: our own commits can't dirty another
+   * checkout. Fire-and-forget; see `repoWorktreeDirty.ts`. */
+  refreshWorktreeDirty: () => void;
   /** Request the next bounded page of graph history. */
   loadMoreHistory: () => Promise<void>;
   /** Poll and consume a commit-message draft handed back by a terminal agent. */

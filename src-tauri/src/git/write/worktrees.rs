@@ -271,9 +271,16 @@ pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, S
 ///   rather than fifty thousand, and one record is all the answer needs;
 /// - `--no-renames` skips similarity detection nothing here reads.
 ///
+/// Submodules are left to the user's own config (`submodule.<name>.ignore`,
+/// `diff.ignoreSubmodules`) rather than forced with `--ignore-submodules=none`.
+/// Someone who told git to ignore a submodule is told the same thing here, and
+/// — the reason that matters — [`worktree_dirty_state`] doesn't override it
+/// either: a dot claiming work the removal confirm then reports as nothing to
+/// lose would be worse than honouring the setting in both places.
+///
 /// Still a `git status` per worktree, so it stays off the worktree-list refresh
 /// (see [`WorktreeDirtyState`]'s note) — the frontend fans these out after a
-/// full re-sync has already painted, and throttles them.
+/// full re-sync has already painted, throttled and batched.
 pub fn worktree_is_dirty(worktree_path: &str) -> Result<bool, String> {
     ensure_operand(worktree_path)?;
     // stdout only, untrimmed — same reasoning as `worktree_dirty_state`: the

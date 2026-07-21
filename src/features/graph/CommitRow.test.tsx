@@ -167,8 +167,8 @@ describe("CommitRow ref pills", () => {
     render(<CommitRow {...baseProps} commit={commit()} />);
     expect(screen.getByTitle("Worktree (detached): /work/wt-a")).toBeInTheDocument();
     const dirty = screen.getByTitle("Worktree (detached): /work/wt-b — uncommitted changes");
-    expect(dirty.querySelector("[aria-label='Uncommitted changes in this worktree']")).not.toBeNull();
-    expect(screen.getAllByLabelText("Uncommitted changes in this worktree")).toHaveLength(1);
+    expect(dirty.querySelector("[data-dirty-dot]")).not.toBeNull();
+    expect(Array.from(document.querySelectorAll("[data-dirty-dot]"))).toHaveLength(1);
   });
 
   it("labels the checked-out commit with a HEAD pill while detached", () => {
@@ -383,7 +383,7 @@ describe("CommitRow grouped refs", () => {
     expect(collapsed.querySelector('circle[r="2.5"]')).not.toBeNull();
     expect(collapsed.querySelector('circle[r="3"]')).toBeNull();
     // Clean worktree — no dot.
-    expect(screen.queryByLabelText("Uncommitted changes in this worktree")).toBeNull();
+    expect(document.querySelector("[data-dirty-dot]")).toBeNull();
   });
 
   it("dots the pill when the branch's other worktree has uncommitted work", () => {
@@ -396,7 +396,39 @@ describe("CommitRow grouped refs", () => {
     );
 
     const pill = screen.getByTitle("Checked out in worktree: repo-feature — uncommitted changes");
-    expect(pill.querySelector("[aria-label='Uncommitted changes in this worktree']")).not.toBeNull();
+    expect(pill.querySelector("[data-dirty-dot]")).not.toBeNull();
+  });
+
+  it("keeps the dirty dot between the branch name and the remote chip", () => {
+    // The collapsed pill already ends in a remote-count chip; the dot must sit
+    // before it (and neither may be squeezed by a long branch name — both are
+    // shrink-0, the name truncates instead).
+    useRepo.setState({
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      dirtyWorktrees: ["/work/repo-feature"],
+    });
+    render(
+      <CommitRow
+        {...baseProps}
+        commit={commit({
+          refs: [
+            { name: "feature", kind: "branch" },
+            { name: "origin/feature", kind: "remote" },
+          ],
+        })}
+      />,
+    );
+
+    const pill = screen.getByTitle(
+      "feature — local + 1 remote in sync (click to split), checked out in worktree: repo-feature — uncommitted changes",
+    );
+    const children = Array.from(pill.children);
+    const dot = pill.querySelector("[data-dirty-dot]")!;
+    const remoteChip = pill.querySelector("[aria-label='1 remote']")!;
+    expect(children.indexOf(dot)).toBeGreaterThan(children.indexOf(pill.querySelector("span.truncate")!));
+    expect(children.indexOf(dot)).toBeLessThan(children.indexOf(remoteChip));
+    expect(dot.className).toContain("shrink-0");
+    expect(remoteChip.className).toContain("shrink-0");
   });
 
   it("drags the collapsed pill as the local branch", () => {

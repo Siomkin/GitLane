@@ -7,13 +7,15 @@
  * dot rather than a WIP badge because it must fit inside a pill without pushing
  * the branch name out — glanceable, not readable.
  *
- * `title` carries the meaning for anyone who can't infer it from a 6px dot; the
- * pills also fold it into their own tooltip. */
+ * Hidden from assistive tech: every pill that renders it already ends its own
+ * title/aria-label with "— uncommitted changes", so labelling the dot too would
+ * announce the same fact twice. The `title` stays for pointer users, who get no
+ * such sentence unless they hover the pill itself. */
 export function WorktreeDirtyDot() {
   return (
     <span
-      role="img"
-      aria-label="Uncommitted changes in this worktree"
+      aria-hidden="true"
+      data-dirty-dot
       title="Uncommitted changes in this worktree"
       className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-300"
     />

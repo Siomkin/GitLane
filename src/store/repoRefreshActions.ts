@@ -32,11 +32,17 @@ export function createRepoRefreshActions(
   get: RepoGet,
 ): Pick<
   RepoState,
-  "refresh" | "loadMoreHistory" | "loadReflog" | "searchHistory" | "suggestTreePaths"
+  | "refresh"
+  | "refreshWorktreeDirty"
+  | "loadMoreHistory"
+  | "loadReflog"
+  | "searchHistory"
+  | "suggestTreePaths"
 > {
   const { wentMissing, handleMissing } = createMissingRepoHandlers(set, get);
 
   return {
+    refreshWorktreeDirty: () => probeDirtyWorktrees(set, get, { force: true }),
     searchHistory: async (query) => {
       const repoPath = get().summary?.path;
       if (!repoPath) return { results: [], truncated: false, workTruncated: false };
@@ -259,9 +265,9 @@ export function createRepoRefreshActions(
         // See the worktree-scope path above: a clean tree leaves the changes view.
         if (noWip) useUi.getState().onWorkingTreeClean();
         persistTabInfo(get().tabInfoByPath);
-        // Re-read which other worktrees hold uncommitted work (the graph's dirty
-        // dot). Fire-and-forget and throttled — this refresh has already
-        // published, so a `git status` per worktree never delays a repaint.
+        // Pick up a worktree that appeared or vanished (the dirty dot's probe
+        // fires on that, not on every refresh — this refresh is our own commit
+        // or checkout, which can't have dirtied someone else's checkout).
         probeDirtyWorktrees(set, get);
         // The remote list may have changed (terminal `git remote add/remove`),
         // which changes what the per-remote bindings resolve to — re-sync before

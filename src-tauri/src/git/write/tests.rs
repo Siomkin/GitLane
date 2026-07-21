@@ -3250,6 +3250,44 @@ fn worktree_is_dirty_flags_real_work_but_not_ignored_files() {
         worktree_is_dirty(linked.as_str()).expect("probe a staged-only worktree"),
         "staged-but-uncommitted work is uncommitted work"
     );
+
+    // A worktree whose directory is gone errors rather than answering "clean".
+    // The frontend degrades that to "no dot" — a false negative, which is the
+    // safe direction for a hint: it never claims work is saved when it isn't.
+    std::fs::remove_dir_all(&linked.0).unwrap();
+    assert!(
+        worktree_is_dirty(linked.as_str()).is_err(),
+        "a missing worktree directory must not report clean"
+    );
+}
+
+// A conflicted merge is the state most worth a dot — the worktree is mid-merge
+// with unresolved files, and a forced removal there loses the resolution work.
+#[test]
+fn worktree_is_dirty_flags_an_unresolved_conflict() {
+    let repo = TempRepo::new("wt-dirty-conflict");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+    repo.git_ok(&["checkout", "-q", "-b", "other"]);
+    std::fs::write(repo.0.join("a.txt"), "other\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-am", "other"]);
+    repo.git_ok(&["checkout", "-q", "-"]);
+    std::fs::write(repo.0.join("a.txt"), "main\n").unwrap();
+    repo.git_ok(&["commit", "-q", "-am", "main"]);
+
+    let linked = LinkedDir::new("wt-dirty-conflict");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    // Conflict inside the *linked* worktree, leaving `UU` records behind.
+    let merge = git_at(&linked.0, &["merge", "other"]);
+    assert!(!merge.status.success(), "the merge is expected to conflict");
+    assert!(
+        worktree_is_dirty(linked.as_str()).expect("probe a conflicted worktree"),
+        "an unresolved conflict is uncommitted work"
+    );
 }
 
 #[test]

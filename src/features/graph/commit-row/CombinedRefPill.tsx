@@ -102,11 +102,17 @@ export function CombinedRefPill({
     >
       <PillGlyph icon={model.icon} />
       <span className="truncate">{base}</span>
+      {/* The dot sits between the name and the remote chip: closer to the name
+          (gap-1) than to the chip (gap-1 + the chip's ml-0.5), so it reads as
+          part of the branch rather than as part of the remote count. Both it and
+          the chip are shrink-0, and the name truncates instead — the pill is a
+          plain flex row (nothing is positioned), so a narrow pill squeezes the
+          name and can never let the dot ride over the remote glyph. */}
       {model.dirty && <WorktreeDirtyDot />}
       <span
         aria-label={model.remoteLabel}
         className={cn(
-          "ml-0.5 flex items-center gap-0.5 rounded px-1 py-0.5",
+          "ml-0.5 flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5",
           current ? "bg-white/20 text-white" : "bg-black/[0.05] text-neutral-400 dark:bg-white/10",
         )}
       >
