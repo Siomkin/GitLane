@@ -6,26 +6,80 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Oid, Repository};
 use sha2::{Digest, Sha256};
 
-#[cfg(unix)]
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-
 use crate::git::worktree_fs::{
     fingerprint_worktree_leaf_path_bounded, validate_worktree_leaf_observation_path,
-    worktree_directory_identity, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
-    WorktreeLeafObservation,
+    WorktreeDirectoryIdentity, WorktreeLeafFingerprint, WorktreeLeafObservation,
 };
 
-use super::cli::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
+use super::cli::run_git_scoped_os;
+use super::state_lease::{
+    self, hash_field, hash_os, path_label, scoped_git_args, LeaseError, RepositoryScope,
+    MAX_FINGERPRINT_BYTES,
+};
 
-const MAX_FINGERPRINT_BYTES: u64 = 256 * 1024 * 1024;
+/// Render a shared-primitive failure in this operation's own words.
+pub(super) fn describe_lease_error(error: LeaseError) -> String {
+    match error {
+        LeaseError::WorkdirNotUtf8 => {
+            "Cannot lease a hard reset from a worktree path that is not valid UTF-8.".to_string()
+        }
+        LeaseError::OpenRepository(error) => format!("Could not inspect the repository before hard reset: {error}"),
+        LeaseError::BareRepository => "Cannot hard-reset a bare repository.".to_string(),
+        LeaseError::NonUtf8GitPath => "Hard reset cannot safely represent a non-UTF-8 Git path on this platform.".to_string(),
+        LeaseError::ReplaceRefsActive => "Hard reset is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal.".to_string(),
+        LeaseError::InspectHead(error) => format!("Could not inspect HEAD before hard reset: {error}"),
+        LeaseError::ResolveHead(error) => format!("Could not resolve HEAD before hard reset: {error}"),
+        LeaseError::NonFileWorktreePath { label, kind, mode } => {
+            format!("Refusing to hard-reset while non-file worktree path {label} is present (type {kind}, mode {mode:o}). Move it aside and try again.")
+        }
+        LeaseError::Worded(text) => text,
+    }
+}
+
+fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
+    state_lease::discover_scope(repo).map_err(describe_lease_error)
+}
+
+fn git_path(bytes: &[u8]) -> Result<OsString, String> {
+    state_lease::git_path(bytes).map_err(describe_lease_error)
+}
+
+fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>), String> {
+    state_lease::head_state(repository).map_err(describe_lease_error)
+}
+
+fn ensure_no_replace_refs(scope: &RepositoryScope) -> Result<(), String> {
+    state_lease::ensure_no_replace_refs(scope).map_err(describe_lease_error)
+}
+
+fn fingerprint_into(
+    state: &mut Sha256,
+    fingerprint: &WorktreeLeafFingerprint,
+    label: &str,
+) -> Result<(), String> {
+    state_lease::fingerprint_into(state, fingerprint, label).map_err(describe_lease_error)
+}
+
+fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
+    state_lease::command_repo(scope).map_err(describe_lease_error)
+}
+
+fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
+    state_lease::run_scoped_git_stdout_raw(scope, args).map_err(describe_lease_error)
+}
+
+fn effective_head_tree_oid(
+    scope: &RepositoryScope,
+    head_oid: Option<&str>,
+) -> Result<Option<String>, String> {
+    state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
+}
 
 pub(super) const STALE_MESSAGE: &str =
     "The repository changed after this confirmation opened. Preview the hard reset again.";
@@ -38,17 +92,6 @@ pub(super) const STALE_MESSAGE: &str =
 /// both cases share — and what the user needs first — is that nothing was reset.
 pub(super) const UNVERIFIABLE_MESSAGE: &str =
     "Could not re-check the repository state, so the hard reset was not performed.";
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RepositoryScope {
-    workdir: PathBuf,
-    gitdir: PathBuf,
-    commondir: PathBuf,
-    workdir_identity: WorktreeDirectoryIdentity,
-    gitdir_identity: WorktreeDirectoryIdentity,
-    commondir_identity: WorktreeDirectoryIdentity,
-    is_worktree: bool,
-}
 
 /// One `git status --porcelain=v1 -z` read: the records the lease hashes, and
 /// the paths whose content it then fingerprints.
@@ -186,175 +229,9 @@ pub(super) fn run_after_validation_test_hook() {
 #[cfg(not(test))]
 pub(super) fn run_after_validation_test_hook() {}
 
-fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
-    state.update(bytes);
-}
-
-#[cfg(unix)]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.as_bytes().to_vec()
-}
-
-#[cfg(windows)]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.encode_wide().flat_map(u16::to_le_bytes).collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.to_string_lossy().as_bytes().to_vec()
-}
-
-fn hash_os(state: &mut Sha256, value: &OsStr) {
-    hash_field(state, &os_bytes(value));
-}
-
 fn hash_identity(state: &mut Sha256, identity: &WorktreeDirectoryIdentity) {
     state.update(identity.device.to_le_bytes());
     state.update(identity.inode.to_le_bytes());
-}
-
-fn fingerprint_into(
-    state: &mut Sha256,
-    fingerprint: &WorktreeLeafFingerprint,
-    label: &str,
-) -> Result<(), String> {
-    match fingerprint {
-        WorktreeLeafFingerprint::Missing => state.update([0]),
-        WorktreeLeafFingerprint::Regular { len, mode, digest } => {
-            state.update([1]);
-            state.update(len.to_le_bytes());
-            state.update(mode.to_le_bytes());
-            state.update(digest);
-        }
-        WorktreeLeafFingerprint::Symlink { mode, target } => {
-            state.update([2]);
-            state.update(mode.to_le_bytes());
-            hash_field(state, target);
-        }
-        WorktreeLeafFingerprint::Other { mode, kind } => {
-            return Err(format!(
-                "Refusing to hard-reset while non-file worktree path {label} is present (type {kind}, mode {mode:o}). Move it aside and try again."
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn path_label(path: &OsStr) -> String {
-    path.to_string_lossy().into_owned()
-}
-
-fn git_path(bytes: &[u8]) -> Result<OsString, String> {
-    #[cfg(unix)]
-    {
-        Ok(OsString::from_vec(bytes.to_vec()))
-    }
-    #[cfg(not(unix))]
-    {
-        String::from_utf8(bytes.to_vec())
-            .map(OsString::from)
-            .map_err(|_| {
-                "Hard reset cannot safely represent a non-UTF-8 Git path on this platform."
-                    .to_string()
-            })
-    }
-}
-
-fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
-    let repository = Repository::discover(repo)
-        .map_err(|error| format!("Could not inspect the repository before hard reset: {error}"))?;
-    let workdir = repository
-        .workdir()
-        .ok_or_else(|| "Cannot hard-reset a bare repository.".to_string())?
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the repository worktree: {error}"))?;
-    let gitdir = repository
-        .path()
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the repository metadata directory: {error}"))?;
-    let commondir = repository.commondir().canonicalize().map_err(|error| {
-        format!("Could not resolve the repository common metadata directory: {error}")
-    })?;
-    let workdir_identity = worktree_directory_identity(&workdir)
-        .map_err(|error| format!("Could not identify the repository worktree: {error}"))?;
-    let gitdir_identity = worktree_directory_identity(&gitdir).map_err(|error| {
-        format!("Could not identify the repository metadata directory: {error}")
-    })?;
-    let commondir_identity = worktree_directory_identity(&commondir).map_err(|error| {
-        format!("Could not identify the repository common metadata directory: {error}")
-    })?;
-    let is_worktree = repository.is_worktree();
-    Ok((
-        repository,
-        RepositoryScope {
-            workdir,
-            gitdir,
-            commondir,
-            workdir_identity,
-            gitdir_identity,
-            commondir_identity,
-            is_worktree,
-        },
-    ))
-}
-
-fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
-    scope.workdir.to_str().ok_or_else(|| {
-        "Cannot lease a hard reset from a worktree path that is not valid UTF-8.".to_string()
-    })
-}
-
-fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsString> {
-    let mut scoped = Vec::with_capacity(args.len() + 4);
-    scoped.push(OsString::from("--git-dir"));
-    scoped.push(scope.gitdir.as_os_str().to_os_string());
-    scoped.push(OsString::from("--work-tree"));
-    scoped.push(scope.workdir.as_os_str().to_os_string());
-    scoped.extend(args.iter().map(OsString::from));
-    scoped
-}
-
-fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
-    run_git_scoped_os_stdout_raw(
-        command_repo(scope)?,
-        scope.commondir.as_os_str(),
-        &scoped_git_args(scope, args),
-    )
-}
-
-fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>), String> {
-    let head = repository
-        .find_reference("HEAD")
-        .map_err(|error| format!("Could not inspect HEAD before hard reset: {error}"))?;
-    let branch = match head.symbolic_target_bytes() {
-        Some(target) => {
-            let name = target.strip_prefix(b"refs/heads/").ok_or_else(|| {
-                "HEAD points outside refs/heads; use the terminal for this repository state."
-                    .to_string()
-            })?;
-            Some(
-                std::str::from_utf8(name)
-                    .map_err(|_| "HEAD branch is not valid UTF-8.".to_string())?
-                    .to_string(),
-            )
-        }
-        None => None,
-    };
-    let oid = match head.resolve() {
-        Ok(resolved) => resolved.target().map(|oid| oid.to_string()),
-        Err(error)
-            if matches!(
-                error.code(),
-                git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
-            ) =>
-        {
-            None
-        }
-        Err(error) => return Err(format!("Could not resolve HEAD before hard reset: {error}")),
-    };
-    Ok((branch, oid))
 }
 
 fn effective_tree_oid_no_replace(
@@ -381,20 +258,6 @@ fn effective_tree_oid_no_replace(
     let oid = Oid::from_str(value)
         .map_err(|_| "Git returned a malformed target tree object id.".to_string())?;
     Ok(oid.to_string())
-}
-
-fn ensure_no_replace_refs(scope: &RepositoryScope) -> Result<(), String> {
-    let refs = run_scoped_git_stdout_raw(
-        scope,
-        &["for-each-ref", "--format=%(refname)", "refs/replace/"],
-    )?;
-    if refs.iter().any(|byte| !byte.is_ascii_whitespace()) {
-        return Err(
-            "Hard reset is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal."
-                .to_string(),
-        );
-    }
-    Ok(())
 }
 
 fn path_conflicts_with_reset_target(untracked: &[u8], target_path: &[u8]) -> bool {
@@ -481,29 +344,6 @@ fn target_obstruction_paths(
         }
     }
     Ok(obstructions)
-}
-
-fn effective_head_tree_oid(
-    scope: &RepositoryScope,
-    head_oid: Option<&str>,
-) -> Result<Option<String>, String> {
-    let Some(head_oid) = head_oid else {
-        return Ok(None);
-    };
-    let tree_spec = format!("{head_oid}^{{tree}}");
-    let raw = run_scoped_git_stdout_raw(
-        scope,
-        &["rev-parse", "--verify", "--end-of-options", &tree_spec],
-    )?;
-    let text = std::str::from_utf8(&raw)
-        .map_err(|_| "Git returned a non-UTF-8 HEAD tree object id.".to_string())?;
-    let value = text.trim_end_matches(['\r', '\n']);
-    if value.contains('\r') || value.contains('\n') {
-        return Err("Git returned a malformed HEAD tree object id.".to_string());
-    }
-    let oid = Oid::from_str(value)
-        .map_err(|_| "Git returned a malformed HEAD tree object id.".to_string())?;
-    Ok(Some(oid.to_string()))
 }
 
 fn capture_index_digest(repository: &Repository) -> Result<[u8; 32], String> {

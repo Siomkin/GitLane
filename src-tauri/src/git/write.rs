@@ -31,6 +31,7 @@ mod remotes;
 mod reset;
 mod staging;
 mod stashes;
+mod state_lease;
 mod tags;
 #[cfg(test)]
 mod tests;
