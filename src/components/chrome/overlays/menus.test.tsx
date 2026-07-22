@@ -60,6 +60,8 @@ beforeEach(() => {
         expectedState: "discard-all-state-v1",
         expectedHeadBranch: "main",
         expectedHeadOid: "head",
+        targetOid: "target-preview-oid",
+        expectedSourceOid: "source-preview-oid",
       });
     }
     return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
@@ -1132,6 +1134,11 @@ describe("BranchContextMenu", () => {
       summary: string;
       details: string[];
       warnings: string[];
+      targetOid: string;
+      expectedSourceOid: string;
+      expectedState: string | null;
+      expectedHeadBranch: string;
+      expectedHeadOid: string;
     }>();
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "can_fast_forward") return Promise.resolve(false);
@@ -1150,7 +1157,16 @@ describe("BranchContextMenu", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "other", headOid: "new", detached: false },
     });
-    pending.resolve({ summary: "Impact summary", details: ["Affected path"], warnings: [] });
+    pending.resolve({
+      summary: "Impact summary",
+      details: ["Affected path"],
+      warnings: [],
+      targetOid: "target-preview-oid",
+      expectedSourceOid: "source-preview-oid",
+      expectedState: null,
+      expectedHeadBranch: "main",
+      expectedHeadOid: "old",
+    });
 
     await waitFor(() =>
       expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("HEAD changed"),
@@ -1371,7 +1387,14 @@ describe("ActionMenu", () => {
     expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and reset (mixed)");
 
     useUi.getState().confirm!.onConfirm();
-    await waitFor(() => expect(resetBranchTo).toHaveBeenCalledWith("feature", "main", "mixed"));
+    await waitFor(() =>
+      expect(resetBranchTo).toHaveBeenCalledWith(
+        "feature",
+        "main",
+        "mixed",
+        expect.objectContaining({ targetOid: "target-preview-oid" }),
+      ),
+    );
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 

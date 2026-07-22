@@ -17,6 +17,25 @@ pub(super) fn ensure_operand(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Require an operand documented as an object id to actually *be* one — 40
+/// (SHA-1) or 64 (SHA-256) lowercase hex digits, the form `git rev-parse` emits.
+///
+/// Git permits a branch or tag literally named after a 40-hex string, so a ref
+/// *name* arriving where an exact commit is promised can still resolve to a
+/// movable tip (GL-302). Resolution belongs to the preview; this makes the write
+/// boundary enforce that it happened rather than trust the caller.
+pub(super) fn ensure_exact_oid(value: &str) -> Result<(), String> {
+    let is_hex = value
+        .bytes()
+        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
+    if matches!(value.len(), 40 | 64) && is_hex {
+        return Ok(());
+    }
+    Err(format!(
+        "Expected an exact commit id, but got {value:?}. Preview the operation again."
+    ))
+}
+
 /// [`ensure_operand`] for an optional operand.
 pub(super) fn ensure_opt(value: Option<&str>) -> Result<(), String> {
     if let Some(v) = value {

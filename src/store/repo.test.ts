@@ -893,6 +893,80 @@ describe("repo store — captured write subjects", () => {
     });
   });
 
+  it("passes only previewed reset tips through to reset_to (no live OID fallback)", async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ refresh });
+    invokeMock.mockResolvedValue("Reset");
+
+    await useRepo.getState().resetBranchTo("main", "abc", "hard", {
+      summary: "Reset hard",
+      details: [],
+      warnings: [],
+      targetOid: "target-oid",
+      expectedSourceOid: "source-oid",
+      expectedState: "v2:lease",
+      expectedHeadBranch: "main",
+      expectedHeadOid: "source-oid",
+    });
+
+    expect(invokeMock).toHaveBeenCalledWith("reset_to", {
+      path: "/repo",
+      source: "main",
+      expectedSourceOid: "source-oid",
+      targetOid: "target-oid",
+      mode: "hard",
+      expectedState: "v2:lease",
+      expectedHeadBranch: "main",
+      expectedHeadOid: "source-oid",
+    });
+  });
+
+  it("rejects hard reset without the preview lease fields", async () => {
+    await expect(
+      useRepo.getState().resetBranchTo("main", "abc", "hard", {
+        summary: "Reset hard",
+        details: [],
+        warnings: [],
+        targetOid: "",
+        expectedSourceOid: "source-oid",
+        expectedState: null,
+        expectedHeadBranch: "main",
+        expectedHeadOid: "source-oid",
+      }),
+    ).rejects.toThrow(/previewed target commit/);
+
+    await expect(
+      useRepo.getState().resetBranchTo("main", "abc", "hard", {
+        summary: "Reset hard",
+        details: [],
+        warnings: [],
+        targetOid: "target-oid",
+        expectedSourceOid: null,
+        expectedState: "v2:lease",
+        expectedHeadBranch: "main",
+        expectedHeadOid: "source-oid",
+      }),
+    ).rejects.toThrow(/no expected commit/);
+
+    await expect(
+      useRepo.getState().resetBranchTo("main", "abc", "hard", {
+        summary: "Reset hard",
+        details: [],
+        warnings: [],
+        targetOid: "target-oid",
+        expectedSourceOid: "source-oid",
+        expectedState: null,
+        expectedHeadBranch: "main",
+        expectedHeadOid: "source-oid",
+      }),
+    ).rejects.toThrow(/exact-state lease/);
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      "reset_to",
+      expect.anything(),
+    );
+  });
+
   it("deletes a branch with the previewed oid and repository path", async () => {
     const refresh = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({ refresh });

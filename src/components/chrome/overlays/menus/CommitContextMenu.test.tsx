@@ -64,7 +64,16 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string) => {
     if (cmd.startsWith("preview_")) {
-      return Promise.resolve({ summary: "Impact summary", details: [], warnings: [] });
+      return Promise.resolve({
+        summary: "Impact summary",
+        details: [],
+        warnings: [],
+        targetOid: "c2abcdef",
+        expectedSourceOid: "c1abcdef",
+        expectedState: cmd.includes("reset") ? "v1:test-lease" : null,
+        expectedHeadBranch: "main",
+        expectedHeadOid: "c1abcdef",
+      });
     }
     return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
   });
@@ -128,7 +137,7 @@ describe("CommitContextMenu (single commit)", () => {
   it("never opens the reset confirm when HEAD moves while the preview is pending (GL-42)", async () => {
     const resetBranchTo = vi.fn().mockResolvedValue("ok");
     useRepo.setState({ resetBranchTo });
-    let resolvePreview!: (v: { summary: string; details: string[]; warnings: string[] }) => void;
+    let resolvePreview!: (v: Record<string, unknown>) => void;
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "preview_reset") {
         return new Promise((res) => {
@@ -147,7 +156,16 @@ describe("CommitContextMenu (single commit)", () => {
 
     // HEAD moves while the preview IPC is still in flight.
     useRepo.setState({ summary: { ...summary, headOid: "moved000" } });
-    resolvePreview({ summary: "Impact summary", details: [], warnings: [] });
+    resolvePreview({
+      summary: "Impact summary",
+      details: [],
+      warnings: [],
+      targetOid: "c2abcdef",
+      expectedSourceOid: "c1abcdef",
+      expectedState: null,
+      expectedHeadBranch: "main",
+      expectedHeadOid: "c1abcdef",
+    });
 
     await waitFor(() =>
       expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("HEAD changed"),
@@ -189,7 +207,17 @@ describe("CommitContextMenu (single commit)", () => {
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     expect(useUi.getState().confirm?.danger).toBe(true);
     useUi.getState().confirm!.onConfirm();
-    await waitFor(() => expect(resetBranchTo).toHaveBeenCalledWith("main", "c2abcdef", "hard"));
+    await waitFor(() =>
+      expect(resetBranchTo).toHaveBeenCalledWith(
+        "main",
+        "c2abcdef",
+        "hard",
+        expect.objectContaining({
+          targetOid: "c2abcdef",
+          expectedState: "v1:test-lease",
+        }),
+      ),
+    );
   });
 
   it("offers Edit commit message… only for an unpushed HEAD commit", () => {

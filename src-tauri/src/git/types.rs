@@ -487,6 +487,27 @@ pub struct DestructivePreview {
     pub warnings: Vec<String>,
 }
 
+/// Reset impact plus the exact target/source tips the write must still observe.
+/// Hard mode also carries an opaque worktree/index lease so confirm→execute
+/// cannot discard a different repository state than the dialog previewed (GL-302).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetPreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+    /// Exact commit the reset will move to — never a symbolic name that can move.
+    pub target_oid: String,
+    /// Tip of the source branch/HEAD observed by the preview.
+    pub expected_source_oid: Option<String>,
+    /// Opaque repository/HEAD/index/worktree fingerprint. Present only for hard.
+    pub expected_state: Option<String>,
+    /// Symbolic branch observed with the hard-reset lease, or null when detached.
+    pub expected_head_branch: Option<String>,
+    /// HEAD commit observed with the hard-reset lease, or null when unborn.
+    pub expected_head_oid: Option<String>,
+}
+
 /// Force-push impact plus the complete compare-and-swap contract shown by the
 /// confirmation. The local source object, resolved push route, and destination
 /// expectation all cross IPC again so the write cannot widen or silently adopt

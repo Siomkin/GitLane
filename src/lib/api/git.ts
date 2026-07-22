@@ -357,6 +357,20 @@ export interface DestructivePreview {
   warnings: string[];
 }
 
+/** Reset impact plus the exact tips / optional hard-reset worktree lease. */
+export interface ResetPreview extends DestructivePreview {
+  /** Exact commit the reset will move to — never a symbolic name that can move. */
+  targetOid: string;
+  /** Tip of the source branch/HEAD observed by the preview. */
+  expectedSourceOid: string | null;
+  /** Opaque repository/HEAD/index/worktree fingerprint. Present only for hard. */
+  expectedState: string | null;
+  /** Symbolic branch observed with the hard-reset lease, or null when detached. */
+  expectedHeadBranch: string | null;
+  /** HEAD commit observed with the hard-reset lease, or null when unborn. */
+  expectedHeadOid: string | null;
+}
+
 export interface ForcePushRouteLease {
   /** Push route resolved with Git's pushRemote / pushDefault precedence. */
   remote: string;
@@ -836,7 +850,7 @@ export const gitApi = {
     mode: "soft" | "mixed" | "hard",
     // The ref being reset; omit for current-branch resets (defaults to HEAD).
     source?: string,
-  ) => invoke<DestructivePreview>("preview_reset", { path, target, mode, source: source ?? null }),
+  ) => invoke<ResetPreview>("preview_reset", { path, target, mode, source: source ?? null }),
 
   previewDiscardAll: (path: string) =>
     invoke<DiscardAllPreview>("preview_discard_all", { path }),
@@ -909,7 +923,20 @@ export const gitApi = {
     expectedSourceOid: string | null,
     targetOid: string,
     mode: "soft" | "mixed" | "hard",
-  ) => invoke<string>("reset_to", { path, source, expectedSourceOid, targetOid, mode }),
+    expectedState?: string | null,
+    expectedHeadBranch?: string | null,
+    expectedHeadOid?: string | null,
+  ) =>
+    invoke<string>("reset_to", {
+      path,
+      source,
+      expectedSourceOid,
+      targetOid,
+      mode,
+      expectedState: expectedState ?? null,
+      expectedHeadBranch: expectedHeadBranch ?? null,
+      expectedHeadOid: expectedHeadOid ?? null,
+    }),
 
   cherryPick: (path: string, expectedBranch: string | null, expectedOid: string, commit: string) =>
     invoke<string>("cherry_pick", { path, expectedBranch, expectedOid, commit }),

@@ -686,11 +686,31 @@ export function createRepoWriteActions(
         `Rebasing ${source} onto ${onto}`,
       ),
 
-    resetBranchTo: (source, target, mode) =>
+    resetBranchTo: (source, target, mode, preview) =>
       runOp(get, async (summary) => {
-        const sourceOid = source ? localBranchOid(get, source) : summary.headOid;
-        const targetSnapshot = revisionSnapshot(get, target);
-        await api.resetTo(summary.path, source, sourceOid, targetSnapshot.oid, mode);
+        // Always pass the previewed tips — never live store OIDs that can drift
+        // after the confirmation dialog opened and weaken the backend lease.
+        if (!preview.targetOid) {
+          throw new Error("Reset requires the previewed target commit. Preview again.");
+        }
+        if (source !== null && !preview.expectedSourceOid) {
+          throw new Error("The branch has no expected commit. Refresh and try again.");
+        }
+        if (mode === "hard" && !preview.expectedState) {
+          throw new Error(
+            "Hard reset requires the exact-state lease from its confirmation. Preview again.",
+          );
+        }
+        await api.resetTo(
+          summary.path,
+          source,
+          preview.expectedSourceOid,
+          preview.targetOid,
+          mode,
+          preview.expectedState,
+          preview.expectedHeadBranch,
+          preview.expectedHeadOid,
+        );
         return `Reset ${source ?? "HEAD"} to ${target}`;
       }),
 

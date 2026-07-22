@@ -5,6 +5,7 @@ import type {
   DiscardAllPreview,
   DiscardFilePreview,
   ForcePushPreview,
+  ResetPreview,
   FileBlame,
   ConflictFile,
   DiffLine,
@@ -472,11 +473,14 @@ export interface RepoState {
   fastForwardTo: (from: string, to: string) => Promise<string>;
   /** Rebase the explicit source branch/revision onto the target. */
   rebaseOnto: (source: string, onto: string) => Promise<string>;
-  /** Reset the explicit source branch, or detached HEAD when source is null. */
+  /** Reset the explicit source branch, or detached HEAD when source is null.
+   * Pass the leased `preview` from `previewReset` so hard resets cannot discard
+   * a different repository state than the confirmation showed (GL-302). */
   resetBranchTo: (
     source: string | null,
     target: string,
     mode: "soft" | "mixed" | "hard",
+    preview: ResetPreview,
   ) => Promise<string>;
   /** Stash actions address the stash by commit oid — `stash@{n}` indices go
    * stale whenever any stash is created/dropped, even in another worktree. */
