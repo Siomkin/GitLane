@@ -110,7 +110,9 @@ export function CompareView() {
               <span className="text-[12px] text-neutral-400">Select a file to view its diff.</span>
             )}
           </div>
-          <div className="flex-1 overflow-auto">
+          {/* Bounded + positioned: the pane's windowed diff list fills it and
+              owns the scrolling, so this must not scroll too. */}
+          <div className="relative min-h-0 flex-1">
             <DiffPane
               loading={compare.diffLoading}
               diff={compare.selectedDiff}

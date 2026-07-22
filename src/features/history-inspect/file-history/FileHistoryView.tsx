@@ -116,7 +116,9 @@ export function FileHistoryView({
             </div>
           )}
         </div>
-        <div className="flex-1 overflow-auto">
+        {/* Bounded + positioned: the pane's windowed diff list fills it and
+            owns the scrolling, so this must not scroll too. */}
+        <div className="relative min-h-0 flex-1">
           <DiffPane
             loading={history.diffLoading}
             diff={history.selectedDiff}
