@@ -495,10 +495,14 @@ export interface RepoState {
   /** Revert several commits atomically (single git invocation). */
   revertMany: (shas: string[]) => Promise<string>;
   /**
-   * Squash a contiguous selection ending at HEAD into one commit. Implemented
-   * as `git reset --soft <parent-of-oldest>` then `git commit` — collapses the
-   * commits on top of their common ancestor. Throws if the selection isn't a
-   * contiguous tip range (squashing non-tip commits needs interactive rebase).
+   * Squash a contiguous selection ending at HEAD into one commit — collapsing
+   * the commits on top of their common ancestor. The backend stages only the
+   * squash-owned tip tree, soft-resets to `<parent-of-oldest>`, commits, then
+   * restores the index snapshot it took first, so unrelated pre-staged work is
+   * neither swallowed into the commit nor unstaged by it (GL-307). Throws if the
+   * selection isn't a contiguous tip range (squashing non-tip commits needs
+   * interactive rebase), and — because the restore happens *after* the commit —
+   * can also throw once the replacement commit has already landed.
    */
   squashSelection: (shas: string[], message: string) => Promise<string>;
   /** Create a lightweight tag at `sha` (defaults to HEAD). */

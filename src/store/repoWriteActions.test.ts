@@ -926,6 +926,48 @@ describe("discard all — exact preview lease and partial-failure recovery", () 
   });
 });
 
+// GL-307: squash restores an index snapshot after committing, so it can reject
+// *after* the replacement commit already landed. The UI must reconcile then, not
+// keep painting the pre-squash range until the filesystem watcher catches up.
+describe("squash — a landed squash that fails to restore staging still reconciles", () => {
+  const node = (id: string, parent: string, row: number): CommitNode => ({
+    id,
+    shortId: id,
+    summary: id,
+    body: "",
+    authorName: "",
+    authorEmail: "",
+    timestamp: 0,
+    parents: [parent],
+    lane: 0,
+    row,
+    color: 0,
+    refs: [],
+  });
+  const squashGraph: RepoGraph = {
+    commits: [node("c2", "c1", 0), node("c1", "c0", 1), node("c0", "root", 2)],
+    edges: [],
+    laneCount: 1,
+    head: "c2",
+    truncated: false,
+  };
+
+  it("refreshes when the backend reports the commit landed but staging was not reapplied", async () => {
+    const landedError =
+      "Squash commit was created, but the index changed during squash; pre-staged work was not reapplied.";
+    useRepo.setState({ graph: squashGraph });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "squash_commits" ? Promise.reject(landedError) : refreshInvoke(cmd),
+    );
+
+    await expect(useRepo.getState().squashSelection(["c2", "c1"], "replacement")).rejects.toBe(
+      landedError,
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
+  });
+});
+
 describe("write completions — published repo and navigation ownership", () => {
   const raceGraph: RepoGraph = {
     commits: [commitNode("a"), commitNode("b")],
