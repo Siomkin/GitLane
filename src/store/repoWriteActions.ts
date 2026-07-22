@@ -1486,8 +1486,14 @@ export function createRepoWriteActions(
       const owner = captureOwner(summary);
       if (toastAdvancedGuard(guardedAdvancedWriteMessage(get().changes))) return;
       try {
-        await api.stash(summary.path, summary.headBranch, summary.headOid);
+        const message = await api.stash(summary.path, summary.headBranch, summary.headOid);
         await refreshIfCurrent(get, owner);
+        // Report the outcome like the other working-tree writes do. A routine
+        // stash normalises to one short line backend-side; a stash whose
+        // untracked cleanup Git could not finish still succeeds, but carries
+        // what GitLane completed and what it had to leave on disk — and that
+        // must not land silently.
+        useUi.getState().showToast(message);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }

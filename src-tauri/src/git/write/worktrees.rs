@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::git::handoff;
 use crate::git::types::{WorktreeDirtyState, WorktreeInfo};
 
-use super::cli::{run_git, run_git_allow_exit_codes, run_git_stdout, run_git_stdout_raw};
+use super::cli::{run_git, run_git_stdout, run_git_stdout_raw};
 use super::operands::{ensure_operand, ensure_opt};
 
 static STASH_ATTEMPT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -481,26 +481,24 @@ pub(super) fn worktree_git_dir(worktree: &str) -> Result<PathBuf, String> {
 /// always apply/drop **by oid** rather than by `stash@{n}` — a sibling worktree's
 /// stash can otherwise sit at index 0 and be popped into the wrong tree.
 fn push_stash(worktree: &str, message: &str) -> Result<String, String> {
-    let before = stash_tip(worktree)?;
     // A stash commit's oid includes its message, but Git timestamps commits only
     // to the second. Re-applying an existing stash and immediately pushing the
     // same changes with the same message can therefore reproduce the exact oid.
     // Git still cleans the worktree in that case, yet refs/stash does not move.
     // Give every handoff attempt a unique commit message so a successful push
-    // always creates a distinct, independently droppable stash entry.
+    // always creates a distinct, independently droppable stash entry — which is
+    // exactly what `StashPush::oid` reports (it is `None` when the ref stood
+    // still), so the handoff never adopts a sibling worktree's existing stash.
     let message = unique_stash_message(message);
-    run_git(
+    super::stash_push::push_stash(
         worktree,
         &["stash", "push", "--include-untracked", "-m", &message],
-    )?;
-    let after = stash_tip(worktree)?;
-    match after {
-        Some(oid) if Some(oid.as_str()) != before.as_deref() => Ok(oid),
-        _ => Err(
-            "Git did not create a stash for these changes. Dirty submodules cannot be carried; commit or stash them inside the submodule first."
-                .to_string(),
-        ),
-    }
+    )?
+    .oid
+    .ok_or_else(|| {
+        "Git did not create a stash for these changes. Dirty submodules cannot be carried; commit or stash them inside the submodule first."
+            .to_string()
+    })
 }
 
 fn unique_stash_message(message: &str) -> String {
@@ -513,15 +511,6 @@ fn unique_stash_message(message: &str) -> String {
         "{message} [GitLane attempt {}-{timestamp}-{sequence}]",
         std::process::id()
     )
-}
-
-fn stash_tip(worktree: &str) -> Result<Option<String>, String> {
-    let oid = run_git_allow_exit_codes(
-        worktree,
-        &["rev-parse", "--verify", "--quiet", "refs/stash"],
-        &[1],
-    )?;
-    Ok((!oid.trim().is_empty()).then(|| oid.trim().to_string()))
 }
 
 /// Drop the stash whose commit oid is `oid`, wherever it sits in the (global)
