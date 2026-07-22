@@ -14,15 +14,17 @@
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 
-use git2::Oid;
+use git2::{Oid, Repository};
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 
-use crate::git::worktree_fs::WorktreeDirectoryIdentity;
+use crate::git::worktree_fs::{
+    worktree_directory_identity, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
+};
 
 use super::cli::run_git_scoped_os_stdout_raw;
 
@@ -42,6 +44,24 @@ use super::cli::run_git_scoped_os_stdout_raw;
 pub(super) enum LeaseError {
     /// The worktree path is not valid UTF-8, so it cannot be a command's cwd.
     WorkdirNotUtf8,
+    /// The repository could not be opened.
+    OpenRepository(git2::Error),
+    /// The repository has no worktree.
+    BareRepository,
+    /// A git path cannot be represented on this platform. Only constructible
+    /// off unix, where a path must round-trip through UTF-8.
+    #[cfg_attr(unix, allow(dead_code))]
+    NonUtf8GitPath,
+    /// `refs/replace/` entries are present, which would let the operation act on
+    /// a different object graph than the one previewed.
+    ReplaceRefsActive,
+    /// HEAD could not be read.
+    InspectHead(git2::Error),
+    /// HEAD could not be resolved to a commit.
+    ResolveHead(git2::Error),
+    /// A path that must be a regular file, symlink, or absent is something else
+    /// — a directory or nested repository the operation refuses to touch.
+    NonFileWorktreePath { label: String, kind: u8, mode: u64 },
     /// Carries text that is the same for every operation.
     Worded(String),
 }
@@ -109,6 +129,159 @@ pub(super) fn hash_os(state: &mut Sha256, value: &OsStr) {
 /// here precisely because the result is never hashed or compared — only shown.
 pub(super) fn path_label(path: &OsStr) -> String {
     path.to_string_lossy().into_owned()
+}
+
+/// Open the repository containing `repo` and capture its scope.
+pub(super) fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), LeaseError> {
+    let repository = Repository::discover(repo).map_err(LeaseError::OpenRepository)?;
+    let workdir = repository
+        .workdir()
+        .ok_or(LeaseError::BareRepository)?
+        .canonicalize()
+        .map_err(|error| {
+            LeaseError::Worded(format!(
+                "Could not resolve the repository worktree: {error}"
+            ))
+        })?;
+    let gitdir = repository.path().canonicalize().map_err(|error| {
+        LeaseError::Worded(format!(
+            "Could not resolve the repository metadata directory: {error}"
+        ))
+    })?;
+    let commondir = repository.commondir().canonicalize().map_err(|error| {
+        LeaseError::Worded(format!(
+            "Could not resolve the repository common metadata directory: {error}"
+        ))
+    })?;
+    let workdir_identity = worktree_directory_identity(&workdir).map_err(|error| {
+        LeaseError::Worded(format!(
+            "Could not identify the repository worktree: {error}"
+        ))
+    })?;
+    let gitdir_identity = worktree_directory_identity(&gitdir).map_err(|error| {
+        LeaseError::Worded(format!(
+            "Could not identify the repository metadata directory: {error}"
+        ))
+    })?;
+    let commondir_identity = worktree_directory_identity(&commondir).map_err(|error| {
+        LeaseError::Worded(format!(
+            "Could not identify the repository common metadata directory: {error}"
+        ))
+    })?;
+    let is_worktree = repository.is_worktree();
+    Ok((
+        repository,
+        RepositoryScope {
+            workdir,
+            gitdir,
+            commondir,
+            workdir_identity,
+            gitdir_identity,
+            commondir_identity,
+            is_worktree,
+        },
+    ))
+}
+
+/// A raw git path as an `OsString`. Bytes pass through untouched on unix, where
+/// a path need not be UTF-8 at all.
+pub(super) fn git_path(bytes: &[u8]) -> Result<OsString, LeaseError> {
+    #[cfg(unix)]
+    {
+        Ok(OsString::from_vec(bytes.to_vec()))
+    }
+    #[cfg(not(unix))]
+    {
+        String::from_utf8(bytes.to_vec())
+            .map(OsString::from)
+            .map_err(|_| LeaseError::NonUtf8GitPath)
+    }
+}
+
+/// Read HEAD's branch name and resolved oid, tolerating an unborn branch.
+pub(super) fn head_state(
+    repository: &Repository,
+) -> Result<(Option<String>, Option<String>), LeaseError> {
+    let head = repository
+        .find_reference("HEAD")
+        .map_err(LeaseError::InspectHead)?;
+    let branch = match head.symbolic_target_bytes() {
+        Some(target) => {
+            let name = target.strip_prefix(b"refs/heads/").ok_or_else(|| {
+                LeaseError::Worded(
+                    "HEAD points outside refs/heads; use the terminal for this repository state."
+                        .to_string(),
+                )
+            })?;
+            Some(
+                std::str::from_utf8(name)
+                    .map_err(|_| LeaseError::Worded("HEAD branch is not valid UTF-8.".to_string()))?
+                    .to_string(),
+            )
+        }
+        None => None,
+    };
+    let oid = match head.resolve() {
+        Ok(resolved) => resolved.target().map(|oid| oid.to_string()),
+        Err(error)
+            if matches!(
+                error.code(),
+                git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
+            ) =>
+        {
+            None
+        }
+        Err(error) => return Err(LeaseError::ResolveHead(error)),
+    };
+    Ok((branch, oid))
+}
+
+/// Refuse to proceed while `refs/replace/` entries exist: they can silently
+/// substitute one object for another, so the tree acted on need not be the tree
+/// previewed.
+pub(super) fn ensure_no_replace_refs(scope: &RepositoryScope) -> Result<(), LeaseError> {
+    let refs = run_scoped_git_stdout_raw(
+        scope,
+        &["for-each-ref", "--format=%(refname)", "refs/replace/"],
+    )?;
+    if refs.iter().any(|byte| !byte.is_ascii_whitespace()) {
+        return Err(LeaseError::ReplaceRefsActive);
+    }
+    Ok(())
+}
+
+/// Fold one leaf fingerprint into the running digest.
+///
+/// A non-file leaf is refused rather than hashed: a directory or nested
+/// repository standing where a file is expected is not something a destructive
+/// operation should silently traverse.
+pub(super) fn fingerprint_into(
+    state: &mut Sha256,
+    fingerprint: &WorktreeLeafFingerprint,
+    label: &str,
+) -> Result<(), LeaseError> {
+    match fingerprint {
+        WorktreeLeafFingerprint::Missing => state.update([0]),
+        WorktreeLeafFingerprint::Regular { len, mode, digest } => {
+            state.update([1]);
+            state.update(len.to_le_bytes());
+            state.update(mode.to_le_bytes());
+            state.update(digest);
+        }
+        WorktreeLeafFingerprint::Symlink { mode, target } => {
+            state.update([2]);
+            state.update(mode.to_le_bytes());
+            hash_field(state, target);
+        }
+        WorktreeLeafFingerprint::Other { mode, kind } => {
+            return Err(LeaseError::NonFileWorktreePath {
+                label: label.to_string(),
+                kind: *kind,
+                mode: *mode,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// The worktree path as a `&str`, for use as a child process's working

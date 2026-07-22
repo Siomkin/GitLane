@@ -16,15 +16,15 @@ use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Repository};
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::ffi::OsStrExt;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
 
 use crate::git::types::DiscardAllPreview;
 use crate::git::worktree_fs::{
     fingerprint_worktree_leaf_path_bounded, validate_worktree_leaf_observation_path,
-    worktree_directory_identity, worktree_leaf_is_missing_path, worktree_regular_leaf_size_path,
-    WorktreeLeafFingerprint, WorktreeLeafObservation,
+    worktree_leaf_is_missing_path, worktree_regular_leaf_size_path, WorktreeLeafFingerprint,
+    WorktreeLeafObservation,
 };
 
 use super::cli::run_git_scoped_os;
@@ -39,8 +39,41 @@ fn describe_lease_error(error: LeaseError) -> String {
         LeaseError::WorkdirNotUtf8 => {
             "Cannot run Discard all from a worktree path that is not valid UTF-8.".to_string()
         }
+        LeaseError::OpenRepository(error) => format!("Could not inspect the repository before discarding: {error}"),
+        LeaseError::BareRepository => "Cannot discard changes in a bare repository.".to_string(),
+        LeaseError::NonUtf8GitPath => "Discard all cannot safely represent a non-UTF-8 Git path on this platform.".to_string(),
+        LeaseError::ReplaceRefsActive => "Discard all is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal.".to_string(),
+        LeaseError::InspectHead(error) => format!("Could not inspect HEAD before discarding: {error}"),
+        LeaseError::ResolveHead(error) => format!("Could not resolve HEAD before discarding: {error}"),
+        LeaseError::NonFileWorktreePath { label, kind, mode } => {
+            format!("Refusing to discard non-file worktree path {label} (type {kind}, mode {mode:o}). Move the directory or nested repository aside and try again.")
+        }
         LeaseError::Worded(text) => text,
     }
+}
+
+fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
+    state_lease::discover_scope(repo).map_err(describe_lease_error)
+}
+
+fn git_path(bytes: &[u8]) -> Result<OsString, String> {
+    state_lease::git_path(bytes).map_err(describe_lease_error)
+}
+
+fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>), String> {
+    state_lease::head_state(repository).map_err(describe_lease_error)
+}
+
+fn ensure_no_replace_refs(scope: &RepositoryScope) -> Result<(), String> {
+    state_lease::ensure_no_replace_refs(scope).map_err(describe_lease_error)
+}
+
+fn fingerprint_into(
+    state: &mut Sha256,
+    fingerprint: &WorktreeLeafFingerprint,
+    label: &str,
+) -> Result<(), String> {
+    state_lease::fingerprint_into(state, fingerprint, label).map_err(describe_lease_error)
 }
 
 fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
@@ -281,22 +314,6 @@ fn git_bytes(value: &OsStr) -> Result<Vec<u8>, String> {
         .ok_or_else(|| "Discard all cannot safely represent a non-UTF-8 Git path.".to_string())
 }
 
-fn git_path(bytes: &[u8]) -> Result<OsString, String> {
-    #[cfg(unix)]
-    {
-        Ok(OsString::from_vec(bytes.to_vec()))
-    }
-    #[cfg(not(unix))]
-    {
-        String::from_utf8(bytes.to_vec())
-            .map(OsString::from)
-            .map_err(|_| {
-                "Discard all cannot safely represent a non-UTF-8 Git path on this platform."
-                    .to_string()
-            })
-    }
-}
-
 fn enforce_fingerprint_budget(
     workdir: &Path,
     paths: impl IntoIterator<Item = OsString>,
@@ -324,33 +341,6 @@ fn enforce_fingerprint_budget(
                     MAX_FINGERPRINT_BYTES / (1024 * 1024)
                 ));
             }
-        }
-    }
-    Ok(())
-}
-
-fn fingerprint_into(
-    state: &mut Sha256,
-    fingerprint: &WorktreeLeafFingerprint,
-    label: &str,
-) -> Result<(), String> {
-    match fingerprint {
-        WorktreeLeafFingerprint::Missing => state.update([0]),
-        WorktreeLeafFingerprint::Regular { len, mode, digest } => {
-            state.update([1]);
-            state.update(len.to_le_bytes());
-            state.update(mode.to_le_bytes());
-            state.update(digest);
-        }
-        WorktreeLeafFingerprint::Symlink { mode, target } => {
-            state.update([2]);
-            state.update(mode.to_le_bytes());
-            hash_field(state, target);
-        }
-        WorktreeLeafFingerprint::Other { mode, kind } => {
-            return Err(format!(
-                "Refusing to discard non-file worktree path {label} (type {kind}, mode {mode:o}). Move the directory or nested repository aside and try again."
-            ));
         }
     }
     Ok(())
@@ -391,44 +381,6 @@ fn fingerprint_with_budget(
         })?;
     }
     Ok((fingerprint, observation))
-}
-
-fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
-    let repository = Repository::discover(repo)
-        .map_err(|error| format!("Could not inspect the repository before discarding: {error}"))?;
-    let workdir = repository
-        .workdir()
-        .ok_or_else(|| "Cannot discard changes in a bare repository.".to_string())?
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the repository worktree: {error}"))?;
-    let gitdir = repository
-        .path()
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the repository metadata directory: {error}"))?;
-    let commondir = repository.commondir().canonicalize().map_err(|error| {
-        format!("Could not resolve the repository common metadata directory: {error}")
-    })?;
-    let workdir_identity = worktree_directory_identity(&workdir)
-        .map_err(|error| format!("Could not identify the repository worktree: {error}"))?;
-    let gitdir_identity = worktree_directory_identity(&gitdir).map_err(|error| {
-        format!("Could not identify the repository metadata directory: {error}")
-    })?;
-    let commondir_identity = worktree_directory_identity(&commondir).map_err(|error| {
-        format!("Could not identify the repository common metadata directory: {error}")
-    })?;
-    let is_worktree = repository.is_worktree();
-    Ok((
-        repository,
-        RepositoryScope {
-            workdir,
-            gitdir,
-            commondir,
-            workdir_identity,
-            gitdir_identity,
-            commondir_identity,
-            is_worktree,
-        },
-    ))
 }
 
 fn run_scoped_git(scope: &RepositoryScope, args: &[&str]) -> Result<String, String> {
@@ -472,53 +424,6 @@ fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), String> {
         return Err(STALE_MESSAGE.to_string());
     }
     Ok(())
-}
-
-fn ensure_no_replace_refs(scope: &RepositoryScope) -> Result<(), String> {
-    let refs = run_scoped_git_stdout_raw(
-        scope,
-        &["for-each-ref", "--format=%(refname)", "refs/replace/"],
-    )?;
-    if refs.iter().any(|byte| !byte.is_ascii_whitespace()) {
-        return Err(
-            "Discard all is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal."
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>), String> {
-    let head = repository
-        .find_reference("HEAD")
-        .map_err(|error| format!("Could not inspect HEAD before discarding: {error}"))?;
-    let branch = match head.symbolic_target_bytes() {
-        Some(target) => {
-            let name = target.strip_prefix(b"refs/heads/").ok_or_else(|| {
-                "HEAD points outside refs/heads; use the terminal for this repository state."
-                    .to_string()
-            })?;
-            Some(
-                std::str::from_utf8(name)
-                    .map_err(|_| "HEAD branch is not valid UTF-8.".to_string())?
-                    .to_string(),
-            )
-        }
-        None => None,
-    };
-    let oid = match head.resolve() {
-        Ok(resolved) => resolved.target().map(|oid| oid.to_string()),
-        Err(error)
-            if matches!(
-                error.code(),
-                git2::ErrorCode::UnbornBranch | git2::ErrorCode::NotFound
-            ) =>
-        {
-            None
-        }
-        Err(error) => return Err(format!("Could not resolve HEAD before discarding: {error}")),
-    };
-    Ok((branch, oid))
 }
 
 fn capture_index(repository: &Repository) -> Result<IndexSnapshot, String> {
