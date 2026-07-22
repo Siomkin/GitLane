@@ -1225,7 +1225,7 @@ describe("ActionMenu", () => {
     expect(confirm!.title).toBe("Rebase feature onto main?");
     expect(confirm!.message).toContain('Check out branch "feature"');
     expect(confirm!.message).toContain('onto "main"');
-    expect(confirm!.confirmLabel).toBe("Check out and rebase");
+    expect(confirm!.confirmLabel).toBe("Check out feature and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
     expect(rebaseOnto).not.toHaveBeenCalled();
 
@@ -1384,7 +1384,7 @@ describe("ActionMenu", () => {
     // HEAD is main, so the single dialog also covers the checkout prerequisite
     // (GL-217) — no second popup stacks on top of the preview confirm.
     expect(useUi.getState().confirm!.message).toContain('Check out branch "feature"');
-    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and reset (mixed)");
+    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out feature and reset (mixed)");
 
     useUi.getState().confirm!.onConfirm();
     await waitFor(() =>
@@ -1457,7 +1457,7 @@ describe("ActionMenu", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     expect(confirm!.title).toBe("Rebase main onto origin/feature?");
-    expect(confirm!.confirmLabel).toBe("Check out and rebase");
+    expect(confirm!.confirmLabel).toBe("Check out main and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
 
     confirm!.onConfirm();
@@ -1480,7 +1480,7 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     expect(useUi.getState().confirm).not.toBeNull();
     expect(useUi.getState().confirm!.title).toBe("Rebase feature onto main?");
-    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and rebase");
+    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out feature and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
