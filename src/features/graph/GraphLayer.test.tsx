@@ -10,7 +10,7 @@ const { drawCommitNodeMock, invokeMock, paintEvents, paintState } = vi.hoisted((
   drawCommitNodeMock: vi.fn(),
   invokeMock: vi.fn(),
   paintEvents: [] as string[],
-  paintState: { dash: [] as number[] },
+  paintState: { dash: [] as number[], alphas: [] as number[] },
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("./commitNodePainter", async (importOriginal) => {
@@ -29,6 +29,43 @@ const getContextDescriptor = Object.getOwnPropertyDescriptor(
   "getContext",
 );
 
+// `width`/`height` are instrumented rather than merely read: the point of the
+// resize guard is that a scroll-only repaint performs no assignment at all, and
+// happy-dom has no real backing store, so the write itself is the only observable.
+// The accessors still behave like the real ones (defaults 300x150) because the
+// paint compares `canvas.width` against the wanted size to decide whether to resize.
+const sizeDescriptors = {
+  width: Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, "width"),
+  height: Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, "height"),
+};
+const canvasSizes = new WeakMap<HTMLCanvasElement, { width: number; height: number }>();
+const DEFAULT_CANVAS_SIZE = { width: 300, height: 150 };
+let dimensionWrites = 0;
+
+function instrumentCanvasSize(prop: "width" | "height") {
+  Object.defineProperty(HTMLCanvasElement.prototype, prop, {
+    configurable: true,
+    get(this: HTMLCanvasElement) {
+      return (canvasSizes.get(this) ?? DEFAULT_CANVAS_SIZE)[prop];
+    },
+    set(this: HTMLCanvasElement, value: number) {
+      dimensionWrites += 1;
+      const current = canvasSizes.get(this) ?? { ...DEFAULT_CANVAS_SIZE };
+      current[prop] = value;
+      canvasSizes.set(this, current);
+    },
+  });
+}
+
+function restoreCanvasSize(prop: "width" | "height") {
+  const descriptor = sizeDescriptors[prop];
+  if (descriptor) {
+    Object.defineProperty(HTMLCanvasElement.prototype, prop, descriptor);
+  } else {
+    Reflect.deleteProperty(HTMLCanvasElement.prototype, prop);
+  }
+}
+
 const context = {
   globalAlpha: 1,
   strokeStyle: "",
@@ -46,9 +83,13 @@ const context = {
   arcTo: vi.fn(),
   quadraticCurveTo: vi.fn(),
   arc: vi.fn(),
-  stroke: vi.fn(() =>
-    paintEvents.push(`stroke:${String(context.strokeStyle)}:${paintState.dash.join(",")}`),
-  ),
+  stroke: vi.fn(() => {
+    // Alpha is sampled at stroke time, not asserted at the end: the paint ends
+    // on the node loop's per-node value, so only the skeleton's own strokes
+    // show whether this pass started from a clean alpha.
+    paintState.alphas.push(context.globalAlpha);
+    paintEvents.push(`stroke:${String(context.strokeStyle)}:${paintState.dash.join(",")}`);
+  }),
 } as unknown as CanvasRenderingContext2D;
 
 beforeAll(() => {
@@ -56,6 +97,8 @@ beforeAll(() => {
     configurable: true,
     value: vi.fn(() => context),
   });
+  instrumentCanvasSize("width");
+  instrumentCanvasSize("height");
 });
 
 afterAll(() => {
@@ -64,6 +107,8 @@ afterAll(() => {
   } else {
     Reflect.deleteProperty(HTMLCanvasElement.prototype, "getContext");
   }
+  restoreCanvasSize("width");
+  restoreCanvasSize("height");
 });
 
 const commit = (id: string, row: number, lane: number): CommitNode => ({
@@ -84,6 +129,8 @@ const commit = (id: string, row: number, lane: number): CommitNode => ({
 beforeEach(() => {
   paintEvents.length = 0;
   paintState.dash = [];
+  paintState.alphas.length = 0;
+  dimensionWrites = 0;
   context.globalAlpha = 1;
   context.strokeStyle = "";
   drawCommitNodeMock.mockClear();
@@ -332,5 +379,75 @@ describe("GraphLayer paint candidates", () => {
         nodeAlpha: 1,
       }),
     );
+  });
+
+  it("resizes the backing store only when the device-pixel size changes", () => {
+    const layer = (viewportTop: number, viewportHeight = 340) => (
+      <section>
+        <div className="gp-root">
+          <GraphLayer
+            viewportTop={viewportTop}
+            viewportHeight={viewportHeight}
+            hasWip={false}
+            rowHeight={34}
+            graphWidth={210}
+            branchOffset={0}
+            visualRowByGraphRow={[]}
+            stashConnectors={[]}
+          />
+        </div>
+      </section>
+    );
+
+    // The first paint has to size the fresh bitmap.
+    const { rerender } = render(layer(0));
+    expect(dimensionWrites).toBeGreaterThan(0);
+
+    dimensionWrites = 0;
+    rerender(layer(340));
+    rerender(layer(680));
+    // Scrolling repaints but must not touch the backing store. Without the guard
+    // this silently regresses to a multi-MB reallocation on every scroll tick.
+    expect(dimensionWrites).toBe(0);
+
+    // A genuine size change still has to resize.
+    rerender(layer(680, 500));
+    expect(dimensionWrites).toBeGreaterThan(0);
+  });
+
+  it("repaints at full strength after a filtered paint left the alpha dimmed", () => {
+    const layer = (matchedIds: Set<string> | null) => (
+      <section>
+        <div className="gp-root">
+          <GraphLayer
+            viewportTop={0}
+            viewportHeight={340}
+            hasWip={false}
+            rowHeight={34}
+            graphWidth={210}
+            branchOffset={0}
+            visualRowByGraphRow={[]}
+            stashConnectors={[]}
+            matchedIds={matchedIds}
+          />
+        </div>
+      </section>
+    );
+
+    // A filter matching nothing on screen: the skeleton dims, and the node loop's
+    // last write leaves the context's alpha at DIM_ALPHA when the pass ends.
+    const { rerender } = render(layer(new Set(["visible"])));
+    expect(paintState.alphas).not.toHaveLength(0);
+    expect(paintState.alphas.every((alpha) => alpha === 0.25)).toBe(true);
+    expect(context.globalAlpha).toBe(0.25);
+
+    paintState.alphas.length = 0;
+    rerender(layer(null));
+
+    // Clearing the filter has to paint the skeleton solid again. The canvas is no
+    // longer resized on every paint, so nothing implicitly restores alpha to 1 —
+    // without an explicit reset the whole graph stays dimmed after any search.
+    expect(paintState.alphas).not.toHaveLength(0);
+    expect(paintState.alphas.every((alpha) => alpha === 1)).toBe(true);
   });
 });

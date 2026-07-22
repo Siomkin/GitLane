@@ -1,5 +1,5 @@
 import type { FileDiff } from "@/lib/api";
-import { UnifiedDiffBody } from "@/features/review/DiffBody";
+import { VirtualUnifiedDiffBody } from "@/features/review/VirtualUnifiedDiffBody";
 import { BinaryDiff } from "@/features/review/BinaryDiff";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -42,9 +42,13 @@ export function DiffPane({
   if (diff.binary) {
     return <BinaryDiff diff={diff} className="h-full overflow-auto" />;
   }
+  // The diff scrolls inside its own windowed list, so the notice stays pinned
+  // below it as a sibling rather than scrolling away at the end of the rows.
   return (
-    <div className="p-3.5">
-      <UnifiedDiffBody hunks={diff.hunks} />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="relative min-h-0 flex-1">
+        <VirtualUnifiedDiffBody hunks={diff.hunks} testId="inspect-diff-scroll" />
+      </div>
       {diff.truncated && onShowFull && <TruncatedNotice onShowFull={onShowFull} />}
     </div>
   );

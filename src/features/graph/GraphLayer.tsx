@@ -83,8 +83,20 @@ export function GraphLayer({
     const dpr = window.devicePixelRatio || 1;
     const width = graphWidth;
     const canvasHeight = Math.max(viewportHeight, 1);
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(canvasHeight * dpr);
+    const deviceWidth = Math.round(width * dpr);
+    const deviceHeight = Math.round(canvasHeight * dpr);
+    // Assigning `width`/`height` resets the bitmap — per spec even when the value
+    // is unchanged — which reallocates the whole backing store. `viewportTop` is
+    // one of this effect's deps, so an unconditional assignment burned a fresh
+    // multi-MB surface on every scroll tick. Resize only when the pixel size
+    // actually changed; `clearRect` below blanks the canvas either way. The state
+    // the skeleton pass would otherwise inherit from the reset — transform, line
+    // caps, dash, alpha — is re-established below; `strokeStyle` and `lineWidth`
+    // are set per draw section, before each stroke.
+    if (canvas.width !== deviceWidth || canvas.height !== deviceHeight) {
+      canvas.width = deviceWidth;
+      canvas.height = deviceHeight;
+    }
     canvas.style.width = `${width}px`;
     canvas.style.height = `${canvasHeight}px`;
 
@@ -105,18 +117,28 @@ export function GraphLayer({
       ? getComputedStyle(surfaceEl).backgroundColor
       : cssVar(styles, "--bg", "#16181d");
 
+    // Clear the intrinsic bitmap under the identity transform, not the CSS box
+    // under the dpr transform: the backing store is `Math.round(css * dpr)`, so a
+    // fractional dpr can round *up* past the CSS extent (210px at dpr 1.25 gives a
+    // 263px bitmap but only covers 262.5). The old code resized every paint, so the
+    // spec's bitmap reset always blanked that fringe; now that resizes are guarded,
+    // an under-reaching clear would leave a stale sliver at the edge.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, canvasHeight);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
     // A search/kind filter dims everything that isn't a match — the lane
     // skeleton, the synthetic stash/WIP connectors, and non-matching nodes — so
     // the matches read as highlights (the canvas counterpart to the dimmed
-    // rows). Set once here so the connectors below inherit it; the value carries
-    // through `ctx.save()` to the edge pass and is reset before the node loop.
+    // rows). Set once here so the connectors below inherit it; the value persists
+    // through the edge pass and is reset before the node loop.
+    // Assigned on both branches, not just when dimming: the canvas is no longer
+    // resized on every paint, so nothing implicitly restores alpha to 1 and the
+    // previous paint's dimmed value would otherwise bleed into this one.
     const dimming = matchedIds != null;
-    if (dimming) ctx.globalAlpha = DIM_ALPHA;
+    ctx.globalAlpha = dimming ? DIM_ALPHA : 1;
 
     // Synthetic connectors. The WIP node hangs off HEAD; each stash row sits at
     // its own creation time in the date-ordered list, with a dashed connector
