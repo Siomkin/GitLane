@@ -14,6 +14,7 @@
 use std::ffi::{OsStr, OsString};
 use std::path::PathBuf;
 
+use git2::Oid;
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
@@ -22,6 +23,28 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::windows::ffi::OsStrExt;
 
 use crate::git::worktree_fs::WorktreeDirectoryIdentity;
+
+use super::cli::run_git_scoped_os_stdout_raw;
+
+/// A failure from a shared primitive, kept separate from how it is worded.
+///
+/// The two operations phrase the same failure differently, and not by swapping a
+/// noun: `discard_all` says "Refusing to discard non-file worktree path X … Move
+/// the directory or nested repository aside", hard reset says "Refusing to
+/// hard-reset while X is present … Move it aside". A shared format string would
+/// quietly unify two wordings, so anything operation-specific becomes a variant
+/// the caller renders.
+///
+/// [`LeaseError::Worded`] is the escape hatch for text that is *already*
+/// identical in both operations — that has one right phrasing, so it belongs
+/// here rather than being duplicated into both callers.
+#[derive(Debug)]
+pub(super) enum LeaseError {
+    /// The worktree path is not valid UTF-8, so it cannot be a command's cwd.
+    WorkdirNotUtf8,
+    /// Carries text that is the same for every operation.
+    Worded(String),
+}
 
 /// Ceiling on the bytes one capture will hash before refusing to continue, so a
 /// pathological worktree cannot stall a destructive confirmation indefinitely.
@@ -86,4 +109,55 @@ pub(super) fn hash_os(state: &mut Sha256, value: &OsStr) {
 /// here precisely because the result is never hashed or compared — only shown.
 pub(super) fn path_label(path: &OsStr) -> String {
     path.to_string_lossy().into_owned()
+}
+
+/// The worktree path as a `&str`, for use as a child process's working
+/// directory.
+pub(super) fn command_repo(scope: &RepositoryScope) -> Result<&str, LeaseError> {
+    scope.workdir.to_str().ok_or(LeaseError::WorkdirNotUtf8)
+}
+
+/// Read raw stdout from a git invocation pinned to `scope`.
+pub(super) fn run_scoped_git_stdout_raw(
+    scope: &RepositoryScope,
+    args: &[&str],
+) -> Result<Vec<u8>, LeaseError> {
+    run_git_scoped_os_stdout_raw(
+        command_repo(scope)?,
+        scope.commondir.as_os_str(),
+        &scoped_git_args(scope, args),
+    )
+    .map_err(LeaseError::Worded)
+}
+
+/// Resolve HEAD's tree oid, ignoring replacement refs.
+///
+/// `--end-of-options` keeps a revision that looks like a flag from being parsed
+/// as one, and the result is re-parsed as an `Oid` so a malformed line cannot
+/// reach the digest.
+pub(super) fn effective_head_tree_oid(
+    scope: &RepositoryScope,
+    head_oid: Option<&str>,
+) -> Result<Option<String>, LeaseError> {
+    let Some(head_oid) = head_oid else {
+        return Ok(None);
+    };
+    let tree_spec = format!("{head_oid}^{{tree}}");
+    let raw = run_scoped_git_stdout_raw(
+        scope,
+        &["rev-parse", "--verify", "--end-of-options", &tree_spec],
+    )?;
+    let text = std::str::from_utf8(&raw).map_err(|_| {
+        LeaseError::Worded("Git returned a non-UTF-8 HEAD tree object id.".to_string())
+    })?;
+    let value = text.trim_end_matches(['\r', '\n']);
+    if value.contains('\r') || value.contains('\n') {
+        return Err(LeaseError::Worded(
+            "Git returned a malformed HEAD tree object id.".to_string(),
+        ));
+    }
+    let oid = Oid::from_str(value).map_err(|_| {
+        LeaseError::Worded("Git returned a malformed HEAD tree object id.".to_string())
+    })?;
+    Ok(Some(oid.to_string()))
 }

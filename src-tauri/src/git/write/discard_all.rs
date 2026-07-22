@@ -12,7 +12,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Oid, Repository};
+use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Repository};
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
@@ -27,11 +27,36 @@ use crate::git::worktree_fs::{
     WorktreeLeafFingerprint, WorktreeLeafObservation,
 };
 
-use super::cli::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
+use super::cli::run_git_scoped_os;
 use super::state_lease::{
-    hash_field, hash_os, os_bytes, path_label, scoped_git_args, RepositoryScope,
+    self, hash_field, hash_os, os_bytes, path_label, scoped_git_args, LeaseError, RepositoryScope,
     MAX_FINGERPRINT_BYTES,
 };
+
+/// Render a shared-primitive failure in this operation's own words.
+fn describe_lease_error(error: LeaseError) -> String {
+    match error {
+        LeaseError::WorkdirNotUtf8 => {
+            "Cannot run Discard all from a worktree path that is not valid UTF-8.".to_string()
+        }
+        LeaseError::Worded(text) => text,
+    }
+}
+
+fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
+    state_lease::command_repo(scope).map_err(describe_lease_error)
+}
+
+fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
+    state_lease::run_scoped_git_stdout_raw(scope, args).map_err(describe_lease_error)
+}
+
+fn effective_head_tree_oid(
+    scope: &RepositoryScope,
+    head_oid: Option<&str>,
+) -> Result<Option<String>, String> {
+    state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
+}
 
 #[cfg(not(windows))]
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
@@ -406,12 +431,6 @@ fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
     ))
 }
 
-fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
-    scope.workdir.to_str().ok_or_else(|| {
-        "Cannot run Discard all from a worktree path that is not valid UTF-8.".to_string()
-    })
-}
-
 fn run_scoped_git(scope: &RepositoryScope, args: &[&str]) -> Result<String, String> {
     run_git_scoped_os(
         command_repo(scope)?,
@@ -428,14 +447,6 @@ fn run_scoped_git_paths(
     let mut args = scoped_git_args(scope, prefix_args);
     args.extend(path_args.iter().cloned());
     run_git_scoped_os(command_repo(scope)?, scope.commondir.as_os_str(), &args)
-}
-
-fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
-    run_git_scoped_os_stdout_raw(
-        command_repo(scope)?,
-        scope.commondir.as_os_str(),
-        &scoped_git_args(scope, args),
-    )
 }
 
 fn validate_repository_scope(expected: &RepositoryScope) -> Result<(), String> {
@@ -508,29 +519,6 @@ fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>
         Err(error) => return Err(format!("Could not resolve HEAD before discarding: {error}")),
     };
     Ok((branch, oid))
-}
-
-fn effective_head_tree_oid(
-    scope: &RepositoryScope,
-    head_oid: Option<&str>,
-) -> Result<Option<String>, String> {
-    let Some(head_oid) = head_oid else {
-        return Ok(None);
-    };
-    let tree_spec = format!("{head_oid}^{{tree}}");
-    let raw = run_scoped_git_stdout_raw(
-        scope,
-        &["rev-parse", "--verify", "--end-of-options", &tree_spec],
-    )?;
-    let text = std::str::from_utf8(&raw)
-        .map_err(|_| "Git returned a non-UTF-8 HEAD tree object id.".to_string())?;
-    let value = text.trim_end_matches(['\r', '\n']);
-    if value.contains('\r') || value.contains('\n') {
-        return Err("Git returned a malformed HEAD tree object id.".to_string());
-    }
-    let oid = Oid::from_str(value)
-        .map_err(|_| "Git returned a malformed HEAD tree object id.".to_string())?;
-    Ok(Some(oid.to_string()))
 }
 
 fn capture_index(repository: &Repository) -> Result<IndexSnapshot, String> {

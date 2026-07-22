@@ -21,10 +21,36 @@ use crate::git::worktree_fs::{
     WorktreeLeafObservation,
 };
 
-use super::cli::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
+use super::cli::run_git_scoped_os;
 use super::state_lease::{
-    hash_field, hash_os, path_label, scoped_git_args, RepositoryScope, MAX_FINGERPRINT_BYTES,
+    self, hash_field, hash_os, path_label, scoped_git_args, LeaseError, RepositoryScope,
+    MAX_FINGERPRINT_BYTES,
 };
+
+/// Render a shared-primitive failure in this operation's own words.
+fn describe_lease_error(error: LeaseError) -> String {
+    match error {
+        LeaseError::WorkdirNotUtf8 => {
+            "Cannot lease a hard reset from a worktree path that is not valid UTF-8.".to_string()
+        }
+        LeaseError::Worded(text) => text,
+    }
+}
+
+fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
+    state_lease::command_repo(scope).map_err(describe_lease_error)
+}
+
+fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
+    state_lease::run_scoped_git_stdout_raw(scope, args).map_err(describe_lease_error)
+}
+
+fn effective_head_tree_oid(
+    scope: &RepositoryScope,
+    head_oid: Option<&str>,
+) -> Result<Option<String>, String> {
+    state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
+}
 
 pub(super) const STALE_MESSAGE: &str =
     "The repository changed after this confirmation opened. Preview the hard reset again.";
@@ -260,20 +286,6 @@ fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
     ))
 }
 
-fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
-    scope.workdir.to_str().ok_or_else(|| {
-        "Cannot lease a hard reset from a worktree path that is not valid UTF-8.".to_string()
-    })
-}
-
-fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
-    run_git_scoped_os_stdout_raw(
-        command_repo(scope)?,
-        scope.commondir.as_os_str(),
-        &scoped_git_args(scope, args),
-    )
-}
-
 fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>), String> {
     let head = repository
         .find_reference("HEAD")
@@ -431,29 +443,6 @@ fn target_obstruction_paths(
         }
     }
     Ok(obstructions)
-}
-
-fn effective_head_tree_oid(
-    scope: &RepositoryScope,
-    head_oid: Option<&str>,
-) -> Result<Option<String>, String> {
-    let Some(head_oid) = head_oid else {
-        return Ok(None);
-    };
-    let tree_spec = format!("{head_oid}^{{tree}}");
-    let raw = run_scoped_git_stdout_raw(
-        scope,
-        &["rev-parse", "--verify", "--end-of-options", &tree_spec],
-    )?;
-    let text = std::str::from_utf8(&raw)
-        .map_err(|_| "Git returned a non-UTF-8 HEAD tree object id.".to_string())?;
-    let value = text.trim_end_matches(['\r', '\n']);
-    if value.contains('\r') || value.contains('\n') {
-        return Err("Git returned a malformed HEAD tree object id.".to_string());
-    }
-    let oid = Oid::from_str(value)
-        .map_err(|_| "Git returned a malformed HEAD tree object id.".to_string())?;
-    Ok(Some(oid.to_string()))
 }
 
 fn capture_index_digest(repository: &Repository) -> Result<[u8; 32], String> {
