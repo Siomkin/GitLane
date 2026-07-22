@@ -44,6 +44,8 @@ pub use branch_checkout::{checkout, checkout_remote_branch};
 pub use branches::{create_branch, delete_branch, rename_branch, set_upstream};
 #[cfg(test)]
 pub use commits::commit;
+#[cfg(test)]
+pub(crate) use commits::set_squash_after_commit_test_hook;
 pub use commits::{commit_expected, squash_commits};
 pub use conflict_resolution::{
     abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
