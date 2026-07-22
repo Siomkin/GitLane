@@ -109,9 +109,9 @@ export function ActionMenu() {
             // onConfirm first — so the preview must be anchored on it. GL-42 review.
             api.previewReset(repoPath, target, "mixed", branch)
           : Promise.reject(new Error("No repository")),
-      onConfirm: () =>
+      onConfirm: (preview) =>
         void run(async () => {
-          return resetBranchTo(branch, target, "mixed");
+          return resetBranchTo(branch, target, "mixed", preview);
         }),
     });
   };

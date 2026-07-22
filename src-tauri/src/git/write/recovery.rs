@@ -1,10 +1,11 @@
 //! Reflog-backed recovery data and destructive-operation previews.
 
-use std::collections::HashSet;
+use crate::git::types::{
+    DeleteBranchPreview, DestructivePreview, ForcePushPreview, ReflogEntry, ResetPreview,
+};
 
-use crate::git::types::{DeleteBranchPreview, DestructivePreview, ForcePushPreview, ReflogEntry};
-
-use super::cli::{run_git, run_git_allow_exit_codes, run_git_stdout_raw};
+use super::cli::{run_git, run_git_allow_exit_codes};
+use super::hard_reset_lease;
 use super::operands::ensure_operand;
 use super::remotes::{push_destination, push_endpoint_token};
 
@@ -93,17 +94,18 @@ pub fn preview_reset(
     target: &str,
     mode: &str,
     source: &str,
-) -> Result<DestructivePreview, String> {
+) -> Result<ResetPreview, String> {
     ensure_operand(target)?;
     ensure_operand(source)?;
     let mode = match mode {
         "soft" | "mixed" | "hard" => mode,
         _ => "mixed",
     };
-    // Qualify a branch/tag-ambiguous target to refs/heads/ exactly as the write
-    // path (`reset::reset`) does, so the preview describes the *same* ref the
-    // reset will actually move to — otherwise a same-named tag could be shown in
-    // the confirm dialog while the reset lands on the branch (GL-120 review).
+    // Qualify a branch/tag-ambiguous target to refs/heads/ here, the one place
+    // that still takes a *name*: the write executes the oid this resolves to
+    // (`reset::reset_to_oid`), so the preview describes the ref the reset will
+    // actually move to — otherwise a same-named tag could be shown in the
+    // confirm dialog while the reset lands on the branch (GL-120 review).
     let target = super::branches::qualify_branch_if_ambiguous(repo, target);
     let target = target.as_str();
     // Validate both ends up front. The impact reads below tolerate git failures
@@ -111,10 +113,18 @@ pub fn preview_reset(
     // otherwise yield a confident-looking but empty preview ("No commits are
     // currently ahead of the target"). Fail loudly instead, routing the UI to its
     // error path. GL-42 review.
-    run_git(
+    let target_oid = run_git(
         repo,
         &["rev-parse", "--verify", &format!("{target}^{{commit}}")],
-    )?;
+    )?
+    .lines()
+    .next()
+    .unwrap_or("")
+    .trim()
+    .to_string();
+    if target_oid.is_empty() {
+        return Err(format!("Could not resolve {target} to a commit."));
+    }
     // Qualify a local-branch source to refs/heads so a same-named tag can't shadow
     // it (git ref precedence resolves a bare name to the tag first); HEAD and
     // arbitrary commit-ish sources are validated and used as-is. GL-42 review.
@@ -138,8 +148,20 @@ pub fn preview_reset(
         )?;
         source.to_string()
     };
-    let target_short = rev_parse_short(repo, target).unwrap_or_else(|| target.to_string());
-    let range = format!("{target}..{source_ref}");
+    let expected_source_oid = run_git(
+        repo,
+        &["rev-parse", "--verify", &format!("{source_ref}^{{commit}}")],
+    )?
+    .lines()
+    .next()
+    .unwrap_or("")
+    .trim()
+    .to_string();
+    if expected_source_oid.is_empty() {
+        return Err(format!("Could not resolve {source_ref} to a commit."));
+    }
+    let target_short = rev_parse_short(repo, &target_oid).unwrap_or_else(|| target.to_string());
+    let range = format!("{target_oid}..{source_ref}");
     let commits = limited_lines(
         run_git(repo, &["log", "--oneline", "--max-count=8", &range]).unwrap_or_default(),
         8,
@@ -172,12 +194,19 @@ pub fn preview_reset(
         ));
     }
     let mut warnings = Vec::new();
+    let mut expected_state = None;
+    let mut expected_head_branch = None;
+    let mut expected_head_oid = None;
     match mode {
         "soft" => details.push("Soft reset keeps those commit changes staged.".to_string()),
         "mixed" => details.push(
             "Mixed reset keeps those commit changes in the working tree, unstaged.".to_string(),
         ),
         "hard" => {
+            // Lease fingerprints the current worktree — refuse a named source
+            // that is not checked out so the confirm cannot describe one branch
+            // while binding another.
+            hard_reset_lease::ensure_source_is_checked_out(repo, source)?;
             warnings.push("Hard reset also discards uncommitted tracked-file changes.".to_string());
             // Fail closed on a status read error (mirrors preview_discard_all):
             // silently dropping it could hide a dirty tree before a hard reset.
@@ -195,13 +224,19 @@ pub fn preview_reset(
                     tracked.join("; ")
                 ));
             }
-            let obstructions = hard_reset_untracked_obstructions(repo, target)?;
+            let obstructions = hard_reset_lease::preview_untracked_obstructions(repo, &target_oid)?;
             if !obstructions.is_empty() {
                 warnings.push(format!(
                     "Untracked files or directories in the target's way that may be deleted: {}",
                     obstructions.join("; ")
                 ));
             }
+            // Exact-state lease for confirm→execute (GL-302). Bound to the
+            // resolved target oid so a moved symbolic name cannot widen the write.
+            let (state, head_branch, head_oid) = hard_reset_lease::capture(repo, &target_oid)?;
+            expected_state = Some(state);
+            expected_head_branch = head_branch;
+            expected_head_oid = head_oid;
         }
         _ => {}
     }
@@ -209,10 +244,15 @@ pub fn preview_reset(
         "The previous HEAD remains recoverable from the reflog while Git keeps it locally."
             .to_string(),
     );
-    Ok(DestructivePreview {
+    Ok(ResetPreview {
         summary: format!("Reset {mode} to {target_short}"),
         details,
         warnings,
+        target_oid,
+        expected_source_oid: Some(expected_source_oid),
+        expected_state,
+        expected_head_branch,
+        expected_head_oid,
     })
 }
 
@@ -451,46 +491,6 @@ fn limited_lines(raw: String, limit: usize) -> Vec<String> {
         lines.push("…".to_string());
     }
     lines
-}
-
-fn path_conflicts_with_reset_target(untracked: &str, target_path: &str) -> bool {
-    untracked == target_path
-        || untracked
-            .strip_prefix(target_path)
-            .is_some_and(|rest| rest.starts_with('/'))
-        || target_path
-            .strip_prefix(untracked)
-            .is_some_and(|rest| rest.starts_with('/'))
-}
-
-fn hard_reset_untracked_obstructions(repo: &str, target: &str) -> Result<Vec<String>, String> {
-    let target_tree = format!("{target}^{{tree}}");
-    let parse_paths = |raw: Vec<u8>| {
-        raw.split(|byte| *byte == 0)
-            .filter(|path| !path.is_empty())
-            .map(|path| String::from_utf8_lossy(path).into_owned())
-            .collect::<Vec<_>>()
-    };
-    let target_paths = parse_paths(run_git_stdout_raw(
-        repo,
-        &["ls-tree", "-r", "-z", "--name-only", &target_tree],
-    )?);
-    // Deliberately omit `--exclude-standard`: ignored files are still untracked,
-    // and reset --hard overwrites them when the target tree tracks that path.
-    let untracked_paths = parse_paths(run_git_stdout_raw(repo, &["ls-files", "--others", "-z"])?);
-
-    let mut seen = HashSet::new();
-    let mut obstructions = Vec::new();
-    for untracked in untracked_paths {
-        if target_paths
-            .iter()
-            .any(|target_path| path_conflicts_with_reset_target(&untracked, target_path))
-            && seen.insert(untracked.clone())
-        {
-            obstructions.push(format!("?? {untracked}"));
-        }
-    }
-    Ok(obstructions.into_iter().take(16).collect())
 }
 
 fn reflog_selector_timestamp(selector: &str) -> Option<i64> {

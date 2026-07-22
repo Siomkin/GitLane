@@ -133,7 +133,7 @@ pub fn squash_commits(
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     super::head::ensure_commit_exists(repo, parent_oid)?;
-    super::reset::reset(repo, parent_oid, "soft")?;
+    super::reset::reset_to_oid(repo, parent_oid, "soft")?;
     super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))?;
     match commit_locked(
         repo,
@@ -148,7 +148,7 @@ pub fn squash_commits(
         Ok(output) => Ok(output),
         Err(error) => {
             if super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid)).is_ok() {
-                let _ = super::reset::reset(repo, expected_oid, "soft");
+                let _ = super::reset::reset_to_oid(repo, expected_oid, "soft");
             }
             Err(error)
         }

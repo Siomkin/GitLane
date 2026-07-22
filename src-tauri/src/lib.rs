@@ -27,8 +27,8 @@ use git::types::{
     HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
     ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
     ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge,
-    RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ReviewThreadList, SigningKey, StashEntry,
-    WorkingChanges, WorktreeInfo,
+    RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList,
+    SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -257,7 +257,7 @@ async fn preview_reset(
     target: String,
     mode: String,
     source: Option<String>,
-) -> Result<DestructivePreview, String> {
+) -> Result<ResetPreview, String> {
     // `source` is the ref being reset; defaults to HEAD for current-branch resets.
     let source = source.unwrap_or_else(|| "HEAD".to_string());
     blocking(move || git::write::preview_reset(&path, &target, &mode, &source)).await
@@ -349,12 +349,16 @@ async fn rebase_onto(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 async fn reset_to(
     path: String,
     source: Option<String>,
     expected_source_oid: Option<String>,
     target_oid: String,
     mode: String,
+    expected_state: Option<String>,
+    expected_head_branch: Option<String>,
+    expected_head_oid: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::reset_branch(
@@ -363,6 +367,9 @@ async fn reset_to(
             expected_source_oid.as_deref(),
             &target_oid,
             &mode,
+            expected_state.as_deref(),
+            expected_head_branch.as_deref(),
+            expected_head_oid.as_deref(),
         )
     })
     .await

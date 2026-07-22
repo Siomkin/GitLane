@@ -18,6 +18,7 @@ mod conflict_resolution;
 mod discard_all;
 mod discard_file;
 mod files;
+mod hard_reset_lease;
 mod head;
 mod history;
 mod identity;
@@ -61,6 +62,11 @@ pub use discard_file::{discard_file, preview_discard_file};
 pub(crate) use files::set_before_replace_test_hook;
 pub use files::write_repo_file;
 #[cfg(test)]
+pub(crate) use hard_reset_lease::{
+    set_hard_reset_after_fingerprint_test_hook, set_hard_reset_after_validation_test_hook,
+    set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
+};
+#[cfg(test)]
 pub use history::{
     cherry_pick, cherry_pick_many, fast_forward, fast_forward_branch, merge, revert, revert_many,
 };
@@ -83,8 +89,6 @@ pub use remotes::{
 };
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
-#[cfg(test)]
-pub use reset::reset;
 pub use reset::reset_branch;
 pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
 #[cfg(test)]
