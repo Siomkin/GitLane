@@ -1,6 +1,7 @@
 import type { FileDiff } from "@/lib/api";
 import { UnifiedDiffBody } from "@/features/review/DiffBody";
 import { BinaryDiff } from "@/features/review/BinaryDiff";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 /** Shared diff pane for the file-history and compare views: a loading skeleton,
  * error/empty/binary states, then the unified diff with a "show full" affordance
@@ -25,7 +26,7 @@ export function DiffPane({
     return (
       <div className="space-y-1.5 p-3.5">
         {[60, 80, 50, 70, 90, 40, 75, 55, 85, 65].map((w, i) => (
-          <div key={i} className="shim h-[18px] rounded bg-black/[0.05] dark:bg-white/[0.06]" style={{ width: `${w}%` }} />
+          <Skeleton key={i} className="h-[18px]" style={{ width: `${w}%` }} />
         ))}
       </div>
     );

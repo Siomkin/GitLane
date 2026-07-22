@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SearchIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { buildFileTree, filterFiles, flattenFileTree } from "./tree";
 import { DirRow, FileRow } from "./rows";
 
@@ -74,7 +75,7 @@ export function FilesPanel() {
         ) : !repoFiles || (repoFiles.loading && files.length === 0) ? (
           <div className="space-y-1 p-2.5">
             {Array.from({ length: 12 }).map((_, i) => (
-              <div key={i} className="shim h-[22px] rounded bg-black/[0.05] dark:bg-white/[0.06]" />
+              <Skeleton key={i} className="h-[22px]" />
             ))}
           </div>
         ) : files.length === 0 ? (

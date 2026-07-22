@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useRepo } from "@/store/repo";
 import { initials } from "@/lib/ui";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { oidColor, relativeTime, shortAge } from "./inspect";
 
 /** Blame mode: line attribution (grouped by commit run) + a line inspector. */
@@ -44,7 +45,7 @@ export function BlameView() {
           {history.blameLoading ? (
             <div className="space-y-1 p-2.5">
               {Array.from({ length: 14 }).map((_, i) => (
-                <div key={i} className="shim h-[20px] rounded bg-black/[0.05] dark:bg-white/[0.06]" />
+                <Skeleton key={i} className="h-[20px]" />
               ))}
             </div>
           ) : history.blameError ? (

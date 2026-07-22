@@ -8,6 +8,7 @@ import { formatBytes, splitLinesCapped, utf8Bytes } from "@/features/repo-files/
 import { computeLineChangesText } from "./lineChanges";
 import { FileEditor } from "./FileEditor";
 import { FilePreview } from "./FilePreview";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { FileSourceView } from "./FileSourceView";
 import { FileViewHeader } from "./FileViewHeader";
 import { FileViewMode, hasPreview } from "./mode";
@@ -125,7 +126,7 @@ export function RepoFileWorkspace() {
         {fileView.loading ? (
           <div className="space-y-1 p-3">
             {Array.from({ length: 16 }).map((_, i) => (
-              <div key={i} className="shim h-[18px] rounded bg-black/[0.05] dark:bg-white/[0.06]" />
+              <Skeleton key={i} className="h-[18px]" />
             ))}
           </div>
         ) : fileView.error ? (
