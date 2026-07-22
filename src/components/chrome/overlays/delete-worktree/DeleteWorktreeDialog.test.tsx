@@ -43,12 +43,25 @@ const preview = {
   expectedOid: "feature-preview-oid",
 };
 
-/** Wire the IPC mock: a preview plus a controllable delete. */
+const worktreePreview = {
+  summary: "Remove the linked worktree repo-feature?",
+  details: ["The linked worktree at /work/repo-feature will be removed."],
+  warnings: [],
+  expectedState: "v1:worktree-lease",
+  requiresForce: false,
+  locked: false,
+  branch: "feature",
+  headOid: "feature-preview-oid",
+  dirty: { modified: 0, untracked: 0, ignored: 0 },
+};
+
+/** Wire the IPC mock: dual previews plus a controllable delete. */
 const arm = () => {
   let resolveDelete!: (msg: string) => void;
   let rejectDelete!: (e: Error) => void;
   invokeMock.mockImplementation(async (cmd: string) => {
     if (cmd === "preview_delete_branch") return preview;
+    if (cmd === "preview_remove_worktree") return worktreePreview;
     if (cmd === "delete_branch_with_worktree")
       return new Promise((resolve, reject) => {
         resolveDelete = resolve;

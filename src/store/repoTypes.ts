@@ -17,6 +17,7 @@ import type {
   OperationKind,
   ReflogEntry,
   RemoteInfo,
+  RemoveWorktreePreview,
   RepoFileContent,
   RepoForge,
   RepoGraph,
@@ -505,8 +506,8 @@ export interface RepoState {
   deleteTag: (name: string, expectedOid: string, alsoRemote?: boolean) => Promise<string>;
   /** Push a tag to `remote` (the default push remote when omitted). */
   pushTag: (name: string, remote?: string) => Promise<string>;
-  /** Remove a linked worktree (`force` drops the dirty/locked check). */
-  removeWorktree: (worktreePath: string, force?: boolean) => Promise<string>;
+  /** Remove a linked worktree using its Worktree Removal Lease (GL-303). */
+  removeWorktree: (worktreePath: string, expectedState: string) => Promise<string>;
   /** Hand a branch off from one worktree to another (GL-74): detach the source,
    * check the branch out in `toWorktreePath`, and — when `carry` — bring the
    * source's uncommitted work along. Lands the app on the destination; a
@@ -521,17 +522,21 @@ export interface RepoState {
    * delete-branch-and-worktree dialog's configure screen. A read-shaped preview,
    * so it does not refresh. */
   previewDeleteBranch: (branch: string) => Promise<DeleteBranchPreview>;
+  /** Preview Linked Worktree Removal and capture the Worktree Removal Lease. */
+  previewRemoveWorktree: (worktreePath: string) => Promise<RemoveWorktreePreview>;
   /** Remove the linked worktree holding `branch`, then delete the branch — the
    * one-step path when a branch's Delete is locked by its worktree. `repoPath` is
    * explicit (not read from the live summary) so the op stays pinned to the repo
-   * the dialog started on across a mid-run switch. Does NOT refresh: the GL-107
-   * dialog drives the graph refresh itself so it can surface it as the checklist's
+   * the dialog started on across a mid-run switch. Requires both the branch tip
+   * lease and the worktree lease (GL-303). Does NOT refresh: the GL-107 dialog
+   * drives the graph refresh itself so it can surface it as the checklist's
    * "Refreshing" row (see useDeleteWorktreeRun). */
   deleteBranchWithWorktree: (
     branch: string,
     fromWorktreePath: string,
     repoPath: string,
     expectedOid: string,
+    expectedState: string,
   ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */

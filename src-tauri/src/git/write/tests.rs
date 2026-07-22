@@ -17,11 +17,11 @@ use super::{
     delete_remote_tag, delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
     fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
     merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
-    preview_discard_all, preview_discard_file, preview_force_push, preview_reset, publish_branch,
-    publish_remote, pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries,
-    remove_worktree, reset, reset_branch, resolve_conflict_file, revert, revert_many, revert_onto,
-    set_before_replace_test_hook, set_discard_all_after_cleanup_test_hook,
-    set_discard_all_after_first_clean_batch_test_hook,
+    preview_discard_all, preview_discard_file, preview_force_push, preview_remove_worktree,
+    preview_reset, publish_branch, publish_remote, pull, pull_branch, push_branch, rebase,
+    reconflict_file, reflog_entries, remove_worktree, reset, reset_branch, resolve_conflict_file,
+    revert, revert_many, revert_onto, set_before_replace_test_hook,
+    set_discard_all_after_cleanup_test_hook, set_discard_all_after_first_clean_batch_test_hook,
     set_discard_all_after_tracked_scope_validation_test_hook,
     set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
     set_discard_all_capture_test_hook, set_discard_capture_test_hook, set_remote_url,
@@ -50,6 +50,29 @@ fn discard_all_previewed(repo: &str) -> Result<String, String> {
         &preview.expected_state,
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
+    )
+}
+
+fn remove_worktree_previewed(repo: &str, worktree_path: &str) -> Result<String, String> {
+    let preview = preview_remove_worktree(repo, worktree_path)?;
+    remove_worktree(repo, worktree_path, &preview.expected_state)
+}
+
+fn delete_branch_with_worktree_previewed(
+    repo: &str,
+    branch: &str,
+    from_worktree_path: &str,
+    expected_oid: &str,
+    progress: &dyn Fn(&'static str),
+) -> Result<String, String> {
+    let preview = preview_remove_worktree(repo, from_worktree_path)?;
+    delete_branch_with_worktree(
+        repo,
+        branch,
+        from_worktree_path,
+        expected_oid,
+        &preview.expected_state,
+        progress,
     )
 }
 
@@ -3736,11 +3759,14 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
     // phase as it begins (GL-107).
     let steps = std::cell::RefCell::new(Vec::new());
     let expected_oid = rev_parse(&repo, "refs/heads/feature");
-    let result =
-        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|s| {
-            steps.borrow_mut().push(s)
-        })
-        .expect("delete branch and its worktree");
+    let result = delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        linked_str,
+        &expected_oid,
+        &|s| steps.borrow_mut().push(s),
+    )
+    .expect("delete branch and its worktree");
     assert_eq!(result, "Deleted feature and its worktree");
     assert_eq!(*steps.borrow(), ["removeWorktree", "deleteBranch"]);
 
@@ -3793,9 +3819,14 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
     std::fs::write(linked.join("file.txt"), "edited\n").unwrap();
 
     let expected_oid = rev_parse(&repo, "refs/heads/feature");
-    let err =
-        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
-            .expect_err("dirty worktree should abort the delete");
+    let err = delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        linked_str,
+        &expected_oid,
+        &|_| {},
+    )
+    .expect_err("dirty worktree should abort the delete");
     assert!(!err.is_empty(), "expected a git error message");
 
     // Nothing was destroyed: the branch and worktree both survive.
@@ -3825,8 +3856,14 @@ fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
         .output()
         .expect("git restores the linked worktree");
     assert!(restore.status.success());
-    delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
-        .expect("retry after abort should acquire the ref lock");
+    delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        linked_str,
+        &expected_oid,
+        &|_| {},
+    )
+    .expect("retry after abort should acquire the ref lock");
     assert!(!linked.exists());
 
     let _ = std::fs::remove_dir_all(&linked);
@@ -3865,9 +3902,14 @@ fn delete_branch_with_worktree_refuses_when_path_no_longer_holds_the_branch() {
     assert!(detach.status.success());
 
     let expected_oid = rev_parse(&repo, "refs/heads/feature");
-    let err =
-        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
-            .expect_err("a stale worktree path should abort the delete");
+    let err = delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        linked_str,
+        &expected_oid,
+        &|_| {},
+    )
+    .expect_err("a stale worktree path should abort the delete");
     assert!(
         err.contains("feature"),
         "error should name the branch, got: {err}"
@@ -3917,9 +3959,14 @@ fn delete_branch_with_worktree_rejects_a_stale_tip_before_removing_the_worktree(
     let advanced_oid = rev_parse(&repo, "refs/heads/feature");
     assert_ne!(advanced_oid, expected_oid);
 
-    let err =
-        delete_branch_with_worktree(repo.path(), "feature", linked_str, &expected_oid, &|_| {})
-            .expect_err("stale branch tip must reject before worktree removal");
+    let err = delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        linked_str,
+        &expected_oid,
+        &|_| {},
+    )
+    .expect_err("stale branch tip must reject before worktree removal");
     assert!(!err.is_empty());
     assert!(linked.exists(), "stale preview must preserve the worktree");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), advanced_oid);
@@ -3949,8 +3996,12 @@ fn delete_branch_with_worktree_preserves_a_branch_claimed_after_source_removal()
     repo.git_ok(&["worktree", "add", "-q", "--detach", claimant_str, "main"]);
 
     let switched = std::cell::Cell::new(false);
-    let err =
-        delete_branch_with_worktree(repo.path(), "feature", source_str, &expected_oid, &|step| {
+    let err = delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        source_str,
+        &expected_oid,
+        &|step| {
             if step == "deleteBranch" {
                 let output = Command::new("git")
                     .arg("-C")
@@ -3965,8 +4016,9 @@ fn delete_branch_with_worktree_preserves_a_branch_claimed_after_source_removal()
                 );
                 switched.set(true);
             }
-        })
-        .expect_err("a newly claimed branch must be preserved");
+        },
+    )
+    .expect_err("a newly claimed branch must be preserved");
 
     assert!(switched.get());
     assert!(err.contains("preserved branch"), "unexpected error: {err}");
@@ -4875,13 +4927,13 @@ fn remove_worktree_force_overrides_a_lock() {
         "the linked worktree should be flagged locked: {list:?}"
     );
 
-    // An unforced remove refuses (git's "locked working tree" error); a forced
-    // remove overrides the lock because the backend supplies the second --force.
-    assert!(
-        remove_worktree(repo.path(), linked.as_str(), false).is_err(),
-        "an unforced remove must not silently override a lock"
-    );
-    remove_worktree(repo.path(), linked.as_str(), true).expect("force-remove a locked worktree");
+    // After the lease matches, the server derives `-f -f` for a locked worktree
+    // (GL-303) — execute has no client force flag to forget.
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview locked");
+    assert!(preview.requires_force);
+    assert!(preview.locked);
+    remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect("force-remove a locked worktree");
     assert!(
         !linked.0.exists(),
         "the locked worktree directory should be gone after a forced remove"
@@ -4939,13 +4991,14 @@ fn worktree_dirty_state_counts_modified_and_untracked_work() {
     assert!(is_porcelain_record("A  added.txt"));
     assert!(is_porcelain_record("D  deleted.txt"));
 
-    // The probe is a read: it must not itself disturb the worktree, and git
-    // still refuses the unforced removal it is warning about.
-    assert!(
-        remove_worktree(repo.path(), linked.as_str(), false).is_err(),
-        "an unforced remove of a dirty worktree must still refuse"
-    );
-    remove_worktree(repo.path(), linked.as_str(), true).expect("force-remove a dirty worktree");
+    // The probe is a read: it must not itself disturb the worktree. After the
+    // lease matches, the server derives `--force` for dirty removals (GL-303).
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview dirty");
+    assert!(preview.requires_force);
+    assert_eq!(preview.dirty.modified, 2);
+    assert_eq!(preview.dirty.untracked, 2);
+    remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect("force-remove a dirty worktree");
     assert!(!linked.0.exists(), "the worktree directory should be gone");
 }
 
@@ -4986,9 +5039,497 @@ fn worktree_dirty_state_counts_ignored_entries_git_would_delete() {
     // Git considers this worktree clean, so the unforced removal the bulk sweep
     // uses does delete those files. That is precisely why the count must be
     // reported instead of assumed to be zero.
-    remove_worktree(repo.path(), linked.as_str(), false)
+    remove_worktree_previewed(repo.path(), linked.as_str())
         .expect("git removes an ignored-only worktree without a force");
     assert!(!linked.0.exists(), "the worktree directory should be gone");
+}
+
+#[test]
+fn preview_remove_worktree_lease_ignored_only_drift_does_not_invalidate() {
+    let repo = TempRepo::new("wt-lease-drift");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join(".gitignore"), "secret.env\n").unwrap();
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-drift");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview clean");
+    assert!(!preview.requires_force);
+    assert_eq!(preview.dirty.ignored, 0);
+
+    std::fs::write(linked.0.join("secret.env"), "TOKEN=1\n").unwrap();
+    // Ignored-only drift must not invalidate the lease (disclosure only).
+    remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect("ignored-only drift does not invalidate");
+}
+
+#[test]
+fn preview_remove_worktree_lease_rejects_new_untracked_path() {
+    let repo = TempRepo::new("wt-lease-untracked");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-untracked");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview");
+    std::fs::write(linked.0.join("new.txt"), "x\n").unwrap();
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("new untracked path must invalidate");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert!(
+        linked.0.exists(),
+        "stale lease must not remove the worktree"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+#[test]
+fn preview_remove_worktree_lease_rejects_lock_drift() {
+    let repo = TempRepo::new("wt-lease-lock");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-lock");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview unlocked");
+    assert!(!preview.locked);
+    assert!(!preview.requires_force);
+
+    repo.git_ok(&["worktree", "lock", linked.as_str()]);
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("locking after preview must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    // Worktree must still exist — execute must not escalate to -f -f off-lease.
+    assert!(
+        linked.0.exists(),
+        "lock drift must refuse, not force-remove"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", "--force", linked.as_str()]);
+}
+
+#[test]
+fn preview_remove_worktree_lease_rejects_gitdir_registration_replacement() {
+    use std::path::PathBuf;
+
+    let repo = TempRepo::new("wt-lease-gitdir");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-gitdir");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview");
+
+    // Recreate the private admin gitdir at the same pathname so the workdir
+    // inode is unchanged but registration identity (gitdir inode) flips — the
+    // ADR's registration half of the lease must fail closed.
+    let gitfile = std::fs::read_to_string(linked.0.join(".git")).unwrap();
+    let gitdir = PathBuf::from(
+        gitfile
+            .trim()
+            .strip_prefix("gitdir: ")
+            .expect("linked worktree gitfile"),
+    );
+    let gitdir = if gitdir.is_absolute() {
+        gitdir
+    } else {
+        linked.0.join(gitdir)
+    };
+    let gitdir = gitdir.canonicalize().unwrap();
+    let backup = LinkedDir::new("wt-lease-gitdir-bak");
+    std::fs::create_dir_all(&backup.0).unwrap();
+    copy_dir_recursive(&gitdir, &backup.0).expect("backup private gitdir");
+    std::fs::remove_dir_all(&gitdir).expect("drop old gitdir inode");
+    std::fs::create_dir_all(&gitdir).expect("new gitdir inode");
+    copy_dir_recursive(&backup.0, &gitdir).expect("restore admin contents");
+
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("replaced registration must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert!(
+        linked.0.exists(),
+        "stale lease must not remove the worktree"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+/// A repo whose linked worktree is already dirty at preview time, for the drift
+/// tests that need an existing porcelain record to mutate. Returns the repo, the
+/// linked directory, and the tracked file inside it.
+fn repo_with_dirty_linked_worktree(tag: &str) -> (TempRepo, LinkedDir, PathBuf) {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new(tag);
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let tracked = linked.0.join("a.txt");
+    std::fs::write(&tracked, "edited once\n").unwrap();
+    (repo, linked, tracked)
+}
+
+// The lease deliberately fingerprints porcelain *path + status*, not file bytes:
+// typing more into an already-modified file must not expire a confirm the user
+// is looking at. This is the half a leaf-byte fingerprint would have broken,
+// which is why the removal lease deliberately does not reuse Discard All's.
+#[test]
+fn preview_remove_worktree_lease_survives_same_status_in_place_edit() {
+    let (repo, linked, tracked) = repo_with_dirty_linked_worktree("wt-lease-inplace");
+
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview dirty");
+    assert!(preview.requires_force, "an edited tracked file is dirty");
+    assert_eq!(preview.dirty.modified, 1);
+
+    // Same path, same ` M` status code — only the bytes differ.
+    std::fs::write(&tracked, "edited again, at greater length\n").unwrap();
+
+    remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect("an in-place edit keeping the same porcelain status must not invalidate");
+    assert!(!linked.0.exists(), "the worktree directory should be gone");
+}
+
+// The other side of the same line: staging that file changes ` M` to `M `, which
+// is a different porcelain record and must expire the confirm even though the
+// path set and the dirty *count* are both unchanged.
+#[test]
+fn preview_remove_worktree_lease_rejects_status_code_change() {
+    let (repo, linked, _tracked) = repo_with_dirty_linked_worktree("wt-lease-status");
+
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview dirty");
+    assert_eq!(preview.dirty.modified, 1);
+
+    git_ok_at(&linked.0, &["add", "a.txt"]);
+
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("a status-code change must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert!(
+        linked.0.exists(),
+        "stale lease must not remove the worktree"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+#[test]
+fn preview_remove_worktree_lease_rejects_head_movement() {
+    let repo = TempRepo::new("wt-lease-head");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-head");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview");
+    assert!(
+        preview.head_oid.is_some(),
+        "detached worktrees lease a HEAD"
+    );
+
+    // Commit inside the worktree: the tree is clean again afterwards, so only
+    // the leased HEAD oid catches this.
+    std::fs::write(linked.0.join("b.txt"), "b\n").unwrap();
+    git_ok_at(&linked.0, &["add", "b.txt"]);
+    git_ok_at(
+        &linked.0,
+        &["-c", "commit.gpgsign=false", "commit", "-q", "-m", "moved"],
+    );
+
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("HEAD movement must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert!(
+        linked.0.exists(),
+        "stale lease must not remove the worktree"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+// Story 8: attach↔detach must invalidate even though the path, the contents and
+// the commit all stay put — only the branch half of the lease moves.
+#[test]
+fn preview_remove_worktree_lease_rejects_attach_to_detach() {
+    let repo = TempRepo::new("wt-lease-detach");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = LinkedDir::new("wt-lease-detach");
+    repo.git_ok(&["worktree", "add", "-q", linked.as_str(), "feature"]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview attached");
+    assert_eq!(preview.branch.as_deref(), Some("feature"));
+
+    // Same commit, no branch — the HEAD oid alone would not notice.
+    git_ok_at(&linked.0, &["checkout", "-q", "--detach"]);
+
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("detaching after preview must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert!(
+        linked.0.exists(),
+        "stale lease must not remove the worktree"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+// Path Reuse / ABA, workdir half (story 6's headline scenario): the directory at
+// the leased path is destroyed and rebuilt with identical contents, so only the
+// filesystem identity in the fingerprint can tell the replacement apart.
+#[test]
+fn preview_remove_worktree_lease_rejects_workdir_directory_replacement() {
+    let repo = TempRepo::new("wt-lease-workdir-aba");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-workdir-aba");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview");
+
+    // Rebuild the workdir at the same pathname with the same bytes: registration
+    // and porcelain output are unchanged, the directory inode is not.
+    let backup = LinkedDir::new("wt-lease-workdir-aba-bak");
+    copy_dir_recursive(&linked.0, &backup.0).expect("back up the workdir");
+    std::fs::remove_dir_all(&linked.0).expect("drop the old workdir inode");
+    copy_dir_recursive(&backup.0, &linked.0).expect("rebuild the workdir");
+
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("a replaced workdir must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert!(
+        linked.0.exists(),
+        "stale lease must not remove the worktree"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+// Story 7: a prune between confirm and execute drops the registration, so the
+// lease must fail closed rather than run a removal against a missing worktree.
+#[test]
+fn preview_remove_worktree_lease_rejects_concurrent_prune() {
+    let repo = TempRepo::new("wt-lease-prune");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), "a\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "-m", "init"]);
+
+    let linked = LinkedDir::new("wt-lease-prune");
+    repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview");
+
+    std::fs::remove_dir_all(&linked.0).expect("simulate the directory going away");
+    repo.git_ok(&["worktree", "prune"]);
+
+    let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
+        .expect_err("a pruned registration must invalidate the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+}
+
+fn copy_dir_recursive(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest)?;
+        } else {
+            std::fs::copy(entry.path(), dest)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn delete_branch_with_worktree_refuses_dirty_lease_before_removal() {
+    let repo = TempRepo::new("delete-wt-dirty-lease");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = LinkedDir::new("delete-wt-dirty-lease");
+    repo.git_ok(&["worktree", "add", "-q", linked.as_str(), "feature"]);
+    std::fs::write(linked.0.join("file.txt"), "edited\n").unwrap();
+
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview dirty");
+    assert!(preview.requires_force);
+    let err = delete_branch_with_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        &expected_oid,
+        &preview.expected_state,
+        &|_| {},
+    )
+    .expect_err("combined path must refuse dirty lease");
+    assert!(err.contains("cannot force-remove"), "got: {err}");
+    assert!(linked.0.exists());
+    assert!(
+        repo.git(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
+            .status
+            .success(),
+        "branch must survive"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
+}
+
+// The locked half of the combined path's refusal — dirty was already covered,
+// but a lock is the other way `requiresForce` goes true, and the combined path
+// must never waive it.
+#[test]
+fn delete_branch_with_worktree_refuses_locked_lease_before_removal() {
+    let repo = TempRepo::new("delete-wt-locked-lease");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = LinkedDir::new("delete-wt-locked-lease");
+    repo.git_ok(&["worktree", "add", "-q", linked.as_str(), "feature"]);
+    repo.git_ok(&["worktree", "lock", linked.as_str()]);
+
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview locked");
+    assert!(preview.locked);
+    assert!(preview.requires_force);
+
+    let err = delete_branch_with_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        &expected_oid,
+        &preview.expected_state,
+        &|_| {},
+    )
+    .expect_err("combined path must refuse a locked lease");
+    assert!(err.contains("cannot force-remove"), "got: {err}");
+    assert!(linked.0.exists());
+    assert!(
+        repo.git(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
+            .status
+            .success(),
+        "branch must survive"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", "--force", linked.as_str()]);
+}
+
+// Story 24: a stale worktree lease must leave *both* halves alone. The combined
+// path prepares a branch-deletion ref transaction before it removes the
+// worktree, so a refusal after that point has to abort the transaction too —
+// otherwise a stale confirm ends with the branch gone and the worktree still
+// there.
+#[test]
+fn delete_branch_with_worktree_stale_worktree_lease_keeps_branch_and_worktree() {
+    let repo = TempRepo::new("delete-wt-stale-lease");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+
+    let linked = LinkedDir::new("delete-wt-stale-lease");
+    repo.git_ok(&["worktree", "add", "-q", linked.as_str(), "feature"]);
+
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview clean");
+    assert!(!preview.requires_force);
+
+    // Drift after the confirm opened: a new untracked path the lease never saw.
+    std::fs::write(linked.0.join("scratch.txt"), "unsaved\n").unwrap();
+
+    let err = delete_branch_with_worktree(
+        repo.path(),
+        "feature",
+        linked.as_str(),
+        &expected_oid,
+        &preview.expected_state,
+        &|_| {},
+    )
+    .expect_err("combined path must refuse a drifted worktree lease");
+    assert!(
+        err.contains("changed after this confirmation") || err.contains("cannot force-remove"),
+        "got: {err}"
+    );
+    assert!(linked.0.exists(), "the worktree must survive");
+    assert!(
+        linked.0.join("scratch.txt").exists(),
+        "the drifted work must survive"
+    );
+    assert!(
+        repo.git(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
+            .status
+            .success(),
+        "the branch must survive an aborted combined deletion"
+    );
+    repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
 }
 
 // The graph's dirty dot: one bit per worktree, on a cheaper probe than the

@@ -397,6 +397,19 @@ export interface DiscardAllPreview extends DestructivePreview {
   expectedHeadOid: string | null;
 }
 
+/** Shared Linked Worktree Removal preview + Worktree Removal Lease (GL-303). */
+export interface RemoveWorktreePreview extends DestructivePreview {
+  /** Opaque fingerprint of registration, directory identity, branch/HEAD, and
+   * porcelain dirty path+status. Required again by the destructive write. */
+  expectedState: string;
+  /** True when the server will derive `--force` / `-f -f` after the lease matches. */
+  requiresForce: boolean;
+  locked: boolean;
+  branch: string | null;
+  headOid: string | null;
+  dirty: WorktreeDirtyState;
+}
+
 export interface WorktreeInfo {
   name: string;
   path: string;
@@ -780,18 +793,21 @@ export const gitApi = {
     }),
 
   /** Remove the linked worktree at `fromWorktreePath`, then delete the exact
-   * previewed branch tip. */
+   * previewed branch tip. Requires both the branch tip lease and the shared
+   * Worktree Removal Lease from `previewRemoveWorktree` (GL-303). */
   deleteBranchWithWorktree: (
     path: string,
     branch: string,
     fromWorktreePath: string,
     expectedOid: string,
+    expectedState: string,
   ) =>
     invoke<string>("delete_branch_with_worktree", {
       path,
       branch,
       fromWorktreePath,
       expectedOid,
+      expectedState,
     }),
 
   checkout: (path: string, target: string, detached = false) =>
@@ -1039,14 +1055,21 @@ export const gitApi = {
       auth: auth ?? null,
     }),
 
-  /** Remove a linked worktree. `force` drops git's dirty/locked safety check. */
-  removeWorktree: (path: string, worktreePath: string, force = false) =>
-    invoke<string>("remove_worktree", { path, worktreePath, force }),
+  /** Preview Linked Worktree Removal and capture the Worktree Removal Lease
+   * (GL-303). Ignored entries are disclosed but not leased; force is a display
+   * bit — execute derives it after the lease matches. */
+  previewRemoveWorktree: (path: string, worktreePath: string) =>
+    invoke<RemoveWorktreePreview>("preview_remove_worktree", { path, worktreePath }),
+
+  /** Remove a linked worktree using the exact Worktree Removal Lease from
+   * `previewRemoveWorktree`. Force is server-derived after the lease matches. */
+  removeWorktree: (path: string, worktreePath: string, expectedState: string) =>
+    invoke<string>("remove_worktree", { path, worktreePath, expectedState }),
 
   /** Uncommitted work sitting in a linked worktree, for the removal confirm to
    * quote before a forced remove discards it (GL-296). Probed on demand — it is
    * deliberately not a field on `WorktreeInfo`, whose list refreshes on every
-   * filesystem event. */
+   * filesystem event. Prefer `previewRemoveWorktree` when removing. */
   worktreeDirtyState: (worktreePath: string) =>
     invoke<WorktreeDirtyState>("worktree_dirty_state", { worktreePath }),
 

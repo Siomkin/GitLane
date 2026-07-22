@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { type DeleteBranchPreview } from "@/lib/api";
+import { type DeleteBranchPreview, type RemoveWorktreePreview } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { basename } from "@/lib/paths";
@@ -37,10 +37,15 @@ export function DeleteWorktreeDialog() {
   return <DeleteWorktreeDialogBody key={`${req.branch}@${req.worktreePath}`} req={req} />;
 }
 
-/** The impact preview: `null` while loading, a fetched preview, or the error
- * string. Fail closed — the Delete button stays disabled until it resolves, so a
- * failed preview never offers a one-click destructive action (GL-42). */
-type PreviewState = { kind: "loading" } | { kind: "ready"; preview: DeleteBranchPreview } | { kind: "error"; error: string };
+/** Dual-lease impact: branch tip + worktree removal. Fail closed until both resolve. */
+type PreviewState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      branch: DeleteBranchPreview;
+      worktree: RemoveWorktreePreview;
+    }
+  | { kind: "error"; error: string };
 
 function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   const closeDeleteWorktree = useUi((s) => s.closeDeleteWorktree);
@@ -49,23 +54,37 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   // (the run hook's store latch enforces it; this is the visible half).
   const deleteWorktreeRunning = useUi((s) => s.deleteWorktreeRunning);
   const previewDeleteBranch = useRepo((s) => s.previewDeleteBranch);
+  const previewRemoveWorktree = useRepo((s) => s.previewRemoveWorktree);
   const { phase, reached, message, start } = useDeleteWorktreeRun(req);
   const [preview, setPreview] = useState<PreviewState>({ kind: "loading" });
   const stepLabels = deleteWorktreeStepLabels();
 
-  // Fetch the destructive impact for the configure screen. A live repo switch or
-  // a gone branch surfaces as the error state (Delete disabled), never a silent
-  // no-warning confirm.
+  // Fetch both destructive leases for the configure screen (GL-303). A live repo
+  // switch or a gone branch/worktree surfaces as the error state (Delete disabled).
   useEffect(() => {
     let alive = true;
     setPreview({ kind: "loading" });
-    previewDeleteBranch(req.branch)
-      .then((p) => alive && setPreview({ kind: "ready", preview: p }))
+    Promise.all([
+      previewDeleteBranch(req.branch),
+      previewRemoveWorktree(req.worktreePath),
+    ])
+      .then(([branch, worktree]) => {
+        if (!alive) return;
+        if (worktree.requiresForce) {
+          setPreview({
+            kind: "error",
+            error:
+              "This worktree has uncommitted work or is locked. Combined deletion cannot force-remove it — remove the worktree separately, or clean it first.",
+          });
+          return;
+        }
+        setPreview({ kind: "ready", branch, worktree });
+      })
       .catch((e) => alive && setPreview({ kind: "error", error: String(e) }));
     return () => {
       alive = false;
     };
-  }, [previewDeleteBranch, req.branch]);
+  }, [previewDeleteBranch, previewRemoveWorktree, req.branch, req.worktreePath]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -178,7 +197,9 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
               <button
                 type="button"
                 onClick={() => {
-                  if (preview.kind === "ready") start(preview.preview.expectedOid);
+                  if (preview.kind === "ready") {
+                    start(preview.branch.expectedOid, preview.worktree.expectedState);
+                  }
                 }}
                 disabled={preview.kind !== "ready" || deleteWorktreeRunning}
                 className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
@@ -268,7 +289,8 @@ function ImpactRow({ state }: { state: PreviewState }) {
   }
   // The recovery warning always applies; the commits-ahead detail (when present)
   // is the "unmerged commits are lost" emphasis, surfaced bold.
-  const ahead = state.preview.details.find((d) => d.startsWith("Commits ahead"));
+  const ahead = state.branch.details.find((d) => d.startsWith("Commits ahead"));
+  const warnings = [...state.branch.warnings, ...state.worktree.warnings];
   return (
     <div className="flex items-start gap-2.5 bg-amber-500/[0.08] px-3 py-2.5 dark:bg-amber-400/[0.07]">
       <WarningIcon className="mt-px h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -276,7 +298,7 @@ function ImpactRow({ state }: { state: PreviewState }) {
         {ahead && (
           <span className="font-semibold text-neutral-800 dark:text-neutral-100">{ahead} </span>
         )}
-        {state.preview.warnings.join(" ")}
+        {warnings.join(" ")}
       </div>
     </div>
   );

@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
-import type { WorktreeDirtyState } from "@/lib/api";
+import type { RemoveWorktreePreview, WorktreeDirtyState } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { WorktreeContextMenu } from "./WorktreeContextMenu";
@@ -19,6 +19,30 @@ const realCreateBranchInWorktree = useRepo.getState().createBranchInWorktree;
 const mainWt = { name: "repo", path: "/work/repo", branch: "main", head: "1111111", isMain: true, bare: false, prunable: false, locked: false };
 const featWt = { name: "repo-feat", path: "/work/repo-feat", branch: "feat", head: "2222222", isMain: false, bare: false, prunable: false, locked: false };
 const detachedWt = { ...featWt, name: "repo-detached", path: "/work/repo-detached", branch: null, head: "abc1234def5678900000000000000000000000ff" };
+const CLEAN = { modified: 0, untracked: 0, ignored: 0 };
+
+const leasePreview = (
+  dirty: WorktreeDirtyState,
+  over: Partial<RemoveWorktreePreview> = {},
+): RemoveWorktreePreview => ({
+  summary: dirty.modified + dirty.untracked > 0
+    ? "repo-feat has uncommitted work that removing it would discard."
+    : "Remove the linked worktree repo-feat?",
+  details: [
+    "The linked worktree at /work/repo-feat will be removed.",
+    over.branch === null
+      ? ""
+      : `Its branch ${over.branch ?? "feat"} and that branch's commits are kept.`,
+  ].filter(Boolean),
+  warnings: [],
+  expectedState: "v1:lease-test",
+  requiresForce: dirty.modified + dirty.untracked > 0 || !!over.locked,
+  locked: false,
+  branch: "feat",
+  headOid: "2222222",
+  dirty,
+  ...over,
+});
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -30,6 +54,7 @@ beforeEach(() => {
     openWorktree: realOpenWorktree,
     removeWorktree: realRemoveWorktree,
     createBranchInWorktree: realCreateBranchInWorktree,
+    previewRemoveWorktree: vi.fn().mockResolvedValue(leasePreview(CLEAN)),
   });
   useUi.setState({ worktreeMenu: null, confirm: null, prompt: null, handoff: null });
 });
@@ -37,16 +62,20 @@ beforeEach(() => {
 const openMenuFor = (wt: { path: string; name: string; isMain: boolean }) =>
   useUi.setState({ worktreeMenu: { x: 10, y: 10, path: wt.path, name: wt.name, isMain: wt.isMain } });
 
-const CLEAN = { modified: 0, untracked: 0, ignored: 0 };
-
-/** Answer the GL-296 dirty probe; "fail" exercises the degraded path. */
-const mockDirtyProbe = (state: WorktreeDirtyState | "fail") =>
-  invokeMock.mockImplementation((cmd: string) => {
-    if (cmd !== "worktree_dirty_state") return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
-    return state === "fail" ? Promise.reject(new Error("probe failed")) : Promise.resolve(state);
+/** Answer the GL-303 leased preview; "fail" exercises the degraded path. */
+const mockLeasePreview = (
+  state: WorktreeDirtyState | "fail",
+  over: Partial<RemoveWorktreePreview> = {},
+) => {
+  useRepo.setState({
+    previewRemoveWorktree:
+      state === "fail"
+        ? vi.fn().mockRejectedValue(new Error("probe failed"))
+        : vi.fn().mockResolvedValue(leasePreview(state, over)),
   });
+};
 
-/** The confirm is raised only after the probe resolves, so every removal
+/** The confirm is raised only after the preview resolves, so every removal
  * assertion has to await it rather than read straight after the click. */
 const openConfirm = async () => {
   await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
@@ -154,7 +183,7 @@ describe("WorktreeContextMenu", () => {
 
   it("removal of a locked worktree confirms with the lock override and forces it", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("ok");
-    mockDirtyProbe(CLEAN);
+    mockLeasePreview(CLEAN, { locked: true, requiresForce: true, warnings: ["This worktree is locked; removing it will override the lock."] });
     useRepo.setState({
       worktrees: [mainWt, { ...featWt, locked: true }],
       removeWorktree,
@@ -167,12 +196,12 @@ describe("WorktreeContextMenu", () => {
     expect(confirm.danger).toBe(true);
     expect(removeWorktree).not.toHaveBeenCalled();
     confirm.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", true);
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", "v1:lease-test");
   });
 
   it("removal of a clean worktree stays unforced", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("ok");
-    mockDirtyProbe(CLEAN);
+    mockLeasePreview(CLEAN);
     useRepo.setState({ removeWorktree });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
@@ -183,11 +212,11 @@ describe("WorktreeContextMenu", () => {
     expect(confirm.warnings ?? []).toHaveLength(0);
     expect(confirm.confirmLabel).toBe("Remove worktree");
     confirm.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", false);
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", "v1:lease-test");
   });
 
   it("removal confirm says the branch keeps the commits for a branch-holding worktree", async () => {
-    mockDirtyProbe(CLEAN);
+    mockLeasePreview(CLEAN);
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
@@ -198,7 +227,14 @@ describe("WorktreeContextMenu", () => {
   it("removal confirm warns a detached worktree's commit may become unreachable", async () => {
     // No branch keeps the commit once the worktree's HEAD is gone — the copy
     // must not promise "branch and commits are kept", and names the short oid.
-    mockDirtyProbe(CLEAN);
+    mockLeasePreview(CLEAN, {
+      branch: null,
+      headOid: "abc1234def5678900000000000000000000000ff",
+      details: ["The linked worktree at /work/repo-feat will be removed."],
+      warnings: [
+        "This worktree is detached (no branch) — its commit abc1234 may become unreachable unless a branch or tag points to it.",
+      ],
+    });
     useRepo.setState({
       worktrees: [
         mainWt,
@@ -220,7 +256,7 @@ describe("WorktreeContextMenu", () => {
   // toast. The confirm now names the loss up front and carries the force.
   it("removal of a dirty worktree quotes the work at risk and forces the remove", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("ok");
-    mockDirtyProbe({ modified: 29, untracked: 3, ignored: 0 });
+    mockLeasePreview({ modified: 29, untracked: 3, ignored: 0 });
     useRepo.setState({ removeWorktree });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
@@ -233,11 +269,11 @@ describe("WorktreeContextMenu", () => {
     // "Remove worktree".
     expect(confirm.confirmLabel).toBe("Remove and discard changes");
     confirm.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", true);
+    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", "v1:lease-test");
   });
 
   it("singularises the counts and omits the half that is zero", async () => {
-    mockDirtyProbe({ modified: 1, untracked: 0, ignored: 0 });
+    mockLeasePreview({ modified: 1, untracked: 0, ignored: 0 });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
@@ -250,24 +286,24 @@ describe("WorktreeContextMenu", () => {
   // Review finding (medium): the probe is async and `confirm` is a single slot,
   // so a stale result must never open a dialog whose removal then runs against
   // a different repo.
-  it("discards a probe that resolves after the repo has changed", async () => {
+  it("discards a preview that resolves after the repo has changed", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("ok");
-    let release: (v: unknown) => void = () => {};
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "worktree_dirty_state"
-        ? new Promise((resolve) => (release = resolve))
-        : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
-    );
-    useRepo.setState({ removeWorktree });
+    let release: (v: RemoveWorktreePreview) => void = () => {};
+    useRepo.setState({
+      removeWorktree,
+      previewRemoveWorktree: vi.fn(
+        () => new Promise<RemoveWorktreePreview>((resolve) => (release = resolve)),
+      ),
+    });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
 
-    // The user switches repos while the probe is still in flight.
+    // The user switches repos while the preview is still in flight.
     useRepo.setState({
       summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
     });
-    release(CLEAN);
+    release(leasePreview(CLEAN));
     await Promise.resolve();
     await Promise.resolve();
 
@@ -276,7 +312,7 @@ describe("WorktreeContextMenu", () => {
   });
 
   it("closes the menu before probing, so a slow probe cannot resurrect it", async () => {
-    mockDirtyProbe(CLEAN);
+    mockLeasePreview(CLEAN);
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
@@ -285,18 +321,18 @@ describe("WorktreeContextMenu", () => {
     await openConfirm();
   });
 
-  // A probe failure must not block the removal — it degrades to the ordinary
-  // unforced confirm and lets git's own error surface.
-  it("falls back to an unforced confirm when the dirty probe fails", async () => {
+  // A lease-preview failure must not open a confirm — show the error instead.
+  it("surfaces a toast when the removal preview fails", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("ok");
-    mockDirtyProbe("fail");
+    const showToast = vi.fn();
+    mockLeasePreview("fail");
     useRepo.setState({ removeWorktree });
+    useUi.setState({ showToast });
     openMenuFor(featWt);
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
-    const confirm = await openConfirm();
-    expect(confirm.confirmLabel).toBe("Remove worktree");
-    confirm.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feat", false);
+    await waitFor(() => expect(showToast).toHaveBeenCalled());
+    expect(useUi.getState().confirm).toBeNull();
+    expect(removeWorktree).not.toHaveBeenCalled();
   });
 });

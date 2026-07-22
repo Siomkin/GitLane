@@ -332,6 +332,26 @@ pub struct WorktreeInfo {
     pub locked: bool,
 }
 
+/// Shared preview for Linked Worktree Removal (GL-303). Carries the opaque
+/// Worktree Removal Lease plus display fields (`requires_force`, dirty counts,
+/// ignored disclosure). Combined Branch-and-Worktree Deletion consumes the same
+/// `expected_state`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveWorktreePreview {
+    pub summary: String,
+    pub details: Vec<String>,
+    pub warnings: Vec<String>,
+    pub expected_state: String,
+    /// Display / server-derived force bit: dirty and/or locked when the lease
+    /// was captured. Execute does not take a client `force` flag.
+    pub requires_force: bool,
+    pub locked: bool,
+    pub branch: Option<String>,
+    pub head_oid: Option<String>,
+    pub dirty: WorktreeDirtyState,
+}
+
 /// Uncommitted work sitting in a linked worktree, probed on demand before a
 /// destructive removal so the confirm can name what a forced remove would
 /// discard. Deliberately *not* part of `WorktreeInfo`: that list is rebuilt on

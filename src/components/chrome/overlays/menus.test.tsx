@@ -39,6 +39,18 @@ beforeEach(() => {
     // GL-296: the removal confirm probes the worktree first; default to clean
     // so only the tests that care about dirtiness opt into it.
     if (cmd === "worktree_dirty_state") return Promise.resolve({ modified: 0, untracked: 0 });
+    if (cmd === "preview_remove_worktree") {
+      return Promise.resolve({
+        summary: "Impact summary",
+        details: ["Affected path"],
+        warnings: ["Recovery warning"],
+        requiresForce: false,
+        locked: false,
+        dirty: false,
+        ignoredOnly: false,
+        expectedState: "worktree-removal-lease-v1",
+      });
+    }
     if (cmd.startsWith("preview_")) {
       return Promise.resolve({
         summary: "Impact summary",
@@ -915,15 +927,45 @@ describe("BranchContextMenu", () => {
     await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
     const confirm = useUi.getState().confirm;
     confirm!.onConfirm();
-    // Clean, unlocked worktree → unforced removal.
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", false);
+    // Clean, unlocked worktree → leased removal (server derives force).
+    expect(removeWorktree).toHaveBeenCalledWith(
+      "/work/repo-feature",
+      "worktree-removal-lease-v1",
+    );
     // The branch is untouched — the combined delete must not fire.
     expect(deleteBranchWithWorktree).not.toHaveBeenCalled();
   });
 
   // A locked worktree needs a forced removal (`--force --force` on the backend);
-  // the confirm surfaces the lock and the call forces it.
+  // the confirm surfaces the lock; execute still sends only the lease token.
   it("forces removal of a locked worktree and warns in the confirm", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "can_fast_forward") return Promise.resolve(false);
+      if (cmd === "preview_remove_worktree") {
+        return Promise.resolve({
+          summary: "Impact summary",
+          details: ["Affected path"],
+          warnings: ["This worktree is locked."],
+          requiresForce: true,
+          locked: true,
+          dirty: false,
+          ignoredOnly: false,
+          expectedState: "worktree-removal-lease-locked-v1",
+        });
+      }
+      if (cmd.startsWith("preview_")) {
+        return Promise.resolve({
+          summary: "Impact summary",
+          details: ["Affected path"],
+          warnings: ["Recovery warning"],
+          expectedOid: "branch-preview-oid",
+          expectedState: "discard-all-state-v1",
+          expectedHeadBranch: "main",
+          expectedHeadOid: "head",
+        });
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
     const removeWorktree = vi.fn().mockResolvedValue("Removed worktree");
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
@@ -940,7 +982,10 @@ describe("BranchContextMenu", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm?.warnings?.join(" ")).toMatch(/locked/i);
     confirm!.onConfirm();
-    expect(removeWorktree).toHaveBeenCalledWith("/work/repo-feature", true);
+    expect(removeWorktree).toHaveBeenCalledWith(
+      "/work/repo-feature",
+      "worktree-removal-lease-locked-v1",
+    );
   });
 
   // Git refuses to remove the main worktree, so a branch checked out there keeps
