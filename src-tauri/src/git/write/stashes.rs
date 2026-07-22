@@ -7,9 +7,15 @@ use crate::git::types::{StashContextCommit, StashEntry};
 
 use super::cli::run_git;
 use super::operands::ensure_operand;
+use super::stash_push::push_stash;
 use super::worktrees::drop_stash_by_oid;
 
 const STASH_CONTEXT_LIMIT: usize = 8;
+/// What a routine stash reports. Git's own success line names the branch and
+/// the subject it stashed onto ("Saved working directory and index state WIP on
+/// PIS-1754: 5b43c275 fix(PIS-1754): scope agenda reorder …"), which is a
+/// paragraph of noise in a toast that appears next to the new stash row anyway.
+const STASHED_MESSAGE: &str = "Stashed your changes.";
 static STASH_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// Serialize GitLane's stash-ref mutations across repositories and worktrees.
@@ -248,9 +254,20 @@ pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
 
 /// Stash every visible working-tree change: staged, unstaged, and untracked.
 /// Ignored files stay in place because GitLane does not surface them as changes.
+/// Routed through [`push_stash`] so a cleanup git cannot finish reports the real
+/// outcome instead of a raw failure over a stash it already stored.
 pub fn stash(repo: &str) -> Result<String, String> {
     let _guard = lock_stash_writes()?;
-    run_git(repo, &["stash", "push", "--include-untracked"])
+    let push = push_stash(repo, &["stash", "push", "--include-untracked"])?;
+    // Normalise only a routine success, and only once an entry demonstrably
+    // exists. "No local changes to save" — and the rare push that reproduces an
+    // existing stash's oid, which leaves `refs/stash` standing still — reach the
+    // user as git worded them rather than being claimed as a fresh stash. A
+    // recovered push always keeps its own account of what git could not finish.
+    if !push.recovered && push.oid.is_some() {
+        return Ok(STASHED_MESSAGE.to_string());
+    }
+    Ok(push.message)
 }
 
 pub fn stash_expected(

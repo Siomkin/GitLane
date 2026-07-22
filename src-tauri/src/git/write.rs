@@ -30,6 +30,7 @@ mod recovery;
 mod remotes;
 mod reset;
 mod staging;
+mod stash_push;
 mod stashes;
 mod state_lease;
 mod tags;
