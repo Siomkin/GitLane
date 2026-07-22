@@ -4,6 +4,7 @@ import { useRepo } from "@/store/repo";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { DiffPane } from "@/features/history-inspect/DiffPane";
 import { deletedEntry, revisionCountLabel, selectedEntry } from "./fileHistoryModel";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { RevisionRow } from "./RevisionRow";
 import { RevisionInspector } from "./RevisionInspector";
 import { ErrorState, EmptyState } from "./ErrorState";
@@ -43,7 +44,7 @@ export function FileHistoryView({
           {history.loading ? (
             <div className="space-y-1.5 p-2">
               {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="shim h-[58px] rounded-lg bg-black/[0.05] dark:bg-white/[0.06]" />
+                <Skeleton key={i} className="h-[58px]" />
               ))}
             </div>
           ) : history.error && history.entries.length === 0 ? (

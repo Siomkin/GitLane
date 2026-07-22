@@ -81,7 +81,9 @@ describe("FileHistoryView states", () => {
   it("shows the loading skeleton and hides the revision count while loading", () => {
     useRepo.setState({ fileHistory: historyState({ loading: true }) });
     const { container } = render(<FileHistoryView onBlameRevision={noop} />);
-    expect(container.querySelectorAll(".shim").length).toBeGreaterThan(0);
+    // `.gp-skeleton` is the class that actually carries the shimmer animation;
+    // the old `.shim` selector matched markup that no stylesheet ever styled.
+    expect(container.querySelectorAll(".gp-skeleton").length).toBeGreaterThan(0);
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
@@ -265,7 +267,9 @@ describe("FileHistoryView selected revision", () => {
 
     useRepo.setState({ fileHistory: { ...selectedState(), diffLoading: true } });
     rerender(<FileHistoryView onBlameRevision={noop} />);
-    expect(container.querySelectorAll(".shim").length).toBeGreaterThan(0);
+    // `.gp-skeleton` is the class that actually carries the shimmer animation;
+    // the old `.shim` selector matched markup that no stylesheet ever styled.
+    expect(container.querySelectorAll(".gp-skeleton").length).toBeGreaterThan(0);
   });
 
   it("re-fetches the uncapped diff from the truncated notice", () => {

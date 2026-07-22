@@ -5,6 +5,7 @@ import { basename, dirname } from "@/lib/paths";
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
 import { StatusBadge, StatusPill } from "@/components/ui/StatusBadge";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { DiffPane } from "./DiffPane";
 
 /** Cap on rendered file rows so a huge compare result stays bounded in the DOM. */
@@ -161,7 +162,7 @@ export function CompareView() {
             {compare.loading ? (
               <div className="space-y-1.5 p-1">
                 {[0, 1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="shim h-11 rounded-lg bg-black/[0.05] dark:bg-white/[0.06]" />
+                  <Skeleton key={i} className="h-11" />
                 ))}
               </div>
             ) : compare.error ? (
