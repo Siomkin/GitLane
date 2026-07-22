@@ -63,8 +63,8 @@ pub(crate) use files::set_before_replace_test_hook;
 pub use files::write_repo_file;
 #[cfg(test)]
 pub(crate) use hard_reset_lease::{
-    set_hard_reset_after_validation_test_hook, set_hard_reset_before_mutation_test_hook,
-    set_hard_reset_capture_test_hook,
+    set_hard_reset_after_fingerprint_test_hook, set_hard_reset_after_validation_test_hook,
+    set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
 };
 #[cfg(test)]
 pub use history::{

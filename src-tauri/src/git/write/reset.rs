@@ -101,9 +101,10 @@ pub fn reset_branch(
         // would let git re-resolve it, and a `.git`-file retarget in this window
         // would redirect the reset out of the leased worktree (GL-302 review).
         // `--no-replace-objects` keeps a mid-flight refs/replace entry from
-        // landing the leased oid on a different tree. Residual TOCTOU between
-        // the re-capture and the process launch is the same accepted class as
-        // discard-all: no worktree lock without a larger design change.
+        // landing the leased oid on a different tree. The re-capture ends with
+        // the cheap observation sweep, so the residual TOCTOU here is the same
+        // accepted class as discard-all — a window no worktree lock closes
+        // without a larger design change.
         return validated.run(&["--no-replace-objects", "reset", "--hard", target_oid]);
     }
     if expected_state.is_some() {

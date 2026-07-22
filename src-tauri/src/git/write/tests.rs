@@ -25,12 +25,12 @@ use super::{
     set_discard_all_after_tracked_scope_validation_test_hook,
     set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
     set_discard_all_capture_test_hook, set_discard_capture_test_hook,
-    set_hard_reset_after_validation_test_hook, set_hard_reset_before_mutation_test_hook,
-    set_hard_reset_capture_test_hook, set_remote_url, set_remote_username, set_repo_identity,
-    set_upstream, skip_operation, squash_commits, stage_file, stage_files,
-    start_discard_all_fingerprint_byte_count, stash, stash_apply, stash_apply_index_onto,
-    stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list, stash_pop,
-    stash_pop_onto, take_discard_all_fingerprint_byte_count, unstage_all, unstage_file,
+    set_hard_reset_after_fingerprint_test_hook, set_hard_reset_after_validation_test_hook,
+    set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook, set_remote_url,
+    set_remote_username, set_repo_identity, set_upstream, skip_operation, squash_commits,
+    stage_file, stage_files, start_discard_all_fingerprint_byte_count, stash, stash_apply,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_pop, stash_pop_onto, take_discard_all_fingerprint_byte_count, unstage_all, unstage_file,
     unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees, write_repo_file,
 };
 use crate::git::read::repo_identity;
@@ -7026,6 +7026,57 @@ fn hard_reset_rejects_head_movement_before_mutating() {
         "unexpected error: {error}"
     );
     assert_ne!(rev_parse(&repo, "HEAD"), target);
+}
+
+#[test]
+fn hard_reset_revalidates_path_observations_after_the_content_pass() {
+    // Fingerprinting a set of files is not atomic. A leaf hashed early can be
+    // rewritten while later leaves are still being read, and the token would
+    // then carry its pre-edit digest — so only the cheap observation sweep at
+    // the end of the pass can catch it. Same-size content keeps length and mode
+    // identical, leaving inode/timestamps as the only signal.
+    let repo = TempRepo::new("hard-reset-leaf-recheck");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "t@t.t"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-qm", "one"]);
+    std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+    repo.git_ok(&["commit", "-qam", "two"]);
+    let target = rev_parse(&repo, "HEAD~1");
+    // Dirty, so it is fingerprinted and would be destroyed by the reset.
+    std::fs::write(repo.0.join("f.txt"), b"dirty\n").unwrap();
+
+    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+
+    let edited = repo.0.join("f.txt");
+    set_hard_reset_after_fingerprint_test_hook(move || {
+        // Same byte length, after this path was hashed in the boundary capture.
+        std::fs::write(&edited, b"LATE!\n").unwrap();
+    });
+
+    let error = reset_branch(
+        repo.path(),
+        Some("main"),
+        preview.expected_source_oid.as_deref(),
+        &preview.target_oid,
+        "hard",
+        preview.expected_state.as_deref(),
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("the observation sweep must reject an edit made after hashing");
+    assert!(
+        error.contains("changed after this confirmation"),
+        "unexpected error: {error}"
+    );
+    assert_eq!(
+        std::fs::read(repo.0.join("f.txt")).unwrap(),
+        b"LATE!\n",
+        "the late edit must survive — nothing may be reset"
+    );
 }
 
 #[test]

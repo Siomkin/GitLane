@@ -18,8 +18,9 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::ffi::OsStrExt;
 
 use crate::git::worktree_fs::{
-    fingerprint_worktree_leaf_path_bounded, worktree_directory_identity, WorktreeDirectoryIdentity,
-    WorktreeLeafFingerprint,
+    fingerprint_worktree_leaf_path_bounded, validate_worktree_leaf_observation_path,
+    worktree_directory_identity, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
+    WorktreeLeafObservation,
 };
 
 use super::cli::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
@@ -64,6 +65,9 @@ struct HardResetSnapshot {
     /// The scope this snapshot was taken in, kept so the mutation can be routed
     /// through the very scope that was validated — see [`ValidatedScope`].
     scope: RepositoryScope,
+    /// Cheap per-leaf metadata, by raw git path. Not hashed into the token —
+    /// consumed by [`validate_observations`] to close the intra-capture window.
+    observations: BTreeMap<Vec<u8>, WorktreeLeafObservation>,
 }
 
 /// A repository scope proved current by [`validate_at_mutation_boundary`].
@@ -99,6 +103,11 @@ std::thread_local! {
     /// before the `git reset --hard` process is launched (GL-302 review).
     static HARD_RESET_AFTER_VALIDATION_TEST_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
         std::cell::RefCell::new(None);
+    /// Fires inside a capture, after every leaf has been fingerprinted but
+    /// before the observation sweep — the intra-capture window an edit to an
+    /// already-hashed file would otherwise slip through (GL-302 review).
+    static HARD_RESET_AFTER_FINGERPRINT_TEST_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
 }
 
 #[cfg(test)]
@@ -121,6 +130,25 @@ pub(crate) fn set_hard_reset_after_validation_test_hook(hook: impl FnOnce() + 's
         assert!(slot.borrow_mut().replace(Box::new(hook)).is_none());
     });
 }
+
+#[cfg(test)]
+pub(crate) fn set_hard_reset_after_fingerprint_test_hook(hook: impl FnOnce() + 'static) {
+    HARD_RESET_AFTER_FINGERPRINT_TEST_HOOK.with(|slot| {
+        assert!(slot.borrow_mut().replace(Box::new(hook)).is_none());
+    });
+}
+
+#[cfg(test)]
+fn run_after_fingerprint_test_hook() {
+    HARD_RESET_AFTER_FINGERPRINT_TEST_HOOK.with(|slot| {
+        if let Some(hook) = slot.borrow_mut().take() {
+            hook();
+        }
+    });
+}
+
+#[cfg(not(test))]
+fn run_after_fingerprint_test_hook() {}
 
 #[cfg(test)]
 fn run_capture_test_hook() {
@@ -580,12 +608,20 @@ fn read_status(scope: &RepositoryScope) -> Result<ParsedStatus, String> {
     })
 }
 
+/// Fingerprint one leaf, returning the cheap pathname observation alongside it.
+///
+/// The observation is deliberately *not* part of the token — it carries inode
+/// and timestamps, which guard **capture coherence** rather than content (see
+/// `worktree_fs::WorktreeLeafObservation`). Hashing a set of files is not
+/// atomic, so a leaf streamed early can be rewritten while later leaves are
+/// still being read; its digest would then record the pre-edit bytes and the
+/// token would still match. [`validate_observations`] closes that window.
 fn fingerprint_with_budget(
     workdir: &Path,
     path: &OsStr,
     remaining_bytes: &mut u64,
-) -> Result<WorktreeLeafFingerprint, String> {
-    let (fingerprint, _) =
+) -> Result<(WorktreeLeafFingerprint, WorktreeLeafObservation), String> {
+    let (fingerprint, observation) =
         fingerprint_worktree_leaf_path_bounded(workdir, Path::new(path), *remaining_bytes)
             .map_err(|error| {
                 if error.kind() == std::io::ErrorKind::InvalidData {
@@ -604,13 +640,39 @@ fn fingerprint_with_budget(
     if let WorktreeLeafFingerprint::Regular { len, .. } = &fingerprint {
         *remaining_bytes = remaining_bytes.checked_sub(*len).ok_or_else(|| {
             format!(
-                "Hard reset exceeded its {} MiB content-fingerprint limit while inspecting {}.",
+                "Hard reset exceeded its {} MiB content-fingerprint limit while inspecting {}. Use the terminal for this unusually large repository state.",
                 MAX_FINGERPRINT_BYTES / (1024 * 1024),
                 path_label(path)
             )
         })?;
     }
-    Ok(fingerprint)
+    Ok((fingerprint, observation))
+}
+
+/// Recheck every fingerprinted leaf's cheap metadata after the content pass.
+///
+/// Mirrors `discard_all`'s check of the same name, and runs at the same two
+/// points: the end of the stable preview capture, and the mutation boundary. It
+/// rereads no content, so almost no delay remains between it and the destructive
+/// subprocess — that is the whole point (GL-302 review).
+fn validate_observations(snapshot: &HardResetSnapshot) -> Result<(), String> {
+    for (raw_path, observation) in &snapshot.observations {
+        let path = git_path(raw_path)?;
+        if !validate_worktree_leaf_observation_path(
+            &snapshot.scope.workdir,
+            Path::new(&path),
+            observation,
+        )
+        .map_err(|error| {
+            format!(
+                "Could not recheck {} before hard reset: {error}",
+                path_label(&path)
+            )
+        })? {
+            return Err(STALE_MESSAGE.to_string());
+        }
+    }
+    Ok(())
 }
 
 fn capture_once(repo: &str, target_oid: &str) -> Result<HardResetSnapshot, String> {
@@ -629,14 +691,18 @@ fn capture_once(repo: &str, target_oid: &str) -> Result<HardResetSnapshot, Strin
 
     let mut remaining_bytes = MAX_FINGERPRINT_BYTES;
     let mut fingerprints = BTreeMap::new();
+    let mut observations = BTreeMap::new();
     for raw_path in dirty_paths.iter().chain(obstruction_paths.iter()) {
         if fingerprints.contains_key(raw_path) {
             continue;
         }
         let path = git_path(raw_path)?;
-        let fingerprint = fingerprint_with_budget(&scope.workdir, &path, &mut remaining_bytes)?;
+        let (fingerprint, observation) =
+            fingerprint_with_budget(&scope.workdir, &path, &mut remaining_bytes)?;
         fingerprints.insert(raw_path.clone(), fingerprint);
+        observations.insert(raw_path.clone(), observation);
     }
+    run_after_fingerprint_test_hook();
 
     let mut full = Sha256::new();
     hash_field(&mut full, b"gitlane-hard-reset-v2");
@@ -696,6 +762,7 @@ fn capture_once(repo: &str, target_oid: &str) -> Result<HardResetSnapshot, Strin
         expected_head_oid,
         target_oid: target_oid.to_string(),
         scope,
+        observations,
     })
 }
 
@@ -713,6 +780,7 @@ fn capture_stable(repo: &str, target_oid: &str) -> Result<HardResetSnapshot, Str
                 .to_string(),
         );
     }
+    validate_observations(&fresh)?;
     Ok(fresh)
 }
 
@@ -788,5 +856,8 @@ pub(super) fn validate_at_mutation_boundary(
     {
         return Err(STALE_MESSAGE.to_string());
     }
+    // Last, and deliberately cheap: rereads no content, so the gap between this
+    // and `git reset --hard` stays as small as it can without a worktree lock.
+    validate_observations(&snapshot)?;
     Ok(ValidatedScope(snapshot.scope))
 }
