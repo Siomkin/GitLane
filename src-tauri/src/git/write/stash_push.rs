@@ -29,15 +29,14 @@
 //! content is in `refs/stash` throughout, so neither window risks losing work
 //! that was not already at risk.
 //!
-//! GL-218's *other* half is deliberately not mirrored: that blanket `clean -d`
-//! also deletes empty untracked directories, which no stash can restore. Scoping
-//! it would mean driving the push with an explicit pathspec, and `git stash push`
-//! in pathspec mode runs a bare `git add -- <paths>` that fails outright on a
-//! staged deletion (the path is in neither the index nor the worktree). Trading
-//! a working `git rm` + Stash for preserved empty directories is not a trade
-//! worth making here; the preservation needs its own change.
+//! GL-218's *other* half — that same blanket `clean -d` also deleting empty
+//! untracked directories no stash can restore — is handled by [`empty_dirs`],
+//! which records them before the push and puts back whichever git took. That
+//! runs around the push rather than inside it, so it applies whether the push
+//! succeeds, recovers here, or fails outright.
 
 use super::cli::{run_git, run_git_allow_exit_codes};
+use super::empty_dirs;
 
 /// A completed `git stash push`.
 pub(super) struct StashPush {
@@ -45,10 +44,31 @@ pub(super) struct StashPush {
     pub message: String,
     /// The stash commit this push created, when it created one.
     pub oid: Option<String>,
-    /// Whether GitLane completed a restore git abandoned. `message` then
-    /// describes what git could not do, so it has to reach the user verbatim
-    /// rather than being normalised away as a routine success.
+    /// Whether GitLane had to say something about this push beyond "it worked":
+    /// it completed a restore git abandoned, or could not put an empty untracked
+    /// directory back. `message` then carries the detail and has to reach the
+    /// user verbatim rather than being normalised away as a routine success.
     pub recovered: bool,
+}
+
+impl StashPush {
+    /// Fold in the directories the push took that could not be put back. Their
+    /// content was never at risk — a file-free directory has none — but the
+    /// layout change is the user's to know about, so it outranks a quiet
+    /// success and never silently disappears.
+    fn qualified_with(mut self, unpreserved: &[String]) -> Self {
+        if unpreserved.is_empty() {
+            return self;
+        }
+        let names = unpreserved.join(", ");
+        self.message = format!(
+            "{} Git's cleanup also removed empty untracked director{} GitLane could not recreate: {names}. They held no files, so nothing was lost but the folders themselves.",
+            self.message.trim_end(),
+            if unpreserved.len() == 1 { "y" } else { "ies" },
+        );
+        self.recovered = true;
+        self
+    }
 }
 
 /// Run a `git stash push …` argument list, recovering from the interrupted
@@ -57,10 +77,28 @@ pub(super) struct StashPush {
 /// handoff, plain `--include-untracked` for the Stash action).
 pub(super) fn push_stash(repo: &str, args: &[&str]) -> Result<StashPush, String> {
     let before = stash_tip(repo)?;
+    // Captured before anything is mutated, and put back below whatever the push
+    // does — git's cleanup runs early enough to take these even on a push that
+    // then fails, so the restore cannot be conditional on success.
+    //
+    // This sits in the shared helper because the worktree handoff stashes twice
+    // and loses directories both times. Each worktree keeps its own: an empty
+    // directory is local filesystem layout, not branch content — git records
+    // none anywhere, which is the whole reason a stash cannot carry one — so it
+    // stays put rather than following the branch. For the destination that is a
+    // plain stash-and-reapply round trip inside one worktree; for the source it
+    // is the scratch layout of the checkout it goes on being.
+    let empty_dirs = empty_dirs::capture(repo)?;
+    let outcome = run_push(repo, args, before.as_deref());
+    let unpreserved = empty_dirs::restore(repo, &empty_dirs);
+    outcome.map(|push| push.qualified_with(&unpreserved))
+}
+
+fn run_push(repo: &str, args: &[&str], before: Option<&str>) -> Result<StashPush, String> {
     match run_git(repo, args) {
         Ok(message) => Ok(StashPush {
             message,
-            oid: created_stash(repo, before.as_deref())?,
+            oid: created_stash(repo, before)?,
             recovered: false,
         }),
         Err(error) => {
@@ -73,7 +111,7 @@ pub(super) fn push_stash(repo: &str, args: &[&str]) -> Result<StashPush, String>
             // plain Stash action has no message to make unique, so fall back to
             // the standing tip. Coverage — not ref movement — is what makes the
             // restore safe, and every candidate goes through the same proof.
-            let created = created_stash(repo, before.as_deref())?;
+            let created = created_stash(repo, before)?;
             let Some(oid) = created.clone().or(stash_tip(repo)?) else {
                 return Err(error);
             };

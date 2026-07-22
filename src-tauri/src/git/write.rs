@@ -17,6 +17,7 @@ mod commits;
 mod conflict_resolution;
 mod discard_all;
 mod discard_file;
+mod empty_dirs;
 mod files;
 mod hard_reset_lease;
 mod head;
