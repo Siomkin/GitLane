@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -24,18 +24,20 @@ use crate::git::types::DiscardAllPreview;
 use crate::git::worktree_fs::{
     fingerprint_worktree_leaf_path_bounded, validate_worktree_leaf_observation_path,
     worktree_directory_identity, worktree_leaf_is_missing_path, worktree_regular_leaf_size_path,
-    WorktreeDirectoryIdentity, WorktreeLeafFingerprint, WorktreeLeafObservation,
+    WorktreeLeafFingerprint, WorktreeLeafObservation,
 };
 
 use super::cli::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
+use super::state_lease::{
+    hash_field, hash_os, os_bytes, path_label, scoped_git_args, RepositoryScope,
+    MAX_FINGERPRINT_BYTES,
+};
 
 #[cfg(not(windows))]
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 24 * 1024;
 const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
-const MAX_FINGERPRINT_BYTES: u64 = 256 * 1024 * 1024;
-
 const STALE_MESSAGE: &str =
     "The working tree changed after this confirmation opened. Preview Discard all again.";
 
@@ -59,17 +61,6 @@ struct TrackedCapture {
     digest: [u8; 32],
     observations: Vec<TrackedLeaf>,
     fingerprints: BTreeMap<Vec<u8>, (WorktreeLeafFingerprint, Arc<WorktreeLeafObservation>)>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct RepositoryScope {
-    workdir: PathBuf,
-    gitdir: PathBuf,
-    commondir: PathBuf,
-    workdir_identity: WorktreeDirectoryIdentity,
-    gitdir_identity: WorktreeDirectoryIdentity,
-    commondir_identity: WorktreeDirectoryIdentity,
-    is_worktree: bool,
 }
 
 struct DiscardAllSnapshot {
@@ -252,16 +243,6 @@ fn run_after_tracked_scope_validation_test_hook() {
 #[cfg(not(test))]
 fn run_after_tracked_scope_validation_test_hook() {}
 
-fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
-    state.update(bytes);
-}
-
-#[cfg(unix)]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.as_bytes().to_vec()
-}
-
 #[cfg(unix)]
 fn git_bytes(value: &OsStr) -> Result<Vec<u8>, String> {
     Ok(value.as_bytes().to_vec())
@@ -273,20 +254,6 @@ fn git_bytes(value: &OsStr) -> Result<Vec<u8>, String> {
         .to_str()
         .map(|value| value.as_bytes().to_vec())
         .ok_or_else(|| "Discard all cannot safely represent a non-UTF-8 Git path.".to_string())
-}
-
-#[cfg(windows)]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.encode_wide().flat_map(u16::to_le_bytes).collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.to_string_lossy().as_bytes().to_vec()
-}
-
-fn hash_os(state: &mut Sha256, value: &OsStr) {
-    hash_field(state, &os_bytes(value));
 }
 
 fn git_path(bytes: &[u8]) -> Result<OsString, String> {
@@ -303,10 +270,6 @@ fn git_path(bytes: &[u8]) -> Result<OsString, String> {
                     .to_string()
             })
     }
-}
-
-fn path_label(path: &OsStr) -> String {
-    path.to_string_lossy().into_owned()
 }
 
 fn enforce_fingerprint_budget(
@@ -447,16 +410,6 @@ fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
     scope.workdir.to_str().ok_or_else(|| {
         "Cannot run Discard all from a worktree path that is not valid UTF-8.".to_string()
     })
-}
-
-fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsString> {
-    let mut scoped = Vec::with_capacity(args.len() + 4);
-    scoped.push(OsString::from("--git-dir"));
-    scoped.push(scope.gitdir.as_os_str().to_os_string());
-    scoped.push(OsString::from("--work-tree"));
-    scoped.push(scope.workdir.as_os_str().to_os_string());
-    scoped.extend(args.iter().map(OsString::from));
-    scoped
 }
 
 fn run_scoped_git(scope: &RepositoryScope, args: &[&str]) -> Result<String, String> {

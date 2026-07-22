@@ -6,16 +6,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Oid, Repository};
 use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
+use std::os::unix::ffi::OsStringExt;
 
 use crate::git::worktree_fs::{
     fingerprint_worktree_leaf_path_bounded, validate_worktree_leaf_observation_path,
@@ -24,8 +22,9 @@ use crate::git::worktree_fs::{
 };
 
 use super::cli::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
-
-const MAX_FINGERPRINT_BYTES: u64 = 256 * 1024 * 1024;
+use super::state_lease::{
+    hash_field, hash_os, path_label, scoped_git_args, RepositoryScope, MAX_FINGERPRINT_BYTES,
+};
 
 pub(super) const STALE_MESSAGE: &str =
     "The repository changed after this confirmation opened. Preview the hard reset again.";
@@ -38,17 +37,6 @@ pub(super) const STALE_MESSAGE: &str =
 /// both cases share — and what the user needs first — is that nothing was reset.
 pub(super) const UNVERIFIABLE_MESSAGE: &str =
     "Could not re-check the repository state, so the hard reset was not performed.";
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RepositoryScope {
-    workdir: PathBuf,
-    gitdir: PathBuf,
-    commondir: PathBuf,
-    workdir_identity: WorktreeDirectoryIdentity,
-    gitdir_identity: WorktreeDirectoryIdentity,
-    commondir_identity: WorktreeDirectoryIdentity,
-    is_worktree: bool,
-}
 
 /// One `git status --porcelain=v1 -z` read: the records the lease hashes, and
 /// the paths whose content it then fingerprints.
@@ -186,30 +174,6 @@ pub(super) fn run_after_validation_test_hook() {
 #[cfg(not(test))]
 pub(super) fn run_after_validation_test_hook() {}
 
-fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
-    state.update(bytes);
-}
-
-#[cfg(unix)]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.as_bytes().to_vec()
-}
-
-#[cfg(windows)]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.encode_wide().flat_map(u16::to_le_bytes).collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn os_bytes(value: &OsStr) -> Vec<u8> {
-    value.to_string_lossy().as_bytes().to_vec()
-}
-
-fn hash_os(state: &mut Sha256, value: &OsStr) {
-    hash_field(state, &os_bytes(value));
-}
-
 fn hash_identity(state: &mut Sha256, identity: &WorktreeDirectoryIdentity) {
     state.update(identity.device.to_le_bytes());
     state.update(identity.inode.to_le_bytes());
@@ -240,10 +204,6 @@ fn fingerprint_into(
         }
     }
     Ok(())
-}
-
-fn path_label(path: &OsStr) -> String {
-    path.to_string_lossy().into_owned()
 }
 
 fn git_path(bytes: &[u8]) -> Result<OsString, String> {
@@ -304,16 +264,6 @@ fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
     scope.workdir.to_str().ok_or_else(|| {
         "Cannot lease a hard reset from a worktree path that is not valid UTF-8.".to_string()
     })
-}
-
-fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsString> {
-    let mut scoped = Vec::with_capacity(args.len() + 4);
-    scoped.push(OsString::from("--git-dir"));
-    scoped.push(scope.gitdir.as_os_str().to_os_string());
-    scoped.push(OsString::from("--work-tree"));
-    scoped.push(scope.workdir.as_os_str().to_os_string());
-    scoped.extend(args.iter().map(OsString::from));
-    scoped
 }
 
 fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
