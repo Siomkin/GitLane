@@ -830,24 +830,32 @@ export function createRepoWriteActions(
       if (!active) throw new Error("No repository");
       const owner = captureOwner(active);
       const selectedCommits = get().selectedCommits;
-      const msg = await runOp(get, async (summary) => {
-        const parent = validateSquashRange(get().graph, shas);
-        const expectedOid = requireHeadOid(summary, "squash commits");
-        const identity = useAccounts.getState().repoIdentity;
-        const { summary: subject, description } = splitCommitMessage(message);
-        await api.squashCommits(
-          summary.path,
-          summary.headBranch,
-          expectedOid,
-          parent,
-          subject,
-          description,
-          identity?.name,
-          identity?.email,
-          identity,
-        );
-        return `Squashed ${shas.length} commits`;
-      });
+      const msg = await runOp(
+        get,
+        async (summary) => {
+          const parent = validateSquashRange(get().graph, shas);
+          const expectedOid = requireHeadOid(summary, "squash commits");
+          const identity = useAccounts.getState().repoIdentity;
+          const { summary: subject, description } = splitCommitMessage(message);
+          await api.squashCommits(
+            summary.path,
+            summary.headBranch,
+            expectedOid,
+            parent,
+            subject,
+            description,
+            identity?.name,
+            identity?.email,
+            identity,
+          );
+          return `Squashed ${shas.length} commits`;
+        },
+        // Squash preserves pre-staged work by restoring an index snapshot after
+        // the commit (GL-307), so it can reject *after* the replacement commit
+        // already landed. Refresh on error like the guarded discard does, or the
+        // graph keeps showing the pre-squash range until the watcher catches up.
+        { refreshOnError: true },
+      );
       if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
         get().clearSelection();
       }
