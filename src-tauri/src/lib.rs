@@ -184,6 +184,7 @@ async fn delete_branch_with_worktree(
     branch: String,
     from_worktree_path: String,
     expected_oid: String,
+    expected_state: String,
 ) -> Result<String, String> {
     use tauri::Emitter;
     blocking(move || {
@@ -192,6 +193,7 @@ async fn delete_branch_with_worktree(
             &branch,
             &from_worktree_path,
             &expected_oid,
+            &expected_state,
             // Forward each phase to the webview so the delete dialog can tick its
             // checklist live; a lost event only degrades the progress UI.
             &|step| {
@@ -587,12 +589,20 @@ async fn delete_remote_tag(
 }
 
 #[tauri::command]
+async fn preview_remove_worktree(
+    path: String,
+    worktree_path: String,
+) -> Result<git::types::RemoveWorktreePreview, String> {
+    blocking(move || git::write::preview_remove_worktree(&path, &worktree_path)).await
+}
+
+#[tauri::command]
 async fn remove_worktree(
     path: String,
     worktree_path: String,
-    force: bool,
+    expected_state: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::remove_worktree(&path, &worktree_path, force)).await
+    blocking(move || git::write::remove_worktree(&path, &worktree_path, &expected_state)).await
 }
 
 /// Uncommitted work in a linked worktree, probed on demand so a removal confirm
@@ -2013,6 +2023,7 @@ pub fn run() {
             list_reflog,
             preview_reset,
             preview_discard_all,
+            preview_remove_worktree,
             preview_delete_branch,
             preview_delete_remote_branch,
             preview_force_push,

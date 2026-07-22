@@ -98,7 +98,13 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
           break;
         }
         try {
-          await removeWorktree(targets[i].path, false);
+          const preview = await useRepo.getState().previewRemoveWorktree(targets[i].path);
+          if (preview.requiresForce) {
+            throw new Error(
+              "Worktree has uncommitted work or is locked — skipped by the unforced sweep.",
+            );
+          }
+          await removeWorktree(targets[i].path, preview.expectedState);
           acc.push("ok");
         } catch (e) {
           acc.push("fail");

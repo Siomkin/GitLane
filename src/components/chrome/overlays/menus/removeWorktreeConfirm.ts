@@ -1,6 +1,6 @@
 import type { WorktreeDirtyState } from "@/lib/api";
 
-/** What the removal is acting on, gathered from the live worktree entry. */
+/** What the removal is acting on, gathered from the live worktree entry / lease preview. */
 export interface RemoveWorktreeSubject {
   name: string;
   path: string;
@@ -9,12 +9,13 @@ export interface RemoveWorktreeSubject {
   /** HEAD oid — the only handle on a detached worktree's commits. */
   head?: string | null;
   locked: boolean;
-  /** Probed uncommitted work, or null when the probe failed (see
-   * `useRemoveWorktree` — a failed probe must not block the removal). */
+  /** Probed uncommitted work from the lease preview (ignored disclosed, not leased). */
   dirty: WorktreeDirtyState | null;
+  /** Server-derived force bit from the lease preview (GL-303). */
+  requiresForce?: boolean;
 }
 
-/** The confirm content plus the `force` flag the removal must run with. */
+/** The confirm content. Force is display-only — execute derives it from the lease. */
 export interface RemoveWorktreeConfirm {
   title: string;
   message: string;
@@ -119,6 +120,7 @@ export function buildRemoveWorktreeConfirm(
   }
 
   const mayDestroyWork = uncommitted || unknownWork;
+  const force = subject.requiresForce ?? (uncommitted || locked);
   return {
     title: `Remove worktree ${name}?`,
     message: uncommitted
@@ -130,6 +132,6 @@ export function buildRemoveWorktreeConfirm(
     // invisibly on a generic "Remove worktree" — including when the loss is
     // possible-but-unconfirmed.
     confirmLabel: mayDestroyWork ? "Remove and discard changes" : "Remove worktree",
-    force: uncommitted || locked,
+    force,
   };
 }

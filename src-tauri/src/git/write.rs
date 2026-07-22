@@ -33,6 +33,7 @@ mod stashes;
 mod tags;
 #[cfg(test)]
 mod tests;
+mod worktree_removal_lease;
 mod worktrees;
 
 pub use branch_checkout::{checkout, checkout_remote_branch};
@@ -93,6 +94,7 @@ pub use stashes::{
     stash_pop_onto,
 };
 pub use tags::{create_annotated_tag, create_tag, delete_tag};
+pub use worktree_removal_lease::preview_remove_worktree;
 pub use worktrees::{
     add_worktree, create_branch_in_worktree, delete_branch_with_worktree, move_branch_to_worktree,
     remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,

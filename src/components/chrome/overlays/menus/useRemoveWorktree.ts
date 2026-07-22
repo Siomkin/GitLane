@@ -1,5 +1,4 @@
-import { api } from "@/lib/api";
-import type { WorktreeDirtyState } from "@/lib/api";
+import type { RemoveWorktreePreview } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import {
   currentOpenIntent,
@@ -14,25 +13,21 @@ import {
   type RemoveWorktreeSubject,
 } from "./removeWorktreeConfirm";
 
-/** What the caller knows about the worktree; the dirty state is probed here. */
-export type RemoveWorktreeRequest = Omit<RemoveWorktreeSubject, "dirty">;
+/** What the caller knows about the worktree before the leased preview. */
+export type RemoveWorktreeRequest = Omit<RemoveWorktreeSubject, "dirty" | "locked"> & {
+  locked?: boolean;
+};
 
-// Monotonic token shared by every removal probe, mirroring `previewConfirm`'s
-// guard: the newest click wins and stale probe results are discarded.
-let probeToken = 0;
+// Monotonic token shared by every removal preview, mirroring `previewConfirm`'s
+// guard: the newest click wins and stale preview results are discarded.
+let previewToken = 0;
 
 /** Removal of a linked worktree, shared by the worktree row menu and the branch
  * menu's Worktree submenu.
  *
- * This hook owns a documented `api` read (the dirty probe) for the same reason
- * `useDiscardAllChanges` does: it is a destructive-preview read that belongs
- * beside the confirm it feeds, not in a store (it is a one-shot query, not
- * domain state — nothing subscribes to it).
- *
- * Why probe at all: git refuses to remove a dirty worktree, and before GL-296
- * that refusal surfaced as a raw `fatal: ... use --force to delete it` toast
- * with no way forward. Probing first lets the confirm name the work at risk and
- * carry the force through, so the user makes the call once, informed.
+ * Owns the `previewRemoveWorktree` read beside the confirm it feeds (GL-303) —
+ * same rationale as `useDiscardAllChanges`: one-shot destructive preview, not
+ * store domain state.
  */
 export function useRemoveWorktree() {
   const requestConfirm = useUi((s) => s.requestConfirm);
@@ -40,52 +35,52 @@ export function useRemoveWorktree() {
   const run = useBranchOp();
 
   return async (request: RemoveWorktreeRequest) => {
-    // The probe is async and `confirm` is a single slot, so a second click — or a
-    // repo switch — can land before an earlier probe resolves. Re-check both
-    // afterwards so only the newest click, still on the same repo, opens a
-    // confirm: otherwise a stale result could open a dialog whose `onConfirm`
-    // removes a path against the now-active repo. Same guard as `previewConfirm`.
-    const token = ++probeToken;
+    const token = ++previewToken;
     const repoAtClick = useRepo.getState().summary?.path ?? null;
     const openIntentAtClick = currentOpenIntent();
     const repoSessionAtClick = currentPublishedRepoSession();
     const isCurrent = () =>
-      token === probeToken &&
+      token === previewToken &&
       openIntentIsCurrent(openIntentAtClick) &&
       useRepo.getState().summary?.path === repoAtClick &&
       publishedRepoSessionIsCurrent(repoSessionAtClick);
 
-    // Close the originating menu before awaiting so a slow probe cannot
-    // resurrect a confirm after the user has dismissed that menu.
     useUi.getState().closeOverlays();
 
-    // A failed probe must never block the removal: fall back to `null`, which
-    // builds the ordinary unforced confirm and lets git's own error surface if
-    // the worktree turns out to be dirty. Probing is an upgrade to the warning,
-    // not a precondition for acting. (`buildRemoveWorktreeConfirm` discloses the
-    // unknown when a lock would force the removal regardless.)
-    let dirty: WorktreeDirtyState | null = null;
+    if (!repoAtClick) {
+      useUi.getState().showToast("No repository", "error");
+      return;
+    }
+
+    let preview: RemoveWorktreePreview;
     try {
-      dirty = await api.worktreeDirtyState(request.path);
-    } catch {
-      dirty = null;
+      preview = await useRepo.getState().previewRemoveWorktree(request.path);
+    } catch (e) {
+      if (!isCurrent()) return;
+      useUi.getState().showToast(String(e instanceof Error ? e.message : e), "error");
+      return;
     }
     if (!isCurrent()) return;
 
-    const confirm = buildRemoveWorktreeConfirm({ ...request, dirty });
+    const confirm = buildRemoveWorktreeConfirm({
+      name: request.name,
+      path: request.path,
+      branch: preview.branch,
+      head: preview.headOid,
+      locked: preview.locked,
+      dirty: preview.dirty,
+      requiresForce: preview.requiresForce,
+    });
     requestConfirm({
       title: confirm.title,
       message: confirm.message,
-      details: confirm.details,
-      warnings: confirm.warnings,
+      details: confirm.details.length > 0 ? confirm.details : preview.details,
+      warnings: confirm.warnings.length > 0 ? confirm.warnings : preview.warnings,
       confirmLabel: confirm.confirmLabel,
       danger: true,
       onConfirm: () => {
-        // The repo can still change between opening the confirm and accepting
-        // it; the removal must never be aimed at a different repo than the one
-        // the dialog described.
         if (!isCurrent()) return;
-        void run(() => removeWorktree(request.path, confirm.force));
+        void run(() => removeWorktree(request.path, preview.expectedState));
       },
     });
   };

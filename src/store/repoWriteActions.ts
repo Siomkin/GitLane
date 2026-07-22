@@ -326,6 +326,7 @@ export function createRepoWriteActions(
   | "removeWorktree"
   | "moveBranchToWorktree"
   | "previewDeleteBranch"
+  | "previewRemoveWorktree"
   | "deleteBranchWithWorktree"
   | "deleteRemoteBranch"
   | "forcePush"
@@ -896,8 +897,10 @@ export function createRepoWriteActions(
         return `Pushed tag ${name} to ${target}`;
       }),
 
-    removeWorktree: (worktreePath, force = false) =>
-      runOp(get, async (summary) => api.removeWorktree(summary.path, worktreePath, force)),
+    removeWorktree: (worktreePath, expectedState) =>
+      runOp(get, async (summary) =>
+        api.removeWorktree(summary.path, worktreePath, expectedState),
+      ),
 
     moveBranchToWorktree: async (branch, fromWorktreePath, toWorktreePath, carry) => {
       const { summary, loading } = get();
@@ -955,14 +958,32 @@ export function createRepoWriteActions(
       return api.previewDeleteBranch(summary.path, branch);
     },
 
+    previewRemoveWorktree: (worktreePath) => {
+      const { summary } = get();
+      if (!summary) return Promise.reject(new Error("No repository"));
+      return api.previewRemoveWorktree(summary.path, worktreePath);
+    },
+
     // `repoPath` is passed explicitly (not read from `get().summary`) so the delete
     // is pinned to the repo the dialog started on. The op runs after an `await` in
     // the dialog's run hook, and a repo switch landing in that window would
     // otherwise retarget the delete at the newly-active repo with the old
     // branch/worktree subject. GL-107 review.
-    deleteBranchWithWorktree: (branch, fromWorktreePath, repoPath, expectedOid) => {
+    deleteBranchWithWorktree: (
+      branch,
+      fromWorktreePath,
+      repoPath,
+      expectedOid,
+      expectedState,
+    ) => {
       if (!repoPath) return Promise.reject(new Error("No repository"));
-      return api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath, expectedOid);
+      return api.deleteBranchWithWorktree(
+        repoPath,
+        branch,
+        fromWorktreePath,
+        expectedOid,
+        expectedState,
+      );
     },
 
     deleteRemoteBranch: (remote, branch, expectedOid) =>

@@ -38,6 +38,18 @@ const clickRemove = async () => {
   fireEvent.click(button);
 };
 
+const CLEAN_LEASE = {
+  summary: "Remove?",
+  details: [],
+  warnings: [],
+  expectedState: "v1:detached-lease",
+  requiresForce: false,
+  locked: false,
+  branch: null as string | null,
+  headOid: "abc",
+  dirty: { modified: 0, untracked: 0, ignored: 0 },
+};
+
 /** Answer the dirty probe. Defaults to clean so only the tests that care about
  * withheld candidates opt into dirtiness. */
 const mockDirtyProbe = (byPath: Record<string, WorktreeDirtyState | "fail"> = {}) =>
@@ -54,7 +66,10 @@ beforeEach(() => {
   mockDirtyProbe();
   useUi.setState({ removeDetached: null, removeDetachedRunning: false });
   useNotifications.setState({ toasts: [] });
-  useRepo.setState({ removeWorktree: vi.fn().mockResolvedValue("Removed") });
+  useRepo.setState({
+    removeWorktree: vi.fn().mockResolvedValue("Removed"),
+    previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE),
+  });
 });
 
 describe("RemoveDetachedDialog", () => {
@@ -65,7 +80,7 @@ describe("RemoveDetachedDialog", () => {
 
   it("previews every target path and removes nothing before the user confirms", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed");
-    useRepo.setState({ removeWorktree });
+    useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     open([a, b]);
     render(<RemoveDetachedDialog />);
 
@@ -77,7 +92,7 @@ describe("RemoveDetachedDialog", () => {
 
   it("removes each target in order, never forcing, then shows the summary", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed");
-    useRepo.setState({ removeWorktree });
+    useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     open([a, b]);
     render(<RemoveDetachedDialog />);
 
@@ -86,8 +101,8 @@ describe("RemoveDetachedDialog", () => {
     await waitFor(() => expect(removeWorktree).toHaveBeenCalledTimes(2));
     // The bulk sweep never forces — git's dirty-worktree protection must apply,
     // and locked worktrees are excluded from the removable set upstream.
-    expect(removeWorktree).toHaveBeenNthCalledWith(1, "/work/a", false);
-    expect(removeWorktree).toHaveBeenNthCalledWith(2, "/work/b", false);
+    expect(removeWorktree).toHaveBeenNthCalledWith(1, "/work/a", "v1:detached-lease");
+    expect(removeWorktree).toHaveBeenNthCalledWith(2, "/work/b", "v1:detached-lease");
     await waitFor(() =>
       expect(screen.getAllByText("Removed 2 detached worktrees").length).toBeGreaterThan(0),
     );
@@ -100,7 +115,7 @@ describe("RemoveDetachedDialog", () => {
       .fn()
       .mockRejectedValueOnce(new Error("dirty worktree"))
       .mockResolvedValueOnce("Removed");
-    useRepo.setState({ removeWorktree });
+    useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     open([a, b]);
     render(<RemoveDetachedDialog />);
 
@@ -140,7 +155,7 @@ describe("RemoveDetachedDialog", () => {
       expect(screen.getByText(/Removed 1 of 2 detached worktrees — Repository changed/)).toBeInTheDocument(),
     );
     expect(removeWorktree).toHaveBeenCalledTimes(1);
-    expect(removeWorktree).toHaveBeenCalledWith("/work/a", false);
+    expect(removeWorktree).toHaveBeenCalledWith("/work/a", "v1:detached-lease");
   });
 
   it("stops the sweep when the same repo path is reopened mid-run", async () => {
@@ -183,7 +198,7 @@ describe("RemoveDetachedDialog", () => {
   // mid-run on git's refusal.
   it("withholds a dirty candidate and says what it is keeping", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed");
-    useRepo.setState({ removeWorktree });
+    useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     mockDirtyProbe({ "/work/b": { modified: 29, untracked: 3, ignored: 0 } });
     open([a, b]);
     render(<RemoveDetachedDialog />);
@@ -194,7 +209,7 @@ describe("RemoveDetachedDialog", () => {
 
     await clickRemove();
     await waitFor(() => expect(removeWorktree).toHaveBeenCalledTimes(1));
-    expect(removeWorktree).toHaveBeenCalledWith("/work/a", false);
+    expect(removeWorktree).toHaveBeenCalledWith("/work/a", "v1:detached-lease");
   });
 
   // An agent's worktree is detached *by construction* — it is the most live
@@ -202,7 +217,7 @@ describe("RemoveDetachedDialog", () => {
   it("withholds an agent-managed worktree even when it is clean", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed");
     const agent = wt({ name: "GitLane", path: "/Users/me/.codex/worktrees/6d30/GitLane" });
-    useRepo.setState({ removeWorktree });
+    useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     open([a, agent]);
     render(<RemoveDetachedDialog />);
 
@@ -211,7 +226,7 @@ describe("RemoveDetachedDialog", () => {
 
     await clickRemove();
     await waitFor(() => expect(removeWorktree).toHaveBeenCalledTimes(1));
-    expect(removeWorktree).toHaveBeenCalledWith("/work/a", false);
+    expect(removeWorktree).toHaveBeenCalledWith("/work/a", "v1:detached-lease");
   });
 
   // Review finding: `|` is legal in a POSIX filename, so a delimiter-joined
@@ -281,7 +296,7 @@ describe("RemoveDetachedDialog", () => {
     const removeWorktree = vi.fn().mockImplementation(
       () => new Promise<string>((res) => { resolveRemove = res; }),
     );
-    useRepo.setState({ removeWorktree });
+    useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     open([a]);
     const { rerender } = render(<RemoveDetachedDialog />);
 

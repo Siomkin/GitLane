@@ -24,7 +24,7 @@ export interface DeleteWorktreeRun {
   /** Backend result (done) or readable failure (error). */
   message: string;
   /** Kick off the delete. No-op while already running. */
-  start: (expectedOid: string) => void;
+  start: (expectedOid: string, expectedState: string) => void;
 }
 
 export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktreeRun {
@@ -49,7 +49,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
   // double-click could start two runs before the re-render lands.
   const inFlight = useRef(false);
 
-  const start = (expectedOid: string) => {
+  const start = (expectedOid: string, expectedState: string) => {
     // Two guards: `inFlight` stops a double-click on this instance; the store
     // latch stops a *reopened* dialog (a fresh hook with inFlight=false) from
     // starting a second delete while the first still runs in the background.
@@ -88,7 +88,13 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
         if (!repoAtStart) throw new Error("No repository");
         const msg = await useRepo
           .getState()
-          .deleteBranchWithWorktree(req.branch, req.worktreePath, repoAtStart, expectedOid);
+          .deleteBranchWithWorktree(
+            req.branch,
+            req.worktreePath,
+            repoAtStart,
+            expectedOid,
+            expectedState,
+          );
         // The backend emits no event for the graph refresh — advance to the
         // terminal "Refreshing" row ourselves so it spins while the store reloads.
         // (The store action deliberately skips runOp's refresh so we own it here.)

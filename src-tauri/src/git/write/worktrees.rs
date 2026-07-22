@@ -1,6 +1,6 @@
 //! Linked-worktree operations backed by git porcelain.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -177,26 +177,85 @@ pub fn create_branch_in_worktree(
     Ok(format!("Created {name} in worktree {}", worktree.name))
 }
 
-/// Remove a linked worktree (`git worktree remove <path>`). `force` adds
-/// `--force`, dropping git's dirty-worktree safety check. A *locked* worktree
-/// needs a **second** `--force` (git refuses `-f` alone: "cannot remove a locked
-/// working tree; use 'remove -f -f'"), so when the caller forces the removal and
-/// the target is locked we pass `-f -f`. Git refuses to remove the main worktree,
-/// surfacing its own error; the frontend also hides the action there.
-pub fn remove_worktree(repo: &str, worktree_path: &str, force: bool) -> Result<String, String> {
+/// Remove a linked worktree (`git worktree remove <path>`) after the Worktree
+/// Removal Lease still matches (GL-303). Force is **server-derived** from the
+/// validated dirty+locked state — execute takes no client `force` flag. A locked
+/// worktree needs a second `--force` (`-f -f`). Git refuses the main worktree;
+/// the frontend also hides that action.
+pub fn remove_worktree(
+    repo: &str,
+    worktree_path: &str,
+    expected_state: &str,
+) -> Result<String, String> {
     ensure_operand(worktree_path)?;
+    // Lease check immediately before spawn. Forced `git worktree remove` can
+    // still delete dirt that appears after this returns and before git finishes
+    // — an accepted residual TOCTOU: git offers no atomic compare-and-remove, so
+    // validation can only be a precondition. The combined path stays unforced,
+    // which leaves git itself rechecking dirtiness and locks there.
+    let snapshot =
+        super::worktree_removal_lease::validate_removal_lease(repo, worktree_path, expected_state)?;
+    // Force flags come only from the matched lease — never a post-match lock
+    // re-read that could escalate beyond what the confirm disclosed.
+    remove_worktree_validated(
+        repo,
+        &snapshot.workdir,
+        snapshot.requires_force,
+        snapshot.locked,
+    )?;
+    Ok(format!("Removed worktree {worktree_path}"))
+}
+
+/// Internal remove after the lease (or an equivalent unforced combined-path
+/// refuse) has already decided whether force is required. `locked` must be the
+/// leased lock bit: a second `--force` overrides git's lock only when that
+/// state was part of the matched snapshot.
+///
+/// `workdir` must be the canonical path the lease was *validated* over
+/// (`RemovalLeaseSnapshot::workdir`), never the caller's raw pathname: the two
+/// can diverge if the client path is a symlink that is retargeted after the
+/// compare, and git would then delete a directory nobody confirmed.
+fn remove_worktree_validated(
+    repo: &str,
+    workdir: &Path,
+    force: bool,
+    locked: bool,
+) -> Result<(), String> {
+    let operand = workdir.to_str().ok_or_else(|| {
+        format!("The worktree path {workdir:?} is not valid UTF-8, so git cannot be given it.")
+    })?;
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");
-        // Only the caller-forced path may override a lock — an unforced remove
-        // still surfaces git's "locked working tree" error so the UI can prompt.
-        if worktree_is_locked(repo, worktree_path) {
+        if locked {
             args.push("--force");
         }
     }
-    args.push(worktree_path);
+    args.push(operand);
     run_git(repo, &args)?;
-    Ok(format!("Removed worktree {worktree_path}"))
+    Ok(())
+}
+
+/// Why Combined Branch-and-Worktree Deletion refuses instead of forcing: it is
+/// deliberately unforced (GL-303), so dirty or locked contents are the user's to
+/// resolve. Shared by both of its lease checks so the two cannot drift apart.
+const COMBINED_FORCE_REFUSAL: &str = "The worktree has uncommitted work or is locked. Combined branch-and-worktree deletion cannot force-remove it. Remove the worktree separately, or clean it first.";
+
+/// Re-check the Worktree Removal Lease and, on a still-matching unforced lease,
+/// remove the worktree in one step — so nothing but `run_git` runs between the
+/// compare and the spawn. Used by the combined path, whose entry-time validation
+/// is separated from the removal by the branch-deletion preparation.
+fn revalidate_then_remove(
+    repo: &str,
+    worktree_path: &str,
+    expected_state: &str,
+) -> Result<(), String> {
+    let lease =
+        super::worktree_removal_lease::validate_removal_lease(repo, worktree_path, expected_state)?;
+    if lease.requires_force {
+        return Err(COMBINED_FORCE_REFUSAL.into());
+    }
+    remove_worktree_validated(repo, &lease.workdir, false, false)
 }
 
 /// Count the uncommitted work in a linked worktree, so a removal confirm can
@@ -316,16 +375,6 @@ pub(super) fn is_porcelain_record(line: &str) -> bool {
         return false;
     };
     sep == ' ' && CODES.contains(&x) && CODES.contains(&y) && !(x == ' ' && y == ' ')
-}
-
-/// Whether the worktree at `path` is locked, from live `git worktree list` state.
-/// A read failure returns false (we then let git's own error surface).
-fn worktree_is_locked(repo: &str, path: &str) -> bool {
-    worktrees(repo)
-        .ok()
-        .into_iter()
-        .flatten()
-        .any(|w| same_path(&w.path, path) && w.locked)
 }
 
 /// Compare two worktree paths on their resolved real path: git's porcelain
@@ -729,9 +778,10 @@ fn carry_conflict(
 ///
 /// Git refuses to delete a branch that is checked out in a worktree, so this is
 /// the one-step path for "I'm done with this branch and its worktree": free the
-/// branch by removing its worktree, then force-delete the branch. The worktree
-/// removal runs first and is *not* forced, so a dirty or locked worktree aborts
-/// the whole operation (git's error surfaces) before the branch is touched.
+/// branch by removing its worktree, then force-delete the branch. Requires both
+/// the branch tip `expected_oid` and the shared Worktree Removal Lease
+/// `expected_state` (GL-303). Worktree removal stays **unforced**: a dirty or
+/// locked matched lease refuses before removal.
 ///
 /// `progress` is invoked as each phase *begins* (step ids: `removeWorktree`,
 /// `deleteBranch`) so the UI can show a live checklist. The command layer
@@ -742,11 +792,28 @@ pub fn delete_branch_with_worktree(
     branch: &str,
     from_worktree_path: &str,
     expected_oid: &str,
+    expected_state: &str,
     progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
     ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
+
+    // Validate the worktree lease before preparing the branch deletion so a
+    // stale confirm cannot start a ref transaction against drifted contents.
+    let worktree_lease = super::worktree_removal_lease::validate_removal_lease(
+        repo,
+        from_worktree_path,
+        expected_state,
+    )?;
+    if worktree_lease.requires_force {
+        return Err(COMBINED_FORCE_REFUSAL.into());
+    }
+    if worktree_lease.branch.as_deref() != Some(branch) {
+        return Err(format!(
+            "{branch} is no longer checked out at {from_worktree_path}. Refresh and try again."
+        ));
+    }
 
     // Lock the exact previewed branch tip before removing its checkout. A stale
     // tip fails during `prepare`, while both the branch and worktree still
@@ -756,7 +823,12 @@ pub fn delete_branch_with_worktree(
     super::branches::ensure_branch_ref_is_direct(repo, branch)?;
     ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
     progress("removeWorktree");
-    if let Err(error) = remove_worktree(repo, from_worktree_path, false) {
+    // Re-validate immediately before the spawn. The entry-time check guards the
+    // ref transaction, but `prepare_branch_deletion` and the ownership re-reads
+    // above each run a git subprocess — a path-reuse/ABA swap in that window
+    // would otherwise remove a *replacement* worktree the confirm never leased,
+    // which is the exact failure GL-303 exists to close.
+    if let Err(error) = revalidate_then_remove(repo, from_worktree_path, expected_state) {
         let abort_error = deletion.abort().err();
         return Err(match abort_error {
             Some(abort) => format!(
