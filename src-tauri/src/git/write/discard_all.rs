@@ -17,8 +17,6 @@ use sha2::{Digest, Sha256};
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
 
 use crate::git::types::DiscardAllPreview;
 use crate::git::worktree_fs::{
@@ -34,7 +32,7 @@ use super::state_lease::{
 };
 
 /// Render a shared-primitive failure in this operation's own words.
-fn describe_lease_error(error: LeaseError) -> String {
+pub(super) fn describe_lease_error(error: LeaseError) -> String {
     match error {
         LeaseError::WorkdirNotUtf8 => {
             "Cannot run Discard all from a worktree path that is not valid UTF-8.".to_string()

@@ -10451,3 +10451,94 @@ fn write_repo_file_state_cannot_be_replayed_across_worktrees_or_nested_repos() {
 
     repo.git_ok(&["worktree", "remove", "--force", &linked_path]);
 }
+
+/// Every `LeaseError` variant, rendered by both operations, pinned to its exact
+/// text.
+///
+/// The shared primitives report a typed failure and each module words it, so the
+/// wording is now the thing a refactor can quietly break — and it breaks
+/// silently: swapping two arms leaves both strings present in the tree, so a
+/// "no literal changed" check still passes. Substring assertions elsewhere in
+/// this file would not catch it either. Hence exact strings, both renderers,
+/// every variant (GL-332).
+#[test]
+fn lease_errors_render_in_each_operations_own_words() {
+    use crate::git::write::state_lease::LeaseError;
+
+    let cases: Vec<(LeaseError, LeaseError, &str, &str)> = vec![
+        (
+            LeaseError::WorkdirNotUtf8,
+            LeaseError::WorkdirNotUtf8,
+            "Cannot run Discard all from a worktree path that is not valid UTF-8.",
+            "Cannot lease a hard reset from a worktree path that is not valid UTF-8.",
+        ),
+        (
+            LeaseError::OpenRepository(git2::Error::from_str("boom")),
+            LeaseError::OpenRepository(git2::Error::from_str("boom")),
+            "Could not inspect the repository before discarding: boom",
+            "Could not inspect the repository before hard reset: boom",
+        ),
+        (
+            LeaseError::BareRepository,
+            LeaseError::BareRepository,
+            "Cannot discard changes in a bare repository.",
+            "Cannot hard-reset a bare repository.",
+        ),
+        (
+            LeaseError::NonUtf8GitPath,
+            LeaseError::NonUtf8GitPath,
+            "Discard all cannot safely represent a non-UTF-8 Git path on this platform.",
+            "Hard reset cannot safely represent a non-UTF-8 Git path on this platform.",
+        ),
+        (
+            LeaseError::ReplaceRefsActive,
+            LeaseError::ReplaceRefsActive,
+            "Discard all is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal.",
+            "Hard reset is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal.",
+        ),
+        (
+            LeaseError::InspectHead(git2::Error::from_str("boom")),
+            LeaseError::InspectHead(git2::Error::from_str("boom")),
+            "Could not inspect HEAD before discarding: boom",
+            "Could not inspect HEAD before hard reset: boom",
+        ),
+        (
+            LeaseError::ResolveHead(git2::Error::from_str("boom")),
+            LeaseError::ResolveHead(git2::Error::from_str("boom")),
+            "Could not resolve HEAD before discarding: boom",
+            "Could not resolve HEAD before hard reset: boom",
+        ),
+        (
+            LeaseError::NonFileWorktreePath {
+                label: "sub".to_string(),
+                kind: 4,
+                mode: 0o40755,
+            },
+            LeaseError::NonFileWorktreePath {
+                label: "sub".to_string(),
+                kind: 4,
+                mode: 0o40755,
+            },
+            "Refusing to discard non-file worktree path sub (type 4, mode 40755). Move the directory or nested repository aside and try again.",
+            "Refusing to hard-reset while non-file worktree path sub is present (type 4, mode 40755). Move it aside and try again.",
+        ),
+        (
+            // Shared text: both operations must render it identically.
+            LeaseError::Worded("Could not resolve the repository worktree: boom".to_string()),
+            LeaseError::Worded("Could not resolve the repository worktree: boom".to_string()),
+            "Could not resolve the repository worktree: boom",
+            "Could not resolve the repository worktree: boom",
+        ),
+    ];
+
+    for (discard_error, hard_error, discard_text, hard_text) in cases {
+        assert_eq!(
+            super::discard_all::describe_lease_error(discard_error),
+            discard_text
+        );
+        assert_eq!(
+            super::hard_reset_lease::describe_lease_error(hard_error),
+            hard_text
+        );
+    }
+}

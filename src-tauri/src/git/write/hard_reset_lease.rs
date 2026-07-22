@@ -24,7 +24,7 @@ use super::state_lease::{
 };
 
 /// Render a shared-primitive failure in this operation's own words.
-fn describe_lease_error(error: LeaseError) -> String {
+pub(super) fn describe_lease_error(error: LeaseError) -> String {
     match error {
         LeaseError::WorkdirNotUtf8 => {
             "Cannot lease a hard reset from a worktree path that is not valid UTF-8.".to_string()

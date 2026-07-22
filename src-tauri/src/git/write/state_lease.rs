@@ -48,8 +48,9 @@ pub(super) enum LeaseError {
     OpenRepository(git2::Error),
     /// The repository has no worktree.
     BareRepository,
-    /// A git path cannot be represented on this platform. Only constructible
-    /// off unix, where a path must round-trip through UTF-8.
+    /// A git path cannot be represented on this platform. Constructed only on
+    /// non-unix targets, where a path must round-trip through UTF-8; unix takes
+    /// the raw bytes and never fails.
     #[cfg_attr(unix, allow(dead_code))]
     NonUtf8GitPath,
     /// `refs/replace/` entries are present, which would let the operation act on
