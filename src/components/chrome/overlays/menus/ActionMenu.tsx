@@ -102,7 +102,10 @@ export function ActionMenu() {
       message: needsCheckout
         ? `Check out branch "${branch}", then reset it to "${targetLabel}". Changes remain unstaged.`
         : "Mixed reset — changes are kept in the working tree, unstaged.",
-      confirmLabel: needsCheckout ? "Check out and reset (mixed)" : "Reset (mixed)",
+      // Names the branch git switches to, for the same reason `confirmRebase`
+      // does: the title mentions two branches and the bare label reads as
+      // "check out the target".
+      confirmLabel: needsCheckout ? `Check out ${branch} and reset (mixed)` : "Reset (mixed)",
       preview: () =>
         repoPath
           ? // `branch` (not HEAD) is the ref being reset — it's checked out in

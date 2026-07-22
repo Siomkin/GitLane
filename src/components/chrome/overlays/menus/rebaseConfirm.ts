@@ -21,7 +21,12 @@ export function confirmRebase(request: RebaseConfirmRequest): void {
     message: request.needsCheckout
       ? `Check out branch "${request.source}", then replay its commits onto "${request.onto}".`
       : `Replay commits from "${request.source}" onto "${request.onto}".`,
-    confirmLabel: request.needsCheckout ? "Check out and rebase" : "Rebase",
+    // The title names two branches, so a bare "Check out and rebase" reads as
+    // "check out the target" — alarming when the target is the branch you are
+    // already on. Name the branch git actually switches to.
+    confirmLabel: request.needsCheckout
+      ? `Check out ${request.source} and rebase`
+      : "Rebase",
     onConfirm: request.proceed,
   });
 }
