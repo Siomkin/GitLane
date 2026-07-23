@@ -20,6 +20,7 @@ export function MergedSelectionInspector() {
   const selectFile = useRepo((s) => s.selectFile);
   const openSelectionReview = useUi((s) => s.openSelectionReview);
   const openFileMenu = useUi((s) => s.openFileMenu);
+  const commitPathIsRestorable = useRepo((s) => s.commitPathIsRestorable);
   const view = useUi((s) => s.fileListView);
   const setView = useUi((s) => s.setFileListView);
 
@@ -37,17 +38,25 @@ export function MergedSelectionInspector() {
   // Committed files (ADR 0003): Restore from the newest selected commit still
   // in the loaded graph (selection tip). Multi-commit unions have no per-file
   // owning commit in the list, so this is intentional — not a range restore.
-  const restoreOid = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits)[0]?.id;
-  const onContextMenu = (path: string, e: MouseEvent) => {
+  const restoreOid = rows[0]?.id;
+  const onContextMenu = async (path: string, e: MouseEvent) => {
     e.preventDefault();
+    // Read coordinates before the await — React reuses the synthetic event.
+    const { clientX: x, clientY: y } = e;
     const file = files.find((entry) => entry.path === path);
+    // The union list can surface a path the selection tip doesn't own (a
+    // non-contiguous selection where a newer, unselected commit deleted it), so
+    // probe the tip per file and only offer Restore when the blob is really
+    // there — rather than offering it and erroring on click.
+    const canRestore =
+      !!restoreOid &&
+      canRestoreCommittedFile(file, restoreOid) &&
+      (await commitPathIsRestorable(restoreOid, path).catch(() => false));
     openFileMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x,
+      y,
       path,
-      ...(restoreOid && canRestoreCommittedFile(file, restoreOid)
-        ? { restore: { commitOid: restoreOid } }
-        : {}),
+      ...(canRestore && restoreOid ? { restore: { commitOid: restoreOid } } : {}),
     });
   };
   const onDirContextMenu = (dirPath: string, e: MouseEvent) => {

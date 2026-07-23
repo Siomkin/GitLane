@@ -99,7 +99,9 @@ pub use remotes::{
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
 pub use reset::reset_branch;
-pub use restore_path::{restore_path_from_commit, worktree_differs_from_commit};
+pub use restore_path::{
+    commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
+};
 pub use reveal::reveal_in_file_manager;
 pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
 #[cfg(test)]

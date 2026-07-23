@@ -1038,6 +1038,25 @@ async fn worktree_differs_from_commit(
     blocking(move || git::write::worktree_differs_from_commit(&path, &commit_oid, &file)).await
 }
 
+/// ADR 0003: true when `file` has a restorable (non-gitlink) blob at `commit_oid`.
+/// Lets the merged-selection surface probe the selection-tip commit before
+/// offering Restore for a union path.
+#[tauri::command]
+async fn commit_path_is_restorable(
+    path: String,
+    commit_oid: String,
+    file: String,
+) -> Result<bool, String> {
+    blocking(move || {
+        Ok(git::write::commit_path_is_restorable(
+            &path,
+            &commit_oid,
+            &file,
+        ))
+    })
+    .await
+}
+
 /// ADR 0003: restore one path into the worktree from a commit (does not stage).
 #[tauri::command]
 async fn restore_path_from_commit(
@@ -2128,6 +2147,7 @@ pub fn run() {
             append_ignore_pattern,
             reveal_in_file_manager,
             worktree_differs_from_commit,
+            commit_path_is_restorable,
             restore_path_from_commit,
             stage_all,
             unstage_all,

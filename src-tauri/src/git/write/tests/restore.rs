@@ -56,6 +56,20 @@ fn restore_refuses_path_absent_from_commit() {
 }
 
 #[test]
+fn is_restorable_reflects_blob_presence_and_fails_closed() {
+    let repo = repo_with_file("restorable-probe", "a.txt", b"x\n");
+    let oid = rev_parse(&repo, "HEAD");
+    // Present blob → restorable.
+    assert!(commit_path_is_restorable(repo.path(), &oid, "a.txt"));
+    // Absent path and unsafe paths → not offered (fail closed, no error surfaced).
+    assert!(!commit_path_is_restorable(repo.path(), &oid, "nope.txt"));
+    assert!(!commit_path_is_restorable(repo.path(), &oid, "../outside"));
+    assert!(!commit_path_is_restorable(repo.path(), &oid, ".git/config"));
+    // Garbage commit oid → not offered.
+    assert!(!commit_path_is_restorable(repo.path(), "deadbeef", "a.txt"));
+}
+
+#[test]
 fn restore_refuses_unsafe_paths() {
     let repo = repo_with_file("restore-unsafe", "a.txt", b"x\n");
     let oid = rev_parse(&repo, "HEAD");

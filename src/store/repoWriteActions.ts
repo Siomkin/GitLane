@@ -346,6 +346,7 @@ export function createRepoWriteActions(
   | "appendIgnorePattern"
   | "revealInFileManager"
   | "worktreeDiffersFromCommit"
+  | "commitPathIsRestorable"
   | "restorePathFromCommit"
   | "stageAll"
   | "unstageAll"
@@ -1413,6 +1414,12 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) throw new Error("No repository");
       return api.worktreeDiffersFromCommit(summary.path, commitOid, path);
+    },
+
+    commitPathIsRestorable: async (commitOid, path) => {
+      const { summary } = get();
+      if (!summary) return false;
+      return api.commitPathIsRestorable(summary.path, commitOid, path);
     },
 
     restorePathFromCommit: async (commitOid, path) => {

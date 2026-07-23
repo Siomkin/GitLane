@@ -353,11 +353,13 @@ describe("FileContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
   });
 
-  it("restores immediately when the worktree already matches the commit blob", async () => {
+  it("reports a no-op (no write) when the worktree already matches the commit blob", async () => {
     const worktreeDiffersFromCommit = vi.fn().mockResolvedValue(false);
     const restorePathFromCommit = vi.fn().mockResolvedValue(undefined);
+    const showToast = vi.fn();
     useRepo.setState({ worktreeDiffersFromCommit, restorePathFromCommit });
     useUi.setState({
+      showToast,
       fileMenu: {
         x: 10,
         y: 10,
@@ -369,13 +371,11 @@ describe("FileContextMenu", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Restore from this commit…" }));
     await waitFor(() =>
-      expect(restorePathFromCommit).toHaveBeenCalledWith(
-        "abcdef0123456789abcdef0123456789abcdef01",
-        "src/App.tsx",
-      ),
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining("already matches")),
     );
+    // A no-op restore must not shell out to git nor prompt.
+    expect(restorePathFromCommit).not.toHaveBeenCalled();
     expect(useUi.getState().confirm).toBeNull();
-    expect(useUi.getState().fileMenu).toBeNull();
   });
 
   it("confirms Restore only when the worktree would change", async () => {

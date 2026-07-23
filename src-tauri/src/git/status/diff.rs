@@ -2,7 +2,9 @@
 
 use git2::{Delta, Diff, DiffOptions, FileMode, Patch};
 
-use crate::git::types::{DiffHunk, DiffLine, FileAdvancedState, FileChange, FileDiff};
+use crate::git::types::{
+    DiffHunk, DiffLine, FileAdvancedState, FileChange, FileDiff, ADVANCED_KIND_SUBMODULE,
+};
 
 /// Map a `git2` delta status to the one-letter code the frontend expects.
 pub(super) fn status_letter(status: Delta) -> &'static str {
@@ -260,7 +262,7 @@ fn gitlink_advanced(delta: &git2::DiffDelta<'_>) -> Option<FileAdvancedState> {
     let old_mode = delta.old_file().mode();
     if new_mode == FileMode::Commit || old_mode == FileMode::Commit {
         Some(FileAdvancedState {
-            kind: "submodule".to_string(),
+            kind: ADVANCED_KIND_SUBMODULE.to_string(),
             message: "Submodule gitlink".to_string(),
         })
     } else {

@@ -7,7 +7,7 @@
 use std::io;
 use std::path::{Component, Path};
 
-use git2::{ObjectType, Oid};
+use git2::{ObjectType, Oid, Repository};
 
 use crate::git::read::open;
 use crate::git::worktree_fs::{fingerprint_worktree_leaf, WorktreeLeafFingerprint};
@@ -28,8 +28,8 @@ pub fn worktree_differs_from_commit(
     file: &str,
 ) -> Result<bool, String> {
     let relative = normalize_relative(file)?;
-    let blob_oid = commit_path_blob_oid(repo, commit_oid, &relative)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
+    let blob_oid = commit_path_blob_oid_in(&repository, commit_oid, &relative)?;
     let workdir = repository
         .workdir()
         .ok_or_else(|| "repository has no working directory".to_string())?;
@@ -46,6 +46,19 @@ pub fn worktree_differs_from_commit(
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
         Err(error) => Err(format!("Couldn't inspect {relative}: {error}")),
     }
+}
+
+/// True when `file` has a restorable (non-gitlink) blob at `commit_oid`. Used by
+/// the merged multi-commit selection surface, whose union file list has no
+/// per-file owning commit: it probes the selection-tip commit so Restore is only
+/// offered for paths actually present there, instead of offering it and failing
+/// on click. Fails closed — any resolution error resolves to `false` so the menu
+/// simply omits Restore (the write path re-validates before touching the disk).
+pub fn commit_path_is_restorable(repo: &str, commit_oid: &str, file: &str) -> bool {
+    let Ok(relative) = normalize_relative(file) else {
+        return false;
+    };
+    commit_path_blob_oid(repo, commit_oid, &relative).is_ok()
 }
 
 /// Replace the worktree leaf at `file` with the blob from `commit_oid`. Leaves
@@ -78,11 +91,22 @@ pub fn restore_path_from_commit(
 }
 
 /// Resolve the blob oid for `file` at `commit_oid`, refusing gitlinks and
-/// non-blob tree entries without loading blob content into memory.
+/// non-blob tree entries without loading blob content into memory. Opens the
+/// repository fresh — callers that already hold a handle use
+/// [`commit_path_blob_oid_in`] to avoid a second open.
 fn commit_path_blob_oid(repo: &str, commit_oid: &str, file: &str) -> Result<Oid, String> {
+    let repository = open(repo).map_err(|e| e.to_string())?;
+    commit_path_blob_oid_in(&repository, commit_oid, file)
+}
+
+/// [`commit_path_blob_oid`] against an already-open repository.
+fn commit_path_blob_oid_in(
+    repository: &Repository,
+    commit_oid: &str,
+    file: &str,
+) -> Result<Oid, String> {
     ensure_exact_oid(commit_oid)?;
     ensure_operand(commit_oid)?;
-    let repository = open(repo).map_err(|e| e.to_string())?;
     let oid = Oid::from_str(commit_oid).map_err(|e| e.to_string())?;
     let commit = repository
         .find_commit(oid)

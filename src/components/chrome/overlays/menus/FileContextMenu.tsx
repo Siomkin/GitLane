@@ -47,11 +47,15 @@ export function FileContextMenu() {
     void navigator.clipboard?.writeText(text);
   };
 
+  // The copy options carry no glyph of their own; reserve the same icon column
+  // (w-4 + gap) so their labels align with the icon'd action rows above rather
+  // than sitting flush against the panel's left padding.
+  const copyIndent = <span className="block h-4 w-4" aria-hidden />;
   const copyCluster = (kind: "file" | "folder"): MenuItem[] => [
     { label: "Copy", header: true, sep: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
-    { label: kind === "folder" ? "Folder name" : "File name", onClick: () => copy(fileName) },
-    { label: "Relative path", onClick: () => copy(path) },
-    { label: "Full path", onClick: () => copy(fullPath) },
+    { label: kind === "folder" ? "Folder name" : "File name", icon: copyIndent, onClick: () => copy(fileName) },
+    { label: "Relative path", icon: copyIndent, onClick: () => copy(path) },
+    { label: "Full path", icon: copyIndent, onClick: () => copy(fullPath) },
   ];
 
   const applyIgnore = (pattern: string, local: boolean) => {
@@ -248,7 +252,10 @@ export function FileContextMenu() {
           try {
             const wouldChange = await worktreeDiffersFromCommit(commitOid, path);
             if (!wouldChange) {
-              await restorePathFromCommit(commitOid, path);
+              // The worktree already matches the commit blob, so restoring would
+              // rewrite identical bytes — skip the write and say so, rather than a
+              // misleading "Restored…" for a no-op.
+              showToast(`${path} already matches ${shortOid}`);
               return;
             }
             requestConfirm({
