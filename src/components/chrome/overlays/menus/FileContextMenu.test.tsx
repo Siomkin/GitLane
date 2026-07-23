@@ -81,7 +81,7 @@ describe("FileContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "History" })).not.toBeInTheDocument();
   });
 
-  it("hides Ignore on staged-only rows", () => {
+  it("offers Ignore on staged rows too", () => {
     useRepo.setState({
       changes: {
         ...emptyChanges,
@@ -92,7 +92,7 @@ describe("FileContextMenu", () => {
     render(<FileContextMenu />);
 
     expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Ignore…" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
   });
 
   it("omits Discard for renames but still offers Ignore / Open / History", () => {
