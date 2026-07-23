@@ -43,7 +43,7 @@ export function FileRow({
       <button
         type="button"
         className={cn(
-          "flex w-full items-center gap-2.5 rounded-lg px-2 text-left hover:bg-black/5 dark:hover:bg-white/5",
+          "flex w-full items-center gap-2.5 rounded-none px-2 text-left hover:bg-black/5 dark:hover:bg-white/5",
           focusRing,
           file.advanced ? "h-14" : compact ? "h-11" : "h-12",
           active && "bg-[var(--accent-soft)]",

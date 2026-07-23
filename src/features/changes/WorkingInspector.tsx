@@ -80,8 +80,11 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 pb-5 pt-1.5">
-        <div className="flex items-center justify-between gap-2">
+      {/* Horizontal padding matches the Files tab (`px-2`): chrome stays inset,
+          while Path/Tree file rows own their own edge padding so the Tree view
+          lines up with the repository Files tree. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5 pt-1.5">
+        <div className="flex items-center justify-between gap-2 px-2">
           <h1 className="min-w-0 truncate text-[16px] font-semibold text-neutral-800 dark:text-neutral-100">
             <span>{total} change{total === 1 ? "" : "s"} on </span>
             <span className="text-[color:var(--accent)]">{summary?.headBranch ?? "HEAD"}</span>
@@ -100,7 +103,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
             conflict-only tree mid-merge (conflicts are excluded from `total`,
             but the conflicts list below still honours the Path/Tree view). */}
         {(total > 0 || conflicted.length > 0) && (
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2">
               <ChangeTypeCounts summary={summarizeChanges(changes)} />
               {/* Discard-all sits quietly next to the change counts: a grey trash
@@ -139,12 +142,12 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 
         {conflicted.length > 0 && (
           <div>
-            <div className="mb-1 flex items-center justify-between">
+            <div className="mb-1 flex items-center justify-between px-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
                 Conflicts ({conflicted.length})
               </span>
             </div>
-            <div className="mb-1.5 px-1 text-[12px] text-neutral-400">
+            <div className="mb-1.5 px-2 text-[12px] text-neutral-400">
               Unresolved paths git still considers conflicted. Resolve them in the conflict view or your terminal.
             </div>
             {/* Read-only (no stage/unstage) but honours the Path/Tree toggle so
@@ -159,7 +162,11 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           </div>
         )}
 
-        <AdvancedRepoBanner notices={notices} variant="card" />
+        {notices.length > 0 && (
+          <div className="px-2">
+            <AdvancedRepoBanner notices={notices} variant="card" />
+          </div>
+        )}
 
         <FileSection
           title="Unstaged"
@@ -249,7 +256,7 @@ function FileSection({
   };
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between">
+      <div className="mb-1.5 flex items-center justify-between px-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
           {title} ({files.length})
         </span>
@@ -265,7 +272,7 @@ function FileSection({
         )}
       </div>
       {files.length === 0 ? (
-        <div className="px-1 py-1 text-[13px] text-neutral-400">No files.</div>
+        <div className="px-2 py-1 text-[13px] text-neutral-400">No files.</div>
       ) : (
         <ChangedFileList
           files={files}

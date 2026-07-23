@@ -62,23 +62,27 @@ export function CommitInspector() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 pb-5 pt-4">
-      <div
-        onDoubleClick={canEditMessage ? editMessage : undefined}
-        title={canEditMessage ? "Double-click to edit commit message" : undefined}
-        className={canEditMessage ? "cursor-text rounded-lg -m-1 p-1 hover:bg-black/[0.03] dark:hover:bg-white/[0.04]" : undefined}
-      >
-        <h1 className="text-[19px] font-semibold leading-snug text-neutral-800 dark:text-neutral-100 text-pretty">
-          {selectedTitle}
-        </h1>
-        {selectedBody && <CommitBody key={selectedOid} body={selectedBody} />}
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5 pt-4">
+      <div className="px-2">
+        <div
+          onDoubleClick={canEditMessage ? editMessage : undefined}
+          title={canEditMessage ? "Double-click to edit commit message" : undefined}
+          className={canEditMessage ? "cursor-text rounded-lg -m-1 p-1 hover:bg-black/[0.03] dark:hover:bg-white/[0.04]" : undefined}
+        >
+          <h1 className="text-[19px] font-semibold leading-snug text-neutral-800 dark:text-neutral-100 text-pretty">
+            {selectedTitle}
+          </h1>
+          {selectedBody && <CommitBody key={selectedOid} body={selectedBody} />}
+        </div>
       </div>
 
-      {selected ? <CommitMeta commit={selected} /> : <StashMeta stash={selectedStash!} />}
+      <div className="px-2">
+        {selected ? <CommitMeta commit={selected} /> : <StashMeta stash={selectedStash!} />}
+      </div>
 
-      <div className="h-px bg-black/5 dark:bg-white/5" />
+      <div className="mx-2 h-px bg-black/5 dark:bg-white/5" />
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
           Changed files{commitFiles.length > 0 ? ` (${commitFiles.length})` : ""}
         </span>
@@ -92,13 +96,13 @@ export function CommitInspector() {
         )}
       </div>
       {commitFiles.length > 0 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-2">
           <ChangeTypeCounts summary={summarizeFiles(commitFiles)} />
           <FileViewToggle view={view} onChange={setView} />
         </div>
       )}
       {commitFiles.length === 0 ? (
-        <div className="px-1 py-1 text-[13px] text-neutral-400">No file list loaded.</div>
+        <div className="px-2 py-1 text-[13px] text-neutral-400">No file list loaded.</div>
       ) : (
         <ChangedFileList
           files={commitFiles}
