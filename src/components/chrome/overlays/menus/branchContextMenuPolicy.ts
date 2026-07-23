@@ -1,4 +1,5 @@
-import { BranchKind, type BranchInfo, type WorktreeInfo } from "@/lib/api";
+import { BranchKind, type BranchInfo, type RepoForge, type WorktreeInfo } from "@/lib/api";
+import { branchWebUrl } from "@/lib/forgeUrls";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import {
   handoffDestinationHere,
@@ -42,6 +43,12 @@ export interface BranchContextMenuPolicy {
   canRemoveWorktree: boolean;
   localDeleteMode: LocalBranchDeleteMode;
   remoteDeleteTarget: RemoteBranchDeleteTarget | null;
+  /** Browser URL for this branch on its forge — non-null only on a recognised
+   * forge for a *published* branch (an unpublished or stale-upstream branch would
+   * 404). Drives the "View on <forge>" row. Mirrors the commit policy. */
+  branchUrl: string | null;
+  /** Human forge label for the "View on <forge>" row (e.g. "GitHub"). */
+  forgeName: string | null;
 }
 
 export interface BranchContextMenuPolicyInput {
@@ -51,6 +58,7 @@ export interface BranchContextMenuPolicyInput {
   branches: BranchInfo[];
   worktrees: WorktreeInfo[];
   workdir: string;
+  forge: RepoForge | null;
 }
 
 /** Pure ref resolution and eligibility policy for BranchContextMenu.
@@ -65,6 +73,7 @@ export function deriveBranchContextMenuPolicy({
   branches,
   worktrees,
   workdir,
+  forge,
 }: BranchContextMenuPolicyInput): BranchContextMenuPolicy {
   const matches = branches.filter((candidate) => candidate.name === branch);
   const info = matches.length === 1 ? matches[0] : undefined;
@@ -90,6 +99,9 @@ export function deriveBranchContextMenuPolicy({
   const handoffHere = existingWorktree && sourceValid && isLocal
     ? handoffDestinationHere(worktrees, existingWorktree.path, workdir)
     : null;
+  // Hand off is offered on a linked-worktree branch only when the source can
+  // still run the detach step (bare/prunable worktrees filtered out) and a valid
+  // destination exists. Local, non-current guards match the branch the fan shows on.
   const canHandOff = Boolean(
     isLocal &&
       !isCurrent &&
@@ -97,6 +109,7 @@ export function deriveBranchContextMenuPolicy({
       sourceValid &&
       handoffDestinationOptions(worktrees, existingWorktree.path).length > 0,
   );
+  // Git refuses to remove the main worktree, so Remove is offered for linked ones only.
   const canRemoveWorktree = Boolean(existingWorktree && !existingWorktreeInfo?.isMain);
   const worktreeCheckedOut = isCurrent || worktrees.some((worktree) => worktree.branch === branch);
 
@@ -113,6 +126,26 @@ export function deriveBranchContextMenuPolicy({
   const remoteBranch = remote && branch.startsWith(`${remote}/`)
     ? branch.slice(remote.length + 1)
     : null;
+
+  // Forge link. The forge branch name is the one that exists on the remote, NOT
+  // the local ref: for a remote-tracking ref, drop the remote prefix; for a local
+  // branch, use its upstream's branch (a local `feature-x` tracking `origin/main`
+  // lives at `main` on the forge, never `feature-x`). A `.`-remote upstream
+  // (tracking another local branch) has no forge page. A stale upstream means the
+  // remote branch was deleted — the forge page would 404 — so hide the link.
+  // Only a *recognised* forge (kind != null) yields a real URL; an unknown host
+  // would fall back to the repo root. Mirrors the commit policy's gating.
+  const upstreamRemote = info?.upstreamRemote ?? null;
+  const localUpstreamBranch =
+    upstreamRemote && upstreamRemote !== "." && upstream && upstream.startsWith(`${upstreamRemote}/`)
+      ? upstream.slice(upstreamRemote.length + 1)
+      : null;
+  const forgeBranchName = isRemote ? remoteBranch : localUpstreamBranch;
+  const upstreamStale = sync?.status === "staleUpstream";
+  const knownForge = forge?.kind != null;
+  const branchUrl =
+    knownForge && forgeBranchName && !upstreamStale ? branchWebUrl(forge, forgeBranchName) : null;
+  const forgeName = branchUrl ? forge?.forge ?? null : null;
 
   return {
     info,
@@ -145,5 +178,7 @@ export function deriveBranchContextMenuPolicy({
     localDeleteMode,
     remoteDeleteTarget:
       remote && remoteBranch && tip ? { remote, branch: remoteBranch } : null,
+    branchUrl,
+    forgeName,
   };
 }

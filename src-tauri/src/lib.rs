@@ -538,6 +538,11 @@ async fn create_patch(path: String, sha: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn create_patch_range(path: String, base: String, head: String) -> Result<String, String> {
+    blocking(move || git::write::create_patch_range(&path, &base, &head)).await
+}
+
+#[tauri::command]
 async fn delete_tag(path: String, name: String, expected_oid: String) -> Result<String, String> {
     blocking(move || git::write::delete_tag(&path, &name, &expected_oid)).await
 }
@@ -2110,6 +2115,7 @@ pub fn run() {
             create_tag,
             create_annotated_tag,
             create_patch,
+            create_patch_range,
             delete_tag,
             delete_remote_tag,
             push_tag,

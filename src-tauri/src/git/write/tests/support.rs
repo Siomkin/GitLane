@@ -18,7 +18,7 @@ pub(super) use super::super::{
     branch_push_remote, checkout, checkout_remote_branch, cherry_pick, cherry_pick_many,
     cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
     commit_path_is_restorable, continue_operation, create_annotated_tag, create_branch,
-    create_branch_in_worktree, create_patch, create_tag, delete_branch,
+    create_branch_in_worktree, create_patch, create_patch_range, create_tag, delete_branch,
     delete_branch_with_worktree, delete_remote_branch, delete_remote_tag, delete_tag, discard_all,
     discard_file, fast_forward, fast_forward_branch, fast_forward_branch_at, fetch, force_push,
     head_push_remote, mark_conflict_resolved, merge, merge_into, move_branch_to_worktree,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { branchWebUrl } from "./forgeUrls";
+import { branchWebUrl, commitWebUrl } from "./forgeUrls";
 import { ForgeKind, type RepoForge } from "./api";
 
 const forge = (over: Partial<RepoForge>): RepoForge => ({
@@ -50,5 +50,42 @@ describe("branchWebUrl", () => {
       "https://github.com/o/r/tree/main",
     );
     expect(branchWebUrl(forge({ kind: null, forge: null }), "main")).toBe("https://github.com/o/r");
+  });
+});
+
+describe("commitWebUrl", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+
+  it("returns null when there's no web URL", () => {
+    expect(commitWebUrl(null, sha)).toBeNull();
+    expect(commitWebUrl(forge({ webUrl: null }), sha)).toBeNull();
+  });
+
+  it("uses per-forge commit paths", () => {
+    expect(commitWebUrl(forge({ kind: ForgeKind.GitHub }), sha)).toBe(
+      `https://github.com/o/r/commit/${sha}`,
+    );
+    expect(
+      commitWebUrl(
+        forge({ kind: ForgeKind.GitLab, webUrl: "https://gitlab.com/g/r", host: "gitlab.com" }),
+        sha,
+      ),
+    ).toBe(`https://gitlab.com/g/r/-/commit/${sha}`);
+    expect(
+      commitWebUrl(
+        forge({ kind: ForgeKind.Bitbucket, webUrl: "https://bitbucket.org/t/r", host: "bitbucket.org" }),
+        sha,
+      ),
+    ).toBe(`https://bitbucket.org/t/r/commits/${sha}`);
+    expect(
+      commitWebUrl(forge({ kind: ForgeKind.AzureDevOps, webUrl: "https://dev.azure.com/o/p/_git/r" }), sha),
+    ).toBe(`https://dev.azure.com/o/p/_git/r/commit/${sha}`);
+  });
+
+  it("strips a trailing slash and falls back to the root for unknown forges", () => {
+    expect(commitWebUrl(forge({ webUrl: "https://github.com/o/r/" }), sha)).toBe(
+      `https://github.com/o/r/commit/${sha}`,
+    );
+    expect(commitWebUrl(forge({ kind: null, forge: null }), sha)).toBe("https://github.com/o/r");
   });
 });

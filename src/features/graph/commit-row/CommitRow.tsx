@@ -61,7 +61,7 @@ export const CommitRow = memo(function CommitRow({
       role="button"
       tabIndex={0}
       className={cn(
-        "absolute left-0 flex w-full cursor-pointer items-stretch bg-transparent text-left text-neutral-700 transition-opacity duration-150 hover:bg-black/[0.025] dark:text-neutral-200 dark:hover:bg-white/[0.025]",
+        "absolute left-0 flex w-full cursor-pointer select-none items-stretch bg-transparent text-left text-neutral-700 transition-opacity duration-150 hover:bg-black/[0.025] dark:text-neutral-200 dark:hover:bg-white/[0.025]",
         focusRing,
         selected && "bg-[var(--accent-soft)]",
         focused && "bg-[var(--accent-soft)]",

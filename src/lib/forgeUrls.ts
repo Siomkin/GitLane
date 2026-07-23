@@ -28,3 +28,25 @@ export function branchWebUrl(forge: RepoForge | null | undefined, branch: string
       return root;
   }
 }
+
+/** Browser URL for commit `sha` on `forge`, or null when the forge has no web
+ * URL. The caller gates this on the commit being reachable from a remote ref —
+ * an unpushed commit's link would 404. */
+export function commitWebUrl(forge: RepoForge | null | undefined, sha: string): string | null {
+  const base = forge?.webUrl;
+  if (!base) return null;
+  const root = base.replace(/\/+$/, "");
+  switch (forge?.kind) {
+    case ForgeKind.GitLab:
+      return `${root}/-/commit/${sha}`;
+    case ForgeKind.Bitbucket:
+      return `${root}/commits/${sha}`;
+    case ForgeKind.GitHub:
+    case ForgeKind.Gitea:
+    case ForgeKind.Forgejo:
+    case ForgeKind.AzureDevOps:
+      return `${root}/commit/${sha}`;
+    default:
+      return root;
+  }
+}
