@@ -65,8 +65,8 @@ export function MergedSelectionInspector() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-5 pb-5 pt-1.5">
-      <div>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5 pt-1.5">
+      <div className="px-2">
         <h1 className="text-[17px] font-semibold text-neutral-800 dark:text-neutral-100">
           {selectionCountLabel(count)}
         </h1>
@@ -78,11 +78,13 @@ export function MergedSelectionInspector() {
         </p>
       </div>
 
-      <SelectionCommitList rows={rows} />
+      <div className="px-2">
+        <SelectionCommitList rows={rows} />
+      </div>
 
-      <div className="h-px bg-black/5 dark:bg-white/5" />
+      <div className="mx-2 h-px bg-black/5 dark:bg-white/5" />
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
           Changed files{files.length > 0 ? ` (${files.length})` : ""}
         </span>
@@ -97,18 +99,18 @@ export function MergedSelectionInspector() {
       </div>
 
       {files.length > 0 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-2">
           <ChangeTypeCounts summary={summarizeFiles(files)} />
           <FileViewToggle view={view} onChange={setView} />
         </div>
       )}
 
       {error ? (
-        <p className="px-1 text-[13px] text-rose-500">{error}</p>
+        <p className="px-2 text-[13px] text-rose-500">{error}</p>
       ) : loading ? (
-        <p className="px-1 text-[13px] text-neutral-400">Loading merged diff…</p>
+        <p className="px-2 text-[13px] text-neutral-400">Loading merged diff…</p>
       ) : files.length === 0 ? (
-        <p className="px-1 text-[13px] text-neutral-400">No file changes across the selection.</p>
+        <p className="px-2 text-[13px] text-neutral-400">No file changes across the selection.</p>
       ) : (
         <ChangedFileList
           files={files}

@@ -138,7 +138,9 @@ function DirRow({
         onClick={onToggle}
         style={{ paddingLeft: 8 + depth * INDENT }}
         className={cn(
-          "flex h-[26px] w-full items-center gap-1.5 rounded-md pr-2 text-left text-[12.5px] text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05]",
+          // Square hover like the Files tab (`repo-files/rows.tsx`) — explicit
+          // rounded-none so UA/button defaults can't round the highlight.
+          "flex h-[26px] w-full items-center gap-1.5 rounded-none px-2 text-left text-[12.5px] text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05]",
           menuActive && "bg-[var(--accent-soft)] ring-1 ring-inset ring-[color:var(--accent)]",
         )}
       >
@@ -195,7 +197,7 @@ function TreeFileRow({
         // same offset the Files tab uses so the two trees align.
         style={{ paddingLeft: 8 + depth * INDENT + 18 }}
         className={cn(
-          "flex h-[26px] w-full items-center gap-1.5 rounded-md pr-2 text-left text-[12.5px]",
+          "flex h-[26px] w-full items-center gap-1.5 rounded-none px-2 text-left text-[12.5px]",
           active
             ? "bg-[var(--accent-soft)] font-medium text-neutral-800 dark:text-neutral-100"
             : "text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05]",
