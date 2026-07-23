@@ -3,10 +3,12 @@
 // per-snapshot diff cache live in useWorkingTreeDiffs; the row rendering in
 // ReviewFileSection; the pure policies in changesReviewModel.
 
+import type { MouseEvent } from "react";
 import { advancedNotices, fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { control } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { HandToAgentBar } from "@/features/review/comments/HandToAgentBar";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
@@ -23,11 +25,23 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   const unstageFile = useRepo((state) => state.unstageFile);
   const stageAll = useRepo((state) => state.stageAll);
   const unstageAll = useRepo((state) => state.unstageAll);
+  const openFileMenu = useUi((state) => state.openFileMenu);
+  const fileMenu = useUi((state) => state.fileMenu);
   const notices = advancedNotices(changes);
   const stageAllBlocked = fileWriteGuard(findGuardedFile(changes.unstaged, changes), changes);
   const unstageAllBlocked = fileWriteGuard(findGuardedFile(changes.staged, changes), changes);
 
   const { rows, total, open, setOpen, diffs } = useWorkingTreeDiffs(changes, repoPath);
+
+  // Same shared ADR 0002 menu as WorkingInspector (GL-337): discard bucket
+  // matches the row's staged/unstaged source so Ignore/Discard labels stay right.
+  const openMenu = (path: string, staged: boolean, e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openFileMenu({ x: e.clientX, y: e.clientY, path, discard: { staged } });
+  };
+  const menuPathFor = (staged: boolean) =>
+    fileMenu?.discard?.staged === staged ? fileMenu.path : null;
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
@@ -79,6 +93,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
         ) : (
           rows.map(({ path, file, source, key }) => {
             const expanded = !!open[path];
+            const staged = source === "staged";
             return (
               <ReviewFileSection
                 key={path}
@@ -88,6 +103,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
                 loading={expanded && diffs[key] === undefined}
                 diff={expanded ? diffs[key] ?? null : null}
                 changes={changes}
+                menuActive={menuPathFor(staged) === path}
                 onHeader={() => {
                   const willOpen = !expanded;
                   setOpen((o) => ({ ...o, [path]: willOpen }));
@@ -104,6 +120,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
                     setOpen((o) => ({ ...o, [path]: false }));
                   }
                 }}
+                onContextMenu={(e) => openMenu(path, staged, e)}
               />
             );
           })

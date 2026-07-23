@@ -543,6 +543,11 @@ async fn create_patch_range(path: String, base: String, head: String) -> Result<
 }
 
 #[tauri::command]
+async fn create_working_tree_patch(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::create_working_tree_patch(&path, &file)).await
+}
+
+#[tauri::command]
 async fn delete_tag(path: String, name: String, expected_oid: String) -> Result<String, String> {
     blocking(move || git::write::delete_tag(&path, &name, &expected_oid)).await
 }
@@ -1033,6 +1038,21 @@ async fn reveal_in_file_manager(path: String, file: String) -> Result<String, St
     blocking(move || git::write::reveal_in_file_manager(&path, &file)).await
 }
 
+#[tauri::command]
+async fn open_path_default(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::open_path_default(&path, &file)).await
+}
+
+#[tauri::command]
+async fn open_path_difftool(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::open_path_difftool(&path, &file)).await
+}
+
+#[tauri::command]
+async fn stop_tracking(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::stop_tracking(&path, &file)).await
+}
+
 /// ADR 0003: true when restoring `file` from `commit_oid` would change on-disk bytes.
 #[tauri::command]
 async fn worktree_differs_from_commit(
@@ -1152,6 +1172,24 @@ async fn stash(
 ) -> Result<String, String> {
     blocking(move || {
         git::write::stash_expected(&path, expected_branch.as_deref(), expected_oid.as_deref())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn stash_paths(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: Option<String>,
+    files: Vec<String>,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::stash_paths_expected(
+            &path,
+            expected_branch.as_deref(),
+            expected_oid.as_deref(),
+            &files,
+        )
     })
     .await
 }
@@ -2116,6 +2154,7 @@ pub fn run() {
             create_annotated_tag,
             create_patch,
             create_patch_range,
+            create_working_tree_patch,
             delete_tag,
             delete_remote_tag,
             push_tag,
@@ -2152,6 +2191,9 @@ pub fn run() {
             discard_file,
             append_ignore_pattern,
             reveal_in_file_manager,
+            open_path_default,
+            open_path_difftool,
+            stop_tracking,
             worktree_differs_from_commit,
             commit_path_is_restorable,
             restore_path_from_commit,
@@ -2160,6 +2202,7 @@ pub fn run() {
             commit,
             squash_commits,
             stash,
+            stash_paths,
             list_stashes,
             stash_apply,
             stash_apply_index,

@@ -95,6 +95,63 @@ describe("FileContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
   });
 
+  it("offers GL-337 deferred verbs for a tracked working-tree file", () => {
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+      stashFile: vi.fn().mockResolvedValue(undefined),
+      stopTracking: vi.fn().mockResolvedValue(undefined),
+      createWorkingTreePatch: vi.fn().mockResolvedValue("wip-App.tsx.patch"),
+      openPathDefault: vi.fn().mockResolvedValue(undefined),
+      openPathDifftool: vi.fn().mockResolvedValue(undefined),
+    });
+    openMenu();
+    render(<FileContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Stash this file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Stop tracking" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Create patch" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open with Default Application" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open Diff Tool" })).toBeInTheDocument();
+  });
+
+  it("confirms stash-this-file before calling the store action", () => {
+    const stashFile = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+      stashFile,
+    });
+    openMenu();
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Stash this file" }));
+    expect(useUi.getState().confirm?.title).toContain("Stash App.tsx");
+    expect(stashFile).not.toHaveBeenCalled();
+    useUi.getState().confirm!.onConfirm();
+    expect(stashFile).toHaveBeenCalledWith("src/App.tsx");
+  });
+
+  it("hides stop-tracking and difftool for untracked files", () => {
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "new.txt", status: "U", add: 1, del: 0, binary: false }],
+      },
+    });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "new.txt", discard: { staged: false } } });
+    render(<FileContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Stash this file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Create patch" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Stop tracking" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Open Diff Tool" })).not.toBeInTheDocument();
+  });
+
   it("omits Discard for renames but still offers Ignore / Open / History", () => {
     useRepo.setState({
       changes: {

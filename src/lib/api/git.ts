@@ -1374,6 +1374,22 @@ export const gitApi = {
   revealInFileManager: (path: string, file: string) =>
     invoke<string>("reveal_in_file_manager", { path, file }),
 
+  /** Open a repo-relative worktree leaf with the OS default application. */
+  openPathDefault: (path: string, file: string) =>
+    invoke<string>("open_path_default", { path, file }),
+
+  /** Open a tracked path in the configured `git difftool` against HEAD. */
+  openPathDifftool: (path: string, file: string) =>
+    invoke<string>("open_path_difftool", { path, file }),
+
+  /** Drop a tracked path from the index while keeping the worktree leaf. */
+  stopTracking: (path: string, file: string) =>
+    invoke<string>("stop_tracking", { path, file }),
+
+  /** Write a collision-safe `.patch` for one path's working-tree delta. */
+  createWorkingTreePatch: (path: string, file: string) =>
+    invoke<string>("create_working_tree_patch", { path, file }),
+
   /** ADR 0003: true when restoring `file` from `commitOid` would change on-disk bytes. */
   worktreeDiffersFromCommit: (path: string, commitOid: string, file: string) =>
     invoke<boolean>("worktree_differs_from_commit", { path, commitOid, file }),
@@ -1442,6 +1458,14 @@ export const gitApi = {
 
   stash: (path: string, expectedBranch: string | null, expectedOid: string | null) =>
     invoke<string>("stash", { path, expectedBranch, expectedOid }),
+
+  /** Pathspec stash for one or more literal paths (`git stash push -u -- …`). */
+  stashPaths: (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string | null,
+    files: string[],
+  ) => invoke<string>("stash_paths", { path, expectedBranch, expectedOid, files }),
 
   listStashes: (path: string) => invoke<StashEntry[]>("list_stashes", { path }),
 

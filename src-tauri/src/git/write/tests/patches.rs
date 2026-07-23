@@ -97,3 +97,63 @@ fn create_patch_range_rejects_a_merge_in_the_range() {
 
     assert!(create_patch_range(repo.path(), &base, &head).is_err());
 }
+
+#[test]
+fn create_working_tree_patch_writes_tracked_and_untracked_deltas() {
+    let repo = repo_with_file("wip-patch", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), b"edited\n").unwrap();
+    std::fs::write(repo.0.join("new.txt"), b"brand new\n").unwrap();
+
+    let tracked = create_working_tree_patch(repo.path(), "tracked.txt").expect("tracked patch");
+    assert!(tracked.starts_with("wip-tracked"), "got {tracked}");
+    let tracked_body = std::fs::read_to_string(repo.0.join(&tracked)).unwrap();
+    assert!(tracked_body.contains("-base"));
+    assert!(tracked_body.contains("+edited"));
+
+    let untracked = create_working_tree_patch(repo.path(), "new.txt").expect("untracked patch");
+    assert!(untracked.starts_with("wip-new"), "got {untracked}");
+    let untracked_body = std::fs::read_to_string(repo.0.join(&untracked)).unwrap();
+    assert!(untracked_body.contains("+brand new") || untracked_body.contains("brand new"));
+
+    assert!(create_working_tree_patch(repo.path(), "../escape").is_err());
+}
+
+#[test]
+fn create_working_tree_patch_covers_a_staged_deletion() {
+    let repo = repo_with_file("wip-patch-deletion", "gone.txt", b"base\n");
+    repo.git_ok(&["rm", "-q", "gone.txt"]);
+
+    let created = create_working_tree_patch(repo.path(), "gone.txt").expect("deletion patch");
+    let body = std::fs::read_to_string(repo.0.join(&created)).unwrap();
+    assert!(
+        body.contains("-base") || body.contains("deleted file"),
+        "expected a deletion delta, got:\n{body}"
+    );
+    assert!(
+        !body.contains("+++ /dev/null\n@@") || body.contains("--- a/gone.txt"),
+        "must not misclassify the staged deletion as an untracked add"
+    );
+}
+
+#[test]
+fn create_working_tree_patch_keeps_untracked_binary_bytes() {
+    let repo = repo_with_file("wip-patch-binary", "seed.txt", b"seed\n");
+    // A small payload with a NUL so UTF-8 lossy conversion would alter it if
+    // the untracked path still routed through String.
+    let bytes = b"BIN\0ARY\xffpayload";
+    std::fs::write(repo.0.join("blob.bin"), bytes).unwrap();
+
+    let created = create_working_tree_patch(repo.path(), "blob.bin").expect("binary patch");
+    let patch = std::fs::read(repo.0.join(&created)).unwrap();
+    assert!(
+        !patch.is_empty(),
+        "binary untracked files must still produce a patch"
+    );
+    // `--binary` embeds a literal or binary delta; either way the mailbox must
+    // mention the path and not be an empty UTF-8-trimmed husk.
+    let text = String::from_utf8_lossy(&patch);
+    assert!(
+        text.contains("blob.bin"),
+        "patch should name the file, got:\n{text}"
+    );
+}

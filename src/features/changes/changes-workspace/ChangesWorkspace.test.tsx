@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import type { FileChange, FileDiff, WorkingChanges } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { emptyChanges } from "@/store/repoTypes";
 import { ChangesWorkspace } from "./ChangesWorkspace";
 
@@ -229,5 +230,36 @@ describe("ChangesWorkspace — expansion resets per repo (GL-174 review)", () =>
     // Approving the file keeps its slot but collapses the section.
     fireEvent.click(getByTitle("Stage file"));
     expect(container.textContent).not.toContain("diff of a.ts");
+  });
+});
+
+describe("ChangesWorkspace — file context menu (GL-337)", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(null);
+    useUi.setState({ fileMenu: null });
+    useRepo.setState({
+      summary: summaryFor("/r"),
+      changes: snapshot([file("a.ts")]),
+      selectFile: vi.fn(),
+    });
+  });
+
+  it("right-clicking a review row opens the shared working-tree menu", () => {
+    const { getByText } = render(<ChangesWorkspace onBack={() => {}} />);
+    fireEvent.contextMenu(getByText("a.ts"));
+    const menu = useUi.getState().fileMenu;
+    expect(menu?.path).toBe("a.ts");
+    expect(menu?.discard?.staged).toBe(false);
+  });
+
+  it("marks the menu staged when the review row comes from the staged bucket", () => {
+    useRepo.setState({
+      changes: { ...emptyChanges, staged: [file("b.ts")] },
+    });
+    const { getByText } = render(<ChangesWorkspace onBack={() => {}} />);
+    fireEvent.contextMenu(getByText("b.ts"));
+    expect(useUi.getState().fileMenu?.path).toBe("b.ts");
+    expect(useUi.getState().fileMenu?.discard?.staged).toBe(true);
   });
 });

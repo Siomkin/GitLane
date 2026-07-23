@@ -2,6 +2,7 @@
 // toggle, status, counts, stage/unstage checkbox) plus the lazily-loaded diff
 // body. Presentational — all state and dispatch come in as props (GL-174).
 
+import type { MouseEvent } from "react";
 import type { FileChange, FileDiff, WorkingChanges } from "@/lib/api";
 import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { cn } from "@/lib/cn";
@@ -21,8 +22,10 @@ export function ReviewFileSection({
   loading,
   diff,
   changes,
+  menuActive = false,
   onHeader,
   onToggle,
+  onContextMenu,
 }: {
   file: FileChange;
   source: ChangeSource;
@@ -30,8 +33,11 @@ export function ReviewFileSection({
   loading: boolean;
   diff: FileDiff | null;
   changes: WorkingChanges;
+  /** Highlight the sticky header while its shared file context menu is open. */
+  menuActive?: boolean;
   onHeader: () => void;
   onToggle: () => void;
+  onContextMenu?: (e: MouseEvent) => void;
 }) {
   const staged = source === "staged";
   const disabledReason = fileWriteGuard(file, changes);
@@ -45,8 +51,12 @@ export function ReviewFileSection({
         tabIndex={0}
         aria-expanded={expanded}
         aria-label={`${expanded ? "Collapse" : "Expand"} ${file.path}`}
-        className="flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 cursor-pointer text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
+        className={cn(
+          "flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 cursor-pointer text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]",
+          menuActive && "ring-2 ring-inset ring-[var(--accent)]",
+        )}
         onClick={onHeader}
+        onContextMenu={onContextMenu}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();

@@ -545,3 +545,65 @@ fn unstage_works_on_an_unborn_repo() {
     );
     assert!(repo.0.join("a.txt").exists() && repo.0.join("b.txt").exists());
 }
+
+#[test]
+fn stop_tracking_drops_the_index_entry_and_keeps_the_file() {
+    let repo = repo_with_file("stop-tracking", "tracked.txt", b"hello\n");
+    std::fs::write(repo.0.join("tracked.txt"), b"edited\n").unwrap();
+
+    let message = stop_tracking(repo.path(), "tracked.txt").expect("stop tracking");
+    assert!(message.contains("Stopped tracking"));
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "edited\n",
+        "worktree leaf must survive"
+    );
+
+    let tracked = repo.git(&["ls-files", "--", "tracked.txt"]);
+    assert!(
+        String::from_utf8_lossy(&tracked.stdout).trim().is_empty(),
+        "path must leave the index"
+    );
+    let status_out = repo.git(&["status", "--porcelain"]);
+    let status = String::from_utf8_lossy(&status_out.stdout);
+    assert!(
+        status.contains("tracked.txt"),
+        "staged deletion / untracked leaf should still be visible, got: {status}"
+    );
+
+    assert!(
+        stop_tracking(repo.path(), "missing.txt").is_err(),
+        "untracked / missing paths must refuse"
+    );
+}
+
+#[test]
+fn stop_tracking_refuses_when_unique_staged_content_would_be_lost() {
+    // HEAD / index / worktree are three different blobs. Without `-f`, git must
+    // refuse so the staged-only content is not discarded (GL-337 review).
+    let repo = repo_with_file("stop-tracking-force", "tracked.txt", b"head\n");
+    std::fs::write(repo.0.join("tracked.txt"), b"staged\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    std::fs::write(repo.0.join("tracked.txt"), b"worktree\n").unwrap();
+
+    let err = stop_tracking(repo.path(), "tracked.txt").expect_err("must refuse");
+    assert!(
+        err.to_ascii_lowercase().contains("staged")
+            || err.to_ascii_lowercase().contains("up-to-date")
+            || err.to_ascii_lowercase().contains("force")
+            || err.contains("tracked.txt"),
+        "expected git's up-to-date refusal, got: {err}"
+    );
+
+    // Index must still hold the staged blob.
+    let cached = repo.git(&["show", ":tracked.txt"]);
+    assert_eq!(
+        String::from_utf8_lossy(&cached.stdout),
+        "staged\n",
+        "index content must survive a refused stop-tracking"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "worktree\n"
+    );
+}

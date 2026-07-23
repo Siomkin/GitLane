@@ -28,6 +28,22 @@ pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
     }
 }
 
+/// Drop a tracked path from the index while keeping the worktree leaf
+/// (`git rm --cached`). The removal is staged; the file becomes untracked on
+/// disk. Deliberately omits `-f`: when the index holds content that matches
+/// neither HEAD nor the worktree, Git refuses so that unique staged blob is
+/// not silently discarded (GL-337 review).
+pub fn stop_tracking(repo: &str, file: &str) -> Result<String, String> {
+    // Prove the path is tracked before mutating — a missing index entry would
+    // otherwise surface as a raw `git rm` failure.
+    run_git_literal_paths(repo, &["ls-files", "--error-unmatch", "--", file])
+        .map_err(|_| format!("{file} is not tracked"))?;
+    run_git_literal_paths(repo, &["rm", "--cached", "-q", "--", file])?;
+    Ok(format!(
+        "Stopped tracking {file}. The file is still on disk; the removal is staged."
+    ))
+}
+
 /// Stage several literal files in one atomic invocation (`git add -A -- A B…`,
 /// also staging deletions) so a folder roll-up can't leave some of the set
 /// unstaged. `--` blocks option parsing; literal mode also blocks pathspec magic.

@@ -4,16 +4,20 @@ import { basename } from "@/lib/paths";
 import { isMac, isWindows } from "@/lib/platform";
 import {
   ClockIcon,
+  CompareIcon,
   CopyIcon,
+  ExternalLinkIcon,
   FileTextIcon,
   FolderIcon,
   RefreshIcon,
+  StashIcon,
   TrashIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 import { anchoredIgnorePath, ignorePatternChoices } from "@/features/changes/ignorePatterns";
+import { uncommittedFileMenuActions } from "@/features/changes/uncommittedFileMenu";
 import { previewConfirm } from "./previewConfirm";
 
 const revealLabel = isMac ? "Show in Finder" : isWindows ? "Show in Explorer" : "Show in file manager";
@@ -30,6 +34,11 @@ export function FileContextMenu() {
   const previewDiscardFile = useRepo((s) => s.previewDiscardFile);
   const appendIgnorePattern = useRepo((s) => s.appendIgnorePattern);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
+  const openPathDefault = useRepo((s) => s.openPathDefault);
+  const openPathDifftool = useRepo((s) => s.openPathDifftool);
+  const stopTracking = useRepo((s) => s.stopTracking);
+  const createWorkingTreePatch = useRepo((s) => s.createWorkingTreePatch);
+  const stashFile = useRepo((s) => s.stashFile);
   const worktreeDiffersFromCommit = useRepo((s) => s.worktreeDiffersFromCommit);
   const restorePathFromCommit = useRepo((s) => s.restorePathFromCommit);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
@@ -114,8 +123,9 @@ export function FileContextMenu() {
   const untracked = entry?.status === "U";
   const renamed = entry?.status === "R";
   const fileGuard = fileWriteGuard(entry, changes);
+  const deferred = uncommittedFileMenuActions(entry);
 
-  // Working-tree rows (`discard` set): ADR 0002 layout.
+  // Working-tree rows (`discard` set): ADR 0002 layout + GL-337 deferred verbs.
   if (discard) {
     const { staged } = discard;
     // Ignore… is offered on every working-tree row, staged or not — it already
@@ -183,6 +193,51 @@ export function FileContextMenu() {
       });
     }
 
+    if (deferred.stashFile) {
+      items.push({
+        label: "Stash this file",
+        icon: <StashIcon className="h-4 w-4" />,
+        sep: items.length > 0,
+        disabled: !!fileGuard,
+        disabledReason: fileGuard ?? undefined,
+        onClick: () => {
+          close();
+          requestConfirm({
+            title: `Stash ${fileName}?`,
+            message:
+              "Only this file’s staged, unstaged, and untracked changes are stashed. Other files stay put.",
+            confirmLabel: "Stash file",
+            onConfirm: () => {
+              void stashFile(path);
+            },
+          });
+        },
+      });
+    }
+
+    if (deferred.stopTracking) {
+      items.push({
+        label: "Stop tracking",
+        icon: <TrashIcon className="h-4 w-4" />,
+        danger: true,
+        disabled: !!fileGuard,
+        disabledReason: fileGuard ?? undefined,
+        onClick: () => {
+          close();
+            requestConfirm({
+            title: `Stop tracking ${fileName}?`,
+            message:
+              "Git will forget this path but leave the file on disk. The removal is staged — commit to finish, or discard the staged deletion to undo. If unique staged content isn’t also on disk, Git will refuse rather than drop it.",
+            confirmLabel: "Stop tracking",
+            danger: true,
+            onConfirm: () => {
+              void stopTracking(path);
+            },
+          });
+        },
+      });
+    }
+
     if (showIgnore) {
       items.push({
         label: "Ignore…",
@@ -192,25 +247,57 @@ export function FileContextMenu() {
       });
     }
 
-    items.push(
-      {
-        label: "Open file",
+    if (deferred.createPatch) {
+      items.push({
+        label: "Create patch",
         icon: <FileTextIcon className="h-4 w-4" />,
-        sep: true,
         onClick: () => {
           close();
-          requestOpenRepoFile(path);
+          void createWorkingTreePatch(path);
         },
+      });
+    }
+
+    items.push({
+      label: "Open file",
+      icon: <FileTextIcon className="h-4 w-4" />,
+      sep: true,
+      onClick: () => {
+        close();
+        requestOpenRepoFile(path);
       },
-      {
-        label: revealLabel,
-        icon: <FolderIcon className="h-4 w-4" />,
+    });
+
+    if (deferred.openDefaultApp) {
+      items.push({
+        label: "Open with Default Application",
+        icon: <ExternalLinkIcon className="h-4 w-4" />,
         onClick: () => {
           close();
-          void revealInFileManager(path);
+          void openPathDefault(path);
         },
+      });
+    }
+
+    if (deferred.openDiffTool) {
+      items.push({
+        label: "Open Diff Tool",
+        icon: <CompareIcon className="h-4 w-4" />,
+        onClick: () => {
+          close();
+          void openPathDifftool(path);
+        },
+      });
+    }
+
+    items.push({
+      label: revealLabel,
+      icon: <FolderIcon className="h-4 w-4" />,
+      onClick: () => {
+        close();
+        void revealInFileManager(path);
       },
-    );
+    });
 
     if (showHistory) {
       items.push({
@@ -237,7 +324,7 @@ export function FileContextMenu() {
     }
 
     items.push(...copyCluster("file"));
-    return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
+    return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={260} />;
   }
 
   // Committed file menu (ADR 0003): Restore… then open / reveal / history / copy.
