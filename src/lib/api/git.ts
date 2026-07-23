@@ -1368,6 +1368,18 @@ export const gitApi = {
   revealInFileManager: (path: string, file: string) =>
     invoke<string>("reveal_in_file_manager", { path, file }),
 
+  /** ADR 0003: true when restoring `file` from `commitOid` would change on-disk bytes. */
+  worktreeDiffersFromCommit: (path: string, commitOid: string, file: string) =>
+    invoke<boolean>("worktree_differs_from_commit", { path, commitOid, file }),
+
+  /** ADR 0003: true when `file` has a restorable (non-gitlink) blob at `commitOid`. */
+  commitPathIsRestorable: (path: string, commitOid: string, file: string) =>
+    invoke<boolean>("commit_path_is_restorable", { path, commitOid, file }),
+
+  /** ADR 0003: restore one path into the worktree from a commit (does not stage). */
+  restorePathFromCommit: (path: string, commitOid: string, file: string) =>
+    invoke<string>("restore_path_from_commit", { path, commitOid, file }),
+
   stageAll: (path: string) => invoke<string>("stage_all", { path }),
 
   unstageAll: (path: string) => invoke<string>("unstage_all", { path }),

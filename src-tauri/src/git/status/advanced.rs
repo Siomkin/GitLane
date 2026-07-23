@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use git2::{IndexEntryExtendedFlag, Repository, SubmoduleIgnore, SubmoduleStatus};
 
 use crate::git::types::{
-    AdvancedRepoState, FileAdvancedState, FileChange, LfsState, SparseCheckoutState, SubmoduleState,
+    AdvancedRepoState, FileAdvancedState, FileChange, LfsState, SparseCheckoutState,
+    SubmoduleState, ADVANCED_KIND_SPARSE, ADVANCED_KIND_SUBMODULE,
 };
 
 pub(super) const MAX_GITATTRIBUTES_BYTES: usize = 256 * 1024;
@@ -48,12 +49,12 @@ pub(super) fn annotate_advanced_files(
     for change in changes {
         if let Some(message) = submodule_messages.get(change.path.as_str()) {
             change.advanced = Some(FileAdvancedState {
-                kind: "submodule".to_string(),
+                kind: ADVANCED_KIND_SUBMODULE.to_string(),
                 message: message.clone(),
             });
         } else if sparse_paths.contains(change.path.as_str()) {
             change.advanced = Some(FileAdvancedState {
-                kind: "sparse".to_string(),
+                kind: ADVANCED_KIND_SPARSE.to_string(),
                 message: "Outside sparse checkout".to_string(),
             });
         }

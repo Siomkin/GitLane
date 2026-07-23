@@ -12,6 +12,7 @@ mod operands;
 mod patches;
 mod recovery;
 mod remotes;
+mod restore;
 mod staging;
 mod stashes;
 mod support;

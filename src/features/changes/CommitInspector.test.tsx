@@ -148,4 +148,62 @@ describe("CommitInspector", () => {
     expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
   });
+
+  it("opens the file menu with Restore for a modified commit file", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+    });
+    render(<CommitInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("a.ts") });
+    expect(useUi.getState().fileMenu).toEqual(
+      expect.objectContaining({
+        path: "src/a.ts",
+        restore: { commitOid: "c1" },
+      }),
+    );
+  });
+
+  it("omits Restore for a deleted commit file", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [{ path: "gone.ts", status: "D", add: 0, del: 1, binary: false }],
+    });
+    render(<CommitInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("gone.ts") });
+    const menu = useUi.getState().fileMenu;
+    expect(menu?.path).toBe("gone.ts");
+    expect(menu?.restore).toBeUndefined();
+  });
+
+  it("omits Restore for a submodule gitlink row", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [
+        {
+          path: "vendor/sub",
+          status: "A",
+          add: 0,
+          del: 0,
+          binary: false,
+          advanced: { kind: "submodule", message: "Submodule gitlink" },
+        },
+      ],
+    });
+    render(<CommitInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("sub") });
+    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+  });
 });

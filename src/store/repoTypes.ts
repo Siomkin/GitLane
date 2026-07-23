@@ -669,6 +669,13 @@ export interface RepoState {
   appendIgnorePattern: (pattern: string, local?: boolean) => Promise<void>;
   /** Reveal a repo-relative path in the OS file manager. */
   revealInFileManager: (path: string) => Promise<void>;
+  /** ADR 0003: true when restoring would change on-disk bytes. */
+  worktreeDiffersFromCommit: (commitOid: string, path: string) => Promise<boolean>;
+  /** ADR 0003: true when `path` has a restorable (non-gitlink) blob at `commitOid`.
+   * The merged-selection surface probes the selection tip before offering Restore. */
+  commitPathIsRestorable: (commitOid: string, path: string) => Promise<boolean>;
+  /** ADR 0003: restore one path into the worktree from a commit (does not stage). */
+  restorePathFromCommit: (commitOid: string, path: string) => Promise<void>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
   commit: (summary: string, description: string, amend: boolean) => Promise<void>;

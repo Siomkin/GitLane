@@ -7,6 +7,7 @@ import {
   CopyIcon,
   FileTextIcon,
   FolderIcon,
+  RefreshIcon,
   TrashIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
@@ -22,18 +23,21 @@ export function FileContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
+  const showToast = useUi((s) => s.showToast);
   const discardFile = useRepo((s) => s.discardFile);
   const openFileHistory = useRepo((s) => s.openFileHistory);
   const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
   const previewDiscardFile = useRepo((s) => s.previewDiscardFile);
   const appendIgnorePattern = useRepo((s) => s.appendIgnorePattern);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
+  const worktreeDiffersFromCommit = useRepo((s) => s.worktreeDiffersFromCommit);
+  const restorePathFromCommit = useRepo((s) => s.restorePathFromCommit);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const changes = useRepo((s) => s.changes);
   if (!menu) return null;
 
-  const { path, dir, discard, working } = menu;
+  const { path, dir, discard, restore, working } = menu;
   const fileName = basename(path);
   // Absolute path = repo root + repo-relative path (workdir has no trailing slash).
   const fullPath = workdir ? `${workdir.replace(/\/+$/, "")}/${path}` : path;
@@ -43,11 +47,15 @@ export function FileContextMenu() {
     void navigator.clipboard?.writeText(text);
   };
 
+  // The copy options carry no glyph of their own; reserve the same icon column
+  // (w-4 + gap) so their labels align with the icon'd action rows above rather
+  // than sitting flush against the panel's left padding.
+  const copyIndent = <span className="block h-4 w-4" aria-hidden />;
   const copyCluster = (kind: "file" | "folder"): MenuItem[] => [
     { label: "Copy", header: true, sep: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
-    { label: kind === "folder" ? "Folder name" : "File name", onClick: () => copy(fileName) },
-    { label: "Relative path", onClick: () => copy(path) },
-    { label: "Full path", onClick: () => copy(fullPath) },
+    { label: kind === "folder" ? "Folder name" : "File name", icon: copyIndent, onClick: () => copy(fileName) },
+    { label: "Relative path", icon: copyIndent, onClick: () => copy(path) },
+    { label: "Full path", icon: copyIndent, onClick: () => copy(fullPath) },
   ];
 
   const applyIgnore = (pattern: string, local: boolean) => {
@@ -78,7 +86,8 @@ export function FileContextMenu() {
     return items;
   };
 
-  // Directory header (Tree view): Ignore folder on working-tree dirs, else copy-only.
+  // Directory header (Tree view): Ignore folder on working-tree dirs; otherwise
+  // Reveal + Copy (ADR 0003 committed dirs — no recursive Restore).
   if (dir) {
     const dirItems: MenuItem[] = [];
     if (working) {
@@ -88,6 +97,15 @@ export function FileContextMenu() {
         submenu: ignoreSubmenu({ dir: true }),
       });
     }
+    dirItems.push({
+      label: revealLabel,
+      icon: <FolderIcon className="h-4 w-4" />,
+      sep: working,
+      onClick: () => {
+        close();
+        void revealInFileManager(path);
+      },
+    });
     dirItems.push(...copyCluster("folder"));
     return <MenuPanel left={menu.x} top={menu.y} items={dirItems} onClose={close} width={240} />;
   }
@@ -219,11 +237,48 @@ export function FileContextMenu() {
     return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
   }
 
-  // Committed / copy-leaning menu: open, reveal, history, copy.
-  const items: MenuItem[] = [
+  // Committed file menu (ADR 0003): Restore… then open / reveal / history / copy.
+  const items: MenuItem[] = [];
+  if (restore) {
+    const { commitOid } = restore;
+    const shortOid = commitOid.slice(0, 7);
+    items.push({
+      label: "Restore from this commit…",
+      icon: <RefreshIcon className="h-4 w-4" />,
+      danger: true,
+      onClick: () => {
+        close();
+        void (async () => {
+          try {
+            const wouldChange = await worktreeDiffersFromCommit(commitOid, path);
+            if (!wouldChange) {
+              // The worktree already matches the commit blob, so restoring would
+              // rewrite identical bytes — skip the write and say so, rather than a
+              // misleading "Restored…" for a no-op.
+              showToast(`${path} already matches ${shortOid}`);
+              return;
+            }
+            requestConfirm({
+              title: `Restore ${path}?`,
+              message: `Replace the on-disk file with the version from ${shortOid}. Local edits to this path will be lost.`,
+              confirmLabel: "Restore",
+              danger: true,
+              onConfirm: () => {
+                void restorePathFromCommit(commitOid, path);
+              },
+            });
+          } catch (error) {
+            showToast(String(error), "error");
+          }
+        })();
+      },
+    });
+  }
+  items.push(
     {
       label: "Open file",
       icon: <FileTextIcon className="h-4 w-4" />,
+      sep: items.length > 0,
       onClick: () => {
         close();
         requestOpenRepoFile(path);
@@ -259,7 +314,7 @@ export function FileContextMenu() {
       ],
     },
     ...copyCluster("file"),
-  ];
+  );
 
   return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
 }

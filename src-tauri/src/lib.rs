@@ -1028,6 +1028,45 @@ async fn reveal_in_file_manager(path: String, file: String) -> Result<String, St
     blocking(move || git::write::reveal_in_file_manager(&path, &file)).await
 }
 
+/// ADR 0003: true when restoring `file` from `commit_oid` would change on-disk bytes.
+#[tauri::command]
+async fn worktree_differs_from_commit(
+    path: String,
+    commit_oid: String,
+    file: String,
+) -> Result<bool, String> {
+    blocking(move || git::write::worktree_differs_from_commit(&path, &commit_oid, &file)).await
+}
+
+/// ADR 0003: true when `file` has a restorable (non-gitlink) blob at `commit_oid`.
+/// Lets the merged-selection surface probe the selection-tip commit before
+/// offering Restore for a union path.
+#[tauri::command]
+async fn commit_path_is_restorable(
+    path: String,
+    commit_oid: String,
+    file: String,
+) -> Result<bool, String> {
+    blocking(move || {
+        Ok(git::write::commit_path_is_restorable(
+            &path,
+            &commit_oid,
+            &file,
+        ))
+    })
+    .await
+}
+
+/// ADR 0003: restore one path into the worktree from a commit (does not stage).
+#[tauri::command]
+async fn restore_path_from_commit(
+    path: String,
+    commit_oid: String,
+    file: String,
+) -> Result<String, String> {
+    blocking(move || git::write::restore_path_from_commit(&path, &commit_oid, &file)).await
+}
+
 #[tauri::command]
 async fn stage_all(path: String) -> Result<String, String> {
     blocking(move || git::write::stage_all(&path)).await
@@ -2107,6 +2146,9 @@ pub fn run() {
             discard_file,
             append_ignore_pattern,
             reveal_in_file_manager,
+            worktree_differs_from_commit,
+            commit_path_is_restorable,
+            restore_path_from_commit,
             stage_all,
             unstage_all,
             commit,

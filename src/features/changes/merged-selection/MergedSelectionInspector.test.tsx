@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -103,5 +104,79 @@ describe("MergedSelectionInspector", () => {
 
     expect(screen.getByText("Loading merged diff…")).toBeInTheDocument();
     expect(screen.queryByText("review all →")).not.toBeInTheDocument();
+  });
+
+  it("opens Restore from the newest selected commit when the tip owns the path", async () => {
+    const user = userEvent.setup();
+    // The tip commit (c3) has a restorable blob at the path.
+    const probe = vi.fn().mockResolvedValue(true);
+    useRepo.setState({
+      selectedCommits: ["c3", "c1"],
+      selectionDiff: {
+        commits: ["c3", "c1"],
+        files: [file("src/app.ts", "M")],
+        loading: false,
+        error: null,
+      },
+      commitPathIsRestorable: probe,
+    });
+    render(<MergedSelectionInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("app.ts") });
+    await waitFor(() =>
+      expect(useUi.getState().fileMenu).toEqual(
+        expect.objectContaining({ path: "src/app.ts", restore: { commitOid: "c3" } }),
+      ),
+    );
+    expect(probe).toHaveBeenCalledWith("c3", "src/app.ts");
+  });
+
+  it("omits Restore when the selection tip doesn't own the path", async () => {
+    const user = userEvent.setup();
+    // Non-contiguous selection where the path isn't present at the tip: the
+    // per-file probe fails closed, so the menu opens without a Restore verb.
+    const probe = vi.fn().mockResolvedValue(false);
+    useRepo.setState({
+      selectedCommits: ["c3", "c1"],
+      selectionDiff: {
+        commits: ["c3", "c1"],
+        files: [file("src/app.ts", "M")],
+        loading: false,
+        error: null,
+      },
+      commitPathIsRestorable: probe,
+    });
+    render(<MergedSelectionInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("app.ts") });
+    await waitFor(() =>
+      expect(useUi.getState().fileMenu).toEqual(
+        expect.objectContaining({ path: "src/app.ts" }),
+      ),
+    );
+    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+    expect(probe).toHaveBeenCalledWith("c3", "src/app.ts");
+  });
+
+  it("skips the probe entirely for a deleted-in-union path", async () => {
+    const user = userEvent.setup();
+    const probe = vi.fn().mockResolvedValue(true);
+    useRepo.setState({
+      selectedCommits: ["c3", "c1"],
+      selectionDiff: {
+        commits: ["c3", "c1"],
+        files: [file("src/gone.ts", "D")],
+        loading: false,
+        error: null,
+      },
+      commitPathIsRestorable: probe,
+    });
+    render(<MergedSelectionInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("gone.ts") });
+    await waitFor(() => expect(useUi.getState().fileMenu?.path).toBe("src/gone.ts"));
+    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+    // A "D" row can never restore, so the frontend never round-trips to probe it.
+    expect(probe).not.toHaveBeenCalled();
   });
 });

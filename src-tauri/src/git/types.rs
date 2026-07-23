@@ -590,13 +590,19 @@ pub struct DiscardAllPreview {
 }
 
 /// Per-path advanced repository state that would be misleading as a plain file
-/// change.
+/// change. `kind` is one of the discriminants below, matched by the frontend to
+/// suppress write verbs (e.g. Restore) that don't apply to the path.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileAdvancedState {
     pub kind: String,
     pub message: String,
 }
+
+/// `FileAdvancedState::kind` for a submodule gitlink.
+pub const ADVANCED_KIND_SUBMODULE: &str = "submodule";
+/// `FileAdvancedState::kind` for a path outside the sparse checkout.
+pub const ADVANCED_KIND_SPARSE: &str = "sparse";
 
 /// A single changed file in a diff (working tree, index, or a commit).
 /// `status` is a one-letter git code: M(odified) A(dded) D(eleted) R(enamed)

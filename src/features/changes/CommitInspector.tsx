@@ -8,6 +8,7 @@ import { CommitBody } from "./CommitBody";
 import { CommitPeople, personVisual } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { ChangedFileList, FileViewToggle } from "./file-list";
+import { canRestoreCommittedFile } from "./committedFileMenu";
 import { useInspectorCommit } from "./useInspectorCommit";
 
 /** Inspector for a selected commit — metadata, the (collapsible) message,
@@ -106,9 +107,16 @@ export function CommitInspector() {
           menuActivePath={!fileMenu?.discard ? fileMenu?.path ?? null : null}
           onSelect={(path) => selectFile(path, "commit")}
           onContextMenu={(path, e) => {
-            // Committed files: copy-only menu (no working-tree discard).
             e.preventDefault();
-            openFileMenu({ x: e.clientX, y: e.clientY, path });
+            const file = commitFiles.find((entry) => entry.path === path);
+            openFileMenu({
+              x: e.clientX,
+              y: e.clientY,
+              path,
+              ...(selectedOid && canRestoreCommittedFile(file, selectedOid)
+                ? { restore: { commitOid: selectedOid } }
+                : {}),
+            });
           }}
           onDirContextMenu={(dirPath, e) => {
             e.preventDefault();

@@ -1,8 +1,10 @@
 //! Shared libgit2 diff-to-DTO conversion helpers.
 
-use git2::{Delta, Diff, DiffOptions, Patch};
+use git2::{Delta, Diff, DiffOptions, FileMode, Patch};
 
-use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff};
+use crate::git::types::{
+    DiffHunk, DiffLine, FileAdvancedState, FileChange, FileDiff, ADVANCED_KIND_SUBMODULE,
+};
 
 /// Map a `git2` delta status to the one-letter code the frontend expects.
 pub(super) fn status_letter(status: Delta) -> &'static str {
@@ -236,6 +238,10 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             })
             .flatten();
 
+        // Gitlink (submodule) sides use FileMode::Commit. Tag them so committed
+        // menus can hide Restore (ADR 0003) the same way working-tree rows do.
+        let advanced = gitlink_advanced(&delta);
+
         out.push(FileChange {
             path,
             status,
@@ -244,9 +250,22 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             binary,
             line_count_truncated: false,
             previous_path,
-            advanced: None,
+            advanced,
         });
     }
 
     Ok(out)
+}
+
+fn gitlink_advanced(delta: &git2::DiffDelta<'_>) -> Option<FileAdvancedState> {
+    let new_mode = delta.new_file().mode();
+    let old_mode = delta.old_file().mode();
+    if new_mode == FileMode::Commit || old_mode == FileMode::Commit {
+        Some(FileAdvancedState {
+            kind: ADVANCED_KIND_SUBMODULE.to_string(),
+            message: "Submodule gitlink".to_string(),
+        })
+    } else {
+        None
+    }
 }
