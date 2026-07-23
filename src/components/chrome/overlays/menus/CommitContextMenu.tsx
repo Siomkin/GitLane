@@ -73,9 +73,9 @@ export function CommitContextMenu() {
     const oldest = orderedSel[orderedSel.length - 1];
     const newest = orderedSel[0];
     const squash = getSquashEligibility(graph, orderedSel);
-    // Same group order as the single-commit menu: integrate → create → compare
-    // → copy. Each group is separated so a user who learned one menu reads the
-    // other at a glance.
+    // Same relative order as the single-commit menu (integrate → compare → copy),
+    // each group separated so a user who learned one menu reads the other at a
+    // glance. Batch keeps Copy N SHAs — multi-select has no right-panel copy.
     const items: MenuItem[] = [
       {
         label: `Cherry-pick ${n} commits onto ${cur}`,
@@ -170,11 +170,20 @@ export function CommitContextMenu() {
   ];
 
   // Integrate: cherry-pick/revert stay flat (the everyday commit verbs); merge
-  // and rebase onto a raw commit are the rare power move, folded away.
-  const integrate: MenuItem[] = [
-    { label: `Cherry-pick onto ${cur}`, icon: <BranchIcon className="h-4 w-4" />, sep: true, onClick: () => act(() => cherryPickCommit(sha)) },
-    { label: "Revert commit", onClick: () => act(() => revertCommit(sha)) },
-    {
+  // and rebase onto a raw commit are the rare power move, folded away. The
+  // "onto current" ops (cherry-pick/merge/rebase) are hidden when the target is
+  // HEAD — they're no-ops there, and cherry-picking HEAD would leave git in an
+  // empty cherry-pick sequence. Revert stays (reverting HEAD is meaningful). The
+  // branch menu applies the same gate, so the HEAD-commit and current-branch
+  // menus stay identical.
+  const isHeadCommit = graph?.head === sha;
+  const integrate: MenuItem[] = [];
+  if (!isHeadCommit) {
+    integrate.push({ label: `Cherry-pick onto ${cur}`, onClick: () => act(() => cherryPickCommit(sha)) });
+  }
+  integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(sha)) });
+  if (!isHeadCommit) {
+    integrate.push({
       label: "Integrate into current",
       note: `into ${cur}`,
       submenu: [
@@ -191,8 +200,9 @@ export function CommitContextMenu() {
             }),
         },
       ],
-    },
-  ];
+    });
+  }
+  integrate[0] = { ...integrate[0], sep: true, icon: <BranchIcon className="h-4 w-4" /> };
 
   // Create: branch stays flat (the common one); the rarer create targets fold
   // into one submenu.

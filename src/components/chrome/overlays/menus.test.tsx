@@ -424,7 +424,7 @@ describe("BranchContextMenu", () => {
   it("carries the commit menu's actions plus a forge link for a published branch", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
-      branches: [localBranch("main"), { ...localBranch("feature"), upstream: "origin/feature" }],
+      branches: [localBranch("main"), { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin" }],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
@@ -448,6 +448,36 @@ describe("BranchContextMenu", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
       branches: [localBranch("main"), localBranch("feature")], // no upstream → unpublished
+      forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: /View on/ })).not.toBeInTheDocument();
+  });
+
+  it("links the forge to the upstream's branch, not the local ref name", async () => {
+    const opened: string[] = [];
+    vi.stubGlobal("open", (url: string) => { opened.push(url); return null; });
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      // Local `feature-x` tracks origin/main → its forge page is /tree/main.
+      branches: [localBranch("main"), { ...localBranch("feature-x"), upstream: "origin/main", upstreamRemote: "origin" }],
+      forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature-x", isCurrent: false } });
+    render(<BranchContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "View on GitHub" }));
+    expect(opened[0]).toBe("https://github.com/o/r/tree/main");
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the forge link when the upstream is stale (remote branch deleted → would 404)", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      branches: [
+        localBranch("main"),
+        { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin", sync: { status: "staleUpstream", upstream: "origin/feature", ahead: 0, behind: 0 } },
+      ],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
@@ -824,11 +854,11 @@ describe("BranchContextMenu", () => {
     expect(prompt?.defaultValue).toBe("origin/main");
   });
 
-  // `git branch -D` refuses a branch checked out in a linked worktree, so the
-  // branch menu keeps the branch-scoped entry points — Open worktree + the
-  // "Check out here…" reclaim — while worktree management (copy path, remove,
-  // hand off) lives only on the worktree pill.
-  it("promotes Open worktree + Check out here… for a linked-worktree branch, without a management group", () => {
+  // A branch checked out in a linked worktree shows as a branch pill with no
+  // separate worktree pill, so the branch menu is the only place to manage that
+  // worktree: Open worktree + Check out here… on top, and a Worktree ▸ group with
+  // copy-path / hand-off / remove.
+  it("keeps worktree management on the branch menu for a linked-worktree branch", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("feature")],
@@ -843,15 +873,16 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
     // Checkout stays hidden: offering it would only produce a git worktree error.
     expect(screen.queryByRole("menuitem", { name: "Checkout feature" })).not.toBeInTheDocument();
-    // No worktree-management group; those verbs live on the worktree pill.
-    expect(screen.queryByRole("menuitem", { name: "Worktree" })).not.toBeInTheDocument();
     // Worktree creation is under Create.
     openGroup("Create");
     expect(screen.getByRole("menuitem", { name: "New worktree here…" })).toBeInTheDocument();
+    // The Worktree fan carries copy-path / hand-off / remove.
+    openGroup("Worktree");
+    expect(screen.getByRole("menuitem", { name: "Copy worktree path" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Hand off to…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
     // The reclaim entry hands the branch off from its holding worktree.
     fireEvent.click(screen.getByRole("menuitem", { name: "Check out here…" }));
-    // The dedicated hand-off dialog opens on the branch's source worktree; its
-    // dirtiness is unknown from here (it isn't the open repo).
     expect(useUi.getState().handoff).toMatchObject({
       branch: "feature",
       sourcePath: "/work/repo-feature",
@@ -875,6 +906,7 @@ describe("BranchContextMenu", () => {
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    openGroup("Worktree");
     fireEvent.click(screen.getByRole("menuitem", { name: "Check out here…" }));
     expect(useUi.getState().handoff).toEqual({
       branch: "feature",

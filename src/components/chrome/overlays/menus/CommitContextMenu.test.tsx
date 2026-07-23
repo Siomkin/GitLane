@@ -294,6 +294,23 @@ describe("CommitContextMenu (single commit)", () => {
     expect(screen.queryByRole("menuitem", { name: "Review all changes" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /^Copy/ })).not.toBeInTheDocument();
   });
+
+  it("hides the onto-current ops on the HEAD commit (self-ops), keeping Revert", () => {
+    openSingle("c1abcdef"); // c1abcdef is graph.head
+    render(<CommitContextMenu />);
+    // Cherry-pick/merge/rebase onto HEAD are no-ops (cherry-pick would leave an
+    // empty sequence), so they're hidden; Revert stays.
+    expect(screen.queryByRole("menuitem", { name: /^Cherry-pick/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Integrate into current" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Revert commit" })).toBeInTheDocument();
+  });
+
+  it("offers the onto-current ops on a non-HEAD commit", () => {
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+    expect(screen.getByRole("menuitem", { name: "Cherry-pick onto main" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Integrate into current" })).toBeInTheDocument();
+  });
 });
 
 describe("CommitContextMenu (batch selection)", () => {

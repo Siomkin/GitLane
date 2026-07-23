@@ -3,7 +3,8 @@ import { defaultPublishTarget } from "@/lib/branchSync";
 import { branchWebUrl } from "@/lib/forgeUrls";
 import { openExternalUrl } from "@/lib/openExternal";
 import { validateBranchName } from "@/lib/refName";
-import { startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { trimTrailingSlash } from "@/lib/worktrees";
+import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
@@ -28,6 +29,7 @@ import {
   MAIN_WORKTREE_DELETE_DISABLED_REASON,
 } from "./branchContextMenuPolicy";
 import { useBranchFastForwardProbe } from "./useBranchFastForwardProbe";
+import { useRemoveWorktree } from "./useRemoveWorktree";
 
 export function BranchContextMenu() {
   const menu = useUi((s) => s.contextMenu);
@@ -68,6 +70,7 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
+  const requestRemoveWorktree = useRemoveWorktree();
   const run = useBranchOp();
 
   const policy = menu
@@ -136,14 +139,26 @@ export function BranchContextMenu() {
     act(() => pushBranch(b));
   };
 
-  // Forge links for the branch and its tip — shown only on a recognised forge for
-  // a *published* branch (an unpublished branch or unknown host would 404). The
-  // forge branch name drops the remote prefix for a remote-tracking ref.
+  // Forge link for the branch — shown only on a recognised forge for a
+  // *published* branch (an unpublished branch or unknown host would 404). The
+  // forge branch name is the one that exists on the remote, NOT the local ref:
+  // for a remote-tracking ref, drop the remote prefix; for a local branch, use
+  // its upstream's branch (a local `feature-x` tracking `origin/main` lives at
+  // `main` on the forge, never `feature-x`). A `.`-remote upstream (tracking
+  // another local branch) has no forge page.
   const knownForge = forge?.kind != null;
   const forgeName = forge?.forge ?? null;
-  const published = upstream != null || isRemote;
-  const forgeBranchName = isRemote ? remoteDeleteTarget?.branch ?? null : upstream ? b : null;
-  const branchUrl = knownForge && published && forgeBranchName ? branchWebUrl(forge, forgeBranchName) : null;
+  const upstreamRemote = info?.upstreamRemote ?? null;
+  const localUpstreamBranch =
+    upstreamRemote && upstreamRemote !== "." && upstream && upstream.startsWith(`${upstreamRemote}/`)
+      ? upstream.slice(upstreamRemote.length + 1)
+      : null;
+  const forgeBranchName = isRemote ? remoteDeleteTarget?.branch ?? null : localUpstreamBranch;
+  // A stale upstream means the remote branch was deleted — the forge page would
+  // 404, so don't offer the link. Remote branches have no sync state (trivially
+  // not stale). Local branches with a live upstream track an existing remote ref.
+  const upstreamStale = info?.sync?.status === "staleUpstream";
+  const branchUrl = knownForge && forgeBranchName && !upstreamStale ? branchWebUrl(forge, forgeBranchName) : null;
 
   // The branch is named once, here — rows below never repeat it.
   const heading = (
@@ -175,41 +190,14 @@ export function BranchContextMenu() {
   } else if (isLocal) {
     top.push({ label: `Push ${b}`, icon: <PushIcon className="h-4 w-4" />, onClick: pushLocalBranch });
   }
+  // Open worktree stays a promoted one-click; the rest of worktree management is
+  // grouped in the Worktree fan below.
   if (existingWt) {
     top.push({
       label: "Open worktree",
       icon: <FolderIcon className="h-4 w-4 text-[color:var(--accent)]" />,
       onClick: () => { close(); void openWorktree(existingWt.path); },
     });
-    // The escape hatch: git refuses to check out a branch that another worktree
-    // holds, so plain "Checkout" is hidden — but the branch can still be *moved*
-    // here (detach it there, check it out here, carrying any uncommitted work).
-    // That matters most when the holder is a stale agent scratch worktree the
-    // user never wants to open. Runs through the hand-off dialog with the open
-    // worktree preselected, so the multi-step move stays confirmable + visible.
-    // A prunable holder (its directory is gone) can't run the hand-off's
-    // detach step — git would fail inside the missing worktree, so don't
-    // offer a dead click.
-    if (handoffHere) {
-      top.push({
-        label: "Check out here…",
-        icon: <CheckIcon className="h-4 w-4" />,
-        onClick: () => {
-          close();
-          startWorktreeHandoff({
-            branch: b,
-            sourcePath: existingWt.path,
-            worktrees,
-            // The branch lives in another worktree, not the open repo, so its
-            // uncommitted state isn't known here — carry conditionally.
-            sourceChanges: null,
-            destPath: handoffHere.value,
-            openHandoff,
-            onNoDestinations: () => showToast("No worktree to check out into.", "error"),
-          });
-        },
-      });
-    }
   }
   if (!isCurrent && !existingWt) {
     top.push({
@@ -233,25 +221,36 @@ export function BranchContextMenu() {
   // verbs (fast-forward / merge / rebase onto ‹b›) fold into one submenu. Shown
   // whenever there's a current branch and a tip, so the branch pill matches the
   // commit menu on the same row (including on the current branch). ----
+  // The "onto current" ops are hidden when the tip is HEAD (the branch is
+  // current, or points at HEAD) — they'd be no-ops there, and cherry-picking HEAD
+  // leaves git in an empty cherry-pick sequence. Revert stays. Same gate as the
+  // commit menu at HEAD, so the two menus stay identical on the current branch.
   const integrate: MenuItem[] = [];
   if (tip && cur) {
-    integrate.push({ label: `Cherry-pick onto ${cur}`, icon: <BranchIcon className="h-4 w-4" />, onClick: () => act(() => cherryPickCommit(tip)) });
+    const selfTarget = tip === headOid;
+    if (!selfTarget) {
+      integrate.push({ label: `Cherry-pick onto ${cur}`, onClick: () => act(() => cherryPickCommit(tip)) });
+    }
     integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(tip)) });
-    const integrateChildren: MenuItem[] = [];
-    if (canFf) integrateChildren.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
-    integrateChildren.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
-    integrateChildren.push({
-      label: `Rebase onto ${b}`,
-      onClick: () =>
-        confirmRebase({
-          source: cur,
-          onto: b,
-          needsCheckout: false,
-          requestConfirm,
-          proceed: () => act(() => rebaseOnto(cur, b)),
-        }),
-    });
-    integrate.push({ label: "Integrate into current", note: `into ${cur}`, submenu: integrateChildren });
+    if (!selfTarget) {
+      const integrateChildren: MenuItem[] = [];
+      if (canFf) integrateChildren.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
+      integrateChildren.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
+      integrateChildren.push({
+        label: `Rebase onto ${b}`,
+        onClick: () =>
+          confirmRebase({
+            source: cur,
+            onto: b,
+            needsCheckout: false,
+            requestConfirm,
+            proceed: () => act(() => rebaseOnto(cur, b)),
+          }),
+      });
+      integrate.push({ label: "Integrate into current", note: `into ${cur}`, submenu: integrateChildren });
+    }
+    // The section's first row carries the group glyph, matching the commit menu.
+    integrate[0] = { ...integrate[0], icon: <BranchIcon className="h-4 w-4" /> };
   }
 
   // ---- create: branch creation is a flat row; the rarer create targets and the
@@ -306,6 +305,64 @@ export function BranchContextMenu() {
       icon: <ExternalLinkIcon className="h-4 w-4" />,
       onClick: () => { close(); openExternalUrl(branchUrl); },
     });
+  }
+
+  // ---- worktree (branch-only): a branch checked out in a linked worktree shows
+  // as a branch pill with no separate worktree pill, so the worktree-management
+  // actions — reclaim the branch here, copy its path, hand off, remove — are
+  // grouped here (Open worktree stays promoted on top as the one-click). ----
+  const worktree: MenuItem[] = [];
+  if (existingWt) {
+    const existingWtInfo = worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(existingWt.path)) ?? null;
+    const children: MenuItem[] = [];
+    // The escape hatch: git refuses to check out a branch another worktree holds,
+    // so plain Checkout is hidden — but the branch can be *moved* here (detach it
+    // there, check it out here) via the hand-off dialog with the open worktree
+    // preselected. A prunable holder can't run the detach step (no dead click).
+    if (handoffHere) {
+      children.push({
+        label: "Check out here…",
+        onClick: () =>
+          startWorktreeHandoff({
+            branch: b,
+            sourcePath: existingWt.path,
+            worktrees,
+            sourceChanges: null,
+            destPath: handoffHere.value,
+            openHandoff,
+            onNoDestinations: () => showToast("No worktree to check out into.", "error"),
+          }),
+      });
+    }
+    children.push({ label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } });
+    // Hand off only when the source can still run the detach step and a valid
+    // destination exists (bare / prunable worktrees are filtered out).
+    if (handoffSourceValid(worktrees, existingWt.path) && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
+      children.push({
+        label: "Hand off to…",
+        onClick: () =>
+          startWorktreeHandoff({
+            branch: b,
+            sourcePath: existingWt.path,
+            worktrees,
+            sourceChanges: null,
+            openHandoff,
+            onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
+          }),
+      });
+    }
+    // Git refuses to remove the main worktree, so only offer it for linked ones.
+    if (!existingWtInfo?.isMain) {
+      children.push({
+        label: "Remove worktree",
+        danger: true,
+        sep: true,
+        // Shares the worktree row menu's probe-then-confirm so a dirty worktree
+        // is warned about and force-removed on confirm (GL-296).
+        onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path, branch: b, head: existingWtInfo?.head ?? null, locked: existingWtInfo?.locked ?? false }),
+      });
+    }
+    worktree.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });
   }
 
   // ---- reset: a first-level, danger-toned submenu — kept at the same depth as
@@ -365,9 +422,11 @@ export function BranchContextMenu() {
     danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
   }
 
-  // Assemble with a separator at each section boundary.
+  // Assemble with a separator at each section boundary. Worktree management sits
+  // right after the top quick-actions — it's a common, important workflow, so it
+  // stays prominent near the top rather than buried at the bottom.
   const items: MenuItem[] = [...top];
-  for (const section of [integrate, create]) {
+  for (const section of [worktree, integrate, create]) {
     if (section.length) {
       section[0] = { ...section[0], sep: items.length > 0 };
       items.push(...section);

@@ -24,7 +24,7 @@ export interface CommitContextMenuPolicy {
   canRewordHead: boolean;
   /** Browser URL for this commit — non-null only when the commit is reachable
    * from a remote ref (an unpushed commit's link would 404) AND the forge has a
-   * web URL. Drives both "View on <forge>" and "Copy link to commit". */
+   * web URL. Drives the "View on <forge>" row. */
   forgeCommitUrl: string | null;
   /** Human forge label for the "View on <forge>" row (e.g. "GitHub"). */
   forgeName: string | null;
