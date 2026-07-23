@@ -20,7 +20,7 @@ export function CommitInspector() {
   const amendHeadMessage = useRepo((state) => state.amendHeadMessage);
   const openStackedReview = useUi((state) => state.openStackedReview);
   const openFileMenu = useUi((state) => state.openFileMenu);
-  const requestPrompt = useUi((state) => state.requestPrompt);
+  const requestEditCommitMessage = useUi((state) => state.requestEditCommitMessage);
   const fileMenu = useUi((state) => state.fileMenu);
   const showToast = useUi((state) => state.showToast);
   const view = useUi((state) => state.fileListView);
@@ -44,13 +44,9 @@ export function CommitInspector() {
   const reviewTitle = `Reviewing ${commitFiles.length} file${commitFiles.length === 1 ? "" : "s"} · ${selectedShortLabel}`;
   const editMessage = () => {
     if (!selected) return;
-    requestPrompt({
-      title: "Edit commit message",
+    requestEditCommitMessage({
       message: "This commit has not been pushed.",
-      placeholder: "Subject\n\nDescription",
       defaultValue: fullCommitMessage(selected.summary, selected.body),
-      multiline: true,
-      confirmLabel: "Update message",
       onSubmit: (value) => {
         const next = splitCommitMessage(value);
         void amendHeadMessage(next.summary, next.description).then(

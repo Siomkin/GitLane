@@ -62,6 +62,8 @@ export function CommitMessageEditor({
   onFieldsChange,
   amend,
   actions,
+  autoFocus,
+  selectOnFocus,
 }: {
   mode: ComposerMode;
   onModeChange: (mode: ComposerMode) => void;
@@ -74,6 +76,10 @@ export function CommitMessageEditor({
   amend: boolean;
   /** Right-aligned controls on the style-switch row (the Draft affordance). */
   actions?: ReactNode;
+  /** Focus the active mode's primary text field when the editor mounts. */
+  autoFocus?: boolean;
+  /** Select that field's seeded value on focus (used by reword). */
+  selectOnFocus?: boolean;
 }) {
   const conventional = mode === ComposerMode.Conventional;
   // A parsed type outside the dropdown list (e.g. `build`) stays selectable so
@@ -143,9 +149,11 @@ export function CommitMessageEditor({
                 </>
               )}
               <input
+                autoFocus={autoFocus}
                 aria-label="Commit summary"
                 value={fields.subject}
                 onChange={(event) => onFieldsChange({ subject: event.target.value })}
+                onFocus={selectOnFocus ? (event) => event.target.select() : undefined}
                 placeholder="short summary"
                 className="min-w-0 flex-1 bg-transparent text-[13px] text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
               />
@@ -167,9 +175,11 @@ export function CommitMessageEditor({
           </>
         ) : (
           <textarea
+            autoFocus={autoFocus}
             aria-label="Commit message"
             value={msg}
             onChange={(event) => onMsgChange(event.target.value)}
+            onFocus={selectOnFocus ? (event) => event.target.select() : undefined}
             placeholder={amend ? "Amended commit message" : "Commit message"}
             rows={3}
             className="block w-full resize-y bg-transparent px-2.5 py-2.5 text-[13px] leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"

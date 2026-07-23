@@ -25,6 +25,7 @@ export function CommitContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
+  const requestEditCommitMessage = useUi((s) => s.requestEditCommitMessage);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openRangeReview = useUi((s) => s.openRangeReview);
   const openCompare = useRepo((s) => s.openCompare);
@@ -271,7 +272,7 @@ export function CommitContextMenu() {
   // the first level so Reset sits at the same depth as it does on the branch menu.
   const danger: MenuItem[] = [];
   if (canRewordHead) {
-    danger.push({ label: "Edit commit message…", sep: true, onClick: () => requestPrompt({ title: "Edit commit message", message: `This commit has not been pushed: ${shortSha}.`, placeholder: "Subject\n\nDescription", defaultValue: fullCommitMessage(subject, body), multiline: true, confirmLabel: "Update message", onSubmit: (msg) => { const next = splitCommitMessage(msg); void run(() => amendHeadMessage(next.summary, next.description)); } }) });
+    danger.push({ label: "Edit commit message…", sep: true, onClick: () => requestEditCommitMessage({ message: `This commit has not been pushed: ${shortSha}.`, defaultValue: fullCommitMessage(subject, body), onSubmit: (msg) => { const next = splitCommitMessage(msg); void run(() => amendHeadMessage(next.summary, next.description)); } }) });
   }
   const resetMode = (mode: "soft" | "mixed" | "hard", label: string, message: string): MenuItem => ({
     label,

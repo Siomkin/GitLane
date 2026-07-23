@@ -304,6 +304,18 @@ export interface PromptRequest {
   onSubmit: (value: string) => void;
 }
 
+/** The selected local HEAD commit message being reworded. The dedicated
+ * dialog owns its local Message / Conventional draft; only the initial value
+ * and the final submit callback cross the store. */
+export interface EditCommitMessageRequest {
+  /** Optional helper line under the fixed "Edit commit message" title. */
+  message?: string;
+  /** The commit's current full message. */
+  defaultValue: string;
+  /** Run with the trimmed full message after the user confirms. */
+  onSubmit: (value: string) => void;
+}
+
 /** A freeform review ("local") comment pinned to a contiguous range of diff
  * lines. Session-only — never persisted; collected and bundled into the "hand to
  * agent" message. A single-line comment is just a range whose ends coincide. */
@@ -512,6 +524,8 @@ interface UiState {
   confirm: ConfirmRequest | null;
   /** Pending text-input modal (null = none open). */
   prompt: PromptRequest | null;
+  /** Pending local-HEAD commit-message editor (null = none open). */
+  editCommitMessage: EditCommitMessageRequest | null;
   /** Pending in-app GitHub sign-in modal (GL-106), null = none open. Carries the
    * initial host; the dialog owns host choice and run/progress state. */
   githubSignin: GithubSigninRequest | null;
@@ -702,6 +716,10 @@ interface UiState {
   requestPrompt: (req: PromptRequest) => void;
   closePrompt: () => void;
 
+  /** Open the local-HEAD commit-message editor. */
+  requestEditCommitMessage: (req: EditCommitMessageRequest) => void;
+  closeEditCommitMessage: () => void;
+
   /** Open the in-app GitHub sign-in modal for `host` (GL-106). */
   openGithubSignin: (host: string) => void;
   closeGithubSignin: () => void;
@@ -845,6 +863,7 @@ export const useUi = create<UiState>()(
   agentMessageBranch: null,
   confirm: null,
   prompt: null,
+  editCommitMessage: null,
   githubSignin: null,
   providerOauthSignin: null,
   handoff: null,
@@ -1069,6 +1088,7 @@ export const useUi = create<UiState>()(
       recoveryOpen: false,
       confirm: null,
       prompt: null,
+      editCommitMessage: null,
       // A hand-off intentionally switches to its destination while running and
       // keeps its result dialog. Every other repo-bound worktree flow is stale.
       handoff: s.handoffRunning ? s.handoff : null,
@@ -1184,6 +1204,9 @@ export const useUi = create<UiState>()(
 
   requestPrompt: (req) => set({ ...noMenus, prompt: req }),
   closePrompt: () => set({ prompt: null }),
+
+  requestEditCommitMessage: (req) => set({ ...noMenus, editCommitMessage: req }),
+  closeEditCommitMessage: () => set({ editCommitMessage: null }),
 
   openGithubSignin: (host) => set({ ...noMenus, githubSignin: { host } }),
   closeGithubSignin: () => set((s) => (s.githubSignin === null ? s : { githubSignin: null })),

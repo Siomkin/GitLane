@@ -45,6 +45,7 @@ const file: FileChange = { path: "src/stashed.ts", status: "M", add: 3, del: 1, 
 
 beforeEach(() => {
   useRepo.setState({
+    summary: null,
     graph,
     stashes: [stash],
     selectedCommit: "stash-oid",
@@ -54,7 +55,12 @@ beforeEach(() => {
     fileDiff: null,
     wipSelected: false,
   });
-  useUi.setState({ fileMenu: null, stackedReview: null, fileListView: FileListView.Path });
+  useUi.setState({
+    fileMenu: null,
+    stackedReview: null,
+    editCommitMessage: null,
+    fileListView: FileListView.Path,
+  });
 });
 
 describe("CommitInspector", () => {
@@ -87,6 +93,38 @@ describe("CommitInspector", () => {
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.getByText("stashed.ts")).toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+  });
+
+  it("opens the shared commit-message editor for an unpublished HEAD commit", async () => {
+    const user = userEvent.setup();
+    const selected = commit({
+      id: "c1",
+      shortId: "c1",
+      summary: "fix(ui): old subject",
+      body: "Existing body.",
+    });
+    useRepo.setState({
+      summary: {
+        path: "/repo",
+        workdir: "/repo",
+        headBranch: "main",
+        headOid: "c1",
+        detached: false,
+      },
+      graph: { ...graph, commits: [selected], head: "c1" },
+      stashes: [],
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      commitFiles: [],
+    });
+    render(<CommitInspector />);
+
+    await user.dblClick(screen.getByRole("heading", { name: "fix(ui): old subject" }));
+
+    expect(useUi.getState().editCommitMessage).toMatchObject({
+      message: "This commit has not been pushed.",
+      defaultValue: "fix(ui): old subject\n\nExisting body.",
+    });
   });
 
   it("treats an in-window stash that is also a graph node as a stash, not a commit", () => {
