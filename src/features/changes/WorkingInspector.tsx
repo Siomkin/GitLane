@@ -53,15 +53,13 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 
   const openMenu = (file: FileChange, staged: boolean, e: MouseEvent) => {
     e.preventDefault();
-    // Stage/unstage a rename now moves both sides (GL-127), but discard is still
-    // single-path (it can't restore the old side of a rename), so offer a
-    // copy-only menu (no discard) rather than half-undo the rename.
-    const discard = file.status === "R" ? undefined : { staged };
-    openFileMenu({ x: e.clientX, y: e.clientY, path: file.path, discard });
+    // Discard is suppressed inside FileContextMenu for renames (half-undo risk),
+    // but the row still gets Ignore / Open / Reveal / History (ADR 0002).
+    openFileMenu({ x: e.clientX, y: e.clientY, path: file.path, discard: { staged } });
   };
   const openDirMenu = (dirPath: string, e: MouseEvent) => {
     e.preventDefault();
-    openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true });
+    openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true, working: true });
   };
 
   // The open menu's target path, but only for the matching section — so a file

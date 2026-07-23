@@ -343,6 +343,8 @@ export function createRepoWriteActions(
   | "applyLine"
   | "previewDiscardFile"
   | "discardFile"
+  | "appendIgnorePattern"
+  | "revealInFileManager"
   | "stageAll"
   | "unstageAll"
   | "commit"
@@ -1373,6 +1375,35 @@ export function createRepoWriteActions(
         if (ownerIsCurrent(get, owner)) {
           useUi.getState().showToast(String(e), "error");
         }
+      }
+    },
+
+    appendIgnorePattern: async (pattern, local = false) => {
+      const { summary } = get();
+      if (!summary) return;
+      const owner = captureOwner(summary);
+      try {
+        const message = await api.appendIgnorePattern(summary.path, pattern, local);
+        if (!ownerIsCurrent(get, owner)) {
+          useUi.getState().showToast(message);
+          return;
+        }
+        await refreshIfCurrent(get, owner);
+        useUi.getState().showToast(message);
+      } catch (e) {
+        if (ownerIsCurrent(get, owner)) {
+          useUi.getState().showToast(String(e), "error");
+        }
+      }
+    },
+
+    revealInFileManager: async (path) => {
+      const { summary } = get();
+      if (!summary) return;
+      try {
+        await api.revealInFileManager(summary.path, path);
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
       }
     },
 

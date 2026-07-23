@@ -1,0 +1,19 @@
+//! Integration tests for the `git::write` facade, split by domain.
+mod branch_checkout;
+mod branches;
+mod commits;
+mod conflicts;
+mod discard;
+mod files;
+mod history;
+mod identity;
+mod lifecycle;
+mod operands;
+mod patches;
+mod recovery;
+mod remotes;
+mod staging;
+mod stashes;
+mod support;
+mod tags;
+mod worktrees;

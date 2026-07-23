@@ -1015,6 +1015,20 @@ async fn discard_file(
 }
 
 #[tauri::command]
+async fn append_ignore_pattern(
+    path: String,
+    pattern: String,
+    local: bool,
+) -> Result<String, String> {
+    blocking(move || git::write::append_ignore_pattern(&path, &pattern, local)).await
+}
+
+#[tauri::command]
+async fn reveal_in_file_manager(path: String, file: String) -> Result<String, String> {
+    blocking(move || git::write::reveal_in_file_manager(&path, &file)).await
+}
+
+#[tauri::command]
 async fn stage_all(path: String) -> Result<String, String> {
     blocking(move || git::write::stage_all(&path)).await
 }
@@ -2091,6 +2105,8 @@ pub fn run() {
             unstage_files,
             preview_discard_file,
             discard_file,
+            append_ignore_pattern,
+            reveal_in_file_manager,
             stage_all,
             unstage_all,
             commit,

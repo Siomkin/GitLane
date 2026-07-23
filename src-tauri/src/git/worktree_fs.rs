@@ -747,6 +747,43 @@ pub(crate) fn read_regular_worktree_file_bounded(
     Ok(bytes)
 }
 
+/// Open a worktree-rooted file for appending with no-follow semantics: a symlink
+/// final component (or symlinked ancestor) is refused, so a repository-controlled
+/// `.gitignore` / `info/exclude` cannot redirect the append outside `root`. Git
+/// itself never follows a `.gitignore` symlink; neither do we. Returns the current
+/// contents (for dedup / trailing-newline decisions) alongside the append handle.
+/// Parent directories must already exist.
+pub(crate) fn open_worktree_append_nofollow(root: &Path, file: &str) -> io::Result<(String, File)> {
+    let (parent, name) = open_parent_path(root, Path::new(file))?;
+    let existing = match open_leaf_nofollow(&parent, &name) {
+        Ok(mut existing) => {
+            let mut text = String::new();
+            existing.read_to_string(&mut text)?;
+            text
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error),
+    };
+    let mut options = OpenOptions::new();
+    options.append(true).create(true).follow(FollowSymlinks::No);
+    let handle = parent.open_with(&name, &options)?;
+    Ok((existing, handle))
+}
+
+/// Existence + path-safety probe for a worktree leaf using no-follow semantics,
+/// WITHOUT digesting its contents — for callers like Reveal that only need to
+/// know a safe leaf is present, not a content fingerprint. `Ok(false)` means the
+/// leaf is absent; a symlinked ancestor (or other unsafe open) surfaces as `Err`,
+/// exactly like [`fingerprint_worktree_leaf`].
+pub(crate) fn worktree_leaf_exists_nofollow(workdir: &Path, file: &str) -> io::Result<bool> {
+    let (parent, name) = open_parent_path(workdir, Path::new(file))?;
+    match parent.symlink_metadata(&name) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 fn open_parent(workdir: &Path, file: &str) -> io::Result<(Dir, OsString)> {
     open_parent_path(workdir, Path::new(file))
 }

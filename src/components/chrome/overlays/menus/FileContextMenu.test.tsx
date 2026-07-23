@@ -17,15 +17,17 @@ beforeEach(() => {
   useRepo.setState({
     requestOpenRepoFile: realRequestOpenRepoFile,
     discardFile: realDiscardFile,
+    appendIgnorePattern: vi.fn().mockResolvedValue(undefined),
+    revealInFileManager: vi.fn().mockResolvedValue(undefined),
     summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
     changes: emptyChanges,
     fileView: null,
   });
-  useUi.setState({ fileMenu: null, confirm: null });
+  useUi.setState({ fileMenu: null, confirm: null, prompt: null });
 });
 
-const openMenu = () =>
-  useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/App.tsx", discard: { staged: false } } });
+const openMenu = (path = "src/App.tsx", staged = false) =>
+  useUi.setState({ fileMenu: { x: 10, y: 10, path, discard: { staged } } });
 
 describe("FileContextMenu", () => {
   it("renders nothing until a file menu is open", () => {
@@ -33,7 +35,7 @@ describe("FileContextMenu", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("opens the file in the center pane (via the dirty-guarded route) and closes the menu", () => {
+  it("opens the file in the center pane and closes the menu", () => {
     const requestOpenRepoFile = vi.fn();
     useRepo.setState({ requestOpenRepoFile });
     openMenu();
@@ -42,6 +44,82 @@ describe("FileContextMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Open file" }));
     expect(requestOpenRepoFile).toHaveBeenCalledWith("src/App.tsx");
     expect(useUi.getState().fileMenu).toBeNull();
+  });
+
+  it("offers Discard, Ignore, Open, Reveal, History, and Copy for an unstaged tracked file", () => {
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+    });
+    openMenu();
+    render(<FileContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Delete file" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Show in/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "History" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
+  });
+
+  it("offers Delete + Ignore (no Discard/History) for an untracked file", () => {
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "new.txt", status: "U", add: 1, del: 0, binary: false }],
+      },
+    });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "new.txt", discard: { staged: false } } });
+    render(<FileContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Delete file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "History" })).not.toBeInTheDocument();
+  });
+
+  it("hides Ignore on staged-only rows", () => {
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        staged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+    });
+    openMenu("src/App.tsx", true);
+    render(<FileContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Ignore…" })).not.toBeInTheDocument();
+  });
+
+  it("omits Discard for renames but still offers Ignore / Open / History", () => {
+    useRepo.setState({
+      changes: {
+        ...emptyChanges,
+        unstaged: [
+          {
+            path: "src/App.tsx",
+            previousPath: "src/OldApp.tsx",
+            status: "R",
+            add: 1,
+            del: 1,
+            binary: false,
+          },
+        ],
+      },
+    });
+    // Discard is suppressed for renames inside the menu; Ignore/Open/History remain.
+    useUi.setState({
+      fileMenu: { x: 10, y: 10, path: "src/App.tsx", discard: { staged: false } },
+    });
+    render(<FileContextMenu />);
+
+    expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "History" })).toBeInTheDocument();
   });
 
   it("previews the exact file state and forwards its guard on confirmation", async () => {
@@ -53,10 +131,9 @@ describe("FileContextMenu", () => {
         unstaged: [
           {
             path: "src/App.tsx",
-            previousPath: "src/OldApp.tsx",
-            status: "R",
+            status: "M",
             add: 1,
-            del: 1,
+            del: 0,
             binary: false,
           },
         ],
@@ -78,7 +155,7 @@ describe("FileContextMenu", () => {
     expect(invokeMock).toHaveBeenCalledWith("preview_discard_file", {
       path: "/r",
       file: "src/App.tsx",
-      previousFile: "src/OldApp.tsx",
+      previousFile: null,
       staged: false,
     });
 
@@ -86,7 +163,7 @@ describe("FileContextMenu", () => {
     expect(discardFile).toHaveBeenCalledWith(
       "/r",
       "src/App.tsx",
-      "src/OldApp.tsx",
+      null,
       false,
       "discard-state-v1",
     );
@@ -94,7 +171,13 @@ describe("FileContextMenu", () => {
 
   it("fails closed when the file-state preview cannot be read", async () => {
     const discardFile = vi.fn().mockResolvedValue(undefined);
-    useRepo.setState({ discardFile });
+    useRepo.setState({
+      discardFile,
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+    });
     invokeMock.mockRejectedValueOnce(new Error("status unavailable"));
     openMenu();
     render(<FileContextMenu />);
@@ -106,17 +189,126 @@ describe("FileContextMenu", () => {
     expect(discardFile).not.toHaveBeenCalled();
   });
 
-  it("shows a copy-only menu for a directory — no open/history/discard", () => {
+  it("appends an ignore pattern from the Ignore submenu", () => {
+    const appendIgnorePattern = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      appendIgnorePattern,
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "infra/mcp.json", status: "U", add: 1, del: 0, binary: false }],
+      },
+    });
+    useUi.setState({
+      fileMenu: { x: 10, y: 10, path: "infra/mcp.json", discard: { staged: false } },
+    });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ignore…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ignore “mcp.json”" }));
+    expect(appendIgnorePattern).toHaveBeenCalledWith("/infra/mcp.json", false);
+    expect(useUi.getState().fileMenu).toBeNull();
+  });
+
+  it("reveals the file in the OS file manager", () => {
+    const revealInFileManager = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      revealInFileManager,
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+    });
+    openMenu();
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Show in/ }));
+    expect(revealInFileManager).toHaveBeenCalledWith("src/App.tsx");
+    expect(useUi.getState().fileMenu).toBeNull();
+  });
+
+  it("previews and deletes an untracked file on confirmation", async () => {
+    const discardFile = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      discardFile,
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "new.txt", status: "U", add: 1, del: 0, binary: false }],
+      },
+    });
+    invokeMock.mockResolvedValueOnce({
+      summary: "Remove untracked file new.txt",
+      details: ["The untracked worktree file will be removed."],
+      warnings: ["These file changes cannot be recovered by GitLane."],
+      expectedState: "delete-state-v1",
+    });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "new.txt", discard: { staged: false } } });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete file" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    expect(invokeMock).toHaveBeenCalledWith("preview_discard_file", {
+      path: "/r",
+      file: "new.txt",
+      previousFile: null,
+      staged: false,
+    });
+
+    useUi.getState().confirm!.onConfirm();
+    expect(discardFile).toHaveBeenCalledWith("/r", "new.txt", null, false, "delete-state-v1");
+  });
+
+  it("opens a custom ignore prompt with an anchored folder default", () => {
+    useUi.setState({
+      fileMenu: { x: 10, y: 10, path: "infra/docker", dir: true, working: true },
+    });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ignore folder…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Custom pattern…" }));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt).not.toBeNull();
+    expect(prompt?.defaultValue).toBe("/infra/docker/");
+  });
+
+  it("submits a custom ignore pattern from the prompt", () => {
+    const appendIgnorePattern = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      appendIgnorePattern,
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "new.txt", status: "U", add: 1, del: 0, binary: false }],
+      },
+    });
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "new.txt", discard: { staged: false } } });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ignore…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Custom pattern…" }));
+    useUi.getState().prompt!.onSubmit("*.tmp");
+    expect(appendIgnorePattern).toHaveBeenCalledWith("*.tmp", false);
+  });
+
+  it("shows Ignore folder on a working-tree directory header", () => {
+    useUi.setState({
+      fileMenu: { x: 10, y: 10, path: "src/features/changes", dir: true, working: true },
+    });
+    render(<FileContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: "Ignore folder…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Folder name" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Open file" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a copy-only directory menu when not a working-tree header", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/features/changes", dir: true } });
     render(<FileContextMenu />);
 
-    // Copy the folder's own path; the file-only actions are absent.
+    expect(screen.queryByRole("menuitem", { name: "Ignore folder…" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Folder name" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Relative path" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Open file" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "File history" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
   });
 
   it("copies the directory's relative path and closes the menu", () => {

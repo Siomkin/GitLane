@@ -44,6 +44,10 @@ contract that governs every command and are not repeated here.
   `graph.rs`, and `write.rs` are public facades for IPC callers. Put implementation
   details in their focused sibling folders (`read/`, `status/`, `conflicts/`,
   `graph/`, `write/`) and re-export only the command-facing functions from the facade.
+- **Integration tests follow the same split.** Prefer `write/tests/{domain}.rs`
+  (with shared fixtures in `write/tests/support.rs`) over a single monolithic
+  `write/tests.rs`. Co-locate small pure-unit tests in `#[cfg(test)] mod tests`
+  inside the production module when they do not need the full facade.
 - **History-changing writes carry their subject — no HEAD-implicit mutations.** Frontend
   state is only a snapshot, so every IPC command that moves a branch tip or rewrites
   history (merge, rebase, reset, fast-forward, cherry-pick, revert, commit, squash, stash

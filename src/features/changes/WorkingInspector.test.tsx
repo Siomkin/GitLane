@@ -103,10 +103,9 @@ describe("WorkingInspector", () => {
     expect(useUi.getState().fileMenu?.discard?.staged).toBe(true);
   });
 
-  it("omits discard (copy-only) when right-clicking a renamed file", () => {
-    // Discard is single-path and can't restore a rename's old side (unlike
-    // stage/unstage, which move both after GL-127), so the menu opens copy-only
-    // (no discard target) rather than half-undo the rename.
+  it("still opens a working-tree menu for renames (Discard suppressed in the menu)", () => {
+    // Discard can't safely undo a rename's old side; FileContextMenu hides Discard
+    // when status is R, but the row still gets Ignore / Open / Reveal / History.
     useRepo.setState({
       changes: { staged: [{ path: "src/new.ts", status: "R", add: 0, del: 0, binary: false }], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
       selectedFile: { path: "src/new.ts", source: "staged" },
@@ -115,7 +114,7 @@ describe("WorkingInspector", () => {
     fireEvent.contextMenu(screen.getByText("new.ts"));
     const menu = useUi.getState().fileMenu;
     expect(menu?.path).toBe("src/new.ts");
-    expect(menu?.discard).toBeUndefined();
+    expect(menu?.discard?.staged).toBe(true);
   });
 
   it("groups working files into a tree and stages a whole folder from the roll-up", async () => {
@@ -179,21 +178,37 @@ describe("WorkingInspector", () => {
 
 describe("FileContextMenu", () => {
   it("labels the discard item 'Discard changes' for an unstaged file", () => {
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [staged("src/a.ts")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: false } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
-    // Copy variants lead the menu, flat (most-used here).
+    expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
-    // History views are tucked into the History group.
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
     expect(screen.getByRole("menuitem", { name: "File history" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Blame" })).toBeInTheDocument();
   });
 
   it("adapts the discard label to 'Unstage & discard changes' for a staged file", () => {
+    useRepo.setState({
+      changes: {
+        staged: [staged("src/a.ts")],
+        unstaged: [],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Ignore…" })).not.toBeInTheDocument();
   });
 
   it("disables discard for a guarded working file", () => {
