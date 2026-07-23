@@ -8,9 +8,9 @@ import {
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 import {
+  ComposerMode,
   composeConventionalMessage,
   parseConventionalMessage,
-  type ComposerMode,
   type ConventionalFields,
 } from "@/lib/conventionalCommit";
 import type { EditCommitMessageRequest } from "@/store/ui";
@@ -18,18 +18,19 @@ import { CommitMessageEditor } from "./CommitMessageEditor";
 
 export function EditCommitMessageForm({
   request,
-  mode,
-  onModeChange,
   onClose,
 }: {
   request: EditCommitMessageRequest;
-  mode: ComposerMode;
-  onModeChange: (mode: ComposerMode) => void;
   onClose: () => void;
 }) {
   const [message, setMessage] = useState(request.defaultValue);
   const [fields, setFields] = useState<ConventionalFields>(() =>
     parseConventionalMessage(request.defaultValue),
+  );
+  const [mode, setMode] = useState<ComposerMode>(() =>
+    parseConventionalMessage(request.defaultValue).type
+      ? ComposerMode.Conventional
+      : ComposerMode.Message,
   );
 
   const updateMessage = (next: string) => {
@@ -79,7 +80,7 @@ export function EditCommitMessageForm({
         <div className="mt-4">
           <CommitMessageEditor
             mode={mode}
-            onModeChange={onModeChange}
+            onModeChange={setMode}
             msg={message}
             onMsgChange={updateMessage}
             fields={fields}
@@ -87,6 +88,8 @@ export function EditCommitMessageForm({
             amend
             autoFocus
             selectOnFocus
+            bodyRows={8}
+            messageRows={10}
           />
         </div>
         <DialogFooter>

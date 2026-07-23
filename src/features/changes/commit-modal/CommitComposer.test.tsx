@@ -158,7 +158,7 @@ describe("CommitComposer", () => {
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "Commit body" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Commit body" })).toHaveAttribute("rows", "5");
     expect(
       await screen.findByRole("button", {
         name: "Commit identity: Alex Global · alex@example.dev",

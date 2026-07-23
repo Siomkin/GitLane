@@ -30,20 +30,40 @@ describe("EditCommitMessageDialog", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("reuses the Message / Conventional editor without agent controls", () => {
+  it("opens a conventional commit in Conventional mode without agent controls", () => {
     openEditor();
     render(<EditCommitMessageDialog />);
 
-    const message = screen.getByRole("textbox", { name: "Commit message" });
-    expect(message).toHaveValue("fix(ui): keep the message\n\nExplain why.");
-    expect(message).toHaveFocus();
     expect(screen.getByRole("button", { name: "Message" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByRole("button", { name: "Conventional" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    expect(screen.getByRole("button", { name: "Conventional" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Commit type" })).toHaveValue("fix");
+    expect(screen.getByRole("textbox", { name: "Commit scope" })).toHaveValue("ui");
+    const summary = screen.getByRole("textbox", { name: "Commit summary" });
+    expect(summary).toHaveValue("keep the message");
+    expect(summary).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Commit body" })).toHaveAttribute(
+      "rows",
+      "8",
+    );
+    expect(useUi.getState().commitComposerMode).toBe(ComposerMode.Message);
     expect(screen.queryByRole("button", { name: "Draft" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Improve" })).not.toBeInTheDocument();
+  });
+
+  it("gives freeform messages a full-height editor", () => {
+    openEditor(vi.fn(), "A plain commit message");
+    render(<EditCommitMessageDialog />);
+
+    const message = screen.getByRole("textbox", { name: "Commit message" });
+    expect(message).toHaveValue("A plain commit message");
+    expect(message).toHaveFocus();
+    expect(message).toHaveAttribute("rows", "10");
   });
 
   it("round-trips edits across Conventional and Message modes", () => {
@@ -80,7 +100,7 @@ describe("EditCommitMessageDialog", () => {
   });
 
   it("disables submit for an empty message and cancels without submitting", () => {
-    const onSubmit = openEditor();
+    const onSubmit = openEditor(vi.fn(), "old message");
     render(<EditCommitMessageDialog />);
 
     fireEvent.change(screen.getByRole("textbox", { name: "Commit message" }), {

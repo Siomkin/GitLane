@@ -64,6 +64,8 @@ export function CommitMessageEditor({
   actions,
   autoFocus,
   selectOnFocus,
+  bodyRows = 5,
+  messageRows = 3,
 }: {
   mode: ComposerMode;
   onModeChange: (mode: ComposerMode) => void;
@@ -80,6 +82,10 @@ export function CommitMessageEditor({
   autoFocus?: boolean;
   /** Select that field's seeded value on focus (used by reword). */
   selectOnFocus?: boolean;
+  /** Visible rows for the conventional body field. */
+  bodyRows?: number;
+  /** Visible rows for the free-form message field. */
+  messageRows?: number;
 }) {
   const conventional = mode === ComposerMode.Conventional;
   // A parsed type outside the dropdown list (e.g. `build`) stays selectable so
@@ -169,7 +175,7 @@ export function CommitMessageEditor({
               value={fields.body}
               onChange={(event) => onFieldsChange({ body: event.target.value })}
               placeholder="Optional body — explain the why"
-              rows={2}
+              rows={bodyRows}
               className="block w-full resize-y bg-transparent px-2.5 py-2 text-[12.5px] leading-relaxed text-neutral-600 outline-none placeholder:text-neutral-400 dark:text-neutral-300"
             />
           </>
@@ -181,7 +187,7 @@ export function CommitMessageEditor({
             onChange={(event) => onMsgChange(event.target.value)}
             onFocus={selectOnFocus ? (event) => event.target.select() : undefined}
             placeholder={amend ? "Amended commit message" : "Commit message"}
-            rows={3}
+            rows={messageRows}
             className="block w-full resize-y bg-transparent px-2.5 py-2.5 text-[13px] leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
           />
         )}
