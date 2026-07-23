@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { BranchKind, type BranchInfo, type WorktreeInfo } from "@/lib/api";
+import { BranchKind, type BranchInfo, type RepoForge, type WorktreeInfo } from "@/lib/api";
 import {
   deriveBranchContextMenuPolicy,
   MAIN_WORKTREE_DELETE_DISABLED_REASON,
 } from "./branchContextMenuPolicy";
+
+const githubForge: RepoForge = {
+  hasRemote: true,
+  kind: "github",
+  forge: "GitHub",
+  host: "github.com",
+  webUrl: "https://github.com/o/r",
+};
 
 const localBranch = (name: string, target = `${name}-oid`): BranchInfo => ({
   name,
@@ -45,6 +53,7 @@ const derive = (
     branches: [localBranch("main", "main-oid"), localBranch("feature", "feature-oid")],
     worktrees: [],
     workdir: "/work/repo",
+    forge: null,
     ...over,
   });
 
@@ -162,6 +171,8 @@ describe("deriveBranchContextMenuPolicy", () => {
     expect(policy.existingWorktree?.path).toBe("/work/repo-feature");
     expect(policy.handoffHere?.value).toBe("/work/repo");
     expect(policy).toMatchObject({
+      canHandOff: true,
+      canRemoveWorktree: true,
       worktreeCheckedOut: true,
       worktreeRef: "feature-oid",
       localDeleteMode: "branch-and-worktree",
@@ -179,8 +190,71 @@ describe("deriveBranchContextMenuPolicy", () => {
 
     expect(policy).toMatchObject({
       handoffHere: null,
+      canHandOff: false,
+      canRemoveWorktree: false,
       localDeleteMode: "blocked-main-worktree",
     });
     expect(MAIN_WORKTREE_DELETE_DISABLED_REASON).toBe("Checked out in the main worktree.");
+  });
+
+  describe("forge link", () => {
+    const published = (over: Partial<BranchInfo> = {}): BranchInfo => ({
+      ...localBranch("feature", "feature-oid"),
+      upstream: "origin/feature",
+      upstreamRemote: "origin",
+      sync: { status: "upToDate" as const, upstream: "origin/feature", ahead: 0, behind: 0 },
+      ...over,
+    });
+
+    it("links a published local branch to its UPSTREAM branch, not the local ref name", () => {
+      // A local `feature` tracking `origin/main` lives at `main` on the forge.
+      const policy = derive({
+        branches: [localBranch("main", "main-oid"), published({ upstream: "origin/main" })],
+        forge: githubForge,
+      });
+      expect(policy.branchUrl).toBe("https://github.com/o/r/tree/main");
+      expect(policy.forgeName).toBe("GitHub");
+    });
+
+    it("links a remote-tracking ref by dropping its remote prefix", () => {
+      const policy = derive({
+        branch: "origin/feature",
+        branches: [localBranch("main", "main-oid"), remoteBranch("origin/feature")],
+        forge: githubForge,
+      });
+      expect(policy.branchUrl).toBe("https://github.com/o/r/tree/feature");
+      expect(policy.forgeName).toBe("GitHub");
+    });
+
+    it("hides the link on an unknown forge (kind null → would fall back to repo root)", () => {
+      const policy = derive({
+        branches: [localBranch("main", "main-oid"), published()],
+        forge: { ...githubForge, kind: null },
+      });
+      expect(policy.branchUrl).toBeNull();
+      expect(policy.forgeName).toBeNull();
+    });
+
+    it("hides the link when the upstream is stale (remote branch deleted → would 404)", () => {
+      const policy = derive({
+        branches: [
+          localBranch("main", "main-oid"),
+          published({ sync: { status: "staleUpstream", upstream: "origin/feature", ahead: 1, behind: 0 } }),
+        ],
+        forge: githubForge,
+      });
+      expect(policy.branchUrl).toBeNull();
+    });
+
+    it("hides the link for a `.`-remote upstream (tracks another local branch)", () => {
+      const policy = derive({
+        branches: [
+          localBranch("main", "main-oid"),
+          published({ upstream: "main", upstreamRemote: "." }),
+        ],
+        forge: githubForge,
+      });
+      expect(policy.branchUrl).toBeNull();
+    });
   });
 });

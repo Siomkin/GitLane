@@ -1,14 +1,13 @@
 import { api } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
-import { branchWebUrl } from "@/lib/forgeUrls";
 import { openExternalUrl } from "@/lib/openExternal";
 import { validateBranchName } from "@/lib/refName";
-import { trimTrailingSlash } from "@/lib/worktrees";
-import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
   CompareIcon,
+  CopyIcon,
   ExternalLinkIcon,
   FolderIcon,
   HashIcon,
@@ -81,6 +80,7 @@ export function BranchContextMenu() {
         branches,
         worktrees,
         workdir,
+        forge,
       })
     : null;
   // Can the current branch fast-forward to this one? The hook keys the answer to
@@ -103,6 +103,9 @@ export function BranchContextMenu() {
     tipShort,
     upstream,
     existingWorktree: existingWt,
+    existingWorktreeInfo: existingWtInfo,
+    canHandOff,
+    canRemoveWorktree,
     needsPublishPrompt,
     isLocal,
     isRemote,
@@ -114,6 +117,8 @@ export function BranchContextMenu() {
     handoffHere,
     localDeleteMode,
     remoteDeleteTarget,
+    branchUrl,
+    forgeName,
   } = policy;
 
   const act = (op: () => Promise<string>) => {
@@ -139,26 +144,8 @@ export function BranchContextMenu() {
     act(() => pushBranch(b));
   };
 
-  // Forge link for the branch — shown only on a recognised forge for a
-  // *published* branch (an unpublished branch or unknown host would 404). The
-  // forge branch name is the one that exists on the remote, NOT the local ref:
-  // for a remote-tracking ref, drop the remote prefix; for a local branch, use
-  // its upstream's branch (a local `feature-x` tracking `origin/main` lives at
-  // `main` on the forge, never `feature-x`). A `.`-remote upstream (tracking
-  // another local branch) has no forge page.
-  const knownForge = forge?.kind != null;
-  const forgeName = forge?.forge ?? null;
-  const upstreamRemote = info?.upstreamRemote ?? null;
-  const localUpstreamBranch =
-    upstreamRemote && upstreamRemote !== "." && upstream && upstream.startsWith(`${upstreamRemote}/`)
-      ? upstream.slice(upstreamRemote.length + 1)
-      : null;
-  const forgeBranchName = isRemote ? remoteDeleteTarget?.branch ?? null : localUpstreamBranch;
-  // A stale upstream means the remote branch was deleted — the forge page would
-  // 404, so don't offer the link. Remote branches have no sync state (trivially
-  // not stale). Local branches with a live upstream track an existing remote ref.
-  const upstreamStale = info?.sync?.status === "staleUpstream";
-  const branchUrl = knownForge && forgeBranchName && !upstreamStale ? branchWebUrl(forge, forgeBranchName) : null;
+  // Forge link eligibility (branchUrl / forgeName) is derived in the pure policy,
+  // mirroring the commit menu — the component stays a painter.
 
   // The branch is named once, here — rows below never repeat it.
   const heading = (
@@ -227,7 +214,11 @@ export function BranchContextMenu() {
   // commit menu at HEAD, so the two menus stay identical on the current branch.
   const integrate: MenuItem[] = [];
   if (tip && cur) {
-    const selfTarget = tip === headOid;
+    // "Self" means the tip is already current — hide the onto-current ops (they'd
+    // be no-ops and cherry-pick would leave an empty sequence). Guard on the menu
+    // snapshot (isCurrent), the live name match (b === cur), AND the oid match —
+    // so an unborn/odd summary with a null headOid can't slip the ops through.
+    const selfTarget = isCurrent || b === cur || (headOid != null && tip === headOid);
     if (!selfTarget) {
       integrate.push({ label: `Cherry-pick onto ${cur}`, onClick: () => act(() => cherryPickCommit(tip)) });
     }
@@ -296,8 +287,17 @@ export function BranchContextMenu() {
     create.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: compareChildren });
   }
 
-  // ---- open on the forge (copying the branch name / SHA lives in the right
-  // panel, so it isn't repeated here — same as the commit text menu). ----
+  // ---- copy (used constantly, kept in plain sight): the branch's name and tip
+  // SHA. A branch pill's name isn't shown in the right panel, so grabbing it here
+  // is the natural quick action. ----
+  const copy: MenuItem[] = [
+    { label: "Copy branch name", icon: <CopyIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(b); } },
+  ];
+  if (tip) {
+    copy.push({ label: "Copy tip SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(tip); } });
+  }
+
+  // ---- open on the forge ----
   const openRemote: MenuItem[] = [];
   if (branchUrl) {
     openRemote.push({
@@ -313,7 +313,6 @@ export function BranchContextMenu() {
   // grouped here (Open worktree stays promoted on top as the one-click). ----
   const worktree: MenuItem[] = [];
   if (existingWt) {
-    const existingWtInfo = worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(existingWt.path)) ?? null;
     const children: MenuItem[] = [];
     // The escape hatch: git refuses to check out a branch another worktree holds,
     // so plain Checkout is hidden — but the branch can be *moved* here (detach it
@@ -335,9 +334,9 @@ export function BranchContextMenu() {
       });
     }
     children.push({ label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } });
-    // Hand off only when the source can still run the detach step and a valid
-    // destination exists (bare / prunable worktrees are filtered out).
-    if (handoffSourceValid(worktrees, existingWt.path) && handoffDestinationOptions(worktrees, existingWt.path).length > 0) {
+    // Hand off eligibility is derived in the pure policy (source valid + a real
+    // destination exists), keeping the menu component a dumb painter.
+    if (canHandOff) {
       children.push({
         label: "Hand off to…",
         onClick: () =>
@@ -351,8 +350,8 @@ export function BranchContextMenu() {
           }),
       });
     }
-    // Git refuses to remove the main worktree, so only offer it for linked ones.
-    if (!existingWtInfo?.isMain) {
+    // Git refuses to remove the main worktree; the policy offers Remove for linked ones only.
+    if (canRemoveWorktree) {
       children.push({
         label: "Remove worktree",
         danger: true,
@@ -422,11 +421,11 @@ export function BranchContextMenu() {
     danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
   }
 
-  // Assemble with a separator at each section boundary. Worktree management sits
-  // right after the top quick-actions — it's a common, important workflow, so it
-  // stays prominent near the top rather than buried at the bottom.
-  const items: MenuItem[] = [...top];
-  for (const section of [worktree, integrate, create]) {
+  // Assemble with a separator at each section boundary. The Worktree fan reads as
+  // one group with the top quick-actions above it (Open worktree is promoted
+  // there), so it joins them with no separator; the intent groups below do get one.
+  const items: MenuItem[] = [...top, ...worktree];
+  for (const section of [integrate, create, copy]) {
     if (section.length) {
       section[0] = { ...section[0], sep: items.length > 0 };
       items.push(...section);

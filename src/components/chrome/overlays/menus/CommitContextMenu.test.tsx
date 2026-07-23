@@ -288,11 +288,13 @@ describe("CommitContextMenu (single commit)", () => {
     expect(screen.queryByRole("menuitem", { name: /View on/ })).not.toBeInTheDocument();
   });
 
-  it("keeps review and copy out of the menu (they live in the right panel)", () => {
+  it("keeps review out of the menu but offers the Copy cluster", () => {
     openSingle("c2abcdef");
     render(<CommitContextMenu />);
+    // Review lives in the right panel; Copy stays in the menu.
     expect(screen.queryByRole("menuitem", { name: "Review all changes" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /^Copy/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy commit SHA" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy" })).toBeInTheDocument();
   });
 
   it("hides the onto-current ops on the HEAD commit (self-ops), keeping Revert", () => {

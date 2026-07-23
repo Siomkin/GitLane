@@ -401,6 +401,23 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Compare with branch…" })).toBeInTheDocument();
   });
 
+  // The onto-current ops are self-no-ops on the current branch and must stay
+  // hidden even when the summary reports a null headOid (unborn / odd state) —
+  // the self gate keys off isCurrent / name match, not only the oid.
+  it("hides onto-current ops on the current branch even when headOid is null", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "feature", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: true } });
+    render(<BranchContextMenu />);
+
+    expect(screen.queryByRole("menuitem", { name: /^Cherry-pick/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Integrate into current" })).not.toBeInTheDocument();
+    // Reverting the current tip is still meaningful, so Revert stays.
+    expect(screen.getByRole("menuitem", { name: "Revert commit" })).toBeInTheDocument();
+  });
+
   // Same flat, frequency order as the commit menu: integrate → create →
   // compare → reset → danger.
   it("orders the sections integrate → create → compare → reset → danger", () => {
@@ -436,9 +453,11 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Reset main to feature" })).toBeInTheDocument();
     // A published branch on a known forge gets View on <forge>, like the commit menu.
     expect(screen.getByRole("menuitem", { name: "View on GitHub" })).toBeInTheDocument();
-    // Review and copy are not repeated in the menu (they live in the right panel).
+    // Review lives in the right panel and isn't repeated; Copy stays (a branch's
+    // name isn't surfaced in the right panel).
     expect(screen.queryByRole("menuitem", { name: "Review all changes" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /^Copy/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy branch name" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Copy tip SHA" })).toBeInTheDocument();
     // Patch creation lives in the Create fan, as on the commit menu.
     openGroup("Create");
     expect(screen.getByRole("menuitem", { name: "Patch from commit" })).toBeInTheDocument();
@@ -856,8 +875,8 @@ describe("BranchContextMenu", () => {
 
   // A branch checked out in a linked worktree shows as a branch pill with no
   // separate worktree pill, so the branch menu is the only place to manage that
-  // worktree: Open worktree + Check out here… on top, and a Worktree ▸ group with
-  // copy-path / hand-off / remove.
+  // worktree: Open worktree promoted on top, and a Worktree ▸ group holding
+  // check-out-here / copy-path / hand-off / remove.
   it("keeps worktree management on the branch menu for a linked-worktree branch", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
@@ -930,7 +949,11 @@ describe("BranchContextMenu", () => {
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    // Open the fan first — the items live inside the collapsed Worktree submenu,
+    // so asserting absence without expanding it would pass hollowly.
+    openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Check out here…" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Hand off to…" })).not.toBeInTheDocument();
   });
 
   it("hides the worktree menu's hand-off for a prunable worktree", () => {
@@ -960,6 +983,7 @@ describe("BranchContextMenu", () => {
     });
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
+    openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Check out here…" })).not.toBeInTheDocument();
   });
 
@@ -985,9 +1009,54 @@ describe("BranchContextMenu", () => {
     expect(useUi.getState().confirm).toBeNull();
   });
 
-  // Removing a worktree while keeping its branch is a worktree-management verb,
-  // so it lives only on the worktree pill / navigator row now — see the
-  // WorktreeContextMenu tests below. The branch menu no longer removes worktrees.
+  // Removing a worktree while keeping its branch also lives in the branch menu's
+  // Worktree fan (a linked-worktree branch shows as a branch pill with no separate
+  // worktree pill), sharing the worktree row's probe-then-confirm — see the case
+  // below and the WorktreeContextMenu tests.
+  it("removes a linked worktree from the Worktree fan via the shared probe-then-confirm", async () => {
+    const previewRemoveWorktree = vi.fn().mockResolvedValue({
+      branch: "feature",
+      headOid: "abc1234",
+      locked: false,
+      dirty: false,
+      requiresForce: false,
+      expectedState: "worktree-removal-lease-v1",
+      details: [],
+      warnings: [],
+    });
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+      ],
+      previewRemoveWorktree,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    openGroup("Worktree");
+    expect(screen.getByRole("menuitem", { name: "Copy worktree path" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
+    // Routes through the shared leased-removal probe before any confirm fires.
+    await waitFor(() => expect(previewRemoveWorktree).toHaveBeenCalledWith("/work/repo-feature"));
+    await waitFor(() => expect(useUi.getState().confirm?.danger).toBe(true));
+  });
+
+  // Git refuses to remove the main worktree, so a branch checked out there gets
+  // no Remove entry in the fan (canRemoveWorktree is false).
+  it("hides Remove worktree in the fan for a main-worktree branch", () => {
+    useRepo.setState({
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "other", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true }],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+    openGroup("Worktree");
+    expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
+  });
 
   // Git refuses to remove the main worktree, so a branch checked out there keeps
   // the plain disabled Delete (with an accurate reason) and no combined action.

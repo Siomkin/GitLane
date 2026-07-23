@@ -5,7 +5,9 @@ import {
   BranchIcon,
   CheckIcon,
   CompareIcon,
+  CopyIcon,
   ExternalLinkIcon,
+  HashIcon,
   PlusIcon,
   WarningIcon,
 } from "@/components/ui/icons";
@@ -161,10 +163,8 @@ export function CommitContextMenu() {
   });
   const { subject, body, canRewordHead, forgeCommitUrl, forgeName, otherSelected } = policy;
 
-  // The context menu is a git-actions menu: reviewing the diff and copying the
-  // SHA/message live in the right panel, so they're deliberately not repeated
-  // here. Right-clicking the commit text gives the same git actions as its
-  // branch pill (the pill just adds ref-level ops on top).
+  // Right-clicking the commit text gives the same git actions as its branch pill
+  // (the pill just adds ref-level ops on top).
   const top: MenuItem[] = [
     { label: "Checkout commit", icon: <CheckIcon className="h-4 w-4" />, onClick: () => act(() => checkoutDetached(sha)) },
   ];
@@ -238,7 +238,24 @@ export function CommitContextMenu() {
     },
   ];
 
-  // Open on the forge (copying the SHA/message lives in the right panel).
+  // Copy: SHA flat (the everyday one), subject/full-message/link folded into a
+  // submenu. "Link to commit" only when the commit has a forge URL.
+  const copy: MenuItem[] = [
+    { label: "Copy commit SHA", icon: <HashIcon className="h-4 w-4" />, sep: true, onClick: () => { close(); void navigator.clipboard?.writeText(sha); } },
+    {
+      label: "Copy",
+      icon: <CopyIcon className="h-4 w-4" />,
+      submenu: [
+        { label: "Subject", onClick: () => { close(); void navigator.clipboard?.writeText(subject); } },
+        { label: "Full message", onClick: () => { close(); void navigator.clipboard?.writeText(body ? `${subject}\n\n${body}` : subject); } },
+        ...(forgeCommitUrl
+          ? [{ label: "Link to commit", onClick: () => { close(); void navigator.clipboard?.writeText(forgeCommitUrl); } }]
+          : []),
+      ],
+    },
+  ];
+
+  // Open on the forge.
   const openRemote: MenuItem[] = [];
   if (forgeCommitUrl) {
     openRemote.push({
@@ -275,7 +292,7 @@ export function CommitContextMenu() {
     ],
   });
 
-  const items: MenuItem[] = [...top, ...integrate, ...create, ...openRemote, ...danger];
+  const items: MenuItem[] = [...top, ...integrate, ...create, ...copy, ...openRemote, ...danger];
   return (
     <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={248} heading={commitHeading(shortSha, subject)} />
   );
