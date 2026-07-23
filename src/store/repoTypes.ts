@@ -665,6 +665,10 @@ export interface RepoState {
     staged: boolean,
     expectedState: string,
   ) => Promise<void>;
+  /** Append one ignore pattern (root `.gitignore` or local exclude). */
+  appendIgnorePattern: (pattern: string, local?: boolean) => Promise<void>;
+  /** Reveal a repo-relative path in the OS file manager. */
+  revealInFileManager: (path: string) => Promise<void>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
   commit: (summary: string, description: string, amend: boolean) => Promise<void>;

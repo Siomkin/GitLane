@@ -1359,6 +1359,15 @@ export const gitApi = {
     expectedState: string,
   ) => invoke<string>("discard_file", { path, file, previousFile, staged, expectedState }),
 
+  /** Append one gitignore pattern to root `.gitignore`, or to `.git/info/exclude`
+   * when `local` is true. */
+  appendIgnorePattern: (path: string, pattern: string, local: boolean) =>
+    invoke<string>("append_ignore_pattern", { path, pattern, local }),
+
+  /** Reveal a repo-relative path in Finder / Explorer / the system file manager. */
+  revealInFileManager: (path: string, file: string) =>
+    invoke<string>("reveal_in_file_manager", { path, file }),
+
   stageAll: (path: string) => invoke<string>("stage_all", { path }),
 
   unstageAll: (path: string) => invoke<string>("unstage_all", { path }),

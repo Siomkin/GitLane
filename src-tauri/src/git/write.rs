@@ -23,6 +23,7 @@ mod hard_reset_lease;
 mod head;
 mod history;
 mod identity;
+mod ignore;
 mod lifecycle;
 mod operands;
 mod patch_staging;
@@ -30,6 +31,7 @@ mod patches;
 mod recovery;
 mod remotes;
 mod reset;
+mod reveal;
 mod staging;
 mod stash_push;
 mod stashes;
@@ -80,6 +82,7 @@ pub use history::{
     revert_many_onto, revert_onto,
 };
 pub use identity::{clear_repo_identity, set_repo_identity};
+pub use ignore::append_ignore_pattern;
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use patch_staging::{apply_hunk, apply_line};
 pub use patches::create_patch;
@@ -95,6 +98,7 @@ pub use remotes::{
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
 pub use reset::reset_branch;
+pub use reveal::reveal_in_file_manager;
 pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
 #[cfg(test)]
 pub use stashes::{stash, stash_apply, stash_pop};

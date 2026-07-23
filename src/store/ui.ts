@@ -163,12 +163,15 @@ export interface FileMenu {
   path: string;
   /** Set when the menu targets a Tree-view directory header rather than a file:
    * a copy-only menu (folder name / relative / full path), with none of the
-   * file-specific actions (open, history, discard). */
+   * file-specific actions (open, history, discard). Working-tree directories also
+   * offer Ignore folder… (ADR 0002). */
   dir?: boolean;
   /** Working-tree discard target. Present for working-changes rows (drives the
-   * "Discard"/"Unstage & discard" item); omitted for committed files, whose
-   * changes can't be discarded — they get a copy-only menu. */
+   * Discard / Delete / Ignore items); omitted for committed files, whose
+   * changes can't be discarded — they get a reduced open/history/copy menu. */
   discard?: { staged: boolean };
+  /** Working-tree Tree-view directory header — enables Ignore folder…. */
+  working?: boolean;
 }
 
 /** A pending confirmation prompt for a destructive action (drop stash, delete
