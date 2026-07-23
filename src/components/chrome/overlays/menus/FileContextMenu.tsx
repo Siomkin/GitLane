@@ -118,7 +118,10 @@ export function FileContextMenu() {
   // Working-tree rows (`discard` set): ADR 0002 layout.
   if (discard) {
     const { staged } = discard;
-    const showIgnore = !staged;
+    // Ignore… is offered on every working-tree row, staged or not — it already
+    // showed on unstaged tracked rows, so gating it out of the staged bucket was
+    // an inconsistency (ADR 0002 revised).
+    const showIgnore = true;
     const showDiscard = !untracked && !renamed;
     const showDelete = untracked;
     const showHistory = !untracked;

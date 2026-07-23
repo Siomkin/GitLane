@@ -208,7 +208,8 @@ describe("FileContextMenu", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Ignore…" })).not.toBeInTheDocument();
+    // Ignore… is offered on every working-tree row, staged included (GL-337).
+    expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
   });
 
   it("disables discard for a guarded working file", () => {
