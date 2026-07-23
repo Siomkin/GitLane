@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
@@ -103,5 +104,27 @@ describe("MergedSelectionInspector", () => {
 
     expect(screen.getByText("Loading merged diff…")).toBeInTheDocument();
     expect(screen.queryByText("review all →")).not.toBeInTheDocument();
+  });
+
+  it("opens Restore from the newest selected commit for a modified file", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommits: ["c3", "c1"],
+      selectionDiff: {
+        commits: ["c3", "c1"],
+        files: [file("src/app.ts", "M")],
+        loading: false,
+        error: null,
+      },
+    });
+    render(<MergedSelectionInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("app.ts") });
+    expect(useUi.getState().fileMenu).toEqual(
+      expect.objectContaining({
+        path: "src/app.ts",
+        restore: { commitOid: "c3" },
+      }),
+    );
   });
 });

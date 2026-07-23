@@ -3,6 +3,7 @@ import { summarizeFiles } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
+import { canRestoreCommittedFile } from "@/features/changes/committedFileMenu";
 import { ChangedFileList, FileViewToggle } from "@/features/changes/file-list";
 import { SelectionCommitList } from "./SelectionCommitList";
 import { mergedCommitRows, selectionCountLabel } from "./mergedSelection";
@@ -33,11 +34,20 @@ export function MergedSelectionInspector() {
     const label = `Reviewing ${files.length} file${files.length === 1 ? "" : "s"} · ${count} commits`;
     openSelectionReview(selectionDiff?.commits ?? selectedCommits, label);
   };
-  // Committed files: a copy-only menu (no working-tree discard), matching the
-  // single-commit inspector.
+  // Committed files (ADR 0003): Restore from the newest selected commit that
+  // still appears in the loaded graph (tip of the selection), never a range.
+  const restoreOid = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits)[0]?.id;
   const onContextMenu = (path: string, e: MouseEvent) => {
     e.preventDefault();
-    openFileMenu({ x: e.clientX, y: e.clientY, path });
+    const file = files.find((entry) => entry.path === path);
+    openFileMenu({
+      x: e.clientX,
+      y: e.clientY,
+      path,
+      ...(restoreOid && canRestoreCommittedFile(file, restoreOid)
+        ? { restore: { commitOid: restoreOid } }
+        : {}),
+    });
   };
   const onDirContextMenu = (dirPath: string, e: MouseEvent) => {
     e.preventDefault();

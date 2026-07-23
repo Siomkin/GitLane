@@ -6,9 +6,9 @@
 //! reimplement only partially. This module is the public facade used by the IPC
 //! layer; focused siblings own subprocess execution, operand validation, branch
 //! checkout, branch and history writes, tags and patch creation, resets,
-//! commit/amend/squash writes, conflict resolution, guarded file discard, patch
-//! and bulk staging, stash/worktree porcelain, remotes, recovery previews, and
-//! repo identity.
+//! commit/amend/squash writes, conflict resolution, guarded file discard, path
+//! restore from commit, ignore/reveal helpers, patch and bulk staging,
+//! stash/worktree porcelain, remotes, recovery previews, and repo identity.
 
 mod branch_checkout;
 mod branches;
@@ -31,6 +31,7 @@ mod patches;
 mod recovery;
 mod remotes;
 mod reset;
+mod restore_path;
 mod reveal;
 mod staging;
 mod stash_push;
@@ -98,6 +99,7 @@ pub use remotes::{
 #[cfg(test)]
 pub use remotes::{head_push_remote, pull};
 pub use reset::reset_branch;
+pub use restore_path::{restore_path_from_commit, worktree_differs_from_commit};
 pub use reveal::reveal_in_file_manager;
 pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
 #[cfg(test)]

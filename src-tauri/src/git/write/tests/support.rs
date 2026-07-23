@@ -24,8 +24,8 @@ pub(super) use super::super::{
     merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
     preview_discard_all, preview_discard_file, preview_force_push, preview_remove_worktree,
     preview_reset, publish_branch, publish_remote, pull, pull_branch, push_branch, rebase,
-    reconflict_file, reflog_entries, remove_worktree, reset_branch, resolve_conflict_file, revert,
-    revert_many, revert_onto, set_before_replace_test_hook,
+    reconflict_file, reflog_entries, remove_worktree, reset_branch, resolve_conflict_file,
+    restore_path_from_commit, revert, revert_many, revert_onto, set_before_replace_test_hook,
     set_discard_all_after_cleanup_test_hook, set_discard_all_after_first_clean_batch_test_hook,
     set_discard_all_after_tracked_scope_validation_test_hook,
     set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
@@ -37,7 +37,8 @@ pub(super) use super::super::{
     stage_files, start_discard_all_fingerprint_byte_count, stash, stash_apply,
     stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
     stash_pop, stash_pop_onto, take_discard_all_fingerprint_byte_count, unstage_all, unstage_file,
-    unstage_files, worktree_dirty_state, worktree_is_dirty, worktrees, write_repo_file,
+    unstage_files, worktree_differs_from_commit, worktree_dirty_state, worktree_is_dirty,
+    worktrees, write_repo_file,
 };
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{

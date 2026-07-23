@@ -300,11 +300,13 @@ describe("FileContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Open file" })).not.toBeInTheDocument();
   });
 
-  it("keeps a copy-only directory menu when not a working-tree header", () => {
+  it("keeps Reveal + Copy on a committed directory header (no Restore / Ignore)", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/features/changes", dir: true } });
     render(<FileContextMenu />);
 
     expect(screen.queryByRole("menuitem", { name: "Ignore folder…" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Restore from this commit/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Show in/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Folder name" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Relative path" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
@@ -330,5 +332,82 @@ describe("FileContextMenu", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Full path" }));
     expect(writeText).toHaveBeenCalledWith("/r/src/features/changes");
+  });
+
+  it("offers Restore first for a committed file, then Open / Reveal / History / Copy", () => {
+    useUi.setState({
+      fileMenu: {
+        x: 10,
+        y: 10,
+        path: "src/App.tsx",
+        restore: { commitOid: "abcdef0123456789abcdef0123456789abcdef01" },
+      },
+    });
+    render(<FileContextMenu />);
+
+    const items = screen.getAllByRole("menuitem").map((el) => el.textContent);
+    expect(items[0]).toMatch(/Restore from this commit/);
+    expect(screen.getByRole("menuitem", { name: "Open file" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Show in/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "History" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
+  });
+
+  it("restores immediately when the worktree already matches the commit blob", async () => {
+    const worktreeDiffersFromCommit = vi.fn().mockResolvedValue(false);
+    const restorePathFromCommit = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ worktreeDiffersFromCommit, restorePathFromCommit });
+    useUi.setState({
+      fileMenu: {
+        x: 10,
+        y: 10,
+        path: "src/App.tsx",
+        restore: { commitOid: "abcdef0123456789abcdef0123456789abcdef01" },
+      },
+    });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restore from this commit…" }));
+    await waitFor(() =>
+      expect(restorePathFromCommit).toHaveBeenCalledWith(
+        "abcdef0123456789abcdef0123456789abcdef01",
+        "src/App.tsx",
+      ),
+    );
+    expect(useUi.getState().confirm).toBeNull();
+    expect(useUi.getState().fileMenu).toBeNull();
+  });
+
+  it("confirms Restore only when the worktree would change", async () => {
+    const worktreeDiffersFromCommit = vi.fn().mockResolvedValue(true);
+    const restorePathFromCommit = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ worktreeDiffersFromCommit, restorePathFromCommit });
+    useUi.setState({
+      fileMenu: {
+        x: 10,
+        y: 10,
+        path: "src/App.tsx",
+        restore: { commitOid: "abcdef0123456789abcdef0123456789abcdef01" },
+      },
+    });
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Restore from this commit…" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    expect(useUi.getState().confirm?.title).toContain("Restore src/App.tsx");
+    expect(restorePathFromCommit).not.toHaveBeenCalled();
+
+    useUi.getState().confirm!.onConfirm();
+    expect(restorePathFromCommit).toHaveBeenCalledWith(
+      "abcdef0123456789abcdef0123456789abcdef01",
+      "src/App.tsx",
+    );
+  });
+
+  it("omits Restore when the menu has no restore target", () => {
+    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/App.tsx" } });
+    render(<FileContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: /Restore from this commit/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open file" })).toBeInTheDocument();
   });
 });

@@ -345,6 +345,8 @@ export function createRepoWriteActions(
   | "discardFile"
   | "appendIgnorePattern"
   | "revealInFileManager"
+  | "worktreeDiffersFromCommit"
+  | "restorePathFromCommit"
   | "stageAll"
   | "unstageAll"
   | "commit"
@@ -1404,6 +1406,31 @@ export function createRepoWriteActions(
         await api.revealInFileManager(summary.path, path);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    worktreeDiffersFromCommit: async (commitOid, path) => {
+      const { summary } = get();
+      if (!summary) return false;
+      return api.worktreeDiffersFromCommit(summary.path, commitOid, path);
+    },
+
+    restorePathFromCommit: async (commitOid, path) => {
+      const { summary } = get();
+      if (!summary) return;
+      const owner = captureOwner(summary);
+      try {
+        const message = await api.restorePathFromCommit(summary.path, commitOid, path);
+        if (!ownerIsCurrent(get, owner)) {
+          useUi.getState().showToast(message);
+          return;
+        }
+        await refreshIfCurrent(get, owner);
+        useUi.getState().showToast(message);
+      } catch (e) {
+        if (ownerIsCurrent(get, owner)) {
+          useUi.getState().showToast(String(e), "error");
+        }
       }
     },
 

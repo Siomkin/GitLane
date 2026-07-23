@@ -167,9 +167,11 @@ export interface FileMenu {
    * offer Ignore folder… (ADR 0002). */
   dir?: boolean;
   /** Working-tree discard target. Present for working-changes rows (drives the
-   * Discard / Delete / Ignore items); omitted for committed files, whose
-   * changes can't be discarded — they get a reduced open/history/copy menu. */
+   * Discard / Delete / Ignore items); omitted for committed files. */
   discard?: { staged: boolean };
+  /** Committed-file restore target (ADR 0003). Present when the row has a blob
+   * at that commit; drives Restore from this commit…. */
+  restore?: { commitOid: string };
   /** Working-tree Tree-view directory header — enables Ignore folder…. */
   working?: boolean;
 }
