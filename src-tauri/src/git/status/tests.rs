@@ -693,6 +693,49 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
 }
 
 #[test]
+fn commit_files_marks_gitlink_as_submodule() {
+    let dir = std::env::temp_dir().join("gitlane-commit-gitlink-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "seed.txt", "seed\n");
+
+    {
+        let mut index = repo.index().unwrap();
+        let entry = git2::IndexEntry {
+            ctime: git2::IndexTime::new(0, 0),
+            mtime: git2::IndexTime::new(0, 0),
+            dev: 0,
+            ino: 0,
+            mode: 0o160000,
+            uid: 0,
+            gid: 0,
+            file_size: 0,
+            id: git2::Oid::from_str("0123456789012345678901234567890123456789").unwrap(),
+            flags: 0,
+            flags_extended: 0,
+            path: b"vendor/sub".to_vec(),
+        };
+        index.add(&entry).unwrap();
+        index.write().unwrap();
+    }
+    let oid = commit_index(&repo, "add gitlink").to_string();
+    let path = dir.to_str().unwrap();
+    let files = commit_files(path, &oid).unwrap();
+    let entry = files
+        .iter()
+        .find(|f| f.path == "vendor/sub")
+        .expect("gitlink row");
+    assert_eq!(
+        entry.advanced.as_ref().map(|a| a.kind.as_str()),
+        Some("submodule"),
+        "gitlink should be tagged for Restore hide: {entry:?}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn text_diff_carries_blob_oids_for_content_previews() {
     let dir = std::env::temp_dir().join("gitlane-text-oid-test");
     let _ = fs::remove_dir_all(&dir);

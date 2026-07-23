@@ -34,8 +34,9 @@ export function MergedSelectionInspector() {
     const label = `Reviewing ${files.length} file${files.length === 1 ? "" : "s"} · ${count} commits`;
     openSelectionReview(selectionDiff?.commits ?? selectedCommits, label);
   };
-  // Committed files (ADR 0003): Restore from the newest selected commit that
-  // still appears in the loaded graph (tip of the selection), never a range.
+  // Committed files (ADR 0003): Restore from the newest selected commit still
+  // in the loaded graph (selection tip). Multi-commit unions have no per-file
+  // owning commit in the list, so this is intentional — not a range restore.
   const restoreOid = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits)[0]?.id;
   const onContextMenu = (path: string, e: MouseEvent) => {
     e.preventDefault();

@@ -63,3 +63,39 @@ fn restore_refuses_unsafe_paths() {
     assert!(restore_path_from_commit(repo.path(), &oid, ".git/config").is_err());
     assert!(worktree_differs_from_commit(repo.path(), &oid, "../outside").is_err());
 }
+
+#[test]
+fn restore_refuses_a_gitlink_submodule_path() {
+    let repo = repo_with_file("restore-gitlink", "seed.txt", b"x\n");
+    // Hand-craft a gitlink entry and commit it (same pattern as status tests).
+    {
+        let git = git2::Repository::open(&repo.0).unwrap();
+        let mut index = git.index().unwrap();
+        let entry = git2::IndexEntry {
+            ctime: git2::IndexTime::new(0, 0),
+            mtime: git2::IndexTime::new(0, 0),
+            dev: 0,
+            ino: 0,
+            mode: 0o160000,
+            uid: 0,
+            gid: 0,
+            file_size: 0,
+            id: git2::Oid::from_str("0123456789012345678901234567890123456789").unwrap(),
+            flags: 0,
+            flags_extended: 0,
+            path: b"vendor/sub".to_vec(),
+        };
+        index.add(&entry).unwrap();
+        index.write().unwrap();
+        let tree = git.find_tree(index.write_tree().unwrap()).unwrap();
+        let sig = git2::Signature::now("GitLane Test", "gitlane@example.test").unwrap();
+        let parent = git.head().unwrap().peel_to_commit().unwrap();
+        git.commit(Some("HEAD"), &sig, &sig, "add gitlink", &tree, &[&parent])
+            .unwrap();
+    }
+    let oid = rev_parse(&repo, "HEAD");
+    let err = restore_path_from_commit(repo.path(), &oid, "vendor/sub").unwrap_err();
+    assert!(err.contains("submodule"), "unexpected: {err}");
+    let err = worktree_differs_from_commit(repo.path(), &oid, "vendor/sub").unwrap_err();
+    assert!(err.contains("submodule"), "unexpected: {err}");
+}

@@ -1411,7 +1411,7 @@ export function createRepoWriteActions(
 
     worktreeDiffersFromCommit: async (commitOid, path) => {
       const { summary } = get();
-      if (!summary) return false;
+      if (!summary) throw new Error("No repository");
       return api.worktreeDiffersFromCommit(summary.path, commitOid, path);
     },
 

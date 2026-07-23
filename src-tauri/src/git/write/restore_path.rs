@@ -8,7 +8,6 @@ use std::io;
 use std::path::{Component, Path};
 
 use git2::{ObjectType, Oid};
-use sha2::{Digest, Sha256};
 
 use crate::git::read::open;
 use crate::git::worktree_fs::{fingerprint_worktree_leaf, WorktreeLeafFingerprint};
@@ -20,13 +19,16 @@ use super::operands::{ensure_exact_oid, ensure_operand};
 /// on-disk bytes (or create a missing leaf). False when the worktree already
 /// matches the commit blob. Errors when the path has no restoreable blob at
 /// that commit (deleted, submodule/gitlink, bad path).
+///
+/// Compares git blob oids (tree entry vs `git hash-object` of the worktree
+/// leaf) so large files are never fully loaded into the Rust process.
 pub fn worktree_differs_from_commit(
     repo: &str,
     commit_oid: &str,
     file: &str,
 ) -> Result<bool, String> {
     let relative = normalize_relative(file)?;
-    let blob = commit_blob(repo, commit_oid, &relative)?;
+    let blob_oid = commit_path_blob_oid(repo, commit_oid, &relative)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
     let workdir = repository
         .workdir()
@@ -34,10 +36,12 @@ pub fn worktree_differs_from_commit(
 
     match fingerprint_worktree_leaf(workdir, &relative) {
         Ok((WorktreeLeafFingerprint::Missing, _)) => Ok(true),
-        Ok((WorktreeLeafFingerprint::Regular { digest, .. }, _)) => {
-            Ok(digest != sha256_bytes(&blob.bytes))
+        Ok((WorktreeLeafFingerprint::Regular { .. }, _))
+        | Ok((WorktreeLeafFingerprint::Symlink { .. }, _)) => {
+            let hashed = run_git_literal_paths(repo, &["hash-object", "--", &relative])?;
+            let work_oid = Oid::from_str(hashed.trim()).map_err(|e| e.to_string())?;
+            Ok(work_oid != blob_oid)
         }
-        Ok((WorktreeLeafFingerprint::Symlink { target, .. }, _)) => Ok(target != blob.bytes),
         Ok((WorktreeLeafFingerprint::Other { .. }, _)) => Ok(true),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
         Err(error) => Err(format!("Couldn't inspect {relative}: {error}")),
@@ -54,7 +58,7 @@ pub fn restore_path_from_commit(
 ) -> Result<String, String> {
     let relative = normalize_relative(file)?;
     // Validate blob exists + isn't a gitlink before shelling out.
-    let _ = commit_blob(repo, commit_oid, &relative)?;
+    let _ = commit_path_blob_oid(repo, commit_oid, &relative)?;
 
     run_git_literal_paths(
         repo,
@@ -73,11 +77,9 @@ pub fn restore_path_from_commit(
     ))
 }
 
-struct CommitBlob {
-    bytes: Vec<u8>,
-}
-
-fn commit_blob(repo: &str, commit_oid: &str, file: &str) -> Result<CommitBlob, String> {
+/// Resolve the blob oid for `file` at `commit_oid`, refusing gitlinks and
+/// non-blob tree entries without loading blob content into memory.
+fn commit_path_blob_oid(repo: &str, commit_oid: &str, file: &str) -> Result<Oid, String> {
     ensure_exact_oid(commit_oid)?;
     ensure_operand(commit_oid)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
@@ -102,16 +104,13 @@ fn commit_blob(repo: &str, commit_oid: &str, file: &str) -> Result<CommitBlob, S
             short_oid(commit_oid)
         ));
     }
-
-    let object = entry
-        .to_object(&repository)
-        .map_err(|e| format!("Couldn't read {file}: {e}"))?;
-    let blob = object
-        .peel_to_blob()
-        .map_err(|_| format!("“{file}” is not a file in commit {}", short_oid(commit_oid)))?;
-    Ok(CommitBlob {
-        bytes: blob.content().to_vec(),
-    })
+    if entry.kind() != Some(ObjectType::Blob) {
+        return Err(format!(
+            "“{file}” is not a file in commit {}",
+            short_oid(commit_oid)
+        ));
+    }
+    Ok(entry.id())
 }
 
 fn normalize_relative(file: &str) -> Result<String, String> {
@@ -149,12 +148,6 @@ fn short_oid(oid: &str) -> &str {
     oid.get(..7).unwrap_or(oid)
 }
 
-fn sha256_bytes(bytes: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher.finalize().into()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +158,11 @@ mod tests {
         assert!(normalize_relative(".git/config").is_err());
         assert!(normalize_relative("/abs").is_err());
         assert!(normalize_relative("").is_err());
+    }
+
+    #[test]
+    fn short_oid_truncates() {
+        assert_eq!(short_oid("abcdef0123456789"), "abcdef0");
+        assert_eq!(short_oid("abc"), "abc");
     }
 }

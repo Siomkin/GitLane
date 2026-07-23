@@ -183,4 +183,27 @@ describe("CommitInspector", () => {
     expect(menu?.path).toBe("gone.ts");
     expect(menu?.restore).toBeUndefined();
   });
+
+  it("omits Restore for a submodule gitlink row", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [
+        {
+          path: "vendor/sub",
+          status: "A",
+          add: 0,
+          del: 0,
+          binary: false,
+          advanced: { kind: "submodule", message: "Submodule gitlink" },
+        },
+      ],
+    });
+    render(<CommitInspector />);
+
+    await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("sub") });
+    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+  });
 });
