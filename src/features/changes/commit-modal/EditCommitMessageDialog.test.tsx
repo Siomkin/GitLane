@@ -99,6 +99,56 @@ describe("EditCommitMessageDialog", () => {
     expect(onSubmit).toHaveBeenCalledWith("fix: better message");
   });
 
+  it("focuses the seeded field without selecting it", () => {
+    // Reword opens on an existing message: a select-all would let the next
+    // keystroke wipe it, so the caret parks after the text instead.
+    openEditor(vi.fn(), "A plain commit message");
+    render(<EditCommitMessageDialog />);
+
+    const message = screen.getByRole("textbox", {
+      name: "Commit message",
+    }) as HTMLTextAreaElement;
+    expect(message).toHaveFocus();
+    expect(message.selectionStart).toBe(message.value.length);
+    expect(message.selectionEnd).toBe(message.value.length);
+  });
+
+  it("submits from Conventional mode without switching to Message", () => {
+    const onSubmit = openEditor();
+    render(<EditCommitMessageDialog />);
+
+    const summary = screen.getByRole("textbox", { name: "Commit summary" });
+    fireEvent.change(summary, { target: { value: "improve the editor" } });
+    fireEvent.keyDown(summary, { key: "Enter", metaKey: true });
+
+    expect(onSubmit).toHaveBeenCalledWith("fix(ui): improve the editor\n\nExplain why.");
+  });
+
+  it("disables submit when a conventional subject is empty", () => {
+    // `fix(ui):` alone still composes a non-empty message, so the subject —
+    // not the composed text — has to gate submission (inline-composer parity).
+    openEditor();
+    render(<EditCommitMessageDialog />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Commit summary" }), {
+      target: { value: "   " },
+    });
+
+    expect(screen.getByRole("button", { name: "Update message" })).toBeDisabled();
+  });
+
+  it("ignores Ctrl+Enter when the conventional subject is empty", () => {
+    const onSubmit = openEditor();
+    render(<EditCommitMessageDialog />);
+
+    const summary = screen.getByRole("textbox", { name: "Commit summary" });
+    fireEvent.change(summary, { target: { value: "   " } });
+    fireEvent.keyDown(summary, { key: "Enter", ctrlKey: true });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(useUi.getState().editCommitMessage).not.toBeNull();
+  });
+
   it("disables submit for an empty message and cancels without submitting", () => {
     const onSubmit = openEditor(vi.fn(), "old message");
     render(<EditCommitMessageDialog />);

@@ -13,6 +13,7 @@ import react from "@vitejs/plugin-react";
 // gained a render.
 const DOM_TEST_TS = [
   "src/components/navigation/branch-navigator/useNavigatorSections.test.ts",
+  "src/features/changes/commit-modal/useConventionalFields.test.ts",
   "src/features/conflicts/useConflictResolver.test.ts",
   "src/features/terminal/panes/paneController.test.ts",
   "src/hooks/useBranchRefDrag.test.ts",

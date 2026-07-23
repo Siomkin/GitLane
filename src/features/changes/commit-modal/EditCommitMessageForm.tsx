@@ -7,14 +7,10 @@ import {
   DialogTitle,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
-import {
-  ComposerMode,
-  composeConventionalMessage,
-  parseConventionalMessage,
-  type ConventionalFields,
-} from "@/lib/conventionalCommit";
+import { ComposerMode } from "@/lib/conventionalCommit";
 import type { EditCommitMessageRequest } from "@/store/ui";
 import { CommitMessageEditor } from "./CommitMessageEditor";
+import { useConventionalFields } from "./useConventionalFields";
 
 export function EditCommitMessageForm({
   request,
@@ -24,33 +20,23 @@ export function EditCommitMessageForm({
   onClose: () => void;
 }) {
   const [message, setMessage] = useState(request.defaultValue);
-  const [fields, setFields] = useState<ConventionalFields>(() =>
-    parseConventionalMessage(request.defaultValue),
-  );
+  const { fields, updateFields } = useConventionalFields(message, setMessage);
   const [mode, setMode] = useState<ComposerMode>(() =>
-    parseConventionalMessage(request.defaultValue).type
-      ? ComposerMode.Conventional
-      : ComposerMode.Message,
+    fields.type ? ComposerMode.Conventional : ComposerMode.Message,
   );
 
-  const updateMessage = (next: string) => {
-    setMessage(next);
-    setFields(parseConventionalMessage(next));
-  };
-
-  const updateFields = (patch: Partial<ConventionalFields>) => {
-    setFields((current) => {
-      const next = { ...current, ...patch };
-      setMessage(composeConventionalMessage(next));
-      return next;
-    });
-  };
+  // Mirror the inline composer's readiness rule (`deriveCommitComposer`): in
+  // Conventional mode a type/scope alone still composes a non-empty message
+  // (`fix(ui):`), so the subject — not the composed text — is what must be set.
+  const canSubmit =
+    mode === ComposerMode.Conventional
+      ? fields.subject.trim().length > 0
+      : message.trim().length > 0;
 
   const submit = () => {
-    const value = message.trim();
-    if (!value) return;
+    if (!canSubmit) return;
     onClose();
-    request.onSubmit(value);
+    request.onSubmit(message.trim());
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -82,19 +68,18 @@ export function EditCommitMessageForm({
             mode={mode}
             onModeChange={setMode}
             msg={message}
-            onMsgChange={updateMessage}
+            onMsgChange={setMessage}
             fields={fields}
             onFieldsChange={updateFields}
             amend
             autoFocus
-            selectOnFocus
             bodyRows={8}
             messageRows={10}
           />
         </div>
         <DialogFooter>
           <DialogCancelButton onClick={onClose} />
-          <DialogPrimaryButton onClick={submit} disabled={!message.trim()}>
+          <DialogPrimaryButton onClick={submit} disabled={!canSubmit}>
             Update message
           </DialogPrimaryButton>
         </DialogFooter>

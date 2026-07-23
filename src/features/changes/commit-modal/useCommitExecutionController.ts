@@ -1,11 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { type TerminalAgent } from "@/lib/api";
-import {
-  composeConventionalMessage,
-  parseConventionalMessage,
-  type ConventionalFields,
-} from "@/lib/conventionalCommit";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
 import { useRepo } from "@/store/repo";
 import {
@@ -26,6 +21,7 @@ import {
   publishPromptDetails,
 } from "./commitComposerModel";
 import { useCommitIdentity } from "./useCommitIdentity";
+import { useConventionalFields } from "./useConventionalFields";
 
 export function useCommitExecutionController() {
   const msg = useUi((state) => state.commitMsg);
@@ -52,25 +48,7 @@ export function useCommitExecutionController() {
   const identity = useCommitIdentity();
   const [amend, setAmend] = useState(false);
 
-  // The structured (conventional) view of `commitMsg`. Field edits compose back
-  // into the message; any external message change — an agent draft landing, the
-  // post-commit clear, the amend prefill — re-parses into the fields. The ref
-  // marks messages we composed ourselves so those don't re-parse mid-typing.
-  const [fields, setFields] = useState<ConventionalFields>(() => parseConventionalMessage(msg));
-  const lastSyncedMsg = useRef(msg);
-  useEffect(() => {
-    if (msg === lastSyncedMsg.current) return;
-    lastSyncedMsg.current = msg;
-    setFields(parseConventionalMessage(msg));
-  }, [msg]);
-
-  const updateFields = (patch: Partial<ConventionalFields>) => {
-    const next = { ...fields, ...patch };
-    setFields(next);
-    const composed = composeConventionalMessage(next);
-    lastSyncedMsg.current = composed;
-    setMsg(composed);
-  };
+  const { fields, updateFields } = useConventionalFields(msg, setMsg);
 
   const model = deriveCommitComposer({
     changes,

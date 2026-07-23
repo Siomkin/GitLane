@@ -153,6 +153,16 @@ beforeEach(() => {
 });
 
 describe("CommitComposer", () => {
+  it("does not steal focus when the composer expands", () => {
+    // The reword dialog opts into focus via `autoFocus`; the inline composer
+    // must not, or expanding it would yank focus out of whatever the user was
+    // doing. Guards the editor both surfaces share.
+    renderComposer();
+
+    expect(screen.getByRole("textbox", { name: "Commit summary" })).not.toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Commit body" })).not.toHaveFocus();
+  });
+
   it("renders the structured composer inline and shows the effective identity", async () => {
     renderComposer();
 
