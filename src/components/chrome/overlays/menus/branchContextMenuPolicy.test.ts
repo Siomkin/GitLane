@@ -162,8 +162,6 @@ describe("deriveBranchContextMenuPolicy", () => {
     expect(policy.existingWorktree?.path).toBe("/work/repo-feature");
     expect(policy.handoffHere?.value).toBe("/work/repo");
     expect(policy).toMatchObject({
-      canHandOff: true,
-      canRemoveWorktree: true,
       worktreeCheckedOut: true,
       worktreeRef: "feature-oid",
       localDeleteMode: "branch-and-worktree",
@@ -181,8 +179,6 @@ describe("deriveBranchContextMenuPolicy", () => {
 
     expect(policy).toMatchObject({
       handoffHere: null,
-      canHandOff: false,
-      canRemoveWorktree: false,
       localDeleteMode: "blocked-main-worktree",
     });
     expect(MAIN_WORKTREE_DELETE_DISABLED_REASON).toBe("Checked out in the main worktree.");

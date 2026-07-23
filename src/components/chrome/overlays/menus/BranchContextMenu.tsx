@@ -1,12 +1,14 @@
 import { api } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
+import { branchWebUrl } from "@/lib/forgeUrls";
+import { openExternalUrl } from "@/lib/openExternal";
 import { validateBranchName } from "@/lib/refName";
 import { startWorktreeHandoff } from "@/lib/worktreeHandoff";
 import {
   BranchIcon,
   CheckIcon,
   CompareIcon,
-  CopyIcon,
+  ExternalLinkIcon,
   FolderIcon,
   HashIcon,
   PlusIcon,
@@ -15,7 +17,6 @@ import {
   TreeIcon,
   WarningIcon,
 } from "@/components/ui/icons";
-import { useRemoveWorktree } from "./useRemoveWorktree";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -38,6 +39,8 @@ export function BranchContextMenu() {
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openCompare = useRepo((s) => s.openCompare);
+  const forge = useRepo((s) => s.forge);
+  const createPatchAt = useRepo((s) => s.createPatchAt);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const cur = useRepo((s) => s.summary?.headBranch ?? null);
@@ -65,7 +68,6 @@ export function BranchContextMenu() {
   const createAnnotatedTagAt = useRepo((s) => s.createAnnotatedTagAt);
   const createWorktreeAt = useRepo((s) => s.createWorktreeAt);
   const openWorktree = useRepo((s) => s.openWorktree);
-  const requestRemoveWorktree = useRemoveWorktree();
   const run = useBranchOp();
 
   const policy = menu
@@ -98,9 +100,7 @@ export function BranchContextMenu() {
     tipShort,
     upstream,
     existingWorktree: existingWt,
-    existingWorktreeInfo: existingWtInfo,
     needsPublishPrompt,
-    canIntegrateIntoCurrent,
     isLocal,
     isRemote,
     remoteCheckout,
@@ -109,8 +109,6 @@ export function BranchContextMenu() {
     worktreeCheckedOut: wtCheckedOut,
     worktreeRef: wtRef,
     handoffHere,
-    canHandOff,
-    canRemoveWorktree,
     localDeleteMode,
     remoteDeleteTarget,
   } = policy;
@@ -137,6 +135,15 @@ export function BranchContextMenu() {
     }
     act(() => pushBranch(b));
   };
+
+  // Forge links for the branch and its tip — shown only on a recognised forge for
+  // a *published* branch (an unpublished branch or unknown host would 404). The
+  // forge branch name drops the remote prefix for a remote-tracking ref.
+  const knownForge = forge?.kind != null;
+  const forgeName = forge?.forge ?? null;
+  const published = upstream != null || isRemote;
+  const forgeBranchName = isRemote ? remoteDeleteTarget?.branch ?? null : upstream ? b : null;
+  const branchUrl = knownForge && published && forgeBranchName ? branchWebUrl(forge, forgeBranchName) : null;
 
   // The branch is named once, here — rows below never repeat it.
   const heading = (
@@ -221,26 +228,19 @@ export function BranchContextMenu() {
     }
   }
 
-  // ---- intent groups, most-used first: Create / Integrate / Worktree / Compare ----
-  const groups: MenuItem[] = [];
-  {
-    const children: MenuItem[] = [
-      { label: "Branch from here…", onClick: () => openCreateBranchFrom(b) },
-    ];
-    if (tip) {
-      children.push({
-        label: "Tag here…",
-        onClick: () => requestPrompt({ title: `Create tag at ${tipShort}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, tip)) }),
-      });
-      children.push({ label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b) });
-    }
-    groups.push({ label: "Create", icon: <PlusIcon className="h-4 w-4" />, submenu: children });
-  }
-  if (canIntegrateIntoCurrent && cur) {
-    const children: MenuItem[] = [];
-    if (canFf) children.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
-    children.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
-    children.push({
+  // ---- integrate: identical structure to the commit menu — Cherry-pick and
+  // Revert are flat rows acting on the tip commit; the branch-level integrate
+  // verbs (fast-forward / merge / rebase onto ‹b›) fold into one submenu. Shown
+  // whenever there's a current branch and a tip, so the branch pill matches the
+  // commit menu on the same row (including on the current branch). ----
+  const integrate: MenuItem[] = [];
+  if (tip && cur) {
+    integrate.push({ label: `Cherry-pick onto ${cur}`, icon: <BranchIcon className="h-4 w-4" />, onClick: () => act(() => cherryPickCommit(tip)) });
+    integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(tip)) });
+    const integrateChildren: MenuItem[] = [];
+    if (canFf) integrateChildren.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
+    integrateChildren.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
+    integrateChildren.push({
       label: `Rebase onto ${b}`,
       onClick: () =>
         confirmRebase({
@@ -251,88 +251,86 @@ export function BranchContextMenu() {
           proceed: () => act(() => rebaseOnto(cur, b)),
         }),
     });
-    if (tip) {
-      children.push({ label: "Cherry-pick tip", onClick: () => act(() => cherryPickCommit(tip)) });
-      children.push({ label: "Revert tip", onClick: () => act(() => revertCommit(tip)) });
-    }
-    groups.push({ label: "Integrate into current", icon: <BranchIcon className="h-4 w-4" />, note: `into ${cur}`, submenu: children });
+    integrate.push({ label: "Integrate into current", note: `into ${cur}`, submenu: integrateChildren });
   }
+
+  // ---- create: branch creation is a flat row; the rarer create targets and the
+  // compare variants fold into their own submenus. ----
+  const create: MenuItem[] = [
+    { label: "Create branch here…", icon: <PlusIcon className="h-4 w-4" />, onClick: () => openCreateBranchFrom(b) },
+  ];
   {
-    // One home for everything worktree: create one when the branch has none,
-    // manage the existing one otherwise ("Open worktree" stays promoted on top
-    // as the everyday one-click, since the branch can't be checked out here —
-    // the in-group copy is labelled differently so assistive tech can tell the
-    // two menu items apart).
-    const newWorktree: MenuItem = {
+    const createChildren: MenuItem[] = [];
+    if (tip) {
+      createChildren.push({
+        label: "Tag here…",
+        onClick: () => requestPrompt({ title: `Create tag at ${tipShort}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, tip)) }),
+      });
+      createChildren.push({ label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b) });
+    }
+    // Worktree *creation* is a create verb; managing an existing worktree lives
+    // on the worktree pill / navigator row (the single home). When the branch is
+    // already checked out in a linked worktree, git refuses a second checkout,
+    // so create detached at the tip and say so in the prompt.
+    createChildren.push({
       label: "New worktree here…",
       onClick: () =>
         promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, {
           detachedAt: wtCheckedOut && tipShort ? tipShort : undefined,
         }),
-    };
-    const children: MenuItem[] = [];
-    if (existingWt) {
-      children.push({ label: "Open this worktree", onClick: () => { close(); void openWorktree(existingWt.path); } });
-      children.push({ label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } });
-      // Only offer the hand-off when the source can still run the detach step
-      // (not prunable) and a valid destination actually exists (bare / prunable
-      // worktrees are filtered out), so it's never a dead click.
-      if (canHandOff) {
-        children.push({
-          label: "Hand off to…",
-          onClick: () =>
-            startWorktreeHandoff({
-              branch: b,
-              sourcePath: existingWt.path,
-              worktrees,
-              // The branch lives in another worktree, not the open repo, so its
-              // uncommitted state isn't known here — carry conditionally.
-              sourceChanges: null,
-              openHandoff,
-              onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
-            }),
-        });
-      }
-      children.push(newWorktree);
-      if (canRemoveWorktree) {
-        children.push({
-          label: "Remove worktree",
-          danger: true,
-          sep: true,
-          // Shares the worktree row menu's probe-then-confirm so a dirty
-          // worktree is warned about and force-removed here too (GL-296).
-          onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path, branch: b, head: existingWtInfo?.head ?? null, locked: existingWtInfo?.locked ?? false }),
-        });
-      }
-    } else {
-      children.push(newWorktree);
-    }
-    groups.push({ label: "Worktree", icon: <TreeIcon className={existingWt ? "h-4 w-4 text-[color:var(--accent)]" : "h-4 w-4"} />, note: existingWt?.path, submenu: children });
+    });
+    if (tip) createChildren.push({ label: "Patch from commit", onClick: () => act(() => createPatchAt(tip)) });
+    create.push({ label: "Create", submenu: createChildren });
   }
   if (tip) {
-    const children: MenuItem[] = [];
+    const compareChildren: MenuItem[] = [];
     if (upstream) {
-      children.push({
+      compareChildren.push({
         label: "Compare with upstream",
         onClick: () => { close(); void openCompare({ base: upstream, head: b, baseLabel: upstream, headLabel: b, scope: "upstream", title: `Comparing ${b} with ${upstream}` }); },
       });
     }
-    children.push({
+    compareChildren.push({
       label: "Compare with branch…",
       onClick: () => promptCompareBranch(requestPrompt, openCompare, branches, b, cur),
     });
-    groups.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: children });
+    create.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: compareChildren });
   }
 
-  // ---- copy (used constantly, kept in plain sight) ----
-  const copy: MenuItem[] = [
-    { label: "Copy branch name", icon: <CopyIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(b); } },
-  ];
-  if (tip) {
-    copy.push({ label: "Copy tip SHA", icon: <HashIcon className="h-4 w-4" />, onClick: () => { close(); void navigator.clipboard?.writeText(tip); } });
+  // ---- open on the forge (copying the branch name / SHA lives in the right
+  // panel, so it isn't repeated here — same as the commit text menu). ----
+  const openRemote: MenuItem[] = [];
+  if (branchUrl) {
+    openRemote.push({
+      label: forgeName ? `View on ${forgeName}` : "View on remote",
+      icon: <ExternalLinkIcon className="h-4 w-4" />,
+      onClick: () => { close(); openExternalUrl(branchUrl); },
+    });
   }
 
-  // ---- danger zone: rare + destructive, folded away behind one row ----
+  // ---- reset: a first-level, danger-toned submenu — kept at the same depth as
+  // the commit menu's Reset, never buried inside the Danger zone group. ----
+  const resetMode = (mode: "soft" | "mixed" | "hard", label: string, message: string): MenuItem => ({
+    label,
+    danger: mode === "hard",
+    onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message, confirmLabel: `Reset (${mode})`, danger: mode === "hard", preview: () => repoPath && tip ? api.previewReset(repoPath, tip, mode) : Promise.reject(new Error("No repository")), onConfirm: (preview) => tip && void run(() => resetBranchTo(cur, tip, mode, preview)), headPrecondition: resetHeadPrecondition }),
+  });
+  const reset: MenuItem[] =
+    tip && cur && !isCurrent
+      ? [{
+          label: `Reset ${cur} to ${b}`,
+          icon: <WarningIcon className="h-4 w-4" />,
+          tone: "danger",
+          submenu: [
+            resetMode("soft", "Soft — keep changes staged", "Soft reset — changes are kept staged."),
+            resetMode("mixed", "Mixed — keep changes unstaged", "Mixed reset — changes are kept in the working tree, unstaged."),
+            resetMode("hard", "Hard — discard changes", "Hard reset — all uncommitted working-tree changes will be permanently discarded."),
+          ],
+        }]
+      : [];
+
+  // ---- danger zone: the rarer branch-only destructive verbs (rename, force
+  // push, upstream, delete) — Reset lives above it, not inside. ----
   const danger: MenuItem[] = [];
   if (isLocal) {
     danger.push({ label: "Manage", header: true });
@@ -346,12 +344,6 @@ export function BranchContextMenu() {
         onClick: () => void previewConfirm({ requestConfirm, title: `Force-push ${b}?`, message: "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since this preview). Use after amending or rebasing pushed commits.", confirmLabel: "Force push", danger: true, preview: () => repoPath ? api.previewForcePush(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: (impact) => void run(() => forcePush(b, impact)) }),
       });
     }
-  }
-  if (tip && cur && !isCurrent) {
-    danger.push({ label: `Reset ${cur} to ${b}`, header: true, danger: true, sep: danger.length > 0 });
-    danger.push({ label: "Soft — keep changes staged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Soft reset — changes are kept staged.", confirmLabel: "Reset (soft)", preview: () => repoPath ? api.previewReset(repoPath, tip, "soft") : Promise.reject(new Error("No repository")), onConfirm: (preview) => void run(() => resetBranchTo(cur, tip, "soft", preview)), headPrecondition: resetHeadPrecondition }) });
-    danger.push({ label: "Mixed — keep changes unstaged", indent: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Mixed reset — changes are kept in the working tree, unstaged.", confirmLabel: "Reset (mixed)", preview: () => repoPath ? api.previewReset(repoPath, tip, "mixed") : Promise.reject(new Error("No repository")), onConfirm: (preview) => void run(() => resetBranchTo(cur, tip, "mixed", preview)), headPrecondition: resetHeadPrecondition }) });
-    danger.push({ label: "Hard — discard changes", indent: true, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message: "Hard reset — all uncommitted working-tree changes will be permanently discarded.", confirmLabel: "Reset (hard)", danger: true, preview: () => repoPath ? api.previewReset(repoPath, tip, "hard") : Promise.reject(new Error("No repository")), onConfirm: (preview) => void run(() => resetBranchTo(cur, tip, "hard", preview)), headPrecondition: resetHeadPrecondition }) });
   }
   if (isLocal) {
     // Set upstream is rare — tuck it down at the end, just above Delete.
@@ -375,13 +367,19 @@ export function BranchContextMenu() {
 
   // Assemble with a separator at each section boundary.
   const items: MenuItem[] = [...top];
-  if (groups.length) {
-    groups[0] = { ...groups[0], sep: items.length > 0 };
-    items.push(...groups);
+  for (const section of [integrate, create]) {
+    if (section.length) {
+      section[0] = { ...section[0], sep: items.length > 0 };
+      items.push(...section);
+    }
   }
-  if (copy.length) {
-    copy[0] = { ...copy[0], sep: items.length > 0 };
-    items.push(...copy);
+  if (openRemote.length) {
+    openRemote[0] = { ...openRemote[0], sep: items.length > 0 };
+    items.push(...openRemote);
+  }
+  if (reset.length) {
+    reset[0] = { ...reset[0], sep: items.length > 0 };
+    items.push(...reset);
   }
   if (danger.length) {
     items.push({ label: "Danger zone", icon: <WarningIcon className="h-4 w-4" />, tone: "danger", sep: items.length > 0, submenu: danger });

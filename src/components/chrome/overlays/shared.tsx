@@ -161,8 +161,12 @@ export function MenuPanel({
               : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
           }`}
         >
-          {it.icon && (
-            <span className={`grid shrink-0 place-items-center ${it.danger ? "" : "text-neutral-400"}`}>
+          {/* Reserve the icon column on top-level rows so their labels align down
+              one edge whether or not a row has a glyph. Nested submenu children are
+              already indented as a group, so they keep the tighter padding and only
+              render a slot when they actually carry an icon. */}
+          {(!nested || it.icon) && (
+            <span className={`grid h-4 w-4 shrink-0 place-items-center ${it.danger ? "" : "text-neutral-400"}`}>
               {it.icon}
             </span>
           )}
@@ -198,11 +202,11 @@ export function MenuPanel({
               : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
           }`}
         >
-          {it.icon && (
-            <span className={`grid shrink-0 place-items-center text-neutral-400 ${danger ? "group-hover:text-rose-500" : ""}`}>
-              {it.icon}
-            </span>
-          )}
+          {/* Same reserved icon column as leaf rows, so a submenu expander's
+              label lines up with the leaf labels above and below it. */}
+          <span className={`grid h-4 w-4 shrink-0 place-items-center text-neutral-400 ${danger ? "group-hover:text-rose-500" : ""}`}>
+            {it.icon}
+          </span>
           <span className="whitespace-nowrap">{it.label}</span>
           <ChevronRightIcon
             className={`ml-auto -mr-1 h-3.5 w-3.5 shrink-0 text-neutral-400 transition-transform ${

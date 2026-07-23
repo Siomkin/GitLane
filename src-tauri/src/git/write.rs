@@ -86,7 +86,7 @@ pub use identity::{clear_repo_identity, set_repo_identity};
 pub use ignore::append_ignore_pattern;
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use patch_staging::{apply_hunk, apply_line};
-pub use patches::create_patch;
+pub use patches::{create_patch, create_patch_range};
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
     reflog_entries,

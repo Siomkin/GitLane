@@ -2,7 +2,6 @@ import { BranchKind, type BranchInfo, type WorktreeInfo } from "@/lib/api";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import {
   handoffDestinationHere,
-  handoffDestinationOptions,
   handoffSourceValid,
 } from "@/lib/worktreeHandoff";
 import {
@@ -34,12 +33,9 @@ export interface BranchContextMenuPolicy {
   remoteCheckoutHasLocal: boolean;
   aheadBehind: string | null;
   existingWorktree: WorktreeRef | null;
-  existingWorktreeInfo: WorktreeInfo | null;
   worktreeCheckedOut: boolean;
   worktreeRef: string;
   handoffHere: ReturnType<typeof handoffDestinationHere>;
-  canHandOff: boolean;
-  canRemoveWorktree: boolean;
   localDeleteMode: LocalBranchDeleteMode;
   remoteDeleteTarget: RemoteBranchDeleteTarget | null;
 }
@@ -90,14 +86,6 @@ export function deriveBranchContextMenuPolicy({
   const handoffHere = existingWorktree && sourceValid && isLocal
     ? handoffDestinationHere(worktrees, existingWorktree.path, workdir)
     : null;
-  const canHandOff = Boolean(
-    isLocal &&
-      !isCurrent &&
-      existingWorktree &&
-      sourceValid &&
-      handoffDestinationOptions(worktrees, existingWorktree.path).length > 0,
-  );
-  const canRemoveWorktree = Boolean(existingWorktree && !existingWorktreeInfo?.isMain);
   const worktreeCheckedOut = isCurrent || worktrees.some((worktree) => worktree.branch === branch);
 
   let localDeleteMode: LocalBranchDeleteMode = "none";
@@ -136,12 +124,9 @@ export function deriveBranchContextMenuPolicy({
     remoteCheckoutHasLocal,
     aheadBehind: sync?.upstream ? `↑${sync.ahead} ↓${sync.behind}` : null,
     existingWorktree,
-    existingWorktreeInfo,
     worktreeCheckedOut,
     worktreeRef: worktreeCheckedOut && tip ? tip : branch,
     handoffHere,
-    canHandOff,
-    canRemoveWorktree,
     localDeleteMode,
     remoteDeleteTarget:
       remote && remoteBranch && tip ? { remote, branch: remoteBranch } : null,

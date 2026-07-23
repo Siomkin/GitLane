@@ -557,6 +557,8 @@ export interface RepoState {
   discardAll: (preview: DiscardAllPreview) => Promise<string>;
   /** Write a `.patch` file for one commit into the worktree. */
   createPatchAt: (sha: string) => Promise<string>;
+  /** Write one mailbox `.patch` covering the contiguous `base..head` range. */
+  createPatchRangeAt: (base: string, head: string) => Promise<string>;
   /** Create a worktree at `worktreePath`, then open it as a repo tab. With
    * `newBranch`, a fresh branch of that name is created at `reference` (its
    * start point) and checked out in the worktree; otherwise the worktree is

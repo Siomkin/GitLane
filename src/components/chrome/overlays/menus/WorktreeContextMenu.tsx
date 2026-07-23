@@ -141,5 +141,18 @@ export function WorktreeContextMenu() {
     });
   }
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={200} />;
+  // Heading names the subject like the commit/branch menus: worktree name (mono)
+  // + its branch, with a main/linked marker.
+  const heading = (
+    <div className="flex w-full items-center gap-1.5">
+      <TreeIcon className="h-3.5 w-3.5 shrink-0 text-[color:var(--accent)]" />
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-neutral-800 dark:text-neutral-100">
+        {name}
+      </span>
+      {isMain && <span className="shrink-0 text-[10px] font-medium text-[color:var(--accent)]">main</span>}
+      {wtBranch && <span className="shrink-0 truncate font-mono text-[10.5px] text-neutral-400">{wtBranch}</span>}
+    </div>
+  );
+
+  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={216} heading={heading} />;
 }

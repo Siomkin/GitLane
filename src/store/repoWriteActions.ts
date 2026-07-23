@@ -332,6 +332,7 @@ export function createRepoWriteActions(
   | "forcePush"
   | "discardAll"
   | "createPatchAt"
+  | "createPatchRangeAt"
   | "createWorktreeAt"
   | "openWorktree"
   | "checkoutDetached"
@@ -887,6 +888,12 @@ export function createRepoWriteActions(
     createPatchAt: (sha) =>
       runOp(get, async (summary) => {
         const file = await api.createPatch(summary.path, sha);
+        return `Created patch ${file}`;
+      }),
+
+    createPatchRangeAt: (base, head) =>
+      runOp(get, async (summary) => {
+        const file = await api.createPatchRange(summary.path, base, head);
         return `Created patch ${file}`;
       }),
 

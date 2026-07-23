@@ -1044,6 +1044,12 @@ export const gitApi = {
   createPatch: (path: string, sha: string) =>
     invoke<string>("create_patch", { path, sha }),
 
+  /** Write one mailbox `.patch` file covering the contiguous `base..head`
+   * range (`git format-patch`); resolves with the created filename. Callers
+   * gate this on a first-parent-contiguous selection. */
+  createPatchRange: (path: string, base: string, head: string) =>
+    invoke<string>("create_patch_range", { path, base, head }),
+
   /** Delete a local tag only if it still names `expectedOid`. The remote copy
    * (if any) is untouched and fetch will re-import it — use `deleteRemoteTag`
    * to remove it from the remote too. */
