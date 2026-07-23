@@ -89,7 +89,13 @@ beforeEach(() => {
     resetBranchTo: realResetBranchTo,
     checkoutBranch: realCheckoutBranch,
   });
-  useUi.setState({ commitMenu: null, confirm: null, prompt: null, stackedReview: null });
+  useUi.setState({
+    commitMenu: null,
+    confirm: null,
+    prompt: null,
+    editCommitMessage: null,
+    stackedReview: null,
+  });
   useNotifications.setState({ toasts: [] });
 });
 
@@ -258,9 +264,9 @@ describe("CommitContextMenu (single commit)", () => {
     render(<CommitContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit commit message…" }));
 
-    const prompt = useUi.getState().prompt;
-    expect(prompt?.defaultValue).toBe("feat: c1abcdef");
-    prompt!.onSubmit("fix: better subject\n\nlonger body");
+    const request = useUi.getState().editCommitMessage;
+    expect(request?.defaultValue).toBe("feat: c1abcdef");
+    request!.onSubmit("fix: better subject\n\nlonger body");
     expect(amendHeadMessage).toHaveBeenCalledWith("fix: better subject", "longer body");
   });
 

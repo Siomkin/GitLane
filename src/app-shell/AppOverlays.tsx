@@ -20,6 +20,7 @@ import { GithubSigninDialog } from "@/components/chrome/overlays/github-signin";
 import { ProviderOauthDialog } from "@/components/chrome/overlays/provider-oauth";
 import { RepoSettingsModal } from "@/components/chrome/repo-settings";
 import { SettingsModal } from "@/components/chrome/SettingsModal";
+import { EditCommitMessageDialog } from "@/features/changes/commit-modal/EditCommitMessageDialog";
 import { CreatePrDialog } from "@/features/pull-requests/CreatePrDialog";
 import { ReflogRecoveryDialog } from "@/features/recovery";
 import { AgentMessageDialog } from "@/features/review-notes/ReviewNotes";
@@ -47,6 +48,7 @@ export const AppOverlays = () => (
     <AgentMessageDialog />
     <ConfirmDialog />
     <PromptDialog />
+    <EditCommitMessageDialog />
     <HandoffDialog />
     <GithubSigninDialog />
     <ProviderOauthDialog />

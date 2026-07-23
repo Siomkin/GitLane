@@ -4,7 +4,7 @@
 // the free-form textarea. Presentational — field state and message
 // composition live in the container.
 
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 
 import { Select } from "@/components/ui/Select";
 import { cn } from "@/lib/cn";
@@ -62,6 +62,9 @@ export function CommitMessageEditor({
   onFieldsChange,
   amend,
   actions,
+  autoFocus,
+  bodyRows = 5,
+  messageRows = 3,
 }: {
   mode: ComposerMode;
   onModeChange: (mode: ComposerMode) => void;
@@ -74,8 +77,26 @@ export function CommitMessageEditor({
   amend: boolean;
   /** Right-aligned controls on the style-switch row (the Draft affordance). */
   actions?: ReactNode;
+  /** Focus the active mode's primary text field when the editor mounts. */
+  autoFocus?: boolean;
+  /** Visible rows for the conventional body field. */
+  bodyRows?: number;
+  /** Visible rows for the free-form message field. */
+  messageRows?: number;
 }) {
   const conventional = mode === ComposerMode.Conventional;
+  // Focus the active field on mount, and again when the style switch swaps
+  // which field is active. The caret lands after the seeded text: reword opens
+  // on an existing message, so typing must continue it, never replace it.
+  const focusField = useCallback(
+    (node: HTMLInputElement | HTMLTextAreaElement | null) => {
+      if (!node || !autoFocus) return;
+      node.focus();
+      const end = node.value.length;
+      node.setSelectionRange(end, end);
+    },
+    [autoFocus],
+  );
   // A parsed type outside the dropdown list (e.g. `build`) stays selectable so
   // editing other fields never rewrites it.
   const typeOptions: string[] =
@@ -143,6 +164,7 @@ export function CommitMessageEditor({
                 </>
               )}
               <input
+                ref={focusField}
                 aria-label="Commit summary"
                 value={fields.subject}
                 onChange={(event) => onFieldsChange({ subject: event.target.value })}
@@ -161,17 +183,18 @@ export function CommitMessageEditor({
               value={fields.body}
               onChange={(event) => onFieldsChange({ body: event.target.value })}
               placeholder="Optional body — explain the why"
-              rows={2}
+              rows={bodyRows}
               className="block w-full resize-y bg-transparent px-2.5 py-2 text-[12.5px] leading-relaxed text-neutral-600 outline-none placeholder:text-neutral-400 dark:text-neutral-300"
             />
           </>
         ) : (
           <textarea
+            ref={focusField}
             aria-label="Commit message"
             value={msg}
             onChange={(event) => onMsgChange(event.target.value)}
             placeholder={amend ? "Amended commit message" : "Commit message"}
-            rows={3}
+            rows={messageRows}
             className="block w-full resize-y bg-transparent px-2.5 py-2.5 text-[13px] leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
           />
         )}
