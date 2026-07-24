@@ -346,6 +346,11 @@ export function createRepoWriteActions(
   | "discardFile"
   | "appendIgnorePattern"
   | "revealInFileManager"
+  | "openPathDefault"
+  | "openPathDifftool"
+  | "stopTracking"
+  | "createWorkingTreePatch"
+  | "stashFile"
   | "worktreeDiffersFromCommit"
   | "commitPathIsRestorable"
   | "restorePathFromCommit"
@@ -1412,6 +1417,80 @@ export function createRepoWriteActions(
       if (!summary) return;
       try {
         await api.revealInFileManager(summary.path, path);
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    openPathDefault: async (path) => {
+      const { summary } = get();
+      if (!summary) return;
+      try {
+        const message = await api.openPathDefault(summary.path, path);
+        useUi.getState().showToast(message);
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    openPathDifftool: async (path) => {
+      const { summary } = get();
+      if (!summary) return;
+      try {
+        const message = await api.openPathDifftool(summary.path, path);
+        useUi.getState().showToast(message);
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+      }
+    },
+
+    stopTracking: async (path) => {
+      const { summary } = get();
+      if (!summary) return;
+      const owner = captureOwner(summary);
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
+      try {
+        const message = await api.stopTracking(summary.path, path);
+        if (!ownerIsCurrent(get, owner)) {
+          useUi.getState().showToast(message);
+          return;
+        }
+        await refreshIfCurrent(get, owner);
+        useUi.getState().showToast(message);
+      } catch (e) {
+        if (ownerIsCurrent(get, owner)) {
+          useUi.getState().showToast(String(e), "error");
+        }
+      }
+    },
+
+    createWorkingTreePatch: async (path) => {
+      const { summary } = get();
+      if (!summary) return "";
+      try {
+        const file = await api.createWorkingTreePatch(summary.path, path);
+        useUi.getState().showToast(`Wrote ${file}`);
+        return file;
+      } catch (e) {
+        useUi.getState().showToast(String(e), "error");
+        return "";
+      }
+    },
+
+    stashFile: async (path) => {
+      const { summary } = get();
+      if (!summary) return;
+      const owner = captureOwner(summary);
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
+      try {
+        const message = await api.stashPaths(
+          summary.path,
+          summary.headBranch,
+          summary.headOid,
+          [path],
+        );
+        await refreshIfCurrent(get, owner);
+        useUi.getState().showToast(message);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }

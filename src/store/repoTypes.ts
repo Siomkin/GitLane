@@ -671,6 +671,16 @@ export interface RepoState {
   appendIgnorePattern: (pattern: string, local?: boolean) => Promise<void>;
   /** Reveal a repo-relative path in the OS file manager. */
   revealInFileManager: (path: string) => Promise<void>;
+  /** Open a worktree leaf with the OS default application. */
+  openPathDefault: (path: string) => Promise<void>;
+  /** Open a tracked path in the configured `git difftool`. */
+  openPathDifftool: (path: string) => Promise<void>;
+  /** Stop tracking a path (`git rm --cached`) while keeping it on disk. */
+  stopTracking: (path: string) => Promise<void>;
+  /** Write a `.patch` for one path's working-tree change. */
+  createWorkingTreePatch: (path: string) => Promise<string>;
+  /** Pathspec stash for one working-tree file. */
+  stashFile: (path: string) => Promise<void>;
   /** ADR 0003: true when restoring would change on-disk bytes. */
   worktreeDiffersFromCommit: (commitOid: string, path: string) => Promise<boolean>;
   /** ADR 0003: true when `path` has a restorable (non-gitlink) blob at `commitOid`.

@@ -158,6 +158,8 @@ export function MenuPanel({
               ? "cursor-not-allowed text-neutral-400 dark:text-neutral-500"
               : it.danger
               ? "text-rose-600 hover:bg-rose-500/10 dark:text-rose-400"
+              : it.tone === "danger"
+              ? "group text-neutral-700 hover:bg-rose-500/10 hover:text-rose-600 dark:text-neutral-200 dark:hover:text-rose-400"
               : "text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
           }`}
         >
@@ -166,7 +168,15 @@ export function MenuPanel({
               already indented as a group, so they keep the tighter padding and only
               render a slot when they actually carry an icon. */}
           {(!nested || it.icon) && (
-            <span className={`grid h-4 w-4 shrink-0 place-items-center ${it.danger ? "" : "text-neutral-400"}`}>
+            <span
+              className={`grid h-4 w-4 shrink-0 place-items-center ${
+                it.danger
+                  ? ""
+                  : it.tone === "danger"
+                    ? "text-neutral-400 group-hover:text-rose-500"
+                    : "text-neutral-400"
+              }`}
+            >
               {it.icon}
             </span>
           )}

@@ -76,12 +76,46 @@ export function CommitContextMenu() {
     const oldest = orderedSel[orderedSel.length - 1];
     const newest = orderedSel[0];
     const squash = getSquashEligibility(graph, orderedSel);
-    // Same relative order as the single-commit menu (integrate → compare → copy),
-    // each group separated so a user who learned one menu reads the other at a
-    // glance. Batch keeps Copy N SHAs — multi-select has no right-panel copy.
+    // Same relative order as the single-commit menu: create/compare/copy first,
+    // then the tip cluster (cherry-pick/revert/squash) at the bottom. Patch and
+    // Compare need a contiguous selection (the same first-parent base..head the
+    // compare row uses), so a non-contiguous selection drops straight to Copy —
+    // it stays sep-free there since it's the first row; otherwise it carries the
+    // separator that follows Compare. Cherry-pick always starts the tip cluster,
+    // so it always carries a separator. Batch keeps Copy N SHAs — multi-select
+    // has no right-panel copy.
     const items: MenuItem[] = [
+      ...(batch.compareRange
+        ? [{
+            label: `Create patch from ${n} commits`,
+            onClick: () => act(() => createPatchRangeAt(batch.compareRange!.base, batch.compareRange!.head)),
+          }]
+        : []),
+      ...(batch.compareRange
+        ? [{
+            label: `Compare ${oldest.slice(0, 7)}…${newest.slice(0, 7)}`,
+            sep: true,
+            onClick: () => {
+              close();
+              openRangeReview(
+                batch.compareRange!.base,
+                batch.compareRange!.head,
+                `Comparing ${n} commits`,
+              );
+            },
+          }]
+        : []),
+      {
+        label: `Copy ${n} commit SHAs`,
+        sep: !!batch.compareRange,
+        onClick: () => {
+          close();
+          void navigator.clipboard?.writeText(orderedSel.join("\n"));
+        },
+      },
       {
         label: `Cherry-pick ${n} commits onto ${cur}`,
+        sep: true,
         onClick: () => {
           // git cherry-pick applies oldest-first; reverse the graph (newest-first)
           // order so the commits replay in chronological order.
@@ -107,37 +141,6 @@ export function CommitContextMenu() {
               }),
           }]
         : []),
-      // Patch from a contiguous selection only — the same first-parent range the
-      // compare row uses; a non-contiguous selection has no single base..head.
-      ...(batch.compareRange
-        ? [{
-            label: `Create patch from ${n} commits`,
-            sep: true,
-            onClick: () => act(() => createPatchRangeAt(batch.compareRange!.base, batch.compareRange!.head)),
-          }]
-        : []),
-      ...(batch.compareRange
-        ? [{
-            label: `Compare ${oldest.slice(0, 7)}…${newest.slice(0, 7)}`,
-            sep: true,
-            onClick: () => {
-              close();
-              openRangeReview(
-                batch.compareRange!.base,
-                batch.compareRange!.head,
-                `Comparing ${n} commits`,
-              );
-            },
-          }]
-        : []),
-      {
-        label: `Copy ${n} commit SHAs`,
-        sep: true,
-        onClick: () => {
-          close();
-          void navigator.clipboard?.writeText(orderedSel.join("\n"));
-        },
-      },
     ];
     return (
       <MenuPanel
@@ -176,14 +179,12 @@ export function CommitContextMenu() {
   // HEAD — they're no-ops there, and cherry-picking HEAD would leave git in an
   // empty cherry-pick sequence. Revert stays (reverting HEAD is meaningful). The
   // branch menu applies the same gate, so the HEAD-commit and current-branch
-  // menus stay identical.
+  // menus stay identical. Assembled last, right above the danger-toned Reset, so
+  // Revert lands next to it.
   const isHeadCommit = graph?.head === sha;
   const integrate: MenuItem[] = [];
   if (!isHeadCommit) {
     integrate.push({ label: `Cherry-pick onto ${cur}`, onClick: () => act(() => cherryPickCommit(sha)) });
-  }
-  integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(sha)) });
-  if (!isHeadCommit) {
     integrate.push({
       label: "Integrate into current",
       note: `into ${cur}`,
@@ -203,6 +204,8 @@ export function CommitContextMenu() {
       ],
     });
   }
+  // Revert last, so it sits right next to Reset in the assembled menu.
+  integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(sha)) });
   integrate[0] = { ...integrate[0], sep: true, icon: <BranchIcon className="h-4 w-4" /> };
 
   // Create: branch stays flat (the common one); the rarer create targets fold
@@ -293,7 +296,7 @@ export function CommitContextMenu() {
     ],
   });
 
-  const items: MenuItem[] = [...top, ...integrate, ...create, ...copy, ...openRemote, ...danger];
+  const items: MenuItem[] = [...top, ...create, ...copy, ...openRemote, ...integrate, ...danger];
   return (
     <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={248} heading={commitHeading(shortSha, subject)} />
   );

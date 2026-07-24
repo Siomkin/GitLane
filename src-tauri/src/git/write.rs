@@ -7,7 +7,7 @@
 //! layer; focused siblings own subprocess execution, operand validation, branch
 //! checkout, branch and history writes, tags and patch creation, resets,
 //! commit/amend/squash writes, conflict resolution, guarded file discard, path
-//! restore from commit, ignore/reveal helpers, patch and bulk staging,
+//! restore from commit, ignore/reveal/open-path helpers, patch and bulk staging,
 //! stash/worktree porcelain, remotes, recovery previews, and repo identity.
 
 mod branch_checkout;
@@ -25,6 +25,7 @@ mod history;
 mod identity;
 mod ignore;
 mod lifecycle;
+mod open_path;
 mod operands;
 mod patch_staging;
 mod patches;
@@ -85,8 +86,9 @@ pub use history::{
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use ignore::append_ignore_pattern;
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
+pub use open_path::{open_path_default, open_path_difftool};
 pub use patch_staging::{apply_hunk, apply_line};
-pub use patches::{create_patch, create_patch_range};
+pub use patches::{create_patch, create_patch_range, create_working_tree_patch};
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
     reflog_entries,
@@ -103,12 +105,14 @@ pub use restore_path::{
     commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
 };
 pub use reveal::reveal_in_file_manager;
-pub use staging::{stage_all, stage_file, stage_files, unstage_all, unstage_file, unstage_files};
+pub use staging::{
+    stage_all, stage_file, stage_files, stop_tracking, unstage_all, unstage_file, unstage_files,
+};
 #[cfg(test)]
-pub use stashes::{stash, stash_apply, stash_pop};
+pub use stashes::{stash, stash_apply, stash_paths, stash_pop};
 pub use stashes::{
     stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_pop_onto,
+    stash_paths_expected, stash_pop_onto,
 };
 pub use tags::{create_annotated_tag, create_tag, delete_tag};
 pub use worktree_removal_lease::preview_remove_worktree;

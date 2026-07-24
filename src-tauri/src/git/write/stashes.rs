@@ -278,3 +278,69 @@ pub fn stash_expected(
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
     stash(repo)
 }
+
+/// Stash one literal path (staged, unstaged, and — when present — untracked).
+/// Uses `git stash push --include-untracked -- <path>` so an untracked leaf is
+/// included when that is the change being reviewed.
+///
+/// Deliberately does **not** route through [`push_stash`]: that helper's
+/// interrupted-cleanup recovery finishes with a whole-tree `reset --hard`, which
+/// would wipe unrelated dirty paths that a pathspec stash intentionally left
+/// alone. Empty-directory preservation still wraps the push — git's pathspec
+/// cleanup can remove a just-emptied parent the same way a full-tree stash can.
+pub fn stash_paths(repo: &str, paths: &[String]) -> Result<String, String> {
+    if paths.is_empty() {
+        return Err("No paths to stash".to_string());
+    }
+    // Paths land after `--` with `--literal-pathspecs`, so a real filename like
+    // `-notes.txt` is a pathspec — not an option. Do not call [`ensure_operand`]
+    // (that helper is for operands *before* `--`).
+    for path in paths {
+        if path.is_empty() {
+            return Err("Missing path to stash".to_string());
+        }
+    }
+    let _guard = lock_stash_writes()?;
+    let empty_dirs = super::empty_dirs::capture(repo)?;
+    let mut args: Vec<&str> = vec!["stash", "push", "--include-untracked", "--"];
+    args.extend(paths.iter().map(String::as_str));
+    // Literal pathspecs: a real filename like `:(glob)*` must not expand.
+    let mut literal: Vec<&str> = Vec::with_capacity(args.len() + 1);
+    literal.push("--literal-pathspecs");
+    literal.extend_from_slice(&args);
+    let outcome = run_git(repo, &literal);
+    let unpreserved = super::empty_dirs::restore(repo, &empty_dirs);
+    let message = outcome?;
+    if !unpreserved.is_empty() {
+        let names = unpreserved.join(", ");
+        return Ok(format!(
+            "{message} Git's cleanup also removed empty untracked director{} GitLane could not recreate: {names}. They held no files, so nothing was lost but the folders themselves.",
+            if unpreserved.len() == 1 { "y" } else { "ies" },
+        ));
+    }
+    let label = if paths.len() == 1 {
+        paths[0].as_str()
+    } else {
+        "selected files"
+    };
+    // Prefer a short toast on routine success; keep git's wording when it said
+    // there was nothing to save (or any other non-empty diagnostic).
+    if message.is_empty()
+        || message
+            .to_ascii_lowercase()
+            .contains("saved working directory")
+    {
+        return Ok(format!("Stashed {label}."));
+    }
+    Ok(message)
+}
+
+pub fn stash_paths_expected(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+    paths: &[String],
+) -> Result<String, String> {
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash_paths(repo, paths)
+}

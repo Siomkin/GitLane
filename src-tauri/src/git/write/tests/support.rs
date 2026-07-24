@@ -6,6 +6,7 @@ pub(super) use super::super::conflict_resolution::{
     conflict_stage_absent, is_empty_after_resolution,
 };
 pub(super) use super::super::lifecycle::init_in_place;
+pub(super) use super::super::open_path::ensure_diffable_against_head;
 pub(super) use super::super::operands::ensure_operand;
 pub(super) use super::super::patch_staging::{apply_hunk_patch, patch_diff_args};
 pub(super) use super::super::remotes::{
@@ -18,10 +19,11 @@ pub(super) use super::super::{
     branch_push_remote, checkout, checkout_remote_branch, cherry_pick, cherry_pick_many,
     cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
     commit_path_is_restorable, continue_operation, create_annotated_tag, create_branch,
-    create_branch_in_worktree, create_patch, create_patch_range, create_tag, delete_branch,
-    delete_branch_with_worktree, delete_remote_branch, delete_remote_tag, delete_tag, discard_all,
-    discard_file, fast_forward, fast_forward_branch, fast_forward_branch_at, fetch, force_push,
-    head_push_remote, mark_conflict_resolved, merge, merge_into, move_branch_to_worktree,
+    create_branch_in_worktree, create_patch, create_patch_range, create_tag,
+    create_working_tree_patch, delete_branch, delete_branch_with_worktree, delete_remote_branch,
+    delete_remote_tag, delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
+    fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
+    merge_into, move_branch_to_worktree, open_path_default, open_path_difftool,
     preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_discard_file,
     preview_force_push, preview_remove_worktree, preview_reset, publish_branch, publish_remote,
     pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree,
@@ -37,9 +39,9 @@ pub(super) use super::super::{
     set_squash_after_read_tree_test_hook, set_upstream, skip_operation, squash_commits, stage_file,
     stage_files, start_discard_all_fingerprint_byte_count, stash, stash_apply,
     stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_pop, stash_pop_onto, take_discard_all_fingerprint_byte_count, unstage_all, unstage_file,
-    unstage_files, worktree_differs_from_commit, worktree_dirty_state, worktree_is_dirty,
-    worktrees, write_repo_file,
+    stash_paths, stash_pop, stash_pop_onto, stop_tracking, take_discard_all_fingerprint_byte_count,
+    unstage_all, unstage_file, unstage_files, worktree_differs_from_commit, worktree_dirty_state,
+    worktree_is_dirty, worktrees, write_repo_file,
 };
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{

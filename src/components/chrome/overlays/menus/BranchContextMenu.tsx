@@ -207,7 +207,9 @@ export function BranchContextMenu() {
   // Revert are flat rows acting on the tip commit; the branch-level integrate
   // verbs (fast-forward / merge / rebase onto ‹b›) fold into one submenu. Shown
   // whenever there's a current branch and a tip, so the branch pill matches the
-  // commit menu on the same row (including on the current branch). ----
+  // commit menu on the same row (including on the current branch). Assembled
+  // just above Reset / Danger zone at the bottom, so Revert — the closest thing
+  // to a "reset the other way" — sits next to Reset.
   // The "onto current" ops are hidden when the tip is HEAD (the branch is
   // current, or points at HEAD) — they'd be no-ops there, and cherry-picking HEAD
   // leaves git in an empty cherry-pick sequence. Revert stays. Same gate as the
@@ -221,9 +223,6 @@ export function BranchContextMenu() {
     const selfTarget = isCurrent || b === cur || (headOid != null && tip === headOid);
     if (!selfTarget) {
       integrate.push({ label: `Cherry-pick onto ${cur}`, onClick: () => act(() => cherryPickCommit(tip)) });
-    }
-    integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(tip)) });
-    if (!selfTarget) {
       const integrateChildren: MenuItem[] = [];
       if (canFf) integrateChildren.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
       integrateChildren.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
@@ -240,6 +239,8 @@ export function BranchContextMenu() {
       });
       integrate.push({ label: "Integrate into current", note: `into ${cur}`, submenu: integrateChildren });
     }
+    // Revert last, so it lands right next to Reset in the assembled menu.
+    integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(tip)) });
     // The section's first row carries the group glyph, matching the commit menu.
     integrate[0] = { ...integrate[0], icon: <BranchIcon className="h-4 w-4" /> };
   }
@@ -423,9 +424,11 @@ export function BranchContextMenu() {
 
   // Assemble with a separator at each section boundary. The Worktree fan reads as
   // one group with the top quick-actions above it (Open worktree is promoted
-  // there), so it joins them with no separator; the intent groups below do get one.
+  // there), so it joins them with no separator; the intent groups below do get
+  // one. Integrate is assembled last, right above Reset / Danger zone, so its
+  // Revert row sits next to Reset at the bottom of the menu.
   const items: MenuItem[] = [...top, ...worktree];
-  for (const section of [integrate, create, copy]) {
+  for (const section of [create, copy]) {
     if (section.length) {
       section[0] = { ...section[0], sep: items.length > 0 };
       items.push(...section);
@@ -434,6 +437,10 @@ export function BranchContextMenu() {
   if (openRemote.length) {
     openRemote[0] = { ...openRemote[0], sep: items.length > 0 };
     items.push(...openRemote);
+  }
+  if (integrate.length) {
+    integrate[0] = { ...integrate[0], sep: items.length > 0 };
+    items.push(...integrate);
   }
   if (reset.length) {
     reset[0] = { ...reset[0], sep: items.length > 0 };

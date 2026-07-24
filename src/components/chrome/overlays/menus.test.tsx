@@ -253,7 +253,7 @@ describe("WipContextMenu", () => {
 });
 
 describe("TagContextMenu", () => {
-  it("offers checkout / push / create / copy / delete for a tag", () => {
+  it("offers checkout / push / create / copy for a tag, with delete tucked under Danger zone", () => {
     useUi.setState({
       tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
     });
@@ -261,6 +261,9 @@ describe("TagContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Checkout tag (detached)" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Push tag to origin" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy tag name" })).toBeInTheDocument();
+    // The two delete strengths live inside Danger zone, matching the branch menu.
+    expect(screen.queryByRole("menuitem", { name: "Delete local tag" })).not.toBeInTheDocument();
+    openGroup("Danger zone");
     expect(screen.getByRole("menuitem", { name: "Delete local tag" })).toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", { name: "Delete from local and origin" }),
@@ -277,6 +280,7 @@ describe("TagContextMenu", () => {
       tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
     });
     render(<TagContextMenu />);
+    openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete from local and origin" }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
@@ -418,9 +422,10 @@ describe("BranchContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Revert commit" })).toBeInTheDocument();
   });
 
-  // Same flat, frequency order as the commit menu: integrate → create →
-  // compare → reset → danger.
-  it("orders the sections integrate → create → compare → reset → danger", () => {
+  // Create/compare lead (the everyday create + inspect verbs); the integrate
+  // cluster (Cherry-pick/Integrate/Revert) is tucked just above Reset / Danger
+  // zone at the bottom, so Revert sits next to Reset.
+  it("orders the sections create → compare → integrate → reset → danger", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("main"), localBranch("feature")],
@@ -428,12 +433,35 @@ describe("BranchContextMenu", () => {
     useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
     render(<BranchContextMenu />);
 
-    const rows = ["Cherry-pick onto main", "Create branch here…", "Compare", "Reset main to feature", "Danger zone"].map((name) =>
+    const rows = ["Create branch here…", "Compare", "Cherry-pick onto main", "Reset main to feature", "Danger zone"].map((name) =>
       screen.getByRole("menuitem", { name }),
     );
     for (let i = 0; i < rows.length - 1; i++) {
       expect(rows[i].compareDocumentPosition(rows[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+  });
+
+  // The integrate cluster (Cherry-pick, Integrate into current, Revert) sits
+  // immediately above Reset, with no other row in between — Revert is its last
+  // row, landing directly next to Reset at the bottom of the menu.
+  it("keeps the integrate cluster directly above Reset, with Revert last", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("main"), localBranch("feature")],
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    const names = screen.getAllByRole("menuitem").map((el) => el.textContent);
+    const cherryPickIdx = names.findIndex((t) => t?.startsWith("Cherry-pick onto main"));
+    const integrateIdx = names.findIndex((t) => t?.startsWith("Integrate into current"));
+    const revertIdx = names.findIndex((t) => t === "Revert commit");
+    const resetIdx = names.findIndex((t) => t?.startsWith("Reset main to feature"));
+    expect(cherryPickIdx).toBeGreaterThanOrEqual(0);
+    // Cherry-pick → Integrate submenu → Revert last, immediately above Reset.
+    expect(cherryPickIdx).toBeLessThan(integrateIdx);
+    expect(integrateIdx).toBeLessThan(revertIdx);
+    expect(revertIdx + 1).toBe(resetIdx);
   });
 
   // The branch pill sits on its tip commit, so its menu carries the same

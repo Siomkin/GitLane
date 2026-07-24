@@ -255,6 +255,33 @@ pub(super) fn run_git_stdout_raw(repo: &str, args: &[&str]) -> Result<Vec<u8>, S
     }
 }
 
+/// Like [`run_git_stdout_raw`], but treat the listed non-zero exit codes as
+/// success and still return stdout bytes untouched. Used for `git diff
+/// --no-index`, which exits 1 when the files differ (the useful case). Does
+/// **not** UTF-8-decode, concatenate stderr, or trim — patch bytes stay
+/// faithful.
+pub(super) fn run_git_stdout_raw_allow_exit_codes(
+    repo: &str,
+    args: &[&str],
+    allowed: &[i32],
+) -> Result<Vec<u8>, String> {
+    let output = git_output(repo, args, &[])?;
+    if output.status.success()
+        || output
+            .status
+            .code()
+            .is_some_and(|code| allowed.contains(&code))
+    {
+        return Ok(output.stdout);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    match finish(output.status, &stdout, &stderr, args) {
+        Err(error) => Err(error),
+        Ok(_) => unreachable!("a failed git process cannot finish successfully"),
+    }
+}
+
 fn git_output(repo: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<Output, String> {
     let mut cmd = git_command(repo)?;
     cmd.args(args);

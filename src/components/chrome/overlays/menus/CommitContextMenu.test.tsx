@@ -116,22 +116,40 @@ describe("CommitContextMenu (single commit)", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  // Flat, frequency-ordered: cherry-pick/revert lead, then create, compare,
-  // and the danger-toned reset last (ADR 0004).
-  it("orders the flat groups integrate → create → compare → reset", () => {
+  // Create/compare lead (the everyday create + inspect verbs); the integrate
+  // cluster (cherry-pick/integrate/revert) is tucked just above the
+  // danger-toned reset at the bottom, so Revert sits next to Reset.
+  it("orders the flat groups create → compare → integrate → reset", () => {
     openSingle("c2abcdef");
     render(<CommitContextMenu />);
 
     const rows = [
-      "Cherry-pick onto main",
-      "Revert commit",
       "Create branch here…",
       "Compare",
+      "Cherry-pick onto main",
+      "Revert commit",
       "Reset main to here",
     ].map((name) => screen.getByRole("menuitem", { name }));
     for (let i = 0; i < rows.length - 1; i++) {
       expect(rows[i].compareDocumentPosition(rows[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+  });
+
+  // The integrate cluster sits immediately above Reset — Cherry-pick →
+  // Integrate submenu → Revert last, directly preceding Reset.
+  it("keeps the integrate cluster directly above Reset, with Revert last", () => {
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    const names = screen.getAllByRole("menuitem").map((el) => el.textContent);
+    const cherryPickIdx = names.findIndex((t) => t?.startsWith("Cherry-pick onto main"));
+    const integrateIdx = names.findIndex((t) => t?.startsWith("Integrate into current"));
+    const revertIdx = names.findIndex((t) => t === "Revert commit");
+    const resetIdx = names.findIndex((t) => t?.startsWith("Reset main to here"));
+    expect(cherryPickIdx).toBeGreaterThanOrEqual(0);
+    expect(cherryPickIdx).toBeLessThan(integrateIdx);
+    expect(integrateIdx).toBeLessThan(revertIdx);
+    expect(revertIdx + 1).toBe(resetIdx);
   });
 
   it("folds the rarer create targets into the Create submenu", () => {
