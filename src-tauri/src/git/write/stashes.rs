@@ -177,9 +177,10 @@ fn stash_ref_for_oid(repo: &str, oid: &str) -> Result<String, String> {
 
 /// Apply the stash with commit oid `oid` without dropping it. `git stash apply`
 /// accepts any stash-shaped commit, so the oid goes straight through.
+#[cfg(test)]
 pub fn stash_apply(repo: &str, oid: &str) -> Result<String, String> {
-    ensure_operand(oid)?;
-    run_git(repo, &["stash", "apply", oid])
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    stash_apply_locked(repo, oid)
 }
 
 pub fn stash_apply_onto(
@@ -188,25 +189,34 @@ pub fn stash_apply_onto(
     expected_oid: Option<&str>,
     oid: &str,
 ) -> Result<String, String> {
+    // Validate HEAD under the index lock so a checkout that lands while we
+    // wait for another writer cannot make us apply onto the wrong tip.
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    stash_apply(repo, oid)
+    stash_apply_locked(repo, oid)
+}
+
+fn stash_apply_locked(repo: &str, oid: &str) -> Result<String, String> {
+    ensure_operand(oid)?;
+    run_git(repo, &["stash", "apply", oid])
 }
 
 /// Apply the stash with commit oid `oid` restoring the staged (index) state too
 /// (`--index`). Without `--index` everything lands in the working tree unstaged.
-pub fn stash_apply_index(repo: &str, oid: &str) -> Result<String, String> {
-    ensure_operand(oid)?;
-    run_git(repo, &["stash", "apply", "--index", oid])
-}
-
 pub fn stash_apply_index_onto(
     repo: &str,
     expected_branch: Option<&str>,
     expected_oid: Option<&str>,
     oid: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    stash_apply_index(repo, oid)
+    stash_apply_index_locked(repo, oid)
+}
+
+fn stash_apply_index_locked(repo: &str, oid: &str) -> Result<String, String> {
+    ensure_operand(oid)?;
+    run_git(repo, &["stash", "apply", "--index", oid])
 }
 
 /// Check out `branch` at the stash's original parent commit and apply the stash
@@ -216,6 +226,7 @@ pub fn stash_apply_index_onto(
 /// oid at the last moment) — with a bare oid git would apply but silently skip
 /// the drop.
 pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _guard = lock_stash_writes()?;
     ensure_operand(branch)?;
     let stash_ref = stash_ref_for_oid(repo, oid)?;
@@ -228,11 +239,10 @@ pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, Strin
 /// concurrently between resolving `stash@{n}` and running `pop` would shift indices
 /// under us. A conflicting apply errors out *before* the drop, so the stash is kept
 /// exactly as `git stash pop` would. Mirrors `restore_stash` in worktrees.rs.
+#[cfg(test)]
 pub fn stash_pop(repo: &str, oid: &str) -> Result<String, String> {
-    let _guard = lock_stash_writes()?;
-    let applied = stash_apply(repo, oid)?;
-    drop_stash_by_oid(repo, oid)?;
-    Ok(applied)
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    stash_pop_locked(repo, oid)
 }
 
 pub fn stash_pop_onto(
@@ -241,8 +251,16 @@ pub fn stash_pop_onto(
     expected_oid: Option<&str>,
     oid: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    stash_pop(repo, oid)
+    stash_pop_locked(repo, oid)
+}
+
+fn stash_pop_locked(repo: &str, oid: &str) -> Result<String, String> {
+    let _guard = lock_stash_writes()?;
+    let applied = stash_apply_locked(repo, oid)?;
+    drop_stash_by_oid(repo, oid)?;
+    Ok(applied)
 }
 
 /// Drop the stash with commit oid `oid`.
@@ -256,7 +274,23 @@ pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
 /// Ignored files stay in place because GitLane does not surface them as changes.
 /// Routed through [`push_stash`] so a cleanup git cannot finish reports the real
 /// outcome instead of a raw failure over a stash it already stored.
+#[cfg(test)]
 pub fn stash(repo: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    stash_locked(repo)
+}
+
+pub fn stash_expected(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash_locked(repo)
+}
+
+fn stash_locked(repo: &str) -> Result<String, String> {
     let _guard = lock_stash_writes()?;
     let push = push_stash(repo, &["stash", "push", "--include-untracked"])?;
     // Normalise only a routine success, and only once an entry demonstrably
@@ -270,15 +304,6 @@ pub fn stash(repo: &str) -> Result<String, String> {
     Ok(push.message)
 }
 
-pub fn stash_expected(
-    repo: &str,
-    expected_branch: Option<&str>,
-    expected_oid: Option<&str>,
-) -> Result<String, String> {
-    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    stash(repo)
-}
-
 /// Stash one literal path (staged, unstaged, and — when present — untracked).
 /// Uses `git stash push --include-untracked -- <path>` so an untracked leaf is
 /// included when that is the change being reviewed.
@@ -288,7 +313,24 @@ pub fn stash_expected(
 /// would wipe unrelated dirty paths that a pathspec stash intentionally left
 /// alone. Empty-directory preservation still wraps the push — git's pathspec
 /// cleanup can remove a just-emptied parent the same way a full-tree stash can.
+#[cfg(test)]
 pub fn stash_paths(repo: &str, paths: &[String]) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    stash_paths_locked(repo, paths)
+}
+
+pub fn stash_paths_expected(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: Option<&str>,
+    paths: &[String],
+) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
+    stash_paths_locked(repo, paths)
+}
+
+fn stash_paths_locked(repo: &str, paths: &[String]) -> Result<String, String> {
     if paths.is_empty() {
         return Err("No paths to stash".to_string());
     }
@@ -333,14 +375,4 @@ pub fn stash_paths(repo: &str, paths: &[String]) -> Result<String, String> {
         return Ok(format!("Stashed {label}."));
     }
     Ok(message)
-}
-
-pub fn stash_paths_expected(
-    repo: &str,
-    expected_branch: Option<&str>,
-    expected_oid: Option<&str>,
-    paths: &[String],
-) -> Result<String, String> {
-    super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    stash_paths(repo, paths)
 }

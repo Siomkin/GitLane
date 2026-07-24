@@ -22,6 +22,7 @@ pub fn commit(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     commit_locked(
         repo,
@@ -100,6 +101,7 @@ pub fn commit_expected(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
     commit_locked(
@@ -362,6 +364,7 @@ pub fn squash_commits(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     super::head::ensure_commit_exists(repo, parent_oid)?;

@@ -172,6 +172,9 @@ pub fn create_branch_in_worktree(
         return Err("The worktree's HEAD changed. Refresh and try again.".into());
     }
 
+    let _index_guard = super::index_lock::lock_index_writes(worktree_path)?;
+    // Checked under the lock: a concurrent checkout must not redirect the
+    // new branch onto a different detached HEAD than the menu captured.
     super::head::ensure_expected_head(worktree_path, None, Some(expected_oid))?;
     run_git(worktree_path, &["switch", "-c", name])?;
     Ok(format!("Created {name} in worktree {}", worktree.name))
@@ -565,6 +568,9 @@ pub fn move_branch_to_worktree(
     carry: bool,
     progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
+    // Handoff mutates both worktrees' indexes (stash/checkout/apply). One
+    // commondir-keyed lock covers the whole sequence.
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _stash_guard = super::stashes::lock_stash_writes()?;
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;

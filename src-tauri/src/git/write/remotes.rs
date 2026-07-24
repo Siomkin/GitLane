@@ -330,6 +330,7 @@ pub fn remove_remote(repo: &str, name: &str) -> Result<String, String> {
 /// identical everywhere rather than depending on the git version and config.
 #[cfg(test)]
 pub fn pull(repo: &str, cred: &TransportCredential) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     run_transport(repo, cred, &["pull", "--no-rebase", "--ff-only"])
 }
 
@@ -347,7 +348,12 @@ pub fn pull_branch(
     super::head::ensure_expected_head(repo, Some(branch), Some(expected_oid))?;
     ensure_operand(remote)?;
     ensure_operand(merge_ref)?;
+    // Fetch stays outside the index mutex so a long network pull does not
+    // block local staging. The merge below is what needs the lock.
     run_transport(repo, cred, &["fetch", remote, merge_ref])?;
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    // Re-check under the lock: a checkout that landed while we waited must not
+    // integrate FETCH_HEAD onto a different tip than the user asked for.
     super::head::ensure_expected_head(repo, Some(branch), Some(expected_oid))?;
     run_git(repo, &["merge", "--ff-only", "FETCH_HEAD"])
 }

@@ -5,6 +5,7 @@ use super::path_guards::has_head;
 
 /// Stage one literal repository path (also stages deletions).
 pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     run_git_literal_paths(repo, &["add", "-A", "--", file])
 }
 
@@ -14,6 +15,7 @@ pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
 /// because losing the staged snapshot is exactly what unstage means, even when
 /// the worktree copy has moved on.
 pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if has_head(repo) {
         run_git_literal_paths(repo, &["restore", "--staged", "--", file])
     } else {
@@ -27,6 +29,7 @@ pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
 /// neither HEAD nor the worktree, Git refuses so that unique staged blob is
 /// not silently discarded (GL-337 review).
 pub fn stop_tracking(repo: &str, file: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // Prove the path is tracked before mutating — a missing index entry would
     // otherwise surface as a raw `git rm` failure.
     run_git_literal_paths(repo, &["ls-files", "--error-unmatch", "--", file])
@@ -41,6 +44,7 @@ pub fn stop_tracking(repo: &str, file: &str) -> Result<String, String> {
 /// also staging deletions) so a folder roll-up can't leave some of the set
 /// unstaged. `--` blocks option parsing; literal mode also blocks pathspec magic.
 pub fn stage_files(repo: &str, files: &[String]) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if files.is_empty() {
         return Ok(String::new());
     }
@@ -54,6 +58,7 @@ pub fn stage_files(repo: &str, files: &[String]) -> Result<String, String> {
 /// blocks options and literal mode blocks pathspec expansion. Unborn HEAD falls
 /// back to dropping the entries from the index, as in [`unstage_file`].
 pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if files.is_empty() {
         return Ok(String::new());
     }
@@ -68,6 +73,7 @@ pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
 
 /// Stage every change in the working tree.
 pub fn stage_all(repo: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     run_git(repo, &["add", "-A"])
 }
 
@@ -76,6 +82,7 @@ pub fn stage_all(repo: &str) -> Result<String, String> {
 /// --empty`), leaving every staged file untracked — the same guard
 /// [`discard_all`] uses.
 pub fn unstage_all(repo: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if has_head(repo) {
         run_git(repo, &["reset", "-q", "HEAD"])
     } else {

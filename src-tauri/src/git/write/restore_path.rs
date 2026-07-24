@@ -70,6 +70,7 @@ pub fn restore_path_from_commit(
     commit_oid: &str,
     file: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let relative = normalize_relative(file, PathVerb::Restore)?;
     // Validate blob exists + isn't a gitlink before shelling out.
     let _ = commit_path_blob_oid(repo, commit_oid, &relative)?;

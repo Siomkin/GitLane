@@ -526,6 +526,7 @@ pub fn discard_file(
     staged: bool,
     expected_state: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let previous_file = previous_file.filter(|previous| *previous != file);
     let snapshot = capture_discard_snapshot(repo, file, previous_file, staged).map_err(|_| {
         format!("Changes to {file} changed after the confirmation opened. Refresh and try again.")

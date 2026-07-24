@@ -32,6 +32,19 @@ const REMOTE_UNREACHABLE =
 const REMOTE_NOT_FOUND_OR_DENIED =
   /^\s*(?:fatal:|remote:\s*(?:error:\s*)?).*(?:project you were looking for could not be found|repository (?:'.*'\s*)?not found|could not read from remote repository|permission to view it)/im;
 
+/** True when a git failure is the stranded-/contended-`.git/index.lock` shape (GL-335).
+ * Requires contention evidence (`File exists` / “another git process…”) so a
+ * permission-denied “Unable to create …/index.lock” is not treated as stranded. */
+export function classifyIndexLockFailure(raw: string): boolean {
+  const text = (raw ?? "").replace(/\r\n/g, "\n").toLowerCase();
+  if (!text.includes("index.lock")) return false;
+  return (
+    text.includes("file exists") ||
+    text.includes("could not write index") ||
+    text.includes("another git process seems to be running")
+  );
+}
+
 // What the user was trying to do, inferred from which hook fired.
 const HOOK_ACTION: Record<string, string> = {
   "pre-commit": "commit",
@@ -97,6 +110,9 @@ export function friendlyGitError(
   if (!text) return "The git command failed without any output.";
   const network = friendlyNetworkGitError(text, options);
   if (network) return network;
+  if (classifyIndexLockFailure(text)) {
+    return "Git couldn't update the index because a lock file exists. Another git process may still be running, or a previous operation left the lock behind.";
+  }
   if (!HOOK_HINT.test(text)) return text; // an ordinary git error — show as-is
 
   const match = text.match(HOOK_NAME);

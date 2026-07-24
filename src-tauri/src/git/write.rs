@@ -24,6 +24,7 @@ mod head;
 mod history;
 mod identity;
 mod ignore;
+mod index_lock;
 mod lifecycle;
 mod open_path;
 mod operands;
@@ -86,6 +87,7 @@ pub use history::{
 };
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use ignore::append_ignore_pattern;
+pub use index_lock::{inspect_index_lock, remove_index_lock};
 pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
 pub use open_path::{open_path_default, open_path_difftool};
 pub use patch_staging::{apply_hunk, apply_line};

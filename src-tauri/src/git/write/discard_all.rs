@@ -1314,6 +1314,7 @@ pub fn discard_all(
     expected_head_branch: Option<&str>,
     expected_head_oid: Option<&str>,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let snapshot = capture_stable(repo).map_err(|error| format!("{STALE_MESSAGE} {error}"))?;
     if snapshot.expected_state != expected_state
         || snapshot.expected_head_branch.as_deref() != expected_head_branch

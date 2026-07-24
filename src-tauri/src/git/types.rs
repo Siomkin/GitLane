@@ -574,6 +574,17 @@ pub struct DiscardFilePreview {
     pub expected_state: String,
 }
 
+/// Whether `.git/index.lock` is present and safe to remove (GL-335 recovery).
+/// `stale` is true only when the lock looks orphaned (old mtime, no openers).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexLockStatus {
+    pub present: bool,
+    pub stale: bool,
+    /// Short human reason — shown when recovery is refused or as toast detail.
+    pub detail: String,
+}
+
 /// Whole-worktree discard impact plus the exact repository, HEAD, index, and
 /// affected-leaf snapshot the later write must still observe. The opaque state
 /// commits to raw path bytes and file fingerprints; the explicit HEAD fields
