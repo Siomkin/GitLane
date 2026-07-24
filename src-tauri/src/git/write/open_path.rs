@@ -5,19 +5,17 @@
 //! further than Reveal and refuses a symlink *leaf* too — the OS opener follows
 //! it, so unlike a git-mediated read it would reach the link's target.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
 
-use crate::git::read::open;
-use crate::git::worktree_fs::{open_worktree_file, worktree_leaf_exists_nofollow};
-
 use super::cli::{run_git, run_git_literal_paths};
+use super::path_guards::{has_head, normalize_relative, resolve_existing_leaf, PathVerb};
 
 /// Open `file` (repo-relative) with the OS default application. The leaf must
 /// exist inside the worktree; missing/deleted paths and symlink escapes fail.
 pub fn open_path_default(repo: &str, file: &str) -> Result<String, String> {
-    let absolute = resolve_existing_leaf(repo, file)?;
+    let absolute = resolve_existing_leaf(repo, file, PathVerb::Open)?;
     open_default(&absolute)?;
     Ok(format!("Opened {}", absolute.display()))
 }
@@ -27,7 +25,7 @@ pub fn open_path_default(repo: &str, file: &str) -> Result<String, String> {
 /// `diff.guitool`). The path must exist in HEAD or the index so staged
 /// additions and deletions both have a side to compare.
 pub fn open_path_difftool(repo: &str, file: &str) -> Result<String, String> {
-    let relative = normalize_relative(file)?;
+    let relative = normalize_relative(file, PathVerb::Open)?;
     ensure_diffable_against_head(repo, &relative)?;
     let tool = configured_diff_tool(repo)?;
     // Explicit HEAD base so a fully-staged modification (index == worktree)
@@ -66,10 +64,6 @@ pub(super) fn ensure_diffable_against_head(repo: &str, file: &str) -> Result<(),
     Err(format!("{file} is not in HEAD or the index"))
 }
 
-fn has_head(repo: &str) -> bool {
-    run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok()
-}
-
 fn path_in_head(repo: &str, file: &str) -> bool {
     // `HEAD:path` must be passed as one rev; literal-pathspecs is irrelevant
     // here and `cat-file -e` is the cheap existence probe.
@@ -87,74 +81,6 @@ fn path_in_head(repo: &str, file: &str) -> bool {
 
 fn path_in_index(repo: &str, file: &str) -> bool {
     run_git_literal_paths(repo, &["ls-files", "--error-unmatch", "--", file]).is_ok()
-}
-
-fn resolve_existing_leaf(repo: &str, file: &str) -> Result<PathBuf, String> {
-    let relative = normalize_relative(file)?;
-    let repository = open(repo).map_err(|e| e.to_string())?;
-    let workdir = repository
-        .workdir()
-        .ok_or_else(|| "repository has no working directory".to_string())?;
-    match worktree_leaf_exists_nofollow(workdir, &relative) {
-        Ok(true) => {
-            ensure_regular_leaf(workdir, &relative)?;
-            Ok(workdir.join(&relative))
-        }
-        Ok(false) => Err(format!("{relative} is not on disk")),
-        Err(error) => Err(format!("Couldn't open {relative}: {error}")),
-    }
-}
-
-/// Refuse a leaf that is not a regular file. [`worktree_leaf_exists_nofollow`]
-/// blocks a symlink in any *ancestor*, but it is existence-only about the leaf
-/// itself: a symlink there answers `true`. That is safe for git-mediated reads
-/// (git diffs a symlink as its link text) and unsafe here, because the OS
-/// opener — `open`, `xdg-open`, `ShellExecuteW` — follows it, so a committed
-/// `link -> /etc/passwd` would open a file outside the repository. Cloning a
-/// repository must never expose the user's own files to one click.
-///
-/// `open_worktree_file` is the existing no-follow gate for this (it answers
-/// `None` for anything that is not a regular file); the handle it returns is
-/// dropped immediately — only the verdict is wanted.
-fn ensure_regular_leaf(workdir: &Path, relative: &str) -> Result<(), String> {
-    match open_worktree_file(workdir, relative) {
-        Ok(Some(_)) => Ok(()),
-        Ok(None) => Err(format!(
-            "Refusing to open {relative}: not a regular file. Symlinks and special files can point outside the worktree."
-        )),
-        Err(error) => Err(format!("Couldn't open {relative}: {error}")),
-    }
-}
-
-fn normalize_relative(file: &str) -> Result<String, String> {
-    if file.is_empty() {
-        return Err("Missing path to open".to_string());
-    }
-    let relative = Path::new(file);
-    if relative.is_absolute() {
-        return Err("Open path must be repository-relative".to_string());
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::ParentDir))
-    {
-        return Err(format!(
-            "Refusing to open path outside the worktree: {file}"
-        ));
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
-        return Err(format!(
-            "Refusing to open path outside the worktree: {file}"
-        ));
-    }
-    let trimmed = file.trim_matches('/');
-    if trimmed.is_empty() {
-        return Err("Missing path to open".to_string());
-    }
-    Ok(trimmed.to_string())
 }
 
 fn open_default(path: &Path) -> Result<(), String> {
@@ -259,7 +185,7 @@ mod tests {
     fn resolves_an_existing_leaf() {
         let repo = TestRepo::new("ok");
         fs::write(repo.0.join("a.txt"), "x\n").unwrap();
-        let absolute = resolve_existing_leaf(repo.path(), "a.txt").unwrap();
+        let absolute = resolve_existing_leaf(repo.path(), "a.txt", PathVerb::Open).unwrap();
         assert_eq!(
             absolute.canonicalize().unwrap(),
             repo.0.join("a.txt").canonicalize().unwrap()
@@ -269,10 +195,10 @@ mod tests {
     #[test]
     fn rejects_missing_and_unsafe_paths() {
         let repo = TestRepo::new("bad");
-        assert!(resolve_existing_leaf(repo.path(), "gone.txt").is_err());
-        assert!(normalize_relative("../outside").is_err());
-        assert!(normalize_relative(".git/config").is_err());
-        assert!(normalize_relative("/abs").is_err());
+        assert!(resolve_existing_leaf(repo.path(), "gone.txt", PathVerb::Open).is_err());
+        assert!(normalize_relative("../outside", PathVerb::Open).is_err());
+        assert!(normalize_relative(".git/config", PathVerb::Open).is_err());
+        assert!(normalize_relative("/abs", PathVerb::Open).is_err());
     }
 
     #[test]
@@ -282,7 +208,7 @@ mod tests {
         let repo = TestRepo::new("meta");
         let name = "a&b|c.txt";
         fs::write(repo.0.join(name), "x\n").unwrap();
-        let absolute = resolve_existing_leaf(repo.path(), name).unwrap();
+        let absolute = resolve_existing_leaf(repo.path(), name, PathVerb::Open).unwrap();
         assert_eq!(
             absolute.canonicalize().unwrap(),
             repo.0.join(name).canonicalize().unwrap()

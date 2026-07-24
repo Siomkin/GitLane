@@ -2,11 +2,12 @@
 
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use super::cli::{run_git, run_git_stdout_raw, run_git_stdout_raw_allow_exit_codes};
 use super::history::is_merge_commit;
 use super::operands::ensure_operand;
+use super::path_guards::{has_head, normalize_relative, resolve_existing_leaf, PathVerb};
 
 /// Write a patch for one non-merge commit into the worktree without allowing
 /// git's generated filename to overwrite an existing file. `format-patch -1`
@@ -84,7 +85,7 @@ pub fn create_patch_range(repo: &str, base: &str, head: &str) -> Result<String, 
 pub fn create_working_tree_patch(repo: &str, file: &str) -> Result<String, String> {
     // Path lands after `--` with `--literal-pathspecs`, so leading `-` in a
     // real filename is fine — do not call [`ensure_operand`] here.
-    let relative = normalize_relative(file)?;
+    let relative = normalize_relative(file, PathVerb::Patch)?;
     let patch = working_tree_patch_bytes(repo, &relative)?;
     if patch.is_empty() {
         return Err(format!("No working-tree changes to patch for {relative}"));
@@ -133,7 +134,7 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
         // `--no-index` against /dev/null when the leaf exists. Concatenating
         // `--cached` + unstaged produces a corrupt mailbox `git apply` rejects.
         // If the leaf is gone, fall back to the staged delta alone.
-        if ensure_safe_worktree_leaf(repo, file).is_ok() {
+        if resolve_existing_leaf(repo, file, PathVerb::Patch).is_ok() {
             return no_index_new_file_patch(repo, file);
         }
         let cached = run_git_stdout_raw(
@@ -153,7 +154,7 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
     }
 
     // Truly untracked on-disk leaf: synthesize a "new file" patch.
-    ensure_safe_worktree_leaf(repo, file)?;
+    resolve_existing_leaf(repo, file, PathVerb::Patch)?;
     no_index_new_file_patch(repo, file)
 }
 
@@ -174,66 +175,6 @@ fn no_index_new_file_patch(repo: &str, file: &str) -> Result<Vec<u8>, String> {
         ],
         &[1],
     )
-}
-
-fn ensure_safe_worktree_leaf(repo: &str, file: &str) -> Result<(), String> {
-    let repository = crate::git::read::open(repo).map_err(|e| e.to_string())?;
-    let workdir = repository
-        .workdir()
-        .ok_or_else(|| "repository has no working directory".to_string())?;
-    match crate::git::worktree_fs::worktree_leaf_exists_nofollow(workdir, file) {
-        // Existence alone is not enough here: the caller feeds this path to
-        // `git diff --no-index`, which reads the leaf through the filesystem
-        // rather than as a git blob. A symlink leaf answers `true` above, so
-        // without the regular-file gate a committed `link -> /etc/passwd`
-        // would end up inlined into the generated patch. The tracked
-        // `diff HEAD` branch needs no such check — git reads a symlink there
-        // as its link text, never the target.
-        Ok(true) => match crate::git::worktree_fs::open_worktree_file(workdir, file) {
-            Ok(Some(_)) => Ok(()),
-            Ok(None) => Err(format!(
-                "Refusing to patch {file}: not a regular file. Symlinks and special files can point outside the worktree."
-            )),
-            Err(error) => Err(format!("Couldn't patch {file}: {error}")),
-        },
-        Ok(false) => Err(format!("{file} is not on disk")),
-        Err(error) => Err(format!("Couldn't patch {file}: {error}")),
-    }
-}
-
-fn has_head(repo: &str) -> bool {
-    run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok()
-}
-
-fn normalize_relative(file: &str) -> Result<String, String> {
-    if file.is_empty() {
-        return Err("Missing path to patch".to_string());
-    }
-    let relative = Path::new(file);
-    if relative.is_absolute() {
-        return Err("Patch path must be repository-relative".to_string());
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::ParentDir))
-    {
-        return Err(format!(
-            "Refusing to patch path outside the worktree: {file}"
-        ));
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
-        return Err(format!(
-            "Refusing to patch path outside the worktree: {file}"
-        ));
-    }
-    let trimmed = file.trim_matches('/');
-    if trimmed.is_empty() {
-        return Err("Missing path to patch".to_string());
-    }
-    Ok(trimmed.to_string())
 }
 
 /// Write `patch` into the repo worktree under `<base_name>.patch`, never

@@ -6,11 +6,13 @@
 //! those guards accept (or the worktree root).
 
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::git::read::open;
 use crate::git::worktree_fs::worktree_leaf_exists_nofollow;
+
+use super::path_guards::{normalize_relative, PathVerb};
 
 /// Reveal `file` (repo-relative) in the system file manager. The path must stay
 /// inside the worktree; `.git` components and ambient symlink escapes are
@@ -23,7 +25,7 @@ pub fn reveal_in_file_manager(repo: &str, file: &str) -> Result<String, String> 
 }
 
 fn resolve_reveal_target(repo: &str, file: &str) -> Result<PathBuf, String> {
-    let relative = normalize_relative(file)?;
+    let relative = normalize_relative(file, PathVerb::Reveal)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
     let workdir = repository
         .workdir()
@@ -59,37 +61,6 @@ fn resolve_reveal_target(repo: &str, file: &str) -> Result<PathBuf, String> {
             }
         }
     }
-}
-
-fn normalize_relative(file: &str) -> Result<String, String> {
-    if file.is_empty() {
-        return Err("Missing path to reveal".to_string());
-    }
-    let relative = Path::new(file);
-    if relative.is_absolute() {
-        return Err("Reveal path must be repository-relative".to_string());
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::ParentDir))
-    {
-        return Err(format!(
-            "Refusing to reveal path outside the worktree: {file}"
-        ));
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
-        return Err(format!(
-            "Refusing to reveal path outside the worktree: {file}"
-        ));
-    }
-    let trimmed = file.trim_matches('/');
-    if trimmed.is_empty() {
-        return Err("Missing path to reveal".to_string());
-    }
-    Ok(trimmed.to_string())
 }
 
 fn parent_relative(path: &str) -> Option<&str> {
