@@ -224,6 +224,18 @@ function toastAdvancedGuard(message: string | null): boolean {
   return true;
 }
 
+/** Error toast for a write that can be retried after stranded-index.lock recovery. */
+function toastWriteError(
+  get: RepoGet,
+  error: unknown,
+  retry: () => void | Promise<void>,
+): void {
+  useUi.getState().showToast(String(error), "error", {
+    retry,
+    repoPath: get().summary?.path,
+  });
+}
+
 function guardedPathMessage(get: RepoGet, path: string): string | null {
   const { changes } = get();
   return fileWriteGuard(
@@ -1213,7 +1225,7 @@ export function createRepoWriteActions(
           await get().selectFile(path, "staged");
         }
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().stageFile(path));
       }
     },
 
@@ -1239,7 +1251,7 @@ export function createRepoWriteActions(
           await get().selectFile(path, "unstaged");
         }
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().unstageFile(path));
       }
     },
 
@@ -1258,7 +1270,7 @@ export function createRepoWriteActions(
         await api.stageFiles(summary.path, withRenameCounterparts(get().changes.unstaged, paths));
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().stagePaths(paths));
       }
     },
 
@@ -1273,7 +1285,7 @@ export function createRepoWriteActions(
         await api.unstageFiles(summary.path, withRenameCounterparts(get().changes.staged, paths));
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().unstagePaths(paths));
       }
     },
 
@@ -1309,7 +1321,9 @@ export function createRepoWriteActions(
         }
         useUi.getState().showToast(message);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () =>
+          get().applyHunk(path, staged, hunkIndex, expectedHeader, expectedBody),
+        );
       }
     },
 
@@ -1334,7 +1348,7 @@ export function createRepoWriteActions(
           set({ selectedFile: null, fileDiff: null });
         }
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().applyLine(path, staged, hunkIndex, lineIndex, line));
       }
     },
 
@@ -1388,7 +1402,9 @@ export function createRepoWriteActions(
         useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(String(e), "error");
+          toastWriteError(get, e, () =>
+            get().discardFile(repoPath, path, previousPath, staged, expectedState),
+          );
         }
       }
     },
@@ -1459,7 +1475,7 @@ export function createRepoWriteActions(
         useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(String(e), "error");
+          toastWriteError(get, e, () => get().stopTracking(path));
         }
       }
     },
@@ -1492,7 +1508,7 @@ export function createRepoWriteActions(
         await refreshIfCurrent(get, owner);
         useUi.getState().showToast(message);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().stashFile(path));
       }
     },
 
@@ -1522,7 +1538,7 @@ export function createRepoWriteActions(
         useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(String(e), "error");
+          toastWriteError(get, e, () => get().restorePathFromCommit(commitOid, path));
         }
       }
     },
@@ -1537,7 +1553,7 @@ export function createRepoWriteActions(
         await api.stageAll(summary.path);
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().stageAll());
       }
     },
 
@@ -1551,7 +1567,7 @@ export function createRepoWriteActions(
         await api.unstageAll(summary.path);
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().unstageAll());
       }
     },
 
@@ -1582,7 +1598,7 @@ export function createRepoWriteActions(
           set({ selectedFile: null, fileDiff: null });
         }
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().commit(summaryText, description, amend));
       }
     },
 
@@ -1634,7 +1650,9 @@ export function createRepoWriteActions(
         }
         return true;
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, async () => {
+          await get().commitSelected(message, amend);
+        });
         return false;
       }
     },
@@ -1654,7 +1672,7 @@ export function createRepoWriteActions(
         // must not land silently.
         useUi.getState().showToast(message);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        toastWriteError(get, e, () => get().stash());
       }
     },
 
@@ -1818,7 +1836,8 @@ export function createRepoWriteActions(
         await transport;
       } catch (e) {
         notes.dismiss(toastId);
-        useUi.getState().showToast(String(e), "error");
+        // The merge leg mutates the index, so a stranded lock can fail a pull.
+        toastWriteError(get, e, () => get().pull());
         return;
       }
       if (!ownerIsCurrent(get, owner)) {

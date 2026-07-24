@@ -13,6 +13,7 @@ pub fn apply_hunk(
     expected_header: &str,
     expected_body: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let args = patch_diff_args(staged, file);
     let diff = run_git(repo, &args)?;
     let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header, expected_body)?;
@@ -39,6 +40,7 @@ pub fn apply_line(
     expected_old_no: Option<u32>,
     expected_new_no: Option<u32>,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let args = patch_diff_args(staged, file);
     let diff = run_git(repo, &args)?;
     let patch = extract_single_line_patch(

@@ -411,6 +411,15 @@ export interface DiscardAllPreview extends DestructivePreview {
   expectedHeadOid: string | null;
 }
 
+/** Whether `.git/index.lock` is present and safe to remove (GL-335). */
+export interface IndexLockStatus {
+  present: boolean;
+  /** True only when the lock looks orphaned (old mtime, no openers). */
+  stale: boolean;
+  /** Short human reason — shown when recovery is refused. */
+  detail: string;
+}
+
 /** Shared Linked Worktree Removal preview + Worktree Removal Lease (GL-303). */
 export interface RemoveWorktreePreview extends DestructivePreview {
   /** Opaque fingerprint of registration, directory identity, branch/HEAD, and
@@ -1405,6 +1414,12 @@ export const gitApi = {
   stageAll: (path: string) => invoke<string>("stage_all", { path }),
 
   unstageAll: (path: string) => invoke<string>("unstage_all", { path }),
+
+  /** Inspect `.git/index.lock` for stranded-lock recovery (GL-335). */
+  inspectIndexLock: (path: string) => invoke<IndexLockStatus>("inspect_index_lock", { path }),
+
+  /** Remove a stranded `.git/index.lock` only when the staleness gate passes. */
+  removeIndexLock: (path: string) => invoke<void>("remove_index_lock", { path }),
 
   /** Create a commit. When `authorName`/`authorEmail` are given they are pinned
    * as both author and committer for this commit (see write.rs::commit). */

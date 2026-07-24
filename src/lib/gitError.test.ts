@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { authFailureProvider, classifyGitAuthFailure, friendlyGitError } from "./gitError";
+import { authFailureProvider, classifyGitAuthFailure, classifyIndexLockFailure, friendlyGitError } from "./gitError";
 
 // The real output GitLane got back from a rejected squash commit (husky pre-commit
 // lint-staged + commit-msg commitlint), newlines intact.
@@ -244,5 +244,42 @@ describe("authFailureProvider", () => {
     expect(
       authFailureProvider("fatal: unable to access 'https://git.internal.corp/o/r.git/': error: 403"),
     ).toBeNull();
+  });
+});
+
+describe("classifyIndexLockFailure", () => {
+  it("matches stranded index.lock errors", () => {
+    expect(
+      classifyIndexLockFailure(
+        "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository, or the lock file may be stale.",
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores ref-lock failures and ordinary errors", () => {
+    expect(
+      classifyIndexLockFailure(
+        "error: cannot lock ref 'refs/remotes/origin/x': Unable to create '/repo/.git/refs/remotes/origin/x.lock': File exists.",
+      ),
+    ).toBe(false);
+    expect(classifyIndexLockFailure("fatal: not a git repository")).toBe(false);
+  });
+});
+
+describe("friendlyGitError index.lock", () => {
+  it("rewrites a stranded index.lock fatal into neutral recovery copy", () => {
+    const out = friendlyGitError(
+      "fatal: Unable to create '/repo/.git/index.lock': File exists.",
+    );
+    expect(out).toContain("lock file exists");
+    expect(out).not.toContain("No git process appears to be running");
+  });
+
+  it("does not classify a permission-denied index.lock create as stranded", () => {
+    expect(
+      classifyIndexLockFailure(
+        "fatal: Unable to create '/repo/.git/index.lock': Permission denied",
+      ),
+    ).toBe(false);
   });
 });

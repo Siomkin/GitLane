@@ -12,6 +12,7 @@ use super::operands::ensure_operand;
 /// move isn't a fast-forward — callers should only offer this when it is.
 #[cfg(test)]
 pub fn fast_forward(repo: &str, target: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(target)?;
     run_git(repo, &["merge", "--ff-only", target])
 }
@@ -24,6 +25,7 @@ pub fn fast_forward(repo: &str, target: &str) -> Result<String, String> {
 /// current branch through `fast_forward` instead.
 #[cfg(test)]
 pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // `git fetch . <target>:<branch>` has no `--` end-of-options guard, so a
     // dash-prefixed target/branch (e.g. `--upload-pack=…`) would be parsed as an
     // option and reach command execution. Reject those operands outright.
@@ -40,6 +42,18 @@ pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<Str
 /// captured target oid. The backend chooses the checked-out/non-checked-out
 /// mechanism from live Git state, never from a stale frontend HEAD snapshot.
 pub fn fast_forward_branch_at(
+    repo: &str,
+    branch: &str,
+    expected_branch_oid: &str,
+    target_oid: &str,
+) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
+    fast_forward_branch_at_locked(repo, branch, expected_branch_oid, target_oid)
+}
+
+/// Fast-forward body for callers that already hold `lock_index_writes`
+/// (remote-branch checkout).
+pub(super) fn fast_forward_branch_at_locked(
     repo: &str,
     branch: &str,
     expected_branch_oid: &str,
@@ -111,6 +125,7 @@ pub fn fast_forward_branch_at(
 /// the tag-clobber detection in `remotes.rs`.
 #[cfg(test)]
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(branch)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
@@ -158,6 +173,7 @@ pub fn merge_into(
     destination: Option<&str>,
     expected_destination_oid: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_revision_at(repo, source, expected_source_oid)?;
@@ -207,6 +223,7 @@ pub fn rebase(
     expected_source_oid: &str,
     onto_oid: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(source)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
@@ -262,6 +279,7 @@ fn group_by_mergeness<'a>(
 /// matching the graph's first-parent lane semantics.
 #[cfg(test)]
 pub fn cherry_pick(repo: &str, commit: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(commit)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
@@ -286,6 +304,7 @@ pub fn cherry_pick_onto(
     expected_oid: &str,
     commit: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(commit)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
@@ -305,6 +324,7 @@ pub fn cherry_pick_onto(
 /// queued in the sequencer — continue finishes only the current run.
 #[cfg(test)]
 pub fn cherry_pick_many(repo: &str, commits: &[String]) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     cherry_pick_many_locked(repo, commits, &identity_args)
@@ -341,6 +361,7 @@ pub fn cherry_pick_many_onto(
     expected_oid: &str,
     commits: &[String],
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
@@ -353,6 +374,7 @@ pub fn cherry_pick_many_onto(
 /// semantics.
 #[cfg(test)]
 pub fn revert(repo: &str, commit: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(commit)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
@@ -377,6 +399,7 @@ pub fn revert_onto(
     expected_oid: &str,
     commit: &str,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(commit)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
@@ -391,6 +414,7 @@ pub fn revert_onto(
 /// queueing the later ones.
 #[cfg(test)]
 pub fn revert_many(repo: &str, commits: &[String]) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     revert_many_locked(repo, commits, &identity_args)
@@ -428,6 +452,7 @@ pub fn revert_many_onto(
     expected_oid: &str,
     commits: &[String],
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let identity_args = super::identity::pinned_commit_args(repo)?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;

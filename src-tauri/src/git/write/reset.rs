@@ -26,6 +26,8 @@ use super::operands::ensure_exact_oid;
 /// Soft and mixed only — hard reset mutates through its validated scope in
 /// [`reset_branch`], not through a repo path git would re-resolve.
 pub(super) fn reset_to_oid(repo: &str, target_oid: &str, mode: &str) -> Result<String, String> {
+    // Callers that mutate the index must already hold `lock_index_writes`
+    // (`reset_branch`, `squash_commits`) — this helper must not take it again.
     ensure_exact_oid(target_oid)?;
     let flag = if mode == "soft" { "--soft" } else { "--mixed" };
     run_git(repo, &["reset", flag, target_oid])
@@ -74,6 +76,7 @@ pub fn reset_branch(
     expected_head_branch: Option<&str>,
     expected_head_oid: Option<&str>,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let mode = match mode {
         "soft" | "mixed" | "hard" => mode,
         _ => "mixed",

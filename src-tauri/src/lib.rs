@@ -24,7 +24,7 @@ use git::types::{
     DestructivePreview, DiscardAllPreview, DiscardFilePreview, FileBlame, FileChange, FileDiff,
     FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
     GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
-    HistorySearchQuery, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
+    HistorySearchQuery, IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
     ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
     ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge,
     RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList,
@@ -1100,6 +1100,18 @@ async fn stage_all(path: String) -> Result<String, String> {
 #[tauri::command]
 async fn unstage_all(path: String) -> Result<String, String> {
     blocking(move || git::write::unstage_all(&path)).await
+}
+
+/// Inspect `.git/index.lock` for the stranded-lock recovery toast (GL-335).
+#[tauri::command]
+async fn inspect_index_lock(path: String) -> Result<IndexLockStatus, String> {
+    blocking(move || git::write::inspect_index_lock(&path)).await
+}
+
+/// Remove a stranded `.git/index.lock` only when the staleness gate passes.
+#[tauri::command]
+async fn remove_index_lock(path: String) -> Result<(), String> {
+    blocking(move || git::write::remove_index_lock(&path)).await
 }
 
 #[tauri::command]
@@ -2199,6 +2211,8 @@ pub fn run() {
             restore_path_from_commit,
             stage_all,
             unstage_all,
+            inspect_index_lock,
+            remove_index_lock,
             commit,
             squash_commits,
             stash,

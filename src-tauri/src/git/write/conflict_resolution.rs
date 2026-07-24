@@ -20,6 +20,7 @@ use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 /// stage to check out) the file is removed instead — covering modify/delete and
 /// add/add conflicts with one path.
 pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // No `ensure_operand` on `file`: every git call below passes it after `--`
     // in literal-pathspec mode, so `-foo` is safe and `:(glob)*` cannot expand.
     // `ensure_conflicted` additionally gates it to the index conflict set.
@@ -103,6 +104,7 @@ fn can_reconflict(repo: &str, file: &str) -> bool {
 /// per-hunk choices. The path is resolved against the worktree root (and checked
 /// to stay inside it) so it is correct for linked worktrees and never escapes.
 pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // `file` is staged after `--` in literal mode and resolved through held
     // no-follow directory handles, so no `ensure_operand` dash-guard is needed
     // — and it would wrongly block `-foo`.
@@ -120,6 +122,7 @@ pub fn resolve_conflict_file(repo: &str, file: &str, content: &str) -> Result<St
 /// Mark a conflicted file resolved by staging it as it currently sits on disk
 /// (after the user edited it in their own editor). `-A` also stages a deletion.
 pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // `file` passes after `--` in literal mode and is gated by
     // `ensure_conflicted`. No dash-guard (see `accept_conflict_side`) so a
     // conflicted `-foo` can be staged.
@@ -132,6 +135,7 @@ pub fn mark_conflict_resolved(repo: &str, file: &str) -> Result<String, String> 
 /// it can be re-resolved (`git checkout --merge`) — the inverse of staging a
 /// resolution, exposed as the per-file "Unstage" affordance.
 pub fn reconflict_file(repo: &str, file: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // `file` is passed after `--` in literal mode, so no dash-guard is needed
     // (it would block a conflicted `-foo`).
     // Guard against clobbering: `git checkout --merge` on a path git can't
@@ -204,6 +208,7 @@ pub fn continue_operation(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // A worktree-handoff carry (GL-74) isn't a git sequencer — finishing it drops
     // the kept stashes and clears the marker rather than running `--continue`.
     if kind == handoff::CARRY_KIND {
@@ -234,6 +239,7 @@ pub fn continue_operation(
 /// Abort the active operation, restoring the pre-operation state. `kind` is the
 /// operation key from `git::conflicts::operation_status`.
 pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if kind == handoff::CARRY_KIND {
         return abort_carry(repo);
     }
@@ -297,6 +303,7 @@ pub fn skip_operation(
     identity: Option<&crate::git::types::RepoIdentity>,
     identity_captured: bool,
 ) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let sub: &[&str] = match kind {
         "rebase" => &["rebase", "--skip"],
         "cherry-pick" => &["cherry-pick", "--skip"],

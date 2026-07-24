@@ -3,7 +3,7 @@
 use super::branches::{ref_exists, resolve_rev};
 use super::cli::{run_git, run_git_with_input};
 use super::head::{switch_branch, switch_detached};
-use super::history::fast_forward_branch_at;
+use super::history::fast_forward_branch_at_locked;
 use super::operands::ensure_operand;
 
 /// Switch to an existing local branch or detach at an explicit revision.
@@ -11,6 +11,7 @@ use super::operands::ensure_operand;
 /// deliberately forbidden because a stale branch can be reinterpreted as a
 /// pathspec and silently restore a same-named tracked file.
 pub fn checkout(repo: &str, target: &str, detached: bool) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if detached {
         switch_detached(repo, target)
     } else {
@@ -25,6 +26,7 @@ pub fn checkout(repo: &str, target: &str, detached: bool) -> Result<String, Stri
 /// Active merge/sequencer operations are rejected before checkout can disturb
 /// their state.
 pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<String, String> {
+    let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(remote)?;
     ensure_operand(branch)?;
     ensure_no_operation_in_progress(repo)?;
@@ -44,7 +46,7 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
             RemoteCheckoutUpdate::FastForward => {
                 let local_oid = resolve_rev(repo, &local_ref)?;
                 let target_oid = resolve_rev(repo, &remote_ref)?;
-                fast_forward_branch_at(repo, branch, &local_oid, &target_oid).map_err(|error| {
+                fast_forward_branch_at_locked(repo, branch, &local_oid, &target_oid).map_err(|error| {
                     format!(
                         "{branch} is checked out, but it couldn't be fast-forwarded to {remote_ref}: {error}"
                     )
