@@ -1,14 +1,16 @@
 //! Open a worktree path with the OS default app or `git difftool`.
 //!
 //! Paths use the same no-follow worktree guards as Reveal: a symlink in any
-//! ancestor must not redirect outside the repository.
+//! ancestor must not redirect outside the repository. Opening goes one step
+//! further than Reveal and refuses a symlink *leaf* too — the OS opener follows
+//! it, so unlike a git-mediated read it would reach the link's target.
 
 use std::path::{Component, Path, PathBuf};
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
 
 use crate::git::read::open;
-use crate::git::worktree_fs::worktree_leaf_exists_nofollow;
+use crate::git::worktree_fs::{open_worktree_file, worktree_leaf_exists_nofollow};
 
 use super::cli::{run_git, run_git_literal_paths};
 
@@ -94,8 +96,32 @@ fn resolve_existing_leaf(repo: &str, file: &str) -> Result<PathBuf, String> {
         .workdir()
         .ok_or_else(|| "repository has no working directory".to_string())?;
     match worktree_leaf_exists_nofollow(workdir, &relative) {
-        Ok(true) => Ok(workdir.join(&relative)),
+        Ok(true) => {
+            ensure_regular_leaf(workdir, &relative)?;
+            Ok(workdir.join(&relative))
+        }
         Ok(false) => Err(format!("{relative} is not on disk")),
+        Err(error) => Err(format!("Couldn't open {relative}: {error}")),
+    }
+}
+
+/// Refuse a leaf that is not a regular file. [`worktree_leaf_exists_nofollow`]
+/// blocks a symlink in any *ancestor*, but it is existence-only about the leaf
+/// itself: a symlink there answers `true`. That is safe for git-mediated reads
+/// (git diffs a symlink as its link text) and unsafe here, because the OS
+/// opener — `open`, `xdg-open`, `ShellExecuteW` — follows it, so a committed
+/// `link -> /etc/passwd` would open a file outside the repository. Cloning a
+/// repository must never expose the user's own files to one click.
+///
+/// `open_worktree_file` is the existing no-follow gate for this (it answers
+/// `None` for anything that is not a regular file); the handle it returns is
+/// dropped immediately — only the verdict is wanted.
+fn ensure_regular_leaf(workdir: &Path, relative: &str) -> Result<(), String> {
+    match open_worktree_file(workdir, relative) {
+        Ok(Some(_)) => Ok(()),
+        Ok(None) => Err(format!(
+            "Refusing to open {relative}: not a regular file. Symlinks and special files can point outside the worktree."
+        )),
         Err(error) => Err(format!("Couldn't open {relative}: {error}")),
     }
 }

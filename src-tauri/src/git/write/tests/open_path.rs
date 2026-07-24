@@ -37,6 +37,37 @@ fn open_path_default_refuses_a_path_that_is_not_on_disk() {
     );
 }
 
+/// The escape the ancestor guard does not cover: `worktree_leaf_exists_nofollow`
+/// answers `true` for a symlink *leaf*, and the OS opener follows it. A repo can
+/// commit such a link, so cloning one must not put the user's own files one click
+/// away (GL-337 review).
+#[cfg(unix)]
+#[test]
+fn open_path_default_refuses_a_symlink_leaf_pointing_outside_the_worktree() {
+    let repo = repo_with_file("open-default-symlink", "f.txt", b"base\n");
+    let outside = repo.0.parent().unwrap().join("gitlane-outside-secret.txt");
+    std::fs::write(&outside, b"secret\n").unwrap();
+    std::os::unix::fs::symlink(&outside, repo.0.join("link.txt")).unwrap();
+
+    let error = open_path_default(repo.path(), "link.txt")
+        .expect_err("a symlink leaf must not reach the OS opener");
+    assert!(
+        error.contains("not a regular file"),
+        "unexpected error: {error}"
+    );
+
+    // Same leaf, same reason: `diff --no-index` would otherwise inline the
+    // target's bytes into the generated patch.
+    let patch_error = create_working_tree_patch(repo.path(), "link.txt")
+        .expect_err("a symlink leaf must not be read into a patch");
+    assert!(
+        patch_error.contains("not a regular file"),
+        "unexpected error: {patch_error}"
+    );
+
+    let _ = std::fs::remove_file(&outside);
+}
+
 #[test]
 fn open_path_difftool_refuses_before_head_is_born() {
     let repo = TempRepo::new("open-difftool-unborn");

@@ -182,7 +182,20 @@ fn ensure_safe_worktree_leaf(repo: &str, file: &str) -> Result<(), String> {
         .workdir()
         .ok_or_else(|| "repository has no working directory".to_string())?;
     match crate::git::worktree_fs::worktree_leaf_exists_nofollow(workdir, file) {
-        Ok(true) => Ok(()),
+        // Existence alone is not enough here: the caller feeds this path to
+        // `git diff --no-index`, which reads the leaf through the filesystem
+        // rather than as a git blob. A symlink leaf answers `true` above, so
+        // without the regular-file gate a committed `link -> /etc/passwd`
+        // would end up inlined into the generated patch. The tracked
+        // `diff HEAD` branch needs no such check — git reads a symlink there
+        // as its link text, never the target.
+        Ok(true) => match crate::git::worktree_fs::open_worktree_file(workdir, file) {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => Err(format!(
+                "Refusing to patch {file}: not a regular file. Symlinks and special files can point outside the worktree."
+            )),
+            Err(error) => Err(format!("Couldn't patch {file}: {error}")),
+        },
         Ok(false) => Err(format!("{file} is not on disk")),
         Err(error) => Err(format!("Couldn't patch {file}: {error}")),
     }
