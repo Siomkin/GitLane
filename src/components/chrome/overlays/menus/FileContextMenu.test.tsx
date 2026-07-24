@@ -37,16 +37,22 @@ describe("FileContextMenu", () => {
 
   it("opens the file in the center pane and closes the menu", () => {
     const requestOpenRepoFile = vi.fn();
-    useRepo.setState({ requestOpenRepoFile });
+    useRepo.setState({
+      requestOpenRepoFile,
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+    });
     openMenu();
     render(<FileContextMenu />);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open file" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
     expect(requestOpenRepoFile).toHaveBeenCalledWith("src/App.tsx");
     expect(useUi.getState().fileMenu).toBeNull();
   });
 
-  it("offers Discard, Ignore, Open, Reveal, History, and Copy for an unstaged tracked file", () => {
+  it("offers Discard, Ignore, Edit, Open, History, and Copy for an unstaged tracked file", () => {
     useRepo.setState({
       changes: {
         ...emptyChanges,
@@ -58,14 +64,14 @@ describe("FileContextMenu", () => {
 
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Delete file" })).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Open file" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /Show in/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "History" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
   });
 
-  it("offers Delete + Ignore (no Discard/History) for an untracked file", () => {
+  it("offers Edit + Delete + Ignore (no Discard/History) for an untracked file", () => {
     useRepo.setState({
       changes: {
         ...emptyChanges,
@@ -75,6 +81,7 @@ describe("FileContextMenu", () => {
     useUi.setState({ fileMenu: { x: 10, y: 10, path: "new.txt", discard: { staged: false } } });
     render(<FileContextMenu />);
 
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Delete file" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
@@ -105,7 +112,6 @@ describe("FileContextMenu", () => {
       stopTracking: vi.fn().mockResolvedValue(undefined),
       createWorkingTreePatch: vi.fn().mockResolvedValue("wip-App.tsx.patch"),
       openPathDefault: vi.fn().mockResolvedValue(undefined),
-      openPathDifftool: vi.fn().mockResolvedValue(undefined),
     });
     openMenu();
     render(<FileContextMenu />);
@@ -113,8 +119,11 @@ describe("FileContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Stash this file" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Stop tracking" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create patch" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Open with Default Application" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Open Diff Tool" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(screen.getByRole("menuitem", { name: "Default Application" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Diff Tool" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Open Diff Tool" })).not.toBeInTheDocument();
   });
 
   it("confirms stash-this-file before calling the store action", () => {
@@ -136,7 +145,7 @@ describe("FileContextMenu", () => {
     expect(stashFile).toHaveBeenCalledWith("src/App.tsx");
   });
 
-  it("hides stop-tracking and difftool for untracked files", () => {
+  it("hides stop-tracking for untracked files", () => {
     useRepo.setState({
       changes: {
         ...emptyChanges,
@@ -149,7 +158,8 @@ describe("FileContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Stash this file" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Create patch" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Stop tracking" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Open Diff Tool" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    expect(screen.getByRole("menuitem", { name: "Default Application" })).toBeInTheDocument();
   });
 
   it("omits Discard for renames but still offers Ignore / Open / History", () => {
@@ -278,6 +288,7 @@ describe("FileContextMenu", () => {
     openMenu();
     render(<FileContextMenu />);
 
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /Show in/ }));
     expect(revealInFileManager).toHaveBeenCalledWith("src/App.tsx");
     expect(useUi.getState().fileMenu).toBeNull();

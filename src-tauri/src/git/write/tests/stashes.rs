@@ -522,3 +522,13 @@ fn stash_paths_stashes_one_file_and_leaves_siblings() {
         "stash me\n"
     );
 }
+
+#[test]
+fn stash_paths_accepts_a_leading_dash_filename() {
+    let repo = stash_seed_repo("stash-dash-name");
+    std::fs::write(repo.0.join("-notes.txt"), b"secret notes\n").unwrap();
+
+    let message = stash_paths(repo.path(), &["-notes.txt".into()]).expect("dash pathspec");
+    assert!(message.contains("Stashed"), "got {message}");
+    assert!(!repo.0.join("-notes.txt").exists());
+}

@@ -230,7 +230,11 @@ describe("FileContextMenu", () => {
 
     const discard = screen.getByRole("menuitem", { name: "Discard changes" });
     expect(discard).toBeDisabled();
-    expect(screen.getByText("Outside sparse checkout. Expand the sparse checkout or use git add --sparse.")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("omits the discard item for a committed file (copy-only menu)", () => {

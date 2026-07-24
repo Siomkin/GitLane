@@ -82,8 +82,9 @@ pub fn create_patch_range(repo: &str, base: &str, head: &str) -> Result<String, 
 /// collision-safe `.patch` file (GL-337). Tracked paths use `git diff HEAD`;
 /// untracked paths use `git diff --no-index` against an empty file.
 pub fn create_working_tree_patch(repo: &str, file: &str) -> Result<String, String> {
+    // Path lands after `--` with `--literal-pathspecs`, so leading `-` in a
+    // real filename is fine — do not call [`ensure_operand`] here.
     let relative = normalize_relative(file)?;
-    ensure_operand(&relative)?;
     let patch = working_tree_patch_bytes(repo, &relative)?;
     if patch.is_empty() {
         return Err(format!("No working-tree changes to patch for {relative}"));
@@ -127,8 +128,15 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
             return Ok(patch);
         }
     } else {
-        // Unborn HEAD: staged-only content still has a patch via --cached.
-        let patch = run_git_stdout_raw(
+        // Unborn HEAD has no empty-tree equivalent for `diff HEAD`. A coherent
+        // "final worktree" patch (matching born `diff HEAD` net effect) is
+        // `--no-index` against /dev/null when the leaf exists. Concatenating
+        // `--cached` + unstaged produces a corrupt mailbox `git apply` rejects.
+        // If the leaf is gone, fall back to the staged delta alone.
+        if ensure_safe_worktree_leaf(repo, file).is_ok() {
+            return no_index_new_file_patch(repo, file);
+        }
+        let cached = run_git_stdout_raw(
             repo,
             &[
                 "--literal-pathspecs",
@@ -139,14 +147,19 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
                 file,
             ],
         )?;
-        if !patch.is_empty() {
-            return Ok(patch);
+        if !cached.is_empty() {
+            return Ok(cached);
         }
     }
 
-    // Truly untracked on-disk leaf: synthesize a "new file" patch. `diff
-    // --no-index` exits 1 when the files differ, which is the success case.
-    // Raw stdout keeps non-UTF-8 / binary bytes intact.
+    // Truly untracked on-disk leaf: synthesize a "new file" patch.
+    ensure_safe_worktree_leaf(repo, file)?;
+    no_index_new_file_patch(repo, file)
+}
+
+fn no_index_new_file_patch(repo: &str, file: &str) -> Result<Vec<u8>, String> {
+    // `diff --no-index` exits 1 when the files differ, which is the success
+    // case. Raw stdout keeps non-UTF-8 / binary bytes intact.
     let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
     run_git_stdout_raw_allow_exit_codes(
         repo,
@@ -161,6 +174,18 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
         ],
         &[1],
     )
+}
+
+fn ensure_safe_worktree_leaf(repo: &str, file: &str) -> Result<(), String> {
+    let repository = crate::git::read::open(repo).map_err(|e| e.to_string())?;
+    let workdir = repository
+        .workdir()
+        .ok_or_else(|| "repository has no working directory".to_string())?;
+    match crate::git::worktree_fs::worktree_leaf_exists_nofollow(workdir, file) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(format!("{file} is not on disk")),
+        Err(error) => Err(format!("Couldn't patch {file}: {error}")),
+    }
 }
 
 fn has_head(repo: &str) -> bool {

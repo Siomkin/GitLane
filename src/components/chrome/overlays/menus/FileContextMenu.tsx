@@ -4,8 +4,8 @@ import { basename } from "@/lib/paths";
 import { isMac, isWindows } from "@/lib/platform";
 import {
   ClockIcon,
-  CompareIcon,
   CopyIcon,
+  EditIcon,
   ExternalLinkIcon,
   FileTextIcon,
   FolderIcon,
@@ -35,7 +35,6 @@ export function FileContextMenu() {
   const appendIgnorePattern = useRepo((s) => s.appendIgnorePattern);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
   const openPathDefault = useRepo((s) => s.openPathDefault);
-  const openPathDifftool = useRepo((s) => s.openPathDifftool);
   const stopTracking = useRepo((s) => s.stopTracking);
   const createWorkingTreePatch = useRepo((s) => s.createWorkingTreePatch);
   const stashFile = useRepo((s) => s.stashFile);
@@ -133,7 +132,6 @@ export function FileContextMenu() {
     // an inconsistency (ADR 0002 revised).
     const showIgnore = true;
     const showDiscard = !untracked && !renamed;
-    const showDelete = untracked;
     const showHistory = !untracked;
 
     const items: MenuItem[] = [];
@@ -152,33 +150,6 @@ export function FileContextMenu() {
             message:
               "The file's working-tree changes will be permanently reverted. This can't be undone.",
             confirmLabel: staged ? "Unstage & discard" : "Discard changes",
-            danger: true,
-            preview: () =>
-              repoPath
-                ? previewDiscardFile(repoPath, path, null, staged)
-                : Promise.reject(new Error("No repository")),
-            onConfirm: (preview) => {
-              if (repoPath) {
-                void discardFile(repoPath, path, null, staged, preview.expectedState);
-              }
-            },
-          }),
-      });
-    }
-
-    if (showDelete) {
-      items.push({
-        label: "Delete file",
-        icon: <TrashIcon className="h-4 w-4" />,
-        danger: true,
-        disabled: !!fileGuard,
-        disabledReason: fileGuard ?? undefined,
-        onClick: () =>
-          void previewConfirm<DiscardFilePreview>({
-            requestConfirm,
-            title: `Delete ${fileName}?`,
-            message: "The untracked file will be permanently removed from disk. This can't be undone.",
-            confirmLabel: "Delete file",
             danger: true,
             preview: () =>
               repoPath
@@ -215,16 +186,26 @@ export function FileContextMenu() {
       });
     }
 
+    if (showIgnore) {
+      items.push({
+        label: "Ignore…",
+        icon: <FileTextIcon className="h-4 w-4" />,
+        sep: items.length > 0,
+        submenu: ignoreSubmenu(),
+      });
+    }
+
     if (deferred.stopTracking) {
       items.push({
         label: "Stop tracking",
         icon: <TrashIcon className="h-4 w-4" />,
-        danger: true,
+        // Hover-only rose — not always-red like Discard (GL-337).
+        tone: "danger",
         disabled: !!fileGuard,
         disabledReason: fileGuard ?? undefined,
         onClick: () => {
           close();
-            requestConfirm({
+          requestConfirm({
             title: `Stop tracking ${fileName}?`,
             message:
               "Git will forget this path but leave the file on disk. The removal is staged — commit to finish, or discard the staged deletion to undo. If unique staged content isn’t also on disk, Git will refuse rather than drop it.",
@@ -235,15 +216,6 @@ export function FileContextMenu() {
             },
           });
         },
-      });
-    }
-
-    if (showIgnore) {
-      items.push({
-        label: "Ignore…",
-        icon: <FileTextIcon className="h-4 w-4" />,
-        sep: items.length > 0,
-        submenu: ignoreSubmenu(),
       });
     }
 
@@ -258,46 +230,68 @@ export function FileContextMenu() {
       });
     }
 
-    items.push({
-      label: "Open file",
-      icon: <FileTextIcon className="h-4 w-4" />,
-      sep: true,
-      onClick: () => {
-        close();
-        requestOpenRepoFile(path);
-      },
-    });
-
+    // Open / Edit / Delete share one section — open-in-app, OS open, and
+    // remove-from-disk are the local file verbs (GL-337). Diff Tool stays
+    // out until prefs exist to configure it.
+    const openSubmenu: MenuItem[] = [];
     if (deferred.openDefaultApp) {
-      items.push({
-        label: "Open with Default Application",
-        icon: <ExternalLinkIcon className="h-4 w-4" />,
+      openSubmenu.push({
+        label: "Default Application",
         onClick: () => {
           close();
           void openPathDefault(path);
         },
       });
     }
-
-    if (deferred.openDiffTool) {
-      items.push({
-        label: "Open Diff Tool",
-        icon: <CompareIcon className="h-4 w-4" />,
-        onClick: () => {
-          close();
-          void openPathDifftool(path);
-        },
-      });
-    }
-
-    items.push({
+    openSubmenu.push({
       label: revealLabel,
-      icon: <FolderIcon className="h-4 w-4" />,
       onClick: () => {
         close();
         void revealInFileManager(path);
       },
     });
+    items.push({
+      label: "Open",
+      icon: <ExternalLinkIcon className="h-4 w-4" />,
+      sep: true,
+      submenu: openSubmenu,
+    });
+    if (deferred.edit) {
+      items.push({
+        label: "Edit",
+        icon: <EditIcon className="h-4 w-4" />,
+        onClick: () => {
+          close();
+          requestOpenRepoFile(path);
+        },
+      });
+    }
+    if (deferred.deleteFile) {
+      items.push({
+        label: "Delete file",
+        icon: <TrashIcon className="h-4 w-4" />,
+        danger: true,
+        disabled: !!fileGuard,
+        disabledReason: fileGuard ?? undefined,
+        onClick: () =>
+          void previewConfirm<DiscardFilePreview>({
+            requestConfirm,
+            title: `Delete ${fileName}?`,
+            message: "The untracked file will be permanently removed from disk. This can't be undone.",
+            confirmLabel: "Delete file",
+            danger: true,
+            preview: () =>
+              repoPath
+                ? previewDiscardFile(repoPath, path, null, staged)
+                : Promise.reject(new Error("No repository")),
+            onConfirm: (preview) => {
+              if (repoPath) {
+                void discardFile(repoPath, path, null, staged, preview.expectedState);
+              }
+            },
+          }),
+      });
+    }
 
     if (showHistory) {
       items.push({
@@ -324,7 +318,7 @@ export function FileContextMenu() {
     }
 
     items.push(...copyCluster("file"));
-    return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={260} />;
+    return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
   }
 
   // Committed file menu (ADR 0003): Restore… then open / reveal / history / copy.

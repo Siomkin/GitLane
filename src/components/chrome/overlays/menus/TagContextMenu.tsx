@@ -1,4 +1,4 @@
-import { CheckIcon, CopyIcon, PlusIcon, PushIcon, TrashIcon } from "@/components/ui/icons";
+import { CheckIcon, CopyIcon, PlusIcon, PushIcon, WarningIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -7,10 +7,12 @@ import { promptCreateWorktree } from "./prompts";
 /** Right-click menu on a tag ref (graph pill or navigator row). Tags are
  * immutable pointers, so the menu reads the tagged commit and offers the same
  * "go to / branch from this point" actions as a commit, plus copy, push, and
- * delete. Delete comes in two strengths: local-only (fetch re-imports the tag
- * while it exists on the remote) and local + remote. Push and delete name the
- * actual remote (GL-129); with several remotes configured, push becomes a
- * per-remote submenu while delete-everywhere targets the default remote. */
+ * delete. Delete comes in two strengths — local-only (fetch re-imports the tag
+ * while it exists on the remote) and local + remote — collapsed under a
+ * Danger zone submenu, matching the branch menu's treatment of its destructive
+ * verbs. Push and delete name the actual remote (GL-129); with several remotes
+ * configured, push becomes a per-remote submenu while delete-everywhere targets
+ * the default remote. */
 export function TagContextMenu() {
   const menu = useUi((s) => s.tagMenu);
   const close = useUi((s) => s.closeOverlays);
@@ -63,31 +65,36 @@ export function TagContextMenu() {
       onClick: () => { close(); void navigator.clipboard?.writeText(name); },
     },
     {
-      label: "Delete local tag",
-      icon: <TrashIcon className="h-4 w-4" />,
-      danger: true,
+      label: "Danger zone",
+      icon: <WarningIcon className="h-4 w-4" />,
+      tone: "danger",
       sep: true,
-      onClick: () =>
-        requestConfirm({
-          title: `Delete tag ${name}?`,
-          message: `Only the local tag ref is removed. If the tag was pushed, the next fetch re-imports it from ${defaultRemote} — use “Delete from local and ${defaultRemote}” to remove it for good.`,
-          confirmLabel: "Delete local tag",
+      submenu: [
+        {
+          label: "Delete local tag",
           danger: true,
-          onConfirm: () => void run(() => deleteTag(name, refOid)),
-        }),
-    },
-    {
-      label: `Delete from local and ${defaultRemote}`,
-      icon: <TrashIcon className="h-4 w-4" />,
-      danger: true,
-      onClick: () =>
-        requestConfirm({
-          title: `Delete tag ${name} everywhere?`,
-          message: `The tag is deleted on ${defaultRemote} and then locally. Other clones keep their copy until they prune, but fetch will no longer restore it here.`,
-          confirmLabel: `Delete from local and ${defaultRemote}`,
+          onClick: () =>
+            requestConfirm({
+              title: `Delete tag ${name}?`,
+              message: `Only the local tag ref is removed. If the tag was pushed, the next fetch re-imports it from ${defaultRemote} — use “Delete from local and ${defaultRemote}” to remove it for good.`,
+              confirmLabel: "Delete local tag",
+              danger: true,
+              onConfirm: () => void run(() => deleteTag(name, refOid)),
+            }),
+        },
+        {
+          label: `Delete from local and ${defaultRemote}`,
           danger: true,
-          onConfirm: () => void run(() => deleteTag(name, refOid, true)),
-        }),
+          onClick: () =>
+            requestConfirm({
+              title: `Delete tag ${name} everywhere?`,
+              message: `The tag is deleted on ${defaultRemote} and then locally. Other clones keep their copy until they prune, but fetch will no longer restore it here.`,
+              confirmLabel: `Delete from local and ${defaultRemote}`,
+              danger: true,
+              onConfirm: () => void run(() => deleteTag(name, refOid, true)),
+            }),
+        },
+      ],
     },
   ];
 

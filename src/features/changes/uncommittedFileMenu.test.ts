@@ -12,43 +12,47 @@ const file = (status: FileChange["status"], advanced?: FileChange["advanced"]): 
 });
 
 describe("uncommittedFileMenuActions", () => {
-  it("offers stash / patch / open / difftool for a modified tracked file", () => {
+  it("offers stash / edit / patch / open for a modified tracked file", () => {
     expect(uncommittedFileMenuActions(file("M"))).toEqual({
       stashFile: true,
       stopTracking: true,
+      edit: true,
+      deleteFile: false,
       createPatch: true,
       openDefaultApp: true,
-      openDiffTool: true,
     });
   });
 
-  it("offers stash / delete-style patch / open but not stop-tracking or difftool for untracked", () => {
+  it("offers stash / edit / delete / patch / open but not stop-tracking for untracked", () => {
     expect(uncommittedFileMenuActions(file("U"))).toEqual({
       stashFile: true,
       stopTracking: false,
+      edit: true,
+      deleteFile: true,
       createPatch: true,
       openDefaultApp: true,
-      openDiffTool: false,
     });
   });
 
-  it("hides stop-tracking and open-default for a deletion; still allows stash / patch / difftool", () => {
+  it("hides stop-tracking, edit, and open-default for a deletion; still allows stash / patch", () => {
     expect(uncommittedFileMenuActions(file("D"))).toEqual({
       stashFile: true,
       stopTracking: false,
+      edit: false,
+      deleteFile: false,
       createPatch: true,
       openDefaultApp: false,
-      openDiffTool: true,
     });
   });
 
-  it("defers every deferred verb for renames", () => {
+  it("defers every deferred verb for renames except edit / open-default", () => {
     expect(uncommittedFileMenuActions(file("R"))).toEqual({
       stashFile: false,
       stopTracking: false,
+      edit: true,
+      deleteFile: false,
       createPatch: false,
       openDefaultApp: true,
-      openDiffTool: false,
     });
   });
 
@@ -58,13 +62,21 @@ describe("uncommittedFileMenuActions", () => {
     ).toEqual({
       stashFile: false,
       stopTracking: false,
+      edit: false,
+      deleteFile: false,
       createPatch: false,
       openDefaultApp: false,
-      openDiffTool: false,
     });
   });
 
-  it("returns all-false when the entry is missing", () => {
-    expect(uncommittedFileMenuActions(undefined).stashFile).toBe(false);
+  it("returns edit/open optimistic defaults when the entry is missing", () => {
+    expect(uncommittedFileMenuActions(undefined)).toEqual({
+      stashFile: false,
+      stopTracking: false,
+      edit: true,
+      deleteFile: false,
+      createPatch: false,
+      openDefaultApp: true,
+    });
   });
 });

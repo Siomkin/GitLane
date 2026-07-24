@@ -292,8 +292,13 @@ pub fn stash_paths(repo: &str, paths: &[String]) -> Result<String, String> {
     if paths.is_empty() {
         return Err("No paths to stash".to_string());
     }
+    // Paths land after `--` with `--literal-pathspecs`, so a real filename like
+    // `-notes.txt` is a pathspec — not an option. Do not call [`ensure_operand`]
+    // (that helper is for operands *before* `--`).
     for path in paths {
-        ensure_operand(path)?;
+        if path.is_empty() {
+            return Err("Missing path to stash".to_string());
+        }
     }
     let _guard = lock_stash_writes()?;
     let empty_dirs = super::empty_dirs::capture(repo)?;
