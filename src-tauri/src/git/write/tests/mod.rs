@@ -8,6 +8,7 @@ mod files;
 mod history;
 mod identity;
 mod lifecycle;
+mod open_path;
 mod operands;
 mod patches;
 mod recovery;

@@ -49,7 +49,7 @@ fn configured_diff_tool(repo: &str) -> Result<String, String> {
     )
 }
 
-fn ensure_diffable_against_head(repo: &str, file: &str) -> Result<(), String> {
+pub(super) fn ensure_diffable_against_head(repo: &str, file: &str) -> Result<(), String> {
     if !has_head(repo) {
         return Err(
             "Diff tool needs a commit to compare against; this repository has no HEAD yet."

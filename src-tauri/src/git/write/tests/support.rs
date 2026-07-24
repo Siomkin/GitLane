@@ -6,6 +6,7 @@ pub(super) use super::super::conflict_resolution::{
     conflict_stage_absent, is_empty_after_resolution,
 };
 pub(super) use super::super::lifecycle::init_in_place;
+pub(super) use super::super::open_path::ensure_diffable_against_head;
 pub(super) use super::super::operands::ensure_operand;
 pub(super) use super::super::patch_staging::{apply_hunk_patch, patch_diff_args};
 pub(super) use super::super::remotes::{
@@ -22,12 +23,13 @@ pub(super) use super::super::{
     create_working_tree_patch, delete_branch, delete_branch_with_worktree, delete_remote_branch,
     delete_remote_tag, delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
     fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
-    merge_into, move_branch_to_worktree, preview_delete_branch, preview_delete_remote_branch,
-    preview_discard_all, preview_discard_file, preview_force_push, preview_remove_worktree,
-    preview_reset, publish_branch, publish_remote, pull, pull_branch, push_branch, rebase,
-    reconflict_file, reflog_entries, remove_worktree, reset_branch, resolve_conflict_file,
-    restore_path_from_commit, revert, revert_many, revert_onto, set_before_replace_test_hook,
-    set_discard_all_after_cleanup_test_hook, set_discard_all_after_first_clean_batch_test_hook,
+    merge_into, move_branch_to_worktree, open_path_default, open_path_difftool,
+    preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_discard_file,
+    preview_force_push, preview_remove_worktree, preview_reset, publish_branch, publish_remote,
+    pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree,
+    reset_branch, resolve_conflict_file, restore_path_from_commit, revert, revert_many,
+    revert_onto, set_before_replace_test_hook, set_discard_all_after_cleanup_test_hook,
+    set_discard_all_after_first_clean_batch_test_hook,
     set_discard_all_after_tracked_scope_validation_test_hook,
     set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
     set_discard_all_capture_test_hook, set_discard_capture_test_hook,

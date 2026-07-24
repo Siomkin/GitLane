@@ -194,8 +194,7 @@ fn create_working_tree_patch_on_unborn_head_includes_unstaged_edits() {
     apply_repo.git_ok(&["config", "user.name", "GitLane Test"]);
     apply_repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
     apply_repo.git_ok(&["config", "commit.gpgsign", "false"]);
-    apply_repo
-        .git_ok(&["apply", repo.0.join(&created).to_str().unwrap()]);
+    apply_repo.git_ok(&["apply", repo.0.join(&created).to_str().unwrap()]);
     assert_eq!(
         std::fs::read_to_string(apply_repo.0.join("a.txt")).unwrap(),
         "staged then worktree\n"
