@@ -5,7 +5,7 @@
 //! skips the dialog.
 
 use std::io;
-use std::path::{Component, Path};
+use std::path::Path;
 
 use git2::{ObjectType, Oid, Repository};
 
@@ -14,6 +14,7 @@ use crate::git::worktree_fs::{fingerprint_worktree_leaf, WorktreeLeafFingerprint
 
 use super::cli::run_git_literal_paths;
 use super::operands::{ensure_exact_oid, ensure_operand};
+use super::path_guards::{normalize_relative, PathVerb};
 
 /// True when restoring `file` from `commit_oid` would overwrite different
 /// on-disk bytes (or create a missing leaf). False when the worktree already
@@ -27,7 +28,7 @@ pub fn worktree_differs_from_commit(
     commit_oid: &str,
     file: &str,
 ) -> Result<bool, String> {
-    let relative = normalize_relative(file)?;
+    let relative = normalize_relative(file, PathVerb::Restore)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
     let blob_oid = commit_path_blob_oid_in(&repository, commit_oid, &relative)?;
     let workdir = repository
@@ -55,7 +56,7 @@ pub fn worktree_differs_from_commit(
 /// on click. Fails closed — any resolution error resolves to `false` so the menu
 /// simply omits Restore (the write path re-validates before touching the disk).
 pub fn commit_path_is_restorable(repo: &str, commit_oid: &str, file: &str) -> bool {
-    let Ok(relative) = normalize_relative(file) else {
+    let Ok(relative) = normalize_relative(file, PathVerb::Restore) else {
         return false;
     };
     commit_path_blob_oid(repo, commit_oid, &relative).is_ok()
@@ -69,7 +70,7 @@ pub fn restore_path_from_commit(
     commit_oid: &str,
     file: &str,
 ) -> Result<String, String> {
-    let relative = normalize_relative(file)?;
+    let relative = normalize_relative(file, PathVerb::Restore)?;
     // Validate blob exists + isn't a gitlink before shelling out.
     let _ = commit_path_blob_oid(repo, commit_oid, &relative)?;
 
@@ -137,37 +138,6 @@ fn commit_path_blob_oid_in(
     Ok(entry.id())
 }
 
-fn normalize_relative(file: &str) -> Result<String, String> {
-    if file.is_empty() {
-        return Err("Missing path to restore".to_string());
-    }
-    let relative = Path::new(file);
-    if relative.is_absolute() {
-        return Err("Restore path must be repository-relative".to_string());
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::ParentDir))
-    {
-        return Err(format!(
-            "Refusing to restore path outside the worktree: {file}"
-        ));
-    }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
-        return Err(format!(
-            "Refusing to restore path outside the worktree: {file}"
-        ));
-    }
-    let trimmed = file.trim_matches('/');
-    if trimmed.is_empty() {
-        return Err("Missing path to restore".to_string());
-    }
-    Ok(trimmed.to_string())
-}
-
 fn short_oid(oid: &str) -> &str {
     oid.get(..7).unwrap_or(oid)
 }
@@ -178,10 +148,10 @@ mod tests {
 
     #[test]
     fn normalize_rejects_parent_and_git() {
-        assert!(normalize_relative("../x").is_err());
-        assert!(normalize_relative(".git/config").is_err());
-        assert!(normalize_relative("/abs").is_err());
-        assert!(normalize_relative("").is_err());
+        assert!(normalize_relative("../x", PathVerb::Restore).is_err());
+        assert!(normalize_relative(".git/config", PathVerb::Restore).is_err());
+        assert!(normalize_relative("/abs", PathVerb::Restore).is_err());
+        assert!(normalize_relative("", PathVerb::Restore).is_err());
     }
 
     #[test]

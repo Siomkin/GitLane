@@ -1,18 +1,11 @@
 //! Whole-file and bulk working-tree staging writes.
 
 use super::cli::{run_git, run_git_literal_paths};
+use super::path_guards::has_head;
 
 /// Stage one literal repository path (also stages deletions).
 pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
     run_git_literal_paths(repo, &["add", "-A", "--", file])
-}
-
-/// True when HEAD resolves to a commit. False on an unborn HEAD (fresh
-/// `git init`, no commits yet), where `restore --staged` / `reset HEAD` die
-/// with `fatal: could not resolve 'HEAD'` — callers must fall back to
-/// index-only commands there.
-fn has_head(repo: &str) -> bool {
-    run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok()
 }
 
 /// Unstage a single file, restoring it to its HEAD state in the index. On an

@@ -29,6 +29,7 @@ mod open_path;
 mod operands;
 mod patch_staging;
 mod patches;
+mod path_guards;
 mod recovery;
 mod remotes;
 mod reset;
