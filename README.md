@@ -1,6 +1,6 @@
 # GitLane
 
-**See your branches. Move them.** GitLane is a fast, lightweight visual git
+**Git, in lanes you can read.** GitLane is a fast, lightweight visual git
 client for **macOS, Windows, and Linux** — a free, open-source alternative to
 GitKraken, Sourcetree, and Fork. A swimlane commit tree with drag-and-drop
 branch operations, staging down to the single line, in-app merge-conflict
