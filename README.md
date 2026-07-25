@@ -18,6 +18,10 @@ the app.
 [Build from source](#build-from-source) · [Contributing](#contributing) ·
 [Architecture](#architecture)**
 
+**Documentation:** [docs.gitlane.space](https://docs.gitlane.space) — start with
+[Getting started](https://docs.gitlane.space/getting-started/), then guides,
+keyboard shortcuts, and troubleshooting.
+
 ## Why GitLane
 
 - **A commit graph you can actually read.** Every line of history gets its own
