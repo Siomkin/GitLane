@@ -1,0 +1,67 @@
+---
+title: Build from source
+description: Compile GitLane yourself, and run the checks contributors run.
+sidebar:
+  order: 3
+---
+
+## Prerequisites
+
+- [bun](https://bun.sh) — the package manager (note `bun.lock`; don't use npm or yarn)
+- The [Rust toolchain](https://rustup.rs) — the repository pins its version, including `rustfmt` and Clippy, in `rust-toolchain.toml`
+- `git`
+- Your platform's [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) — webkit2gtk on Linux, Xcode Command Line Tools on macOS, MSVC Build Tools + WebView2 on Windows
+
+## Build
+
+```sh
+bun install
+bun run tauri build
+```
+
+Source builds don't use the in-app updater — pull and rebuild to update. They
+also don't trip any signing warnings, because you compiled the binary
+yourself.
+
+## Develop
+
+```sh
+bun run tauri dev    # launch the app with hot reload
+```
+
+<Aside type="caution" title="Don't use `bun run dev` alone">
+  `bun run dev` starts the Vite dev server without the Rust process, so every
+  `invoke()` call into the backend fails. The first `tauri dev` run does a
+  full Rust build and takes roughly a minute.
+</Aside>
+
+## Checks
+
+<Tabs>
+  <TabItem label="Frontend">
+    ```sh
+    bunx tsc --noEmit    # typecheck
+    bun run test         # vitest (node + happy-dom projects)
+    bun run lint         # eslint
+    ```
+  </TabItem>
+  <TabItem label="Rust">
+    ```sh
+    cd src-tauri
+    cargo check
+    cargo fmt --all -- --check
+    cargo clippy --all-targets --all-features -- -D warnings
+    ```
+  </TabItem>
+</Tabs>
+
+Typechecks are the primary safety net — test coverage is still partial.
+
+## Contributing
+
+Bug reports and feature requests are welcome in
+[issues](https://github.com/Siomkin/GitLane/issues). See
+[CONTRIBUTING.md](https://github.com/Siomkin/GitLane/blob/latest/CONTRIBUTING.md)
+to get started, and the architecture rules in
+[`docs/rules/`](https://github.com/Siomkin/GitLane/tree/latest/docs/rules) for
+the conventions that keep changes consistent.

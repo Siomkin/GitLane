@@ -1,0 +1,50 @@
+---
+title: Getting started
+description: What GitLane is, what it needs, and what to try first.
+sidebar:
+  order: 1
+  group:
+    label: Getting started
+    icon: ph:rocket-launch
+---
+
+GitLane is a visual git client for macOS, Windows, and Linux. It shows your
+repository as a swimlane commit tree, lets you drag one branch onto another to
+merge or rebase it, stages changes down to the single line, resolves merge
+conflicts in-app, and reviews pull requests on GitHub, GitLab, and Bitbucket
+without leaving the window.
+
+![The GitLane swimlane commit graph](/screenshots/hero-graph.png)
+
+## The two ideas worth knowing up front
+
+**Your real git does the writing.** Every commit, merge, rebase, push, and
+stash runs through the `git` binary already on your `PATH`. Your hooks,
+credential helpers, commit signing, and `.gitconfig` all apply exactly as they
+do in a terminal. Reads go through libgit2 instead, for speed.
+
+**The view is always live.** A filesystem watcher keeps the app in sync when
+you commit, check out, or stage from a terminal. There is no refresh button
+because there is nothing to refresh.
+
+<CardGrid>
+  <Card title="Install" icon="ph:download-simple">
+    Pick a package for your platform and get past the first-launch warning.
+    [Install →](/getting-started/install)
+  </Card>
+  <Card title="Requirements" icon="ph:check-square">
+    What GitLane needs on your `PATH`, and what unlocks the optional features.
+    [Requirements →](/getting-started/requirements)
+  </Card>
+  <Card title="First run" icon="ph:play">
+    Open a repo, read the graph, and make your first commit.
+    [First run →](/getting-started/first-run)
+  </Card>
+</CardGrid>
+
+## Free software
+
+GitLane is released under **GPL-3.0-or-later**. You may use, study, modify,
+and redistribute it; distributed derivatives must stay under the GPL with
+complete source. The GitLane name and logo may be protected as trademarks —
+the GPL grants copyright permissions, not trademark rights.

@@ -1,0 +1,58 @@
+---
+title: Worktrees, stashes, tags, terminal
+description: The everyday side surfaces — plus real PTY terminal tabs inside the app.
+sidebar:
+  order: 11
+---
+
+## Worktrees
+
+Create, open, and remove linked worktrees. Each open worktree gets its own
+tab.
+
+The useful trick: hand a branch off to another worktree **carrying its
+uncommitted changes**, with a live progress checklist so you can see each
+step happen. That's the operation that's fiddly and error-prone by hand.
+
+## Stashes
+
+One click to stash. From there: apply, pop, drop, or turn the stash into a
+new branch.
+
+Stashes appear in the commit graph at the point in history where you made
+them, rather than in a detached list — so you can see what a stash was
+actually based on.
+
+<Aside type="note" title="Addressed by commit id">
+  Stashes are tracked by commit id, not by `stash@{n}`. Those indices shift
+  as stashes come and go, which is how the wrong one gets dropped. Here it
+  can't happen.
+</Aside>
+
+## Tags
+
+Create lightweight or annotated tags — annotated tags can be signed. Push a
+tag to a remote or delete it from one, and create branches or worktrees
+starting from a tag.
+
+## Integrated terminal
+
+Real PTY tabs running your login shell, already in the repository directory.
+Not a command runner with a log pane — an actual terminal.
+
+Because the filesystem watcher is running, anything you do there shows up in
+the UI immediately. Commit from the terminal and the graph updates; stage
+from the terminal and the changes panel follows.
+
+There are also one-click launchers for AI coding agents, configurable under
+Settings → **Terminal Agents**. [More →](/guides/settings)
+
+## And the rest
+
+- **Multi-repo tabs** with session restore
+- **[File history, blame, and compare](/guides/file-history)**
+- **In-repository file browser** with a guarded text editor
+- **[Background auto-fetch](/guides/settings)** on a configurable interval
+- **Fast-forward-only pull** with explicit divergence handling
+- **[Themes, accents, and density](/guides/settings)** — dark / light / system, nine accent colours, compact or comfortable
+- **[Built-in auto-updates](/reference/updates-and-channels)** on a stable or beta channel

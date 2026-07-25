@@ -1,0 +1,86 @@
+---
+title: File history, blame, and compare
+description: Follow one file through time, attribute every line, and diff any two refs.
+sidebar:
+  order: 9
+---
+
+Three related views share one surface and one breadcrumb header, so you can
+move between them without losing your place: **file history**, **blame**, and
+**compare**.
+
+## File history
+
+Open any file's history to get its revisions newest-first. Selecting one
+shows its diff alongside an inspector with:
+
+- The short SHA, with **Copy SHA**
+- The commit subject, author, and relative age
+- **Open this commit** — jump the graph to it
+- **Blame at this revision** — switch to blame as of that commit, not as of
+  now
+
+### Renames are followed
+
+When a revision renamed the file, the inspector says so explicitly and names
+the previous path. History continues through the rename rather than stopping
+at the point the name changed — which is the usual reason a file appears to
+have no history before a certain date.
+
+### Deletions are marked
+
+If the file was deleted, that revision is flagged as the deletion rather than
+appearing as an ordinary change.
+
+<Aside type="note" title="The revision count can be capped">
+  The backend caps how far it walks. When it does, the header count shows a
+  trailing `+` — `200+` means "at least 200, and the walk stopped there," not
+  "exactly 200."
+</Aside>
+
+## Blame
+
+Blame attributes every line to the commit that last changed it.
+
+Lines are **grouped into runs** — consecutive lines from the same commit
+share one gutter entry instead of repeating the SHA on every row — and each
+commit gets a deterministic colour drawn from the same lane palette as the
+commit graph, so a blame view reads like the graph does. Ages are compact in
+the gutter (`2d`, `3wk`, `6mo`).
+
+Select a line to inspect the commit behind it, and jump from there into the
+graph.
+
+**Limits.** Blame isn't available for binary files, and GitLane says so
+rather than rendering noise. Very large files are capped: you get the first
+N lines with a banner telling you the view is truncated.
+
+## Compare
+
+Compare diffs any two refs. Pick a scope:
+
+| Scope | Compares |
+| --- | --- |
+| **Upstream** | Your branch against its upstream |
+| **Branch** | Two branches |
+| **Commit** | Two commits |
+| **Working** | The working tree against a ref |
+
+You get a range bar naming both ends — with a swap control, for when you
+picked them the wrong way round — a filterable list of changed files, and the
+selected file's diff in the same renderer used everywhere else.
+
+Very large compare results are bounded: the file list renders up to a cap so
+a huge range doesn't stall the view. Use the path filter to narrow it.
+
+## Getting here
+
+File history and blame open from a file in the changes panel, a commit's file
+list, or the in-repository file browser. Compare opens from the graph — pick
+two refs and compare them.
+
+<Aside type="tip">
+  All three views read through libgit2, not by shelling out. They're fast
+  enough to use casually, and they structurally can't modify the repository.
+  [Architecture →](/reference/architecture)
+</Aside>

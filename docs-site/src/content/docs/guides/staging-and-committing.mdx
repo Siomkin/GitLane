@@ -1,0 +1,66 @@
+---
+title: Staging and committing
+description: Stage by file, folder, hunk, or single line — then review the diff and write the message.
+sidebar:
+  order: 3
+---
+
+![Staging and diff review](/screenshots/changes-staging.png)
+
+## Staging granularity
+
+Stage whole files, whole folders, individual hunks — or a single line. The
+same controls unstage. This is the surface you'll use most, so it's built to
+let you split a messy working tree into clean commits without dropping to
+`git add -p`.
+
+## Reviewing the diff
+
+Diffs render in **unified** or **split** view with:
+
+- Syntax highlighting
+- A change minimap for long files
+- Before/after previews for images
+- Markdown preview for `.md` files
+
+Review a whole commit as one scrollable stack of files, or select several
+commits in the graph and review their **combined** diff the same way.
+
+You can also pin **review notes** to a range of diff lines and hand the whole
+set to an AI agent as one composed instruction.
+[More →](/guides/review-notes)
+
+## The commit composer
+
+The composer shows you two things most clients leave implicit: **who** you're
+committing as, and **where** the commit will land.
+
+It supports:
+
+- **Conventional Commits mode** — structured type/scope/summary entry
+- **Amend** — rewrite the previous commit
+- **Commit and push** — one click, when that's what you meant
+
+### AI-drafted messages
+
+If you have an AI CLI installed on your `PATH` — `claude`, `codex`, or
+similar — GitLane can draft a commit message from your staged diff, or
+improve one you've already written. Nothing is sent anywhere unless you
+invoke it.
+
+<Aside type="tip" title="Who you commit as">
+  The composer's identity comes from an identity card applied to the
+  repository's local git config, or from your global config when nothing is
+  pinned. It is never derived from whichever account you signed in with.
+  [More →](/guides/accounts-and-identities)
+</Aside>
+
+## Discarding work
+
+Discard previews exactly what would be thrown out before it runs. Like every
+other destructive action, it refuses to act on stale state if the repository
+changed since the preview.
+
+And if something still goes wrong, the **Recover** button browses the reflog
+so you can branch back to a lost commit — see
+[Safety and recovery](/guides/safety-and-recovery).

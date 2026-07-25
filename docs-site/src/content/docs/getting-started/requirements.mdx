@@ -1,0 +1,56 @@
+---
+title: Requirements
+description: What GitLane needs installed, and what each optional dependency unlocks.
+sidebar:
+  order: 2
+---
+
+## Required
+
+**Git 2.36 or newer, on your `PATH`.** GitLane shells out to your real `git`
+binary for every write operation, and the write layer checks the version
+before it runs anything. Older versions are refused rather than silently
+misbehaving.
+
+```sh
+git --version
+```
+
+That is the whole hard requirement. A repository is fully usable — clone,
+commit, branch, merge, push — with no account connected to GitLane at all.
+
+## Optional, per feature
+
+<Aside type="note" title="Nothing here blocks the core app">
+  Each of these unlocks one surface. Skip them all and you still get the
+  graph, staging, conflict resolution, worktrees, stashes, and tags.
+</Aside>
+
+| You want | You need |
+| --- | --- |
+| GitHub pull requests | [GitHub CLI](https://cli.github.com) `gh` **2.95+**, signed in via `gh auth login` |
+| GitLab merge requests | `glab` signed in, **or** a GitLab personal access token added in Settings |
+| Bitbucket pull requests | An Atlassian API token (legacy app passwords also work) added in Settings |
+| AI-drafted commit messages | An AI CLI on your `PATH` — `claude`, `codex`, and similar |
+
+### Why the `gh` version floor
+
+Before it runs a GitHub operation, GitLane probes a non-secret capability
+baseline: `gh version`, `gh auth status --json hosts`, `gh auth token`,
+`gh pr diff --patch --color never`, and `gh api graphql`. Versions below 2.95
+don't support all of it, so GitLane tells you to upgrade instead of failing
+midway through a pull-request action.
+
+## Forges without pull-request support
+
+Repositories hosted on Azure DevOps, Gitea, or Forgejo/Codeberg work
+completely for everything else — commit, branch, fetch, pull, push. Only the
+pull-request view is unavailable, and GitLane says so plainly instead of
+failing with a cryptic error from a CLI that was never going to work.
+
+## Building from source
+
+If you'd rather compile it yourself, see
+[Build from source](/reference/build-from-source) — you'll need
+[bun](https://bun.sh), the [Rust toolchain](https://rustup.rs), and your
+platform's [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/).

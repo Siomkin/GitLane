@@ -1,0 +1,86 @@
+---
+title: Review notes
+description: Pin comments to diff lines, then hand the whole set to an AI agent as one instruction.
+sidebar:
+  order: 4
+---
+
+Review notes are local comments pinned to a range of diff lines. They exist
+for one purpose: turning "here's what's wrong with this diff" into a message
+an AI coding agent can act on — without you retyping the file paths and line
+numbers.
+
+<Aside type="caution" title="Notes are session-only">
+  Comments are never written to disk. They live for the session and vanish
+  when you close GitLane. **The composed message is the artefact**, not the
+  notes — copy it or send it before you move on.
+</Aside>
+
+## Writing a note
+
+Drag across the lines you want in any diff — the commit review, the stacked
+review, or the working-changes inspector — and write your comment. A note can
+cover a single line or a contiguous range, and it captures the selected
+source alongside your text.
+
+Notes anchor to a **side and line reference** rather than a raw offset:
+`R20` for a line on the new side, `L4` on the old side, and `R18–R20` for a
+range. That's why a note survives a diff refresh — the reference stays
+meaningful even if the diff re-flows.
+
+Deletions belong to the old side; additions and context lines to the new
+side, matching how the diff body numbers each rendered line.
+
+## Handing off
+
+Once you have a note or two, the docked **Hand to agent** bar opens the
+handoff dialog. It shows:
+
+- **Every pending comment**, each removable — including any whose lines
+  disappeared after a refresh, which have no other UI to reach them
+- **A composed message**, ordered by file, then line, then side, so it reads
+  in a stable order rather than the order you happened to write the notes
+- **An agent picker**, listing the agents you enabled in Settings
+
+The composed message is fully editable. Once you type in it, GitLane stops
+regenerating it — removing a note from the list won't clobber what you wrote.
+
+Then either:
+
+| Action | Result |
+| --- | --- |
+| **Copy** | The message goes to your clipboard |
+| **Send** | The message is typed into the integrated terminal, launching the selected agent |
+
+Only comments from the surface that opened the dialog are handed off, so
+reviewing one commit doesn't sweep in notes you left on another.
+
+## The message format
+
+Each note becomes a numbered block naming the file, the line or range, and
+your feedback:
+
+```text
+1. src/store/repo.ts — lines R18–R20
+   Feedback: this refetches on every keystroke — debounce it
+
+2. src/lib/api/git.ts — line R44
+   Feedback: swallowing the error here hides a real failure
+```
+
+Plain text, deliberately. It's readable to you before you send it, and
+unambiguous to an agent after.
+
+## Agents
+
+The picker lists agents from Settings → **Terminal Agents**, greying out any
+whose command isn't on your `PATH`. If you haven't enabled any, the dialog
+says so and Copy still works.
+
+[Configuring agents →](/guides/settings)
+
+<Aside type="note" title="Different from pull-request comments">
+  Review notes are local and never leave your machine unless you send them.
+  They are not GitHub review comments — for those, use the pull-request view.
+  [Pull requests →](/guides/pull-requests)
+</Aside>

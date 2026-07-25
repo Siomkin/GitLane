@@ -1,0 +1,126 @@
+---
+title: Settings
+description: Every panel in GitLane's settings, and what each control changes.
+sidebar:
+  order: 12
+---
+
+Settings has five panels in two groups.
+
+| Group | Panels |
+| --- | --- |
+| **Accounts & identities** | Accounts · Identities |
+| **Application** | Appearance · Terminal Agents · About |
+
+## Accounts
+
+Where you connect GitHub, GitLab, and Bitbucket, and choose which account
+each remote authenticates as. Accounts drive clone, fetch, pull, push, and
+pull-request API calls — never who you commit as.
+
+Connect a provider by signing into its CLI (`gh`, `glab`), pasting a token,
+or running native OAuth. Tokens GitLane owns are stored in your OS keychain.
+
+Two sign-out verbs live here and do different things: **provider sign-out**
+deletes GitLane's keychain token, while **forget saved HTTPS credential**
+clears what your own git credential helper stored.
+
+[Full explanation →](/guides/accounts-and-identities)
+
+## Identities
+
+Your saved identity cards — name, email, optional GPG/SSH signing key — and
+which one applies to the open repository. Applying a card writes to that
+repository's **local** git config, never the global one.
+
+"This computer" is the fallback: your global git config, used when nothing is
+pinned.
+
+[Full explanation →](/guides/accounts-and-identities)
+
+## Appearance
+
+Presentation and the background-fetch cadence.
+
+### Theme
+
+**Dark**, **Light**, or **System**.
+
+### Accent colour
+
+Nine accents — green, teal, cyan, blue, indigo, purple, pink, red, orange.
+The accent threads through every accent surface: the HEAD badge, primary
+buttons, active tabs, and selected rows.
+
+### Graph density
+
+**Comfortable** or **Compact**. Compact fits more commits on screen.
+
+### Commit icons
+
+On by default: author avatars, co-author badges, and icons for commits made
+by AI agents and bots. Turn it off for classic coloured dots.
+
+### Background fetch
+
+Automatically fetch remotes on an interval — **5, 15, 30, or 60 minutes**,
+defaulting to 15.
+
+<Aside type="note" title="It doesn't run constantly">
+  Auto-fetch runs only while GitLane is visible, online, and idle. It won't
+  fire in the background while you're doing something else, and it won't
+  interrupt an operation in progress.
+</Aside>
+
+## Terminal Agents
+
+The AI CLIs — or any commands — that GitLane can launch in the integrated
+terminal. Four built-ins ship configured; add as many of your own as you
+like.
+
+Each agent has:
+
+| Field | Meaning |
+| --- | --- |
+| **Name** | The toolbar button text and settings row title |
+| **Command** | What's typed into the running shell — flags and args allowed, e.g. `claude --model <model>` |
+| **Description** | The toolbar tooltip |
+| **Enabled** | Disabled agents stay configured but hide from the toolbar |
+
+GitLane probes your `PATH` on every load and greys out agents whose binary
+isn't there — the entry stays, it just can't be launched. Availability is
+computed fresh each time, never cached.
+
+The list lives in a config file in the app data directory, and there's a
+**reset** to restore the built-ins.
+
+### Commit-message instructions
+
+The same panel holds the three prompts GitLane sends when you ask an agent to
+work on a commit message:
+
+- **Describe changes instruction**
+- **Draft / improve instruction**
+- **Commit instruction**
+
+Each is editable and individually resettable, so you can match your team's
+commit conventions instead of the defaults.
+
+## About
+
+Version and build information — GitLane version, Tauri version, platform, and
+bundle identifier — plus links to release notes, the license, and
+acknowledgements.
+
+Two update controls live here:
+
+- **Automatically check for updates** — checks once a day and lights the
+  titlebar when a new version is available
+- **Receive beta updates** — switches the update channel
+
+[Updates and release channels →](/reference/updates-and-channels)
+
+<Aside type="tip" title="Source builds say so">
+  If you compiled GitLane yourself, About identifies it as a source build and
+  the updater is disabled. Pull and rebuild to update.
+</Aside>

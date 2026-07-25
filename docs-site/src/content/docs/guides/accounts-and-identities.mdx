@@ -1,0 +1,80 @@
+---
+title: Accounts and identities
+description: Accounts authenticate. Identities author. Why GitLane keeps them completely separate.
+sidebar:
+  order: 7
+---
+
+Most git clients conflate "who am I signed in as" with "who am I committing
+as." GitLane splits them into two independent nouns, because they answer
+different questions and get the wrong answer in different ways.
+
+| | **Accounts** | **Identities** |
+| --- | --- | --- |
+| Answer the question | Who authenticates? | Who authored this? |
+| Used for | Clone, fetch, pull, push, PR APIs | The commit's author and committer |
+| Stored in | The HTTPS remote URL / OS keychain / `gh` | The repository's **local** git config |
+| Scope | Per remote | Per repository |
+
+They do not feed each other. Signing into an account never prefills an
+identity, and picking an identity never changes how you authenticate.
+
+## Accounts
+
+Sign into several GitHub, GitLab, and Bitbucket accounts at once, then pick
+which one each **remote** uses.
+
+The binding is stored git-natively: the account becomes the username in the
+HTTPS remote URL, written via `git remote set-url` and read back from the
+remote list. Credential helpers resolve by that username
+(see `gitcredentials(7)`), so the exact same choice applies when you use the
+repository from a terminal. SSH remotes pick their account by key instead.
+
+How the credential itself is supplied depends on the remote:
+
+- **GitHub remotes** can inject `gh auth git-credential` per invocation.
+- **GitLab, Bitbucket, Azure Repos, and unknown HTTPS remotes** use your
+  configured git credential helper or GCM.
+- **GitLane-owned tokens** are stored in your OS keychain and fed to git
+  through a credential bridge, so the token never crosses into the frontend.
+
+A repository is fully usable — commit, fetch, push — with **no account
+connected at all**.
+
+### Two distinct sign-out verbs
+
+<Aside type="caution" title="These do different things">
+  **Provider sign-out** deletes GitLane's own keychain token. **Forget saved
+  HTTPS credential** runs `git credential reject`, erasing what your own git
+  helper stored. Doing one does not do the other.
+</Aside>
+
+## Identities
+
+An **identity card** is a reusable entry: a name, an email, and optionally a
+GPG or SSH signing key. Applying one writes it to the open repository's
+**local** git config — never the global one.
+
+This is what stops you committing to a client repository with your personal
+email, or pushing an unsigned commit to a repository that expects
+verification. The pin travels with the repository, not with your session.
+
+Cards are reusable across repositories, and a card can carry a per-repository
+custom email override. If you pin nothing, GitLane commits as **"this
+computer"** — your global git config, exactly like a terminal.
+
+The repository's Identity panel is one freely editable name/email card with
+your saved cards as presets. Its only prefill is "adopt the repository's
+current git-config identity as a card" — derived from git config, never from
+an account.
+
+<Aside type="note" title="Git config is the source of truth">
+  GitLane reads the effective identity back out of git config rather than
+  trusting its own state. If you change `user.email` in a terminal, the app
+  reflects it.
+</Aside>
+
+## Where to find both
+
+Settings → **Accounts** and Settings → **Identities**, grouped together
+under *Accounts & identities*.

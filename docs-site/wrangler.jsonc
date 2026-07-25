@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gitlane-docs",
+  "compatibility_date": "2026-07-25",
+  // Claim the hostname from the deploy itself, so the site's address lives in
+  // the repo instead of only in the Cloudflare dashboard. `astro.config.ts`
+  // sets the matching `site`.
+  "routes": [{ "pattern": "docs.gitlane.space", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  }
+}

@@ -1,0 +1,92 @@
+---
+title: Install
+description: Download GitLane for macOS, Windows, or Linux — and get past the first-launch warning.
+sidebar:
+  order: 1
+---
+
+Grab the latest build from the
+[Releases page](https://github.com/Siomkin/GitLane/releases).
+
+| Platform | Package |
+| --- | --- |
+| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
+| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
+| Windows | `GitLane-<version>-windows-nsis.exe` |
+| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` |
+
+The `.sig`, `.app.tar.gz`, and `latest.json` assets on each release are for
+the auto-updater. You never need to download them by hand.
+
+## First launch
+
+<Render file="first-launch-warning" />
+
+Each platform below has its one-time fix.
+
+<Tabs>
+  <TabItem label="macOS">
+    GitLane isn't notarized by Apple yet, so Gatekeeper blocks the app after
+    download — usually with *"GitLane is damaged and can't be opened"* on
+    Apple Silicon, or *"unidentified developer"* on Intel. macOS flags every
+    non-notarized download this way.
+
+    Copy the app to Applications, then clear the quarantine flag once:
+
+    ```sh
+    xattr -dr com.apple.quarantine /Applications/GitLane.app
+    ```
+
+    Then launch normally. On some systems, right-click → **Open**, or
+    System Settings → **Privacy & Security** → **Open Anyway** after the
+    first blocked launch, works instead.
+
+    Updates delivered by the in-app updater don't need this again.
+  </TabItem>
+
+  <TabItem label="Windows">
+    Defender SmartScreen blocks a fresh download with *"Windows protected
+    your PC"* and an unknown-publisher notice, with no obvious way to
+    continue. Click **More info**, then **Run anyway**.
+
+    The installer installs for the current user, so no admin rights are
+    needed. In-app updates don't retrigger SmartScreen.
+  </TabItem>
+
+  <TabItem label="Linux">
+    Prefer the **`.deb`** (Debian, Ubuntu, Mint) or **`.rpm`** (Fedora,
+    openSUSE) package. Either gives you a normal install: app-menu entry,
+    icon, and clean uninstall through your package manager.
+
+    ```sh
+    sudo apt install ./GitLane-<version>-linux-deb.deb      # Debian / Ubuntu / Mint
+    sudo dnf install ./GitLane-<version>-linux-rpm.rpm      # Fedora / RHEL
+    sudo zypper install ./GitLane-<version>-linux-rpm.rpm   # openSUSE
+    ```
+
+    The **`.AppImage`** is the portable fallback for every other
+    distribution. Browsers never preserve the executable bit, so set it once:
+
+    ```sh
+    chmod +x GitLane-<version>-linux-appimage.AppImage
+    ./GitLane-<version>-linux-appimage.AppImage
+    ```
+
+    A bare AppImage doesn't integrate with the desktop — no app-menu entry
+    or icon. [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever) or
+    [AppImageLauncher](https://github.com/TheAssassin/AppImageLauncher) can
+    add that.
+  </TabItem>
+</Tabs>
+
+## Staying up to date
+
+GitLane updates itself through a built-in signed updater, on a **stable** or
+**beta** channel — toggle it in Settings → About. See
+[Updates and release channels](/reference/updates-and-channels).
+
+Builds you compiled yourself don't use the updater. Pull and rebuild instead.
+
+## Next
+
+Open a repository and take the tour: [First run →](/getting-started/first-run)

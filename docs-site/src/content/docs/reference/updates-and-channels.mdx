@@ -1,0 +1,64 @@
+---
+title: Updates and release channels
+description: How GitLane updates itself, and the difference between the stable and beta channels.
+sidebar:
+  order: 2
+---
+
+GitLane ships desktop builds through the Tauri v2 updater. It checks GitHub
+Releases for a newer **signed** build, downloads and installs it, then
+relaunches.
+
+Switch channels in **Settings → About**.
+
+## The two channels
+
+| Channel | What it tracks |
+| --- | --- |
+| **Stable** (default) | The newest non-pre-release GitHub release |
+| **Beta** | A rolling manifest updated after every release, including pre-releases |
+
+Both channels are signed with the same updater key. Only the update endpoint
+differs, and the endpoint is baked into a build at compile time — so a stable
+build and a beta build are genuinely different artifacts, not the same binary
+with a setting.
+
+Tags drive releases: `vX.Y.Z` publishes a stable release, and
+`vX.Y.Z-beta.N` publishes a GitHub pre-release built against the beta
+endpoint.
+
+## Signing
+
+Updater artifacts are signed with a Tauri updater (minisign) key. This is
+**separate** from Apple code signing and notarization — which GitLane does
+not have yet, and which is why the *first* launch of a downloaded build shows
+a Gatekeeper or SmartScreen warning.
+
+<Aside type="tip" title="The warning is one-time">
+  Updates delivered by the in-app updater don't retrigger Gatekeeper or
+  SmartScreen. Only the initial manual download does. See
+  [Install](/getting-started/install) for the one-time fix on your platform.
+</Aside>
+
+## Source builds don't auto-update
+
+The updater is disabled in builds you compiled yourself. Settings → About
+identifies them as source builds. To update one, pull and rebuild:
+
+```sh
+git pull
+bun install
+bun run tauri build
+```
+
+<Aside type="note" title="The version in the tree isn't a release">
+  The version recorded in the repository is a development baseline, not a
+  release name — release tags stamp their own version at build time. Don't
+  read the checked-in version as "what's currently shipping."
+</Aside>
+
+## Release assets you can ignore
+
+Each release carries `.sig`, `.app.tar.gz`, and `latest.json` assets. Those
+are for the updater. Downloading by hand, you only ever want the `.dmg`,
+`.exe`, `.deb`, `.rpm`, or `.AppImage`.

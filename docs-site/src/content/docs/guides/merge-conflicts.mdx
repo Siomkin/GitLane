@@ -1,0 +1,47 @@
+---
+title: Merge conflicts
+description: Resolve conflicts hunk-by-hunk inside GitLane, then continue, skip, or abort.
+sidebar:
+  order: 5
+---
+
+![Side-by-side conflict resolution with per-line picks and a merged output](/screenshots/conflict-resolution.png)
+
+When a merge, rebase, cherry-pick, or revert stops on conflicts, GitLane
+switches into a conflict workspace. You don't have to go find a terminal to
+finish the operation.
+
+## Resolving
+
+<Steps>
+  <Step title="Pick a file">
+    Conflicted files are listed with what kind of conflict each one is.
+  </Step>
+  <Step title="Resolve">
+    Work hunk-by-hunk in an inline or side-by-side editor, picking per line
+    where you need to. For a file you don't need to be surgical about, take
+    **ours** or **theirs** wholesale.
+  </Step>
+  <Step title="Continue, skip, or abort">
+    Once the conflicts are resolved, continue the operation — or skip this
+    commit, or abort the whole thing and return to where you started.
+  </Step>
+</Steps>
+
+## The awkward cases
+
+**Binary conflicts** and **modify/delete conflicts** are handled explicitly
+rather than dumped on you as raw markers.
+
+**Resolved outside GitLane?** If you fixed a file in your own editor, stage
+it as-is — GitLane accepts the file as the resolution.
+
+**Changed your mind?** A staged resolution can be un-staged so you can redo
+it.
+
+<Aside type="note" title="This is real git the whole way through">
+  The conflict machinery is git's own, because writes shell out to your `git`
+  binary rather than reimplementing merge in-process. A conflict GitLane
+  shows you is exactly the conflict a terminal would show you, and an
+  operation you abort here aborts the same way.
+</Aside>
