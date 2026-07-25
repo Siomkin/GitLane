@@ -1,0 +1,109 @@
+---
+title: Troubleshooting
+description: The problems people actually hit, and what to do about each.
+sidebar:
+  order: 5
+---
+
+## "GitLane is damaged and can't be opened" (macOS)
+
+Not damaged. GitLane isn't notarized by Apple yet, and macOS shows this for
+every non-notarized download on Apple Silicon. Clear the quarantine flag once
+after copying the app to Applications:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/GitLane.app
+```
+
+On Intel Macs the same situation usually appears as an "unidentified
+developer" message instead. Right-click → **Open**, or System Settings →
+**Privacy & Security** → **Open Anyway**, also works.
+
+## "Windows protected your PC"
+
+SmartScreen blocking an unsigned installer. Click **More info** →
+**Run anyway**. The installer needs no admin rights, and in-app updates don't
+retrigger it.
+
+## The AppImage won't run (Linux)
+
+Browsers strip the executable bit:
+
+```sh
+chmod +x GitLane-<version>-linux-appimage.AppImage
+```
+
+Prefer the `.deb` or `.rpm` if your distribution takes one — you get an
+app-menu entry, an icon, and a clean uninstall.
+
+## GitLane refuses to run a git operation
+
+Check your git version:
+
+```sh
+git --version
+```
+
+GitLane requires **2.36 or newer** and checks before writing, rather than
+failing halfway through an operation.
+
+## The Pull Requests tab isn't available
+
+Two possibilities.
+
+**Your forge isn't supported for PRs.** Azure DevOps, Gitea, and
+Forgejo/Codeberg work for everything else but have no pull-request view yet.
+GitLane says so explicitly.
+
+**Your CLI is too old or not signed in.** GitHub needs `gh` **2.95+**:
+
+```sh
+gh --version
+gh auth status
+```
+
+Before any GitHub operation, GitLane probes a capability baseline — `gh
+version`, `gh auth status`, `gh auth token`, `gh pr diff`, and `gh api
+graphql`. Older versions don't support all of it.
+
+## A GitHub action fails with a host mismatch
+
+The repository's host and the bound account's host have to match. A
+github.com account can't act on a GitHub Enterprise repository, and GitLane
+fails before the operation rather than sending the wrong token. Rebind the
+repository to an account on the right host in Settings → Accounts.
+
+## I committed with the wrong email
+
+Identities are pinned **per repository**, in local git config. Open Settings
+→ Identities and apply the right identity card to that repository — or adopt
+the repository's current git-config identity as a card. Nothing you do there
+touches your global config.
+
+To fix the commit itself, amend it from the commit composer.
+
+## An operation failed with "the repository changed"
+
+Working as designed. If the repository moved between the impact preview and
+your confirmation, GitLane refuses to act on stale state. Re-read the fresh
+preview and confirm again.
+
+## I lost a commit
+
+Use **Recover**. It browses the reflog so you can create a branch back at
+almost anything — unreferenced isn't gone.
+
+## Sign-out didn't remove my saved password
+
+There are two distinct verbs:
+
+- **Provider sign-out** deletes GitLane's own keychain token.
+- **Forget saved HTTPS credential** runs `git credential reject`, clearing
+  what *your* git credential helper stored.
+
+You probably want the second one.
+
+## Something else
+
+Bug reports and feature requests go in
+[GitHub issues](https://github.com/Siomkin/GitLane/issues).

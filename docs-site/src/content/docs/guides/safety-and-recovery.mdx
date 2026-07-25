@@ -1,0 +1,61 @@
+---
+title: Safety and recovery
+description: Every destructive action previews its exact impact — and the reflog browser catches what still slips through.
+sidebar:
+  order: 8
+---
+
+Git is recoverable but not forgiving: the commands that lose work look
+exactly like the commands that don't. GitLane's answer is to show you the
+consequence before it happens, and to keep a way back when it does.
+
+## Impact previews
+
+Every destructive action previews its exact effect before it runs:
+
+| Action | What you see first |
+| --- | --- |
+| **Reset** | The commits that would fall away |
+| **Delete branch** | The commits that would fall away |
+| **Discard** | The working-tree changes that would be thrown out |
+| **Force-push** | The remote commits that would be replaced |
+
+Not a generic "are you sure?" — the actual list.
+
+## Stale-state guards
+
+If the repository changed between the preview and your confirmation — you
+committed from a terminal, a script ran, a rebase advanced — the operation
+**fails cleanly** instead of acting on the state it was shown.
+
+This is the failure mode that costs people work in other clients: you read a
+preview, something moved, and the confirm applies to a repository that no
+longer matches what you read.
+
+## Force-push with lease
+
+Force-push always uses `--force-with-lease`. If someone else pushed to that
+branch since your last fetch, the push is refused rather than silently
+overwriting their commits.
+
+## Recover
+
+<Aside type="tip" title="The button to remember">
+  When something does go wrong, **Recover** browses the reflog so you can
+  create a branch back at any commit that fell off. Almost nothing in git is
+  actually gone — it's just unreferenced.
+</Aside>
+
+## Stash safety
+
+Stashes are addressed by **commit id**, not by `stash@{n}`. Those indices
+shift whenever a stash is added or dropped, which is how the wrong stash gets
+dropped in a terminal. GitLane can't hit that class of bug.
+
+## Reads can't write
+
+The read path uses libgit2 with network features compiled out — clone,
+fetch, and push are deliberately unavailable through it. Every write goes
+through your `git` binary. That split isn't just an implementation detail:
+it means the fast, always-running read path structurally cannot modify your
+repository.

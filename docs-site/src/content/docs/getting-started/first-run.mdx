@@ -1,0 +1,83 @@
+---
+title: First run
+description: Open a repository, read the graph, and make your first commit.
+sidebar:
+  order: 3
+---
+
+<Steps>
+  <Step title="Open or clone a repository">
+    On first launch GitLane asks for a repository. Point it at any folder
+    inside a git worktree — it discovers the repository root from a
+    subdirectory, so you don't have to find the exact top level.
+
+    Each open repository gets its own tab, and your tabs are restored the
+    next time you launch.
+  </Step>
+
+  <Step title="Read the graph">
+    The center pane is the commit tree. Every line of history gets its own
+    lane and colour. Branches, remotes, tags, stashes, and your uncommitted
+    work all live in the same view — stashes sit at the point in history
+    where you made them, and uncommitted changes float on top as a WIP row.
+
+    [More on the commit graph →](/guides/commit-graph)
+  </Step>
+
+  <Step title="Drag one branch onto another">
+    This is the thing to try first. Grab a branch pill in the graph and drop
+    it on another one. GitLane offers exactly the operations that make sense
+    for how those two branches actually relate — fast-forward, merge, rebase,
+    or reset. No flags to remember.
+
+    [More on branch operations →](/guides/branch-operations)
+  </Step>
+
+  <Step title="Jump anywhere">
+    Press <kbd>Cmd/Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F</kbd> to open the
+    branch navigator: branches, remotes, worktrees, tags, and stashes in one
+    searchable, pinnable palette. Click anything to move the graph to it.
+  </Step>
+
+  <Step title="Stage and commit">
+    Edit a file and it appears in the working-changes panel. Stage whole
+    files, folders, individual hunks — or a single line. The commit composer
+    shows you exactly who you're committing as and where the commit will
+    land.
+
+    [More on staging and committing →](/guides/staging-and-committing)
+  </Step>
+</Steps>
+
+## Set your commit identity
+
+Before your first commit, it's worth checking who GitLane will commit as.
+Open Settings → Identities.
+
+GitLane keeps two things deliberately separate:
+
+- **Accounts** authenticate. They handle clone, fetch, pull, push, and
+  pull-request API calls.
+- **Identities** author. An identity card is a name, an email, and an
+  optional GPG/SSH signing key, applied to a repository's **local** git
+  config.
+
+The practical payoff: you can't accidentally commit to a client repository
+with your personal email, or push an unverified signature, because the
+identity is pinned per repository rather than inherited from whichever
+account you happen to be signed in as.
+
+If you do nothing, GitLane commits as "this computer" — your global git
+config, exactly as a terminal would.
+
+[More on accounts and identities →](/guides/accounts-and-identities)
+
+## Connect a forge (optional)
+
+To review pull requests in-app, sign in to your forge. GitHub goes through
+the `gh` CLI (including multiple accounts and GitHub Enterprise). GitLab
+works through `glab` or a personal access token; Bitbucket through an
+Atlassian API token. Tokens are added in Settings → Accounts and stored in
+your OS keychain.
+
+[More on pull requests →](/guides/pull-requests)

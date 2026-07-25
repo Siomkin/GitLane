@@ -1,0 +1,93 @@
+---
+title: Pull requests
+description: Browse, review, and merge pull requests for GitHub, GitLab, and Bitbucket without leaving GitLane.
+sidebar:
+  order: 5
+---
+
+![Pull request list and detail](/screenshots/pull-requests.png)
+
+Switch to the **PRs** tab to browse, review, and merge pull requests for the
+repository you have open. GitHub gets the full experience; GitLab merge
+requests and Bitbucket Cloud pull requests cover the core workflow.
+
+## What's supported where
+
+| Capability | GitHub | GitLab | Bitbucket |
+| --- | :-: | :-: | :-: |
+| List, detail, full diff, commits | ✅ | ✅ | ✅ |
+| Create PR/MR (incl. drafts) | ✅ | ✅ | ✅ |
+| Merge (merge commit / squash) | ✅ | ✅ | ✅ |
+| Rebase merge | ✅ | — | — |
+| Approve | ✅ | ✅ | ✅ |
+| Comments, review threads, request changes | ✅ | not yet | not yet |
+| CI checks (live polling) | ✅ | not yet | not yet |
+| Close / reopen / mark ready | ✅ | not yet | not yet |
+
+<sub>*not yet* = planned in GitLane · — = not offered by that forge</sub>
+
+Where something isn't supported, GitLane says so explicitly rather than
+failing with a confusing error from the underlying CLI or API.
+
+## Connecting each forge
+
+<Tabs>
+  <TabItem label="GitHub">
+    GitHub works through the [GitHub CLI](https://cli.github.com), `gh`
+    **2.95+**. Sign in the usual way:
+
+    ```sh
+    gh auth login
+    ```
+
+    Multiple accounts and GitHub Enterprise hosts are both supported —
+    `gh` can be logged into several at once, and GitLane binds each
+    repository to one of them rather than mutating your global
+    `gh auth switch` state.
+  </TabItem>
+
+  <TabItem label="GitLab">
+    Either install and sign in to the `glab` CLI — zero configuration, and
+    GitLane will use it automatically — or add a **personal access token**
+    in Settings → Accounts, which GitLane uses against the GitLab REST v4
+    API.
+
+    GitLab can also be connected via native OAuth (device flow), which
+    stores the resulting token in your OS keychain.
+  </TabItem>
+
+  <TabItem label="Bitbucket">
+    Bitbucket Cloud has no first-party CLI, so GitLane talks to the REST 2.0
+    API. Add an **Atlassian API token** in Settings → Accounts — legacy app
+    passwords also work.
+
+    Bitbucket can also be connected via native OAuth (PKCE loopback), which
+    stores the resulting token in your OS keychain.
+  </TabItem>
+</Tabs>
+
+## Reviewing
+
+Open a pull request to get its body, its file list, its commits, and — on
+GitHub — CI checks that poll live while you look at them. Diffs use the same
+renderer as the rest of the app: unified or split, syntax-highlighted, with a
+minimap.
+
+On GitHub you can also work with comments and review threads, and request
+changes, without leaving the app.
+
+## Other forges
+
+Repositories on Azure DevOps, Gitea, or Forgejo/Codeberg work fine for
+everything else — commit, branch, push, pull. Only the pull-request view is
+unavailable there, and GitLane tells you so.
+
+## Where your tokens live
+
+<Aside type="note" title="Tokens never reach the UI layer">
+  Provider tokens are stored in your OS keychain (or owned by `gh`/`glab`)
+  and resolved in the backend immediately before the operation that needs
+  them, then dropped. They are never handed to the frontend. Errors from
+  `git` and `gh` are redacted before they surface, so a token can't leak
+  through an error message.
+</Aside>

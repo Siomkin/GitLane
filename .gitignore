@@ -37,3 +37,8 @@ AGENTS.local.md
 .ds-sync/
 ds-bundle/
 .design-sync/
+
+# Nimbus docs site
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/

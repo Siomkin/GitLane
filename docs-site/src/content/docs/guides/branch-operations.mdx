@@ -1,0 +1,73 @@
+---
+title: Branch operations
+description: Drag one branch onto another to merge, rebase, fast-forward, or reset — plus everything else on the context menu.
+sidebar:
+  order: 2
+---
+
+![Drag a branch onto another to merge, rebase, or reset](/screenshots/drag-drop-menu.png)
+
+## Drag and drop
+
+Grab a branch pill — in the commit graph or in the branch navigator — and
+drop it onto another branch. GitLane checks how the two branches actually
+relate (probing fast-forward in *both* directions) and offers only the
+operations that make sense:
+
+| Offered | When it makes sense |
+| --- | --- |
+| **Fast-forward** | The target can advance to the source with no new commit |
+| **Merge** | The branches have diverged and you want a merge commit |
+| **Rebase** | You want the source's commits replayed onto the target |
+| **Reset** | You want the branch pointer moved, discarding what's ahead |
+
+You never have to remember which flag produces which outcome — the menu is
+derived from the actual relationship, not from a fixed list.
+
+The chosen operation runs through your real `git` binary, so hooks,
+`.gitconfig`, signing, and the full conflict machinery all apply. If it stops
+on conflicts, GitLane switches into the conflict workspace —
+see [Merge conflicts](/guides/merge-conflicts).
+
+## The context menu
+
+Everything else is one right-click away in the graph:
+
+- **Cherry-pick** a commit onto the current branch
+- **Revert** a commit
+- **Squash** a multi-commit selection
+- **Create a branch, tag, or worktree** at any commit
+- **Compare** any two refs
+- **Export** a commit as a patch file
+
+## Reset, previewed
+
+Reset is the one operation where "what exactly am I about to lose?" matters
+most, so GitLane answers it before you confirm: the dialog previews the
+commits that would fall away. The same applies to branch deletion, discard,
+and force-push.
+
+If the repository changed underneath you between the preview and the confirm
+— say you committed from a terminal in between — the operation fails cleanly
+instead of acting on stale state.
+
+[More on the safety rails →](/guides/safety-and-recovery)
+
+## Pulling and pushing
+
+Pull is **fast-forward only**, with explicit handling when the branches have
+diverged — you're told what diverged and asked what to do, rather than
+getting a surprise merge commit.
+
+Force-push always uses `--force-with-lease`, and previews the remote commits
+it would replace.
+
+A background auto-fetch keeps remote-tracking branches current so the
+"behind by N" counts you're looking at are real.
+
+<Aside type="note" title="Where the credentials come from">
+  Transport auth is resolved per remote, git-natively — the account is the
+  username in the HTTPS remote URL, so your credential helper resolves it the
+  same way from a terminal. SSH remotes pick their account by key. See
+  [Accounts and identities](/guides/accounts-and-identities).
+</Aside>

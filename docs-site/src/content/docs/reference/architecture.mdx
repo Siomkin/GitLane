@@ -1,0 +1,99 @@
+---
+title: Architecture
+description: How GitLane is put together, and why each choice was made.
+sidebar:
+  order: 4
+---
+
+GitLane is two processes bridged by Tauri IPC: a **Rust core** and a **React
+frontend**.
+
+| Layer | Choice |
+| --- | --- |
+| Shell | Tauri 2 — native window, small footprint, not Electron |
+| Frontend | React 19 + TypeScript + Vite, Zustand state, canvas-rendered graph |
+| Git reads | [`git2`](https://docs.rs/git2) (libgit2), network features compiled out |
+| Git writes | Shell out to your real `git` binary |
+| Provider APIs | GitHub via `gh`, GitLab via `glab`/REST, Bitbucket via REST |
+
+## The read/write split
+
+This is the central design decision.
+
+**Reads use libgit2.** In-process, fast, no subprocess overhead — which is
+what makes the graph, diffs, and status feel instant. The `git2` crate is
+built with `default-features = false`, so network features (clone, fetch,
+push) are deliberately unavailable through it.
+
+**Writes shell out to `git`.** Checkout, branch operations, merge, rebase,
+reset, cherry-pick, revert, staging, commit, stash, pull, push — all of it
+runs your actual binary. That's what makes hooks, credential helpers,
+`.gitconfig`, commit signing, and the full conflict machinery work without
+GitLane reimplementing any of it.
+
+The split has a second benefit: the always-running read path structurally
+cannot modify your repository.
+
+## Provider APIs shell out too
+
+Same rationale. `gh` owns GitHub credentials, multi-account state, and host
+config, so GitLane calls it rather than reinventing that. GitLab uses `glab`
+when installed and falls back to REST v4 with a keychain token; Bitbucket
+Cloud has no first-party CLI, so it's REST 2.0 only.
+
+A forge-detection layer reads the remote and routes to the right provider —
+GitHub, GitLab, and Bitbucket to theirs, and known-but-unsupported forges
+(Azure DevOps, Gitea, Forgejo/Codeberg) to an explicit "not supported yet"
+rather than a confusing CLI failure.
+
+## The graph layout is computed in Rust
+
+A topological walk over the commit DAG assigns each commit a lane via a
+reservation scheme: each lane holds the oid of the parent it's waiting to
+render, a commit's first parent continues its lane, and merges branch into
+fresh lanes. The output is resolved `(row, lane, colour)` coordinates plus
+edges.
+
+The frontend is a dumb painter — it draws those coordinates onto a
+`<canvas>`, chosen over DOM or SVG so redraws stay cheap at thousands of
+rows. Rows are virtualized, and the canvas backing store is bounded to the
+viewport plus overscan.
+
+## Nothing blocks the UI
+
+Synchronous Tauri commands run on the webview's main thread, so expensive
+work there would freeze the window until it returned. Every command that
+shells out to `git` or `gh` is therefore async and does its work on a
+blocking thread pool. Most in-process libgit2 reads stay synchronous; the
+commit-graph command is the deliberate exception, because large histories are
+measurably expensive.
+
+## The filesystem watcher
+
+The open worktree is watched recursively, including `.git` — so terminal
+commits, checkouts, and staging all register. Bursts are throttled in Rust
+and debounced again in the frontend before triggering a quiet re-sync. This
+is what keeps the UI live without a refresh button.
+
+## Secrets never reach the frontend
+
+Provider tokens live in the OS keychain (or are owned by `gh`/`glab`) and are
+resolved in the backend immediately before the operation that needs them,
+passed to the child process via an environment variable, and dropped. A
+GitLane-owned token reaches `git` through a re-entrant credential bridge —
+the token is read from the keychain inside a child process, so it never
+crosses the IPC boundary at all.
+
+The one accepted secret path inward is the explicit HTTPS credential-save
+flow: the frontend sends a user-entered token once, Rust pipes it straight
+into `git credential approve`, and GitLane never logs, persists, echoes, or
+returns it. Errors from `git` and `gh` are redacted before surfacing.
+
+## Going deeper
+
+The full contributor briefing — module layout, the IPC contract, and the
+enforceable architecture rules — lives in the repository:
+
+- [`CLAUDE.md`](https://github.com/Siomkin/GitLane/blob/latest/CLAUDE.md) — the architecture guide
+- [`docs/rules/`](https://github.com/Siomkin/GitLane/tree/latest/docs/rules) — the rules that keep changes consistent
+- [`docs/`](https://github.com/Siomkin/GitLane/tree/latest/docs) — graph performance, distribution, plugin decisions, provider auth
