@@ -1,0 +1,59 @@
+name: Docs
+
+on:
+  push:
+    branches: [latest]
+    paths: ["docs-site/**", ".github/workflows/docs.yml"]
+  pull_request:
+    branches: [latest]
+    paths: ["docs-site/**", ".github/workflows/docs.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Deliberately NOT `pull_request_target`: this workflow reads a Cloudflare
+# token, and the deploy job must never be reachable from fork-PR code. The
+# check job runs untrusted PR code but holds no secrets; the deploy job holds
+# the secret but only ever runs on `latest`.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: docs-site
+
+jobs:
+  check:
+    name: Lint + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.20"
+      - run: bun install --frozen-lockfile
+      - run: bun run lint:docs
+      - run: bun run typecheck
+      - run: bun run build
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: docs
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.20"
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: docs-site
+          command: deploy

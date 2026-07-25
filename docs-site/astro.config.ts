@@ -5,10 +5,13 @@ import nimbus, { defineConfig as defineNimbusConfig } from "@cloudflare/nimbus-d
 import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 
 const nimbusConfig = defineNimbusConfig({
-  // TODO: point this at the real docs origin before the first deploy — it
-  // drives canonical URLs, absolute OG image URLs, robots.txt, the sitemap,
-  // and every link in /llms.txt.
-  site: "https://gitlane.pages.dev",
+  // Canonical origin. Drives canonical URLs, absolute OG image URLs,
+  // robots.txt, the sitemap, and every link in /llms.txt.
+  //
+  // A subdomain, not a gitlane.space subpath: Astro's `base` option is not
+  // honoured by nimbus-docs 0.8.1 — the sidebar nav, favicon, stylesheet, and
+  // the whole /llms.txt surface emit base-less paths. Revisit if that's fixed.
+  site: "https://docs.gitlane.space",
   title: "GitLane",
   description:
     "A fast, lightweight visual git client for macOS, Windows, and Linux — swimlane commit graph, drag-and-drop branch operations, and pull requests without leaving the app.",
