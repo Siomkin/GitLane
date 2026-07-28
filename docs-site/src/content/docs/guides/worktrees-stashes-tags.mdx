@@ -1,18 +1,71 @@
 ---
 title: Worktrees, stashes, tags, terminal
-description: The everyday side surfaces — plus real PTY terminal tabs inside the app.
+description: A checkout per task — plus stashes, tags, and real PTY terminal tabs inside the app.
 sidebar:
   order: 11
 ---
 
 ## Worktrees
 
-Create, open, and remove linked worktrees. Each open worktree gets its own
-tab.
+A linked worktree is a second working directory for the same repository, on
+its own branch. GitLane treats them as a first-class surface, which matters
+more than it used to now that AI coding agents work in the background: give
+each agent its own worktree and they run in parallel without fighting over
+one checkout, your main tree never gets rewritten under you, and every result
+arrives on its own branch you can read before it merges.
 
-The useful trick: hand a branch off to another worktree **carrying its
-uncommitted changes**, with a live progress checklist so you can see each
-step happen. That's the operation that's fiddly and error-prone by hand.
+![A branch checked out in another worktree, badged in the graph, with Open worktree one click away](/screenshots/worktree-open.png)
+
+### Create one anywhere
+
+Right-click any commit, branch, or tag → **New worktree here…**. Each open
+worktree gets its own tab: switch the current tab to it, or open it alongside
+and keep both.
+
+### See them in the graph
+
+A branch checked out in another worktree carries a worktree badge on its
+pill. A worktree with no branch — a detached checkout — parks a dashed marker
+on the commit it sits on, which is the only trace it would otherwise leave.
+Either one shows an amber dot when that worktree has uncommitted work, so you
+can see what's happening elsewhere without leaving the history view.
+
+The branch navigator has a **Worktrees** category listing all of them; the
+graph's worktree markers and the navigator rows open the same menu.
+
+### Know where you are
+
+Open a linked worktree and the toolbar says so — a worktree chip naming it,
+and a back button that returns to the main checkout in one click. In the main
+checkout there's no chip: linked worktrees still exist, but a permanent badge
+would just sit there.
+
+![Inside a linked worktree: the back-to-main toolbar cluster, and the worktree submenu offering check out here, copy path, and hand off](/screenshots/worktree-handoff.png)
+
+### Hand a branch off
+
+Move a branch to another worktree **carrying its uncommitted changes**, with
+a live progress checklist so you can see each step happen. That's the
+operation that's fiddly and error-prone by hand.
+
+It doubles as the escape hatch for git's rule that a branch can only be
+checked out in one worktree at a time. Ask to check out a branch another
+worktree holds and GitLane offers the hand-off — *bring it here*, changes and
+all — instead of the refusal.
+
+### Clean up safely
+
+Removing a worktree previews what goes with it and probes the directory for
+uncommitted work first, so a dirty worktree can't vanish on a stray click.
+Deleting a branch that has a worktree can take both in one step —
+`Delete <branch> & worktree…`. Git won't remove the main worktree, so GitLane
+doesn't offer it.
+
+<Aside type="note" title="A terminal in each">
+  Terminal tabs spawn in the open worktree's directory — including the
+  one-click AI agent launchers. Switch tabs to a different worktree and new
+  terminals follow it.
+</Aside>
 
 ## Stashes
 
