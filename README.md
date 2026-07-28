@@ -154,11 +154,40 @@ applied to local git config only — so you never commit to a client repo with
 the wrong email or an unverified signature. A repo is fully usable with no
 account connected at all.
 
-### Worktrees, stashes, tags, terminal
+### Worktrees — a checkout per task
 
-- **Worktrees** — create, open (in a tab), and remove linked worktrees; hand a
-  branch off to another worktree *carrying its uncommitted changes*, with a
-  live progress checklist.
+A linked worktree is a second working directory for the same repository, on
+its own branch. GitLane treats them as a first-class surface, which matters
+more than it used to now that AI coding agents work in the background: give
+each agent its own worktree and they run in parallel without fighting over one
+checkout, your main tree never gets rewritten under you, and every result
+arrives on its own branch you can read before it merges.
+
+![A branch checked out in another worktree, badged in the graph, with Open worktree one click away](docs/screenshots/worktree-open.png)
+
+- **Create one anywhere.** Right-click any commit, branch, or tag → *New
+  worktree here*. Each one opens as a tab — switch the current tab to it, or
+  open it alongside and keep both.
+- **See them in the graph.** A branch checked out in another worktree carries a
+  worktree badge on its pill; a detached worktree parks a dashed marker on its
+  commit. Either shows an amber dot when that worktree has uncommitted work —
+  so you can see what your agents are up to without leaving the history.
+- **Know where you are.** Open a linked worktree and the toolbar says so, with
+  one click back to the main checkout.
+- **Hand a branch off** to another worktree *carrying its uncommitted changes*,
+  with a live progress checklist. It's also the escape hatch when git refuses a
+  second checkout of a branch another worktree holds — GitLane offers the
+  hand-off instead of the error.
+- **Clean up safely.** Removing a worktree previews what goes with it and
+  probes for uncommitted work first; deleting a branch can take its worktree
+  with it in the same step.
+- **A terminal in each.** Terminal tabs spawn in the open worktree's directory,
+  with one-click launchers for AI coding agents.
+
+![Inside a linked worktree: the back-to-main toolbar cluster, and the worktree submenu offering check out here, copy path, and hand off](docs/screenshots/worktree-handoff.png)
+
+### Stashes, tags, terminal
+
 - **Stashes** — one-click stash; apply, pop, drop, or turn a stash into a new
   branch. Stashes are addressed by commit id, so a shifted `stash@{n}` index
   can never drop the wrong one.
