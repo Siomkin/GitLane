@@ -100,7 +100,7 @@ fn preview_remove_worktree_lease_rejects_gitdir_registration_replacement() {
     repo.git_ok(&["worktree", "add", "-q", "--detach", linked.as_str()]);
     let preview = preview_remove_worktree(repo.path(), linked.as_str()).expect("preview");
 
-    // Recreate the private admin gitdir at the same pathname so the workdir
+    // Replace the private admin gitdir at the same pathname so the workdir
     // inode is unchanged but registration identity (gitdir inode) flips — the
     // ADR's registration half of the lease must fail closed.
     let gitfile = std::fs::read_to_string(linked.0.join(".git")).unwrap();
@@ -116,12 +116,10 @@ fn preview_remove_worktree_lease_rejects_gitdir_registration_replacement() {
         linked.0.join(gitdir)
     };
     let gitdir = gitdir.canonicalize().unwrap();
-    let backup = LinkedDir::new("wt-lease-gitdir-bak");
-    std::fs::create_dir_all(&backup.0).unwrap();
-    copy_dir_recursive(&gitdir, &backup.0).expect("backup private gitdir");
-    std::fs::remove_dir_all(&gitdir).expect("drop old gitdir inode");
-    std::fs::create_dir_all(&gitdir).expect("new gitdir inode");
-    copy_dir_recursive(&backup.0, &gitdir).expect("restore admin contents");
+    StagedDirReplacement::stage(&gitdir)
+        .expect("stage the private gitdir")
+        .apply()
+        .expect("swap in a gitdir with the same contents and a new inode");
 
     let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
         .expect_err("replaced registration must invalidate the lease");
@@ -274,10 +272,10 @@ fn preview_remove_worktree_lease_rejects_workdir_directory_replacement() {
 
     // Rebuild the workdir at the same pathname with the same bytes: registration
     // and porcelain output are unchanged, the directory inode is not.
-    let backup = LinkedDir::new("wt-lease-workdir-aba-bak");
-    copy_dir_recursive(&linked.0, &backup.0).expect("back up the workdir");
-    std::fs::remove_dir_all(&linked.0).expect("drop the old workdir inode");
-    copy_dir_recursive(&backup.0, &linked.0).expect("rebuild the workdir");
+    StagedDirReplacement::stage(&linked.0)
+        .expect("stage the workdir")
+        .apply()
+        .expect("swap in a workdir with the same contents and a new inode");
 
     let err = remove_worktree(repo.path(), linked.as_str(), &preview.expected_state)
         .expect_err("a replaced workdir must invalidate the lease");
@@ -1046,9 +1044,16 @@ fn hard_reset_rejects_close_reopen_worktree_aba() {
 
     // Remove and recreate the worktree at the same path — content and tip match,
     // but directory identities (inodes) differ, so the lease must fail closed.
+    // The staged copy is taken before the removal so the recreated workdir is
+    // guaranteed a different inode: git's own remove/add cycle can be handed the
+    // freed one straight back (see `StagedDirReplacement`).
+    let replacement = StagedDirReplacement::stage(&linked.0).expect("stage the workdir");
     main.git_ok(&["worktree", "remove", "--force", linked.path()]);
     main.git_ok(&["worktree", "add", "-q", linked.path(), "feature"]);
     std::fs::write(linked.0.join("f.txt"), b"dirty\n").unwrap();
+    replacement
+        .apply()
+        .expect("swap in a workdir with a new inode");
 
     let error = reset_branch(
         linked.path(),

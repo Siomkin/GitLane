@@ -293,6 +293,85 @@ pub(super) fn repo_with_dirty_linked_worktree(tag: &str) -> (TempRepo, LinkedDir
 // is looking at. This is the half a leaf-byte fingerprint would have broken,
 // which is why the removal lease deliberately does not reuse Discard All's.
 
+/// A staged replacement for a directory the ABA tests need to swap out, kept so
+/// the leased path provably ends up with a *different* `(device, inode)`.
+///
+/// `remove_dir_all` followed by a fresh `create_dir_all` at the same pathname is
+/// not enough: the filesystem is free to hand the just-freed inode straight back,
+/// and the GitHub-hosted Linux runners do exactly that — measured at 20 out of 20
+/// remove/recreate cycles with no concurrent load, where macOS and the
+/// self-hosted runner happen not to. Under `cargo test`'s parallel threads a
+/// neighbouring test sometimes claims the freed inode first, which is why this
+/// showed up as an intermittent-looking failure rather than a constant one.
+/// When the inode does come back, the fingerprint the removal lease compares is
+/// unchanged, the lease correctly allows the removal, and the test fails having
+/// exercised nothing.
+///
+/// Copying the directory aside **while the original still exists** forces the
+/// allocator to pick a different inode for the copy, and `rename` carries that
+/// inode onto the leased path — so the identity change is guaranteed by
+/// construction rather than left to allocator luck.
+pub(super) struct StagedDirReplacement {
+    target: std::path::PathBuf,
+    staging: std::path::PathBuf,
+    /// Identity of the directory as it stood when it was staged — the one the
+    /// lease captured, and the one the replacement must not collide with.
+    #[cfg(unix)]
+    original: (u64, u64),
+}
+
+impl StagedDirReplacement {
+    /// Copy `target` aside. Must be called while the original directory is still
+    /// in place — that overlap is what guarantees the distinct inode.
+    pub(super) fn stage(target: &std::path::Path) -> std::io::Result<Self> {
+        let name = target
+            .file_name()
+            .expect("a directory to replace has a file name");
+        let mut staged_name = name.to_os_string();
+        staged_name.push(".gitlane-staged-replacement");
+        let staging = target.with_file_name(staged_name);
+        let _ = std::fs::remove_dir_all(&staging);
+        #[cfg(unix)]
+        let original = dir_identity(target)?;
+        copy_dir_recursive(target, &staging)?;
+        Ok(Self {
+            target: target.to_path_buf(),
+            staging,
+            #[cfg(unix)]
+            original,
+        })
+    }
+
+    /// Replace whatever now sits at the target path with the staged copy. The
+    /// contents are identical; only the filesystem identity differs.
+    ///
+    /// The post-condition is asserted rather than assumed: a test that swapped
+    /// in a directory the lease cannot tell apart would pass its setup and then
+    /// fail on the lease assertion, which reads as a lease bug instead of a
+    /// filesystem one.
+    pub(super) fn apply(self) -> std::io::Result<()> {
+        std::fs::remove_dir_all(&self.target)?;
+        std::fs::rename(&self.staging, &self.target)?;
+        #[cfg(unix)]
+        assert_ne!(
+            dir_identity(&self.target)?,
+            self.original,
+            "the replacement at {} came back with the original directory's \
+             identity, so there is no ABA for the lease to detect",
+            self.target.display(),
+        );
+        Ok(())
+    }
+}
+
+/// The `(device, inode)` pair the worktree leases fingerprint a directory by.
+#[cfg(unix)]
+fn dir_identity(path: &std::path::Path) -> std::io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt as _;
+    let metadata = std::fs::metadata(path)?;
+    Ok((metadata.dev(), metadata.ino()))
+}
+
 pub(super) fn copy_dir_recursive(
     from: &std::path::Path,
     to: &std::path::Path,
