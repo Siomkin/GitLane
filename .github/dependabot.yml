@@ -1,13 +1,17 @@
 version: 2
 updates:
-  - package-ecosystem: npm
-    directory: /
+  # `bun`, not `npm`: they are separate Dependabot ecosystems, and only `bun`
+  # knows about `bun.lock`. Under `npm` (the `npm_and_yarn` ecosystem) every PR
+  # bumped package.json alone and left the lockfile stale, which CI rejects at
+  # `bun install --frozen-lockfile` — see #287.
+  - package-ecosystem: bun
+    directories: ["/", "/docs-site"]
     target-branch: latest
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      npm:
+      bun:
         patterns: ["*"]
         update-types: [minor, patch]
 
