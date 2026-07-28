@@ -1,7 +1,8 @@
 //! Opaque Worktree Removal Lease (GL-303).
 //!
-//! Preview captures linked-worktree registration (private gitdir path + inode),
-//! workdir identity, optional branch + HEAD oid, and porcelain dirty path+status
+//! Preview captures linked-worktree registration (private gitdir path +
+//! directory identity), workdir identity, optional branch + HEAD oid, and
+//! porcelain dirty path+status
 //! (staged/unstaged/untracked only). Ignored entries are disclosed for UI on
 //! preview only and are not leased. Execute re-captures and refuses on mismatch
 //! before removal.
@@ -168,8 +169,7 @@ fn ignored_disclosure_count(worktree_path: &str) -> Result<u32, String> {
 }
 
 fn digest_identity(state: &mut Sha256, identity: WorktreeDirectoryIdentity) {
-    state.update(identity.device.to_le_bytes());
-    state.update(identity.inode.to_le_bytes());
+    identity.hash_into(state);
 }
 
 fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, String> {

@@ -230,8 +230,7 @@ pub(super) fn run_after_validation_test_hook() {
 pub(super) fn run_after_validation_test_hook() {}
 
 fn hash_identity(state: &mut Sha256, identity: &WorktreeDirectoryIdentity) {
-    state.update(identity.device.to_le_bytes());
-    state.update(identity.inode.to_le_bytes());
+    identity.hash_into(state);
 }
 
 fn effective_tree_oid_no_replace(

@@ -73,9 +73,11 @@ pub(super) const MAX_FINGERPRINT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// The filesystem incarnation a lease was taken against.
 ///
-/// Paths alone are not enough: device/inode identity is what distinguishes a
-/// directory recreated at the same pathname from the one the preview inspected,
-/// which is how the close/reopen ABA case is caught.
+/// Paths alone are not enough: `WorktreeDirectoryIdentity` is what distinguishes
+/// a directory recreated at the same pathname from the one the preview
+/// inspected, which is how the close/reopen ABA case is caught. It pairs
+/// device/inode with creation time, because an inode number on its own is
+/// reusable and routinely is reused by a recreate at the same path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct RepositoryScope {
     pub(super) workdir: PathBuf,
