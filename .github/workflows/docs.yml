@@ -55,9 +55,15 @@ jobs:
           bun-version: "1.2.20"
       - run: bun install --frozen-lockfile
       - run: bun run build
-      - uses: cloudflare/wrangler-action@v3
+      - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Pinned to the version `docs-site/bun.lock` resolves, so a deploy
+          # never depends on the action's default: v3 of the action installed
+          # Wrangler v3 against this v4-era `wrangler.jsonc`, and v4 silently
+          # switched that default to `latest`. This job only runs on stable
+          # release tags, so a surprise here would surface mid-release.
+          wranglerVersion: "4.114.0"
           workingDirectory: docs-site
           command: deploy
