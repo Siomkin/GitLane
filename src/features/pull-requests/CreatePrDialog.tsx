@@ -4,6 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { BranchKind, type BranchInfo } from "@/lib/api";
+import { useBackdropDismiss } from "@/hooks/useBackdropDismiss";
 import { useRepo } from "@/store/repo";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
@@ -38,6 +39,7 @@ function CreatePrDialogBody() {
     s.prPendingActions.some((entry) => entry.action === PR_PENDING_ACTION.Create),
   );
   const run = useRunPrAction();
+  const backdrop = useBackdropDismiss();
 
   const head = summary?.headBranch ?? "";
   const defaultBase = useMemo(() => guessBase(branches, head), [branches, head]);
@@ -76,7 +78,8 @@ function CreatePrDialogBody() {
   return (
     <div
       className="fixed inset-0 z-[60] grid place-items-center bg-black/30 backdrop-blur-sm"
-      onClick={closeCurrent}
+      onMouseDown={backdrop.onMouseDown}
+      onClick={backdrop.onClick(closeCurrent)}
     >
       <div
         onClick={(e) => e.stopPropagation()}

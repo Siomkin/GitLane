@@ -14,6 +14,7 @@ import {
   worktreeLeaf,
 } from "@/lib/worktreeHandoff";
 import { CheckIcon, CloseIcon, WarningIcon } from "@/components/ui/icons";
+import { useBackdropDismiss } from "@/hooks/useBackdropDismiss";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRepo } from "@/store/repo";
 import { useUi, type HandoffRequest } from "@/store/ui";
@@ -107,6 +108,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   // behind it). Dismissal stays with the Escape listener + backdrop above.
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(true, panelRef);
+  const backdrop = useBackdropDismiss();
 
   const submit = () => {
     if (!selectedDest) return;
@@ -120,7 +122,8 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
       className="fixed inset-0 z-[80] grid place-items-center bg-black/30 backdrop-blur-sm"
       // Mid-run a stray backdrop click shouldn't dismiss the progress view; the
       // explicit close button (and Escape) still work.
-      onClick={phase === "running" ? undefined : closeHandoff}
+      onMouseDown={backdrop.onMouseDown}
+      onClick={backdrop.onClick(phase === "running" ? undefined : closeHandoff)}
     >
       <div
         ref={panelRef}

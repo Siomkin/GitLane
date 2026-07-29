@@ -331,6 +331,27 @@ describe("CommitContextMenu (single commit)", () => {
     expect(screen.getByRole("menuitem", { name: "Revert commit" })).toBeInTheDocument();
   });
 
+  it("confirms before reverting a commit", () => {
+    // Revert sits one row from Cherry-pick and Reset and commits straight to the
+    // checked-out branch, so a mis-aimed click must not write history.
+    const revertCommit = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({ revertCommit });
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Revert commit" }));
+    expect(revertCommit).not.toHaveBeenCalled();
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.title).toBe("Revert commit c2abcde?");
+    // The message names the branch the new commit lands on.
+    expect(confirm?.message).toContain('"main"');
+    expect(confirm?.confirmLabel).toBe("Revert");
+    // Revert adds history rather than destroying it — not danger-toned.
+    expect(confirm?.danger).toBeFalsy();
+    confirm!.onConfirm();
+    expect(revertCommit).toHaveBeenCalledWith("c2abcdef");
+  });
+
   it("offers the onto-current ops on a non-HEAD commit", () => {
     openSingle("c2abcdef");
     render(<CommitContextMenu />);
@@ -351,12 +372,17 @@ describe("CommitContextMenu (batch selection)", () => {
     expect(cherryPickMany).toHaveBeenCalledWith(["c3abcdef", "c1abcdef"]);
   });
 
-  it("reverts newest-first", () => {
+  it("reverts newest-first, after confirmation", () => {
     const revertMany = vi.fn().mockResolvedValue("ok");
     useRepo.setState({ revertMany });
     openBatch(["c1abcdef", "c2abcdef"]);
     render(<CommitContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Revert 2 commits" }));
+    // Revert writes commits, so the menu click only raises the confirm.
+    expect(revertMany).not.toHaveBeenCalled();
+    expect(useUi.getState().confirm?.title).toBe("Revert 2 commits?");
+    expect(useUi.getState().confirm?.message).toContain('2 new commits to "main"');
+    useUi.getState().confirm!.onConfirm();
     expect(revertMany).toHaveBeenCalledWith(["c1abcdef", "c2abcdef"]);
   });
 

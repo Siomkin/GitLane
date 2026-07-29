@@ -23,6 +23,7 @@ import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overl
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCompareBranch, promptCreateWorktree } from "./prompts";
 import { confirmRebase } from "./rebaseConfirm";
+import { confirmRevert } from "./revertConfirm";
 import {
   deriveBranchContextMenuPolicy,
   MAIN_WORKTREE_DELETE_DISABLED_REASON,
@@ -240,7 +241,19 @@ export function BranchContextMenu() {
       integrate.push({ label: "Integrate into current", note: `into ${cur}`, submenu: integrateChildren });
     }
     // Revert last, so it lands right next to Reset in the assembled menu.
-    integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(tip)) });
+    integrate.push({
+      label: "Revert commit",
+      onClick: () =>
+        confirmRevert({
+          // `tipShort` is the policy's `tip.slice(0, 7)` but typed
+          // `string | null` independently of the enclosing `if (tip && cur)`,
+          // so derive the short oid from the narrowed `tip` instead.
+          shortSha: tip.slice(0, 7),
+          branch: cur,
+          requestConfirm,
+          proceed: () => act(() => revertCommit(tip)),
+        }),
+    });
     // The section's first row carries the group glyph, matching the commit menu.
     integrate[0] = { ...integrate[0], icon: <BranchIcon className="h-4 w-4" /> };
   }
