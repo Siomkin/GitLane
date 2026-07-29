@@ -1401,3 +1401,89 @@ pub fn discard_all(
     })?;
     Ok(discard_message(&snapshot))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        begin_tracked_digest, IndexSnapshot, ParsedStatus, RepositoryScope, TrackedDigestContext,
+    };
+    use crate::git::worktree_fs::WorktreeDirectoryIdentity;
+    use sha2::Digest;
+    use std::collections::BTreeSet;
+    use std::path::PathBuf;
+
+    fn scope_with_birth_time(birth_time: Option<(i64, u32)>) -> RepositoryScope {
+        let identity = WorktreeDirectoryIdentity {
+            device: 42,
+            inode: 1234,
+            birth_time,
+        };
+        RepositoryScope {
+            workdir: PathBuf::from("/repo"),
+            gitdir: PathBuf::from("/repo/.git"),
+            commondir: PathBuf::from("/repo/.git"),
+            workdir_identity: identity,
+            gitdir_identity: identity,
+            commondir_identity: identity,
+            is_worktree: true,
+        }
+    }
+
+    fn digest_for(scope: &RepositoryScope) -> [u8; 32] {
+        let index = IndexSnapshot {
+            digest: [7u8; 32],
+            stage_zero_paths: vec![b"a.txt".to_vec()],
+        };
+        let status = ParsedStatus {
+            semantic_records: vec![b" M a.txt".to_vec()],
+            tracked_paths: BTreeSet::from([b"a.txt".to_vec()]),
+            display: Vec::new(),
+        };
+        begin_tracked_digest(&TrackedDigestContext {
+            scope,
+            head_branch: Some("main"),
+            head_oid: Some("0123456789012345678901234567890123456789"),
+            head_tree_oid: Some("9876543210987654321098765432109876543210"),
+            index: &index,
+            status: &status,
+        })
+        .finalize()
+        .into()
+    }
+
+    /// Discard All destroys uncommitted work, so its confirmation must not be
+    /// satisfiable by a directory that merely inherited the previewed one's
+    /// inode. Only `expected_state` crosses preview to execution, so the
+    /// creation time has to reach the digest — this hashed device and inode by
+    /// hand until it was routed through the shared encoding.
+    #[test]
+    fn scope_digest_separates_incarnations_sharing_a_device_and_inode() {
+        let previewed = scope_with_birth_time(Some((1_700_000_000, 0)));
+        let replacement = scope_with_birth_time(Some((1_700_000_001, 0)));
+
+        assert_ne!(
+            digest_for(&previewed),
+            digest_for(&replacement),
+            "a replacement handed the previewed inode must not reproduce its token"
+        );
+    }
+
+    #[test]
+    fn scope_digest_is_stable_for_an_unchanged_scope() {
+        let scope = scope_with_birth_time(Some((1_700_000_000, 0)));
+
+        assert_eq!(
+            digest_for(&scope),
+            digest_for(&scope),
+            "an unchanged scope must keep its token, or every confirm goes stale"
+        );
+    }
+
+    #[test]
+    fn scope_digest_separates_a_missing_creation_time_from_a_present_one() {
+        assert_ne!(
+            digest_for(&scope_with_birth_time(None)),
+            digest_for(&scope_with_birth_time(Some((1_700_000_000, 0)))),
+        );
+    }
+}
