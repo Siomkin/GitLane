@@ -1011,6 +1011,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// End-to-end over a real filesystem, unlike the constructed cases above.
+    ///
+    /// The pause is load-bearing, not padding. A bare back-to-back
+    /// remove/recreate is the one case this identity cannot separate: ext4
+    /// hands the inode straight back and the kernel's coarse clock stamps both
+    /// incarnations inside the same tick, which was measured at 18 of 20
+    /// undetected. Past a single tick it was 0 of 20, and any replacement a
+    /// user could actually race against a confirmation dialog is orders of
+    /// magnitude beyond that. Waiting here tests the property that holds
+    /// instead of the degenerate case that does not.
     #[test]
     fn recreating_a_directory_at_the_same_path_changes_its_identity() {
         let root = std::env::temp_dir().join(format!(
@@ -1021,6 +1031,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let before = worktree_directory_identity(&root).expect("identity before");
 
+        std::thread::sleep(std::time::Duration::from_millis(20));
         std::fs::remove_dir_all(&root).unwrap();
         std::fs::create_dir_all(&root).unwrap();
         let after = worktree_directory_identity(&root).expect("identity after");

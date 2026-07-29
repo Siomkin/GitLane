@@ -643,12 +643,9 @@ fn begin_tracked_digest(context: &TrackedDigestContext<'_>) -> Sha256 {
     hash_os(&mut state, scope.workdir.as_os_str());
     hash_os(&mut state, scope.gitdir.as_os_str());
     hash_os(&mut state, scope.commondir.as_os_str());
-    state.update(scope.workdir_identity.device.to_le_bytes());
-    state.update(scope.workdir_identity.inode.to_le_bytes());
-    state.update(scope.gitdir_identity.device.to_le_bytes());
-    state.update(scope.gitdir_identity.inode.to_le_bytes());
-    state.update(scope.commondir_identity.device.to_le_bytes());
-    state.update(scope.commondir_identity.inode.to_le_bytes());
+    scope.workdir_identity.hash_into(&mut state);
+    scope.gitdir_identity.hash_into(&mut state);
+    scope.commondir_identity.hash_into(&mut state);
     state.update([u8::from(scope.is_worktree)]);
     match head_branch {
         Some(branch) => {
