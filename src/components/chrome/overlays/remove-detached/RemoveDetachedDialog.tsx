@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { worktreeName } from "@/lib/worktrees";
 import { CheckIcon, CloseIcon, TrashIcon, WarningIcon } from "@/components/ui/icons";
+import { useBackdropDismiss } from "@/hooks/useBackdropDismiss";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useUi, type RemoveDetachedRequest } from "@/store/ui";
 import { StepRow } from "@/components/chrome/overlays/progress";
@@ -68,13 +69,15 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
   // Trap Tab focus inside the dialog; dismissal stays with Escape + backdrop.
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(true, panelRef);
+  const backdrop = useBackdropDismiss();
 
   return (
     <div
       className="fixed inset-0 z-[80] grid place-items-center bg-black/30 backdrop-blur-sm"
       // Mid-run a stray backdrop click shouldn't dismiss the progress view; the
       // explicit close button (and Escape) still work.
-      onClick={phase === "running" ? undefined : closeRemoveDetached}
+      onMouseDown={backdrop.onMouseDown}
+      onClick={backdrop.onClick(phase === "running" ? undefined : closeRemoveDetached)}
     >
       <div
         ref={panelRef}

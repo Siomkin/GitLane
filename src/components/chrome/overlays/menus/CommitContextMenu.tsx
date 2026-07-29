@@ -19,6 +19,7 @@ import { deriveCommitContextMenuPolicy } from "./commitContextMenuPolicy";
 import { previewConfirm } from "./previewConfirm";
 import { promptAnnotatedTag, promptCreateWorktree, promptNewBranchWorktree } from "./prompts";
 import { confirmRebase } from "./rebaseConfirm";
+import { confirmRevert } from "./revertConfirm";
 
 export function CommitContextMenu() {
   const menu = useUi((s) => s.commitMenu);
@@ -122,7 +123,16 @@ export function CommitContextMenu() {
           act(() => cherryPickMany(batch.cherryPickOrder));
         },
       },
-      { label: `Revert ${n} commits`, onClick: () => act(() => revertMany(batch.revertOrder)) },
+      {
+        label: `Revert ${n} commits`,
+        onClick: () =>
+          confirmRevert({
+            branch: cur,
+            count: n,
+            requestConfirm,
+            proceed: () => act(() => revertMany(batch.revertOrder)),
+          }),
+      },
       ...(squash.ok
         ? [{
             label: `Squash ${n} commits…`,
@@ -205,7 +215,16 @@ export function CommitContextMenu() {
     });
   }
   // Revert last, so it sits right next to Reset in the assembled menu.
-  integrate.push({ label: "Revert commit", onClick: () => act(() => revertCommit(sha)) });
+  integrate.push({
+    label: "Revert commit",
+    onClick: () =>
+      confirmRevert({
+        shortSha,
+        branch: cur,
+        requestConfirm,
+        proceed: () => act(() => revertCommit(sha)),
+      }),
+  });
   integrate[0] = { ...integrate[0], sep: true, icon: <BranchIcon className="h-4 w-4" /> };
 
   // Create: branch stays flat (the common one); the rarer create targets fold

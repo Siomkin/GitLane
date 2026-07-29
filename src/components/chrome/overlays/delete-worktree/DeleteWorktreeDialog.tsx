@@ -20,6 +20,7 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
+import { useBackdropDismiss } from "@/hooks/useBackdropDismiss";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRepo } from "@/store/repo";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
@@ -104,6 +105,7 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   // Trap Tab focus inside the dialog; dismissal stays with Escape + backdrop.
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(true, panelRef);
+  const backdrop = useBackdropDismiss();
 
   const worktreeLeaf = basename(req.worktreePath);
 
@@ -112,7 +114,8 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
       className="fixed inset-0 z-[80] grid place-items-center bg-black/30 backdrop-blur-sm"
       // Mid-run a stray backdrop click shouldn't dismiss the progress view; the
       // explicit close button (and Escape) still work.
-      onClick={phase === "running" ? undefined : closeDeleteWorktree}
+      onMouseDown={backdrop.onMouseDown}
+      onClick={backdrop.onClick(phase === "running" ? undefined : closeDeleteWorktree)}
     >
       <div
         ref={panelRef}

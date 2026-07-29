@@ -368,6 +368,24 @@ describe("PromptDialog (text variant)", () => {
     expect(cancelled).not.toHaveBeenCalled();
   });
 
+  it("stays open when a text selection is dragged out of the input", () => {
+    // Press inside the field, release on the backdrop: the browser dispatches
+    // the click on the common ancestor (the backdrop), so the panel's
+    // stopPropagation can't shield it. Selecting the branch name to retype it
+    // must not close the rename dialog.
+    const onSubmit = openPrompt();
+    const { container } = render(<PromptDialog />);
+    fireEvent.mouseDown(screen.getByRole("textbox"));
+    fireEvent.click(backdrop(container));
+    expect(useUi.getState().prompt).not.toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // A press that really starts on the backdrop still dismisses.
+    fireEvent.mouseDown(backdrop(container));
+    fireEvent.click(backdrop(container));
+    expect(useUi.getState().prompt).toBeNull();
+  });
+
   it("stacks at z-[80], above the create-branch dialog", () => {
     openPrompt();
     const { container } = render(<PromptDialog />);

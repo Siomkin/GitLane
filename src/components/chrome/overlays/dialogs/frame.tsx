@@ -1,5 +1,6 @@
 import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { useBackdropDismiss } from "@/hooks/useBackdropDismiss";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 /** Shared modal shell for the small store-driven dialogs (create-branch /
@@ -32,15 +33,18 @@ export function ModalFrame({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(true, panelRef);
+  // Backdrop click is a redundant dismiss convenience; Escape and the dialog's
+  // own controls are the keyboard/AT paths, and the focus trap keeps focus off
+  // this element. The hook keeps a selection dragged out of an input from
+  // reading as a backdrop click. (react-doctor no-static-element-interactions
+  // fires here; the native <dialog> ::backdrop that would silence it is
+  // unavailable — jsdom can't showModal — so this stays a documented residual.)
+  const backdrop = useBackdropDismiss();
   return (
     <div
       className={cn("fixed inset-0 grid place-items-center bg-black/30 backdrop-blur-sm", z)}
-      // Backdrop click is a redundant dismiss convenience; Escape and the
-      // dialog's own controls are the keyboard/AT paths, and the focus trap
-      // keeps focus off this element. (react-doctor no-static-element-interactions
-      // fires here; the native <dialog> ::backdrop that would silence it is
-      // unavailable — jsdom can't showModal — so this stays a documented residual.)
-      onClick={onDismiss}
+      onMouseDown={backdrop.onMouseDown}
+      onClick={backdrop.onClick(onDismiss)}
     >
       <div
         ref={panelRef}

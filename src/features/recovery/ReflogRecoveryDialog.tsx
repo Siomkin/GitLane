@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReflogEntry } from "@/lib/api";
+import { useBackdropDismiss } from "@/hooks/useBackdropDismiss";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useBranchOp } from "@/components/chrome/overlays/shared";
@@ -54,6 +55,8 @@ export const ReflogRecoveryDialog = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, close]);
 
+  const backdrop = useBackdropDismiss();
+
   if (!open) return null;
 
   const createBranch = (entry: ReflogEntry, defaultName: string) => {
@@ -76,7 +79,8 @@ export const ReflogRecoveryDialog = () => {
   return (
     <div
       className="fixed inset-0 z-[70] grid place-items-center bg-black/30 backdrop-blur-sm"
-      onClick={close}
+      onMouseDown={backdrop.onMouseDown}
+      onClick={backdrop.onClick(close)}
     >
       <div
         onClick={(e) => e.stopPropagation()}

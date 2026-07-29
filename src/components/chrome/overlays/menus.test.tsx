@@ -31,6 +31,7 @@ const realRebaseOnto = useRepo.getState().rebaseOnto;
 const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realMergeInto = useRepo.getState().mergeInto;
 const realForcePush = useRepo.getState().forcePush;
+const realRevertCommit = useRepo.getState().revertCommit;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -85,6 +86,7 @@ beforeEach(() => {
     resetBranchTo: realResetBranchTo,
     mergeInto: realMergeInto,
     forcePush: realForcePush,
+    revertCommit: realRevertCommit,
   });
   useUi.setState({
     wipMenu: null,
@@ -403,6 +405,27 @@ describe("BranchContextMenu", () => {
     openGroup("Compare");
     expect(screen.queryByRole("menuitem", { name: "Merge feature" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Compare with branch…" })).toBeInTheDocument();
+  });
+
+  it("confirms before reverting the branch tip", () => {
+    // Revert commits straight to the checked-out branch, so the flat row raises
+    // a confirm naming the tip and that branch (same gate as the commit menu).
+    const revertCommit = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      branches: [localBranch("feature")],
+      revertCommit,
+    });
+    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    render(<BranchContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Revert commit" }));
+    expect(revertCommit).not.toHaveBeenCalled();
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.title).toBe("Revert commit abc1234?");
+    expect(confirm?.message).toContain('"main"');
+    confirm!.onConfirm();
+    expect(revertCommit).toHaveBeenCalledWith("abc1234");
   });
 
   // The onto-current ops are self-no-ops on the current branch and must stay
