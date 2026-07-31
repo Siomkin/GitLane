@@ -5,10 +5,11 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import type { MergeMethod } from "@/lib/api";
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { MERGE_METHODS } from "@/features/pull-requests/PrMergeMenu";
 import { useRunPrAction } from "@/features/pull-requests/usePrAction";
+import { useStackMergePending } from "./useStackMergePending";
 
 export function StackMergeButton({
   prNum,
@@ -25,11 +26,7 @@ export function StackMergeButton({
   blocked: boolean;
 }) {
   const mergeStack = usePulls((s) => s.mergeStack);
-  const merging = usePulls((s) =>
-    s.prPendingActions.some(
-      (pending) => pending.action === PR_PENDING_ACTION.Merge && pending.prNum === prNum,
-    ),
-  );
+  const merging = useStackMergePending(prNum);
   const busy = usePulls((s) => s.prPendingActions.length > 0);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();

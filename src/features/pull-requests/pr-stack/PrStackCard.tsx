@@ -12,6 +12,7 @@ import type { PullRequest } from "@/lib/prs";
 import { StackMergeButton } from "./StackMergeButton";
 import { StackRow } from "./StackRow";
 import { stackView, type StackView } from "./stackModel";
+import { useStackMergePending } from "./useStackMergePending";
 
 /** Layers mark, with the small ✕ GitHub adds when the stack can't be merged. */
 function StackIcon({ className, blocked }: { className?: string; blocked?: boolean }) {
@@ -29,11 +30,18 @@ function StackIcon({ className, blocked }: { className?: string; blocked?: boole
  * merge. The blocked wording has to come first — saying "able to merge as a
  * stack" above a layer marked Not ready is exactly the contradiction GitHub
  * avoids. */
-function headline(view: StackView): {
+function headline(view: StackView, merging: boolean): {
   title: string;
   detail: string;
   blocked: boolean;
 } {
+  // First, ahead of every other state: while the merge runs, "Able to merge as a
+  // stack" above rows marked Merging is the same contradiction the copy below
+  // avoids, and the readiness that was true a moment ago is now moot.
+  if (merging) {
+    const layers = view.mergeCount === 1 ? "1 pull request is" : `${view.mergeCount} pull requests are`;
+    return { title: "Merging stack…", detail: `${layers} being merged.`, blocked: false };
+  }
   if (view.blockReason === "layer") {
     return {
       title: "Unable to merge as a stack",
@@ -69,13 +77,16 @@ function headline(view: StackView): {
 // so this card never renders for GitLab or Bitbucket and all merge methods apply.
 export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PullRequest }) {
   const [open, setOpen] = useState(true);
-  const view = stackView(stack, pr.num);
+  // `mergeStack` holds one IPC call open for the whole poll, so this flag tracks
+  // the real operation for its whole duration.
+  const merging = useStackMergePending(pr.num);
+  const view = stackView(stack, pr.num, merging);
   // A stack the viewed PR isn't part of can't describe a merge from here — it
   // would render someone else's layers with a zero-count merge control. That
   // happens when its own entry was filtered out (an unreadable PR), so check
   // for the row rather than just for *any* rows.
   if (view.rows.length === 0 || !view.currentFound) return null;
-  const { title, detail, blocked } = headline(view);
+  const { title, detail, blocked } = headline(view, merging);
   // The merge control shows for any open, non-draft PR in a stack; whether it
   // is *enabled* is `blocked`. GitHub greys it rather than hiding it, so the
   // reason stays visible next to the action it disables.
@@ -92,7 +103,11 @@ export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PullRequest }) 
         >
           <StackIcon className="h-[18px] w-[18px]" blocked={blocked} />
         </span>
-        <div className="min-w-0 flex-1">
+        {/* Live region so the flip to "Merging stack…" is announced — the pills
+            below change silently, and the footer button's `aria-busy` alone
+            doesn't say what is happening. `role="status"` already implies
+            `aria-live="polite"`. */}
+        <div className="min-w-0 flex-1" role="status" aria-busy={merging}>
           <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-neutral-50">{title}</div>
           <div className="mt-0.5 text-[12.5px] leading-snug text-neutral-500 dark:text-neutral-400">
             {detail}
