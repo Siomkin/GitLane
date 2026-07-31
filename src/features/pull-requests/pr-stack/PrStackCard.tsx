@@ -13,27 +13,46 @@ import { StackMergeButton } from "./StackMergeButton";
 import { StackRow } from "./StackRow";
 import { stackView } from "./stackModel";
 
-function StackIcon({ className }: { className?: string }) {
+/** Layers mark, with the small ✕ GitHub adds when the stack can't be merged. */
+function StackIcon({ className, blocked }: { className?: string; blocked?: boolean }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className}>
       <path d="m12 3 9 5-9 5-9-5 9-5Z" />
-      <path d="m3 13 9 5 9-5" />
+      {blocked ? <path d="m15 15 5 5m0-5-5 5" /> : <path d="m3 13 9 5 9-5" />}
     </svg>
   );
 }
 
-/** Plural-aware summary of what a stack merge from this layer would land. */
-function headline(belowCount: number): { title: string; detail: string } {
-  if (belowCount === 0) {
+/** Plural-aware summary of what a stack merge from this layer would land.
+ *
+ * Mirrors GitHub's own three states: blocked, bottom-of-stack, and able to
+ * merge. The blocked wording has to come first — saying "able to merge as a
+ * stack" above a layer marked Not ready is exactly the contradiction GitHub
+ * avoids. */
+function headline(view: { belowCount: number; mergeBlocked: boolean }): {
+  title: string;
+  detail: string;
+  blocked: boolean;
+} {
+  if (view.mergeBlocked) {
+    return {
+      title: "Unable to merge as a stack",
+      detail: "Some of the pull requests in this stack cannot be merged.",
+      blocked: true,
+    };
+  }
+  if (view.belowCount === 0) {
     return {
       title: "Bottom of a stack",
       detail: "This is the lowest unmerged layer — merging it lands only this pull request.",
+      blocked: false,
     };
   }
-  const layers = belowCount === 1 ? "1 pull request" : `${belowCount} pull requests`;
+  const layers = view.belowCount === 1 ? "1 pull request" : `${view.belowCount} pull requests`;
   return {
     title: "Able to merge as a stack",
     detail: `Merging this pull request will also merge ${layers} below it.`,
+    blocked: false,
   };
 }
 
@@ -45,18 +64,22 @@ export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PullRequest }) 
   // A stack the viewed PR isn't part of can't describe a merge from here; that
   // only happens if its own layer was filtered out of the entries.
   if (view.rows.length === 0) return null;
-  const { title, detail } = headline(view.belowCount);
-  // Offer the stack merge only when merging this PR is meaningful at all — the
-  // same gate `PrActions` puts on the single-PR merge button, plus every layer
-  // below being mergeable, since the operation is all-or-nothing.
-  const canMerge =
-    pr.state === "open" && !pr.draft && pr.mergeable !== "CONFLICTING" && !view.belowBlocked;
+  const { title, detail, blocked } = headline(view);
+  // The merge control shows for any open, non-draft PR in a stack; whether it
+  // is *enabled* is `blocked`. GitHub greys it rather than hiding it, so the
+  // reason stays visible next to the action it disables.
+  const showMerge = pr.state === "open" && !pr.draft;
 
   return (
     <section className="overflow-hidden rounded-xl border border-black/5 dark:border-white/10">
       <div className="flex items-start gap-3 p-3.5">
-        <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-[color:var(--accent)] text-white">
-          <StackIcon className="h-[18px] w-[18px]" />
+        <span
+          className={cn(
+            "grid h-8 w-8 flex-none place-items-center rounded-full text-white",
+            blocked ? "bg-rose-600 dark:bg-rose-500" : "bg-[color:var(--accent)]",
+          )}
+        >
+          <StackIcon className="h-[18px] w-[18px]" blocked={blocked} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] font-semibold text-neutral-900 dark:text-neutral-50">{title}</div>
@@ -99,8 +122,13 @@ export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PullRequest }) 
           )}
         </div>
       )}
-      {canMerge && (
-        <StackMergeButton prNum={pr.num} branch={pr.branch} mergeCount={view.mergeCount} />
+      {showMerge && (
+        <StackMergeButton
+          prNum={pr.num}
+          branch={pr.branch}
+          mergeCount={view.mergeCount}
+          blocked={blocked}
+        />
       )}
     </section>
   );

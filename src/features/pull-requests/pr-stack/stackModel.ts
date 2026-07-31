@@ -3,8 +3,10 @@
 
 import type { PrStack, PrStackEntry } from "@/lib/api";
 
-/** Per-layer readiness, in the card's own vocabulary. */
-export type StackRowStatus = "merged" | "closed" | "draft" | "conflicts" | "ready";
+/** Per-layer readiness, in the card's own vocabulary. `blocked` is GitHub's
+ * "Not ready": the layer has no conflicts but something else — a required check
+ * or review, or a base it's behind — stops it merging right now. */
+export type StackRowStatus = "merged" | "closed" | "draft" | "conflicts" | "blocked" | "ready";
 
 export interface StackRow {
   entry: PrStackEntry;
@@ -21,11 +23,12 @@ export interface StackView {
   belowCount: number;
   /** Layers a "merge stack" would land: the viewed PR plus everything below. */
   mergeCount: number;
-  /** True when a layer *below* the viewed PR can't merge (draft or conflicting).
-   * A stack merge is all-or-nothing, so one blocked layer below sinks the whole
-   * operation — offering the button anyway would only produce a server-side
-   * failure. Layers *above* are irrelevant: they aren't part of this merge. */
-  belowBlocked: boolean;
+  /** True when any layer a stack merge from here would land — the viewed PR
+   * *and* everything below it — cannot currently merge. The operation is
+   * all-or-nothing, so one such layer sinks it; offering the button anyway
+   * would only produce a server-side failure. Layers *above* are irrelevant:
+   * they are not part of this merge. */
+  mergeBlocked: boolean;
   /** True when `size` exceeds the layers we actually received. */
   partial: boolean;
 }
@@ -35,6 +38,7 @@ const STATUS_LABEL: Record<StackRowStatus, string> = {
   closed: "Closed",
   draft: "Draft",
   conflicts: "Conflicts",
+  blocked: "Not ready",
   ready: "Ready",
 };
 
@@ -43,11 +47,18 @@ export const statusLabel = (status: StackRowStatus): string => STATUS_LABEL[stat
 function rowStatus(entry: PrStackEntry): StackRowStatus {
   if (entry.state === "MERGED") return "merged";
   if (entry.state === "CLOSED") return "closed";
-  if (entry.isDraft) return "draft";
-  // Only a definitive verdict demotes a layer — GitHub reports UNKNOWN (or "")
-  // until it finishes computing mergeability, and flashing "Conflicts" during
-  // that window would be a lie.
-  if (entry.mergeable === "CONFLICTING") return "conflicts";
+  if (entry.isDraft || entry.mergeState === "DRAFT") return "draft";
+  // Conflicts first, from either signal — `mergeable` is the dedicated verdict
+  // and DIRTY is the same fact in `mergeStateStatus`.
+  if (entry.mergeable === "CONFLICTING" || entry.mergeState === "DIRTY") return "conflicts";
+  // `mergeable` covers conflicts ONLY. A layer held by a required check or
+  // review still reports MERGEABLE, so readiness has to come from
+  // `mergeStateStatus` — this is what GitHub's own card shows as "Not ready".
+  if (entry.mergeState === "BLOCKED" || entry.mergeState === "BEHIND") return "blocked";
+  // CLEAN and HAS_HOOKS merge outright. UNSTABLE means only non-required checks
+  // are failing, which GitHub still allows. UNKNOWN/"" are indefinite — GitHub
+  // hasn't computed it yet, and guessing "blocked" there would be as wrong as
+  // guessing "conflicts" before mergeability resolves.
   return "ready";
 }
 
@@ -70,16 +81,19 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
   const currentIndex = rows.findIndex((row) => row.isCurrent);
   // Rows after the current one in this top-first list are the layers below it.
   const belowCount = currentIndex < 0 ? 0 : rows.length - currentIndex - 1;
-  // Everything after the current row in this top-first list is below it.
-  const below = currentIndex < 0 ? [] : rows.slice(currentIndex + 1);
+  // The merge set: the current row plus everything below it in this top-first
+  // list. These are exactly the layers a stack merge from here would land.
+  const mergeSet = currentIndex < 0 ? [] : rows.slice(currentIndex);
   return {
     rows,
     baseRef: stack.baseRef,
     belowCount,
     mergeCount: currentIndex < 0 ? 0 : belowCount + 1,
-    // An already-merged or closed layer below is fine — the stack merge only
-    // lands the *unmerged* ones. Draft and conflicting are the real blockers.
-    belowBlocked: below.some((row) => row.status === "draft" || row.status === "conflicts"),
+    // An already-merged or closed layer is fine — the stack merge only lands the
+    // *unmerged* ones. Draft, conflicts, and blocked are the real stoppers.
+    mergeBlocked: mergeSet.some(
+      (row) => row.status === "draft" || row.status === "conflicts" || row.status === "blocked",
+    ),
     partial: stack.size > stack.entries.length,
   };
 }

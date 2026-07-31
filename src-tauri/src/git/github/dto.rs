@@ -585,6 +585,8 @@ pub(super) struct GqlStackPrRef {
     pub(super) head_ref_name: String,
     #[serde(default)]
     pub(super) mergeable: Option<String>,
+    #[serde(default)]
+    pub(super) merge_state_status: Option<String>,
 }
 
 // `PUT /repos/{o}/{r}/pulls/{n}/merge-async` and its polling GET share one
@@ -627,6 +629,7 @@ impl GqlStackEntry {
                     is_draft: pr.is_draft,
                     head_ref: pr.head_ref_name,
                     mergeable: pr.mergeable.unwrap_or_default(),
+                    merge_state: pr.merge_state_status.unwrap_or_default(),
                 })
             })
             .collect();
@@ -933,6 +936,32 @@ mod tests {
         assert!(!stack.entries[0].is_draft);
         assert_eq!(stack.entries[0].head_ref, "");
         assert_eq!(stack.entries[0].mergeable, "");
+        assert_eq!(stack.entries[0].merge_state, "");
+    }
+
+    // Also captured verbatim, from the stack GitLane's own two PRs formed. This
+    // one is the counter-example that matters: both layers report
+    // `mergeable: MERGEABLE`, yet #309 is `BLOCKED`. Reading only `mergeable`
+    // called that layer ready and offered a merge GitHub refuses, so the pairing
+    // of the two fields is pinned here.
+    const REAL_BLOCKED_STACK: &str = r#"{"data":{"repository":{"pullRequest":{"stackEntry":{"position":2,"stack":{"number":310,"size":2,"baseRefName":"latest","entries":{"nodes":[{"position":1,"pullRequest":{"number":308,"title":"Match the PR detail panel to the other center workspaces","state":"OPEN","isDraft":false,"headRefName":"fix/pr-detail-panel-surface","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}},{"position":2,"pullRequest":{"number":309,"title":"Show and merge stacked pull requests","state":"OPEN","isDraft":false,"headRefName":"feat/stacked-pull-requests","mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED"}}]}}}}}}}"#;
+
+    #[test]
+    fn carries_merge_state_alongside_mergeable() {
+        let parsed: GqlStackResp = serde_json::from_str(REAL_BLOCKED_STACK).unwrap();
+        let stack = parsed
+            .data
+            .repository
+            .pull_request
+            .stack_entry
+            .expect("stackEntry present")
+            .into_stack();
+        assert_eq!(stack.number, 310);
+        // Both layers look fine by `mergeable` alone …
+        assert!(stack.entries.iter().all(|e| e.mergeable == "MERGEABLE"));
+        // … but only the bottom one can actually merge.
+        assert_eq!(stack.entries[0].merge_state, "CLEAN");
+        assert_eq!(stack.entries[1].merge_state, "BLOCKED");
     }
 
     #[test]

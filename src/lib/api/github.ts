@@ -113,8 +113,25 @@ export interface PrStackEntry {
   state: PrStateRaw;
   isDraft: boolean;
   headRef: string;
+  /** Conflicts only — NOT whether this layer can merge. See `mergeState`. */
   mergeable: Mergeable;
+  /** What actually decides whether a layer can merge, and what GitHub's own
+   * stack card renders Ready/Not-ready from. A PR held by a required check or
+   * review reports `MERGEABLE` together with `BLOCKED`. */
+  mergeState: MergeState;
 }
+
+/** GitHub's `mergeStateStatus`; "" when absent. */
+export type MergeState =
+  | "CLEAN"
+  | "BLOCKED"
+  | "BEHIND"
+  | "DIRTY"
+  | "DRAFT"
+  | "HAS_HOOKS"
+  | "UNSTABLE"
+  | "UNKNOWN"
+  | "";
 
 /** The stack a pull request belongs to.
  *

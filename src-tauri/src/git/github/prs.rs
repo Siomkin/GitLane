@@ -30,7 +30,12 @@ const MAX_COMMIT_PAGES: usize = 100;
 // stack is a review unit a human reads top to bottom, and `size` comes back
 // alongside `entries` so a stack past the cap is *detectable* by the caller
 // rather than silently short.
-const PR_STACK_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){stackEntry{position stack{number size baseRefName entries(first:50){nodes{position pullRequest{number title state isDraft headRefName mergeable}}}}}}}}";
+//
+// `mergeStateStatus` — not `mergeable` — decides whether a layer can actually
+// merge. `mergeable` reports *conflicts* only, so a PR blocked by a required
+// check or review still answers MERGEABLE, which is why GitHub's own card can
+// label such a layer "Not ready" while `mergeable` looks fine.
+const PR_STACK_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){stackEntry{position stack{number size baseRefName entries(first:50){nodes{position pullRequest{number title state isDraft headRefName mergeable mergeStateStatus}}}}}}}}";
 
 /// Poll budget for the asynchronous stack merge: 40 × 1.5s ≈ 60s. GitHub keeps
 /// the result readable for 24h, so giving up here loses nothing — it only stops

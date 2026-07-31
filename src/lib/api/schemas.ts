@@ -237,6 +237,18 @@ export const prCommitListSchema = z.object({
   truncated: z.boolean(),
 });
 
+const mergeStateSchema = z.enum([
+  "CLEAN",
+  "BLOCKED",
+  "BEHIND",
+  "DIRTY",
+  "DRAFT",
+  "HAS_HOOKS",
+  "UNSTABLE",
+  "UNKNOWN",
+  "",
+]);
+
 export const prStackEntrySchema = z.object({
   position: z.number(),
   number: z.number(),
@@ -245,6 +257,10 @@ export const prStackEntrySchema = z.object({
   isDraft: z.boolean(),
   headRef: z.string(),
   mergeable: mergeableSchema,
+  // Non-exhaustive on purpose: GitHub can add a state, and an unrecognised one
+  // must not fail the whole stack read. It degrades to UNKNOWN, which the view
+  // model treats as "don't claim this layer is blocked".
+  mergeState: mergeStateSchema.catch("UNKNOWN"),
 });
 
 export const prStackSchema = z.object({

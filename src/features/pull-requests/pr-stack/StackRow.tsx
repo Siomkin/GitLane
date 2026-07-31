@@ -12,7 +12,10 @@ const PILL: Record<StackRowStatus, string> = {
   merged: "border-violet-500/25 bg-violet-500/10 text-violet-600 dark:text-violet-400",
   closed: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
   draft: "border-black/10 bg-black/[0.04] text-neutral-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-400",
-  conflicts: "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  conflicts: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  // Amber, like GitHub's "Not ready": the layer isn't broken, it's just waiting
+  // on something (a required check, a review, or its base).
+  blocked: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
 };
 
 const ICON: Record<StackRowStatus, string> = {
@@ -20,11 +23,21 @@ const ICON: Record<StackRowStatus, string> = {
   merged: "text-violet-500",
   closed: "text-rose-500",
   draft: "text-neutral-400",
-  conflicts: "text-amber-500",
+  conflicts: "text-rose-500",
+  blocked: "text-amber-500",
 };
 
 function StatusIcon({ status }: { status: StackRowStatus }) {
   const common = "h-[15px] w-[15px] flex-none";
+  // A filled dot for "waiting", matching GitHub's amber marker on a Not-ready
+  // layer; a hollow ring for the states that carry no progress.
+  if (status === "blocked") {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" className={cn(common, ICON[status])}>
+        <circle cx="12" cy="12" r="7" />
+      </svg>
+    );
+  }
   if (status === "conflicts" || status === "draft") {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cn(common, ICON[status])}>

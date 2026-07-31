@@ -3,6 +3,7 @@
 // PR write is in flight so no concurrent merge can start.
 
 import { useState } from "react";
+import { cn } from "@/lib/cn";
 import type { MergeMethod } from "@/lib/api";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
@@ -13,11 +14,15 @@ export function StackMergeButton({
   prNum,
   branch,
   mergeCount,
+  blocked,
 }: {
   prNum: number;
   branch: string;
   /** Layers this merge would land, including the viewed PR. */
   mergeCount: number;
+  /** A layer in the merge set can't merge. Rendered disabled rather than
+   * hidden, so the action stays visible next to the reason above it. */
+  blocked: boolean;
 }) {
   const mergeStack = usePulls((s) => s.mergeStack);
   const merging = usePulls((s) =>
@@ -52,12 +57,23 @@ export function StackMergeButton({
       <button
         type="button"
         onClick={doMerge}
-        disabled={busy}
+        disabled={busy || blocked}
         aria-busy={merging}
-        className="flex h-8 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:bg-emerald-500"
+        title={blocked ? "Some pull requests in this stack cannot be merged" : undefined}
+        className={cn(
+          "flex h-8 items-center gap-2 rounded-lg px-3 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
+          blocked
+            ? "cursor-not-allowed bg-black/[0.06] text-neutral-400 dark:bg-white/10"
+            : "bg-emerald-600 text-white hover:brightness-110 disabled:opacity-45 dark:bg-emerald-500",
+        )}
       >
         {merging ? "Merging stack…" : "Merge stack"}
-        <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-black/20 px-1 text-[11px] font-semibold tabular-nums">
+        <span
+          className={cn(
+            "grid h-[18px] min-w-[18px] place-items-center rounded-full px-1 text-[11px] font-semibold tabular-nums",
+            blocked ? "bg-black/10 dark:bg-white/10" : "bg-black/20",
+          )}
+        >
           {mergeCount}
         </span>
       </button>
