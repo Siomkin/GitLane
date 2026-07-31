@@ -66,13 +66,13 @@ export function PullRequestDetail() {
     // The list is still being fetched from gh — show a skeleton, not "empty".
     if (prsLoading && pullRequests.length === 0) {
       return (
-        <main className="flex min-h-0 min-w-0 flex-col bg-neutral-50 px-6 pb-7 pt-5 dark:bg-neutral-900">
+        <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white px-6 pb-7 pt-5 shadow-sm dark:border-white/5 dark:bg-neutral-800">
           <PrDetailSkeleton />
         </main>
       );
     }
     return (
-      <main className="flex min-h-0 min-w-0 flex-col items-center justify-center gap-2.5 bg-neutral-50 text-neutral-400 dark:bg-neutral-900">
+      <main className="flex min-h-0 min-w-0 flex-col items-center justify-center gap-2.5 overflow-hidden rounded-xl border border-black/5 bg-white text-neutral-400 shadow-sm dark:border-white/5 dark:bg-neutral-800">
         <PullRequestIcon className="h-8 w-8" />
         <span className="text-[13px]">No pull requests in this view</span>
       </main>
@@ -89,7 +89,7 @@ export function PullRequestDetail() {
   const detailError = prDetailLoadingByNum[summary.num] ? null : (prDetailError[summary.num] ?? null);
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-col bg-neutral-50 dark:bg-neutral-900">
+    <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800">
       <PrHeader pr={pr} />
       <Body
         pr={pr}
