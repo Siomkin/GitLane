@@ -6,12 +6,30 @@ on:
   # Manual runs by writers (dispatch needs write access): post-merge smoke
   # tests, and producing the required status checks on workflow-bootstrap PRs
   # that swap their own triggers (neither trigger side fires on such PRs).
+  #
+  # A dispatched run's check runs land on the commit but NOT in any pull
+  # request's rollup — GitHub associates a workflow_dispatch run with a ref, not
+  # a PR — so `gh pr checks` keeps reporting the PR as missing them. Use it to
+  # verify a commit, not to satisfy a PR gate.
   workflow_dispatch:
   # Dependency advisories can appear without a repository change. Re-scan the
   # current lockfiles weekly so the gate does not depend only on PR activity.
   schedule:
     - cron: "17 4 * * 1"
   # Base-branch workflow controls runner selection; see the checkout refs below.
+  #
+  # `branches` filters on the PR's base. A stacked pull request targets the layer
+  # below it, not `latest` — but once it is a member of a stack GitHub resolves
+  # the base through the stack, so stack members DO match this filter and run CI
+  # normally.
+  #
+  # The gap is the ordering: a PR exists before it joins a stack, so its `opened`
+  # event is evaluated against the intermediate base and skipped. Nothing fires
+  # again until the next PR event, which is why a freshly opened top layer can sit
+  # with no CI while every layer below it is green. Add the branch to the stack
+  # *before* opening its PR (what `gh stack submit` does), or reopen the PR
+  # afterwards to re-trigger. A dispatched run does not fill this in — see the
+  # workflow_dispatch note above.
   pull_request_target:
     branches: [latest]
 
