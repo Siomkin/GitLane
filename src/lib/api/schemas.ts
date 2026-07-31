@@ -48,6 +48,7 @@ import type {
   PrReview,
   PrStack,
   PrStackEntry,
+  PrStackMembership,
   PullRequestDetail,
   PullRequestSummary,
   ReviewThread,
@@ -266,6 +267,13 @@ export const prStackEntrySchema = z.object({
   mergeState: mergeStateSchema.catch("UNKNOWN"),
 });
 
+export const prStackMembershipSchema = z.object({
+  prNumber: z.number(),
+  stackNumber: z.number(),
+  position: z.number(),
+  size: z.number(),
+});
+
 export const prStackSchema = z.object({
   number: z.number(),
   size: z.number(),
@@ -405,6 +413,7 @@ assertEqual<z.infer<typeof prCommitSchema>, PrCommit>(true);
 assertEqual<z.infer<typeof prCommitListSchema>, PrCommitList>(true);
 assertEqual<z.infer<typeof prStackEntrySchema>, PrStackEntry>(true);
 assertEqual<z.infer<typeof prStackSchema>, PrStack>(true);
+assertEqual<z.infer<typeof prStackMembershipSchema>, PrStackMembership>(true);
 assertEqual<z.infer<typeof prReviewSchema>, PrReview>(true);
 assertEqual<z.infer<typeof prLabelSchema>, PrLabel>(true);
 assertEqual<z.infer<typeof pullRequestSummarySchema>, PullRequestSummary>(true);

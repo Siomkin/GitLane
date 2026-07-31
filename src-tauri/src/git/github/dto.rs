@@ -8,7 +8,9 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{PrAuthor, PrComment, PrCommit, PrStack, PrStackEntry, ReviewThread};
+use crate::git::types::{
+    PrAuthor, PrComment, PrCommit, PrStack, PrStackEntry, PrStackMembership, ReviewThread,
+};
 
 #[derive(Deserialize)]
 pub(super) struct GhUser {
@@ -589,6 +591,41 @@ pub(super) struct GqlStackPrRef {
     pub(super) merge_state_status: Option<String>,
 }
 
+// `GET /repos/{o}/{r}/stacks` — every stack in the repo, each with its pull
+// requests already ordered bottom-to-top. REST v3, so snake_case. The list
+// projection is slimmer than the single-stack GET (no title/user), which is
+// exactly enough for the PR-list badge.
+#[derive(Deserialize)]
+pub(super) struct GhStackListItem {
+    #[serde(default)]
+    pub(super) number: u64,
+    #[serde(default)]
+    pub(super) pull_requests: Vec<GhStackListPr>,
+}
+#[derive(Deserialize)]
+pub(super) struct GhStackListPr {
+    pub(super) number: u64,
+}
+
+impl GhStackListItem {
+    /// Flatten to one membership per pull request. Position is the index in
+    /// `pull_requests`, which GitHub returns bottom-to-top — the same 1-based
+    /// scheme `PullRequest.stackEntry.position` uses.
+    pub(super) fn into_memberships(self) -> Vec<PrStackMembership> {
+        let size = self.pull_requests.len() as u64;
+        self.pull_requests
+            .into_iter()
+            .enumerate()
+            .map(|(index, pr)| PrStackMembership {
+                pr_number: pr.number,
+                stack_number: self.number,
+                position: index as u64 + 1,
+                size,
+            })
+            .collect()
+    }
+}
+
 // `PUT /repos/{o}/{r}/pulls/{n}/merge-async` and its polling GET share one
 // response schema. REST v3 is already snake_case, so the field names map
 // directly. `details` carries the uuid while pending, and the human-readable
@@ -962,6 +999,41 @@ mod tests {
         // … but only the bottom one can actually merge.
         assert_eq!(stack.entries[0].merge_state, "CLEAN");
         assert_eq!(stack.entries[1].merge_state, "BLOCKED");
+    }
+
+    #[test]
+    fn flattens_repository_stacks_into_per_pr_memberships() {
+        // Captured from `GET /repos/{o}/{r}/stacks`: the list projection is
+        // slimmer than the single-stack GET, and its `pull_requests` are already
+        // ordered bottom-to-top, which is what makes index+1 the position.
+        let raw = r#"[{"id":81391,"number":307,"base":{"ref":"latest"},"open":true,"pull_requests":[
+            {"number":305,"state":"open","draft":true,"merged_at":null,"head":{"ref":"a","sha":"s1"}},
+            {"number":306,"state":"open","draft":true,"merged_at":null,"head":{"ref":"b","sha":"s2"}}
+        ]}]"#;
+        let stacks: Vec<GhStackListItem> = serde_json::from_str(raw).unwrap();
+        let memberships: Vec<_> = stacks
+            .into_iter()
+            .flat_map(GhStackListItem::into_memberships)
+            .collect();
+        assert_eq!(memberships.len(), 2);
+        assert_eq!(memberships[0].pr_number, 305);
+        assert_eq!(memberships[0].position, 1);
+        assert_eq!(memberships[1].pr_number, 306);
+        assert_eq!(memberships[1].position, 2);
+        // Every member reports the same stack number and total.
+        assert!(memberships
+            .iter()
+            .all(|m| m.stack_number == 307 && m.size == 2));
+    }
+
+    #[test]
+    fn a_repository_with_no_stacks_flattens_to_nothing() {
+        let stacks: Vec<GhStackListItem> = serde_json::from_str("[]").unwrap();
+        assert!(stacks
+            .into_iter()
+            .flat_map(GhStackListItem::into_memberships)
+            .next()
+            .is_none());
     }
 
     #[test]

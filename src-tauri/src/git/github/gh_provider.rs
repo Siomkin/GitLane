@@ -2,8 +2,8 @@
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
@@ -117,6 +117,12 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "pull request stack")?;
         prs::pr_stack(&ctx.workdir, &ctx.repository, number, token.as_deref())
             .map_err(|err| GithubError::from_command("pull request stack", err))
+    }
+
+    fn list_stacks(&self, ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError> {
+        let token = self.token_for_context(ctx, "repository stacks")?;
+        prs::list_stacks(&ctx.workdir, &ctx.repository, token.as_deref())
+            .map_err(|err| GithubError::from_command("repository stacks", err))
     }
 
     fn merge_stack(

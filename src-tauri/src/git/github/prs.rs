@@ -10,8 +10,8 @@ use super::domain::GithubRepository;
 use super::dto::*;
 use super::pagination::{collect_cursor_pages, CursorPage};
 use crate::git::types::{
-    PrCheck, PrCommitList, PrLabel, PrReview, PrStack, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary,
+    PrCheck, PrCommitList, PrLabel, PrReview, PrStack, PrStackMembership, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary,
 };
 
 // `gh pr view --json commits` caps its commit projection and carries no
@@ -443,6 +443,31 @@ fn parse_surviving_head_ref(raw: &str) -> Option<String> {
     }
     pr.head_ref?;
     pr.head_ref_name.filter(|name| !name.trim().is_empty())
+}
+
+/// Every stack in the repo, flattened to one membership per pull request.
+///
+/// This exists because the PR **list** needs a stack badge on every row, and the
+/// per-PR GraphQL read only covers a PR whose detail is open. The repo-wide REST
+/// endpoint answers the whole list in one call instead of one query per row.
+pub fn list_stacks(
+    workdir: &str,
+    repository: &GithubRepository,
+    token: Option<&str>,
+) -> Result<Vec<PrStackMembership>, String> {
+    let path = format!("repos/{}/{}/stacks", repository.owner, repository.name);
+    let args = stacks_list_args(&repository.host, &path);
+    let raw = run_gh(workdir, &args, token)?;
+    let stacks: Vec<GhStackListItem> = serde_json::from_str(&raw)
+        .map_err(|e| format!("failed to parse repository stacks: {e}"))?;
+    Ok(stacks
+        .into_iter()
+        .flat_map(GhStackListItem::into_memberships)
+        .collect())
+}
+
+fn stacks_list_args<'a>(host: &'a str, path: &'a str) -> Vec<&'a str> {
+    vec!["api", "--hostname", host, path]
 }
 
 /// Merge a stack atomically: `number` and every unmerged layer below it land in

@@ -8,6 +8,7 @@ import { useUi } from "@/store/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
 import { PlusIcon } from "@/components/ui/icons";
+import { StackBadge } from "./pr-stack";
 import { stateView } from "./prState";
 import { PrUpdatedStatus } from "./PrUpdatedStatus";
 
@@ -28,6 +29,7 @@ function PullRequestsPanel() {
   const prSelected = useUi((state) => state.prSelected);
   const selectPr = useUi((state) => state.selectPr);
   const pullRequests = usePulls((state) => state.pullRequests);
+  const stackBadges = usePulls((state) => state.prStackBadges);
   const prsLoading = usePulls((state) => state.prsLoading);
   const prError = usePulls((state) => state.prError);
   const prsFetchedAt = usePulls((state) => state.prsFetchedAt);
@@ -188,6 +190,7 @@ function PullRequestsPanel() {
                     <span className={cn("h-1.5 w-1.5 rounded-full", sv.dot)} />
                     {sv.label}
                   </span>
+                  {stackBadges[pr.num] && <StackBadge membership={stackBadges[pr.num]} />}
                   <span className="ml-auto text-neutral-400">{pr.age}</span>
                 </div>
                 <div className="mt-1 line-clamp-2 text-[13px] font-semibold leading-snug text-neutral-800 dark:text-neutral-100">

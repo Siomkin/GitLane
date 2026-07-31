@@ -13,6 +13,7 @@ import {
   type MergeMethod,
   type PrCheck,
   type PrStack,
+  type PrStackMembership,
   type PrStateAction,
   type ReviewAction,
   type ReviewThread,
@@ -104,6 +105,10 @@ interface PullsState {
   prDetailLoadingByNum: Record<number, number>;
   /** Per-PR detail-load error (so the detail body can retry, not blank the list). */
   prDetailError: Record<number, string>;
+  /** Stack membership for every PR in the list, keyed by PR number — the badge
+   * on each row. Fetched with the list (one call for all of them), unlike
+   * `prStacks`, which is per-PR and only covers an open detail. */
+  prStackBadges: Record<number, PrStackMembership>;
   /** The stack each PR belongs to, fetched with its detail. A PR absent from
    * this map is simply not stacked — by far the common case — so there is no
    * separate loading or error state for it. */
@@ -218,6 +223,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prDetailLoading: false,
   prDetailLoadingByNum: {},
   prDetailError: {},
+  prStackBadges: {},
   prStacks: {},
   prChecks: {},
   prChecksLoading: false,
@@ -251,6 +257,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       pullRequests: [],
       prDetails: {},
       prDetailError: {},
+      prStackBadges: {},
       prStacks: {},
       prChecks: {},
       prChecksError: {},
@@ -400,7 +407,14 @@ export const usePulls = create<PullsState>((set, get) => ({
         prsRefreshKey: null,
       });
     try {
-      const list = await api.listPullRequests(path, account);
+      // Stack membership for the whole list in one call, so every row can carry
+      // its badge — the per-PR stack read only covers an open detail. Like the
+      // detail's companion read, a failure must not cost the list: `undefined`
+      // (unreadable) keeps the previous badges, `[]` means no stacks exist.
+      const [list, memberships] = await Promise.all([
+        api.listPullRequests(path, account),
+        api.repositoryStacks(path, account).catch(() => undefined),
+      ]);
       // Superseded after a reset (repo switch) — a newer load owns the slot.
       if (!prListLoadOwnsSlot(requestId)) return;
       // Fetched under a now-stale repo/account (an account change queued a reload
@@ -412,6 +426,9 @@ export const usePulls = create<PullsState>((set, get) => ({
         const prs = list.map(summaryToPr);
         set((s) => ({
           pullRequests: prs,
+          ...(memberships === undefined
+            ? {}
+            : { prStackBadges: Object.fromEntries(memberships.map((m) => [m.prNumber, m])) }),
           // Force already cleared the caches above; on a quiet/background refresh,
           // evict the per-PR caches for any PR whose summary changed so no tab
           // (detail/diff/checks) keeps showing stale data.

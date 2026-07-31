@@ -6,20 +6,23 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Mock the single IPC boundary inline (the canonical Vitest hoisted pattern) so
 // the store's async loaders run headlessly and we can drive gh failures.
 const invokeMock = vi.hoisted(() => vi.fn());
-// `loadPrDetail` fires a companion `pull_request_stack` read alongside the
-// detail. Most tests here queue responses positionally with
-// `mockReturnValueOnce`, and that queue is consumed in CALL order regardless of
-// arguments — so without this the stack call silently eats the response meant
-// for the next command, and the test stops testing what it says it does.
-// Answering it outside `invokeMock` keeps every positional queue (and every
-// call-count assertion) about the commands the test actually cares about.
-// Tests that need a real stack set `stackResponse`.
+// Two loads fire a companion stack read: `loadPrDetail` → `pull_request_stack`,
+// and `loadPullRequests` → `repository_stacks` (the list badges). Most tests
+// here queue responses positionally with `mockReturnValueOnce`, and that queue
+// is consumed in CALL order regardless of arguments — so without this a
+// companion call silently eats the response meant for the next command, and the
+// test stops testing what it says it does. Answering them outside `invokeMock`
+// keeps every positional queue (and every call-count assertion) about the
+// commands the test actually cares about. Tests that need real stack data set
+// `stackResponse` / `stackBadgesResponse`.
 const stackResponse = vi.hoisted(() => ({ current: null as unknown }));
+const stackBadgesResponse = vi.hoisted(() => ({ current: [] as unknown }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (command: string, args?: unknown) =>
-    command === "pull_request_stack"
-      ? Promise.resolve(stackResponse.current)
-      : invokeMock(command, args),
+  invoke: (command: string, args?: unknown) => {
+    if (command === "pull_request_stack") return Promise.resolve(stackResponse.current);
+    if (command === "repository_stacks") return Promise.resolve(stackBadgesResponse.current);
+    return invokeMock(command, args);
+  },
 }));
 
 import { useNotifications } from "./notifications";
@@ -101,6 +104,7 @@ function deferred<T>() {
 beforeEach(() => {
   invokeMock.mockReset();
   stackResponse.current = null;
+  stackBadgesResponse.current = [];
   // Toasts outlive a test otherwise, so "stays silent" assertions would see the
   // previous test's card.
   useNotifications.getState().dismissAll();
@@ -533,6 +537,10 @@ describe("pulls PR list refresh coalescing", () => {
     quietFetch.resolve([prSummary(7)]);
     await Promise.resolve();
     await Promise.resolve();
+    // The list load awaits `Promise.all([list, repositoryStacks])`, which settles
+    // one microtask later than a bare await — so reaching the queued fetch takes
+    // an extra tick. Behaviour is unchanged; only the tick count is.
+    await Promise.resolve();
 
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(forcedSettled).toBe(false);
@@ -671,6 +679,9 @@ describe("pulls PR list refresh coalescing", () => {
     prefetch.resolve([prSummary(7)]);
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    // One more tick than before: the list load now awaits `Promise.all([list,
+    // repositoryStacks])`, which settles a microtask later than a bare await.
     await Promise.resolve();
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(usePulls.getState().prsRefreshQueued).toBeNull();
@@ -1426,6 +1437,35 @@ describe("stack cache (rides the detail load)", () => {
         mergeState: "CLEAN",
       },
     ],
+  });
+
+  it("indexes the repo's stack badges by PR number with the list", async () => {
+    // One call covers every row; the per-PR read can't, since it only runs for
+    // an open detail.
+    stackBadgesResponse.current = [
+      { prNumber: 308, stackNumber: 310, position: 1, size: 2 },
+      { prNumber: 309, stackNumber: 310, position: 2, size: 2 },
+    ];
+    invokeMock.mockResolvedValueOnce([prSummary(308), prSummary(309)]);
+
+    await usePulls.getState().loadPullRequests(true);
+
+    expect(usePulls.getState().prStackBadges[309]).toMatchObject({ position: 2, size: 2 });
+    expect(usePulls.getState().prStackBadges[308]?.stackNumber).toBe(310);
+  });
+
+  it("keeps the previous badges when the stack read fails", async () => {
+    // Same contract as the per-PR stack: a failed read is not evidence the
+    // stacks are gone, and it must never cost the list itself.
+    usePulls.setState({ prStackBadges: { 309: { prNumber: 309, stackNumber: 310, position: 2, size: 2 } } });
+    stackBadgesResponse.current = Promise.reject(new Error("stacks blew up"));
+    invokeMock.mockResolvedValueOnce([prSummary(309)]);
+
+    await usePulls.getState().loadPullRequests(true);
+
+    expect(usePulls.getState().prStackBadges[309]?.position).toBe(2);
+    expect(usePulls.getState().pullRequests).toHaveLength(1);
+    expect(usePulls.getState().prError).toBeNull();
   });
 
   it("publishes the stack with the detail", async () => {

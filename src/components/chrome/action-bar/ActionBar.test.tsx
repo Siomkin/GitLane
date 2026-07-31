@@ -2,7 +2,18 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+// A PR list load also fetches the repo's stacks for the row badges, and a detail
+// load fetches its own stack. Neither is what these tests assert on, and both
+// would otherwise land in `invokeMock` — breaking `toHaveBeenLastCalledWith`
+// (the badge read would be the last call) and the positional counts. Answer them
+// outside the mock so it only sees the commands under test.
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, args?: unknown) => {
+    if (command === "repository_stacks") return Promise.resolve([]);
+    if (command === "pull_request_stack") return Promise.resolve(null);
+    return invokeMock(command, args);
+  },
+}));
 
 import { ForgeKind, type BranchInfo, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";

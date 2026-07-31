@@ -6,8 +6,8 @@
 //! below this boundary.
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 
@@ -38,6 +38,9 @@ pub trait GithubProvider {
     /// failing: "this PR is not in a stack" is the truthful answer there, and
     /// it keeps the stack card silently absent instead of erroring per PR.
     fn pr_stack(&self, ctx: &GithubContext, number: u64) -> Result<Option<PrStack>, GithubError>;
+    /// Every stack in the repo, flattened per pull request, for the list badge.
+    /// Empty on a forge without stacks — same reasoning as `pr_stack`.
+    fn list_stacks(&self, ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError>;
     /// Atomically merge `number` and every unmerged layer below it. GitHub-only,
     /// like [`GithubProvider::pr_stack`] — but unlike a read, a forge without
     /// stacks must *refuse* rather than answer emptily, since silently doing
@@ -171,6 +174,15 @@ impl GithubService {
     ) -> Result<Option<PrStack>, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.pr_stack(&ctx, number)
+    }
+
+    pub fn list_stacks(
+        &self,
+        workdir: &str,
+        account: Option<&GithubAccountRef>,
+    ) -> Result<Vec<PrStackMembership>, GithubError> {
+        let (provider, ctx) = self.context(workdir, account)?;
+        provider.list_stacks(&ctx)
     }
 
     pub fn merge_stack(

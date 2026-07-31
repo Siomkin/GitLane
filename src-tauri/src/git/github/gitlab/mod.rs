@@ -24,8 +24,8 @@ mod transport;
 use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -153,6 +153,11 @@ impl GithubProvider for GitLabProvider {
     /// trait doc for why it answers `None` instead of "not supported yet".
     fn pr_stack(&self, _ctx: &GithubContext, _number: u64) -> Result<Option<PrStack>, GithubError> {
         Ok(None)
+    }
+
+    /// GitLab has no stacks, so no pull request is ever in one.
+    fn list_stacks(&self, _ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError> {
+        Ok(Vec::new())
     }
 
     fn merge_stack(

@@ -1210,6 +1210,24 @@ pub struct PrStackEntry {
     pub merge_state: String,
 }
 
+/// One pull request's place in a stack, for the PR **list** badge.
+///
+/// The list needs this for every row at once, which the per-PR
+/// [`PrStack`] read cannot provide — it is only fetched when a detail opens.
+/// The repo-wide `/stacks` endpoint answers all of them in a single call, so
+/// this is deliberately the flattened, badge-sized projection rather than a
+/// second copy of the full stack.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStackMembership {
+    pub pr_number: u64,
+    /// The stack's own number — from the same sequence as issues and PRs.
+    pub stack_number: u64,
+    /// 1-based from the trunk, matching [`PrStackEntry::position`].
+    pub position: u64,
+    pub size: u64,
+}
+
 /// The stack one pull request belongs to, as rendered by the stack card.
 ///
 /// `number` is the stack's own number, which GitHub draws from the **same

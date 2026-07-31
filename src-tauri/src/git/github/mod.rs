@@ -39,8 +39,8 @@ mod signin;
 mod threads;
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use service::GithubService;
@@ -115,6 +115,13 @@ pub fn pr_stack(
     account: Option<&GithubAccountRef>,
 ) -> Result<Option<PrStack>, String> {
     ipc(GithubService::default().pr_stack(workdir, number, account))
+}
+
+pub fn list_stacks(
+    workdir: &str,
+    account: Option<&GithubAccountRef>,
+) -> Result<Vec<PrStackMembership>, String> {
+    ipc(GithubService::default().list_stacks(workdir, account))
 }
 
 pub fn merge_stack(

@@ -25,10 +25,11 @@ use git::types::{
     FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
     GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
     HistorySearchQuery, IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
-    PrStack, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent,
-    RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary,
-    ResetPreview, ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
+    PrStack, PrStackMembership, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef,
+    RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity,
+    RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList, SigningKey, StashEntry,
+    WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -1668,6 +1669,17 @@ async fn pull_request_stack(
     blocking(move || git::github::pr_stack(&path, number, account.as_ref())).await
 }
 
+/// Every stack in the repo, flattened per pull request. Loaded with the PR list
+/// so each row can carry its stack badge — one call for the whole list rather
+/// than a per-row query.
+#[tauri::command]
+async fn repository_stacks(
+    path: String,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<PrStackMembership>, String> {
+    blocking(move || git::github::list_stacks(&path, account.as_ref())).await
+}
+
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
 #[tauri::command]
 async fn pull_request_review_threads(
@@ -2283,6 +2295,7 @@ pub fn run() {
             pull_request_checks,
             pull_request_commits,
             pull_request_stack,
+            repository_stacks,
             pull_request_diff,
             pull_request_review_threads,
             resolve_review_thread,

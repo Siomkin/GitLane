@@ -7,6 +7,7 @@ import {
   githubAccountSchema,
   prCheckSchema,
   prCommitListSchema,
+  prStackMembershipSchema,
   prStackSchema,
   pullRequestDetailSchema,
   pullRequestSummarySchema,
@@ -132,6 +133,18 @@ export type MergeState =
   | "UNSTABLE"
   | "UNKNOWN"
   | "";
+
+/** One pull request's place in a stack, for the PR list badge.
+ *
+ * The list needs this for every row at once, which the per-PR `PrStack` read
+ * can't provide — it only covers a PR whose detail is open. */
+export interface PrStackMembership {
+  prNumber: number;
+  stackNumber: number;
+  /** 1-based from the trunk, matching `PrStackEntry.position`. */
+  position: number;
+  size: number;
+}
 
 /** The stack a pull request belongs to.
  *
@@ -308,6 +321,18 @@ export const githubApi = {
       prStackSchema.nullable(),
       await invoke("pull_request_stack", { path, number, account: account ?? null }),
       "pull_request_stack",
+    ),
+
+  /** Every stack in the repo, flattened per pull request. One call for the whole
+   * PR list, rather than a per-row query. Empty on a forge without stacks. */
+  repositoryStacks: async (
+    path: string,
+    account?: GithubAccountRef | null,
+  ): Promise<PrStackMembership[]> =>
+    parse(
+      z.array(prStackMembershipSchema),
+      await invoke("repository_stacks", { path, account: account ?? null }),
+      "repository_stacks",
     ),
 
   /** Atomically merge a PR together with every unmerged layer below it in its
