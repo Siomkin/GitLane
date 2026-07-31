@@ -10,7 +10,7 @@ const entry = (position: number, number: number, over: Partial<PrStackEntry> = {
   isDraft: false,
   headRef: `branch-${position}`,
   mergeable: "MERGEABLE",
-  mergeState: "CLEAN",
+  checks: "SUCCESS",
   ...over,
 });
 
@@ -47,8 +47,8 @@ describe("stackView", () => {
     // GitHub reports UNKNOWN until it computes mergeability; showing "Conflicts"
     // during that window would be wrong.
     const pending = stack([
-      entry(1, 24, { mergeable: "UNKNOWN", mergeState: "UNKNOWN" }),
-      entry(2, 30, { mergeable: "", mergeState: "" }),
+      entry(1, 24, { mergeable: "UNKNOWN" }),
+      entry(2, 30, { mergeable: "" }),
     ]);
     expect(stackView(pending, 30).rows.map((r) => r.status)).toEqual(["ready", "ready"]);
   });
@@ -62,31 +62,38 @@ describe("stackView", () => {
     expect(stackView(mixed, 32).rows.map((r) => r.status)).toEqual(["conflicts", "draft", "merged"]);
   });
 
-  // The bug this file exists to prevent: `mergeable` reports CONFLICTS ONLY, so
-  // a PR held by a required check or review is MERGEABLE + BLOCKED. Reading only
-  // `mergeable` labelled such a layer "Ready" and offered a merge the API
-  // refuses — which is exactly what GitHub's own card calls "Not ready".
-  describe("readiness comes from mergeStateStatus, not mergeable", () => {
-    it("marks a MERGEABLE but BLOCKED layer as not ready", () => {
-      const blocked = stack([entry(1, 24), entry(2, 30, { mergeState: "BLOCKED" })]);
-      expect(stackView(blocked, 30).rows.map((r) => r.status)).toEqual(["blocked", "ready"]);
+  // Readiness is the head commit's check rollup — the signal GitHub's own stack
+  // card renders from. NOT `mergeStateStatus`: that answers BLOCKED for anything
+  // the base ruleset still wants, and four layers with every check green were
+  // observed reporting BLOCKED while GitHub showed each one Ready.
+  describe("readiness comes from the check rollup", () => {
+    it("marks any non-green rollup as not ready", () => {
+      for (const checks of ["PENDING", "FAILURE", "ERROR", "EXPECTED"] as const) {
+        const layer = stack([entry(1, 24, { checks })]);
+        expect(stackView(layer, 24).rows[0]?.status).toBe("blocked");
+      }
     });
 
-    it("treats BEHIND as not ready and DIRTY as conflicts", () => {
-      const behind = stack([entry(1, 24, { mergeState: "BEHIND" })]);
-      expect(stackView(behind, 24).rows[0]?.status).toBe("blocked");
-
-      const dirty = stack([entry(1, 24, { mergeState: "DIRTY" })]);
-      expect(stackView(dirty, 24).rows[0]?.status).toBe("conflicts");
+    it("is ready on SUCCESS, and on a repo that runs no checks at all", () => {
+      expect(stackView(stack([entry(1, 24, { checks: "SUCCESS" })]), 24).rows[0]?.status).toBe(
+        "ready",
+      );
+      // "" is "nothing failing", not "nothing known" — a repo without CI must
+      // not have every layer stuck on Not ready.
+      expect(stackView(stack([entry(1, 24, { checks: "" })]), 24).rows[0]?.status).toBe("ready");
     });
 
-    it("keeps UNSTABLE and HAS_HOOKS mergeable", () => {
-      // UNSTABLE = only non-required checks failing; GitHub still merges it.
-      const unstable = stack([entry(1, 24, { mergeState: "UNSTABLE" })]);
-      expect(stackView(unstable, 24).rows[0]?.status).toBe("ready");
+    it("stays ready when only the base ruleset is unsatisfied", () => {
+      // The regression this replaces: an unapproved PR with green checks is
+      // Ready on GitHub. Rules are enforced when the merge runs.
+      const unapproved = stack([entry(1, 24), entry(2, 30)]);
+      expect(stackView(unapproved, 30).rows.map((r) => r.status)).toEqual(["ready", "ready"]);
+      expect(stackView(unapproved, 30).blockReason).toBeNull();
+    });
 
-      const hooks = stack([entry(1, 24, { mergeState: "HAS_HOOKS" })]);
-      expect(stackView(hooks, 24).rows[0]?.status).toBe("ready");
+    it("ranks conflicts above a failing rollup", () => {
+      const both = stack([entry(1, 24, { mergeable: "CONFLICTING", checks: "FAILURE" })]);
+      expect(stackView(both, 24).rows[0]?.status).toBe("conflicts");
     });
   });
 
@@ -102,14 +109,14 @@ describe("stackView", () => {
       const conflictBelow = stack([entry(1, 24, { mergeable: "CONFLICTING" }), entry(2, 30)]);
       expect(stackView(conflictBelow, 30).blockReason).toBe("layer");
 
-      const blockedBelow = stack([entry(1, 24, { mergeState: "BLOCKED" }), entry(2, 30)]);
+      const blockedBelow = stack([entry(1, 24, { checks: "FAILURE" }), entry(2, 30)]);
       expect(stackView(blockedBelow, 30).blockReason).toBe("layer");
     });
 
     it("blocks when the VIEWED pull request itself cannot merge", () => {
       // The regression seen on #309: the layer below was clean, but the PR being
       // viewed was BLOCKED, and the card still offered "Merge stack".
-      const selfBlocked = stack([entry(1, 24), entry(2, 30, { mergeState: "BLOCKED" })]);
+      const selfBlocked = stack([entry(1, 24), entry(2, 30, { checks: "FAILURE" })]);
       expect(stackView(selfBlocked, 30).blockReason).toBe("layer");
     });
 
@@ -117,7 +124,7 @@ describe("stackView", () => {
       const draftAbove = stack([entry(1, 24), entry(2, 30, { isDraft: true })]);
       expect(stackView(draftAbove, 24).blockReason).toBeNull();
 
-      const blockedAbove = stack([entry(1, 24), entry(2, 30, { mergeState: "BLOCKED" })]);
+      const blockedAbove = stack([entry(1, 24), entry(2, 30, { checks: "FAILURE" })]);
       expect(stackView(blockedAbove, 24).blockReason).toBeNull();
     });
 
@@ -145,32 +152,20 @@ describe("stackView", () => {
       expect(view.mergeCount).toBe(0);
     });
 
-    it("won't enable a merge while GitHub is still computing a layer's state", () => {
-      // UNKNOWN stays "ready" in the pill (calling it Not ready would be a
-      // guess) but must not arm an irreversible action — GitHub disables its
-      // own button here too.
-      const computing = stack([entry(1, 24, { mergeState: "UNKNOWN" }), entry(2, 30)]);
-      expect(stackView(computing, 30).rows.map((r) => r.status)).toEqual(["ready", "ready"]);
-      expect(stackView(computing, 30).blockReason).toBe("unknown");
+    it("blocks while a layer's checks are still running", () => {
+      const running = stack([entry(1, 24, { checks: "PENDING" }), entry(2, 30)]);
+      expect(stackView(running, 30).blockReason).toBe("layer");
     });
 
-    it("reports a real blocked layer ahead of an indeterminate one", () => {
-      const both = stack([
-        entry(1, 20, { mergeState: "UNKNOWN" }),
-        entry(2, 24, { mergeState: "BLOCKED" }),
-        entry(3, 30),
-      ]);
-      expect(stackView(both, 30).blockReason).toBe("layer");
-    });
-
-    it("ignores an indeterminate layer that already merged", () => {
-      const landed = stack([entry(1, 24, { state: "MERGED", mergeState: "UNKNOWN" }), entry(2, 30)]);
+    it("ignores a merged layer whose checks never went green", () => {
+      // It is not landed again, so its rollup is irrelevant.
+      const landed = stack([entry(1, 24, { state: "MERGED", checks: "PENDING" }), entry(2, 30)]);
       expect(stackView(landed, 30).blockReason).toBeNull();
     });
 
     it("reports a real blocked layer ahead of a partial stack", () => {
       // Both true → the actionable reason wins.
-      const both = stack([entry(1, 24, { mergeState: "BLOCKED" }), entry(2, 30)], { size: 9 });
+      const both = stack([entry(1, 24, { checks: "FAILURE" }), entry(2, 30)], { size: 9 });
       expect(stackView(both, 30).blockReason).toBe("layer");
     });
   });

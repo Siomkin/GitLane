@@ -31,11 +31,19 @@ const MAX_COMMIT_PAGES: usize = 100;
 // alongside `entries` so a stack past the cap is *detectable* by the caller
 // rather than silently short.
 //
-// `mergeStateStatus` — not `mergeable` — decides whether a layer can actually
-// merge. `mergeable` reports *conflicts* only, so a PR blocked by a required
-// check or review still answers MERGEABLE, which is why GitHub's own card can
-// label such a layer "Not ready" while `mergeable` looks fine.
-const PR_STACK_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){stackEntry{position stack{number size baseRefName entries(first:50){nodes{position pullRequest{number title state isDraft headRefName mergeable mergeStateStatus}}}}}}}}";
+// Readiness comes from the head commit's `statusCheckRollup`, which is what
+// GitHub's own stack card renders Ready/Not-ready from. Deliberately NOT
+// `mergeStateStatus`: that answers BLOCKED for anything the base's ruleset
+// still wants — an approving review, say — and GitHub's stack UI does not gate
+// on those. Observed directly: four layers with every check green all reported
+// `mergeStateStatus: BLOCKED` (unapproved) while GitHub showed each one Ready
+// and offered the stack merge. Rules are enforced when the merge runs and the
+// failure is reported back, which `merge_stack` already surfaces verbatim.
+//
+// `statusCheckRollup` is the expensive field the PR *list* deliberately skips,
+// but a stack is a handful of layers, not the whole repo, so one rollup per
+// entry is affordable here.
+const PR_STACK_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){stackEntry{position stack{number size baseRefName entries(first:50){nodes{position pullRequest{number title state isDraft headRefName mergeable commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}}}}}";
 
 /// Poll budget for the asynchronous stack merge: 40 attempts, 1.5s apart, so
 /// roughly 60s of *waiting*. This bounds the number of polls, not wall-clock:

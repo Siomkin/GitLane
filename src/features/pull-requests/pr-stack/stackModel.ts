@@ -34,13 +34,14 @@ export interface StackView {
    * - `"layer"` — a layer in the merge set is draft, conflicting, or blocked.
    * - `"partial"` — the stack has more layers than we received, so an unseen
    *   one could be blocked and we cannot honestly claim the merge would work.
-   * - `"unknown"` — GitHub hasn't finished computing a layer's merge state.
-   *   Fine for the *pill* (calling it "Not ready" would be a guess), but not
-   *   for enabling an irreversible merge: GitHub disables its own button here.
-   *
    * Distinct reasons because they need different copy: "some PRs cannot be
-   * merged" is wrong when the truth is "we can't see all of them". */
-  blockReason: "layer" | "partial" | "unknown" | null;
+   * merged" is wrong when the truth is "we can't see all of them".
+   *
+   * Base-branch rules (a required approval, say) are deliberately NOT a reason:
+   * GitHub's own stack UI offers the merge and lets the server refuse, and
+   * `merge_stack` surfaces that refusal verbatim. Blocking here would disable
+   * the button on every unapproved stack, which is not what GitHub does. */
+  blockReason: "layer" | "partial" | null;
   /** True when `size` exceeds the layers we actually received. */
   partial: boolean;
 }
@@ -57,18 +58,12 @@ export const STATUS_LABEL: Record<StackRowStatus, string> = {
 function rowStatus(entry: PrStackEntry): StackRowStatus {
   if (entry.state === "MERGED") return "merged";
   if (entry.state === "CLOSED") return "closed";
-  if (entry.isDraft || entry.mergeState === "DRAFT") return "draft";
-  // Conflicts first, from either signal — `mergeable` is the dedicated verdict
-  // and DIRTY is the same fact in `mergeStateStatus`.
-  if (entry.mergeable === "CONFLICTING" || entry.mergeState === "DIRTY") return "conflicts";
-  // `mergeable` covers conflicts ONLY. A layer held by a required check or
-  // review still reports MERGEABLE, so readiness has to come from
-  // `mergeStateStatus` — this is what GitHub's own card shows as "Not ready".
-  if (entry.mergeState === "BLOCKED" || entry.mergeState === "BEHIND") return "blocked";
-  // CLEAN and HAS_HOOKS merge outright. UNSTABLE means only non-required checks
-  // are failing, which GitHub still allows. UNKNOWN/"" are indefinite — GitHub
-  // hasn't computed it yet, and guessing "blocked" there would be as wrong as
-  // guessing "conflicts" before mergeability resolves.
+  if (entry.isDraft) return "draft";
+  if (entry.mergeable === "CONFLICTING") return "conflicts";
+  // Readiness is the head commit's check rollup — what GitHub's own stack card
+  // shows. Anything not yet green is "Not ready"; `""` means the repo runs no
+  // checks at all, which is nothing failing rather than nothing known.
+  if (entry.checks !== "SUCCESS" && entry.checks !== "") return "blocked";
   return "ready";
 }
 
@@ -104,12 +99,6 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
       isUnmerged(row) &&
       (row.status === "draft" || row.status === "conflicts" || row.status === "blocked"),
   );
-  // An indeterminate layer is shown as ready (calling it "Not ready" would be a
-  // guess), but it must not *enable* the merge — GitHub disables its own button
-  // until it has computed the state.
-  const unknownInMergeSet = mergeSet.some(
-    (row) => isUnmerged(row) && (row.entry.mergeState === "UNKNOWN" || row.entry.mergeState === ""),
-  );
   const currentFound = currentIndex >= 0;
   return {
     rows,
@@ -121,13 +110,7 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
     // the user what to fix; the others only explain why we won't promise.
     // A partial stack hides layers we never inspected, and the merge is
     // all-or-nothing — an unseen blocked layer would sink it.
-    blockReason: layerBlocked
-      ? "layer"
-      : partial
-        ? "partial"
-        : unknownInMergeSet
-          ? "unknown"
-          : null,
+    blockReason: layerBlocked ? "layer" : partial ? "partial" : null,
     partial,
   };
 }

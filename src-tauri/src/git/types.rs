@@ -1200,14 +1200,15 @@ pub struct PrStackEntry {
     /// value — same contract as [`PullRequestSummary`]'s field. This covers
     /// **conflicts only**; it is not whether the layer can merge.
     pub mergeable: String,
-    /// GitHub's `mergeStateStatus`: `CLEAN` | `BLOCKED` | `BEHIND` | `DIRTY` |
-    /// `DRAFT` | `HAS_HOOKS` | `UNSTABLE` | `UNKNOWN`, or `""` when absent.
+    /// The head commit's `statusCheckRollup`: `SUCCESS` | `PENDING` |
+    /// `FAILURE` | `ERROR` | `EXPECTED`, or `""` when the repo runs no checks.
     ///
-    /// This — not [`Self::mergeable`] — is what decides whether a layer can
-    /// actually merge, and it is what GitHub's own stack card renders
-    /// Ready/Not-ready from. A PR held by a required check or review reports
-    /// `MERGEABLE` with `BLOCKED`.
-    pub merge_state: String,
+    /// This — not `mergeStateStatus` — is what GitHub's own stack card renders
+    /// Ready/Not-ready from. `mergeStateStatus` reports BLOCKED for anything the
+    /// base's ruleset still wants (an approving review, say), which GitHub's
+    /// stack UI deliberately does not gate on: rules are enforced when the merge
+    /// runs and the failure is reported back.
+    pub checks: String,
 }
 
 /// One pull request's place in a stack, for the PR **list** badge.

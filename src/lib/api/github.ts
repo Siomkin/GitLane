@@ -116,23 +116,16 @@ export interface PrStackEntry {
   headRef: string;
   /** Conflicts only — NOT whether this layer can merge. See `mergeState`. */
   mergeable: Mergeable;
-  /** What actually decides whether a layer can merge, and what GitHub's own
-   * stack card renders Ready/Not-ready from. A PR held by a required check or
-   * review reports `MERGEABLE` together with `BLOCKED`. */
-  mergeState: MergeState;
+  /** Head commit's `statusCheckRollup` — what GitHub's own stack card renders
+   * Ready/Not-ready from. Deliberately not `mergeStateStatus`, which reports
+   * BLOCKED for anything the base ruleset still wants (an approving review,
+   * say) that GitHub's stack UI does not gate on. `""` when the repo runs no
+   * checks, which means "nothing failing". */
+  checks: ChecksState;
 }
 
-/** GitHub's `mergeStateStatus`; "" when absent. */
-export type MergeState =
-  | "CLEAN"
-  | "BLOCKED"
-  | "BEHIND"
-  | "DIRTY"
-  | "DRAFT"
-  | "HAS_HOOKS"
-  | "UNSTABLE"
-  | "UNKNOWN"
-  | "";
+/** GitHub's `StatusState`; "" when the repo runs no checks. */
+export type ChecksState = "SUCCESS" | "PENDING" | "EXPECTED" | "FAILURE" | "ERROR" | "";
 
 /** One pull request's place in a stack, for the PR list badge.
  *
